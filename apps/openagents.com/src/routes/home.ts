@@ -624,27 +624,32 @@ export async function home() {
               if (done) break
               
               const chunk = decoder.decode(value)
+              console.log('Received chunk:', chunk)
               const lines = chunk.split('\\n')
               
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
                   const data = line.slice(6)
+                  console.log('SSE data:', data)
                   if (data === '[DONE]') {
+                    console.log('Stream finished')
                     break
                   }
                   
                   try {
                     const parsed = JSON.parse(data)
+                    console.log('Parsed data:', parsed)
                     if (parsed.error) {
                       throw new Error(parsed.error)
                     }
                     
                     if (parsed.choices?.[0]?.delta?.content) {
                       assistantContent += parsed.choices[0].delta.content
+                      console.log('Adding content:', parsed.choices[0].delta.content)
                       updateStreamingMessage(assistantBodyDiv, assistantContent)
                     }
                   } catch (e) {
-                    console.error('Error parsing chunk:', e)
+                    console.error('Error parsing chunk:', e, 'Raw data:', data)
                   }
                 }
               }

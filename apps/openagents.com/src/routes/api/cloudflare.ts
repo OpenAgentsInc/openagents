@@ -71,41 +71,75 @@ export const cloudflareApi = (app: any) => {
 
       // Create a transform stream to convert Cloudflare's format to OpenAI's format
       const transformStream = new TransformStream({
+        start() {
+          console.log("Transform stream started")
+        },
         async transform(chunk, controller) {
           const text = new TextDecoder().decode(chunk)
+          console.log("Received chunk:", text)
+          
+          // Handle Cloudflare's streaming format which can be:
+          // 1. SSE format: "data: {...}\n\n"
+          // 2. Raw JSON lines: "{...}\n"
           const lines = text.split("\n").filter((line) => line.trim())
 
           for (const line of lines) {
+            let jsonData = ""
+            
             if (line.startsWith("data: ")) {
-              const data = line.slice(6)
-              if (data === "[DONE]") {
+              jsonData = line.slice(6)
+              if (jsonData === "[DONE]") {
                 controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
-              } else {
-                try {
-                  const parsed = JSON.parse(data)
-                  if (parsed.response) {
-                    // Convert Cloudflare format to OpenAI format
-                    const openAIChunk = {
-                      id: "chatcmpl-" + Math.random().toString(36).substring(2),
-                      object: "chat.completion.chunk",
-                      created: Math.floor(Date.now() / 1000),
-                      model,
-                      choices: [{
-                        index: 0,
-                        delta: {
-                          content: parsed.response
-                        },
-                        finish_reason: null
-                      }]
-                    }
-                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIChunk)}\n\n`))
-                  }
-                } catch (e) {
-                  console.error("Error parsing Cloudflare response:", e)
-                }
+                continue
               }
+            } else if (line.trim().startsWith("{")) {
+              jsonData = line.trim()
+            } else {
+              continue
+            }
+
+            try {
+              const parsed = JSON.parse(jsonData)
+              console.log("Parsed data:", parsed)
+              
+              // Handle different possible Cloudflare response formats
+              let content = ""
+              if (parsed.response) {
+                content = parsed.response
+              } else if (parsed.result?.response) {
+                content = parsed.result.response
+              } else if (parsed.choices?.[0]?.delta?.content) {
+                content = parsed.choices[0].delta.content
+              } else if (parsed.content) {
+                content = parsed.content
+              }
+
+              if (content) {
+                // Convert to OpenAI format
+                const openAIChunk = {
+                  id: "chatcmpl-" + Math.random().toString(36).substring(2),
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model,
+                  choices: [{
+                    index: 0,
+                    delta: {
+                      content: content
+                    },
+                    finish_reason: null
+                  }]
+                }
+                console.log("Sending chunk:", openAIChunk)
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIChunk)}\n\n`))
+              }
+            } catch (e) {
+              console.error("Error parsing Cloudflare response:", e, "Raw data:", jsonData)
             }
           }
+        },
+        flush(controller) {
+          // Send final done signal
+          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
         }
       })
 
@@ -114,7 +148,10 @@ export const cloudflareApi = (app: any) => {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
-          "Connection": "keep-alive"
+          "Connection": "keep-alive",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type"
         }
       })
     } catch (error: any) {
