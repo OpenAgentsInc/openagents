@@ -1,0 +1,94 @@
+<div class="layout-wrapper">
+  <!-- Sidebar -->
+  <aside class="sidebar" data-state="expanded">
+    <div class="sidebar-inner">
+      <!-- Sidebar Header -->
+      <div class="sidebar-header">
+        <div class="logo">
+          <a href="/">
+            <span class="logo-text">OpenAgents</span>
+          </a>
+        </div>
+        <div class="divider"></div>
+        <a href="/" class="new-chat-btn">New Chat</a>
+        <button class="search-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.3-4.3"></path>
+          </svg>
+          <span>Search chats</span>
+          <kbd class="shortcut">⌘K</kbd>
+        </button>
+      </div>
+      
+      <!-- Sidebar Content -->
+      <div class="sidebar-content">
+        <!-- Chat Groups -->
+        <div class="chat-group">
+          <div class="group-header">
+            <span class="group-label">Today</span>
+          </div>
+          <ul class="chat-list">
+            <li class="chat-item active">
+              <a href="/thread/current">
+                <span class="chat-title">Code Functionality Question</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Header -->
+    <header class="main-header">
+      <div class="header-left">
+        <button class="sidebar-toggle">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+            <path d="M9 3v18"></path>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="header-right">
+        <button class="user-menu">
+          <div class="avatar">
+            <span>U</span>
+          </div>
+        </button>
+      </div>
+    </header>
+    
+    <!-- Chat Area -->
+    <div class="chat-container">
+      <div class="messages-area">
+        <!-- Messages will go here -->
+      </div>
+      
+      <!-- Input Area -->
+      <div class="input-container">
+        <div class="input-wrapper">
+          <textarea class="chat-input" placeholder="Ask me anything..." rows="1" autofocus></textarea>
+          <div class="input-actions">
+            <button class="attach-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M13.234 20.252 21 12.3"></path>
+                <path d="m16 6-8.414 8.586a2 2 0 0 0 0 2.828 2 2 0 0 0 2.828 0l8.414-8.586a4 4 0 0 0 0-5.656 4 4 0 0 0-5.656 0l-8.415 8.585a6 6 0 1 0 8.486 8.486"></path>
+              </svg>
+            </button>
+            <button class="send-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" x2="12" y1="19" y2="22"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
