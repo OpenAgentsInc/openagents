@@ -401,7 +401,8 @@ export const chatStyles = `
     color: var(--white);
     animation: dot-flashing 1s infinite linear alternate;
     animation-delay: 0.5s;
-    margin: 4px 0 0 0;
+    margin: 0;
+    display: inline-block;
   }
 
   .dot-flashing::before, .dot-flashing::after {
