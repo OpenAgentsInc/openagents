@@ -158,9 +158,10 @@ const v1Styles = css`
   }
 
   .chat-input:focus {
-    outline: none;
-    border-color: var(--white);
-    ring: 0;
+    outline: none !important;
+    border-color: var(--white) !important;
+    box-shadow: none !important;
+    ring: 0 !important;
   }
 
   .chat-input::placeholder {
@@ -472,6 +473,7 @@ export async function home() {
                   placeholder="Message OpenAgents..."
                   rows="1"
                   autocomplete="off"
+                  autofocus
                   style="outline: none;"
                   oninput="this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 200) + 'px'; document.getElementById('sendBtn').disabled = !this.value.trim();"
                 ></textarea>
@@ -722,8 +724,8 @@ export async function home() {
             }
           })
           
-          // Focus input on load
-          input.focus()
+          // Focus input on load (fallback for autofocus)
+          setTimeout(() => input.focus(), 100)
         })
       </script>
     `
