@@ -9,6 +9,13 @@ export interface ModelConfig {
 export const AVAILABLE_MODELS: Array<ModelConfig> = [
   // Cloudflare Models (Free)
   {
+    id: "@cf/meta/llama-4-scout-17b-16e-instruct",
+    name: "Llama 4 Scout 17B",
+    provider: "cloudflare",
+    requiresApiKey: false,
+    description: "Latest Llama model, optimized for efficiency"
+  },
+  {
     id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     name: "Llama 3.3 70B",
     provider: "cloudflare",
@@ -16,10 +23,11 @@ export const AVAILABLE_MODELS: Array<ModelConfig> = [
     description: "Fast, high-quality responses"
   },
   {
-    id: "@cf/meta/llama-3.1-70b-instruct",
-    name: "Llama 3.1 70B",
+    id: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+    name: "DeepSeek R1 Distill 32B",
     provider: "cloudflare",
-    requiresApiKey: false
+    requiresApiKey: false,
+    description: "Advanced reasoning model"
   },
   {
     id: "@cf/meta/llama-3.1-8b-instruct",
@@ -27,24 +35,6 @@ export const AVAILABLE_MODELS: Array<ModelConfig> = [
     provider: "cloudflare",
     requiresApiKey: false,
     description: "Faster, smaller model"
-  },
-  {
-    id: "@cf/google/gemma-2-9b-it",
-    name: "Gemma 2 9B",
-    provider: "cloudflare",
-    requiresApiKey: false
-  },
-  {
-    id: "@cf/mistral/mistral-7b-instruct-v0.1",
-    name: "Mistral 7B",
-    provider: "cloudflare",
-    requiresApiKey: false
-  },
-  {
-    id: "@cf/qwen/qwen1.5-14b-chat-awq",
-    name: "Qwen 1.5 14B",
-    provider: "cloudflare",
-    requiresApiKey: false
   },
 
   // OpenRouter Models (Requires API Key)
@@ -90,7 +80,7 @@ export const AVAILABLE_MODELS: Array<ModelConfig> = [
   }
 ]
 
-export const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+export const DEFAULT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
 
 export function getModelConfig(modelId: string): ModelConfig | undefined {
   return AVAILABLE_MODELS.find((m) => m.id === modelId)
