@@ -1,13 +1,16 @@
-import { Effect } from "effect"
-import { HttpServerRequest, HttpServerResponse } from "@effect/platform"
-import { addMessage, createConversation, getConversations, updateConversationTitle } from "../../lib/chat-client"
+import type { HttpServerRequest } from "@effect/platform"
+import { HttpServerResponse } from "@effect/platform"
 import type { RouteContext } from "@openagentsinc/psionic"
+import { Effect } from "effect"
+import { addMessage, createConversation, getConversations, updateConversationTitle } from "../../lib/chat-client"
 
 /**
  * GET /api/conversations - List all conversations
  */
-export function listConversations(_ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
-  return Effect.gen(function* () {
+export function listConversations(
+  _ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+  return Effect.gen(function*() {
     try {
       const conversations = yield* Effect.promise(() => getConversations())
       return yield* HttpServerResponse.json(conversations).pipe(Effect.orDie)
@@ -24,15 +27,17 @@ export function listConversations(_ctx: RouteContext): Effect.Effect<HttpServerR
 /**
  * POST /api/conversations - Create a new conversation
  */
-export function createConversationRoute(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
-  return Effect.gen(function* () {
+export function createConversationRoute(
+  ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function*() {
     console.log("🔍 CONVERSATIONS API: createConversationRoute called")
-    
+
     try {
       // Now we can access request.text directly within the Effect context!
       const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
       console.log("✅ Successfully read request body using Effect")
-      
+
       const body = JSON.parse(bodyText)
       const title = body.title || "New Conversation"
 
@@ -52,8 +57,10 @@ export function createConversationRoute(ctx: RouteContext): Effect.Effect<HttpSe
 /**
  * PATCH /api/conversations/:id - Update conversation title
  */
-export function updateConversation(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
-  return Effect.gen(function* () {
+export function updateConversation(
+  ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function*() {
     try {
       const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
       const body = JSON.parse(bodyText)
@@ -82,13 +89,15 @@ export function updateConversation(ctx: RouteContext): Effect.Effect<HttpServerR
 /**
  * POST /api/conversations/:id/messages - Add a message to a conversation
  */
-export function addMessageRoute(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
-  return Effect.gen(function* () {
+export function addMessageRoute(
+  ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function*() {
     console.log("🔍 CONVERSATIONS API: addMessageRoute called")
     try {
       const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
       console.log("✅ Successfully read message body using Effect")
-      
+
       const body = JSON.parse(bodyText)
       const { content, role } = body
 

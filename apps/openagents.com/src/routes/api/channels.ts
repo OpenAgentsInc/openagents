@@ -1,14 +1,17 @@
+import { HttpServerResponse } from "@effect/platform"
+import type { HttpServerRequest, HttpServerRequest } from "@effect/platform"
 import * as Nostr from "@openagentsinc/nostr"
+import type { RouteContext } from "@openagentsinc/psionic"
 import { RelayDatabase, RelayDatabaseLive } from "@openagentsinc/relay"
 import { Effect, Layer } from "effect"
-import { HttpServerRequest, HttpServerResponse } from "@effect/platform"
-import type { RouteContext } from "@openagentsinc/psionic"
 
 /**
  * POST /api/channels/create - Create a new channel
  */
-export function createChannel(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
-  return Effect.gen(function* () {
+export function createChannel(
+  ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
     const body = JSON.parse(bodyText) as { name: string; about?: string; picture?: string }
     const program = Effect.gen(function*() {
@@ -79,62 +82,64 @@ export function createChannel(ctx: RouteContext): Effect.Effect<HttpServerRespon
 /**
  * POST /api/channels/message - Send a message to a channel
  */
-export function sendChannelMessage(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
-  return Effect.gen(function* () {
+export function sendChannelMessage(
+  ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
-      const body = JSON.parse(bodyText) as {
-        channelId: string
-        content: string
-        replyTo?: string
-        privateKey?: string
+    const body = JSON.parse(bodyText) as {
+      channelId: string
+      content: string
+      replyTo?: string
+      privateKey?: string
+    }
+    const program = Effect.gen(function*() {
+      const crypto = yield* Nostr.CryptoService.CryptoService
+      const nip28 = yield* Nostr.Nip28Service.Nip28Service
+
+      // Use provided private key or generate new one
+      let privateKey: Nostr.Schema.PrivateKey
+      if (body.privateKey) {
+        privateKey = body.privateKey as Nostr.Schema.PrivateKey
+      } else {
+        privateKey = yield* crypto.generatePrivateKey()
       }
-        const program = Effect.gen(function*() {
-          const crypto = yield* Nostr.CryptoService.CryptoService
-          const nip28 = yield* Nostr.Nip28Service.Nip28Service
 
-          // Use provided private key or generate new one
-          let privateKey: Nostr.Schema.PrivateKey
-          if (body.privateKey) {
-            privateKey = body.privateKey as Nostr.Schema.PrivateKey
-          } else {
-            privateKey = yield* crypto.generatePrivateKey()
-          }
+      // Send message using NIP-28 service - build params conditionally
+      const params: any = {
+        channelId: body.channelId as Nostr.Schema.EventId,
+        content: body.content,
+        privateKey,
+        relayHint: "ws://localhost:3003/relay"
+      }
 
-          // Send message using NIP-28 service - build params conditionally
-          const params: any = {
-            channelId: body.channelId as Nostr.Schema.EventId,
-            content: body.content,
-            privateKey,
-            relayHint: "ws://localhost:3003/relay"
-          }
+      if (body.replyTo) {
+        params.replyToEventId = body.replyTo as Nostr.Schema.EventId
+      }
 
-          if (body.replyTo) {
-            params.replyToEventId = body.replyTo as Nostr.Schema.EventId
-          }
+      const messageEvent = yield* nip28.sendChannelMessage(params)
 
-          const messageEvent = yield* nip28.sendChannelMessage(params)
+      return {
+        messageId: messageEvent.id,
+        event: messageEvent
+      }
+    })
 
-          return {
-            messageId: messageEvent.id,
-            event: messageEvent
-          }
-        })
+    // Build service layers in dependency order
+    const baseLayer = Layer.merge(
+      Nostr.WebSocketService.WebSocketServiceLive,
+      Nostr.CryptoService.CryptoServiceLive
+    )
 
-        // Build service layers in dependency order
-        const baseLayer = Layer.merge(
-          Nostr.WebSocketService.WebSocketServiceLive,
-          Nostr.CryptoService.CryptoServiceLive
-        )
+    const serviceLayer = Layer.merge(
+      Nostr.EventService.EventServiceLive,
+      Nostr.RelayService.RelayServiceLive
+    )
 
-        const serviceLayer = Layer.merge(
-          Nostr.EventService.EventServiceLive,
-          Nostr.RelayService.RelayServiceLive
-        )
-
-        const fullLayer = Layer.provideMerge(
-          Layer.provideMerge(Nostr.Nip28Service.Nip28ServiceLive, serviceLayer),
-          baseLayer
-        )
+    const fullLayer = Layer.provideMerge(
+      Layer.provideMerge(Nostr.Nip28Service.Nip28ServiceLive, serviceLayer),
+      baseLayer
+    )
 
     const result = yield* program.pipe(Effect.provide(fullLayer))
 
@@ -154,7 +159,7 @@ export function sendChannelMessage(ctx: RouteContext): Effect.Effect<HttpServerR
  * GET /api/channels/list - List all channels
  */
 export function listChannels(_ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
-  return Effect.gen(function* () {
+  return Effect.gen(function*() {
     const program = Effect.gen(function*() {
       const database = yield* RelayDatabase
 
@@ -185,31 +190,31 @@ export function listChannels(_ctx: RouteContext): Effect.Effect<HttpServerRespon
  * GET /api/channels/:id - Get channel details and recent messages
  */
 export function getChannel(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
-  return Effect.gen(function* () {
+  return Effect.gen(function*() {
     const { id } = ctx.params
-      const program = Effect.gen(function*() {
-        const database = yield* RelayDatabase
+    const program = Effect.gen(function*() {
+      const database = yield* RelayDatabase
 
-        // Get channel from database
-        const channels = yield* database.getChannels()
-        const channel = channels.find((c) => c.id === id)
+      // Get channel from database
+      const channels = yield* database.getChannels()
+      const channel = channels.find((c) => c.id === id)
 
-        if (!channel) {
-          return { error: "Channel not found" }
-        }
+      if (!channel) {
+        return { error: "Channel not found" }
+      }
 
-        // Get recent messages
-        const messages = yield* database.queryEvents([{
-          kinds: [42],
-          "#e": [id as Nostr.Schema.EventId],
-          limit: 100
-        }])
+      // Get recent messages
+      const messages = yield* database.queryEvents([{
+        kinds: [42],
+        "#e": [id as Nostr.Schema.EventId],
+        limit: 100
+      }])
 
-        return { channel, messages }
-      })
+      return { channel, messages }
+    })
 
-      // Create database layer
-      const DatabaseLayer = RelayDatabaseLive
+    // Create database layer
+    const DatabaseLayer = RelayDatabaseLive
 
     const result = yield* program.pipe(Effect.provide(DatabaseLayer))
 

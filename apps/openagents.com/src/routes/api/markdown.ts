@@ -1,13 +1,16 @@
+import type { HttpServerRequest } from "@effect/platform"
+import { HttpServerResponse } from "@effect/platform"
 import { renderMarkdown } from "@openagentsinc/psionic"
-import { Effect } from "effect"
-import { HttpServerRequest, HttpServerResponse } from "@effect/platform"
 import type { RouteContext } from "@openagentsinc/psionic"
+import { Effect } from "effect"
 
 /**
  * POST /api/markdown - Render markdown to HTML with syntax highlighting
  */
-export function renderMarkdownRoute(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
-  return Effect.gen(function* () {
+export function renderMarkdownRoute(
+  ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function*() {
     // Parse the request body from Effect HttpServerRequest
     const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
 

@@ -1,4 +1,11 @@
-import { FetchHttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import {
+  FetchHttpClient,
+  HttpMiddleware,
+  HttpRouter,
+  HttpServer,
+  HttpServerRequest,
+  HttpServerResponse
+} from "@effect/platform"
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun"
 import { Effect, Layer, pipe } from "effect"
 import { convertElysiaRouter } from "../adapters/elysia-adapter"
@@ -414,12 +421,15 @@ export class PsionicApp {
       try {
         // Check if handler returns an Effect
         const handlerResult = handler(context)
-        
+
         // If it's an Effect, yield it directly
-        if (handlerResult && typeof handlerResult === "object" && "_tag" in handlerResult && handlerResult._tag === "Effect") {
+        if (
+          handlerResult && typeof handlerResult === "object" && "_tag" in handlerResult &&
+          handlerResult._tag === "Effect"
+        ) {
           return yield* handlerResult
         }
-        
+
         // Otherwise, handle legacy Promise/value returns
         const result = yield* Effect.promise(() => Promise.resolve(handlerResult))
 

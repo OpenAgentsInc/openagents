@@ -1,13 +1,16 @@
-import { HttpServerRequest, HttpServerResponse, FetchHttpClient } from "@effect/platform"
+import type { HttpServerRequest } from "@effect/platform"
+import { FetchHttpClient, HttpServerResponse } from "@effect/platform"
 import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
-import { Effect, Layer, Redacted, Stream } from "effect"
 import type { RouteContext } from "@openagentsinc/psionic"
+import { Effect, Layer, Redacted, Stream } from "effect"
 
 /**
  * GET /api/cloudflare/status - Check Cloudflare availability
  */
-export function cloudflareStatus(_ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+export function cloudflareStatus(
+  _ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
   // Check environment variables
   const apiKey = process.env.CLOUDFLARE_API_KEY
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
@@ -29,44 +32,47 @@ export function cloudflareStatus(_ctx: RouteContext): Effect.Effect<HttpServerRe
 /**
  * POST /api/cloudflare/chat - Stream chat completion
  */
-export function cloudflareChat(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
-  return Effect.gen(function* () {
-      const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+export function cloudflareChat(
+  ctx: RouteContext
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function*() {
+    const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
 
-      const body = JSON.parse(bodyText)
-      const { messages, model } = body
+    const body = JSON.parse(bodyText)
+    const { messages, model } = body
 
-      const apiKey = process.env.CLOUDFLARE_API_KEY
-      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+    const apiKey = process.env.CLOUDFLARE_API_KEY
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
 
-      if (!apiKey || !accountId) {
-        return yield* HttpServerResponse.json({ error: "Cloudflare not configured" }, { status: 500 }).pipe(Effect.orDie)
-      }
+    if (!apiKey || !accountId) {
+      return yield* HttpServerResponse.json({ error: "Cloudflare not configured" }, { status: 500 }).pipe(Effect.orDie)
+    }
 
-      // Create a TransformStream for SSE format
-      const { readable, writable } = new TransformStream()
-      const writer = writable.getWriter()
-      const encoder = new TextEncoder()
+    // Create a TransformStream for SSE format
+    const { readable, writable } = new TransformStream()
+    const writer = writable.getWriter()
+    const encoder = new TextEncoder()
 
-      // Run the streaming in background
-      Effect.runPromise(
-        // @ts-expect-error - Type issue with HttpClient requirement
-        Effect.gen(function*() {
-          // Create the CloudflareClient service
-          const client = yield* Ai.Cloudflare.CloudflareClient
+    // Run the streaming in background
+    Effect.runPromise(
+      // @ts-expect-error - Type issue with HttpClient requirement
+      Effect.gen(function*() {
+        // Create the CloudflareClient service
+        const client = yield* Ai.Cloudflare.CloudflareClient
 
-          // Stream the response directly using the client
-          const stream = client.stream({
-            model,
-            messages,
-            temperature: 0.7,
-            max_tokens: 4096,
-            stream: true
-          })
+        // Stream the response directly using the client
+        const stream = client.stream({
+          model,
+          messages,
+          temperature: 0.7,
+          max_tokens: 4096,
+          stream: true
+        })
 
-          // Process the stream
-          yield* stream.pipe(
-            Stream.tap((response) => Effect.sync(() => {
+        // Process the stream
+        yield* stream.pipe(
+          Stream.tap((response) =>
+            Effect.sync(() => {
               // Convert AiResponse to OpenAI-compatible SSE format
               for (const part of response.parts) {
                 if (part._tag === "TextPart") {
@@ -107,36 +113,40 @@ export function cloudflareChat(ctx: RouteContext): Effect.Effect<HttpServerRespo
                   writer.write(encoder.encode(data))
                 }
               }
-            })),
-            Stream.runDrain
-          )
-
-          // Send done signal
-          writer.write(encoder.encode("data: [DONE]\n\n"))
-          writer.close()
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              BunHttpPlatform.layer,
-              FetchHttpClient.layer,
-              Ai.Cloudflare.layerCloudflareClient({
-                apiKey: Redacted.make(apiKey),
-                accountId,
-                useOpenAIEndpoints: true
-              })
-            )
+            })
           ),
-          Effect.catchAll((error) => Effect.sync(() => {
+          Stream.runDrain
+        )
+
+        // Send done signal
+        writer.write(encoder.encode("data: [DONE]\n\n"))
+        writer.close()
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            BunHttpPlatform.layer,
+            FetchHttpClient.layer,
+            Ai.Cloudflare.layerCloudflareClient({
+              apiKey: Redacted.make(apiKey),
+              accountId,
+              useOpenAIEndpoints: true
+            })
+          )
+        ),
+        Effect.catchAll((error) =>
+          Effect.sync(() => {
             console.error("Streaming error:", error)
             writer.write(encoder.encode(`data: {"error": "${error}"}\n\n`))
             writer.close()
-          }))
+          })
         )
       )
+    )
 
-      // Return the readable stream as SSE response using raw
-      return yield* Effect.succeed(
-        HttpServerResponse.raw(new Response(readable, {
+    // Return the readable stream as SSE response using raw
+    return yield* Effect.succeed(
+      HttpServerResponse.raw(
+        new Response(readable, {
           headers: {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
@@ -145,8 +155,9 @@ export function cloudflareChat(ctx: RouteContext): Effect.Effect<HttpServerRespo
             "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type"
           }
-        }))
+        })
       )
+    )
   }).pipe(
     Effect.catchAll((error: any) => {
       console.error("Cloudflare API error:", error)

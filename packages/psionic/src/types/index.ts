@@ -1,3 +1,6 @@
+import type { HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import type { Effect } from "effect"
+
 export interface PsionicConfig {
   name?: string
   port?: number
@@ -23,16 +26,13 @@ export interface PsionicConfig {
   // relays?: string[]
 }
 
-import { Effect } from "effect"
-import { HttpServerRequest, HttpServerResponse } from "@effect/platform"
-
 export interface RouteContext {
   request: HttpServerRequest.HttpServerRequest
   params: Record<string, string>
 }
 
 // Support both legacy Promise handlers and new Effect handlers
-export type RouteHandler = 
+export type RouteHandler =
   | ((context: RouteContext) => Effect.Effect<HttpServerResponse.HttpServerResponse, any, any>)
   | ((context: any) => string | Promise<string> | Response | Promise<Response> | any)
 
