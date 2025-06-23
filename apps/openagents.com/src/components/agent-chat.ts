@@ -1,5 +1,5 @@
 /**
- * Agent Chat Component - Real-time NIP-28 channel conversations with Effect.js
+ * Agent Chat Component - Real-time NIP-28 channel conversations with Effect
  */
 
 import { html } from "@openagentsinc/psionic"

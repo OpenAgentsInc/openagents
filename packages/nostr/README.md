@@ -4,7 +4,7 @@ Effect-based Nostr protocol implementation for the OpenAgents SDK.
 
 ## Overview
 
-This package provides a comprehensive, type-safe implementation of the Nostr protocol using Effect.js. It includes support for multiple NIPs (Nostr Implementation Possibilities) and provides a robust foundation for building Nostr-enabled applications.
+This package provides a comprehensive, type-safe implementation of the Nostr protocol using Effect. It includes support for multiple NIPs (Nostr Implementation Possibilities) and provides a robust foundation for building Nostr-enabled applications.
 
 ## Installation
 

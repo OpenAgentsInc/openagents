@@ -6,7 +6,7 @@ This guide helps developers understand and contribute to the `@openagentsinc/nos
 
 ## Architecture Overview
 
-The package follows Effect.js patterns throughout:
+The package follows Effect patterns throughout:
 
 ```typescript
 // All services are defined as Effect Context Tags
@@ -415,5 +415,5 @@ Effect.runPromise(program).catch((cause) => {
 ## Questions?
 
 - Check existing implementations for examples
-- Review Effect.js documentation
+- Review Effect documentation
 - Ask in the OpenAgents Discord

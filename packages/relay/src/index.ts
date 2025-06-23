@@ -1,6 +1,6 @@
 /**
  * OpenAgents Nostr Relay
- * Full-featured Nostr relay with NIP-01 support, Effect.js architecture,
+ * Full-featured Nostr relay with NIP-01 support, Effect architecture,
  * and PlanetScale database backend
  */
 

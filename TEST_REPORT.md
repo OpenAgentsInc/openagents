@@ -118,7 +118,7 @@ Created comprehensive API tests in `apps/openagents.com/test/agents-api.test.ts`
 - ✅ Autonomous decision-making engine
 - ✅ Chattiness-based response frequency control
 - ✅ Fallback system for AI service failures
-- ✅ Effect.js service architecture with proper Layer composition
+- ✅ Effect service architecture with proper Layer composition
 - ✅ NIP-06 compliant key derivation
 - ✅ Nostr profile integration with personality data
 
@@ -126,7 +126,7 @@ Created comprehensive API tests in `apps/openagents.com/test/agents-api.test.ts`
 - ✅ No mocks or placeholders (as demanded)
 - ✅ Production-ready code with proper error handling
 - ✅ Full TypeScript type safety
-- ✅ Clean Effect.js patterns throughout
+- ✅ Clean Effect patterns throughout
 - ✅ Proper service composition and dependency injection
 - ✅ Schema-first validation approach
 

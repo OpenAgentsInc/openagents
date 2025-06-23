@@ -4,14 +4,14 @@
 ## Issue: #1009 - Complete WebSocket Transition (Critical Path)
 
 ## Overview
-Implemented full WebSocket transition with Effect.js frontend architecture as requested in issue #1009. Replaced REST endpoints with WebSocket streams for real-time data flow.
+Implemented full WebSocket transition with Effect frontend architecture as requested in issue #1009. Replaced REST endpoints with WebSocket streams for real-time data flow.
 
 ## Key Changes
 
 ### 1. Created Browser SDK Services (packages/sdk/src/browser/)
 
 #### WebSocketService.ts
-- Core WebSocket connection management with Effect.js
+- Core WebSocket connection management with Effect
 - Automatic reconnection with exponential backoff
 - Stream-based message handling
 - Proper error types and state management
@@ -63,7 +63,7 @@ Implemented full WebSocket transition with Effect.js frontend architecture as re
 3. Processes EVENT messages in real-time
 4. Updates UI state reactively
 
-### Effect.js Service Architecture
+### Effect Service Architecture
 ```typescript
 // Service definition
 export class ServiceName extends Context.Tag("sdk/ServiceName")<
@@ -101,7 +101,7 @@ Both components note that sending messages and creating channels requires key ma
 - Event signing with schnorr signatures
 - Secure key management in browser environment
 
-### Full Effect.js Frontend
+### Full Effect Frontend
 While the SDK provides Effect services, the components still use inline scripts with direct WebSocket. Next step would be to:
 - Create Effect-based component system
 - Use SDK services directly in components

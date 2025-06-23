@@ -2,7 +2,7 @@
 
 ## PGlite emerges as the strongest candidate
 
-After analyzing all four options against your requirements for a TypeScript/Bun/Effect.js chat platform with privacy-preserving local-first architecture, **PGlite stands out as the most compelling solution**. It offers full PostgreSQL capabilities in under 3MB, reactive live queries perfect for chat UIs, and mature ElectricSQL integration for cloud sync.
+After analyzing all four options against your requirements for a TypeScript/Bun/Effect chat platform with privacy-preserving local-first architecture, **PGlite stands out as the most compelling solution**. It offers full PostgreSQL capabilities in under 3MB, reactive live queries perfect for chat UIs, and mature ElectricSQL integration for cloud sync.
 
 ## Comparative Analysis by Key Criteria
 
@@ -12,7 +12,7 @@ After analyzing all four options against your requirements for a TypeScript/Bun/
 
 **Bun SQLite** offers impressive raw performance (3-6x faster than alternatives for reads), though real-world benchmarks show the gap is smaller. However, it lacks built-in reactive queries and requires manual change detection for real-time updates.
 
-**Effect-TS SQL SQLite Bun** inherits Bun SQLite's performance characteristics while adding Effect.js patterns, but doesn't fundamentally solve SQLite's limitations for chat-specific features like full-text search or JSON operations.
+**Effect-TS SQL SQLite Bun** inherits Bun SQLite's performance characteristics while adding Effect patterns, but doesn't fundamentally solve SQLite's limitations for chat-specific features like full-text search or JSON operations.
 
 **Electric SQL**'s current architecture (v1.0) no longer provides local SQLite storage - it's now a read-only sync engine that streams from Postgres to clients, making it unsuitable for offline-first chat applications.
 
@@ -24,13 +24,13 @@ After analyzing all four options against your requirements for a TypeScript/Bun/
 
 **Bun SQLite** requires third-party solutions like PowerSync, LiteSync, or custom HTTP-based sync. While these work, they add complexity and don't integrate as seamlessly as PGlite's built-in approach.
 
-**Effect-TS SQL SQLite Bun** faces the same sync challenges as raw Bun SQLite, though its Effect.js integration could help build custom sync layers more elegantly.
+**Effect-TS SQL SQLite Bun** faces the same sync challenges as raw Bun SQLite, though its Effect integration could help build custom sync layers more elegantly.
 
-### Effect.js Integration
+### Effect Integration
 
-**Effect-TS SQL SQLite Bun** naturally provides the best Effect.js integration with built-in service patterns, error handling, and resource management. It wraps database operations in Effect patterns seamlessly.
+**Effect-TS SQL SQLite Bun** naturally provides the best Effect integration with built-in service patterns, error handling, and resource management. It wraps database operations in Effect patterns seamlessly.
 
-**PGlite** requires manual Effect.js wrapping but the integration is straightforward:
+**PGlite** requires manual Effect wrapping but the integration is straightforward:
 ```typescript
 export class PgliteService extends Effect.Service<PgliteService>()("Pglite", {
   effect: Effect.gen(function* () {
@@ -49,7 +49,7 @@ Both SQLite options require similar manual wrapping, with Bun SQLite needing mor
 
 **PGlite** shines with excellent TypeScript support, Drizzle ORM integration, and a familiar PostgreSQL development experience. Its support for JSON/JSONB types makes flexible chat message schemas trivial.
 
-**Effect-TS SQL SQLite Bun** provides strong type safety through @effect/schema integration and runtime validation, offering the best developer experience for Effect.js users.
+**Effect-TS SQL SQLite Bun** provides strong type safety through @effect/schema integration and runtime validation, offering the best developer experience for Effect users.
 
 **Bun SQLite** with Drizzle offers good TypeScript support but lacks PostgreSQL's rich type system and JSON capabilities that benefit chat applications.
 
@@ -104,7 +104,7 @@ const MessageServiceLive = Layer.effect(
 
 This architecture provides:
 1. **PostgreSQL's power** for complex queries and data types
-2. **Effect.js patterns** for error handling and composability
+2. **Effect patterns** for error handling and composability
 3. **Local-first operation** with PGlite's embedded database
 4. **Seamless cloud sync** via ElectricSQL integration
 5. **Type safety** through Effect schemas and Drizzle ORM
@@ -191,7 +191,7 @@ The main risks with PGlite are its relative newness (2024 release) and single-co
 |----------|---------|------------|---------------|--------------|
 | Local Performance | ★★★★☆ | ★★★★★ | ★★★★★ | N/A |
 | Cloud Sync | ★★★★★ | ★★★☆☆ | ★★★☆☆ | ★★☆☆☆ |
-| Effect.js Integration | ★★★☆☆ | ★★★☆☆ | ★★★★★ | ★★☆☆☆ |
+| Effect Integration | ★★★☆☆ | ★★★☆☆ | ★★★★★ | ★★☆☆☆ |
 | Type Safety | ★★★★★ | ★★★★☆ | ★★★★★ | ★★☆☆☆ |
 | Chat Features | ★★★★★ | ★★★☆☆ | ★★★☆☆ | ★☆☆☆☆ |
 | Privacy/Encryption | ★★★☆☆ | ★★☆☆☆ | ★★☆☆☆ | ★★★☆☆ |

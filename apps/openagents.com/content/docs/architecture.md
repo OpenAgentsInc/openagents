@@ -8,13 +8,13 @@ order: 4
 
 # Architecture Overview
 
-OpenAgents is built as a monorepo using pnpm workspaces, with a clean separation between reusable packages (libraries) and user-facing applications. The architecture emphasizes type safety through TypeScript and Effect.js, deterministic agent identities via Bitcoin standards, and local-first AI inference.
+OpenAgents is built as a monorepo using pnpm workspaces, with a clean separation between reusable packages (libraries) and user-facing applications. The architecture emphasizes type safety through TypeScript and Effect, deterministic agent identities via Bitcoin standards, and local-first AI inference.
 
 ## Core Architecture Principles
 
 ### 1. Effect-Based Design
 
-The codebase leverages Effect.js for:
+The codebase leverages Effect for:
 - **Functional programming patterns**: Composable, type-safe operations
 - **Dependency injection**: Service-based architecture with Layers
 - **Type-safe error handling**: Tagged errors with proper error types
@@ -276,7 +276,7 @@ Effect.catchTag("NetworkError", (error) =>
 ### Design Decisions
 - No client-side framework (server-rendered HTML)
 - Local-first AI (no cloud providers by default)
-- Effect.js learning curve for contributors
+- Effect learning curve for contributors
 
 ## Future Architecture
 
@@ -314,4 +314,4 @@ Effect.catchTag("NetworkError", (error) =>
 
 ---
 
-*For detailed implementation patterns and Effect.js usage, see the [technical architecture guide](/docs/architecture) in the docs folder.*
+*For detailed implementation patterns and Effect usage, see the [technical architecture guide](/docs/architecture) in the docs folder.*

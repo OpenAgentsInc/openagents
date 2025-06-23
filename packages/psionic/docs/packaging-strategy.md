@@ -98,7 +98,7 @@ packages/create-psionic/
 │   │   ├── tsconfig.json
 │   │   ├── psionic.config.ts
 │   │   └── README.md
-│   ├── with-effect/          # Full Effect.js integration
+│   ├── with-effect/          # Full Effect integration
 │   ├── with-agents/          # OpenAgents SDK integration  
 │   ├── with-nostr/           # Nostr relay setup
 │   └── full-stack/           # Complete example with all features
@@ -119,7 +119,7 @@ bunx @openagentsinc/create-psionic my-app --template with-agents
 bunx @openagentsinc/create-psionic my-app
 ? Choose a template: (Use arrow keys)
 ❯ basic - Minimal Psionic app
-  with-effect - Effect.js service architecture
+  with-effect - Effect service architecture
   with-agents - OpenAgents SDK integration
   with-nostr - Nostr relay configuration
   full-stack - Everything included

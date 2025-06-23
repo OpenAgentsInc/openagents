@@ -1,5 +1,5 @@
 /**
- * Browser Agent Service with Effect.js
+ * Browser Agent Service with Effect
  * Real-time agent status and profile updates
  */
 
