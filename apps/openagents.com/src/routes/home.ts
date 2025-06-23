@@ -316,44 +316,93 @@ const v1Styles = css`
   /* Sidebar footer */
   .sidebar-footer {
     border-top: 1px solid var(--offblack);
-    padding: 4px 4px 8px 4px;
+    padding: 4px 4px;
     color: var(--gray);
+    font-size: 14px;
+    margin-top: auto;
   }
 
-  .sidebar-footer a {
+  .sidebar-footer ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sidebar-footer li {
+    margin: 0;
+    padding: 0;
+  }
+
+  .sidebar-footer-item {
+    position: relative;
+    z-index: 15;
+  }
+
+  .sidebar-footer-item > div {
+    position: relative;
+    border-radius: 8px;
+    padding: 0 12px;
+  }
+
+  .sidebar-footer-item > div:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .sidebar-footer-link {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 12px;
-    border-radius: 8px;
+    padding: 4px 0;
     text-decoration: none;
-    color: inherit;
+    color: var(--gray);
+    transition: color 0.2s;
+    cursor: pointer;
     font-size: 14px;
-    transition: all 0.2s;
   }
 
-  .sidebar-footer a:hover {
+  .sidebar-footer-link:hover {
     color: var(--white);
-    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .sidebar-footer-link > div {
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .sidebar-footer .beta-badge {
     font-size: 12px;
     opacity: 0.5;
+    color: var(--gray);
   }
 
   .sidebar-footer .external-icon {
     width: 16px;
     height: 16px;
-    margin-left: auto;
+    flex-shrink: 0;
   }
 
-  .sidebar-footer .footer-links {
+  .sidebar-footer .footer-bottom {
     display: flex;
+    flex-direction: row;
     gap: 4px;
     padding: 12px 12px 0;
     font-size: 12px;
     opacity: 0.75;
+    color: var(--gray);
+  }
+  
+  .sidebar-footer .footer-bottom a {
+    color: inherit;
+    text-decoration: none;
+  }
+  
+  .sidebar-footer .footer-bottom a:hover {
+    color: var(--white);
   }
 
   /* Dot flashing animation from v1 */
@@ -467,7 +516,7 @@ export async function home() {
 
         <!-- Sidebar -->
         <div id="sidebar" class="sidebar sidebar-open" style="position: fixed; left: 0; top: 0; height: 100vh; background: black; overflow: hidden;">
-          <div style="width: 260px; height: 100%; display: flex; flex-col;">
+          <div style="width: 260px; height: 100%; display: flex; flex-direction: column;">
             <!-- New thread button area -->
             <div style="height: 54px; display: flex; align-items: center; justify-content: flex-end; padding: 0 16px;">
               <button style="background: none; border: none; color: white; cursor: pointer; padding: 6px;">
@@ -479,55 +528,107 @@ export async function home() {
             </div>
             
             <!-- Thread list -->
-            <div style="flex: 1; overflow-y: auto; padding: 12px 4px;">
-              ${mockThreads.map((thread) => renderThread(thread)).join("")}
+            <div style="flex: 1; overflow-y: auto;">
+              <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 4px;">
+                <ol style="list-style: none; margin: 0; padding: 0;">
+                  ${mockThreads.map((thread) => `<li>${renderThread(thread)}</li>`).join("")}
+                </ol>
+              </div>
             </div>
 
             <!-- Sidebar footer -->
             <div class="sidebar-footer">
-              <a href="/store">
-                <span>Agent Store</span>
-                <span class="beta-badge">Beta</span>
-              </a>
-              <a href="/plugins">
-                <span>Plugins</span>
-                <span class="beta-badge">Beta</span>
-              </a>
-              <a href="/blog">
-                <span>Blog</span>
-              </a>
-              <a href="/changelog">
-                <span>Changelog</span>
-              </a>
-              <a href="https://docs.openagents.com" target="_blank">
-                <span>Docs & guides</span>
-                <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <line x1="10" y1="14" x2="21" y2="3"></line>
-                </svg>
-              </a>
-              <a href="https://stacker.news/~openagents" target="_blank">
-                <span>Community</span>
-                <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <line x1="10" y1="14" x2="21" y2="3"></line>
-                </svg>
-              </a>
-              <a href="https://github.com/OpenAgentsInc/openagents" target="_blank">
-                <span>Source code</span>
-                <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <line x1="10" y1="14" x2="21" y2="3"></line>
-                </svg>
-              </a>
-              <div class="footer-links">
-                <a href="/terms">Terms</a>
-                <span>·</span>
-                <a href="/privacy">Privacy</a>
-              </div>
+              <ol>
+                <li>
+                  <div class="sidebar-footer-item">
+                    <div>
+                      <a href="/store" class="sidebar-footer-link">
+                        <div>Agent Store</div>
+                        <div class="beta-badge">Beta</div>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="sidebar-footer-item">
+                    <div>
+                      <a href="/plugins" class="sidebar-footer-link">
+                        <div>Plugins</div>
+                        <div class="beta-badge">Beta</div>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="sidebar-footer-item">
+                    <div>
+                      <a href="/blog" class="sidebar-footer-link">
+                        <div>Blog</div>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="sidebar-footer-item">
+                    <div>
+                      <a href="/changelog" class="sidebar-footer-link">
+                        <div>Changelog</div>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="sidebar-footer-item">
+                    <div>
+                      <a href="https://docs.openagents.com" target="_blank" class="sidebar-footer-link">
+                        <div>Docs & guides</div>
+                        <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                          <polyline points="15 3 21 3 21 9"></polyline>
+                          <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="sidebar-footer-item">
+                    <div>
+                      <a href="https://stacker.news/~openagents" target="_blank" class="sidebar-footer-link">
+                        <div>Community</div>
+                        <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                          <polyline points="15 3 21 3 21 9"></polyline>
+                          <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="sidebar-footer-item">
+                    <div>
+                      <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" class="sidebar-footer-link">
+                        <div>Source code</div>
+                        <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                          <polyline points="15 3 21 3 21 9"></polyline>
+                          <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div>
+                    <div class="footer-bottom">
+                      <a href="/terms">Terms</a>
+                      <span>·</span>
+                      <a href="/privacy">Privacy</a>
+                    </div>
+                  </div>
+                </li>
+              </ol>
             </div>
           </div>
         </div>
