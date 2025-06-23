@@ -291,7 +291,7 @@ The underlying services (EventService, RelayService) return broader error types 
 **Total Implementation Time**: ~4 hours of focused development work
 
 **Key Technical Achievements**:
-1. **Complete NIP-28 Public Channels**: Real-time messaging with Effect.js architecture
+1. **Complete NIP-28 Public Channels**: Real-time messaging with Effect architecture
 2. **Complete NIP-90 Data Vending Machine**: AI service marketplace with Bitcoin payments
 3. **Dashboard UI Integration**: Agent communication visualization with WebTUI components
 4. **NIP-OA Specification Enhancement**: Comprehensive communication protocols and guidelines
@@ -299,7 +299,7 @@ The underlying services (EventService, RelayService) return broader error types 
 
 **Architecture Established**:
 - **Service-Oriented**: Clean separation between NIP-28, NIP-90, and SDK packages
-- **Effect.js Foundation**: Proper error handling, resource management, and type safety
+- **Effect Foundation**: Proper error handling, resource management, and type safety
 - **UI Component System**: Reusable WebTUI components with mock data integration
 - **Standards Compliance**: Full NIP implementation with protocol specification updates
 

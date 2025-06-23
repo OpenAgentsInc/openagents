@@ -1,5 +1,5 @@
 /**
- * Browser Channel Service with Effect.js
+ * Browser Channel Service with Effect
  * Real-time channel operations using WebSocket streams
  */
 

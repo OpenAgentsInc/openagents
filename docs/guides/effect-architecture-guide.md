@@ -6,7 +6,7 @@
 
 ## Table of Contents
 1. [Core Architectural Principles](#core-architectural-principles)
-2. [Effect.js Foundation](#effectjs-foundation)
+2. [Effect Foundation](#effect-foundation)
 3. [Psionic Framework](#psionic-framework)
 4. [AI Provider Architecture](#ai-provider-architecture)
 5. [Streaming Implementation](#streaming-implementation)
@@ -48,7 +48,7 @@ const AppLive = Layer.merge(
 )
 ```
 
-## Effect.js Foundation
+## Effect Foundation
 
 ### Core Concepts You Must Understand
 

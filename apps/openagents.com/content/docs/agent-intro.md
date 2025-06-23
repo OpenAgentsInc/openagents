@@ -10,11 +10,11 @@ order: 10
 
 ## Project Overview
 
-OpenAgents is a platform for building Bitcoin-powered AI agents using open protocols. The project is structured as a TypeScript monorepo using pnpm workspaces, with a clear separation between reusable packages (libraries) and user-facing applications. The architecture emphasizes type safety, functional programming patterns through Effect.js, and local-first AI inference for privacy preservation.
+OpenAgents is a platform for building Bitcoin-powered AI agents using open protocols. The project is structured as a TypeScript monorepo using pnpm workspaces, with a clear separation between reusable packages (libraries) and user-facing applications. The architecture emphasizes type safety, functional programming patterns through Effect, and local-first AI inference for privacy preservation.
 
 ## Technical Stack
 
-The codebase is built on modern JavaScript tooling with TypeScript as the primary language. The runtime environment is Bun, chosen for its performance and built-in TypeScript support. For web applications, we use Elysia as the HTTP server framework. The entire project follows functional programming principles using Effect.js, which provides dependency injection, type-safe error handling, and service-oriented architecture patterns. Build tooling includes Vite for bundling, Vitest for testing, and custom Effect build utilities for multi-format package distribution.
+The codebase is built on modern JavaScript tooling with TypeScript as the primary language. The runtime environment is Bun, chosen for its performance and built-in TypeScript support. For web applications, we use Elysia as the HTTP server framework. The entire project follows functional programming principles using Effect, which provides dependency injection, type-safe error handling, and service-oriented architecture patterns. Build tooling includes Vite for bundling, Vitest for testing, and custom Effect build utilities for multi-format package distribution.
 
 ## Package Architecture
 
@@ -38,4 +38,4 @@ Each package follows a multi-step build process to support both ESM and CommonJS
 
 ## Development Tooling and Standards
 
-The project enforces code quality through ESLint configuration tailored for Effect.js patterns, pre-push hooks that run linting, type checking, and tests, and automated code generation for Effect package exports. Documentation is built into the platform itself using our own tools, with markdown content processed by the Psionic framework. The development environment supports hot reloading through Bun's built-in capabilities. All code follows strict TypeScript settings with Effect-specific language service enhancements for improved developer experience.
+The project enforces code quality through ESLint configuration tailored for Effect patterns, pre-push hooks that run linting, type checking, and tests, and automated code generation for Effect package exports. Documentation is built into the platform itself using our own tools, with markdown content processed by the Psionic framework. The development environment supports hot reloading through Bun's built-in capabilities. All code follows strict TypeScript settings with Effect-specific language service enhancements for improved developer experience.

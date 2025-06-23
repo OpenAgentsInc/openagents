@@ -20,7 +20,7 @@ This document outlines the current state of OpenAgents and our vision for the fu
 - **Basic agent creation**: Identity generation with placeholder Nostr keys
 - **Ollama integration**: Local AI inference with streaming support
 - **TypeScript-first**: Full type safety and modern tooling
-- **Effect.js foundation**: Service architecture ready for expansion
+- **Effect foundation**: Service architecture ready for expansion
 
 #### Web Framework
 - **Psionic**: Server-side rendering with component explorer
