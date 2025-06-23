@@ -1,5 +1,5 @@
-import { Effect } from "effect"
 import { renderMarkdown } from "@openagentsinc/psionic"
+import { Effect } from "effect"
 
 /**
  * POST /api/markdown - Render markdown to HTML with syntax highlighting
