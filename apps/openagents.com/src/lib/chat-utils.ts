@@ -261,15 +261,10 @@ export const chatClientScript = `
     const headers = { 'Content-Type': 'application/json' };
     if (modelInfo.provider === 'openrouter') {
       const openrouterApiKey = localStorage.getItem('openrouterApiKey');
-      if (!openrouterApiKey) {
-        assistantResponse.textContent = 'OpenRouter API key is required. Please add it in Settings.';
-        isGenerating = false;
-        submitButton.disabled = false;
-        input.disabled = false;
-        input.focus();
-        return;
+      // Only add header if we have a local key - server might have its own
+      if (openrouterApiKey) {
+        headers['x-api-key'] = openrouterApiKey;
       }
-      headers['x-api-key'] = openrouterApiKey;
     }
     
     // Stream response from API

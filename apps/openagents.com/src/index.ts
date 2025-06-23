@@ -26,6 +26,7 @@ import slides from './routes/slides'
 import { ollamaApi } from './routes/api/ollama'
 import { openrouterApi } from './routes/api/openrouter'
 import { cloudflareApi } from './routes/api/cloudflare'
+import { configApi } from './routes/api/config'
 import { channelsApi } from './routes/api/channels'
 import { 
   listConversations, 
@@ -87,6 +88,7 @@ app.route('/import', importRoute)
 ollamaApi(app)
 openrouterApi(app)
 cloudflareApi(app)
+configApi(app)
 channelsApi(app)
 
 // Conversation API routes

@@ -212,12 +212,29 @@ const v1Styles = css`
     transition: background-color 0.2s;
   }
   
-  .model-option:hover {
+  .model-option:hover:not(.locked) {
     background-color: var(--v1-darkgray);
   }
   
   .model-option.selected {
     background-color: var(--v1-active-thread);
+  }
+  
+  .model-option.locked {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .model-option.locked .model-name {
+    color: var(--v1-gray);
+  }
+  
+  .lock-icon {
+    width: 12px;
+    height: 12px;
+    margin-left: 4px;
+    display: inline-block;
+    vertical-align: middle;
   }
   
   .model-name {
@@ -297,19 +314,27 @@ export async function home() {
     }
               
               <div class="model-group">OpenRouter (API Key Required)</div>
-              ${
+              <div id="openrouter-models">
+                ${
       AVAILABLE_MODELS
         .filter((m) => m.provider === "openrouter")
         .map((model) =>
           html`
-                <div class="model-option" data-model-id="${model.id}" onclick="selectModel('${model.id}')">
-                  <div class="model-name">${model.name}</div>
+                <div class="model-option openrouter-model" data-model-id="${model.id}" onclick="selectModel('${model.id}')">
+                  <div class="model-name">
+                    ${model.name}
+                    <svg class="lock-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="5" y="11" width="14" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                  </div>
                   ${model.description ? html`<div class="model-description">${model.description}</div>` : ""}
                 </div>
               `
         )
         .join("")
     }
+              </div>
               
               <div class="api-key-notice" id="api-key-notice" style="display: none;">
                 <a href="/settings">Add OpenRouter API key in Settings</a>
@@ -492,6 +517,7 @@ export async function home() {
         // Model selector functionality
         let selectedModel = localStorage.getItem('selectedModel') || '${DEFAULT_MODEL}';
         let openrouterApiKey = localStorage.getItem('openrouterApiKey') || '';
+        let hasServerKey = false;
         
         // Update selected model display on load
         const modelConfig = ${JSON.stringify(AVAILABLE_MODELS)};
@@ -499,6 +525,31 @@ export async function home() {
         if (currentModel) {
           document.getElementById('selected-model-name').textContent = currentModel.name;
         }
+        
+        // Check server configuration
+        async function checkConfig() {
+          try {
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            hasServerKey = config.hasOpenRouterKey;
+            
+            // Update UI based on API key availability
+            const hasAnyKey = openrouterApiKey || hasServerKey;
+            document.querySelectorAll('.openrouter-model').forEach(option => {
+              if (!hasAnyKey) {
+                option.classList.add('locked');
+              } else {
+                option.classList.remove('locked');
+                option.querySelector('.lock-icon').style.display = 'none';
+              }
+            });
+          } catch (error) {
+            console.error('Failed to check config:', error);
+          }
+        }
+        
+        // Check config on load
+        checkConfig();
         
         function toggleModelDropdown() {
           const dropdown = document.getElementById('model-selector-dropdown');
@@ -525,7 +576,7 @@ export async function home() {
           if (!model) return;
           
           // Check if OpenRouter API key is needed
-          if (model.provider === 'openrouter' && !openrouterApiKey) {
+          if (model.provider === 'openrouter' && !openrouterApiKey && !hasServerKey) {
             document.getElementById('api-key-notice').style.display = 'block';
             return;
           }
@@ -567,6 +618,8 @@ export async function home() {
             if (openrouterApiKey) {
               document.getElementById('api-key-notice').style.display = 'none';
             }
+            // Re-check config to update UI
+            checkConfig();
           }
         });
         

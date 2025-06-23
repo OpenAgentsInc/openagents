@@ -9,12 +9,15 @@ export const openrouterApi = (app: any) => {
   app.get(`${prefix}/status`, async (context: any) => {
     try {
       // Get header from Effect HttpServerRequest
-      const apiKey = await Effect.runPromise(
+      const apiKeyFromHeader = await Effect.runPromise(
         Effect.gen(function*() {
           const headers = yield* context.request.headers
           return headers["x-api-key"]
-        }) as Effect.Effect<string, never, never>
+        }) as Effect.Effect<string | undefined, never, never>
       )
+      
+      // Use header API key first, fall back to environment variable
+      const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
 
       if (!apiKey) {
         return Response.json({ error: "API key required" }, { status: 401 })
@@ -51,12 +54,15 @@ export const openrouterApi = (app: any) => {
       const { messages, model } = body
 
       // Get header from Effect HttpServerRequest
-      const apiKey = await Effect.runPromise(
+      const apiKeyFromHeader = await Effect.runPromise(
         Effect.gen(function*() {
           const headers = yield* context.request.headers
           return headers["x-api-key"]
-        }) as Effect.Effect<string, never, never>
+        }) as Effect.Effect<string | undefined, never, never>
       )
+      
+      // Use header API key first, fall back to environment variable
+      const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
 
       if (!apiKey) {
         return Response.json({ error: "API key required" }, { status: 401 })
