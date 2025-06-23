@@ -1,7 +1,7 @@
 import { css, document, html } from "@openagentsinc/psionic"
 import { baseStyles } from "../styles"
 
-// Mock data for demo
+// Mock data for demo - using v1 structure
 const mockThreads = [
   {
     id: "1",
@@ -30,14 +30,14 @@ const mockMessages = [
   {
     id: "1",
     type: "user",
-    name: "You",
+    author: "You",
     content: "How can I integrate Lightning payments into my agent?",
     timestamp: "2:34 PM"
   },
   {
     id: "2",
     type: "assistant",
-    name: "Assistant",
+    author: "Assistant",
     content:
       `To integrate Lightning payments into your OpenAgents agent, you'll want to use the Lightning namespace from the SDK. Here's a basic example:
 
@@ -68,14 +68,14 @@ The SDK handles all the complexity of Lightning node management and provides a s
   {
     id: "3",
     type: "user",
-    name: "You",
+    author: "You",
     content: "That looks great! Can agents also make payments autonomously?",
     timestamp: "2:36 PM"
   },
   {
     id: "4",
     type: "assistant",
-    name: "Assistant",
+    author: "Assistant",
     content:
       `Yes! Agents can make autonomous payments using the Lightning.pay() method. You'll need to configure spending limits and approval rules:
 
@@ -99,6 +99,312 @@ This ensures your agent can operate autonomously while maintaining security boun
   }
 ]
 
+// V1 exact styling
+const v1Styles = css`
+  /* V1 Color Palette from tailwind.config.js */
+  :root {
+    --text: #D7D8E5;
+    --offblack: #1e1e1e;
+    --darkgray: #3D3D40;
+    --gray: #8B8585;
+    --lightgray: #A7A7A7;
+    --white: #fff;
+    --black: #000000;
+    --input-border: #3D3E42;
+    --placeholder: #777A81;
+    --active-thread: #262626;
+    --sidebar-border: rgba(255, 255, 255, 0.15);
+  }
+
+  /* Override any conflicting styles */
+  body {
+    background-color: var(--black) !important;
+    color: var(--white) !important;
+    font-family: "Berkeley Mono", "JetBrains Mono", ui-monospace, monospace !important;
+  }
+
+  /* V1 Sidebar styling */
+  .sidebar {
+    transition: border-color 0.3s ease-in-out, width 0.3s ease-in-out;
+  }
+
+  .sidebar-open {
+    width: 260px;
+    border-right: 1px solid var(--sidebar-border);
+  }
+
+  .sidebar-closed {
+    width: 0px;
+    border-right: 1px solid rgba(0, 0, 0, 0);
+  }
+
+  .hmmm {
+    transition: margin-left 0.3s ease-in-out;
+  }
+
+  /* Thread list */
+  .thread-item {
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .thread-item:hover {
+    background-color: var(--offblack);
+  }
+
+  .thread-item.active {
+    background-color: var(--active-thread);
+  }
+
+  .thread-title {
+    color: var(--white);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .thread-preview {
+    color: var(--gray);
+    font-size: 13px;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .thread-meta {
+    color: var(--gray);
+    font-size: 12px;
+    margin-top: 4px;
+    opacity: 0.8;
+  }
+
+  /* Messages */
+  .message {
+    display: flex;
+    gap: 12px;
+    padding-left: 50px;
+    margin-bottom: 24px;
+  }
+
+  .message-avatar {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--darkgray);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .message-avatar.user {
+    padding: 2px;
+  }
+
+  .message-avatar.assistant {
+    padding: 5px;
+  }
+
+  .message-avatar svg {
+    width: 100%;
+    height: 100%;
+    color: var(--white);
+  }
+
+  .message-content {
+    flex: 1;
+    max-width: 936px;
+  }
+
+  .message-author {
+    font-weight: 600;
+    color: var(--white);
+    margin-bottom: 4px;
+  }
+
+  .message-body {
+    color: var(--text);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
+  .message-body code {
+    background-color: var(--offblack);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 14px;
+  }
+
+  .message-body pre {
+    background-color: var(--offblack);
+    border: 1px solid var(--darkgray);
+    border-radius: 6px;
+    padding: 16px;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+
+  .message-body pre code {
+    background: none;
+    padding: 0;
+  }
+
+  /* Chat input */
+  .chat-input {
+    background-color: transparent;
+    border: 2px solid var(--input-border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    padding-right: 56px;
+    color: var(--white);
+    font-size: 16px;
+    min-height: 48px;
+    resize: none;
+    font-family: inherit;
+  }
+
+  .chat-input:focus {
+    outline: none;
+    border-color: var(--white);
+  }
+
+  .chat-input::placeholder {
+    color: var(--placeholder);
+  }
+
+  .send-button {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 36px;
+    height: 28px;
+    background-color: var(--white);
+    color: var(--black);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .send-button:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.9);
+  }
+
+  .send-button:disabled {
+    background-color: var(--gray);
+    cursor: not-allowed;
+  }
+
+  .send-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Model selector */
+  .model-selector {
+    color: var(--gray);
+    font-size: 14px;
+  }
+
+  /* Sidebar footer */
+  .sidebar-footer {
+    border-top: 1px solid var(--offblack);
+    padding: 4px 4px 8px 4px;
+    color: var(--gray);
+  }
+
+  .sidebar-footer a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: inherit;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+
+  .sidebar-footer a:hover {
+    color: var(--white);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .sidebar-footer .beta-badge {
+    font-size: 12px;
+    opacity: 0.5;
+  }
+
+  .sidebar-footer .external-icon {
+    width: 16px;
+    height: 16px;
+    margin-left: auto;
+  }
+
+  .sidebar-footer .footer-links {
+    display: flex;
+    gap: 4px;
+    padding: 12px 12px 0;
+    font-size: 12px;
+    opacity: 0.75;
+  }
+
+  /* Dot flashing animation from v1 */
+  .dot-flashing {
+    position: relative;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: var(--white);
+    animation: dot-flashing 1s infinite linear alternate;
+    animation-delay: 0.5s;
+    margin: 10px 20px;
+  }
+
+  .dot-flashing::before, .dot-flashing::after {
+    content: "";
+    display: inline-block;
+    position: absolute;
+    top: 0;
+  }
+
+  .dot-flashing::before {
+    left: -15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: var(--white);
+    animation: dot-flashing 1s infinite alternate;
+    animation-delay: 0s;
+  }
+
+  .dot-flashing::after {
+    left: 15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: var(--white);
+    animation: dot-flashing 1s infinite alternate;
+    animation-delay: 1s;
+  }
+
+  @keyframes dot-flashing {
+    0% {
+      background-color: var(--white);
+    }
+    50%, 100% {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
+  }
+`
+
 function renderThread(thread: typeof mockThreads[0]) {
   return html`
     <div class="thread-item ${thread.active ? "active" : ""}">
@@ -115,583 +421,148 @@ function renderMessage(message: typeof mockMessages[0]) {
   return html`
     <div class="message">
       <div class="message-avatar ${message.type}">
-        ${isUser ? "U" : "A"}
+        ${
+    isUser ?
+      html`
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+        ` :
+      html`
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+          </svg>
+        `
+  }
       </div>
       <div class="message-content">
-        <div class="message-header">
-          <span class="message-name">${message.name}</span>
-          <span class="message-time">${message.timestamp}</span>
-        </div>
-        <div class="message-body ${message.type}">
-          ${message.content.includes("```") ? renderCodeMessage(message.content) : message.content}
-        </div>
-        ${
-    !isUser ?
-      html`
-          <div class="message-actions">
-            <button class="message-action-button" title="Copy">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-              </svg>
-            </button>
-            <button class="message-action-button" title="Good response">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"></path>
-              </svg>
-            </button>
-          </div>
-        ` :
-      ""
-  }
+        <div class="message-author">${message.author}</div>
+        <div class="message-body">${message.content}</div>
       </div>
     </div>
   `
 }
 
-function renderCodeMessage(content: string) {
-  // Split content by code blocks
-  const parts = content.split(/```(\w*)\n([\s\S]*?)```/)
-
-  return html`
-    ${
-    parts.map((part, index) => {
-      if (index % 3 === 0) {
-        // Regular text
-        return part ? html`<div>${part}</div>` : ""
-      } else if (index % 3 === 1) {
-        // Language identifier
-        return ""
-      } else {
-        // Code block
-        const language = parts[index - 1] || "plaintext"
-        return html`
-          <div class="message-code">
-            <div class="code-header">
-              <span class="code-language">${language}</span>
-              <button class="message-action-button" title="Copy code">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                </svg>
-              </button>
-            </div>
-            <pre><code>${part}</code></pre>
-          </div>
-        `
-      }
-    }).join("")
-  }
-  `
-}
-
-const chatStyles = css`
-  /* Chat UI Styles - Zinc Theme */
-
-  /* Main container */
-  .chat-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--background0);
-    color: var(--foreground1);
-  }
-
-  /* Header */
-  .chat-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.5rem;
-    background: var(--background1);
-    border-bottom: 1px solid var(--foreground2);
-  }
-
-  .chat-header a {
-    color: var(--foreground2);
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-
-  .chat-header a:hover {
-    color: var(--foreground1);
-  }
-
-  .model-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--foreground0);
-    font-size: 0.875rem;
-  }
-
-  .model-indicator-dot {
-    width: 6px;
-    height: 6px;
-    background: var(--foreground0);
-    border-radius: 50%;
-    display: inline-block;
-  }
-
-  /* Main layout */
-  .chat-main {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  /* Sidebar */
-  .chat-sidebar {
-    width: 260px;
-    background: var(--background1);
-    border-right: 1px solid var(--foreground2);
-    display: flex;
-    flex-direction: column;
-  }
-
-  .thread-header {
-    padding: 1rem;
-    border-bottom: 1px solid var(--foreground2);
-  }
-
-  .new-thread-button {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    background: var(--background2);
-    color: var(--foreground1);
-    border: 1px solid var(--foreground2);
-    border-radius: 0.375rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: inherit;
-  }
-
-  .new-thread-button:hover {
-    background: var(--background3);
-    border-color: var(--foreground0);
-  }
-
-  .thread-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0.5rem;
-  }
-
-  .thread-item {
-    padding: 0.75rem;
-    margin-bottom: 0.25rem;
-    cursor: pointer;
-    border-radius: 0.375rem;
-    transition: background 0.2s;
-  }
-
-  .thread-item:hover {
-    background: var(--background2);
-  }
-
-  .thread-item.active {
-    background: var(--background2);
-    border: 1px solid var(--foreground0);
-  }
-
-  .thread-title {
-    font-weight: 500;
-    color: var(--foreground1);
-    margin-bottom: 0.25rem;
-  }
-
-  .thread-preview {
-    font-size: 0.875rem;
-    color: var(--foreground0);
-    margin-bottom: 0.25rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .thread-meta {
-    font-size: 0.75rem;
-    color: var(--overlay0);
-  }
-
-  /* Chat content */
-  .chat-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background: var(--background0);
-  }
-
-  /* Messages */
-  .messages-container {
-    flex: 1;
-    overflow-y: auto;
-    padding: 2rem 1rem;
-  }
-
-  .messages-wrapper {
-    max-width: 48rem;
-    margin: 0 auto;
-  }
-
-  .message {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    align-items: flex-start;
-  }
-
-  .message-avatar {
-    width: 2rem;
-    height: 2rem;
-    background: var(--background2);
-    border: 1px solid var(--foreground2);
-    border-radius: 0.375rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 500;
-    font-size: 0.875rem;
-    flex-shrink: 0;
-  }
-
-  .message-avatar.user {
-    background: var(--background2);
-    color: var(--foreground1);
-  }
-
-  .message-avatar.assistant {
-    background: var(--foreground0);
-    color: var(--background0);
-  }
-
-  .message-content {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .message-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .message-name {
-    font-weight: 500;
-    color: var(--foreground1);
-  }
-
-  .message-time {
-    font-size: 0.75rem;
-    color: var(--overlay0);
-  }
-
-  .message-body {
-    color: var(--foreground1);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-
-  .message-body.assistant {
-    background: var(--background1);
-    padding: 1rem;
-    border: 1px solid var(--foreground2);
-    border-radius: 0.375rem;
-  }
-
-  .message-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-
-  .message-action-button {
-    padding: 0.375rem;
-    background: transparent;
-    border: 1px solid var(--foreground2);
-    border-radius: 0.25rem;
-    color: var(--foreground0);
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .message-action-button:hover {
-    background: var(--background2);
-    border-color: var(--foreground0);
-    color: var(--foreground1);
-  }
-
-  /* Code blocks */
-  .message-code {
-    margin: 0.5rem 0;
-    border: 1px solid var(--foreground2);
-    border-radius: 0.375rem;
-    overflow: hidden;
-    background: var(--background0);
-  }
-
-  .code-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 1rem;
-    background: var(--background2);
-    border-bottom: 1px solid var(--foreground2);
-  }
-
-  .code-language {
-    font-size: 0.75rem;
-    color: var(--foreground0);
-    text-transform: uppercase;
-  }
-
-  .message-code pre {
-    margin: 0;
-    padding: 1rem;
-    overflow-x: auto;
-    background: var(--background0);
-  }
-
-  .message-code code {
-    font-family: "Berkeley Mono", monospace;
-    font-size: 0.875rem;
-    color: var(--foreground1);
-  }
-
-  /* Input area */
-  .chat-input-container {
-    padding: 1rem;
-    background: var(--background1);
-    border-top: 1px solid var(--foreground2);
-  }
-
-  .chat-input-wrapper {
-    max-width: 48rem;
-    margin: 0 auto;
-  }
-
-  .chat-input-form {
-    display: flex;
-    gap: 0.5rem;
-    align-items: flex-end;
-  }
-
-  .chat-input {
-    flex: 1;
-    padding: 0.75rem 1rem;
-    background: var(--background0);
-    border: 1px solid var(--foreground2);
-    border-radius: 0.375rem;
-    color: var(--foreground1);
-    font-family: inherit;
-    resize: none;
-    min-height: 2.75rem;
-    max-height: 10rem;
-    overflow-y: auto;
-    transition: border-color 0.2s;
-  }
-
-  .chat-input:focus {
-    outline: none;
-    border-color: var(--foreground0);
-  }
-
-  .chat-input::placeholder {
-    color: var(--overlay0);
-  }
-
-  .chat-send-button {
-    padding: 0.75rem 1.5rem;
-    background: var(--foreground0);
-    color: var(--background0);
-    border: 1px solid var(--foreground0);
-    border-radius: 0.375rem;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-family: inherit;
-  }
-
-  .chat-send-button:hover {
-    background: var(--foreground1);
-    border-color: var(--foreground1);
-  }
-
-  .chat-send-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  /* Utility classes from Tailwind migration */
-  .text-xl { font-size: 1.25rem; }
-  .font-bold { font-weight: 700; }
-  .text-white { color: var(--foreground2); }
-  .text-zinc-200 { color: var(--foreground1); }
-  .text-zinc-400 { color: var(--foreground0); }
-  .text-zinc-700 { color: var(--overlay1); }
-  .bg-zinc-700 { background-color: var(--background3); }
-  .hover\:text-white:hover { color: var(--foreground2); }
-  .hover\:text-zinc-200:hover { color: var(--foreground1); }
-  .transition-colors { transition-property: color; transition-duration: 200ms; }
-  .flex { display: flex; }
-  .items-center { align-items: center; }
-  .justify-center { justify-content: center; }
-  .gap-6 { gap: 1.5rem; }
-  .w-8 { width: 2rem; }
-  .h-8 { height: 2rem; }
-  .w-4 { width: 1rem; }
-  .h-4 { height: 1rem; }
-  .w-3 { width: 0.75rem; }
-  .h-3 { height: 0.75rem; }
-  .rounded-full { border-radius: 9999px; }
-  .text-xs { font-size: 0.75rem; }
-  .text-sm { font-size: 0.875rem; }
-
-  /* Scrollbar styling */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: var(--background1);
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: var(--background3);
-    border-radius: 4px;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--overlay0);
-  }
-
-  /* Responsive */
-  @media (max-width: 768px) {
-    .chat-sidebar {
-      position: absolute;
-      left: -260px;
-      height: 100%;
-      transition: left 0.3s;
-      z-index: 10;
-    }
-    
-    .chat-sidebar.open {
-      left: 0;
-    }
-    
-    .messages-container {
-      padding: 1rem 0.5rem;
-    }
-  }
-`
-
 export async function home() {
   return document({
     title: "OpenAgents",
-    styles: css`${baseStyles}
-${chatStyles}`,
+    styles: baseStyles + v1Styles,
     body: html`
-      <div class="chat-container">
+      <div style="display: flex; height: 100vh; overflow: hidden; background: black;">
         <!-- Header -->
-        <div class="chat-header">
-          <div class="flex items-center gap-6">
-            <a href="/" class="text-xl font-bold text-white hover:text-zinc-200 transition-colors">
-              OpenAgents
-            </a>
-            <div class="model-indicator">
-              <span class="model-indicator-dot"></span>
-              <span>claude-3-opus</span>
-            </div>
+        <div style="position: fixed; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 20; background: black;">
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <button onclick="document.getElementById('sidebar').classList.toggle('sidebar-open'); document.getElementById('sidebar').classList.toggle('sidebar-closed'); document.getElementById('main').classList.toggle('hmmm')" style="background: none; border: none; color: white; cursor: pointer; padding: 4px;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
+            <a href="/" style="color: white; text-decoration: none; font-size: 18px; font-weight: 600;">OpenAgents</a>
           </div>
-          <nav class="flex items-center gap-6">
-            <a href="/agents" class="text-sm text-zinc-400 hover:text-white transition-colors">Agents</a>
-            <a href="/docs" class="text-sm text-zinc-400 hover:text-white transition-colors">Docs</a>
-            <a href="/blog" class="text-sm text-zinc-400 hover:text-white transition-colors">Blog</a>
-            <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-200">
-              U
-            </div>
-          </nav>
+          <div class="model-selector">claude-3-opus</div>
         </div>
 
-        <div class="chat-main">
-          <!-- Sidebar -->
-          <div class="chat-sidebar">
-            <div class="thread-header">
-              <button class="new-thread-button w-full">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+        <!-- Sidebar -->
+        <div id="sidebar" class="sidebar sidebar-open" style="position: fixed; left: 0; top: 0; height: 100vh; background: black; overflow: hidden;">
+          <div style="width: 260px; height: 100%; display: flex; flex-col;">
+            <!-- New thread button area -->
+            <div style="height: 54px; display: flex; align-items: center; justify-content: flex-end; padding: 0 16px;">
+              <button style="background: none; border: none; color: white; cursor: pointer; padding: 6px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                <span>New Thread</span>
               </button>
             </div>
-            <div class="thread-list">
+            
+            <!-- Thread list -->
+            <div style="flex: 1; overflow-y: auto; padding: 12px 4px;">
               ${mockThreads.map((thread) => renderThread(thread)).join("")}
+            </div>
+
+            <!-- Sidebar footer -->
+            <div class="sidebar-footer">
+              <a href="/store">
+                <span>Agent Store</span>
+                <span class="beta-badge">Beta</span>
+              </a>
+              <a href="/plugins">
+                <span>Plugins</span>
+                <span class="beta-badge">Beta</span>
+              </a>
+              <a href="/blog">
+                <span>Blog</span>
+              </a>
+              <a href="/changelog">
+                <span>Changelog</span>
+              </a>
+              <a href="https://docs.openagents.com" target="_blank">
+                <span>Docs & guides</span>
+                <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+              </a>
+              <a href="https://stacker.news/~openagents" target="_blank">
+                <span>Community</span>
+                <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+              </a>
+              <a href="https://github.com/OpenAgentsInc/openagents" target="_blank">
+                <span>Source code</span>
+                <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+              </a>
+              <div class="footer-links">
+                <a href="/terms">Terms</a>
+                <span>·</span>
+                <a href="/privacy">Privacy</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main content -->
+        <div id="main" class="hmmm" style="flex: 1; display: flex; flex-direction: column; margin-left: 260px; transition: margin-left 0.3s ease-in-out;">
+          <!-- Messages -->
+          <div style="flex: 1; overflow-y: auto; padding: 80px 20px 20px;">
+            <div style="max-width: 800px; margin: 0 auto;">
+              ${mockMessages.map((message) => renderMessage(message)).join("")}
             </div>
           </div>
 
-          <!-- Chat Content -->
-          <div class="chat-content">
-            <!-- Messages -->
-            <div class="messages-container">
-              <div class="messages-wrapper">
-                ${mockMessages.map((message) => renderMessage(message)).join("")}
-              </div>
-            </div>
-
-            <!-- Input Area -->
-            <div class="chat-input-container">
-              <div class="chat-input-wrapper">
-                <form class="chat-input-form" onsubmit="event.preventDefault()">
-                  <textarea 
-                    class="chat-input" 
-                    placeholder="Type your message..."
-                    rows="1"
-                    onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); }"
-                  ></textarea>
-                  <button type="submit" class="chat-send-button">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                    </svg>
-                    <span>Send</span>
-                  </button>
-                </form>
+          <!-- Input area -->
+          <div style="border-top: 1px solid var(--offblack); padding: 20px;">
+            <div style="max-width: 800px; margin: 0 auto;">
+              <div style="position: relative;">
+                <textarea 
+                  class="chat-input" 
+                  placeholder="Send a message"
+                  rows="1"
+                  style="width: 100%; outline: none;"
+                  oninput="this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 200) + 'px'; document.getElementById('sendBtn').disabled = !this.value.trim();"
+                ></textarea>
+                <button id="sendBtn" class="send-button" disabled>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <script>
-        // Basic interactivity for demo
-        document.querySelector('.chat-input').addEventListener('input', function(e) {
-          // Auto-resize textarea
-          e.target.style.height = 'auto';
-          e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
-        });
-
-        // Copy code functionality
-        document.addEventListener('click', function(e) {
-          if (e.target.closest('.message-action-button[title="Copy code"]')) {
-            const codeBlock = e.target.closest('.message-code').querySelector('code');
-            navigator.clipboard.writeText(codeBlock.textContent);
-          }
-          if (e.target.closest('.message-action-button[title="Copy"]')) {
-            const messageBody = e.target.closest('.message').querySelector('.message-body');
-            navigator.clipboard.writeText(messageBody.textContent);
-          }
-        });
-      </script>
     `
   })
 }
