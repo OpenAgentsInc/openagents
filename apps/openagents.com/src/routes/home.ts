@@ -1,5 +1,5 @@
 import { createChatView } from "../components/chat-view"
 
 export async function home() {
-  return createChatView({ conversationId: undefined })
+  return createChatView({})
 }
