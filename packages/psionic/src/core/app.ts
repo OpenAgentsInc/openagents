@@ -424,6 +424,8 @@ export class PsionicApp {
         console.log(`🔍 PSIONIC: Route ${path} handler returned:`, typeof handlerResult, Effect.isEffect(handlerResult))
 
         // If it's an Effect, yield it directly
+        console.log(`🔍 PSIONIC: Checking Effect.isEffect function:`, Effect.isEffect)
+        console.log(`🔍 PSIONIC: Effect module:`, Effect)
         if (Effect.isEffect(handlerResult)) {
           console.log(`✅ PSIONIC: Route ${path} returned Effect, yielding it`)
           return yield* handlerResult
