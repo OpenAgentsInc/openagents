@@ -59,7 +59,8 @@ export const cloudflareApi = (app: any) => {
         },
         body: JSON.stringify({
           messages,
-          stream: true
+          stream: true,
+          max_tokens: 4096
         })
       })
 
@@ -71,12 +72,8 @@ export const cloudflareApi = (app: any) => {
 
       // Create a transform stream to convert Cloudflare's format to OpenAI's format
       const transformStream = new TransformStream({
-        start() {
-          console.log("Transform stream started")
-        },
         async transform(chunk, controller) {
           const text = new TextDecoder().decode(chunk)
-          console.log("Received chunk:", text)
 
           // Handle Cloudflare's streaming format which can be:
           // 1. SSE format: "data: {...}\n\n"
@@ -100,7 +97,6 @@ export const cloudflareApi = (app: any) => {
 
             try {
               const parsed = JSON.parse(jsonData)
-              console.log("Parsed data:", parsed)
 
               // Handle different possible Cloudflare response formats
               let content = ""
@@ -129,7 +125,6 @@ export const cloudflareApi = (app: any) => {
                     finish_reason: null
                   }]
                 }
-                console.log("Sending chunk:", openAIChunk)
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIChunk)}\n\n`))
               }
             } catch (e) {
