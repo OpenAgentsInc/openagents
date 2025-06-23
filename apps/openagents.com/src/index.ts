@@ -5,7 +5,7 @@ import { agents } from './routes/agents'
 import { docs, docPage } from './routes/docs'
 import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
-import { chat } from './routes/chat'
+// import { chat } from './routes/chat'
 import { admin } from './routes/admin'
 import { channelsRoute, channelViewRoute, channelCreateRoute } from './routes/channels'
 import gfn from './routes/gfn'
@@ -52,7 +52,7 @@ app.route('/docs/:slug', docPage)
 app.route('/about', about)
 app.route('/blog', blogIndex)
 app.route('/blog/:slug', blogPost)
-app.route('/chat', chat)
+// app.route('/chat', chat)
 app.route('/admin', admin)
 app.route('/channels', channelsRoute)
 app.route('/channels/create', channelCreateRoute)
