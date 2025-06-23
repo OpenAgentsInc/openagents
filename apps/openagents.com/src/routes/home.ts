@@ -670,14 +670,7 @@ export async function home() {
                     
                     if (parsed.choices?.[0]?.delta?.content) {
                       assistantContent += parsed.choices[0].delta.content
-                      
-                      // Use requestAnimationFrame to ensure each update is rendered
-                      await new Promise(resolve => {
-                        requestAnimationFrame(() => {
-                          updateStreamingMessage(assistantBodyDiv, assistantContent)
-                          resolve()
-                        })
-                      })
+                      updateStreamingMessage(assistantBodyDiv, assistantContent)
                     }
                   } catch (e) {
                     // Silently skip malformed chunks
