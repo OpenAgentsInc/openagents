@@ -307,6 +307,20 @@ const v1Styles = css`
       background-color: rgba(255, 255, 255, 0.2);
     }
   }
+
+  @keyframes blink {
+    0%, 50% {
+      opacity: 1;
+    }
+    51%, 100% {
+      opacity: 0;
+    }
+  }
+
+  .typing-cursor {
+    color: var(--white);
+    font-weight: bold;
+  }
 `
 
 function renderThread(thread: typeof mockThreads[0]) {
@@ -568,6 +582,16 @@ export async function home() {
         // Stream message content
         function updateStreamingMessage(bodyDiv, content) {
           bodyDiv.textContent = content
+          
+          // Add a typing cursor effect during streaming
+          if (isStreaming) {
+            const cursor = document.createElement('span')
+            cursor.className = 'typing-cursor'
+            cursor.textContent = '▊'
+            cursor.style.animation = 'blink 1s infinite'
+            bodyDiv.appendChild(cursor)
+          }
+          
           const container = document.getElementById('messages-container')
           container.scrollTop = container.scrollHeight
         }
@@ -646,7 +670,14 @@ export async function home() {
                     if (parsed.choices?.[0]?.delta?.content) {
                       assistantContent += parsed.choices[0].delta.content
                       console.log('Adding content:', parsed.choices[0].delta.content)
-                      updateStreamingMessage(assistantBodyDiv, assistantContent)
+                      
+                      // Use requestAnimationFrame to ensure each update is rendered
+                      await new Promise(resolve => {
+                        requestAnimationFrame(() => {
+                          updateStreamingMessage(assistantBodyDiv, assistantContent)
+                          resolve()
+                        })
+                      })
                     }
                   } catch (e) {
                     console.error('Error parsing chunk:', e, 'Raw data:', data)
@@ -664,6 +695,13 @@ export async function home() {
             assistantBodyDiv.style.color = '#ef4444'
           } finally {
             isStreaming = false
+            
+            // Remove typing cursor
+            const cursor = assistantBodyDiv?.querySelector('.typing-cursor')
+            if (cursor) {
+              cursor.remove()
+            }
+            
             input.disabled = false
             sendBtn.disabled = false
             input.focus()
