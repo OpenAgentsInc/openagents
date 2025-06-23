@@ -215,23 +215,25 @@ const v1Styles = css`
     padding: 0;
   }
 
-  /* Chat input */
+  /* Chat input - matching v1 exactly */
   .chat-input {
     background-color: transparent;
     border: 2px solid var(--input-border);
     border-radius: 6px;
-    padding: 12px 16px;
-    padding-right: 56px;
+    padding: 10px 40px 10px 16px;
     color: var(--white);
     font-size: 16px;
     min-height: 48px;
     resize: none;
     font-family: inherit;
+    width: 100%;
+    transition: all 300ms ease-in-out;
   }
 
   .chat-input:focus {
     outline: none;
     border-color: var(--white);
+    ring: 0;
   }
 
   .chat-input::placeholder {
@@ -242,7 +244,7 @@ const v1Styles = css`
     position: absolute;
     bottom: 10px;
     right: 10px;
-    width: 36px;
+    width: 28px;
     height: 28px;
     background-color: var(--white);
     color: var(--black);
@@ -252,6 +254,8 @@ const v1Styles = css`
     justify-content: center;
     cursor: pointer;
     transition: background-color 0.2s;
+    padding: 0;
+    margin: 2px;
   }
 
   .send-button:hover:not(:disabled) {
@@ -264,8 +268,26 @@ const v1Styles = css`
   }
 
   .send-button svg {
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
+  }
+
+  /* Messages remaining */
+  .messages-remaining {
+    text-align: center;
+    color: var(--gray);
+    font-size: 12px;
+    margin: 12px 0;
+  }
+
+  .messages-remaining span {
+    color: var(--white);
+  }
+
+  .messages-remaining a {
+    color: var(--white);
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   /* Model selector */
@@ -534,17 +556,22 @@ export async function home() {
               <div style="position: relative;">
                 <textarea
                   class="chat-input"
-                  placeholder="Send a message"
+                  placeholder="Message OpenAgents..."
                   rows="1"
-                  style="width: 100%; outline: none;"
+                  autocomplete="off"
+                  style="outline: none;"
                   oninput="this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 200) + 'px'; document.getElementById('sendBtn').disabled = !this.value.trim();"
                 ></textarea>
                 <button id="sendBtn" class="send-button" disabled>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg class="w-[24px] h-[24px] m-0.5 flex flex-col justify-center items-center" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="22" y1="2" x2="11" y2="13"></line>
                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                   </svg>
                 </button>
+              </div>
+              <div class="messages-remaining">
+                You have <span>10</span> free responses remaining.
+                <a>Sign up to get 10 messages every day.</a>
               </div>
             </div>
           </div>
