@@ -1,9 +1,9 @@
 import { css, document, html, renderMarkdown } from "@openagentsinc/psionic"
 import fs from "fs"
 import path from "path"
-import { baseStyles } from "../../styles"
 import { chatClientScript, chatStyles, renderChatMessage } from "../../lib/chat-utils"
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../../lib/models-config"
+import { baseStyles } from "../../styles"
 
 // Read HTML and CSS files at runtime from the source directory
 const chatViewHTML = fs.readFileSync(
@@ -21,7 +21,7 @@ export interface ChatViewProps {
 
 export async function createChatView({ conversationId }: ChatViewProps) {
   // Import server-side only here to avoid bundling issues
-  const { getConversations, getConversationWithMessages } = await import("../../lib/chat-client")
+  const { getConversationWithMessages, getConversations } = await import("../../lib/chat-client")
 
   // Load all conversations for sidebar
   let allConversations: Array<any> = []
@@ -55,45 +55,58 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   const title = conversation?.title || "Chat - OpenAgents"
 
   // Generate thread list HTML
-  const threadListHTML = allConversations.length > 0 ? html`
+  const threadListHTML = allConversations.length > 0 ?
+    html`
     <div class="chat-group">
       <div class="group-header">
         <span class="group-label">Recent</span>
       </div>
       <ul class="chat-list">
-        ${allConversations.map((conv) => html`
-          <li class="chat-item ${conv.id === conversationId ? 'active' : ''}">
+        ${
+      allConversations.map((conv) =>
+        html`
+          <li class="chat-item ${conv.id === conversationId ? "active" : ""}">
             <a href="/chat/${conv.id}">
               <span class="chat-title">${conv.title}</span>
             </a>
           </li>
-        `).join('')}
+        `
+      ).join("")
+    }
       </ul>
     </div>
-  ` : ''
+  ` :
+    ""
 
   // Generate messages HTML
-  const messagesHTML = renderedMessages.length > 0 ? 
-    renderedMessages.map((message) => renderChatMessage(message)).join('') : ''
+  const messagesHTML = renderedMessages.length > 0 ?
+    renderedMessages.map((message) => renderChatMessage(message)).join("") :
+    ""
 
   // Generate model options HTML
   const modelOptionsHTML = html`
     <div class="model-group">Cloudflare (Free)</div>
-    ${AVAILABLE_MODELS
+    ${
+    AVAILABLE_MODELS
       .filter((m) => m.provider === "cloudflare")
-      .map((model) => html`
+      .map((model) =>
+        html`
         <div class="model-option" data-model-id="${model.id}" onclick="selectModel('${model.id}')">
           <div class="model-name">${model.name}</div>
           ${model.description ? html`<div class="model-description">${model.description}</div>` : ""}
         </div>
-      `)
-      .join("")}
+      `
+      )
+      .join("")
+  }
     
     <div class="model-group">OpenRouter (API Key Required)</div>
     <div id="openrouter-models">
-      ${AVAILABLE_MODELS
-        .filter((m) => m.provider === "openrouter")
-        .map((model) => html`
+      ${
+    AVAILABLE_MODELS
+      .filter((m) => m.provider === "openrouter")
+      .map((model) =>
+        html`
           <div class="model-option openrouter-model" data-model-id="${model.id}" onclick="selectModel('${model.id}')">
             <div class="model-name">
               ${model.name}
@@ -104,8 +117,10 @@ export async function createChatView({ conversationId }: ChatViewProps) {
             </div>
             ${model.description ? html`<div class="model-description">${model.description}</div>` : ""}
           </div>
-        `)
-        .join("")}
+        `
+      )
+      .join("")
+  }
     </div>
     
     <div class="api-key-notice" id="api-key-notice" style="display: none;">
@@ -115,9 +130,9 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   // Replace placeholders in HTML
   const processedHTML = chatViewHTML
-    .replace('<!-- Thread groups will be inserted here -->', threadListHTML)
-    .replace('<!-- Messages will be dynamically added here -->', messagesHTML)
-    .replace('<!-- Model options will be populated dynamically -->', modelOptionsHTML)
+    .replace("<!-- Thread groups will be inserted here -->", threadListHTML)
+    .replace("<!-- Messages will be dynamically added here -->", messagesHTML)
+    .replace("<!-- Model options will be populated dynamically -->", modelOptionsHTML)
 
   return document({
     title,
@@ -127,7 +142,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
       
       <script>
         // Set conversation ID
-        window.CONVERSATION_ID = ${conversationId ? `"${conversationId}"` : 'null'};
+        window.CONVERSATION_ID = ${conversationId ? `"${conversationId}"` : "null"};
         
         // Model selector functionality
         let selectedModel = localStorage.getItem('selectedModel') || '${DEFAULT_MODEL}';
