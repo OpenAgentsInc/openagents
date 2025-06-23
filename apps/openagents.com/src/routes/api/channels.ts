@@ -11,7 +11,12 @@ export const channelsApi = (app: any) => {
   // Create a new channel
   app.post(`${prefix}/create`, async (context: any) => {
     try {
-      const body = await context.request.json() as { name: string; about?: string; picture?: string }
+      const bodyText = await Effect.runPromise(
+        Effect.gen(function*() {
+          return yield* context.request.text
+        })
+      )
+      const body = JSON.parse(bodyText) as { name: string; about?: string; picture?: string }
       const program = Effect.gen(function*() {
         const crypto = yield* Nostr.CryptoService.CryptoService
         const nip28 = yield* Nostr.Nip28Service.Nip28Service
@@ -85,7 +90,12 @@ export const channelsApi = (app: any) => {
     `${prefix}/message`,
     async (context: any) => {
       try {
-        const body = await context.request.json() as { channelId: string; content: string; replyTo?: string; privateKey?: string }
+        const bodyText = await Effect.runPromise(
+          Effect.gen(function*() {
+            return yield* context.request.text
+          })
+        )
+        const body = JSON.parse(bodyText) as { channelId: string; content: string; replyTo?: string; privateKey?: string }
         const program = Effect.gen(function*() {
           const crypto = yield* Nostr.CryptoService.CryptoService
           const nip28 = yield* Nostr.Nip28Service.Nip28Service

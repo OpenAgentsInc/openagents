@@ -1,6 +1,7 @@
 import { BunHttpPlatform } from "@effect/platform-bun"
+import * as HttpClient from "@effect/platform/HttpClient"
 import * as Ai from "@openagentsinc/ai"
-import { Config, Effect, Layer, Stream } from "effect"
+import { Config, Effect, Layer, Stream, Redacted } from "effect"
 
 export const cloudflareApi = (app: any) => {
   const prefix = "/api/cloudflare"
@@ -31,112 +32,88 @@ export const cloudflareApi = (app: any) => {
 
   app.post(`${prefix}/chat`, async (context: any) => {
     try {
-      // Parse the request body
-      const body = await context.request.json()
+      // Parse the request body from Effect HttpServerRequest
+      const bodyText = await Effect.runPromise(
+        Effect.gen(function*() {
+          const request = context.request
+          return yield* request.text
+        })
+      )
+      
+      const body = JSON.parse(bodyText)
       const { messages, model } = body
 
-      // Create a TransformStream for streaming response
-      const stream = new TransformStream()
-      const writer = stream.writable.getWriter()
-      const encoder = new TextEncoder() // Start streaming in background using Effect patterns
-      ;(async () => {
-        try {
-          // Create and run the chat program
-          const program = Effect.gen(function*() {
-            // Get the client from context
-            const client = yield* Ai.Cloudflare.CloudflareClient
+      // Get credentials
+      const apiKey = process.env.CLOUDFLARE_API_KEY
+      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+      
+      if (!apiKey || !accountId) {
+        return Response.json({ error: "Cloudflare not configured" }, { status: 500 })
+      }
 
-            // Get the stream
-            const responseStream = client.stream({
-              model,
-              messages: messages.map((msg: any) => ({
-                role: msg.role,
-                content: msg.content
-              })),
-              stream: true
-            })
+      // For now, use direct API call with streaming response
+      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages,
+          stream: true
+        })
+      })
+      
+      if (!response.ok) {
+        const error = await response.text()
+        console.error("Cloudflare API error:", error)
+        return Response.json({ error: "Cloudflare API error" }, { status: response.status })
+      }
 
-            // Process the stream
-            yield* responseStream.pipe(
-              Stream.tap((response: any) =>
-                Effect.sync(() => {
-                  // Convert AiResponse to OpenAI-compatible format
-                  for (const part of response.parts) {
-                    if (part._tag === "TextPart") {
-                      const chunk = {
-                        id: "chatcmpl-" + Math.random().toString(36).substring(2),
-                        object: "chat.completion.chunk",
-                        created: Math.floor(Date.now() / 1000),
-                        model,
-                        choices: [{
-                          index: 0,
-                          delta: {
-                            content: part.text
-                          },
-                          finish_reason: null
-                        }]
-                      }
-                      writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)).catch(() => {})
-                    } else if (part._tag === "FinishPart") {
-                      const chunk = {
-                        id: "chatcmpl-" + Math.random().toString(36).substring(2),
-                        object: "chat.completion.chunk",
-                        created: Math.floor(Date.now() / 1000),
-                        model,
-                        choices: [{
-                          index: 0,
-                          delta: {},
-                          finish_reason: part.reason
-                        }]
-                      }
-                      writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)).catch(() => {})
-                    }
-                  }
-                })
-              ),
-              Stream.runDrain
-            )
-          })
-
-          // Get config directly from environment
-          const config = {
-            apiKey: process.env.CLOUDFLARE_API_KEY,
-            accountId: process.env.CLOUDFLARE_ACCOUNT_ID
-          }
+      // Create a transform stream to convert Cloudflare's format to OpenAI's format
+      const transformStream = new TransformStream({
+        async transform(chunk, controller) {
+          const text = new TextDecoder().decode(chunk)
+          const lines = text.split('\n').filter(line => line.trim())
           
-          if (!config.apiKey || !config.accountId) {
-            throw new Error("Cloudflare credentials not configured")
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6)
+              if (data === '[DONE]') {
+                controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
+              } else {
+                try {
+                  const parsed = JSON.parse(data)
+                  if (parsed.response) {
+                    // Convert Cloudflare format to OpenAI format
+                    const openAIChunk = {
+                      id: "chatcmpl-" + Math.random().toString(36).substring(2),
+                      object: "chat.completion.chunk",
+                      created: Math.floor(Date.now() / 1000),
+                      model,
+                      choices: [{
+                        index: 0,
+                        delta: {
+                          content: parsed.response
+                        },
+                        finish_reason: null
+                      }]
+                    }
+                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIChunk)}\n\n`))
+                  }
+                } catch (e) {
+                  console.error("Error parsing Cloudflare response:", e)
+                }
+              }
+            }
           }
-
-          // Run the main program with all layers provided
-          await Effect.runPromise(
-            // @ts-expect-error - Type issue with HttpClient requirement from layerCloudflareClient
-            program.pipe(
-              Effect.provide(
-                Layer.mergeAll(
-                  BunHttpPlatform.layer,
-                  Layer.succeed(Ai.Cloudflare.CloudflareConfig, {}),
-                  Ai.Cloudflare.layerCloudflareClient({
-                    apiKey: config.apiKey,
-                    accountId: config.accountId,
-                    useOpenAIEndpoints: true
-                  })
-                )
-              )
-            )
-          )
-
-          // Send completion signal
-          await writer.write(encoder.encode(`data: [DONE]\n\n`))
-        } catch (error: any) {
-          console.error("Cloudflare streaming error:", error)
-          await writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
-        } finally {
-          await writer.close()
         }
-      })()
+      })
 
-      return new Response(stream.readable, {
+      // Pipe the response through the transform stream
+      return new Response(response.body!.pipeThrough(transformStream), {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",

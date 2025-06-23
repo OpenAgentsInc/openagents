@@ -7,9 +7,21 @@ export const openrouterApi = (app: any) => {
 
   app.post(`${prefix}/chat`, async (context: any) => {
     try {
-      const body = await context.request.json()
+      const bodyText = await Effect.runPromise(
+        Effect.gen(function*() {
+          return yield* context.request.text
+        })
+      )
+      const body = JSON.parse(bodyText)
       const { messages, model } = body
-      const apiKey = context.request.headers.get("x-api-key")
+      
+      // Get header from Effect HttpServerRequest
+      const apiKey = await Effect.runPromise(
+        Effect.gen(function*() {
+          const headers = yield* context.request.headers
+          return headers["x-api-key"]
+        })
+      )
 
       if (!apiKey) {
         return Response.json({ error: "API key required" }, { status: 401 })

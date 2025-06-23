@@ -16,7 +16,12 @@ export const ollamaApi = (app: any) => {
 
   app.post(`${prefix}/chat`, async (context: any) => {
     try {
-      const body = await context.request.json()
+      const bodyText = await Effect.runPromise(
+        Effect.gen(function*() {
+          return yield* context.request.text
+        })
+      )
+      const body = JSON.parse(bodyText)
       const { messages, model, options } = body
 
       // Create a TransformStream for streaming response
