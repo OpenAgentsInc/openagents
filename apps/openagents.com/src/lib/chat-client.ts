@@ -1,34 +1,49 @@
-import { BrowserEffectChatClient } from "@openagentsinc/psionic"
+// Simple in-memory storage for server-side
+interface StoredConversation {
+  id: string
+  title: string
+  lastMessageAt?: Date
+  createdAt: Date
+  model: string
+  metadata?: Record<string, any>
+}
 
-// Global chat client instance
-let chatClient: BrowserEffectChatClient | null = null
+interface StoredMessage {
+  id: string
+  conversationId: string
+  role: "user" | "assistant"
+  content: string
+  timestamp: Date
+  model?: string
+  metadata?: Record<string, any>
+}
 
-/**
- * Initialize the chat client if not already initialized
- * Returns the singleton instance
- */
-export async function getChatClient(): Promise<BrowserEffectChatClient> {
-  if (!chatClient) {
-    // Initialize the chat client with IndexedDB backend
-    chatClient = new BrowserEffectChatClient("openagents-chat")
-  }
+// In-memory storage
+const conversations = new Map<string, StoredConversation>()
+const messages = new Map<string, StoredMessage[]>()
 
-  return chatClient
+// Simple ID generation
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
 /**
  * Create a new conversation and return its ID
  */
 export async function createConversation(title?: string): Promise<string> {
-  const client = await getChatClient()
-
-  const conversation = await client.createConversation({
+  const id = generateId()
+  const conversation: StoredConversation = {
+    id,
     title: title || "New Conversation",
+    createdAt: new Date(),
     model: "llama-3.3-70b",
-    metadata: {} // Provider info can be stored elsewhere if needed
-  })
-
-  return conversation.id
+    metadata: {}
+  }
+  
+  conversations.set(id, conversation)
+  messages.set(id, [])
+  
+  return id
 }
 
 /**
@@ -39,29 +54,40 @@ export async function addMessage(
   role: "user" | "assistant",
   content: string
 ): Promise<void> {
-  const client = await getChatClient()
-
-  await client.sendMessage({
+  const conversation = conversations.get(conversationId)
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} not found`)
+  }
+  
+  const message: StoredMessage = {
+    id: generateId(),
     conversationId,
     role,
     content,
+    timestamp: new Date(),
     model: "llama-3.3-70b",
     metadata: {}
-  })
+  }
+  
+  const conversationMessages = messages.get(conversationId) || []
+  conversationMessages.push(message)
+  messages.set(conversationId, conversationMessages)
+  
+  // Update last message timestamp
+  conversation.lastMessageAt = new Date()
+  conversations.set(conversationId, conversation)
 }
 
 /**
  * Get all conversations sorted by last message
  */
 export async function getConversations() {
-  const client = await getChatClient()
-
-  const conversations = await client.listConversations("local", false)
-
+  const allConversations = Array.from(conversations.values())
+  
   // Sort by lastMessageAt in descending order
-  return conversations.sort((a, b) => {
-    const aTime = a.lastMessageAt?.getTime() || 0
-    const bTime = b.lastMessageAt?.getTime() || 0
+  return allConversations.sort((a, b) => {
+    const aTime = a.lastMessageAt?.getTime() || a.createdAt.getTime()
+    const bTime = b.lastMessageAt?.getTime() || b.createdAt.getTime()
     return bTime - aTime
   })
 }
@@ -70,18 +96,14 @@ export async function getConversations() {
  * Get a conversation with its messages
  */
 export async function getConversationWithMessages(conversationId: string) {
-  const client = await getChatClient()
-
-  const [conversation, messages] = await Promise.all([
-    client.getConversation(conversationId),
-    client.getMessages(conversationId, 100) // Get last 100 messages
-  ])
-
+  const conversation = conversations.get(conversationId)
+  const conversationMessages = messages.get(conversationId) || []
+  
   if (!conversation) {
     throw new Error("Conversation not found")
   }
-
-  return { conversation, messages }
+  
+  return { conversation, messages: conversationMessages }
 }
 
 /**
@@ -91,29 +113,30 @@ export async function updateConversationTitle(
   conversationId: string,
   title: string
 ): Promise<void> {
-  const client = await getChatClient()
-
-  await client.updateConversation(conversationId, { title })
+  const conversation = conversations.get(conversationId)
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} not found`)
+  }
+  
+  conversation.title = title
+  conversations.set(conversationId, conversation)
 }
 
 /**
  * Delete a conversation and all its messages
  */
 export async function deleteConversation(conversationId: string): Promise<void> {
-  const client = await getChatClient()
-
-  await client.deleteConversation(conversationId)
+  conversations.delete(conversationId)
+  messages.delete(conversationId)
 }
 
 /**
  * Search conversations by content
  */
 export async function searchConversations(query: string) {
-  const client = await getChatClient()
-
-  // Get all conversations and filter by title for now
-  // TODO: Implement full-text search when available
-  const allConversations = await client.listConversations("local", false)
-
-  return allConversations.filter((conv) => conv.title?.toLowerCase().includes(query.toLowerCase()))
+  const allConversations = Array.from(conversations.values())
+  
+  return allConversations.filter((conv) => 
+    conv.title?.toLowerCase().includes(query.toLowerCase())
+  )
 }
