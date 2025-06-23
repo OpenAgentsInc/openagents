@@ -456,6 +456,49 @@ export async function settings() {
               <button type="submit" class="btn btn-primary">Save Chat Settings</button>
             </form>
           </div>
+          
+          <!-- API Keys Section -->
+          <div class="settings-section">
+            <div class="section-header">
+              <h3 class="section-title">
+                🔑 API Keys
+              </h3>
+              <p class="section-description">
+                Add API keys to use additional AI providers like OpenRouter for Claude and GPT models.
+              </p>
+            </div>
+
+            <form id="api-keys-form">
+              <div class="form-group">
+                <label class="form-label" for="openrouter-key">OpenRouter API Key</label>
+                <div style="display: flex; gap: 0.5rem;">
+                  <input 
+                    type="password" 
+                    id="openrouter-key" 
+                    class="form-input" 
+                    placeholder="sk-or-v1-..." 
+                    style="flex: 1;"
+                  >
+                  <button type="button" id="toggle-key-visibility" class="btn btn-secondary" style="padding: 0.75rem;">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 10s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z"/>
+                      <circle cx="10" cy="10" r="3"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="help-text">
+                  Get your API key from <a href="https://openrouter.ai/keys" target="_blank" style="color: var(--white); text-decoration: underline;">openrouter.ai/keys</a>. 
+                  This enables access to Claude, GPT-4, and other premium models.
+                </div>
+              </div>
+              
+              <div id="api-key-status" style="display: none; margin-bottom: 1rem; padding: 1rem; border-radius: 8px; font-size: 0.875rem;">
+                <!-- Status message will be shown here -->
+              </div>
+
+              <button type="submit" class="btn btn-primary">Save API Key</button>
+            </form>
+          </div>
         </div>
 
         <!-- Wallet Settings -->
@@ -661,6 +704,90 @@ export async function settings() {
             alert('Account deletion initiated. All data will be permanently removed within 30 days.')
           }
         }
+        
+        // API Key Management
+        document.addEventListener('DOMContentLoaded', () => {
+          // Load existing API key
+          const savedKey = localStorage.getItem('openrouterApiKey')
+          if (savedKey) {
+            document.getElementById('openrouter-key').value = savedKey
+          }
+          
+          // Toggle key visibility
+          document.getElementById('toggle-key-visibility').addEventListener('click', () => {
+            const input = document.getElementById('openrouter-key')
+            const isPassword = input.type === 'password'
+            input.type = isPassword ? 'text' : 'password'
+            
+            // Update icon
+            const button = document.getElementById('toggle-key-visibility')
+            if (isPassword) {
+              button.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M1 1l18 18"/></svg>'
+            } else {
+              button.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 10s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z"/><circle cx="10" cy="10" r="3"/></svg>'
+            }
+          })
+          
+          // Handle API key form submission
+          document.getElementById('api-keys-form').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            
+            const keyInput = document.getElementById('openrouter-key')
+            const apiKey = keyInput.value.trim()
+            const statusDiv = document.getElementById('api-key-status')
+            
+            if (!apiKey) {
+              // Clear the key
+              localStorage.removeItem('openrouterApiKey')
+              statusDiv.style.display = 'block'
+              statusDiv.style.backgroundColor = 'var(--darkgray)'
+              statusDiv.style.color = 'var(--white)'
+              statusDiv.textContent = 'API key removed successfully'
+              
+              setTimeout(() => {
+                statusDiv.style.display = 'none'
+              }, 3000)
+              return
+            }
+            
+            // Save the key
+            localStorage.setItem('openrouterApiKey', apiKey)
+            
+            // Test the key
+            statusDiv.style.display = 'block'
+            statusDiv.style.backgroundColor = 'var(--darkgray)'
+            statusDiv.style.color = 'var(--lightgray)'
+            statusDiv.textContent = 'Testing API key...'
+            
+            try {
+              const response = await fetch('/api/openrouter/status', {
+                headers: {
+                  'x-api-key': apiKey
+                }
+              })
+              
+              if (response.ok) {
+                statusDiv.style.backgroundColor = 'rgba(16, 185, 129, 0.1)'
+                statusDiv.style.color = 'var(--success)'
+                statusDiv.textContent = '✓ API key validated successfully! You can now use OpenRouter models.'
+              } else {
+                statusDiv.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'
+                statusDiv.style.color = 'var(--error)'
+                statusDiv.textContent = '✗ Invalid API key. Please check your key and try again.'
+                localStorage.removeItem('openrouterApiKey')
+              }
+            } catch (error) {
+              statusDiv.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'
+              statusDiv.style.color = 'var(--error)'
+              statusDiv.textContent = '✗ Failed to validate API key. Please try again.'
+              localStorage.removeItem('openrouterApiKey')
+            }
+            
+            setTimeout(() => {
+              statusDiv.style.display = 'none'
+            }, 5000)
+          })
+        })
       </script>
     `
   })

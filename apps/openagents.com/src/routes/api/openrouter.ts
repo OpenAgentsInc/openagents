@@ -5,6 +5,44 @@ import { Effect, Layer, Redacted, Stream } from "effect"
 export const openrouterApi = (app: any) => {
   const prefix = "/api/openrouter"
 
+  // Status endpoint to validate API key
+  app.get(`${prefix}/status`, async (context: any) => {
+    try {
+      // Get header from Effect HttpServerRequest
+      const apiKeyFromHeader = await Effect.runPromise(
+        Effect.gen(function*() {
+          const headers = yield* context.request.headers
+          return headers["x-api-key"]
+        }) as Effect.Effect<string | undefined, never, never>
+      )
+
+      // Use header API key first, fall back to environment variable
+      const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
+
+      if (!apiKey) {
+        return Response.json({ error: "API key required" }, { status: 401 })
+      }
+
+      // Test the API key by making a simple request to OpenRouter
+      const response = await fetch("https://openrouter.ai/api/v1/models", {
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://openagents.com",
+          "X-Title": "OpenAgents"
+        }
+      })
+
+      if (response.ok) {
+        return Response.json({ valid: true, status: "API key is valid" })
+      } else {
+        return Response.json({ valid: false, status: "Invalid API key" }, { status: 401 })
+      }
+    } catch (error) {
+      console.error("OpenRouter status check error:", error)
+      return Response.json({ error: "Failed to validate API key" }, { status: 500 })
+    }
+  })
+
   app.post(`${prefix}/chat`, async (context: any) => {
     try {
       const bodyText = await Effect.runPromise(
@@ -16,12 +54,15 @@ export const openrouterApi = (app: any) => {
       const { messages, model } = body
 
       // Get header from Effect HttpServerRequest
-      const apiKey = await Effect.runPromise(
+      const apiKeyFromHeader = await Effect.runPromise(
         Effect.gen(function*() {
           const headers = yield* context.request.headers
           return headers["x-api-key"]
-        }) as Effect.Effect<string, never, never>
+        }) as Effect.Effect<string | undefined, never, never>
       )
+
+      // Use header API key first, fall back to environment variable
+      const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
 
       if (!apiKey) {
         return Response.json({ error: "API key required" }, { status: 401 })

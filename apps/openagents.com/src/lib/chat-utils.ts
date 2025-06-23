@@ -248,14 +248,33 @@ export const chatClientScript = `
     // Add the new user message
     messages.push({ role: 'user', content: message });
     
+    // Get selected model and provider
+    const modelInfo = window.getSelectedModel ? window.getSelectedModel() : { 
+      id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', 
+      provider: 'cloudflare' 
+    };
+    
+    // Determine API endpoint based on provider
+    const apiEndpoint = modelInfo.provider === 'openrouter' ? '/api/openrouter/chat' : '/api/cloudflare/chat';
+    
+    // Build headers
+    const headers = { 'Content-Type': 'application/json' };
+    if (modelInfo.provider === 'openrouter') {
+      const openrouterApiKey = localStorage.getItem('openrouterApiKey');
+      // Only add header if we have a local key - server might have its own
+      if (openrouterApiKey) {
+        headers['x-api-key'] = openrouterApiKey;
+      }
+    }
+    
     // Stream response from API
     try {
-      const response = await fetch('/api/cloudflare/chat', {
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({
           messages: messages,
-          model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+          model: modelInfo.id
         })
       });
       
