@@ -144,43 +144,42 @@ const v1Styles = css`
 
   /* Thread list */
   .thread-item {
-    padding: 12px 16px;
+    position: relative;
+    z-index: 15;
+  }
+
+  .thread-item-inner {
+    position: relative;
+    border-radius: 8px;
+    padding: 0 12px;
     cursor: pointer;
-    transition: background-color 0.2s;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: opacity 0.2s;
   }
 
-  .thread-item:hover {
-    background-color: var(--offblack);
+  .thread-item-inner:active {
+    opacity: 0.9;
   }
 
-  .thread-item.active {
+  .thread-item-inner.active {
     background-color: var(--active-thread);
   }
 
-  .thread-title {
+  .thread-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    text-decoration: none;
     color: var(--white);
+  }
+
+  .thread-title {
+    position: relative;
+    flex-grow: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-size: 14px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .thread-preview {
-    color: var(--gray);
-    font-size: 13px;
-    margin-top: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .thread-meta {
-    color: var(--gray);
-    font-size: 12px;
-    margin-top: 4px;
-    opacity: 0.8;
   }
 
   /* Messages */
@@ -353,6 +352,7 @@ const v1Styles = css`
 
   .sidebar-footer-link {
     display: flex;
+    flex-direction: row;
     align-items: center;
     gap: 8px;
     padding: 4px 0;
@@ -367,11 +367,12 @@ const v1Styles = css`
     color: var(--white);
   }
 
-  .sidebar-footer-link > div {
+  .sidebar-footer-link > div:first-child {
     flex-grow: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: pointer;
   }
 
   .sidebar-footer .beta-badge {
@@ -456,10 +457,12 @@ const v1Styles = css`
 
 function renderThread(thread: typeof mockThreads[0]) {
   return html`
-    <div class="thread-item ${thread.active ? "active" : ""}">
-      <div class="thread-title">${thread.title}</div>
-      <div class="thread-preview">${thread.preview}</div>
-      <div class="thread-meta">${thread.timestamp}</div>
+    <div class="thread-item">
+      <div class="thread-item-inner ${thread.active ? "active" : ""}">
+        <a href="/chat/${thread.id}" class="thread-link">
+          <div class="thread-title">${thread.title}</div>
+        </a>
+      </div>
     </div>
   `
 }
