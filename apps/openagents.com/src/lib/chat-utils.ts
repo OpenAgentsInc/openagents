@@ -216,7 +216,7 @@ export const chatClientScript = `
         </div>
         <div class="message-content">
           <div class="message-author">Assistant</div>
-          <div class="message-body" id="assistant-response">Thinking...</div>
+          <div class="message-body" id="assistant-response"><div class="dot-flashing"></div></div>
         </div>
       </div>
     \`;
@@ -278,9 +278,6 @@ export const chatClientScript = `
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             if (data === '[DONE]') continue;
-            
-            // Debug logging
-            console.log('SSE data received:', data);
             
             try {
               const parsed = JSON.parse(data);
@@ -392,6 +389,57 @@ export const chatStyles = `
     gap: 12px;
     padding-left: 50px;
     margin-bottom: 24px;
+  }
+  
+  /* 3-dot loading animation */
+  .dot-flashing {
+    position: relative;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: var(--white);
+    color: var(--white);
+    animation: dot-flashing 1s infinite linear alternate;
+    animation-delay: 0.5s;
+    margin: 10px 0;
+  }
+
+  .dot-flashing::before, .dot-flashing::after {
+    content: "";
+    display: inline-block;
+    position: absolute;
+    top: 0;
+  }
+
+  .dot-flashing::before {
+    left: -15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: var(--white);
+    color: var(--white);
+    animation: dot-flashing 1s infinite alternate;
+    animation-delay: 0s;
+  }
+
+  .dot-flashing::after {
+    left: 15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: var(--white);
+    color: var(--white);
+    animation: dot-flashing 1s infinite alternate;
+    animation-delay: 1s;
+  }
+
+  @keyframes dot-flashing {
+    0% {
+      background-color: var(--white);
+    }
+    50%, 100% {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
   }
 
   .message-avatar {
