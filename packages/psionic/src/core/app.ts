@@ -1,4 +1,11 @@
-import { HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import {
+  FetchHttpClient,
+  HttpMiddleware,
+  HttpRouter,
+  HttpServer,
+  HttpServerRequest,
+  HttpServerResponse
+} from "@effect/platform"
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun"
 import { Effect, Layer, pipe } from "effect"
 import { convertElysiaRouter } from "../adapters/elysia-adapter"
@@ -412,7 +419,16 @@ export class PsionicApp {
 
       // Handle the request
       try {
-        const result = yield* Effect.promise(() => Promise.resolve(handler(context)))
+        // Check if handler returns an Effect
+        const handlerResult = handler(context)
+
+        // If it's an Effect, yield it directly
+        if (Effect.isEffect(handlerResult)) {
+          return yield* handlerResult
+        }
+
+        // Otherwise, handle legacy Promise/value returns
+        const result = yield* Effect.promise(() => Promise.resolve(handlerResult))
 
         // Handle different response types
         if (result instanceof Response) {
@@ -435,7 +451,7 @@ export class PsionicApp {
           return HttpServerResponse.text(String(result))
         }
       } catch (error) {
-        console.error("Route handler error:", error)
+        console.error(`❌ PSIONIC: Route ${path} handler error:`, error)
         return HttpServerResponse.json(
           { error: "Internal server error" },
           { status: 500 }
@@ -472,7 +488,12 @@ export class PsionicApp {
     const HttpLive = pipe(
       HttpServer.serve(HttpMiddleware.logger(router)),
       HttpServer.withLogAddress,
-      Layer.provide(BunHttpServer.layer({ port, hostname: host }))
+      Layer.provide(
+        Layer.merge(
+          BunHttpServer.layer({ port, hostname: host }),
+          FetchHttpClient.layer
+        )
+      )
     )
 
     BunRuntime.runMain(Layer.launch(HttpLive) as any)

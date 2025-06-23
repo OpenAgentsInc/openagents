@@ -599,9 +599,19 @@ export const chatStyles = `
     outline: none;
     transition: border-color 0.2s;
   }
+  
+  .chat-input:focus-visible {
+    outline: none;
+    box-shadow: none !important;
+  }
 
   .chat-input:focus {
-    border-color: var(--darkgray);
+    border-color: var(--white);
+    outline: none !important;
+    box-shadow: none !important;
+    --tw-ring-color: transparent !important;
+    --tw-ring-offset-shadow: 0 0 #0000 !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
   }
 
   .chat-input::placeholder {

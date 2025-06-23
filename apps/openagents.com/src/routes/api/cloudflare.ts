@@ -1,140 +1,137 @@
-import { Effect } from "effect"
+import { FetchHttpClient, HttpServerResponse } from "@effect/platform"
+import { BunHttpPlatform } from "@effect/platform-bun"
+import * as Ai from "@openagentsinc/ai"
+import type { RouteContext } from "@openagentsinc/psionic"
+import { Effect, Layer, Redacted, Stream } from "effect"
 
-export const cloudflareApi = (app: any) => {
-  const prefix = "/api/cloudflare"
+/**
+ * GET /api/cloudflare/status - Check Cloudflare availability
+ */
+export function cloudflareStatus(
+  _ctx: RouteContext
+) {
+  // Check environment variables
+  const apiKey = process.env.CLOUDFLARE_API_KEY
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
 
-  app.get(`${prefix}/status`, async () => {
-    try {
-      // Check environment variables
-      const apiKey = process.env.CLOUDFLARE_API_KEY
-      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+  // If we have both, return available
+  if (apiKey && accountId) {
+    return HttpServerResponse.json({
+      available: true,
+      provider: "cloudflare"
+    })
+  }
 
-      // If we have both, return available
-      if (apiKey && accountId) {
-        return Response.json({
-          available: true,
-          provider: "cloudflare"
-        })
-      }
-
-      return Response.json({
-        available: false,
-        provider: "cloudflare"
-      })
-    } catch (error) {
-      console.error("Cloudflare status error:", error)
-      return Response.json({ available: false })
-    }
+  return HttpServerResponse.json({
+    available: false,
+    provider: "cloudflare"
   })
+}
 
-  app.post(`${prefix}/chat`, async (context: any) => {
-    try {
-      // Parse the request body from Effect HttpServerRequest
-      const bodyText = await Effect.runPromise(
-        Effect.gen(function*() {
-          const request = context.request
-          return yield* request.text
-        }) as Effect.Effect<string, never, never>
-      )
+/**
+ * POST /api/cloudflare/chat - Stream chat completion
+ */
+export function cloudflareChat(
+  ctx: RouteContext
+) {
+  return Effect.gen(function*() {
+    const bodyText = yield* ctx.request.text
+    const body = JSON.parse(bodyText)
+    const { messages, model } = body
 
-      const body = JSON.parse(bodyText)
-      const { messages, model } = body
+    const apiKey = process.env.CLOUDFLARE_API_KEY
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
 
-      // Get credentials
-      const apiKey = process.env.CLOUDFLARE_API_KEY
-      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+    if (!apiKey || !accountId) {
+      return yield* HttpServerResponse.json({ error: "Cloudflare not configured" }, { status: 500 })
+    }
 
-      if (!apiKey || !accountId) {
-        return Response.json({ error: "Cloudflare not configured" }, { status: 500 })
-      }
+    // Create the layers for the CloudflareClient
+    const layers = Layer.mergeAll(
+      BunHttpPlatform.layer,
+      FetchHttpClient.layer,
+      Ai.Cloudflare.layerCloudflareClient({
+        apiKey: Redacted.make(apiKey),
+        accountId,
+        useOpenAIEndpoints: true
+      })
+    )
 
-      // Use OpenAI-compatible endpoint for proper streaming
-      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`
+    // Create and run the streaming effect
+    const readableStream = yield* Effect.gen(function*() {
+      const client = yield* Ai.Cloudflare.CloudflareClient
+      const encoder = new TextEncoder()
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          stream: true,
-          max_tokens: 4096
-        })
+      // Get the AI response stream
+      const aiStream = client.stream({
+        model,
+        messages,
+        temperature: 0.7,
+        max_tokens: 4096,
+        stream: true
       })
 
-      if (!response.ok) {
-        const error = await response.text()
-        console.error("Cloudflare API error:", error)
-        return Response.json({ error: "Cloudflare API error" }, { status: response.status })
-      }
+      // Transform AI responses to SSE format
+      const sseStream = aiStream.pipe(
+        Stream.mapConcat((response) => {
+          const chunks: Array<Uint8Array> = []
 
-      // Create a transform stream to convert Cloudflare's format to OpenAI's format
-      const transformStream = new TransformStream({
-        async transform(chunk, controller) {
-          const text = new TextDecoder().decode(chunk)
-          // console.log("Raw chunk received:", JSON.stringify(text))
-
-          // Handle Cloudflare's streaming format which can be:
-          // 1. SSE format: "data: {...}\n\n"
-          // 2. Raw JSON lines: "{...}\n"
-          const lines = text.split("\n").filter((line) => line.trim())
-
-          for (const line of lines) {
-            let jsonData = ""
-
-            if (line.startsWith("data: ")) {
-              jsonData = line.slice(6)
-              if (jsonData === "[DONE]") {
-                controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
-                continue
+          for (const part of response.parts) {
+            if (part._tag === "TextPart") {
+              const chunk = {
+                id: "chatcmpl-" + Math.random().toString(36).substring(2),
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [{
+                  index: 0,
+                  delta: {
+                    content: part.text
+                  },
+                  finish_reason: null
+                }]
               }
-            } else if (line.trim().startsWith("{")) {
-              jsonData = line.trim()
-            } else {
-              continue
-            }
-
-            try {
-              const parsed = JSON.parse(jsonData)
-              // console.log("Parsed chunk:", parsed)
-
-              // Handle OpenAI-compatible format from Cloudflare
-              if (parsed.choices?.[0]?.delta?.content) {
-                // Already in OpenAI format, pass through directly
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`))
-              } else if (parsed.response) {
-                // Old Cloudflare format, convert to OpenAI format
-                const openAIChunk = {
-                  id: "chatcmpl-" + Math.random().toString(36).substring(2),
-                  object: "chat.completion.chunk",
-                  created: Math.floor(Date.now() / 1000),
-                  model,
-                  choices: [{
-                    index: 0,
-                    delta: {
-                      content: parsed.response
-                    },
-                    finish_reason: null
-                  }]
+              const data = `data: ${JSON.stringify(chunk)}\n\n`
+              chunks.push(encoder.encode(data))
+            } else if (part._tag === "FinishPart") {
+              // Send finish chunk
+              const chunk = {
+                id: "chatcmpl-" + Math.random().toString(36).substring(2),
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [{
+                  index: 0,
+                  delta: {},
+                  finish_reason: part.reason
+                }],
+                usage: {
+                  prompt_tokens: part.usage.inputTokens,
+                  completion_tokens: part.usage.outputTokens,
+                  total_tokens: part.usage.totalTokens
                 }
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIChunk)}\n\n`))
               }
-            } catch (e) {
-              console.error("Error parsing Cloudflare response:", e, "Raw data:", jsonData)
+              const data = `data: ${JSON.stringify(chunk)}\n\n`
+              chunks.push(encoder.encode(data))
             }
           }
-        },
-        flush(controller) {
-          // Send final done signal
-          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
-        }
-      })
 
-      // Pipe the response through the transform stream
-      return new Response(response.body!.pipeThrough(transformStream), {
+          return chunks
+        }),
+        Stream.concat(Stream.make(encoder.encode("data: [DONE]\n\n"))),
+        Stream.catchAll((error) => {
+          console.error("Streaming error:", error)
+          return Stream.make(encoder.encode(`data: {"error": "${error}"}\n\n`))
+        })
+      )
+
+      // Convert to ReadableStream
+      return yield* Stream.toReadableStreamEffect(sseStream)
+    }).pipe(Effect.provide(layers))
+
+    // Return the response with SSE headers
+    return HttpServerResponse.raw(
+      new Response(readableStream, {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
@@ -144,9 +141,11 @@ export const cloudflareApi = (app: any) => {
           "Access-Control-Allow-Headers": "Content-Type"
         }
       })
-    } catch (error: any) {
+    )
+  }).pipe(
+    Effect.catchAll((error: any) => {
       console.error("Cloudflare API error:", error)
-      return Response.json({ error: error.message }, { status: 500 })
-    }
-  })
+      return HttpServerResponse.json({ error: error.message }, { status: 500 })
+    })
+  )
 }

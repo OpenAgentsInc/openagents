@@ -80,6 +80,9 @@ export declare namespace CloudflareClient {
     readonly stream: (
       request: StreamCompletionRequest
     ) => Stream.Stream<AiResponse.AiResponse, HttpClientError.HttpClientError, never>
+    readonly complete: (
+      request: StreamCompletionRequest
+    ) => Effect.Effect<AiResponse.AiResponse, HttpClientError.HttpClientError, never>
   }
 }
 
@@ -290,7 +293,122 @@ export const make = (options: {
         }
       })
 
-    return { streamRequest, stream }
+    // Add non-streaming complete method
+    const complete = (request: StreamCompletionRequest) =>
+      Effect.gen(function*() {
+        if (useOpenAIEndpoints) {
+          // Use OpenAI-compatible endpoint without streaming
+          const response = yield* httpClientOk.post("/chat/completions", {
+            body: HttpBody.unsafeJson({
+              ...request,
+              stream: false
+            })
+          })
+
+          const data = yield* response.json
+          const completionData = data as any
+
+          // Convert non-streaming response to AiResponse
+          const parts: Array<AiResponse.Part> = []
+
+          // Add metadata
+          parts.push(
+            new AiResponse.MetadataPart({
+              id: completionData.id,
+              model: completionData.model,
+              timestamp: new Date(completionData.created * 1000)
+            }, constDisableValidation)
+          )
+
+          // Add text content
+          if (completionData.choices?.[0]?.message?.content) {
+            parts.push(
+              new AiResponse.TextPart({
+                text: completionData.choices[0].message.content
+              }, constDisableValidation)
+            )
+          }
+
+          // Add usage and finish part
+          if (completionData.usage) {
+            parts.push(
+              new AiResponse.FinishPart({
+                usage: {
+                  inputTokens: completionData.usage.prompt_tokens,
+                  outputTokens: completionData.usage.completion_tokens,
+                  totalTokens: completionData.usage.total_tokens,
+                  reasoningTokens: 0,
+                  cacheReadInputTokens: 0,
+                  cacheWriteInputTokens: 0
+                },
+                reason: resolveFinishReason(completionData.choices?.[0]?.finish_reason || "stop"),
+                providerMetadata: { "cloudflare": {} }
+              }, constDisableValidation)
+            )
+          }
+
+          return new AiResponse.AiResponse({ parts }, constDisableValidation)
+        } else {
+          // Use native Cloudflare endpoint
+          const prompt = request.messages.map((msg) => {
+            if (msg.role === "system") return `System: ${msg.content}`
+            if (msg.role === "user") return `User: ${msg.content}`
+            return `Assistant: ${msg.content}`
+          }).join("\n")
+
+          const response = yield* httpClientOk.post(`/${request.model}`, {
+            body: HttpBody.unsafeJson({
+              prompt,
+              stream: false,
+              max_tokens: request.max_tokens,
+              temperature: request.temperature
+            })
+          })
+
+          const data = yield* response.json
+          const responseData = data as CloudflareResponse
+
+          const parts: Array<AiResponse.Part> = []
+
+          // Add metadata
+          parts.push(
+            new AiResponse.MetadataPart({
+              id: "cloudflare-" + Math.random().toString(36).substring(2),
+              model: request.model,
+              timestamp: new Date()
+            }, constDisableValidation)
+          )
+
+          // Add text content
+          if (responseData.result?.response) {
+            parts.push(
+              new AiResponse.TextPart({
+                text: responseData.result.response
+              }, constDisableValidation)
+            )
+          }
+
+          // Add finish part
+          parts.push(
+            new AiResponse.FinishPart({
+              usage: {
+                inputTokens: 0,
+                outputTokens: 0,
+                totalTokens: 0,
+                reasoningTokens: 0,
+                cacheReadInputTokens: 0,
+                cacheWriteInputTokens: 0
+              },
+              reason: "stop",
+              providerMetadata: { "cloudflare": {} }
+            }, constDisableValidation)
+          )
+
+          return new AiResponse.AiResponse({ parts }, constDisableValidation)
+        }
+      })
+
+    return { streamRequest, stream, complete }
   })
 
 /**

@@ -28,7 +28,7 @@ export function convertElysiaRouter(router: any, prefix: string = ""): Array<Con
     const fullPath = prefix + path
 
     // Convert the handler to a standard RouteHandler
-    const convertedHandler: RouteHandler = async (context) => {
+    const convertedHandler: RouteHandler = async (context: any) => {
       try {
         // Parse body if needed
         let body: any = undefined

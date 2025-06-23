@@ -16,6 +16,11 @@
       "types": "./src/browser.ts",
       "import": "./src/browser.ts",
       "default": "./src/browser.ts"
+    },
+    "./types": {
+      "types": "./src/types/index.ts",
+      "import": "./src/types/index.ts",
+      "default": "./src/types/index.ts"
     }
   },
   "scripts": {
