@@ -27,6 +27,13 @@ import { ollamaApi } from './routes/api/ollama'
 import { openrouterApi } from './routes/api/openrouter'
 import { cloudflareApi } from './routes/api/cloudflare'
 import { channelsApi } from './routes/api/channels'
+import { 
+  listConversations, 
+  createConversationRoute, 
+  updateConversation, 
+  addMessageRoute 
+} from './routes/api/conversations'
+import { renderMarkdownRoute } from './routes/api/markdown'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -77,10 +84,19 @@ app.route('/slides', slides)
 app.route('/import', importRoute)
 
 // Mount API routes
-app.elysia.use(ollamaApi)
-app.elysia.use(openrouterApi)
-app.elysia.use(cloudflareApi)
-app.elysia.use(channelsApi)
+ollamaApi(app)
+openrouterApi(app)
+cloudflareApi(app)
+channelsApi(app)
+
+// Conversation API routes
+app.get('/api/conversations', listConversations)
+app.post('/api/conversations', createConversationRoute)
+app.patch('/api/conversations/:id', updateConversation)
+app.post('/api/conversations/:id/messages', addMessageRoute)
+
+// Markdown rendering API
+app.post('/api/markdown', renderMarkdownRoute)
 
 // Mount Nostr relay
 // TODO: Re-enable when WebSocket support is implemented in Effect
@@ -96,7 +112,7 @@ app.elysia.use(channelsApi)
 // }))
 
 // Serve Basecoat CSS from @openagentsinc/ui package
-app.elysia.get('/@openagentsinc/ui/basecoat', async () => {
+app.get('/@openagentsinc/ui/basecoat', async () => {
   try {
     const basecoatPath = join(path.dirname(fileURLToPath(import.meta.url)), '../../../packages/ui/dist/basecoat/index.css')
     const content = await readFile(basecoatPath, 'utf-8')
@@ -118,7 +134,7 @@ app.elysia.get('/@openagentsinc/ui/basecoat', async () => {
 })
 
 // Serve llms.txt
-app.elysia.get('/llms.txt', async () => {
+app.get('/llms.txt', async () => {
   try {
     const llmsTxtPath = join(path.dirname(fileURLToPath(import.meta.url)), '../static/llms.txt')
     const content = await readFile(llmsTxtPath, 'utf-8')

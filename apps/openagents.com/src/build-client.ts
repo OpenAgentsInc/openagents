@@ -15,16 +15,21 @@ async function buildClient() {
   await mkdir(outdir, { recursive: true })
 
   try {
-    // Build chat client bundle
+    // Build client bundles
+    const entrypoints = [
+      join(__dirname, "client/chat-client.ts")
+      // Note: lib/chat-client.ts is server-side only and shouldn't be bundled for browser
+    ]
+
     const result = await Bun.build({
-      entrypoints: [join(__dirname, "client/chat-client.ts")],
+      entrypoints,
       outdir,
       target: "browser",
       format: "esm",
       splitting: true,
       minify: process.env.NODE_ENV === "production",
       naming: {
-        entry: "[name].[ext]",
+        entry: "[dir]/[name].[ext]",
         chunk: "[name]-[hash].[ext]"
       },
       external: []
