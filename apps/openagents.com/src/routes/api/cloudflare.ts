@@ -48,8 +48,8 @@ export const cloudflareApi = (app: any) => {
         return Response.json({ error: "Cloudflare not configured" }, { status: 500 })
       }
 
-      // For now, use direct API call with streaming response
-      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`
+      // Use OpenAI-compatible endpoint for proper streaming
+      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`
 
       const response = await fetch(url, {
         method: "POST",
@@ -58,6 +58,7 @@ export const cloudflareApi = (app: any) => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          model,
           messages,
           stream: true,
           max_tokens: 4096
@@ -74,6 +75,7 @@ export const cloudflareApi = (app: any) => {
       const transformStream = new TransformStream({
         async transform(chunk, controller) {
           const text = new TextDecoder().decode(chunk)
+          console.log("Raw chunk received:", JSON.stringify(text))
 
           // Handle Cloudflare's streaming format which can be:
           // 1. SSE format: "data: {...}\n\n"
@@ -97,21 +99,14 @@ export const cloudflareApi = (app: any) => {
 
             try {
               const parsed = JSON.parse(jsonData)
+              console.log("Parsed chunk:", parsed)
 
-              // Handle different possible Cloudflare response formats
-              let content = ""
-              if (parsed.response) {
-                content = parsed.response
-              } else if (parsed.result?.response) {
-                content = parsed.result.response
-              } else if (parsed.choices?.[0]?.delta?.content) {
-                content = parsed.choices[0].delta.content
-              } else if (parsed.content) {
-                content = parsed.content
-              }
-
-              if (content) {
-                // Convert to OpenAI format
+              // Handle OpenAI-compatible format from Cloudflare
+              if (parsed.choices?.[0]?.delta?.content) {
+                // Already in OpenAI format, pass through directly
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`))
+              } else if (parsed.response) {
+                // Old Cloudflare format, convert to OpenAI format
                 const openAIChunk = {
                   id: "chatcmpl-" + Math.random().toString(36).substring(2),
                   object: "chat.completion.chunk",
@@ -120,7 +115,7 @@ export const cloudflareApi = (app: any) => {
                   choices: [{
                     index: 0,
                     delta: {
-                      content
+                      content: parsed.response
                     },
                     finish_reason: null
                   }]
