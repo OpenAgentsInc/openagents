@@ -36,10 +36,18 @@ Understand what symbol it's looking for and why our objects don't have it.
 
 ## Root Cause Found
 
-The issue is that our route handlers are using `.pipe(Effect.orDie)` on HttpServerResponse methods. However:
+The issue is that our route handlers were using `.pipe(Effect.orDie)` on HttpServerResponse methods. However:
 
 1. HttpServerResponse.json() returns `Effect<HttpServerResponse, Body.HttpBodyError>`
 2. When piped through Effect.orDie, it becomes `Effect<HttpServerResponse, never>`
-3. But this seems to break the internal structure
+3. This broke the internal Effect structure, causing the symbol error
 
-The fix is to remove .pipe(Effect.orDie) from all routes since HttpServerResponse.json() already returns an Effect.
+## Solution Applied
+
+1. Removed `.pipe(Effect.orDie)` from all HttpServerResponse method calls
+2. Removed explicit return type annotations from route handlers to let TypeScript infer correct types
+3. Updated RouteHandler type to accept `Effect<any, any, any>` 
+
+This allows the natural error types (like HttpBodyError) to flow through the system correctly.
+
+**Status**: RESOLVED ✅

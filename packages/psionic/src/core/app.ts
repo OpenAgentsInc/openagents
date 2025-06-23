@@ -421,12 +421,11 @@ export class PsionicApp {
       try {
         // Check if handler returns an Effect
         const handlerResult = handler(context)
+        console.log(`🔍 PSIONIC: Route ${path} handler returned:`, typeof handlerResult, Effect.isEffect(handlerResult))
 
         // If it's an Effect, yield it directly
-        if (
-          handlerResult && typeof handlerResult === "object" && "_tag" in handlerResult &&
-          handlerResult._tag === "Effect"
-        ) {
+        if (Effect.isEffect(handlerResult)) {
+          console.log(`✅ PSIONIC: Route ${path} returned Effect, yielding it`)
           return yield* handlerResult
         }
 
@@ -454,7 +453,7 @@ export class PsionicApp {
           return HttpServerResponse.text(String(result))
         }
       } catch (error) {
-        console.error("Route handler error:", error)
+        console.error(`❌ PSIONIC: Route ${path} handler error:`, error)
         return HttpServerResponse.json(
           { error: "Internal server error" },
           { status: 500 }
