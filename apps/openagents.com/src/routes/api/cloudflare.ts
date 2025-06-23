@@ -34,7 +34,7 @@ export const cloudflareApi = (app: any) => {
         Effect.gen(function*() {
           const request = context.request
           return yield* request.text
-        })
+        }) as Effect.Effect<string, never, never>
       )
 
       const body = JSON.parse(bodyText)

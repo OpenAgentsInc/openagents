@@ -19,7 +19,7 @@ export const ollamaApi = (app: any) => {
       const bodyText = await Effect.runPromise(
         Effect.gen(function*() {
           return yield* context.request.text
-        })
+        }) as Effect.Effect<string, never, never>
       )
       const body = JSON.parse(bodyText)
       const { messages, model, options } = body

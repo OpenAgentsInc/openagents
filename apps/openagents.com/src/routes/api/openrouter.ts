@@ -10,7 +10,7 @@ export const openrouterApi = (app: any) => {
       const bodyText = await Effect.runPromise(
         Effect.gen(function*() {
           return yield* context.request.text
-        })
+        }) as Effect.Effect<string, never, never>
       )
       const body = JSON.parse(bodyText)
       const { messages, model } = body
@@ -20,7 +20,7 @@ export const openrouterApi = (app: any) => {
         Effect.gen(function*() {
           const headers = yield* context.request.headers
           return headers["x-api-key"]
-        })
+        }) as Effect.Effect<string, never, never>
       )
 
       if (!apiKey) {

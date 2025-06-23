@@ -25,9 +25,7 @@ import { channelsApi } from './routes/api/channels'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 
 const app = createPsionicApp({
   name: 'OpenAgents',

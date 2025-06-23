@@ -14,7 +14,7 @@ export const channelsApi = (app: any) => {
       const bodyText = await Effect.runPromise(
         Effect.gen(function*() {
           return yield* context.request.text
-        })
+        }) as Effect.Effect<string, never, never>
       )
       const body = JSON.parse(bodyText) as { name: string; about?: string; picture?: string }
       const program = Effect.gen(function*() {
@@ -93,7 +93,7 @@ export const channelsApi = (app: any) => {
         const bodyText = await Effect.runPromise(
           Effect.gen(function*() {
             return yield* context.request.text
-          })
+          }) as Effect.Effect<string, never, never>
         )
         const body = JSON.parse(bodyText) as {
           channelId: string
