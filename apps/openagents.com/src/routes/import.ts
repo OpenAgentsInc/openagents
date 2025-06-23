@@ -587,26 +587,46 @@ export async function importRoute() {
           
           let contentHtml = ''
           
-          if (isUser) {
+          // Handle message content - could be array or string
+          // Some entries might not have a message property
+          if (!entry.message) {
+            contentHtml = \`<div class="message-text">No message content available</div>\`
+          } else {
+            const messageContent = entry.message.content
+          
+            if (isUser) {
             // Handle user message
-            entry.message.content.forEach(part => {
-              if (part.type === 'text') {
-                contentHtml += \`<div class="message-text">\${escapeHtml(part.text)}</div>\`
-              } else if (part.type === 'tool_result') {
-                contentHtml += createToolResultHtml(part)
-              }
-            })
+            if (Array.isArray(messageContent)) {
+              messageContent.forEach(part => {
+                if (part && typeof part === 'object') {
+                  if (part.type === 'text') {
+                    contentHtml += \`<div class="message-text">\${escapeHtml(part.text)}</div>\`
+                  } else if (part.type === 'tool_result') {
+                    contentHtml += createToolResultHtml(part)
+                  }
+                }
+              })
+            } else if (typeof messageContent === 'string') {
+              contentHtml += \`<div class="message-text">\${escapeHtml(messageContent)}</div>\`
+            }
           } else {
             // Handle assistant message
-            entry.message.content.forEach(part => {
-              if (part.type === 'text') {
-                contentHtml += \`<div class="message-text">\${escapeHtml(part.text)}</div>\`
-              } else if (part.type === 'thinking') {
-                contentHtml += createThinkingHtml(part)
-              } else if (part.type === 'tool_use') {
-                contentHtml += createToolUseHtml(part)
-              }
-            })
+            if (Array.isArray(messageContent)) {
+              messageContent.forEach(part => {
+                if (part && typeof part === 'object') {
+                  if (part.type === 'text') {
+                    contentHtml += \`<div class="message-text">\${escapeHtml(part.text)}</div>\`
+                  } else if (part.type === 'thinking') {
+                    contentHtml += createThinkingHtml(part)
+                  } else if (part.type === 'tool_use') {
+                    contentHtml += createToolUseHtml(part)
+                  }
+                }
+              })
+            } else if (typeof messageContent === 'string') {
+              contentHtml += \`<div class="message-text">\${escapeHtml(messageContent)}</div>\`
+            }
+          }
           }
           
           div.innerHTML = \`
