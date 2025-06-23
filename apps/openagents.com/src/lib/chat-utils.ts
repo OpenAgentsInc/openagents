@@ -216,7 +216,7 @@ export const chatClientScript = `
         </div>
         <div class="message-content">
           <div class="message-author">Assistant</div>
-          <div class="message-body" id="assistant-response"></div>
+          <div class="message-body" id="assistant-response">Thinking...</div>
         </div>
       </div>
     \`;
@@ -254,7 +254,11 @@ export const chatClientScript = `
         })
       });
       
-      if (!response.ok) throw new Error('API request failed');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        throw new Error('API request failed');
+      }
       
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -275,9 +279,19 @@ export const chatClientScript = `
             const data = line.slice(6);
             if (data === '[DONE]') continue;
             
+            // Debug logging
+            console.log('SSE data received:', data);
+            
             try {
               const parsed = JSON.parse(data);
-              if (parsed.response) {
+              // Handle OpenAI format from Cloudflare
+              if (parsed.choices?.[0]?.delta?.content) {
+                fullResponse += parsed.choices[0].delta.content;
+                assistantResponse.textContent = fullResponse;
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+              }
+              // Handle old format (fallback)
+              else if (parsed.response) {
                 fullResponse += parsed.response;
                 assistantResponse.textContent = fullResponse;
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -300,6 +314,9 @@ export const chatClientScript = `
         } catch (error) {
           console.error('Failed to save assistant message:', error);
         }
+      } else {
+        // No response received
+        document.getElementById('assistant-response').textContent = 'No response received. Please check if Cloudflare API is configured.';
       }
       
       // Reload conversations to update sidebar
