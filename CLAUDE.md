@@ -10,12 +10,49 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
 - **`@openagentsinc/cli`** - Command-line interface demo (placeholder for future development)
-- **`@openagentsinc/ui`** - WebTUI CSS library
+- **`@openagentsinc/ui`** - Custom Tailwind theme with Basecoat CSS design system
 - **`@openagentsinc/ai`** - AI provider abstraction
 - **`@openagentsinc/psionic`** - Hypermedia web framework with built-in component explorer
 
 ### Apps (User-facing applications)
 - **`@openagentsinc/openagents.com`** - Main website built with Psionic
+
+## 🚨 CRITICAL: MANDATORY DOCUMENTATION BEFORE CODING 🚨
+
+**STOP! Before writing ANY code related to the following systems, you MUST read the relevant guides:**
+
+### Effect.js, Streaming, or Async Operations
+**MANDATORY READING**: `/docs/guides/effect-architecture-guide.md`
+- Required if: Working with ANY Effect code, async operations, services, layers, or error handling
+- Why: Effect patterns are complex and mixing Promises/Effects WILL break the system
+
+### AI Providers (Cloudflare, OpenRouter, Ollama, etc.)
+**MANDATORY READING**: `/docs/guides/ai-provider-integration.md`
+- Required if: Adding providers, modifying AI endpoints, working with chat/completion APIs
+- Why: All providers MUST follow consistent patterns for frontend compatibility
+
+### Streaming, SSE, or Real-time Data
+**MANDATORY READING**: `/docs/guides/streaming-architecture.md`
+- Required if: Working with streaming responses, chat streams, or any SSE implementation
+- Why: Layer provision for streams is the #1 source of bugs - one mistake breaks everything
+
+### Quick Effect Patterns
+**MANDATORY READING**: `/docs/guides/effect-quick-reference.md`
+- Required if: You need quick lookup for common patterns
+- Why: Shows correct patterns vs common mistakes
+
+### Language Models & Model Configuration
+**MANDATORY READING**: `/docs/guides/language-model-integration.md`
+- Required if: Adding new language models, configuring model lists, working with model selection UI
+- Why: Models require specific configuration in multiple places and must maintain UI compatibility
+
+**⚠️ FAILURE TO READ THESE GUIDES WILL RESULT IN:**
+- "Service not found" errors that are difficult to debug
+- Streaming responses that hang forever
+- Broken chat functionality
+- Hours of debugging that could be avoided
+
+**These guides were written specifically for coding agents after extensive debugging sessions. They contain critical information about non-obvious requirements like providing ALL layers before Stream.toReadableStreamEffect(). Skip them at your own peril.**
 
 ## Essential Commands
 
@@ -66,6 +103,12 @@ pnpm --filter=@openagentsinc/sdk test
 
 ## Architecture Patterns
 
+**📚 BEFORE READING THIS SECTION**: If you plan to implement anything based on these patterns, you MUST first read the comprehensive guides in `/docs/guides/`:
+- `effect-architecture-guide.md` - Complete Effect.js patterns and Psionic framework
+- `ai-provider-integration.md` - AI provider implementation details
+- `streaming-architecture.md` - Critical streaming implementation patterns
+- `effect-quick-reference.md` - Common patterns and anti-patterns
+
 ### Effect Service Architecture
 - **SDK Package**: Core SDK with Agent, Lightning, Nostr, Compute, and Inference namespaces
 - **Nostr Package**: Effect-based Nostr protocol implementation with NIP support
@@ -81,7 +124,7 @@ pnpm --filter=@openagentsinc/sdk test
 ```
 sdk → nostr (NIP-06 key derivation)
 cli → ai (AI features)
-ui → (standalone, WebTUI CSS)
+ui → (standalone, Tailwind + Basecoat CSS)
 psionic → (standalone, web framework)
 openagents.com → psionic, sdk, nostr (main website)
 ```
@@ -261,32 +304,42 @@ bun src/orchestrate.ts "$(cat test-config.json)"
 
 For detailed usage, configuration options, and troubleshooting, see [docs/autotest.md](docs/autotest.md).
 
-## Component Library Reference
+## UI and Styling
 
-**For Coding Agents**: Use [docs/components.md](docs/components.md) as the definitive guide to all UI components. This contains complete documentation for:
+### UI Package
+The `@openagentsinc/ui` package provides:
+- **Custom Tailwind theme** with OpenAgents color palette (black, offblack, darkgray, etc.)
+- **Basecoat CSS** integration for modern component styling
+- **Multiple themes**: Zinc (default), Catppuccin, Gruvbox, Nord
+- **Berkeley Mono** font as the primary monospace font
 
-### WebTUI Components (Attribute-Based Styling)
-- **Button**: `<button is-="button" variant-="foreground1" box-="square">Text</button>`
-- **Input/Textarea**: `<input is-="input" box-="square">` and `<textarea is-="textarea">`
-- **Dialog**: `<dialog position-="center-center" box-="square">` with 9-point positioning
-- **Badge**: `<span is-="badge" variant-="foreground0" cap-="round">Status</span>`
-- **Form Controls**: Checkbox, radio, switch with `box-="square/round/double"`
-- **Popover/Tooltip**: `<details is-="popover">` and `<div is-="tooltip">`
-- **Typography**: Automatic styling for headings, lists, and semantic HTML
+### Component Patterns
+Components in `apps/openagents.com/src/components/` use:
+- **Template literals** with Psionic's `html` tag
+- **CSS-in-JS** with Psionic's `css` tag for scoped styles
+- **CSS variables** for theming (--text, --offblack, --darkgray, etc.)
+- **Tailwind classes** where appropriate
 
-### Custom OpenAgents Components
-- **Navigation**: `${navigation({ current: "home" })}` with responsive header
-- **Theme Switcher**: `${themeSwitcher()}` with 5 built-in themes (zinc, catppuccin, gruvbox, nord)
+Example component pattern:
+```typescript
+import { html, css } from "@openagentsinc/psionic"
 
-### Key Principles
-- **Attribute-based styling**: Use `is-="component"` instead of CSS classes
-- **Box system**: All components support `box-="square/round/double"` ASCII borders
-- **Color system**: `foreground0-2` (bright to dim) and `background0-3` (dark to light)
-- **Semantic HTML first**: WebTUI enhances rather than replaces standard HTML
-
-**Quick Reference**: Most common pattern is `<element is-="component" variant-="foreground1" box-="square">content</element>`
-
-**DO NOT explore the component library manually** - everything you need is documented in [docs/components.md](docs/components.md).
+export function myComponent({ title }: { title: string }) {
+  return html`
+    <div class="my-component">
+      <h2>${title}</h2>
+    </div>
+    
+    <style>
+      .my-component {
+        background: var(--offblack);
+        color: var(--text);
+        padding: 1rem;
+      }
+    </style>
+  `
+}
+```
 
 ## Database Migrations
 
@@ -372,6 +425,7 @@ See [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) for complete docu
 - "Simpler" implementations break the architectural integrity and type safety guarantees
 
 **REQUIRED Approach Instead**:
+- **READ THE GUIDES FIRST**: `/docs/guides/effect-architecture-guide.md`
 - **Figure out how to make all services work together properly**
 - **Fix TypeScript errors by providing proper service layers, not by removing them**
 - **Understand and respect the existing Effect.js architecture**
@@ -382,4 +436,65 @@ See [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) for complete docu
 - "What Effect dependencies am I missing and how do I provide them?"
 - "How does the existing architecture expect this to be wired together?"
 
+### ❌ NEVER Mix Promises and Effects
+
+**ABSOLUTELY FORBIDDEN**: Using `Effect.runPromise` inside route handlers or mixing async/await with Effect.
+
+**Example of FORBIDDEN code**:
+```typescript
+// ❌ NEVER DO THIS
+export async function handler(ctx) {
+  const result = await Effect.runPromise(myEffect)  // Creates isolated context!
+  return result
+}
+```
+
+**READ**: `/docs/guides/effect-architecture-guide.md` for correct patterns
+
+### ❌ NEVER Convert Streams Without Layers
+
+**ABSOLUTELY FORBIDDEN**: Using `Stream.toReadableStreamEffect` without providing ALL required layers.
+
+**Example of FORBIDDEN code**:
+```typescript
+// ❌ THIS WILL CAUSE "Service not found" ERRORS
+const readable = yield* Stream.toReadableStreamEffect(stream)
+```
+
+**REQUIRED**:
+```typescript
+// ✅ ALWAYS provide ALL layers
+const readable = yield* Stream.toReadableStreamEffect(stream).pipe(
+  Effect.provide(Layer.merge(
+    BunHttpPlatform.layer,
+    FetchHttpClient.layer,
+    YourServiceLayer
+  ))
+)
+```
+
+**READ**: `/docs/guides/streaming-architecture.md` for complete understanding
+
 **Never take shortcuts. Never simplify. Always respect the architectural decisions that were made for production systems.**
+
+## Final Reminder: Architecture Guides Are NOT Optional
+
+If you've made it this far and are about to start coding, ask yourself:
+
+1. **Are you working with Effects, async operations, or services?**  
+   → You MUST have read `/docs/guides/effect-architecture-guide.md`
+
+2. **Are you working with AI providers or chat endpoints?**  
+   → You MUST have read `/docs/guides/ai-provider-integration.md`
+
+3. **Are you working with streaming or SSE?**  
+   → You MUST have read `/docs/guides/streaming-architecture.md`
+
+4. **Are you unsure about any Effect pattern?**  
+   → You MUST have read `/docs/guides/effect-quick-reference.md`
+
+**These guides exist because previous agents spent HOURS debugging issues that are clearly documented.** The guides contain non-obvious requirements, critical patterns, and common pitfalls that you WILL encounter.
+
+**The #1 cause of wasted debugging time is agents who think they can figure it out without reading the guides first.**
+
+Don't be that agent. Read the guides. Your future self will thank you.
