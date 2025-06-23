@@ -4,7 +4,7 @@ import { syntaxHighlightingStyles } from "./styles/syntax-highlighting"
 // Base styles for OpenAgents v1 components
 export const baseStyles = css`
   /* Import Basecoat UI from the @openagentsinc/ui package */
-  @import '@openagentsinc/ui/basecoat';
+  @import '/@openagentsinc/ui/basecoat';
   
   ${syntaxHighlightingStyles}
   
