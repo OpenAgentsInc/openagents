@@ -1,5 +1,5 @@
+import type { HttpServerRequest } from "@effect/platform"
 import { HttpServerResponse } from "@effect/platform"
-import type { HttpServerRequest, HttpServerRequest } from "@effect/platform"
 import * as Nostr from "@openagentsinc/nostr"
 import type { RouteContext } from "@openagentsinc/psionic"
 import { RelayDatabase, RelayDatabaseLive } from "@openagentsinc/relay"
