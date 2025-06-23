@@ -473,17 +473,17 @@ export async function home() {
         </div>
 
         <!-- Main content -->
-        <div id="main" class="hmmm" style="flex: 1; display: flex; flex-direction: column; margin-left: 260px; transition: margin-left 0.3s ease-in-out;">
+        <div id="main" class="hmmm" style="flex: 1; display: flex; flex-direction: column; margin-left: 260px; transition: margin-left 0.3s ease-in-out; position: relative;">
           <!-- Messages -->
-          <div id="messages-container" style="flex: 1; overflow-y: auto; padding: 80px 20px 20px;">
+          <div id="messages-container" style="flex: 1; overflow-y: auto; padding: 80px 20px 160px;">
             <div style="max-width: 800px; margin: 0 auto;">
               <!-- Messages will be dynamically added here -->
             </div>
           </div>
 
           <!-- Input area -->
-          <div style="border-top: 1px solid var(--offblack); padding-top: 20px;">
-            <div style="max-width: 800px; margin: 0 auto;">
+          <div style="position: fixed; bottom: 0; left: 260px; right: 0; background-color: var(--black); border-top: 1px solid var(--offblack); padding: 20px 0; transition: left 0.3s ease-in-out;">
+            <div style="max-width: 800px; margin: 0 auto; padding: 0 20px;">
               <div style="position: relative;">
                 <textarea
                   id="chat-input"

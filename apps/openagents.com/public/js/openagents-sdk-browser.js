@@ -40193,18 +40193,27 @@ var makeLanguageModel = (options) => gen3(function* () {
     );
   };
   const generateText2 = (input) => {
-    return runCollect2(streamText2(input)).pipe(
-      map18((chunks3) => {
-        const responses = [];
-        for (const chunk4 of chunks3) {
-          for (const part of chunk4.parts) {
-            responses.push(AiResponse.make({ parts: [part] }, { disableValidation: true }));
-          }
-        }
-        return AiResponse.make({
-          parts: responses.flatMap((r) => r.parts)
-        }, { disableValidation: true });
-      })
+    const messages = convertToCloudflareMessages(input.prompt.messages);
+    return client.complete({
+      model: options.model,
+      messages,
+      temperature: options.temperature,
+      max_tokens: options.maxTokens,
+      top_p: options.topP,
+      frequency_penalty: options.frequencyPenalty,
+      presence_penalty: options.presencePenalty,
+      stop: options.stop,
+      stream: false
+    }).pipe(
+      catchAll3(
+        (error2) => fail10(
+          new AiError({
+            module: "CloudflareLanguageModel",
+            method: "generateText",
+            description: `Cloudflare API Error: ${error2.message}`
+          })
+        )
+      )
     );
   };
   return yield* make62({

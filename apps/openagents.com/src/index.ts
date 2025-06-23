@@ -23,11 +23,11 @@ import { channelsRoute, channelViewRoute, channelCreateRoute } from './routes/ch
 import { importRoute } from './routes/import'
 import gfn from './routes/gfn'
 import slides from './routes/slides'
-import { ollamaApi } from './routes/api/ollama'
-import { openrouterApi } from './routes/api/openrouter'
-import { cloudflareApi } from './routes/api/cloudflare'
-import { configApi } from './routes/api/config'
-import { channelsApi } from './routes/api/channels'
+import { ollamaStatus, ollamaChat } from './routes/api/ollama'
+import { openrouterStatus, openrouterChat } from './routes/api/openrouter'
+import { cloudflareStatus, cloudflareChat } from './routes/api/cloudflare'
+import { getConfig } from './routes/api/config'
+import { createChannel, sendChannelMessage, listChannels, getChannel } from './routes/api/channels'
 import { 
   listConversations, 
   createConversationRoute, 
@@ -35,6 +35,7 @@ import {
   addMessageRoute 
 } from './routes/api/conversations'
 import { renderMarkdownRoute } from './routes/api/markdown'
+import { testRoute } from './routes/api/test'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -85,11 +86,26 @@ app.route('/slides', slides)
 app.route('/import', importRoute)
 
 // Mount API routes
-ollamaApi(app)
-openrouterApi(app)
-cloudflareApi(app)
-configApi(app)
-channelsApi(app)
+// Ollama API
+app.get('/api/ollama/status', ollamaStatus)
+app.post('/api/ollama/chat', ollamaChat)
+
+// OpenRouter API
+app.get('/api/openrouter/status', openrouterStatus)
+app.post('/api/openrouter/chat', openrouterChat)
+
+// Cloudflare API
+app.get('/api/cloudflare/status', cloudflareStatus)
+app.post('/api/cloudflare/chat', cloudflareChat)
+
+// Config API
+app.get('/api/config', getConfig)
+
+// Channels API
+app.post('/api/channels/create', createChannel)
+app.post('/api/channels/message', sendChannelMessage)
+app.get('/api/channels/list', listChannels)
+app.get('/api/channels/:id', getChannel)
 
 // Conversation API routes
 app.get('/api/conversations', listConversations)
@@ -99,6 +115,9 @@ app.post('/api/conversations/:id/messages', addMessageRoute)
 
 // Markdown rendering API
 app.post('/api/markdown', renderMarkdownRoute)
+
+// Test route
+app.get('/api/test', testRoute)
 
 // Mount Nostr relay
 // TODO: Re-enable when WebSocket support is implemented in Effect

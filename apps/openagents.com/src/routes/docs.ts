@@ -406,7 +406,7 @@ export async function docs() {
 }
 
 // Individual documentation page handler
-export const docPage: RouteHandler = async (context) => {
+export const docPage: RouteHandler = async (context: any) => {
   const slug = context.params?.slug as string
 
   if (!slug) {
