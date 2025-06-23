@@ -30,12 +30,9 @@ export function createConversationRoute(
   ctx: RouteContext
 ) {
   return Effect.gen(function*() {
-    console.log("🔍 CONVERSATIONS API: createConversationRoute called")
-
     try {
       // Now we can access request.text directly within the Effect context!
       const bodyText = yield* ctx.request.text
-      console.log("✅ Successfully read request body using Effect")
 
       const body = JSON.parse(bodyText)
       const title = body.title || "New Conversation"
@@ -92,10 +89,8 @@ export function addMessageRoute(
   ctx: RouteContext
 ) {
   return Effect.gen(function*() {
-    console.log("🔍 CONVERSATIONS API: addMessageRoute called")
     try {
       const bodyText = yield* ctx.request.text
-      console.log("✅ Successfully read message body using Effect")
 
       const body = JSON.parse(bodyText)
       const { content, role } = body

@@ -421,13 +421,9 @@ export class PsionicApp {
       try {
         // Check if handler returns an Effect
         const handlerResult = handler(context)
-        console.log(`🔍 PSIONIC: Route ${path} handler returned:`, typeof handlerResult, Effect.isEffect(handlerResult))
 
         // If it's an Effect, yield it directly
-        console.log(`🔍 PSIONIC: Checking Effect.isEffect function:`, Effect.isEffect)
-        console.log(`🔍 PSIONIC: Effect module:`, Effect)
         if (Effect.isEffect(handlerResult)) {
-          console.log(`✅ PSIONIC: Route ${path} returned Effect, yielding it`)
           return yield* handlerResult
         }
 
@@ -489,7 +485,6 @@ export class PsionicApp {
 
     const router = this.buildRouter()
 
-    console.log("🔧 PSIONIC: Setting up HTTP server with FetchHttpClient.layer")
     const HttpLive = pipe(
       HttpServer.serve(HttpMiddleware.logger(router)),
       HttpServer.withLogAddress,
@@ -500,7 +495,6 @@ export class PsionicApp {
         )
       )
     )
-    console.log("✅ PSIONIC: HTTP server layers configured")
 
     BunRuntime.runMain(Layer.launch(HttpLive) as any)
 

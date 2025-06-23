@@ -1,7 +1,7 @@
 import { HttpServerResponse } from "@effect/platform"
 import * as Ai from "@openagentsinc/ai"
 import type { RouteContext } from "@openagentsinc/psionic"
-import { Effect } from "effect"
+import { Effect, Stream } from "effect"
 
 /**
  * GET /api/ollama/status - Check Ollama status
@@ -27,72 +27,58 @@ export function ollamaChat(
     const body = JSON.parse(bodyText)
     const { messages, model, options } = body
 
-    // Create a TransformStream for streaming response
-    const stream = new TransformStream()
-    const writer = stream.writable.getWriter()
-    const encoder = new TextEncoder()
+    // Create and run the streaming effect
+    const readableStream = yield* Effect.gen(function*() {
+      const client = yield* Ai.Ollama.OllamaClient
+      const encoder = new TextEncoder()
 
-    // Run the streaming in background
-    Effect.runPromise(
-      Effect.gen(function*() {
-        const client = yield* Ai.Ollama.OllamaClient
+      // Get the async generator from the client
+      const generator = client.chat({
+        model,
+        messages,
+        stream: true,
+        options: {
+          temperature: options?.temperature || 0.7,
+          num_ctx: options?.num_ctx || 4096,
+          ...options
+        }
+      })
 
-        // Get the async generator directly (not wrapped in Effect)
-        const generator = client.chat({
-          model,
-          messages,
-          stream: true,
-          options: {
-            temperature: options?.temperature || 0.7,
-            num_ctx: options?.num_ctx || 4096,
-            ...options
+      // Create a stream from the async generator
+      const sseStream = Stream.fromAsyncIterable(generator, (error) => 
+        new Error(`Ollama stream error: ${error}`)
+      ).pipe(
+        Stream.map((chunk) => {
+          const responseChunk = {
+            model,
+            created_at: new Date().toISOString(),
+            message: {
+              role: "assistant" as const,
+              content: chunk.content
+            },
+            done: chunk.done || false
           }
-        })
-
-        // Process the generator manually within Effect
-        yield* Effect.tryPromise({
-          try: async () => {
-            for await (const chunk of generator) {
-              const responseChunk = {
-                model,
-                created_at: new Date().toISOString(),
-                message: {
-                  role: "assistant" as const,
-                  content: chunk.content
-                },
-                done: chunk.done || false
-              }
-              await writer.write(encoder.encode(`data: ${JSON.stringify(responseChunk)}\n\n`))
-            }
-          },
-          catch: (error) => new Error(`Stream processing error: ${error}`)
-        })
-
-        // Send completion signal
-        writer.write(encoder.encode(`data: [DONE]\n\n`))
-        writer.close()
-      }).pipe(
-        Effect.provide(Ai.Ollama.OllamaClientLive()),
-        Effect.catchAll((error) =>
-          Effect.sync(() => {
-            console.error("Chat streaming error:", error)
-            writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
-            writer.close()
-          })
-        )
-      )
-    )
-
-    return yield* Effect.succeed(
-      HttpServerResponse.raw(
-        new Response(stream.readable, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive"
-          }
+          return encoder.encode(`data: ${JSON.stringify(responseChunk)}\n\n`)
+        }),
+        Stream.concat(Stream.make(encoder.encode(`data: [DONE]\n\n`))),
+        Stream.catchAll((error) => {
+          console.error("Ollama streaming error:", error)
+          return Stream.make(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
         })
       )
+
+      // Convert to ReadableStream
+      return yield* Stream.toReadableStreamEffect(sseStream)
+    }).pipe(Effect.provide(Ai.Ollama.OllamaClientLive()))
+
+    return HttpServerResponse.raw(
+      new Response(readableStream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        }
+      })
     )
   }).pipe(
     Effect.catchAll((error: any) => {

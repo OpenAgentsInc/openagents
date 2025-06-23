@@ -68,104 +68,90 @@ export function openrouterChat(
       return yield* HttpServerResponse.json({ error: "API key required" }, { status: 401 })
     }
 
-    // Create a TransformStream for streaming response
-    const stream = new TransformStream()
-    const writer = stream.writable.getWriter()
-    const encoder = new TextEncoder()
-
-    // Run the streaming in background
-    Effect.runPromise(
-      // @ts-expect-error - Type issue with HttpClient requirement
-      Effect.gen(function*() {
-        // Get the client from context
-        const client = yield* Ai.OpenRouter.OpenRouterClient
-
-        // Get the stream
-        const responseStream = client.stream({
-          model,
-          messages: messages.map((msg: any) => ({
-            role: msg.role,
-            content: msg.content
-          }))
-        })
-
-        // Process the stream
-        yield* responseStream.pipe(
-          Stream.tap((response: any) =>
-            Effect.sync(() => {
-              // Convert AiResponse to OpenAI-compatible format
-              for (const part of response.parts) {
-                if (part._tag === "TextPart") {
-                  const chunk = {
-                    id: "chatcmpl-" + Math.random().toString(36).substring(2),
-                    object: "chat.completion.chunk",
-                    created: Math.floor(Date.now() / 1000),
-                    model,
-                    choices: [{
-                      index: 0,
-                      delta: {
-                        content: part.text
-                      },
-                      finish_reason: null
-                    }]
-                  }
-                  writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)).catch(() => {})
-                } else if (part._tag === "FinishPart") {
-                  const chunk = {
-                    id: "chatcmpl-" + Math.random().toString(36).substring(2),
-                    object: "chat.completion.chunk",
-                    created: Math.floor(Date.now() / 1000),
-                    model,
-                    choices: [{
-                      index: 0,
-                      delta: {},
-                      finish_reason: part.reason
-                    }]
-                  }
-                  writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)).catch(() => {})
-                }
-              }
-            })
-          ),
-          Stream.runDrain
-        )
-
-        // Send completion signal
-        writer.write(encoder.encode(`data: [DONE]\n\n`))
-        writer.close()
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            BunHttpPlatform.layer,
-            FetchHttpClient.layer,
-            Layer.succeed(Ai.OpenRouter.OpenRouterConfig, {}),
-            Ai.OpenRouter.layerOpenRouterClient({
-              apiKey: Redacted.make(apiKey),
-              referer: "https://openagents.com",
-              title: "OpenAgents"
-            })
-          )
-        ),
-        Effect.catchAll((error) =>
-          Effect.sync(() => {
-            console.error("OpenRouter streaming error:", error)
-            writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
-            writer.close()
-          })
-        )
-      )
+    // Create the layers for the OpenRouterClient
+    const layers = Layer.mergeAll(
+      BunHttpPlatform.layer,
+      FetchHttpClient.layer,
+      Layer.succeed(Ai.OpenRouter.OpenRouterConfig, {}),
+      Ai.OpenRouter.layerOpenRouterClient({
+        apiKey: Redacted.make(apiKey),
+        referer: "https://openagents.com",
+        title: "OpenAgents"
+      })
     )
 
-    return yield* Effect.succeed(
-      HttpServerResponse.raw(
-        new Response(stream.readable, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive"
+    // Create and run the streaming effect
+    const readableStream = yield* Effect.gen(function*() {
+      const client = yield* Ai.OpenRouter.OpenRouterClient
+      const encoder = new TextEncoder()
+
+      // Get the AI response stream
+      const aiStream = client.stream({
+        model,
+        messages: messages.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      })
+
+      // Transform AI responses to SSE format
+      const sseStream = aiStream.pipe(
+        Stream.mapConcat((response: any) => {
+          const chunks: Array<Uint8Array> = []
+          
+          for (const part of response.parts) {
+            if (part._tag === "TextPart") {
+              const chunk = {
+                id: "chatcmpl-" + Math.random().toString(36).substring(2),
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [{
+                  index: 0,
+                  delta: {
+                    content: part.text
+                  },
+                  finish_reason: null
+                }]
+              }
+              chunks.push(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+            } else if (part._tag === "FinishPart") {
+              const chunk = {
+                id: "chatcmpl-" + Math.random().toString(36).substring(2),
+                object: "chat.completion.chunk",
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [{
+                  index: 0,
+                  delta: {},
+                  finish_reason: part.reason
+                }]
+              }
+              chunks.push(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+            }
           }
+          
+          return chunks
+        }),
+        Stream.concat(Stream.make(encoder.encode(`data: [DONE]\n\n`))),
+        Stream.catchAll((error) => {
+          console.error("OpenRouter streaming error:", error)
+          return Stream.make(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
         })
       )
+
+      // Convert to ReadableStream
+      return yield* Stream.toReadableStreamEffect(sseStream)
+    }).pipe(Effect.provide(layers))
+
+    return HttpServerResponse.raw(
+      new Response(readableStream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        }
+      })
     )
   }).pipe(
     Effect.catchAll((error: any) => {
