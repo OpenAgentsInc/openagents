@@ -35,6 +35,7 @@ import {
   addMessageRoute 
 } from './routes/api/conversations'
 import { renderMarkdownRoute } from './routes/api/markdown'
+import { testRoute } from './routes/api/test'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -114,6 +115,9 @@ app.post('/api/conversations/:id/messages', addMessageRoute)
 
 // Markdown rendering API
 app.post('/api/markdown', renderMarkdownRoute)
+
+// Test route
+app.get('/api/test', testRoute)
 
 // Mount Nostr relay
 // TODO: Re-enable when WebSocket support is implemented in Effect
