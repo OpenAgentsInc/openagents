@@ -1,7 +1,4 @@
-import { BunHttpPlatform } from "@effect/platform-bun"
-import * as HttpClient from "@effect/platform/HttpClient"
-import * as Ai from "@openagentsinc/ai"
-import { Config, Effect, Layer, Stream, Redacted } from "effect"
+import { Effect } from "effect"
 
 export const cloudflareApi = (app: any) => {
   const prefix = "/api/cloudflare"
@@ -11,7 +8,7 @@ export const cloudflareApi = (app: any) => {
       // Check environment variables
       const apiKey = process.env.CLOUDFLARE_API_KEY
       const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
-      
+
       // If we have both, return available
       if (apiKey && accountId) {
         return Response.json({
@@ -19,7 +16,7 @@ export const cloudflareApi = (app: any) => {
           provider: "cloudflare"
         })
       }
-      
+
       return Response.json({
         available: false,
         provider: "cloudflare"
@@ -39,33 +36,33 @@ export const cloudflareApi = (app: any) => {
           return yield* request.text
         })
       )
-      
+
       const body = JSON.parse(bodyText)
       const { messages, model } = body
 
       // Get credentials
       const apiKey = process.env.CLOUDFLARE_API_KEY
       const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
-      
+
       if (!apiKey || !accountId) {
         return Response.json({ error: "Cloudflare not configured" }, { status: 500 })
       }
 
       // For now, use direct API call with streaming response
       const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`
-      
+
       const response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           messages,
           stream: true
         })
       })
-      
+
       if (!response.ok) {
         const error = await response.text()
         console.error("Cloudflare API error:", error)
@@ -76,13 +73,13 @@ export const cloudflareApi = (app: any) => {
       const transformStream = new TransformStream({
         async transform(chunk, controller) {
           const text = new TextDecoder().decode(chunk)
-          const lines = text.split('\n').filter(line => line.trim())
-          
+          const lines = text.split("\n").filter((line) => line.trim())
+
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
+            if (line.startsWith("data: ")) {
               const data = line.slice(6)
-              if (data === '[DONE]') {
-                controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
+              if (data === "[DONE]") {
+                controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
               } else {
                 try {
                   const parsed = JSON.parse(data)

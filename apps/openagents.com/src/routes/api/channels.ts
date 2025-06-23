@@ -95,7 +95,12 @@ export const channelsApi = (app: any) => {
             return yield* context.request.text
           })
         )
-        const body = JSON.parse(bodyText) as { channelId: string; content: string; replyTo?: string; privateKey?: string }
+        const body = JSON.parse(bodyText) as {
+          channelId: string
+          content: string
+          replyTo?: string
+          privateKey?: string
+        }
         const program = Effect.gen(function*() {
           const crypto = yield* Nostr.CryptoService.CryptoService
           const nip28 = yield* Nostr.Nip28Service.Nip28Service
@@ -197,7 +202,7 @@ export const channelsApi = (app: any) => {
 
         // Get channel from database
         const channels = yield* database.getChannels()
-        const channel = channels.find((c) => c.id === params.id)
+        const channel = channels.find((c) => c.id === id)
 
         if (!channel) {
           return { error: "Channel not found" }
@@ -206,7 +211,7 @@ export const channelsApi = (app: any) => {
         // Get recent messages
         const messages = yield* database.queryEvents([{
           kinds: [42],
-          "#e": [params.id as Nostr.Schema.EventId],
+          "#e": [id as Nostr.Schema.EventId],
           limit: 100
         }])
 

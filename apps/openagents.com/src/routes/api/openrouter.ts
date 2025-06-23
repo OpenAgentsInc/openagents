@@ -14,7 +14,7 @@ export const openrouterApi = (app: any) => {
       )
       const body = JSON.parse(bodyText)
       const { messages, model } = body
-      
+
       // Get header from Effect HttpServerRequest
       const apiKey = await Effect.runPromise(
         Effect.gen(function*() {
