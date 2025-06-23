@@ -1,30 +1,6 @@
 import { css, document, html } from "@openagentsinc/psionic"
+import { chatClientScript, chatStyles as sharedChatStyles, renderThreadItem } from "../lib/chat-utils"
 import { baseStyles } from "../styles"
-
-// Mock data for demo - using v1 structure
-const mockThreads = [
-  {
-    id: "1",
-    title: "Bitcoin Lightning Integration",
-    preview: "How can I integrate Lightning payments into my agent?",
-    timestamp: "2 hours ago",
-    active: true
-  },
-  {
-    id: "2",
-    title: "Nostr Protocol Questions",
-    preview: "I need help understanding NIP-06 key derivation...",
-    timestamp: "Yesterday",
-    active: false
-  },
-  {
-    id: "3",
-    title: "Agent Development",
-    preview: "What's the best way to structure an autonomous agent?",
-    timestamp: "3 days ago",
-    active: false
-  }
-]
 
 // V1 exact styling
 const v1Styles = css`
@@ -69,169 +45,19 @@ const v1Styles = css`
     transition: margin-left 0.3s ease-in-out;
   }
 
-  /* Thread list - NO HOVER BACKGROUNDS */
-
-  /* Messages */
-  .message {
-    display: flex;
-    gap: 12px;
-    padding-left: 50px;
-    margin-bottom: 24px;
-  }
-
-  .message-avatar {
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--darkgray);
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .message-avatar.user {
-    padding: 2px;
-  }
-
-  .message-avatar.assistant {
-    padding: 5px;
-  }
-
-  .message-avatar svg {
-    width: 100%;
-    height: 100%;
-    color: var(--white);
-  }
-
-  .message-content {
-    flex: 1;
-    max-width: 936px;
-  }
-
-  .message-author {
-    font-weight: 600;
-    color: var(--white);
-    margin-bottom: 4px;
-  }
-
-  .message-body {
-    color: var(--text);
-    line-height: 1.6;
-    white-space: pre-wrap;
-  }
-
-  .message-body code {
-    background-color: var(--offblack);
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-size: 14px;
-  }
-
-  .message-body pre {
-    background-color: var(--offblack);
-    border: 1px solid var(--darkgray);
-    border-radius: 6px;
-    padding: 16px;
-    margin: 16px 0;
-    overflow-x: auto;
-  }
-
-  .message-body pre code {
-    background: none;
-    padding: 0;
-  }
-
-  /* Chat input - matching v1 exactly */
-  .chat-input {
-    background-color: transparent;
-    border: 2px solid var(--input-border);
-    border-radius: 6px;
-    padding: 10px 40px 10px 16px;
-    color: var(--white);
-    font-size: 16px;
-    min-height: 48px;
-    resize: none;
-    font-family: inherit;
-    width: 100%;
-    transition: all 300ms ease-in-out;
-  }
-
-  .chat-input:focus {
-    outline: none !important;
-    border-color: var(--white) !important;
-    box-shadow: none !important;
-    ring: 0 !important;
-  }
-
-  .chat-input::placeholder {
-    color: var(--placeholder);
-  }
-
-  .send-button {
-    position: absolute;
-    top: 10px;
-    right: 6px;
-    width: 28px;
-    height: 28px;
-    background-color: var(--white);
-    color: var(--black);
-    border: none;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    padding: 0;
-    margin: 0;
-  }
-
-  .send-button:hover:not(:disabled) {
-    background-color: rgba(255, 255, 255, 0.9);
-  }
-
-  .send-button:disabled {
-    background-color: var(--gray);
-    cursor: not-allowed;
-  }
-
-  .send-button svg {
-    width: 24px;
-    height: 24px;
-  }
-
-  /* Messages remaining */
-  .messages-remaining {
-    text-align: center;
-    color: var(--gray);
-    font-size: 12px;
-    margin: 3px 0 8px;
-  }
-
-  .messages-remaining span {
-    color: var(--white);
-  }
-
-  .messages-remaining a {
-    color: var(--white);
-    text-decoration: underline;
-    cursor: pointer;
-  }
-
   /* Model selector */
   .model-selector {
-    color: var(--gray);
-    font-size: 14px;
+    background-color: var(--offblack);
+    border: 1px solid var(--darkgray);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--lightgray);
   }
 
   /* Sidebar footer */
   .sidebar-footer {
-    border-top: 1px solid var(--offblack);
-    padding: 4px 4px;
-    color: var(--gray);
-    font-size: 14px;
-    margin-top: auto;
+    padding: 12px 0;
   }
 
   .sidebar-footer ol {
@@ -262,86 +88,83 @@ const v1Styles = css`
     color: var(--white);
   }
 
-  /* Dot flashing animation from v1 */
-  .dot-flashing {
-    position: relative;
-    width: 10px;
-    height: 10px;
-    border-radius: 5px;
-    background-color: var(--white);
-    animation: dot-flashing 1s infinite linear alternate;
-    animation-delay: 0.5s;
-    margin: 10px 20px;
+  /* Messages remaining */
+  .messages-remaining {
+    padding: 12px 16px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 12px;
+    color: var(--gray);
   }
 
-  .dot-flashing::before, .dot-flashing::after {
-    content: "";
-    display: inline-block;
-    position: absolute;
-    top: 0;
-  }
-
-  .dot-flashing::before {
-    left: -15px;
-    width: 10px;
-    height: 10px;
-    border-radius: 5px;
-    background-color: var(--white);
-    animation: dot-flashing 1s infinite alternate;
-    animation-delay: 0s;
-  }
-
-  .dot-flashing::after {
-    left: 15px;
-    width: 10px;
-    height: 10px;
-    border-radius: 5px;
-    background-color: var(--white);
-    animation: dot-flashing 1s infinite alternate;
-    animation-delay: 1s;
-  }
-
-  @keyframes dot-flashing {
-    0% {
-      background-color: var(--white);
-    }
-    50%, 100% {
-      background-color: rgba(255, 255, 255, 0.2);
-    }
-  }
-
-  @keyframes blink {
-    0%, 50% {
-      opacity: 1;
-    }
-    51%, 100% {
-      opacity: 0;
-    }
-  }
-
-  .typing-cursor {
+  .messages-remaining span {
+    font-weight: 500;
     color: var(--white);
-    font-weight: bold;
+    margin: 0 4px;
   }
+
+  .messages-remaining a {
+    margin-left: 4px;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .messages-remaining a:hover {
+    color: var(--white);
+  }
+
+  /* Send button */
+  .send-button {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    background: none;
+    border: none;
+    color: var(--gray);
+    cursor: pointer;
+    padding: 4px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+
+  .send-button:hover:not(:disabled) {
+    color: var(--white);
+    background-color: var(--offblack);
+  }
+
+  .send-button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .send-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  ${sharedChatStyles}
 `
 
-function renderThread(thread: typeof mockThreads[0]) {
-  return html`
-    <div class="relative z-[15]">
-      <div class="group relative rounded-lg active:opacity-90 px-3 ${thread.active ? "bg-[#262626]" : ""}">
-        <a href="/chat/${thread.id}" class="flex items-center gap-2 py-1">
-          <div class="relative grow overflow-hidden whitespace-nowrap text-white">
-            ${thread.title}
-          </div>
-        </a>
-      </div>
-    </div>
-  `
-}
-
 export async function home() {
+  // Import server-side only here to avoid bundling issues
+  const { getConversations } = await import("../lib/chat-client")
+
+  // Load all conversations for sidebar
+  let allConversations: Array<any> = []
+  try {
+    allConversations = await getConversations() as Array<any>
+  } catch (error) {
+    console.error("Failed to load conversations:", error)
+  }
+
   return document({
-    title: "OpenAgents",
+    title: "OpenAgents - Bitcoin-powered AI agents built with Effect",
     styles: baseStyles + v1Styles,
     body: html`
       <div style="display: flex; height: 100vh; overflow: hidden; background: black;">
@@ -363,9 +186,9 @@ export async function home() {
         <!-- Sidebar -->
         <div id="sidebar" class="sidebar sidebar-open" style="position: fixed; left: 0; top: 0; height: 100vh; background: black; overflow: hidden;">
           <div style="width: 260px; height: 100%; display: flex; flex-direction: column;">
-            <!-- New thread button area -->
+            <!-- New thread button area - v1 style -->
             <div style="height: 54px; display: flex; align-items: center; justify-content: flex-end; padding: 0 16px;">
-              <button style="background: none; border: none; color: white; cursor: pointer; padding: 6px;">
+              <button onclick="window.location.reload()" style="background: none; border: none; color: white; cursor: pointer; padding: 6px;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -376,13 +199,19 @@ export async function home() {
             <!-- Thread list -->
             <div style="flex: 1; overflow-y: auto;">
               <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 4px;">
-                <ol style="list-style: none; margin: 0; padding: 0;">
-                  ${mockThreads.map((thread) => `<li>${renderThread(thread)}</li>`).join("")}
+                <ol id="thread-list" style="list-style: none; margin: 0; padding: 0;">
+                  ${
+      allConversations.map((conv) =>
+        html`
+                    <li>${renderThreadItem(conv)}</li>
+                  `
+      ).join("")
+    }
                 </ol>
               </div>
             </div>
 
-            <!-- Sidebar footer -->
+            <!-- Footer items (v1) -->
             <div class="sidebar-footer">
               <ol>
                 <li>
@@ -395,6 +224,34 @@ export async function home() {
                     </div>
                   </div>
                 </li>
+                <li>
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="/agents" class="flex items-center gap-2 py-1 hover:text-white">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">My Agents</div>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="/settings" class="flex items-center gap-2 py-1 hover:text-white">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Settings</div>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="/import" class="flex items-center gap-2 py-1 hover:text-white">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Import</div>
+                      </a>
+                    </div>
+                  </div>
+                </li>
+                <li style="border-bottom: 1px solid #2B2B2D;margin-bottom: 8px;"></li>
                 <li>
                   <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">
@@ -476,9 +333,8 @@ export async function home() {
                   autocomplete="off"
                   autofocus
                   style="outline: none;"
-                  oninput="this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 200) + 'px'; document.getElementById('sendBtn').disabled = !this.value.trim();"
                 ></textarea>
-                <button id="sendBtn" class="send-button" disabled>
+                <button id="submit-button" class="send-button submit-button" disabled>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="22" y1="2" x2="11" y2="13"></line>
                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -495,236 +351,11 @@ export async function home() {
       </div>
 
       <script>
-        // Chat state
-        let chatMessages = [
-          { role: 'system', content: 'You are a helpful assistant.' }
-        ]
-        let isStreaming = false
-        const currentModel = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
-        let cloudflareAvailable = false
+        // No conversation ID on home page
+        window.CONVERSATION_ID = null;
         
-        // Check if Cloudflare is available
-        async function checkCloudflareStatus() {
-          try {
-            const response = await fetch('/api/cloudflare/status')
-            const data = await response.json()
-            cloudflareAvailable = data.available
-            
-            if (!cloudflareAvailable) {
-              const container = document.getElementById('messages-container')
-              const messagesWrapper = container.querySelector('div')
-              messagesWrapper.innerHTML = '<div style="text-align: center; color: var(--gray); padding: 2rem;">Cloudflare Workers AI is not configured. Please set CLOUDFLARE_API_KEY and CLOUDFLARE_ACCOUNT_ID environment variables.</div>'
-              
-              const input = document.getElementById('chat-input')
-              const sendBtn = document.getElementById('sendBtn')
-              input.disabled = true
-              sendBtn.disabled = true
-              input.placeholder = 'Cloudflare not configured...'
-            }
-          } catch (error) {
-            console.error('Failed to check Cloudflare status:', error)
-          }
-        }
-
-        // Create message element
-        function createMessageElement(author, type) {
-          const messageDiv = document.createElement('div')
-          messageDiv.className = 'message'
-          
-          const avatarDiv = document.createElement('div')
-          avatarDiv.className = \`message-avatar \${type}\`
-          
-          if (type === 'user') {
-            avatarDiv.innerHTML = \`
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
-            \`
-          } else {
-            avatarDiv.innerHTML = \`
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-              </svg>
-            \`
-          }
-          
-          const contentDiv = document.createElement('div')
-          contentDiv.className = 'message-content'
-          
-          const authorDiv = document.createElement('div')
-          authorDiv.className = 'message-author'
-          authorDiv.textContent = author
-          
-          const bodyDiv = document.createElement('div')
-          bodyDiv.className = 'message-body'
-          
-          contentDiv.appendChild(authorDiv)
-          contentDiv.appendChild(bodyDiv)
-          
-          messageDiv.appendChild(avatarDiv)
-          messageDiv.appendChild(contentDiv)
-          
-          return { messageDiv, bodyDiv }
-        }
-
-        // Add message to UI
-        function addMessage(author, content, type) {
-          const container = document.getElementById('messages-container')
-          const messagesWrapper = container.querySelector('div')
-          
-          const { messageDiv, bodyDiv } = createMessageElement(author, type)
-          bodyDiv.textContent = content
-          
-          messagesWrapper.appendChild(messageDiv)
-          container.scrollTop = container.scrollHeight
-          
-          return bodyDiv
-        }
-
-        // Stream message content
-        function updateStreamingMessage(bodyDiv, content) {
-          bodyDiv.textContent = content
-          
-          // Add a typing cursor effect during streaming
-          if (isStreaming) {
-            const cursor = document.createElement('span')
-            cursor.className = 'typing-cursor'
-            cursor.textContent = '▊'
-            cursor.style.animation = 'blink 1s infinite'
-            bodyDiv.appendChild(cursor)
-          }
-          
-          const container = document.getElementById('messages-container')
-          container.scrollTop = container.scrollHeight
-        }
-
-        // Send message to Cloudflare
-        async function sendMessage() {
-          const input = document.getElementById('chat-input')
-          const sendBtn = document.getElementById('sendBtn')
-          const message = input.value.trim()
-          
-          if (!message || isStreaming || !cloudflareAvailable) return
-          
-          // Add user message
-          chatMessages.push({ role: 'user', content: message })
-          addMessage('You', message, 'user')
-          
-          // Clear input and keep it focused
-          input.value = ''
-          input.style.height = 'auto'
-          input.focus()
-          
-          // Disable send button but keep input enabled so user can type next message
-          sendBtn.disabled = true
-          isStreaming = true
-          
-          // Add assistant message placeholder
-          const assistantBodyDiv = addMessage('Assistant', '', 'assistant')
-          assistantBodyDiv.innerHTML = '<div class="dot-flashing"></div>'
-          
-          let assistantContent = ''
-          
-          try {
-            const response = await fetch('/api/cloudflare/chat', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                model: currentModel,
-                messages: chatMessages
-              })
-            })
-            
-            if (!response.ok) {
-              throw new Error(\`HTTP error! status: \${response.status}\`)
-            }
-            
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder()
-            
-            // Clear loading indicator
-            assistantBodyDiv.innerHTML = ''
-            
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              
-              const chunk = decoder.decode(value)
-              const lines = chunk.split('\\n')
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const data = line.slice(6)
-                  if (data === '[DONE]') {
-                    break
-                  }
-                  
-                  try {
-                    const parsed = JSON.parse(data)
-                    if (parsed.error) {
-                      throw new Error(parsed.error)
-                    }
-                    
-                    if (parsed.choices?.[0]?.delta?.content) {
-                      assistantContent += parsed.choices[0].delta.content
-                      updateStreamingMessage(assistantBodyDiv, assistantContent)
-                    }
-                  } catch (e) {
-                    // Silently skip malformed chunks
-                  }
-                }
-              }
-            }
-            
-            // Add to chat history
-            chatMessages.push({ role: 'assistant', content: assistantContent })
-            
-          } catch (error) {
-            console.error('Chat error:', error)
-            assistantBodyDiv.textContent = \`Error: \${error.message}\`
-            assistantBodyDiv.style.color = '#ef4444'
-          } finally {
-            isStreaming = false
-            
-            // Remove typing cursor
-            const cursor = assistantBodyDiv?.querySelector('.typing-cursor')
-            if (cursor) {
-              cursor.remove()
-            }
-            
-            sendBtn.disabled = false
-            
-            // Ensure input stays focused
-            input.focus()
-            input.setSelectionRange(input.value.length, input.value.length)
-          }
-        }
-
-        // Initialize event handlers
-        document.addEventListener('DOMContentLoaded', () => {
-          // Check if Cloudflare is available
-          checkCloudflareStatus()
-          
-          const input = document.getElementById('chat-input')
-          const sendBtn = document.getElementById('sendBtn')
-          
-          // Send button click
-          sendBtn.addEventListener('click', sendMessage)
-          
-          // Enter key to send
-          input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              sendMessage()
-            }
-          })
-          
-          // Focus input on load (fallback for autofocus)
-          setTimeout(() => input.focus(), 100)
-        })
+        // Use the shared chat client script
+        ${chatClientScript}
       </script>
     `
   })
