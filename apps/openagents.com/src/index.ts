@@ -16,6 +16,7 @@ import { blogIndex, blogPost } from './routes/blog'
 // import { chat } from './routes/chat'
 import { admin } from './routes/admin'
 import { channelsRoute, channelViewRoute, channelCreateRoute } from './routes/channels'
+import { importRoute } from './routes/import'
 import gfn from './routes/gfn'
 import slides from './routes/slides'
 import { ollamaApi } from './routes/api/ollama'
@@ -65,6 +66,7 @@ app.route('/channels/create', channelCreateRoute)
 app.route('/channels/:id', channelViewRoute)
 app.route('/gfn', gfn)
 app.route('/slides', slides)
+app.route('/import', importRoute)
 
 // Mount API routes
 app.elysia.use(ollamaApi)
