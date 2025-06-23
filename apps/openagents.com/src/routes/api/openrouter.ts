@@ -1,13 +1,27 @@
 import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
 import { Effect, Layer, Redacted, Stream } from "effect"
-import { Elysia } from "elysia"
 
-export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
-  .post("/chat", async ({ body, headers }: { body: any; headers: Record<string, string | undefined> }) => {
+export const openrouterApi = (app: any) => {
+  const prefix = "/api/openrouter"
+
+  app.post(`${prefix}/chat`, async (context: any) => {
     try {
+      const bodyText = await Effect.runPromise(
+        Effect.gen(function*() {
+          return yield* context.request.text
+        }) as Effect.Effect<string, never, never>
+      )
+      const body = JSON.parse(bodyText)
       const { messages, model } = body
-      const apiKey = headers["x-api-key"]
+
+      // Get header from Effect HttpServerRequest
+      const apiKey = await Effect.runPromise(
+        Effect.gen(function*() {
+          const headers = yield* context.request.headers
+          return headers["x-api-key"]
+        }) as Effect.Effect<string, never, never>
+      )
 
       if (!apiKey) {
         return Response.json({ error: "API key required" }, { status: 401 })
@@ -115,3 +129,4 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
       return Response.json({ error: error.message }, { status: 500 })
     }
   })
+}

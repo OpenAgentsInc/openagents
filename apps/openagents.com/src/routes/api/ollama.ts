@@ -1,9 +1,10 @@
 import * as Ai from "@openagentsinc/ai"
 import { Effect } from "effect"
-import { Elysia } from "elysia"
 
-export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
-  .get("/status", async () => {
+export const ollamaApi = (app: any) => {
+  const prefix = "/api/ollama"
+
+  app.get(`${prefix}/status`, async () => {
     try {
       // Use the Ollama provider's checkStatus function
       const status = await Effect.runPromise(Ai.Ollama.checkStatus())
@@ -12,8 +13,15 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
       return Response.json({ online: false, models: [], modelCount: 0 }, { status: 503 })
     }
   })
-  .post("/chat", async ({ body }: { body: any }) => {
+
+  app.post(`${prefix}/chat`, async (context: any) => {
     try {
+      const bodyText = await Effect.runPromise(
+        Effect.gen(function*() {
+          return yield* context.request.text
+        }) as Effect.Effect<string, never, never>
+      )
+      const body = JSON.parse(bodyText)
       const { messages, model, options } = body
 
       // Create a TransformStream for streaming response
@@ -93,3 +101,4 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
       return Response.json({ error: error.message }, { status: 500 })
     }
   })
+}
