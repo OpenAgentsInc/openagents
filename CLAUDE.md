@@ -41,6 +41,11 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - Required if: You need quick lookup for common patterns
 - Why: Shows correct patterns vs common mistakes
 
+### Language Models & Model Configuration
+**MANDATORY READING**: `/docs/guides/language-model-integration.md`
+- Required if: Adding new language models, configuring model lists, working with model selection UI
+- Why: Models require specific configuration in multiple places and must maintain UI compatibility
+
 **⚠️ FAILURE TO READ THESE GUIDES WILL RESULT IN:**
 - "Service not found" errors that are difficult to debug
 - Streaming responses that hang forever
