@@ -224,13 +224,33 @@ export const chatClientScript = `
     messagesDiv.insertAdjacentHTML('beforeend', assistantMessageHtml);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     
+    // Build conversation history
+    const messages = [];
+    
+    // Add existing messages from the DOM
+    const existingMessages = messagesDiv.querySelectorAll('.message');
+    existingMessages.forEach(msg => {
+      const isUser = msg.querySelector('.message-avatar.user');
+      const content = msg.querySelector('.message-body')?.textContent?.trim();
+      if (content) {
+        messages.push({
+          role: isUser ? 'user' : 'assistant',
+          content: content
+        });
+      }
+    });
+    
+    // Add the new user message
+    messages.push({ role: 'user', content: message });
+    
     // Stream response from API
     try {
       const response = await fetch('/api/cloudflare/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: message }]
+          messages: messages,
+          model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
         })
       });
       
