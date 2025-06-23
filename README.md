@@ -118,6 +118,7 @@ Before working on this codebase, you **MUST** read the relevant guides:
 - **[Streaming Architecture Guide](docs/guides/streaming-architecture.md)** - Critical SSE streaming patterns
 - **[AI Provider Integration Guide](docs/guides/ai-provider-integration.md)** - Adding and configuring AI providers
 - **[Language Model Integration Guide](docs/guides/language-model-integration.md)** - Model configuration and UI
+- **[Chat Layout Architecture Guide](docs/guides/chat-layout-architecture.md)** - Chat interface structure and styling
 - **[Effect Quick Reference](docs/guides/effect-quick-reference.md)** - Common patterns and anti-patterns
 
 ### Additional Documentation

@@ -46,6 +46,11 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - Required if: Adding new language models, configuring model lists, working with model selection UI
 - Why: Models require specific configuration in multiple places and must maintain UI compatibility
 
+### Chat Interface & Layout Architecture
+**MANDATORY READING**: `/docs/guides/chat-layout-architecture.md`
+- Required if: Modifying chat UI, refactoring layout, working on sidebar/header, styling changes
+- Why: Complex layout with fixed positioning, transitions, and state management requires understanding
+
 **⚠️ FAILURE TO READ THESE GUIDES WILL RESULT IN:**
 - "Service not found" errors that are difficult to debug
 - Streaming responses that hang forever
