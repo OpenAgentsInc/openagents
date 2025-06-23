@@ -360,11 +360,27 @@ export const chatClientScript = `
     return div.innerHTML;
   }
 
-  // Render markdown (placeholder - needs implementation)
+  // Render markdown with syntax highlighting via API
   async function renderMarkdown(text) {
-    // For now, just escape HTML
-    // TODO: Integrate markdown rendering
-    return escapeHtml(text);
+    try {
+      const response = await fetch('/api/markdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text })
+      });
+      
+      if (!response.ok) {
+        console.error('Markdown rendering failed');
+        return escapeHtml(text);
+      }
+      
+      const data = await response.json();
+      return data.html;
+    } catch (error) {
+      console.error('Failed to render markdown:', error);
+      // Fallback to escaped HTML
+      return escapeHtml(text);
+    }
   }
 
   // Setup event listeners

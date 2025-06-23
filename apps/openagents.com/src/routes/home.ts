@@ -354,17 +354,6 @@ export async function home() {
         // No conversation ID on home page
         window.CONVERSATION_ID = null;
         
-        // Simple markdown rendering for now
-        window.renderMarkdown = async function(text) {
-          // Basic HTML escaping
-          const div = document.createElement('div');
-          div.textContent = text;
-          const escaped = div.innerHTML;
-          
-          // Preserve line breaks
-          return escaped.replace(/\\n/g, '<br>');
-        };
-        
         // Use the shared chat client script
         ${chatClientScript}
       </script>

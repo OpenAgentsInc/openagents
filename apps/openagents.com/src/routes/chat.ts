@@ -247,17 +247,6 @@ export async function chat(ctx: { params: { id: string } }) {
         // Set conversation ID for the client script
         window.CONVERSATION_ID = "${conversationId}";
         
-        // Simple markdown rendering for now
-        window.renderMarkdown = async function(text) {
-          // Basic HTML escaping
-          const div = document.createElement('div');
-          div.textContent = text;
-          const escaped = div.innerHTML;
-          
-          // Preserve line breaks
-          return escaped.replace(/\\n/g, '<br>');
-        };
-        
         ${chatClientScript}
       </script>
     `
