@@ -1,4 +1,3 @@
-import type { HttpServerRequest } from "@effect/platform"
 import { FetchHttpClient, Headers, HttpServerResponse } from "@effect/platform"
 import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
@@ -10,7 +9,7 @@ import { Effect, Layer, Option, Redacted, Stream } from "effect"
  */
 export function openrouterStatus(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     // Get header from Effect HttpServerRequest
     const headers = ctx.request.headers
@@ -52,7 +51,7 @@ export function openrouterStatus(
  */
 export function openrouterChat(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText)

@@ -1,4 +1,3 @@
-import type { HttpServerRequest } from "@effect/platform"
 import { HttpServerResponse } from "@effect/platform"
 import { renderMarkdown } from "@openagentsinc/psionic"
 import type { RouteContext } from "@openagentsinc/psionic"
@@ -9,7 +8,7 @@ import { Effect } from "effect"
  */
 export function renderMarkdownRoute(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     // Parse the request body from Effect HttpServerRequest
     const bodyText = yield* ctx.request.text

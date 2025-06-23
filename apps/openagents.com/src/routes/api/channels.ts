@@ -1,4 +1,3 @@
-import type { HttpServerRequest } from "@effect/platform"
 import { HttpServerResponse } from "@effect/platform"
 import * as Nostr from "@openagentsinc/nostr"
 import type { RouteContext } from "@openagentsinc/psionic"
@@ -10,7 +9,7 @@ import { Effect, Layer } from "effect"
  */
 export function createChannel(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText) as { name: string; about?: string; picture?: string }
@@ -84,7 +83,7 @@ export function createChannel(
  */
 export function sendChannelMessage(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText) as {
@@ -158,7 +157,7 @@ export function sendChannelMessage(
 /**
  * GET /api/channels/list - List all channels
  */
-export function listChannels(_ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+export function listChannels(_ctx: RouteContext) {
   return Effect.gen(function*() {
     const program = Effect.gen(function*() {
       const database = yield* RelayDatabase
@@ -189,7 +188,7 @@ export function listChannels(_ctx: RouteContext): Effect.Effect<HttpServerRespon
 /**
  * GET /api/channels/:id - Get channel details and recent messages
  */
-export function getChannel(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+export function getChannel(ctx: RouteContext) {
   return Effect.gen(function*() {
     const { id } = ctx.params
     const program = Effect.gen(function*() {

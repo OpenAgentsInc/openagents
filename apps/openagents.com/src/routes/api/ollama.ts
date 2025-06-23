@@ -1,4 +1,3 @@
-import type { HttpServerRequest } from "@effect/platform"
 import { HttpServerResponse } from "@effect/platform"
 import * as Ai from "@openagentsinc/ai"
 import type { RouteContext } from "@openagentsinc/psionic"
@@ -7,7 +6,7 @@ import { Effect } from "effect"
 /**
  * GET /api/ollama/status - Check Ollama status
  */
-export function ollamaStatus(_ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+export function ollamaStatus(_ctx: RouteContext) {
   return Effect.gen(function*() {
     // Use the Ollama provider's checkStatus function
     const status = yield* Ai.Ollama.checkStatus()
@@ -22,7 +21,7 @@ export function ollamaStatus(_ctx: RouteContext): Effect.Effect<HttpServerRespon
  */
 export function ollamaChat(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText)

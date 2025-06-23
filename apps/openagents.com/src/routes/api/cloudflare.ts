@@ -1,4 +1,3 @@
-import type { HttpServerRequest } from "@effect/platform"
 import { FetchHttpClient, HttpServerResponse } from "@effect/platform"
 import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
@@ -10,7 +9,7 @@ import { Effect, Layer, Redacted, Stream } from "effect"
  */
 export function cloudflareStatus(
   _ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+) {
   // Check environment variables
   const apiKey = process.env.CLOUDFLARE_API_KEY
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
@@ -34,7 +33,7 @@ export function cloudflareStatus(
  */
 export function cloudflareChat(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
 

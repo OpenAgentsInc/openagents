@@ -1,4 +1,3 @@
-import type { HttpServerRequest } from "@effect/platform"
 import { HttpServerResponse } from "@effect/platform"
 import type { RouteContext } from "@openagentsinc/psionic"
 import { Effect } from "effect"
@@ -9,7 +8,7 @@ import { addMessage, createConversation, getConversations, updateConversationTit
  */
 export function listConversations(
   _ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+) {
   return Effect.gen(function*() {
     try {
       const conversations = yield* Effect.promise(() => getConversations())
@@ -29,7 +28,7 @@ export function listConversations(
  */
 export function createConversationRoute(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     console.log("🔍 CONVERSATIONS API: createConversationRoute called")
 
@@ -59,7 +58,7 @@ export function createConversationRoute(
  */
 export function updateConversation(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     try {
       const bodyText = yield* ctx.request.text
@@ -91,7 +90,7 @@ export function updateConversation(
  */
 export function addMessageRoute(
   ctx: RouteContext
-): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+) {
   return Effect.gen(function*() {
     console.log("🔍 CONVERSATIONS API: addMessageRoute called")
     try {
