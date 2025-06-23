@@ -442,6 +442,9 @@ export async function home() {
   return document({
     title: "OpenAgents",
     styles: baseStyles + v1Styles,
+    head: html`
+      <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
+    `,
     body: html`
       <div style="display: flex; height: 100vh; overflow: hidden; background: black;">
         <!-- Header -->
@@ -515,9 +518,9 @@ export async function home() {
                 <li>
                   <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">
-                      <a href="https://stacker.news/~openagents" target="_blank" class="hover:text-white flex flex-row items-center gap-2 py-1">
-                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Community</div>
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <a href="https://stacker.news/~openagents" target="_blank" class="hover:text-white flex flex-row items-center gap-2 py-1" style="display: flex; justify-content: space-between;">
+                        <div class="select-none cursor-pointer relative overflow-hidden whitespace-nowrap">Community</div>
+                        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                           <polyline points="15 3 21 3 21 9"></polyline>
                           <line x1="10" y1="14" x2="21" y2="3"></line>
@@ -529,9 +532,9 @@ export async function home() {
                 <li>
                   <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">
-                      <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" class="hover:text-white flex flex-row items-center gap-2 py-1">
-                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Source code</div>
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" class="hover:text-white flex flex-row items-center gap-2 py-1" style="display: flex; justify-content: space-between;">
+                        <div class="select-none cursor-pointer relative overflow-hidden whitespace-nowrap">Source code</div>
+                        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                           <polyline points="15 3 21 3 21 9"></polyline>
                           <line x1="10" y1="14" x2="21" y2="3"></line>
