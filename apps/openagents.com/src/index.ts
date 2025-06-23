@@ -13,7 +13,11 @@ import { agents } from './routes/agents'
 import { docs, docPage } from './routes/docs'
 import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
-// import { chat } from './routes/chat'
+import { chat } from './routes/chat'
+import { store } from './routes/store'
+import { create } from './routes/create'
+import { settings } from './routes/settings'
+import { agentProfile } from './routes/agent-profile'
 import { admin } from './routes/admin'
 import { channelsRoute, channelViewRoute, channelCreateRoute } from './routes/channels'
 import { importRoute } from './routes/import'
@@ -54,12 +58,16 @@ app.components()
 // Define routes
 app.route('/', home)
 app.route('/agents', agents)
+app.route('/agents/:id', agentProfile)
+app.route('/store', store)
+app.route('/create', create)
+app.route('/settings', settings)
+app.route('/chat/:id', chat)
 app.route('/docs', docs)
 app.route('/docs/:slug', docPage)
 app.route('/about', about)
 app.route('/blog', blogIndex)
 app.route('/blog/:slug', blogPost)
-// app.route('/chat', chat)
 app.route('/admin', admin)
 app.route('/channels', channelsRoute)
 app.route('/channels/create', channelCreateRoute)
