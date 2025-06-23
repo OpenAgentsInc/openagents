@@ -297,7 +297,9 @@ export class PsionicApp {
       // Static file handler
       const staticHandler = Effect.gen(function*() {
         const request = yield* HttpServerRequest.HttpServerRequest
-        const url = new URL(request.url)
+        const url = request.url.startsWith("http")
+          ? new URL(request.url)
+          : new URL(request.url, `http://localhost`)
         let filePath = url.pathname
 
         // Remove the URL path prefix
