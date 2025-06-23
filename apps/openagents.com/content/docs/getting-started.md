@@ -19,7 +19,7 @@ OpenAgents creates digital agents with economic incentives. Agents have:
 - **Bitcoin Economics**: Agents have balance and metabolic costs
 - **Lifecycle Management**: Agents transition through economic states (active, hibernating, dying)
 - **Nostr Identity**: Deterministic key derivation using NIP-06
-- **Effect Architecture**: Built on Effect.js for type-safe programming
+- **Effect Architecture**: Built on Effect for type-safe programming
 
 ## Prerequisites
 

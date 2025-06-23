@@ -25,7 +25,7 @@ Your relay handles all the stateful WebSocket connections and subscription manag
    - Supports PlanetScale's serverless driver for edge deployments
    - Handles connection pooling properly with their proxy
 
-2. **Type safety with Effect.js**
+2. **Type safety with Effect**
    ```typescript
    // Drizzle schema with full type inference
    export const events = mysqlTable('events', {
@@ -62,7 +62,7 @@ Your relay handles all the stateful WebSocket connections and subscription manag
        .limit(filters[0]?.limit || 100)
    ```
 
-### Integration with Effect.js
+### Integration with Effect
 
 Since you're using Effect, here's how to properly integrate:
 

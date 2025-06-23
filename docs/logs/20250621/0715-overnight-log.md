@@ -80,7 +80,7 @@ Fully implemented all three requested issues with ZERO mock data, ZERO placehold
 - **ACTUAL ENCRYPTION**: Real crypto operations, no placeholders
 
 ### Technical Architecture:
-- All NIPs use Effect.js Context.Tag service pattern
+- All NIPs use Effect Context.Tag service pattern
 - Proper Layer composition for dependency injection
 - Branded types throughout (PublicKey, PrivateKey, etc.)
 - Comprehensive error handling with tagged errors

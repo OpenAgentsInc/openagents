@@ -27619,7 +27619,7 @@ var failureOrCause2 = failureOrCause;
 var IllegalArgumentException2 = IllegalArgumentException;
 var NoSuchElementException2 = NoSuchElementException;
 var pretty2 = pretty;
-// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Effect.js
+// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Effect
 var exports_Effect = {};
 __export(exports_Effect, {
   zipWith: () => zipWith6,
@@ -29822,7 +29822,7 @@ var withRequestCache = /* @__PURE__ */ dual(2, (self2, cache) => fiberRefLocally
 var isRequest2 = isRequest;
 var Class4 = Class2;
 
-// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Effect.js
+// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Effect
 var EffectTypeId3 = EffectTypeId2;
 var isEffect2 = isEffect;
 var cachedWithTTL = cached2;

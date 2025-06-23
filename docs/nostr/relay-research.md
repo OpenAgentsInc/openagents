@@ -105,7 +105,7 @@ For NIP-90 implementations, **relay selection becomes critical**:
 
 ### Infrastructure Recommendations
 
-For **Effect.js-based RelayService**, implement:
+For **Effect-based RelayService**, implement:
 ```typescript
 interface RelayStrategy {
   pools: {

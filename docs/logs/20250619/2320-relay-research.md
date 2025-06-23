@@ -5,7 +5,7 @@
 Research how to optimally connect autonomous agents to Nostr relays for real-time coordination without facing restrictions like proof-of-work requirements or authentication barriers.
 
 ### Context
-We have complete Effect.js-based `RelayService` infrastructure but need to understand:
+We have complete Effect-based `RelayService` infrastructure but need to understand:
 - Which relays will accept our NIP-28 (kinds 40-44) and NIP-90 (kinds 5000-7000) events
 - How other libraries handle relay selection and failures
 - Optimal strategies for agent deployment vs human clients

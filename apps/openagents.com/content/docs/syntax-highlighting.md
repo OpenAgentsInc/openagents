@@ -1,10 +1,10 @@
 ---
-title: "Modern syntax highlighting for TypeScript monorepos with Effect.js and Bun"
+title: "Modern syntax highlighting for TypeScript monorepos with Effect and Bun"
 date: "2025-06-18"
 summary: "Shiki emerges as the clear winner for your tech stack, offering VS Code-quality highlighting with excellent server-side rendering capabilities"
 ---
 
-# Modern syntax highlighting for TypeScript monorepos with Effect.js and Bun
+# Modern syntax highlighting for TypeScript monorepos with Effect and Bun
 
 **Shiki emerges as the clear winner for your tech stack**, offering VS Code-quality highlighting with excellent server-side rendering capabilities and zero client-side JavaScript requirements. This aligns perfectly with Psionic's HTML-over-the-wire philosophy while supporting your terminal-inspired WebTUI aesthetic.
 
@@ -12,7 +12,7 @@ summary: "Shiki emerges as the clear winner for your tech stack, offering VS Cod
 
 The syntax highlighting ecosystem has evolved significantly, with a clear shift toward server-side rendering and performance optimization. **Shiki v1.0**, released in February 2024, represents a major leap forward with its TextMate grammar engine (the same as VS Code) providing unmatched accuracy across 200+ languages. For your Bun-powered Elysia server, this translates to **4x faster startup times** compared to traditional Node.js implementations, with native ESM support eliminating transpilation overhead.
 
-Your project's unique combination of Effect.js functional patterns, Bun runtime efficiency, and Psionic's server-centric approach creates specific requirements that traditional client-side highlighters struggle to meet. The modern solution landscape now offers three primary approaches: pure server-side rendering for maximum performance, progressive enhancement for interactive features, and hybrid strategies that leverage both.
+Your project's unique combination of Effect functional patterns, Bun runtime efficiency, and Psionic's server-centric approach creates specific requirements that traditional client-side highlighters struggle to meet. The modern solution landscape now offers three primary approaches: pure server-side rendering for maximum performance, progressive enhancement for interactive features, and hybrid strategies that leverage both.
 
 ## Server-side supremacy with Bun and Elysia
 
@@ -73,7 +73,7 @@ For your specific stack, I recommend a **hybrid approach centered on Shiki**:
 
 **Primary implementation**: Use Shiki server-side for all syntax highlighting, leveraging Bun's performance and Elysia's streaming capabilities. This provides immediate, accessible highlighting without client-side dependencies.
 
-**Progressive enhancement**: Add react-syntax-highlighter for dynamic, user-generated content that requires real-time highlighting. Its functional API aligns with Effect.js patterns while providing excellent TypeScript support.
+**Progressive enhancement**: Add react-syntax-highlighter for dynamic, user-generated content that requires real-time highlighting. Its functional API aligns with Effect patterns while providing excellent TypeScript support.
 
 **Theme strategy**: Implement a custom terminal theme using CSS variables, allowing dynamic switching between retro-futuristic variants without regenerating HTML.
 

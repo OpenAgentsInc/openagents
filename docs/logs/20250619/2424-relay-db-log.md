@@ -21,7 +21,7 @@ Test Summary:
 ```
 
 ### Implementation Summary
-✅ **Relay Package**: Complete NIP-01 Nostr relay with Effect.js architecture
+✅ **Relay Package**: Complete NIP-01 Nostr relay with Effect architecture
 ✅ **Database**: PlanetScale + Drizzle integration with optimized schema  
 ✅ **Psionic Integration**: WebSocket plugin mounted at `/relay` endpoint
 ✅ **OpenAgents.com**: Successfully connects to and serves the relay
@@ -30,7 +30,7 @@ Test Summary:
 
 ### Architecture Achieved
 - **packages/relay/**: New relay package with manual export management
-- **Effect.js Services**: RelayDatabase, NostrRelay with proper layer composition
+- **Effect Services**: RelayDatabase, NostrRelay with proper layer composition
 - **Database Schema**: Optimized for Nostr queries with proper indexing
 - **WebSocket Handling**: NIP-01 protocol implementation (EVENT, REQ, CLOSE)
 - **Agent Support**: Ready for NIP-OA, NIP-28, NIP-90 features
@@ -39,7 +39,7 @@ Test Summary:
 - **Relay build time**: <5 seconds
 - **Server startup**: <2 seconds  
 - **Route response times**: ~2 seconds average
-- **Memory usage**: Efficient Effect.js resource management
+- **Memory usage**: Efficient Effect resource management
 
 ## Implementation Complete! 🎉
 

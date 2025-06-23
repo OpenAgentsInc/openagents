@@ -6,7 +6,7 @@
 
 After reviewing the project structure and README, I've identified that OpenAgents uses:
 - Psionic as the hypermedia web framework
-- Effect.js for functional programming patterns
+- Effect for functional programming patterns
 - Multi-package monorepo structure with clear separation of concerns
 
 ### Architecture Decision

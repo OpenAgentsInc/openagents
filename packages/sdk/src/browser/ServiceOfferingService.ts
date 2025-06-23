@@ -1,5 +1,5 @@
 /**
- * Browser Service Offering Service with Effect.js
+ * Browser Service Offering Service with Effect
  * Real-time NIP-90 marketplace operations
  */
 

@@ -127,7 +127,7 @@ Even with payment and communication solutions, the sheer number of possible coal
 
 The OpenAgents SDK provides architectural foundations that competing platforms lack:
 
-**Effect.js Architecture**: Sophisticated error handling and dependency injection essential for complex multi-agent systems
+**Effect Architecture**: Sophisticated error handling and dependency injection essential for complex multi-agent systems
 
 **Nostr-Native Identity**: Decentralized agent identity and reputation without platform lock-in
 

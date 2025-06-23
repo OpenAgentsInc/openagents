@@ -1,5 +1,5 @@
 /**
- * Browser WebSocket Service with Effect.js
+ * Browser WebSocket Service with Effect
  * Provides managed WebSocket connections with automatic reconnection
  */
 

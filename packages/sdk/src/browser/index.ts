@@ -1,6 +1,6 @@
 /**
  * Browser SDK exports
- * Effect.js services for frontend WebSocket operations
+ * Effect services for frontend WebSocket operations
  */
 
 import * as CloudflareLanguageModel from "@openagentsinc/ai/providers/cloudflare/CloudflareLanguageModel"

@@ -2,7 +2,7 @@ I'll show you how to use PGlite with TypeScript in a non-React environment, whic
 
 ### 1. **Server-Side with Bun/Elysia**
 - PGlite runs natively in Bun as it's a JavaScript runtime
-- Use Effect.js services to wrap PGlite operations
+- Use Effect services to wrap PGlite operations
 - Integrate directly with your Elysia HTTP handlers
 - WebSockets or SSE for real-time updates to clients
 
@@ -20,7 +20,7 @@ I'll show you how to use PGlite with TypeScript in a non-React environment, whic
 ### 4. **Integration with Your Stack**
 - **Psionic**: Generate HTML on the server with live data
 - **WebTUI**: Use semantic attributes for styling
-- **Effect.js**: Wrap all PGlite operations in Effect services
+- **Effect**: Wrap all PGlite operations in Effect services
 - **Hypermedia**: Return HTML fragments for updates
 
 ### 5. **Progressive Enhancement**
@@ -57,4 +57,4 @@ channel.postMessage({ type: 'message-sent', data: message });
 - Works offline
 - More complex setup
 
-The beauty of PGlite is that it's just a JavaScript library - it works anywhere JavaScript runs, with or without frameworks. Your Effect.js service architecture provides the structure while PGlite handles the persistence.
+The beauty of PGlite is that it's just a JavaScript library - it works anywhere JavaScript runs, with or without frameworks. Your Effect service architecture provides the structure while PGlite handles the persistence.

@@ -21,7 +21,7 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 
 **STOP! Before writing ANY code related to the following systems, you MUST read the relevant guides:**
 
-### Effect.js, Streaming, or Async Operations
+### Effect, Streaming, or Async Operations
 **MANDATORY READING**: `/docs/guides/effect-architecture-guide.md`
 - Required if: Working with ANY Effect code, async operations, services, layers, or error handling
 - Why: Effect patterns are complex and mixing Promises/Effects WILL break the system
@@ -45,6 +45,11 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 **MANDATORY READING**: `/docs/guides/language-model-integration.md`
 - Required if: Adding new language models, configuring model lists, working with model selection UI
 - Why: Models require specific configuration in multiple places and must maintain UI compatibility
+
+### Chat Interface & Layout Architecture
+**MANDATORY READING**: `/docs/guides/chat-layout-architecture.md`
+- Required if: Modifying chat UI, refactoring layout, working on sidebar/header, styling changes
+- Why: Complex layout with fixed positioning, transitions, and state management requires understanding
 
 **⚠️ FAILURE TO READ THESE GUIDES WILL RESULT IN:**
 - "Service not found" errors that are difficult to debug
@@ -104,7 +109,7 @@ pnpm --filter=@openagentsinc/sdk test
 ## Architecture Patterns
 
 **📚 BEFORE READING THIS SECTION**: If you plan to implement anything based on these patterns, you MUST first read the comprehensive guides in `/docs/guides/`:
-- `effect-architecture-guide.md` - Complete Effect.js patterns and Psionic framework
+- `effect-architecture-guide.md` - Complete Effect patterns and Psionic framework
 - `ai-provider-integration.md` - AI provider implementation details
 - `streaming-architecture.md` - Critical streaming implementation patterns
 - `effect-quick-reference.md` - Common patterns and anti-patterns
@@ -428,7 +433,7 @@ See [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) for complete docu
 - **READ THE GUIDES FIRST**: `/docs/guides/effect-architecture-guide.md`
 - **Figure out how to make all services work together properly**
 - **Fix TypeScript errors by providing proper service layers, not by removing them**
-- **Understand and respect the existing Effect.js architecture**
+- **Understand and respect the existing Effect architecture**
 - **When service integration is complex, that complexity serves a purpose**
 
 **Correct Mindset**:

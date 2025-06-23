@@ -1,5 +1,5 @@
 /**
- * Agent Chat Component with Effect.js WebSocket
+ * Agent Chat Component with Effect WebSocket
  * Pure Effect implementation - no React
  */
 

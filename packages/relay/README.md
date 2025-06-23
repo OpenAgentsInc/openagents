@@ -1,12 +1,12 @@
 # @openagentsinc/relay
 
-Nostr relay with NIP-01 support and Effect.js architecture.
+Nostr relay with NIP-01 support and Effect architecture.
 
 ## Features
 
 - Full NIP-01 protocol implementation
 - PlanetScale database backend with Drizzle ORM
-- Effect.js for type-safe functional programming
+- Effect for type-safe functional programming
 - Psionic framework integration
 - WebSocket connection management
 - Real-time event broadcasting

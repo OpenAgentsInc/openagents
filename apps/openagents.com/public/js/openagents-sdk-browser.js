@@ -1319,7 +1319,7 @@ var omit2 = omit;
 var Tag2 = Tag;
 var Reference2 = Reference;
 
-// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Effect.js
+// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Effect
 var Effect_exports = {};
 __export(Effect_exports, {
   Do: () => Do3,
@@ -17920,7 +17920,7 @@ var withRequestCache = /* @__PURE__ */ dual(
 var isRequest2 = isRequest;
 var Class5 = Class3;
 
-// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Effect.js
+// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Effect
 var EffectTypeId3 = EffectTypeId2;
 var isEffect2 = isEffect;
 var cachedWithTTL = cached2;

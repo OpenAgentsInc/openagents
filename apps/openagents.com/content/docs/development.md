@@ -564,7 +564,7 @@ const apiKey = "sk-abc123..."
 
 - **GitHub Issues**: Report bugs or request features
 - **Discord**: Community chat (coming soon)
-- **Effect Discord**: Effect.js community
+- **Effect Discord**: Effect community
 - **Stack Overflow**: Tag with `openagents`
 
 ### Common Issues

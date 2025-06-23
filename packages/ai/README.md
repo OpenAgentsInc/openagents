@@ -1,6 +1,6 @@
 # @openagentsinc/ai
 
-Unified AI provider integration with Effect.js, providing a consistent interface for multiple AI services.
+Unified AI provider integration with Effect, providing a consistent interface for multiple AI services.
 
 ## Features
 

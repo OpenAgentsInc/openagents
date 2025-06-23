@@ -8,7 +8,7 @@ order: 3
 
 # Psionic Framework
 
-Psionic is a sync-first hypermedia web framework built on Bun and Elysia. It emphasizes server-side rendering, component-driven development, and Effect.js integration.
+Psionic is a sync-first hypermedia web framework built on Bun and Elysia. It emphasizes server-side rendering, component-driven development, and Effect integration.
 
 > **Note**: Psionic is designed specifically for the OpenAgents ecosystem and prioritizes simplicity over feature completeness.
 
@@ -252,7 +252,7 @@ Navigate to `/components` (or your configured path) to view all stories:
 
 ## Markdown Service
 
-Psionic includes a powerful markdown service built with Effect.js.
+Psionic includes a powerful markdown service built with Effect.
 
 ### Basic Usage
 
@@ -475,7 +475,7 @@ app.start()
 
 ## Integration with Effect
 
-Psionic's markdown service demonstrates Effect.js integration:
+Psionic's markdown service demonstrates Effect integration:
 
 ```typescript
 // The markdown service uses Effect for caching and error handling
@@ -579,7 +579,7 @@ const app = createPsionicApp({
 - WebSocket support for real-time features
 - Component interface for reusable elements
 - Event system with `PsionicEvent` type
-- Enhanced Effect.js integration
+- Enhanced Effect integration
 - HTMX integration for progressive enhancement
 
 ---
