@@ -170,9 +170,8 @@ const v1Styles = css`
 
   .send-button {
     position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    right: 10px;
+    top: 10px;
+    right: 6px;
     width: 28px;
     height: 28px;
     background-color: var(--white);
@@ -185,7 +184,7 @@ const v1Styles = css`
     cursor: pointer;
     transition: background-color 0.2s;
     padding: 0;
-    margin: 2px;
+    margin: 0;
   }
 
   .send-button:hover:not(:disabled) {
@@ -612,17 +611,14 @@ export async function home() {
           chatMessages.push({ role: 'user', content: message })
           addMessage('You', message, 'user')
           
-          // Clear input and disable
+          // Clear input and keep it focused
           input.value = ''
           input.style.height = 'auto'
-          input.disabled = true
+          input.focus()
+          
+          // Disable send button but keep input enabled so user can type next message
           sendBtn.disabled = true
           isStreaming = true
-          
-          // Immediately refocus input after clearing (before streaming starts)
-          setTimeout(() => {
-            input.focus()
-          }, 50)
           
           // Add assistant message placeholder
           const assistantBodyDiv = addMessage('Assistant', '', 'assistant')
@@ -706,14 +702,11 @@ export async function home() {
               cursor.remove()
             }
             
-            input.disabled = false
             sendBtn.disabled = false
             
-            // Force focus back to input with a small delay
-            setTimeout(() => {
-              input.focus()
-              input.setSelectionRange(input.value.length, input.value.length)
-            }, 50)
+            // Ensure input stays focused
+            input.focus()
+            input.setSelectionRange(input.value.length, input.value.length)
           }
         }
 
