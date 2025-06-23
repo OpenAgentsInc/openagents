@@ -170,7 +170,8 @@ const v1Styles = css`
 
   .send-button {
     position: absolute;
-    bottom: 10px;
+    top: 50%;
+    transform: translateY(-50%);
     right: 10px;
     width: 28px;
     height: 28px;
@@ -617,6 +618,11 @@ export async function home() {
           input.disabled = true
           sendBtn.disabled = true
           isStreaming = true
+          
+          // Immediately refocus input after clearing (before streaming starts)
+          setTimeout(() => {
+            input.focus()
+          }, 50)
           
           // Add assistant message placeholder
           const assistantBodyDiv = addMessage('Assistant', '', 'assistant')
