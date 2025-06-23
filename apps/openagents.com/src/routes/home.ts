@@ -301,12 +301,12 @@ const v1Styles = css`
     opacity: 0.75;
     color: var(--gray);
   }
-  
+
   .sidebar-footer .footer-bottom a {
     color: inherit;
     text-decoration: none;
   }
-  
+
   .sidebar-footer .footer-bottom a:hover {
     color: var(--white);
   }
@@ -436,7 +436,7 @@ export async function home() {
                 </svg>
               </button>
             </div>
-            
+
             <!-- Thread list -->
             <div style="flex: 1; overflow-y: auto;">
               <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 4px;">
@@ -471,7 +471,7 @@ export async function home() {
                 <li>
                   <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">
-                      <a href="https://docs.openagents.com" class="hover:text-white flex flex-row items-center gap-2 py-1">
+                      <a href="https://openagents.com/docs" class="hover:text-white flex flex-row items-center gap-2 py-1">
                         <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Docs</div>
                       </a>
                     </div>
@@ -532,8 +532,8 @@ export async function home() {
           <div style="border-top: 1px solid var(--offblack); padding: 20px;">
             <div style="max-width: 800px; margin: 0 auto;">
               <div style="position: relative;">
-                <textarea 
-                  class="chat-input" 
+                <textarea
+                  class="chat-input"
                   placeholder="Send a message"
                   rows="1"
                   style="width: 100%; outline: none;"

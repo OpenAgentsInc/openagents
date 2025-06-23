@@ -5,7 +5,7 @@ export const FullV1Interface = {
   name: "Full v1 Chat Interface",
   html: `
     <link rel="stylesheet" href="/tailwind/components/chat/v1-interface.css">
-    
+
     <div class="v1-chat-container">
       <!-- Header with user menu -->
       <div class="v1-chat-header">
@@ -30,7 +30,7 @@ export const FullV1Interface = {
                 </svg>
               </a>
             </div>
-            
+
             <div class="v1-threads-container">
               <div class="v1-threads-list">
                 <div>
@@ -50,7 +50,7 @@ export const FullV1Interface = {
                         </div>
                       </div>
                     </li>
-                    
+
                     <!-- Other threads -->
                     <li class="v1-thread-item">
                       <div class="v1-thread-link-wrapper">
@@ -69,7 +69,7 @@ export const FullV1Interface = {
                   </ol>
                 </div>
               </div>
-              
+
               <!-- Sidebar Footer -->
               <div class="v1-sidebar-footer">
                 <ol style="list-style: none; padding: 0; margin: 0;">
@@ -114,7 +114,7 @@ export const FullV1Interface = {
                   <li>
                     <div style="position: relative; z-index: 15;">
                       <div style="position: relative; border-radius: 0.5rem; padding: 0 0.75rem;">
-                        <a class="v1-sidebar-link" href="https://docs.openagents.com" target="_blank">
+                        <a class="v1-sidebar-link" href="https://openagents.com/docs" target="_blank">
                           <div class="v1-sidebar-link-text">Docs & guides</div>
                           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -183,7 +183,7 @@ export const FullV1Interface = {
                 <span>OpenAgents</span>
               </div>
             </div>
-            
+
             <div class="v1-messages-container">
               <div class="v1-messages-wrapper">
                 <div class="v1-messages-list">
@@ -205,7 +205,7 @@ export const FullV1Interface = {
                       </div>
                     </div>
                   </div>
-                  
+
                   <!-- Bot Message -->
                   <div class="v1-message">
                     <div class="v1-message-inner">
@@ -237,7 +237,7 @@ This function uses iteration rather than recursion, making it more efficient for
                       </div>
                     </div>
                   </div>
-                  
+
                   <!-- Streaming Message -->
                   <div class="v1-message">
                     <div class="v1-message-inner">
@@ -266,8 +266,8 @@ This function uses iteration rather than recursion, making it more efficient for
               <div class="v1-input-container">
                 <form class="v1-input-form">
                   <div class="v1-textarea-wrapper">
-                    <textarea 
-                      class="v1-chat-input" 
+                    <textarea
+                      class="v1-chat-input"
                       placeholder="Message OpenAgents..."
                       rows="1"
                     ></textarea>
@@ -295,7 +295,7 @@ export const V1SidebarClosed = {
   name: "v1 Interface - Sidebar Closed",
   html: `
     <link rel="stylesheet" href="/tailwind/components/chat/v1-interface.css">
-    
+
     <div class="v1-chat-container" style="height: 400px;">
       <div class="v1-chat-layout">
         <!-- Closed Sidebar -->
@@ -319,7 +319,7 @@ export const V1SidebarClosed = {
                 <span>OpenAgents</span>
               </div>
             </div>
-            
+
             <div class="v1-messages-container">
               <div class="v1-messages-wrapper">
                 <div class="v1-messages-list">
