@@ -26,79 +26,6 @@ const mockThreads = [
   }
 ]
 
-const mockMessages = [
-  {
-    id: "1",
-    type: "user",
-    author: "You",
-    content: "How can I integrate Lightning payments into my agent?",
-    timestamp: "2:34 PM"
-  },
-  {
-    id: "2",
-    type: "assistant",
-    author: "Assistant",
-    content:
-      `To integrate Lightning payments into your OpenAgents agent, you'll want to use the Lightning namespace from the SDK. Here's a basic example:
-
-\`\`\`typescript
-import { Agent, Lightning } from '@openagentsinc/sdk'
-
-// Create an agent with Lightning capabilities
-const agent = await Agent.create({
-  name: 'PaymentAgent',
-  capabilities: ['lightning']
-})
-
-// Generate a Lightning invoice
-const invoice = await Lightning.createInvoice({
-  amount: 1000, // satoshis
-  description: 'Agent service payment'
-})
-
-// Listen for payment
-Lightning.onPayment(invoice.id, (payment) => {
-  console.log('Payment received!', payment)
-})
-\`\`\`
-
-The SDK handles all the complexity of Lightning node management and provides a simple API for your agent to receive and send payments.`,
-    timestamp: "2:35 PM"
-  },
-  {
-    id: "3",
-    type: "user",
-    author: "You",
-    content: "That looks great! Can agents also make payments autonomously?",
-    timestamp: "2:36 PM"
-  },
-  {
-    id: "4",
-    type: "assistant",
-    author: "Assistant",
-    content:
-      `Yes! Agents can make autonomous payments using the Lightning.pay() method. You'll need to configure spending limits and approval rules:
-
-\`\`\`typescript
-// Configure spending limits
-const spendingRules = {
-  maxPerPayment: 10000, // max 10k sats per payment
-  dailyLimit: 100000,   // max 100k sats per day
-  requireApproval: (amount) => amount > 5000 // require approval for payments over 5k sats
-}
-
-// Make a payment
-const result = await Lightning.pay({
-  invoice: 'lnbc...',
-  rules: spendingRules
-})
-\`\`\`
-
-This ensures your agent can operate autonomously while maintaining security boundaries.`,
-    timestamp: "2:37 PM"
-  }
-]
-
 // V1 exact styling
 const v1Styles = css`
   /* V1 Color Palette from tailwind.config.js */
@@ -396,35 +323,6 @@ function renderThread(thread: typeof mockThreads[0]) {
   `
 }
 
-function renderMessage(message: typeof mockMessages[0]) {
-  const isUser = message.type === "user"
-
-  return html`
-    <div class="message">
-      <div class="message-avatar ${message.type}">
-        ${
-    isUser ?
-      html`
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-        ` :
-      html`
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-          </svg>
-        `
-  }
-      </div>
-      <div class="message-content">
-        <div class="message-author">${message.author}</div>
-        <div class="message-body">${message.content}</div>
-      </div>
-    </div>
-  `
-}
-
 export async function home() {
   return document({
     title: "OpenAgents",
@@ -443,7 +341,7 @@ export async function home() {
             </button>
             <a href="/" style="color: white; text-decoration: none; font-size: 18px; font-weight: 600;">OpenAgents</a>
           </div>
-          <div class="model-selector">claude-3-opus</div>
+          <div class="model-selector">llama-3.3-70b</div>
         </div>
 
         <!-- Sidebar -->
@@ -544,9 +442,9 @@ export async function home() {
         <!-- Main content -->
         <div id="main" class="hmmm" style="flex: 1; display: flex; flex-direction: column; margin-left: 260px; transition: margin-left 0.3s ease-in-out;">
           <!-- Messages -->
-          <div style="flex: 1; overflow-y: auto; padding: 80px 20px 20px;">
+          <div id="messages-container" style="flex: 1; overflow-y: auto; padding: 80px 20px 20px;">
             <div style="max-width: 800px; margin: 0 auto;">
-              ${mockMessages.map((message) => renderMessage(message)).join("")}
+              <!-- Messages will be dynamically added here -->
             </div>
           </div>
 
@@ -555,6 +453,7 @@ export async function home() {
             <div style="max-width: 800px; margin: 0 auto;">
               <div style="position: relative;">
                 <textarea
+                  id="chat-input"
                   class="chat-input"
                   placeholder="Message OpenAgents..."
                   rows="1"
@@ -577,6 +476,218 @@ export async function home() {
           </div>
         </div>
       </div>
+
+      <script>
+        // Chat state
+        let chatMessages = [
+          { role: 'system', content: 'You are a helpful assistant.' }
+        ]
+        let isStreaming = false
+        const currentModel = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+        let cloudflareAvailable = false
+        
+        // Check if Cloudflare is available
+        async function checkCloudflareStatus() {
+          try {
+            const response = await fetch('/api/cloudflare/status')
+            const data = await response.json()
+            cloudflareAvailable = data.available
+            
+            if (!cloudflareAvailable) {
+              const container = document.getElementById('messages-container')
+              const messagesWrapper = container.querySelector('div')
+              messagesWrapper.innerHTML = '<div style="text-align: center; color: var(--gray); padding: 2rem;">Cloudflare Workers AI is not configured. Please set CLOUDFLARE_API_KEY and CLOUDFLARE_ACCOUNT_ID environment variables.</div>'
+              
+              const input = document.getElementById('chat-input')
+              const sendBtn = document.getElementById('sendBtn')
+              input.disabled = true
+              sendBtn.disabled = true
+              input.placeholder = 'Cloudflare not configured...'
+            }
+          } catch (error) {
+            console.error('Failed to check Cloudflare status:', error)
+          }
+        }
+
+        // Create message element
+        function createMessageElement(author, type) {
+          const messageDiv = document.createElement('div')
+          messageDiv.className = 'message'
+          
+          const avatarDiv = document.createElement('div')
+          avatarDiv.className = \`message-avatar \${type}\`
+          
+          if (type === 'user') {
+            avatarDiv.innerHTML = \`
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            \`
+          } else {
+            avatarDiv.innerHTML = \`
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+              </svg>
+            \`
+          }
+          
+          const contentDiv = document.createElement('div')
+          contentDiv.className = 'message-content'
+          
+          const authorDiv = document.createElement('div')
+          authorDiv.className = 'message-author'
+          authorDiv.textContent = author
+          
+          const bodyDiv = document.createElement('div')
+          bodyDiv.className = 'message-body'
+          
+          contentDiv.appendChild(authorDiv)
+          contentDiv.appendChild(bodyDiv)
+          
+          messageDiv.appendChild(avatarDiv)
+          messageDiv.appendChild(contentDiv)
+          
+          return { messageDiv, bodyDiv }
+        }
+
+        // Add message to UI
+        function addMessage(author, content, type) {
+          const container = document.getElementById('messages-container')
+          const messagesWrapper = container.querySelector('div')
+          
+          const { messageDiv, bodyDiv } = createMessageElement(author, type)
+          bodyDiv.textContent = content
+          
+          messagesWrapper.appendChild(messageDiv)
+          container.scrollTop = container.scrollHeight
+          
+          return bodyDiv
+        }
+
+        // Stream message content
+        function updateStreamingMessage(bodyDiv, content) {
+          bodyDiv.textContent = content
+          const container = document.getElementById('messages-container')
+          container.scrollTop = container.scrollHeight
+        }
+
+        // Send message to Cloudflare
+        async function sendMessage() {
+          const input = document.getElementById('chat-input')
+          const sendBtn = document.getElementById('sendBtn')
+          const message = input.value.trim()
+          
+          if (!message || isStreaming || !cloudflareAvailable) return
+          
+          // Add user message
+          chatMessages.push({ role: 'user', content: message })
+          addMessage('You', message, 'user')
+          
+          // Clear input and disable
+          input.value = ''
+          input.style.height = 'auto'
+          input.disabled = true
+          sendBtn.disabled = true
+          isStreaming = true
+          
+          // Add assistant message placeholder
+          const assistantBodyDiv = addMessage('Assistant', '', 'assistant')
+          assistantBodyDiv.innerHTML = '<div class="dot-flashing"></div>'
+          
+          let assistantContent = ''
+          
+          try {
+            const response = await fetch('/api/cloudflare/chat', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                model: currentModel,
+                messages: chatMessages
+              })
+            })
+            
+            if (!response.ok) {
+              throw new Error(\`HTTP error! status: \${response.status}\`)
+            }
+            
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder()
+            
+            // Clear loading indicator
+            assistantBodyDiv.innerHTML = ''
+            
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              
+              const chunk = decoder.decode(value)
+              const lines = chunk.split('\\n')
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6)
+                  if (data === '[DONE]') {
+                    break
+                  }
+                  
+                  try {
+                    const parsed = JSON.parse(data)
+                    if (parsed.error) {
+                      throw new Error(parsed.error)
+                    }
+                    
+                    if (parsed.choices?.[0]?.delta?.content) {
+                      assistantContent += parsed.choices[0].delta.content
+                      updateStreamingMessage(assistantBodyDiv, assistantContent)
+                    }
+                  } catch (e) {
+                    console.error('Error parsing chunk:', e)
+                  }
+                }
+              }
+            }
+            
+            // Add to chat history
+            chatMessages.push({ role: 'assistant', content: assistantContent })
+            
+          } catch (error) {
+            console.error('Chat error:', error)
+            assistantBodyDiv.textContent = \`Error: \${error.message}\`
+            assistantBodyDiv.style.color = '#ef4444'
+          } finally {
+            isStreaming = false
+            input.disabled = false
+            sendBtn.disabled = false
+            input.focus()
+          }
+        }
+
+        // Initialize event handlers
+        document.addEventListener('DOMContentLoaded', () => {
+          // Check if Cloudflare is available
+          checkCloudflareStatus()
+          
+          const input = document.getElementById('chat-input')
+          const sendBtn = document.getElementById('sendBtn')
+          
+          // Send button click
+          sendBtn.addEventListener('click', sendMessage)
+          
+          // Enter key to send
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              sendMessage()
+            }
+          })
+          
+          // Focus input on load
+          input.focus()
+        })
+      </script>
     `
   })
 }

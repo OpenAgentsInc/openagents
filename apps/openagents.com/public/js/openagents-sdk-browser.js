@@ -52140,173 +52140,172 @@ function getNormalizedX(key) {
 }
 var Nip04Service = class extends Context_exports.Tag("nips/Nip04Service")() {
 };
+var makeNip04Service = () => ({
+  encryptMessage: (message, recipientPubkey, senderPrivkey) => Effect_exports.gen(function* () {
+    try {
+      const privkey = typeof senderPrivkey === "string" ? senderPrivkey : bytesToHex3(senderPrivkey);
+      const key = secp256k1.getSharedSecret(privkey, "02" + recipientPubkey);
+      const normalizedKey = getNormalizedX(key);
+      const iv = randomBytes2(16);
+      const plaintext = utf8Encoder.encode(message);
+      const cipher = cbc(normalizedKey, iv);
+      const ciphertext = cipher.encrypt(plaintext);
+      const ctb64 = base642.encode(new Uint8Array(ciphertext));
+      const ivb64 = base642.encode(new Uint8Array(iv));
+      return {
+        content: `${ctb64}?iv=${ivb64}`,
+        iv: ivb64,
+        mac: void 0
+      };
+    } catch (error2) {
+      return yield* Effect_exports.fail(
+        new Nip04Error({
+          reason: "encryption_failed",
+          message: `Failed to encrypt message: ${error2}`,
+          recipient: recipientPubkey,
+          cause: error2
+        })
+      );
+    }
+  }),
+  decryptMessage: (encryptedMessage, senderPubkey, recipientPrivkey) => Effect_exports.gen(function* () {
+    try {
+      const data = encryptedMessage.content;
+      const [ctb64, ivb64] = data.split("?iv=");
+      if (!ctb64 || !ivb64) {
+        return yield* Effect_exports.fail(
+          new Nip04Error({
+            reason: "invalid_message",
+            message: "Invalid NIP-04 format",
+            sender: senderPubkey
+          })
+        );
+      }
+      const privkey = typeof recipientPrivkey === "string" ? recipientPrivkey : bytesToHex3(recipientPrivkey);
+      const key = secp256k1.getSharedSecret(privkey, "02" + senderPubkey);
+      const normalizedKey = getNormalizedX(key);
+      const iv = base642.decode(ivb64);
+      const ciphertext = base642.decode(ctb64);
+      const cipher = cbc(normalizedKey, iv);
+      const plaintext = cipher.decrypt(ciphertext);
+      return utf8Decoder.decode(plaintext);
+    } catch (error2) {
+      return yield* Effect_exports.fail(
+        new Nip04Error({
+          reason: "decryption_failed",
+          message: `Failed to decrypt message: ${error2}`,
+          sender: senderPubkey,
+          cause: error2
+        })
+      );
+    }
+  }),
+  createDirectMessage: (message, recipientPubkey, senderPrivkey, conversationId) => Effect_exports.gen(function* () {
+    const encrypted = yield* makeNip04Service().encryptMessage(
+      message,
+      recipientPubkey,
+      senderPrivkey
+    );
+    const tags = [["p", recipientPubkey]];
+    if (conversationId) {
+      tags.push(["conversation", conversationId]);
+    }
+    const now2 = Math.floor(Date.now() / 1e3);
+    return {
+      id: "placeholder-id",
+      pubkey: "placeholder-pubkey",
+      created_at: now2,
+      kind: 4,
+      tags,
+      content: encrypted.content,
+      sig: "placeholder-signature"
+    };
+  }),
+  parseDirectMessage: (event, recipientPrivkey) => Effect_exports.gen(function* () {
+    const pTag = event.tags.find((tag3) => tag3[0] === "p");
+    if (!pTag || !pTag[1]) {
+      return yield* Effect_exports.fail(
+        new Nip04Error({
+          reason: "invalid_message",
+          message: "Missing recipient p-tag",
+          messageId: event.id
+        })
+      );
+    }
+    const recipientPubkey = pTag[1];
+    const encryptedMessage = { content: event.content };
+    const decryptedContent = yield* makeNip04Service().decryptMessage(
+      encryptedMessage,
+      event.pubkey,
+      recipientPrivkey
+    );
+    const conversationTag = event.tags.find((tag3) => tag3[0] === "conversation");
+    const conversationId = conversationTag?.[1];
+    return {
+      content: decryptedContent,
+      metadata: {
+        sender: event.pubkey,
+        recipient: recipientPubkey,
+        timestamp: event.created_at,
+        messageId: event.id,
+        conversationId
+      },
+      verified: true
+    };
+  }),
+  deriveSharedSecret: (privateKey, publicKey) => Effect_exports.try({
+    try: () => {
+      const privkey = typeof privateKey === "string" ? privateKey : bytesToHex3(privateKey);
+      const key = secp256k1.getSharedSecret(privkey, "02" + publicKey);
+      return getNormalizedX(key);
+    },
+    catch: (error2) => new Nip04Error({
+      reason: "key_derivation_failed",
+      message: `Failed to derive shared secret: ${error2}`,
+      cause: error2
+    })
+  }),
+  createConversationId: (pubkey1, pubkey2) => Effect_exports.sync(() => {
+    const sortedKeys = [pubkey1, pubkey2].sort();
+    return sortedKeys.join("-").substring(0, 16);
+  }),
+  validateEncryption: (encryptedMessage) => Effect_exports.gen(function* () {
+    const data = encryptedMessage.content;
+    const parts2 = data.split("?iv=");
+    if (parts2.length !== 2) {
+      return yield* Effect_exports.fail(
+        new Nip04Error({
+          reason: "invalid_message",
+          message: "Invalid NIP-04 format"
+        })
+      );
+    }
+    try {
+      base642.decode(parts2[0]);
+      base642.decode(parts2[1]);
+    } catch (error2) {
+      return yield* Effect_exports.fail(
+        new Nip04Error({
+          reason: "invalid_message",
+          message: "Invalid base64 encoding",
+          cause: error2
+        })
+      );
+    }
+    const ivBytes = base642.decode(parts2[1]);
+    if (ivBytes.length !== 16) {
+      return yield* Effect_exports.fail(
+        new Nip04Error({
+          reason: "invalid_message",
+          message: `Invalid IV length: ${ivBytes.length}`
+        })
+      );
+    }
+  })
+});
 var Nip04ServiceLive = Layer_exports.succeed(
   Nip04Service,
-  {
-    encryptMessage: (message, recipientPubkey, senderPrivkey) => Effect_exports.gen(function* () {
-      try {
-        const privkey = typeof senderPrivkey === "string" ? senderPrivkey : bytesToHex3(senderPrivkey);
-        const key = secp256k1.getSharedSecret(privkey, "02" + recipientPubkey);
-        const normalizedKey = getNormalizedX(key);
-        const iv = randomBytes2(16);
-        const plaintext = utf8Encoder.encode(message);
-        const cipher = cbc(normalizedKey, iv);
-        const ciphertext = cipher.encrypt(plaintext);
-        const ctb64 = base642.encode(new Uint8Array(ciphertext));
-        const ivb64 = base642.encode(new Uint8Array(iv));
-        return {
-          content: `${ctb64}?iv=${ivb64}`,
-          iv: ivb64,
-          mac: void 0
-        };
-      } catch (error2) {
-        return yield* Effect_exports.fail(
-          new Nip04Error({
-            reason: "encryption_failed",
-            message: `Failed to encrypt message: ${error2}`,
-            recipient: recipientPubkey,
-            cause: error2
-          })
-        );
-      }
-    }),
-    decryptMessage: (encryptedMessage, senderPubkey, recipientPrivkey) => Effect_exports.gen(function* () {
-      try {
-        const data = encryptedMessage.content;
-        const [ctb64, ivb64] = data.split("?iv=");
-        if (!ctb64 || !ivb64) {
-          return yield* Effect_exports.fail(
-            new Nip04Error({
-              reason: "invalid_message",
-              message: "Invalid NIP-04 format",
-              sender: senderPubkey
-            })
-          );
-        }
-        const privkey = typeof recipientPrivkey === "string" ? recipientPrivkey : bytesToHex3(recipientPrivkey);
-        const key = secp256k1.getSharedSecret(privkey, "02" + senderPubkey);
-        const normalizedKey = getNormalizedX(key);
-        const iv = base642.decode(ivb64);
-        const ciphertext = base642.decode(ctb64);
-        const cipher = cbc(normalizedKey, iv);
-        const plaintext = cipher.decrypt(ciphertext);
-        return utf8Decoder.decode(plaintext);
-      } catch (error2) {
-        return yield* Effect_exports.fail(
-          new Nip04Error({
-            reason: "decryption_failed",
-            message: `Failed to decrypt message: ${error2}`,
-            sender: senderPubkey,
-            cause: error2
-          })
-        );
-      }
-    }),
-    createDirectMessage: (message, recipientPubkey, senderPrivkey, conversationId) => Effect_exports.gen(function* () {
-      const service3 = yield* Nip04Service;
-      const encrypted = yield* service3.encryptMessage(
-        message,
-        recipientPubkey,
-        senderPrivkey
-      );
-      const tags = [["p", recipientPubkey]];
-      if (conversationId) {
-        tags.push(["conversation", conversationId]);
-      }
-      const now2 = Math.floor(Date.now() / 1e3);
-      return {
-        id: "placeholder-id",
-        pubkey: "placeholder-pubkey",
-        created_at: now2,
-        kind: 4,
-        tags,
-        content: encrypted.content,
-        sig: "placeholder-signature"
-      };
-    }),
-    parseDirectMessage: (event, recipientPrivkey) => Effect_exports.gen(function* () {
-      const pTag = event.tags.find((tag3) => tag3[0] === "p");
-      if (!pTag || !pTag[1]) {
-        return yield* Effect_exports.fail(
-          new Nip04Error({
-            reason: "invalid_message",
-            message: "Missing recipient p-tag",
-            messageId: event.id
-          })
-        );
-      }
-      const recipientPubkey = pTag[1];
-      const encryptedMessage = { content: event.content };
-      const service3 = yield* Nip04Service;
-      const decryptedContent = yield* service3.decryptMessage(
-        encryptedMessage,
-        event.pubkey,
-        recipientPrivkey
-      );
-      const conversationTag = event.tags.find((tag3) => tag3[0] === "conversation");
-      const conversationId = conversationTag?.[1];
-      return {
-        content: decryptedContent,
-        metadata: {
-          sender: event.pubkey,
-          recipient: recipientPubkey,
-          timestamp: event.created_at,
-          messageId: event.id,
-          conversationId
-        },
-        verified: true
-      };
-    }),
-    deriveSharedSecret: (privateKey, publicKey) => Effect_exports.try({
-      try: () => {
-        const privkey = typeof privateKey === "string" ? privateKey : bytesToHex3(privateKey);
-        const key = secp256k1.getSharedSecret(privkey, "02" + publicKey);
-        return getNormalizedX(key);
-      },
-      catch: (error2) => new Nip04Error({
-        reason: "key_derivation_failed",
-        message: `Failed to derive shared secret: ${error2}`,
-        cause: error2
-      })
-    }),
-    createConversationId: (pubkey1, pubkey2) => Effect_exports.sync(() => {
-      const sortedKeys = [pubkey1, pubkey2].sort();
-      return sortedKeys.join("-").substring(0, 16);
-    }),
-    validateEncryption: (encryptedMessage) => Effect_exports.gen(function* () {
-      const data = encryptedMessage.content;
-      const parts2 = data.split("?iv=");
-      if (parts2.length !== 2) {
-        return yield* Effect_exports.fail(
-          new Nip04Error({
-            reason: "invalid_message",
-            message: "Invalid NIP-04 format"
-          })
-        );
-      }
-      try {
-        base642.decode(parts2[0]);
-        base642.decode(parts2[1]);
-      } catch (error2) {
-        return yield* Effect_exports.fail(
-          new Nip04Error({
-            reason: "invalid_message",
-            message: "Invalid base64 encoding",
-            cause: error2
-          })
-        );
-      }
-      const ivBytes = base642.decode(parts2[1]);
-      if (ivBytes.length !== 16) {
-        return yield* Effect_exports.fail(
-          new Nip04Error({
-            reason: "invalid_message",
-            message: `Invalid IV length: ${ivBytes.length}`
-          })
-        );
-      }
-    })
-  }
+  makeNip04Service()
 );
 
 // ../../node_modules/.pnpm/@noble+ciphers@0.5.1/node_modules/@noble/ciphers/esm/_poly1305.js
@@ -53073,8 +53072,9 @@ function calcPaddedLen(len) {
   return chunk4 * (Math.floor((len - 1) / chunk4) + 1);
 }
 function writeU16BE(num2) {
-  if (!Number.isSafeInteger(num2) || num2 < minPlaintextSize || num2 > maxPlaintextSize)
+  if (!Number.isSafeInteger(num2) || num2 < minPlaintextSize || num2 > maxPlaintextSize) {
     throw new Error("invalid plaintext size: must be between 1 and 65535 bytes");
+  }
   const arr = new Uint8Array(2);
   new DataView(arr.buffer).setUint16(0, num2, false);
   return arr;
@@ -53089,8 +53089,9 @@ function pad2(plaintext) {
 function unpad(padded) {
   const unpaddedLen = new DataView(padded.buffer).getUint16(0);
   const unpadded = padded.subarray(2, 2 + unpaddedLen);
-  if (unpaddedLen < minPlaintextSize || unpaddedLen > maxPlaintextSize || unpadded.length !== unpaddedLen || padded.length !== 2 + calcPaddedLen(unpaddedLen))
+  if (unpaddedLen < minPlaintextSize || unpaddedLen > maxPlaintextSize || unpadded.length !== unpaddedLen || padded.length !== 2 + calcPaddedLen(unpaddedLen)) {
     throw new Error("invalid padding");
+  }
   return utf8Decoder2.decode(unpadded);
 }
 function hmacAad(key, message, aad) {
@@ -53100,162 +53101,162 @@ function hmacAad(key, message, aad) {
 }
 var Nip44Service = class extends Context_exports.Tag("nips/Nip44Service")() {
 };
-var Nip44ServiceLive = Layer_exports.succeed(
-  Nip44Service,
-  {
-    encrypt: (message, recipientPubkey, senderPrivkey) => Effect_exports.gen(function* () {
-      try {
-        const conversationKey = getConversationKey(senderPrivkey, recipientPubkey);
-        const nonce = randomBytes2(32);
-        const { chacha_key, chacha_nonce, hmac_key } = getMessageKeys(conversationKey, nonce);
-        const padded = pad2(message);
-        const ciphertext = chacha20(chacha_key, chacha_nonce, padded);
-        const mac = hmacAad(hmac_key, ciphertext, nonce);
-        const payload = base642.encode(concatBytes3(new Uint8Array([2]), nonce, ciphertext, mac));
-        return {
-          version: 2,
-          nonce: base642.encode(nonce),
-          ciphertext: base642.encode(ciphertext),
-          mac: base642.encode(mac),
-          payload
-        };
-      } catch (error2) {
-        return yield* Effect_exports.fail(
-          new Nip44Error({
-            reason: "encryption_failed",
-            message: `Failed to encrypt message: ${error2}`,
-            recipient: recipientPubkey,
-            cause: error2
-          })
-        );
-      }
-    }),
-    decrypt: (encryptedMessage, senderPubkey, recipientPrivkey) => Effect_exports.gen(function* () {
-      try {
-        if (encryptedMessage.version !== 2) {
-          return yield* Effect_exports.fail(
-            new Nip44Error({
-              reason: "unsupported_version",
-              message: `Unsupported version: ${encryptedMessage.version}`,
-              version: encryptedMessage.version
-            })
-          );
-        }
-        const conversationKey = getConversationKey(recipientPrivkey, senderPubkey);
-        const nonce = base642.decode(encryptedMessage.nonce);
-        const ciphertext = base642.decode(encryptedMessage.ciphertext);
-        const receivedMac = base642.decode(encryptedMessage.mac);
-        const { chacha_key, chacha_nonce, hmac_key } = getMessageKeys(conversationKey, nonce);
-        const calculatedMac = hmacAad(hmac_key, ciphertext, nonce);
-        if (!equalBytes2(calculatedMac, receivedMac)) {
-          return yield* Effect_exports.fail(
-            new Nip44Error({
-              reason: "authentication_failed",
-              message: "Invalid MAC",
-              sender: senderPubkey
-            })
-          );
-        }
-        const padded = chacha20(chacha_key, chacha_nonce, ciphertext);
-        return unpad(padded);
-      } catch (error2) {
-        return yield* Effect_exports.fail(
-          new Nip44Error({
-            reason: "decryption_failed",
-            message: `Failed to decrypt: ${error2}`,
-            sender: senderPubkey,
-            cause: error2
-          })
-        );
-      }
-    }),
-    encryptFromPayload: (message, recipientPubkey, senderPrivkey) => Effect_exports.gen(function* () {
-      const service3 = yield* Nip44Service;
-      const encrypted = yield* service3.encrypt(message, recipientPubkey, senderPrivkey);
-      return encrypted.payload;
-    }),
-    decryptFromPayload: (payload, senderPubkey, recipientPrivkey) => Effect_exports.gen(function* () {
-      const service3 = yield* Nip44Service;
-      const parsed = yield* service3.parsePayload(payload);
-      return yield* service3.decrypt(parsed, senderPubkey, recipientPrivkey);
-    }),
-    parsePayload: (payload) => Effect_exports.gen(function* () {
-      try {
-        const data = base642.decode(payload);
-        if (data.length < 99) {
-          throw new Error("payload too short");
-        }
-        const version = data[0];
-        if (version !== 2) {
-          throw new Error(`unsupported version ${version}`);
-        }
-        const nonce = data.subarray(1, 33);
-        const ciphertext = data.subarray(33, -32);
-        const mac = data.subarray(-32);
-        return {
-          version: 2,
-          nonce: base642.encode(nonce),
-          ciphertext: base642.encode(ciphertext),
-          mac: base642.encode(mac),
-          payload
-        };
-      } catch (error2) {
-        return yield* Effect_exports.fail(
-          new Nip44Error({
-            reason: "invalid_format",
-            message: `Failed to parse payload: ${error2}`,
-            cause: error2
-          })
-        );
-      }
-    }),
-    deriveConversationKey: (privateKey, publicKey) => Effect_exports.gen(function* () {
-      try {
-        const conversationKey = getConversationKey(privateKey, publicKey);
-        const privkey = typeof privateKey === "string" ? hexToUint8Array(privateKey) : privateKey;
-        const sharedX = secp256k1.getSharedSecret(privkey, "02" + publicKey).subarray(1, 33);
-        return {
-          sharedSecret: bytesToHex3(sharedX),
-          conversationKey: bytesToHex3(conversationKey),
-          createdAt: Date.now(),
-          expiresAt: Date.now() + 24 * 60 * 60 * 1e3
-        };
-      } catch (error2) {
-        return yield* Effect_exports.fail(
-          new Nip44Error({
-            reason: "key_derivation_failed",
-            message: `Failed to derive key: ${error2}`,
-            cause: error2
-          })
-        );
-      }
-    }),
-    validateFormat: (encryptedMessage) => Effect_exports.gen(function* () {
+var makeNip44Service = () => ({
+  encrypt: (message, recipientPubkey, senderPrivkey) => Effect_exports.gen(function* () {
+    try {
+      const conversationKey = getConversationKey(senderPrivkey, recipientPubkey);
+      const nonce = randomBytes2(32);
+      const { chacha_key, chacha_nonce, hmac_key } = getMessageKeys(conversationKey, nonce);
+      const padded = pad2(message);
+      const ciphertext = chacha20(chacha_key, chacha_nonce, padded);
+      const mac = hmacAad(hmac_key, ciphertext, nonce);
+      const payload = base642.encode(concatBytes3(new Uint8Array([2]), nonce, ciphertext, mac));
+      return {
+        version: 2,
+        nonce: base642.encode(nonce),
+        ciphertext: base642.encode(ciphertext),
+        mac: base642.encode(mac),
+        payload
+      };
+    } catch (error2) {
+      return yield* Effect_exports.fail(
+        new Nip44Error({
+          reason: "encryption_failed",
+          message: `Failed to encrypt message: ${error2}`,
+          recipient: recipientPubkey,
+          cause: error2
+        })
+      );
+    }
+  }),
+  decrypt: (encryptedMessage, senderPubkey, recipientPrivkey) => Effect_exports.gen(function* () {
+    try {
       if (encryptedMessage.version !== 2) {
         return yield* Effect_exports.fail(
           new Nip44Error({
-            reason: "invalid_version",
-            message: `Invalid version: ${encryptedMessage.version}`,
+            reason: "unsupported_version",
+            message: `Unsupported version: ${encryptedMessage.version}`,
             version: encryptedMessage.version
           })
         );
       }
-      try {
-        base642.decode(encryptedMessage.nonce);
-        base642.decode(encryptedMessage.ciphertext);
-        if (encryptedMessage.mac) base642.decode(encryptedMessage.mac);
-        base642.decode(encryptedMessage.payload);
-      } catch (error2) {
+      const conversationKey = getConversationKey(recipientPrivkey, senderPubkey);
+      const nonce = base642.decode(encryptedMessage.nonce);
+      const ciphertext = base642.decode(encryptedMessage.ciphertext);
+      const receivedMac = base642.decode(encryptedMessage.mac);
+      const { chacha_key, chacha_nonce, hmac_key } = getMessageKeys(conversationKey, nonce);
+      const calculatedMac = hmacAad(hmac_key, ciphertext, nonce);
+      if (!equalBytes2(calculatedMac, receivedMac)) {
         return yield* Effect_exports.fail(
           new Nip44Error({
-            reason: "invalid_format",
-            message: "Invalid base64 encoding",
-            cause: error2
+            reason: "authentication_failed",
+            message: "Invalid MAC",
+            sender: senderPubkey
           })
         );
       }
-    })
-  }
+      const padded = chacha20(chacha_key, chacha_nonce, ciphertext);
+      return unpad(padded);
+    } catch (error2) {
+      return yield* Effect_exports.fail(
+        new Nip44Error({
+          reason: "decryption_failed",
+          message: `Failed to decrypt: ${error2}`,
+          sender: senderPubkey,
+          cause: error2
+        })
+      );
+    }
+  }),
+  encryptFromPayload: (message, recipientPubkey, senderPrivkey) => Effect_exports.gen(function* () {
+    const encrypted = yield* makeNip44Service().encrypt(message, recipientPubkey, senderPrivkey);
+    return encrypted.payload;
+  }),
+  decryptFromPayload: (payload, senderPubkey, recipientPrivkey) => Effect_exports.gen(function* () {
+    const service3 = makeNip44Service();
+    const parsed = yield* service3.parsePayload(payload);
+    return yield* service3.decrypt(parsed, senderPubkey, recipientPrivkey);
+  }),
+  parsePayload: (payload) => Effect_exports.gen(function* () {
+    try {
+      const data = base642.decode(payload);
+      if (data.length < 99) {
+        throw new Error("payload too short");
+      }
+      const version = data[0];
+      if (version !== 2) {
+        throw new Error(`unsupported version ${version}`);
+      }
+      const nonce = data.subarray(1, 33);
+      const ciphertext = data.subarray(33, -32);
+      const mac = data.subarray(-32);
+      return {
+        version: 2,
+        nonce: base642.encode(nonce),
+        ciphertext: base642.encode(ciphertext),
+        mac: base642.encode(mac),
+        payload
+      };
+    } catch (error2) {
+      return yield* Effect_exports.fail(
+        new Nip44Error({
+          reason: "invalid_format",
+          message: `Failed to parse payload: ${error2}`,
+          cause: error2
+        })
+      );
+    }
+  }),
+  deriveConversationKey: (privateKey, publicKey) => Effect_exports.gen(function* () {
+    try {
+      const conversationKey = getConversationKey(privateKey, publicKey);
+      const privkey = typeof privateKey === "string" ? hexToUint8Array(privateKey) : privateKey;
+      const sharedX = secp256k1.getSharedSecret(privkey, "02" + publicKey).subarray(1, 33);
+      return {
+        sharedSecret: bytesToHex3(sharedX),
+        conversationKey: bytesToHex3(conversationKey),
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 24 * 60 * 60 * 1e3
+      };
+    } catch (error2) {
+      return yield* Effect_exports.fail(
+        new Nip44Error({
+          reason: "key_derivation_failed",
+          message: `Failed to derive key: ${error2}`,
+          cause: error2
+        })
+      );
+    }
+  }),
+  validateFormat: (encryptedMessage) => Effect_exports.gen(function* () {
+    if (encryptedMessage.version !== 2) {
+      return yield* Effect_exports.fail(
+        new Nip44Error({
+          reason: "invalid_version",
+          message: `Invalid version: ${encryptedMessage.version}`,
+          version: encryptedMessage.version
+        })
+      );
+    }
+    try {
+      base642.decode(encryptedMessage.nonce);
+      base642.decode(encryptedMessage.ciphertext);
+      if (encryptedMessage.mac) base642.decode(encryptedMessage.mac);
+      base642.decode(encryptedMessage.payload);
+    } catch (error2) {
+      return yield* Effect_exports.fail(
+        new Nip44Error({
+          reason: "invalid_format",
+          message: "Invalid base64 encoding",
+          cause: error2
+        })
+      );
+    }
+  })
+});
+var Nip44ServiceLive = Layer_exports.succeed(
+  Nip44Service,
+  makeNip44Service()
 );
 
 // ../../packages/nostr/src/services/RelayPoolService.ts
