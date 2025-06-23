@@ -75,7 +75,7 @@ export function cloudflareChat(
       const sseStream = aiStream.pipe(
         Stream.mapConcat((response) => {
           const chunks: Array<Uint8Array> = []
-          
+
           for (const part of response.parts) {
             if (part._tag === "TextPart") {
               const chunk = {
@@ -115,7 +115,7 @@ export function cloudflareChat(
               chunks.push(encoder.encode(data))
             }
           }
-          
+
           return chunks
         }),
         Stream.concat(Stream.make(encoder.encode("data: [DONE]\n\n"))),

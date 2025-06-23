@@ -45,9 +45,7 @@ export function ollamaChat(
       })
 
       // Create a stream from the async generator
-      const sseStream = Stream.fromAsyncIterable(generator, (error) => 
-        new Error(`Ollama stream error: ${error}`)
-      ).pipe(
+      const sseStream = Stream.fromAsyncIterable(generator, (error) => new Error(`Ollama stream error: ${error}`)).pipe(
         Stream.map((chunk) => {
           const responseChunk = {
             model,

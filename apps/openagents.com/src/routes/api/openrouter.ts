@@ -98,7 +98,7 @@ export function openrouterChat(
       const sseStream = aiStream.pipe(
         Stream.mapConcat((response: any) => {
           const chunks: Array<Uint8Array> = []
-          
+
           for (const part of response.parts) {
             if (part._tag === "TextPart") {
               const chunk = {
@@ -130,7 +130,7 @@ export function openrouterChat(
               chunks.push(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
             }
           }
-          
+
           return chunks
         }),
         Stream.concat(Stream.make(encoder.encode(`data: [DONE]\n\n`))),
