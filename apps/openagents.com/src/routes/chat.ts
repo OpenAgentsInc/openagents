@@ -1,4 +1,4 @@
-import { css, document, html } from "@openagentsinc/psionic"
+import { css, document, html, renderMarkdown } from "@openagentsinc/psionic"
 import { baseStyles } from "../styles"
 
 // Mock thread data - in real implementation this would come from database
@@ -116,8 +116,9 @@ const chatStyles = css`
 
   .message-content { flex: 1; max-width: 936px; }
   .message-author { font-weight: 600; color: var(--white); margin-bottom: 4px; }
-  .message-body { color: var(--text); line-height: 1.6; white-space: pre-wrap; }
+  .message-body { color: var(--text); line-height: 1.6; }
 
+  /* Inline code */
   .message-body code {
     background-color: var(--offblack);
     padding: 2px 4px;
@@ -125,16 +126,55 @@ const chatStyles = css`
     font-size: 14px;
   }
 
-  .message-body pre {
-    background-color: var(--offblack);
-    border: 1px solid var(--darkgray);
-    border-radius: 6px;
-    padding: 16px;
+  /* Code blocks - WebTUI pre with Shiki highlighting */
+  .message-body pre[is-="pre"] {
     margin: 16px 0;
     overflow-x: auto;
   }
 
-  .message-body pre code { background: none; padding: 0; }
+  .message-body pre[is-="pre"] code { 
+    background: none; 
+    padding: 0; 
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* Markdown content styling */
+  .message-body p { margin: 0 0 16px 0; }
+  .message-body p:last-child { margin-bottom: 0; }
+  
+  .message-body ul, .message-body ol { 
+    margin: 0 0 16px 0; 
+    padding-left: 24px;
+  }
+  
+  .message-body li { margin: 4px 0; }
+  
+  .message-body blockquote {
+    border-left: 4px solid var(--darkgray);
+    padding-left: 16px;
+    margin: 16px 0;
+    color: var(--gray);
+  }
+  
+  .message-body h1, .message-body h2, .message-body h3, 
+  .message-body h4, .message-body h5, .message-body h6 {
+    margin: 24px 0 16px 0;
+    font-weight: 600;
+  }
+  
+  .message-body h1 { font-size: 1.5em; }
+  .message-body h2 { font-size: 1.3em; }
+  .message-body h3 { font-size: 1.1em; }
+  
+  .message-body a {
+    color: var(--white);
+    text-decoration: underline;
+  }
+  
+  .message-body a:hover {
+    color: var(--gray);
+  }
 
   /* Chat input */
   .chat-input {
@@ -229,7 +269,10 @@ function renderThread(thread: { id: string; title: string; active: boolean }) {
   `
 }
 
-function renderMessage(message: { role: string; content: string; timestamp: string }) {
+async function renderMessage(message: { role: string; content: string; timestamp: string }) {
+  // Render markdown content with syntax highlighting
+  const renderedContent = await renderMarkdown(message.content)
+
   return html`
     <div class="message">
       <div class="message-avatar ${message.role}">
@@ -250,7 +293,7 @@ function renderMessage(message: { role: string; content: string; timestamp: stri
       </div>
       <div class="message-content">
         <div class="message-author">${message.role === "user" ? "You" : "Assistant"}</div>
-        <div class="message-body">${message.content}</div>
+        <div class="message-body">${renderedContent}</div>
       </div>
     </div>
   `
@@ -365,7 +408,7 @@ export async function chat(ctx: { params: { id: string } }) {
           <!-- Messages -->
           <div id="messages-container" style="flex: 1; overflow-y: auto; padding: 80px 20px 20px;">
             <div style="max-width: 800px; margin: 0 auto;">
-              ${currentThread.messages.map((message) => renderMessage(message)).join("")}
+              ${(await Promise.all(currentThread.messages.map((message) => renderMessage(message)))).join("")}
             </div>
           </div>
 
