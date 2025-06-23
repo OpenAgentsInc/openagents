@@ -29,13 +29,13 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@effect/platform": "0.84.6",
-    "@effect/platform-bun": "0.70.4",
+    "@effect/platform": "0.85.2",
+    "@effect/platform-bun": "0.70.5",
     "@electric-sql/pglite": "^0.3.3",
     "@electric-sql/pglite-sync": "^0.3.6",
     "dompurify": "^3.2.6",
     "drizzle-orm": "^0.44.2",
-    "effect": "3.16.3",
+    "effect": "3.16.8",
     "gray-matter": "^4.0.3",
     "jsdom": "^26.1.0",
     "markdown-it": "^14.1.0",
