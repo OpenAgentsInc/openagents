@@ -277,7 +277,7 @@ const v1Styles = css`
     text-align: center;
     color: var(--gray);
     font-size: 12px;
-    margin: 12px 0;
+    margin: 3px 0 8px;
   }
 
   .messages-remaining span {
@@ -432,7 +432,7 @@ export async function home() {
     body: html`
       <div style="display: flex; height: 100vh; overflow: hidden; background: black;">
         <!-- Header -->
-        <div style="position: fixed; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 20; background: black;">
+        <div style="position: fixed; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 20; background: black; border-bottom: 1px solid var(--darkgray);">
           <div style="display: flex; align-items: center; gap: 20px;">
             <button onclick="document.getElementById('sidebar').classList.toggle('sidebar-open'); document.getElementById('sidebar').classList.toggle('sidebar-closed'); document.getElementById('main').classList.toggle('hmmm')" style="background: none; border: none; color: white; cursor: pointer; padding: 4px;">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -551,7 +551,7 @@ export async function home() {
           </div>
 
           <!-- Input area -->
-          <div style="border-top: 1px solid var(--offblack); padding: 20px;">
+          <div style="border-top: 1px solid var(--offblack); padding-top: 20px;">
             <div style="max-width: 800px; margin: 0 auto;">
               <div style="position: relative;">
                 <textarea
