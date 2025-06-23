@@ -1,4 +1,4 @@
-import type { HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import type { HttpServerRequest } from "@effect/platform"
 import type { Effect } from "effect"
 
 export interface PsionicConfig {

@@ -13,9 +13,7 @@ export function ollamaStatus(_ctx: RouteContext): Effect.Effect<HttpServerRespon
     const status = yield* Ai.Ollama.checkStatus()
     return yield* HttpServerResponse.json(status)
   }).pipe(
-    Effect.catchAll(() =>
-      HttpServerResponse.json({ online: false, models: [], modelCount: 0 }, { status: 503 })
-    )
+    Effect.catchAll(() => HttpServerResponse.json({ online: false, models: [], modelCount: 0 }, { status: 503 }))
   )
 }
 

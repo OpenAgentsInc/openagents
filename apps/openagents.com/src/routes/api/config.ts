@@ -1,6 +1,6 @@
 import { HttpServerResponse } from "@effect/platform"
 import type { RouteContext } from "@openagentsinc/psionic"
-import { Effect } from "effect"
+import type { Effect } from "effect"
 
 /**
  * GET /api/config - Get configuration status
