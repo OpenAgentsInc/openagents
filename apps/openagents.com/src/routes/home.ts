@@ -142,44 +142,7 @@ const v1Styles = css`
     transition: margin-left 0.3s ease-in-out;
   }
 
-  /* Thread list */
-  .thread-item {
-    position: relative;
-    z-index: 15;
-  }
-
-  .thread-item-inner {
-    position: relative;
-    border-radius: 8px;
-    padding: 0 12px;
-    cursor: pointer;
-  }
-
-  .thread-item-inner.active {
-    background-color: var(--active-thread);
-  }
-
-  .thread-item-inner:active {
-    opacity: 0.9;
-  }
-
-  .thread-link {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-    text-decoration: none;
-    color: var(--white);
-  }
-
-  .thread-title {
-    position: relative;
-    flex-grow: 1;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-size: 14px;
-  }
+  /* Thread list - NO HOVER BACKGROUNDS */
 
   /* Messages */
   .message {
@@ -399,10 +362,12 @@ const v1Styles = css`
 
 function renderThread(thread: typeof mockThreads[0]) {
   return html`
-    <div class="thread-item">
-      <div class="thread-item-inner ${thread.active ? "active" : ""}">
-        <a href="/chat/${thread.id}" class="thread-link">
-          <div class="thread-title">${thread.title}</div>
+    <div class="relative z-[15]">
+      <div class="group relative rounded-lg active:opacity-90 px-3 ${thread.active ? "bg-[#262626]" : ""}">
+        <a href="/chat/${thread.id}" class="flex items-center gap-2 py-1">
+          <div class="relative grow overflow-hidden whitespace-nowrap text-white">
+            ${thread.title}
+          </div>
         </a>
       </div>
     </div>
@@ -442,9 +407,6 @@ export async function home() {
   return document({
     title: "OpenAgents",
     styles: baseStyles + v1Styles,
-    head: html`
-      <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
-    `,
     body: html`
       <div style="display: flex; height: 100vh; overflow: hidden; background: black;">
         <!-- Header -->
