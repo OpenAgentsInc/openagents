@@ -1,3 +1,11 @@
+import { config } from 'dotenv'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+// Load .env from the apps/openagents.com directory
+const __dirname = dirname(fileURLToPath(import.meta.url))
+config({ path: join(__dirname, '../.env') })
+
 import { createPsionicApp } from '@openagentsinc/psionic'
 // import { createRelayPlugin } from '@openagentsinc/relay'
 import { home } from './routes/home'
@@ -17,9 +25,7 @@ import { channelsApi } from './routes/api/channels'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 
 const app = createPsionicApp({
   name: 'OpenAgents',

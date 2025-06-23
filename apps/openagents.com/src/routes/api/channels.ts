@@ -1,15 +1,22 @@
 import * as Nostr from "@openagentsinc/nostr"
 import { RelayDatabase, RelayDatabaseLive } from "@openagentsinc/relay"
 import { Effect, Layer, Runtime } from "effect"
-import { Elysia } from "elysia"
 
 // Create a runtime with database layer
 const runtime = Runtime.defaultRuntime
 
-export const channelsApi = new Elysia({ prefix: "/api/channels" })
+export const channelsApi = (app: any) => {
+  const prefix = "/api/channels"
+
   // Create a new channel
-  .post("/create", async ({ body }: { body: { name: string; about?: string; picture?: string } }) => {
+  app.post(`${prefix}/create`, async (context: any) => {
     try {
+      const bodyText = await Effect.runPromise(
+        Effect.gen(function*() {
+          return yield* context.request.text
+        }) as Effect.Effect<string, never, never>
+      )
+      const body = JSON.parse(bodyText) as { name: string; about?: string; picture?: string }
       const program = Effect.gen(function*() {
         const crypto = yield* Nostr.CryptoService.CryptoService
         const nip28 = yield* Nostr.Nip28Service.Nip28Service
@@ -77,11 +84,23 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       )
     }
   })
+
   // Send a message to a channel
-  .post(
-    "/message",
-    async ({ body }: { body: { channelId: string; content: string; replyTo?: string; privateKey?: string } }) => {
+  app.post(
+    `${prefix}/message`,
+    async (context: any) => {
       try {
+        const bodyText = await Effect.runPromise(
+          Effect.gen(function*() {
+            return yield* context.request.text
+          }) as Effect.Effect<string, never, never>
+        )
+        const body = JSON.parse(bodyText) as {
+          channelId: string
+          content: string
+          replyTo?: string
+          privateKey?: string
+        }
         const program = Effect.gen(function*() {
           const crypto = yield* Nostr.CryptoService.CryptoService
           const nip28 = yield* Nostr.Nip28Service.Nip28Service
@@ -144,8 +163,9 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       }
     }
   )
+
   // List all channels
-  .get("/list", async () => {
+  app.get(`${prefix}/list`, async () => {
     try {
       const program = Effect.gen(function*() {
         const database = yield* RelayDatabase
@@ -172,15 +192,17 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       })
     }
   })
+
   // Get channel details and recent messages
-  .get("/:id", async ({ params }: { params: { id: string } }) => {
+  app.get(`${prefix}/:id`, async (context: any) => {
     try {
+      const { id } = context.params
       const program = Effect.gen(function*() {
         const database = yield* RelayDatabase
 
         // Get channel from database
         const channels = yield* database.getChannels()
-        const channel = channels.find((c) => c.id === params.id)
+        const channel = channels.find((c) => c.id === id)
 
         if (!channel) {
           return { error: "Channel not found" }
@@ -189,7 +211,7 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
         // Get recent messages
         const messages = yield* database.queryEvents([{
           kinds: [42],
-          "#e": [params.id as Nostr.Schema.EventId],
+          "#e": [id as Nostr.Schema.EventId],
           limit: 100
         }])
 
@@ -219,3 +241,4 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       })
     }
   })
+}
