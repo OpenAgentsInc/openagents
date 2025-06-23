@@ -77,7 +77,7 @@ export const cloudflareApi = (app: any) => {
         async transform(chunk, controller) {
           const text = new TextDecoder().decode(chunk)
           console.log("Received chunk:", text)
-          
+
           // Handle Cloudflare's streaming format which can be:
           // 1. SSE format: "data: {...}\n\n"
           // 2. Raw JSON lines: "{...}\n"
@@ -85,7 +85,7 @@ export const cloudflareApi = (app: any) => {
 
           for (const line of lines) {
             let jsonData = ""
-            
+
             if (line.startsWith("data: ")) {
               jsonData = line.slice(6)
               if (jsonData === "[DONE]") {
@@ -101,7 +101,7 @@ export const cloudflareApi = (app: any) => {
             try {
               const parsed = JSON.parse(jsonData)
               console.log("Parsed data:", parsed)
-              
+
               // Handle different possible Cloudflare response formats
               let content = ""
               if (parsed.response) {
@@ -124,7 +124,7 @@ export const cloudflareApi = (app: any) => {
                   choices: [{
                     index: 0,
                     delta: {
-                      content: content
+                      content
                     },
                     finish_reason: null
                   }]
