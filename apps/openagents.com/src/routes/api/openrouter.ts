@@ -20,7 +20,7 @@ export function openrouterStatus(
     const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
 
     if (!apiKey) {
-      return yield* HttpServerResponse.json({ error: "API key required" }, { status: 401 }).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json({ error: "API key required" }, { status: 401 })
     }
 
     // Test the API key by making a simple request to OpenRouter
@@ -35,16 +35,14 @@ export function openrouterStatus(
     )
 
     if (response.ok) {
-      return yield* HttpServerResponse.json({ valid: true, status: "API key is valid" }).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json({ valid: true, status: "API key is valid" })
     } else {
-      return yield* HttpServerResponse.json({ valid: false, status: "Invalid API key" }, { status: 401 }).pipe(
-        Effect.orDie
-      )
+      return yield* HttpServerResponse.json({ valid: false, status: "Invalid API key" }, { status: 401 })
     }
   }).pipe(
     Effect.catchAll((error) => {
       console.error("OpenRouter status check error:", error)
-      return HttpServerResponse.json({ error: "Failed to validate API key" }, { status: 500 }).pipe(Effect.orDie)
+      return HttpServerResponse.json({ error: "Failed to validate API key" }, { status: 500 })
     })
   )
 }
@@ -56,7 +54,7 @@ export function openrouterChat(
   ctx: RouteContext
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
   return Effect.gen(function*() {
-    const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+    const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText)
     const { messages, model } = body
 
@@ -68,7 +66,7 @@ export function openrouterChat(
     const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
 
     if (!apiKey) {
-      return yield* HttpServerResponse.json({ error: "API key required" }, { status: 401 }).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json({ error: "API key required" }, { status: 401 })
     }
 
     // Create a TransformStream for streaming response
@@ -173,7 +171,7 @@ export function openrouterChat(
   }).pipe(
     Effect.catchAll((error: any) => {
       console.error("OpenRouter API error:", error)
-      return HttpServerResponse.json({ error: error.message }, { status: 500 }).pipe(Effect.orDie)
+      return HttpServerResponse.json({ error: error.message }, { status: 500 })
     })
   )
 }

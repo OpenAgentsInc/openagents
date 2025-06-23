@@ -13,13 +13,13 @@ export function listConversations(
   return Effect.gen(function*() {
     try {
       const conversations = yield* Effect.promise(() => getConversations())
-      return yield* HttpServerResponse.json(conversations).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json(conversations)
     } catch (error) {
       console.error("Failed to list conversations:", error)
       return yield* HttpServerResponse.json(
         { error: "Failed to load conversations" },
         { status: 500 }
-      ).pipe(Effect.orDie)
+      )
     }
   })
 }
@@ -35,7 +35,7 @@ export function createConversationRoute(
 
     try {
       // Now we can access request.text directly within the Effect context!
-      const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+      const bodyText = yield* ctx.request.text
       console.log("✅ Successfully read request body using Effect")
 
       const body = JSON.parse(bodyText)
@@ -43,13 +43,13 @@ export function createConversationRoute(
 
       const id = yield* Effect.promise(() => createConversation(title))
 
-      return yield* HttpServerResponse.json({ id, title }).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json({ id, title })
     } catch (error) {
       console.error("Failed to create conversation:", error)
       return yield* HttpServerResponse.json(
         { error: "Failed to create conversation" },
         { status: 500 }
-      ).pipe(Effect.orDie)
+      )
     }
   })
 }
@@ -62,7 +62,7 @@ export function updateConversation(
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
   return Effect.gen(function*() {
     try {
-      const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+      const bodyText = yield* ctx.request.text
       const body = JSON.parse(bodyText)
       const { title } = body
 
@@ -70,18 +70,18 @@ export function updateConversation(
         return yield* HttpServerResponse.json(
           { error: "Title is required" },
           { status: 400 }
-        ).pipe(Effect.orDie)
+        )
       }
 
       yield* Effect.promise(() => updateConversationTitle(ctx.params.id, title))
 
-      return yield* HttpServerResponse.json({ success: true }).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json({ success: true })
     } catch (error) {
       console.error("Failed to update conversation:", error)
       return yield* HttpServerResponse.json(
         { error: "Failed to update conversation" },
         { status: 500 }
-      ).pipe(Effect.orDie)
+      )
     }
   })
 }
@@ -95,7 +95,7 @@ export function addMessageRoute(
   return Effect.gen(function*() {
     console.log("🔍 CONVERSATIONS API: addMessageRoute called")
     try {
-      const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+      const bodyText = yield* ctx.request.text
       console.log("✅ Successfully read message body using Effect")
 
       const body = JSON.parse(bodyText)
@@ -105,18 +105,18 @@ export function addMessageRoute(
         return yield* HttpServerResponse.json(
           { error: "Role and content are required" },
           { status: 400 }
-        ).pipe(Effect.orDie)
+        )
       }
 
       yield* Effect.promise(() => addMessage(ctx.params.id, role, content))
 
-      return yield* HttpServerResponse.json({ success: true }).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json({ success: true })
     } catch (error) {
       console.error("Failed to add message:", error)
       return yield* HttpServerResponse.json(
         { error: "Failed to add message" },
         { status: 500 }
-      ).pipe(Effect.orDie)
+      )
     }
   })
 }

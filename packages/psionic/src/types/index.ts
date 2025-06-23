@@ -33,7 +33,7 @@ export interface RouteContext {
 
 // Support both legacy Promise handlers and new Effect handlers
 export type RouteHandler =
-  | ((context: RouteContext) => Effect.Effect<HttpServerResponse.HttpServerResponse, any, any>)
+  | ((context: RouteContext) => Effect.Effect<any, any, any>)
   | ((context: any) => string | Promise<string> | Response | Promise<Response> | any)
 
 export interface ComponentExplorerOptions {

@@ -12,7 +12,7 @@ export function createChannel(
   ctx: RouteContext
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
   return Effect.gen(function*() {
-    const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+    const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText) as { name: string; about?: string; picture?: string }
     const program = Effect.gen(function*() {
       const crypto = yield* Nostr.CryptoService.CryptoService
@@ -63,7 +63,7 @@ export function createChannel(
 
     const result = yield* program.pipe(Effect.provide(fullLayer))
 
-    return yield* HttpServerResponse.json(result).pipe(Effect.orDie)
+    return yield* HttpServerResponse.json(result)
   }).pipe(
     Effect.catchAll((error) => {
       console.error("Failed to create channel - Full error:", error)
@@ -74,7 +74,7 @@ export function createChannel(
           details: error instanceof Error ? error.message : String(error)
         },
         { status: 500 }
-      ).pipe(Effect.orDie)
+      )
     })
   )
 }
@@ -86,7 +86,7 @@ export function sendChannelMessage(
   ctx: RouteContext
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
   return Effect.gen(function*() {
-    const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+    const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText) as {
       channelId: string
       content: string
@@ -143,14 +143,14 @@ export function sendChannelMessage(
 
     const result = yield* program.pipe(Effect.provide(fullLayer))
 
-    return yield* HttpServerResponse.json(result).pipe(Effect.orDie)
+    return yield* HttpServerResponse.json(result)
   }).pipe(
     Effect.catchAll((error) => {
       console.error("Failed to send message:", error)
       return HttpServerResponse.json(
         { error: "Failed to send message" },
         { status: 500 }
-      ).pipe(Effect.orDie)
+      )
     })
   )
 }
@@ -174,14 +174,14 @@ export function listChannels(_ctx: RouteContext): Effect.Effect<HttpServerRespon
 
     const result = yield* program.pipe(Effect.provide(DatabaseLayer))
 
-    return yield* HttpServerResponse.json(result).pipe(Effect.orDie)
+    return yield* HttpServerResponse.json(result)
   }).pipe(
     Effect.catchAll((error) => {
       console.error("Failed to list channels:", error)
       return HttpServerResponse.json(
         { error: "Failed to list channels" },
         { status: 500 }
-      ).pipe(Effect.orDie)
+      )
     })
   )
 }
@@ -219,17 +219,17 @@ export function getChannel(ctx: RouteContext): Effect.Effect<HttpServerResponse.
     const result = yield* program.pipe(Effect.provide(DatabaseLayer))
 
     if (result.error) {
-      return yield* HttpServerResponse.json(result, { status: 404 }).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json(result, { status: 404 })
     }
 
-    return yield* HttpServerResponse.json(result).pipe(Effect.orDie)
+    return yield* HttpServerResponse.json(result)
   }).pipe(
     Effect.catchAll((error) => {
       console.error("Failed to get channel:", error)
       return HttpServerResponse.json(
         { error: "Failed to get channel" },
         { status: 500 }
-      ).pipe(Effect.orDie)
+      )
     })
   )
 }

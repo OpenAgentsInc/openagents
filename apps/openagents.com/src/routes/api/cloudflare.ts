@@ -20,13 +20,13 @@ export function cloudflareStatus(
     return HttpServerResponse.json({
       available: true,
       provider: "cloudflare"
-    }).pipe(Effect.orDie)
+    })
   }
 
   return HttpServerResponse.json({
     available: false,
     provider: "cloudflare"
-  }).pipe(Effect.orDie)
+  })
 }
 
 /**
@@ -36,7 +36,7 @@ export function cloudflareChat(
   ctx: RouteContext
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
   return Effect.gen(function*() {
-    const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+    const bodyText = yield* ctx.request.text
 
     const body = JSON.parse(bodyText)
     const { messages, model } = body
@@ -45,7 +45,7 @@ export function cloudflareChat(
     const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
 
     if (!apiKey || !accountId) {
-      return yield* HttpServerResponse.json({ error: "Cloudflare not configured" }, { status: 500 }).pipe(Effect.orDie)
+      return yield* HttpServerResponse.json({ error: "Cloudflare not configured" }, { status: 500 })
     }
 
     // Create a TransformStream for SSE format
@@ -161,7 +161,7 @@ export function cloudflareChat(
   }).pipe(
     Effect.catchAll((error: any) => {
       console.error("Cloudflare API error:", error)
-      return HttpServerResponse.json({ error: error.message }, { status: 500 }).pipe(Effect.orDie)
+      return HttpServerResponse.json({ error: error.message }, { status: 500 })
     })
   )
 }

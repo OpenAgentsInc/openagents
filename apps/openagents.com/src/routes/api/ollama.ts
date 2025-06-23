@@ -11,10 +11,10 @@ export function ollamaStatus(_ctx: RouteContext): Effect.Effect<HttpServerRespon
   return Effect.gen(function*() {
     // Use the Ollama provider's checkStatus function
     const status = yield* Ai.Ollama.checkStatus()
-    return yield* HttpServerResponse.json(status).pipe(Effect.orDie)
+    return yield* HttpServerResponse.json(status)
   }).pipe(
     Effect.catchAll(() =>
-      HttpServerResponse.json({ online: false, models: [], modelCount: 0 }, { status: 503 }).pipe(Effect.orDie)
+      HttpServerResponse.json({ online: false, models: [], modelCount: 0 }, { status: 503 })
     )
   )
 }
@@ -26,7 +26,7 @@ export function ollamaChat(
   ctx: RouteContext
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
   return Effect.gen(function*() {
-    const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+    const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText)
     const { messages, model, options } = body
 
@@ -100,7 +100,7 @@ export function ollamaChat(
   }).pipe(
     Effect.catchAll((error: any) => {
       console.error("Chat API error:", error)
-      return HttpServerResponse.json({ error: error.message }, { status: 500 }).pipe(Effect.orDie)
+      return HttpServerResponse.json({ error: error.message }, { status: 500 })
     })
   )
 }

@@ -11,5 +11,5 @@ export function getConfig(_ctx: RouteContext): Effect.Effect<HttpServerResponse.
     hasCloudflareKey: !!process.env.CLOUDFLARE_API_KEY
   }
 
-  return HttpServerResponse.json(config).pipe(Effect.orDie)
+  return HttpServerResponse.json(config)
 }
