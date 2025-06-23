@@ -14,8 +14,9 @@ export const ollamaApi = (app: any) => {
     }
   })
 
-  app.post(`${prefix}/chat`, async ({ body }: { body: any }) => {
+  app.post(`${prefix}/chat`, async (context: any) => {
     try {
+      const body = await context.request.json()
       const { messages, model, options } = body
 
       // Create a TransformStream for streaming response

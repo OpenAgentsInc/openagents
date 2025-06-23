@@ -1,3 +1,11 @@
+import { config } from 'dotenv'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+// Load .env from the apps/openagents.com directory
+const __dirname = dirname(fileURLToPath(import.meta.url))
+config({ path: join(__dirname, '../.env') })
+
 import { createPsionicApp } from '@openagentsinc/psionic'
 // import { createRelayPlugin } from '@openagentsinc/relay'
 import { home } from './routes/home'

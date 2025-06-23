@@ -9,8 +9,9 @@ export const channelsApi = (app: any) => {
   const prefix = "/api/channels"
 
   // Create a new channel
-  app.post(`${prefix}/create`, async ({ body }: { body: { name: string; about?: string; picture?: string } }) => {
+  app.post(`${prefix}/create`, async (context: any) => {
     try {
+      const body = await context.request.json() as { name: string; about?: string; picture?: string }
       const program = Effect.gen(function*() {
         const crypto = yield* Nostr.CryptoService.CryptoService
         const nip28 = yield* Nostr.Nip28Service.Nip28Service
@@ -82,8 +83,9 @@ export const channelsApi = (app: any) => {
   // Send a message to a channel
   app.post(
     `${prefix}/message`,
-    async ({ body }: { body: { channelId: string; content: string; replyTo?: string; privateKey?: string } }) => {
+    async (context: any) => {
       try {
+        const body = await context.request.json() as { channelId: string; content: string; replyTo?: string; privateKey?: string }
         const program = Effect.gen(function*() {
           const crypto = yield* Nostr.CryptoService.CryptoService
           const nip28 = yield* Nostr.Nip28Service.Nip28Service
@@ -177,8 +179,9 @@ export const channelsApi = (app: any) => {
   })
 
   // Get channel details and recent messages
-  app.get(`${prefix}/:id`, async ({ params }: { params: { id: string } }) => {
+  app.get(`${prefix}/:id`, async (context: any) => {
     try {
+      const { id } = context.params
       const program = Effect.gen(function*() {
         const database = yield* RelayDatabase
 

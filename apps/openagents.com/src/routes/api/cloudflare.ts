@@ -2,37 +2,37 @@ import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
 import { Config, Effect, Layer, Stream } from "effect"
 
-// Cloudflare configuration from environment
-const CloudflareApiKey = Config.redacted("CLOUDFLARE_API_KEY")
-const CloudflareAccountId = Config.string("CLOUDFLARE_ACCOUNT_ID")
-
 export const cloudflareApi = (app: any) => {
   const prefix = "/api/cloudflare"
 
   app.get(`${prefix}/status`, async () => {
     try {
-      // Check if Cloudflare is configured
-      const configResult = await Effect.runPromise(
-        Effect.gen(function*() {
-          const apiKey = yield* CloudflareApiKey
-          const accountId = yield* CloudflareAccountId
-          return { apiKey, accountId }
-        }).pipe(
-          Effect.catchAll(() => Effect.succeed(null))
-        )
-      )
-
+      // Check environment variables
+      const apiKey = process.env.CLOUDFLARE_API_KEY
+      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+      
+      // If we have both, return available
+      if (apiKey && accountId) {
+        return Response.json({
+          available: true,
+          provider: "cloudflare"
+        })
+      }
+      
       return Response.json({
-        available: configResult !== null,
+        available: false,
         provider: "cloudflare"
       })
-    } catch {
+    } catch (error) {
+      console.error("Cloudflare status error:", error)
       return Response.json({ available: false })
     }
   })
 
-  app.post(`${prefix}/chat`, async ({ body }: { body: any }) => {
+  app.post(`${prefix}/chat`, async (context: any) => {
     try {
+      // Parse the request body
+      const body = await context.request.json()
       const { messages, model } = body
 
       // Create a TransformStream for streaming response
@@ -98,15 +98,15 @@ export const cloudflareApi = (app: any) => {
             )
           })
 
-          // Create the config effect and then the layers
-          const configProgram = Effect.gen(function*() {
-            const apiKey = yield* CloudflareApiKey
-            const accountId = yield* CloudflareAccountId
-            return { apiKey, accountId }
-          })
-
-          // Get the config values
-          const config = await Effect.runPromise(configProgram)
+          // Get config directly from environment
+          const config = {
+            apiKey: process.env.CLOUDFLARE_API_KEY,
+            accountId: process.env.CLOUDFLARE_ACCOUNT_ID
+          }
+          
+          if (!config.apiKey || !config.accountId) {
+            throw new Error("Cloudflare credentials not configured")
+          }
 
           // Run the main program with all layers provided
           await Effect.runPromise(

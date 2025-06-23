@@ -5,10 +5,11 @@ import { Effect, Layer, Redacted, Stream } from "effect"
 export const openrouterApi = (app: any) => {
   const prefix = "/api/openrouter"
 
-  app.post(`${prefix}/chat`, async ({ body, headers }: { body: any; headers: Record<string, string | undefined> }) => {
+  app.post(`${prefix}/chat`, async (context: any) => {
     try {
+      const body = await context.request.json()
       const { messages, model } = body
-      const apiKey = headers["x-api-key"]
+      const apiKey = context.request.headers.get("x-api-key")
 
       if (!apiKey) {
         return Response.json({ error: "API key required" }, { status: 401 })
