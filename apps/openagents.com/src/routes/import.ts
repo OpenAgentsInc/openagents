@@ -1,7 +1,7 @@
 import { css, document, html } from "@openagentsinc/psionic"
 import { baseStyles } from "../styles"
 
-/* 
+/*
 TypeScript types for JSONL conversation data (documentation only):
 
 interface TextContentPart {
