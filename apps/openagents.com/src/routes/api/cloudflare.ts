@@ -75,7 +75,7 @@ export const cloudflareApi = (app: any) => {
       const transformStream = new TransformStream({
         async transform(chunk, controller) {
           const text = new TextDecoder().decode(chunk)
-          console.log("Raw chunk received:", JSON.stringify(text))
+          // console.log("Raw chunk received:", JSON.stringify(text))
 
           // Handle Cloudflare's streaming format which can be:
           // 1. SSE format: "data: {...}\n\n"
@@ -99,7 +99,7 @@ export const cloudflareApi = (app: any) => {
 
             try {
               const parsed = JSON.parse(jsonData)
-              console.log("Parsed chunk:", parsed)
+              // console.log("Parsed chunk:", parsed)
 
               // Handle OpenAI-compatible format from Cloudflare
               if (parsed.choices?.[0]?.delta?.content) {
