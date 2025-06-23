@@ -1,4 +1,7 @@
-import { Effect } from "effect"
+import { FetchHttpClient } from "@effect/platform"
+import { BunHttpPlatform } from "@effect/platform-bun"
+import * as Ai from "@openagentsinc/ai"
+import { Effect, Layer, Redacted, Stream } from "effect"
 
 export const cloudflareApi = (app: any) => {
   const prefix = "/api/cloudflare"
@@ -29,18 +32,15 @@ export const cloudflareApi = (app: any) => {
 
   app.post(`${prefix}/chat`, async (context: any) => {
     try {
-      // Parse the request body from Effect HttpServerRequest
       const bodyText = await Effect.runPromise(
         Effect.gen(function*() {
-          const request = context.request
-          return yield* request.text
+          return yield* context.request.text
         }) as Effect.Effect<string, never, never>
       )
 
       const body = JSON.parse(bodyText)
       const { messages, model } = body
 
-      // Get credentials
       const apiKey = process.env.CLOUDFLARE_API_KEY
       const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
 
@@ -48,66 +48,32 @@ export const cloudflareApi = (app: any) => {
         return Response.json({ error: "Cloudflare not configured" }, { status: 500 })
       }
 
-      // Use OpenAI-compatible endpoint for proper streaming
-      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`
+      // Create a TransformStream for SSE format
+      const { readable, writable } = new TransformStream()
+      const writer = writable.getWriter()
+      const encoder = new TextEncoder()
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
+      // Run the Effect program in background
+      const program = Effect.gen(function*() {
+        // Create the CloudflareClient service
+        const client = yield* Ai.Cloudflare.CloudflareClient
+
+        // Stream the response directly using the client
+        const stream = client.stream({
           model,
           messages,
-          stream: true,
-          max_tokens: 4096
+          temperature: 0.7,
+          max_tokens: 4096,
+          stream: true
         })
-      })
 
-      if (!response.ok) {
-        const error = await response.text()
-        console.error("Cloudflare API error:", error)
-        return Response.json({ error: "Cloudflare API error" }, { status: response.status })
-      }
-
-      // Create a transform stream to convert Cloudflare's format to OpenAI's format
-      const transformStream = new TransformStream({
-        async transform(chunk, controller) {
-          const text = new TextDecoder().decode(chunk)
-          // console.log("Raw chunk received:", JSON.stringify(text))
-
-          // Handle Cloudflare's streaming format which can be:
-          // 1. SSE format: "data: {...}\n\n"
-          // 2. Raw JSON lines: "{...}\n"
-          const lines = text.split("\n").filter((line) => line.trim())
-
-          for (const line of lines) {
-            let jsonData = ""
-
-            if (line.startsWith("data: ")) {
-              jsonData = line.slice(6)
-              if (jsonData === "[DONE]") {
-                controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
-                continue
-              }
-            } else if (line.trim().startsWith("{")) {
-              jsonData = line.trim()
-            } else {
-              continue
-            }
-
-            try {
-              const parsed = JSON.parse(jsonData)
-              // console.log("Parsed chunk:", parsed)
-
-              // Handle OpenAI-compatible format from Cloudflare
-              if (parsed.choices?.[0]?.delta?.content) {
-                // Already in OpenAI format, pass through directly
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`))
-              } else if (parsed.response) {
-                // Old Cloudflare format, convert to OpenAI format
-                const openAIChunk = {
+        // Process the stream
+        yield* stream.pipe(
+          Stream.tap((response) => {
+            // Convert AiResponse to OpenAI-compatible SSE format
+            for (const part of response.parts) {
+              if (part._tag === "TextPart") {
+                const chunk = {
                   id: "chatcmpl-" + Math.random().toString(36).substring(2),
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
@@ -115,26 +81,71 @@ export const cloudflareApi = (app: any) => {
                   choices: [{
                     index: 0,
                     delta: {
-                      content: parsed.response
+                      content: part.text
                     },
                     finish_reason: null
                   }]
                 }
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIChunk)}\n\n`))
+                const data = `data: ${JSON.stringify(chunk)}\n\n`
+                writer.write(encoder.encode(data))
+              } else if (part._tag === "FinishPart") {
+                // Send finish chunk
+                const chunk = {
+                  id: "chatcmpl-" + Math.random().toString(36).substring(2),
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model,
+                  choices: [{
+                    index: 0,
+                    delta: {},
+                    finish_reason: part.reason
+                  }],
+                  usage: {
+                    prompt_tokens: part.usage.inputTokens,
+                    completion_tokens: part.usage.outputTokens,
+                    total_tokens: part.usage.totalTokens
+                  }
+                }
+                const data = `data: ${JSON.stringify(chunk)}\n\n`
+                writer.write(encoder.encode(data))
               }
-            } catch (e) {
-              console.error("Error parsing Cloudflare response:", e, "Raw data:", jsonData)
             }
-          }
-        },
-        flush(controller) {
-          // Send final done signal
-          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
-        }
+            return Effect.succeed(undefined)
+          }),
+          Stream.runDrain
+        )
+
+        // Send done signal
+        writer.write(encoder.encode("data: [DONE]\n\n"))
+        writer.close()
       })
 
-      // Pipe the response through the transform stream
-      return new Response(response.body!.pipeThrough(transformStream), {
+      // Run the program without waiting for completion
+      Effect.runPromise(
+        // @ts-expect-error - Type issue with HttpClient requirement from layerCloudflareClient
+        program.pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              BunHttpPlatform.layer,
+              FetchHttpClient.layer,
+              Ai.Cloudflare.layerCloudflareClient({
+                apiKey: Redacted.make(apiKey),
+                accountId,
+                useOpenAIEndpoints: true
+              })
+            )
+          ),
+          Effect.catchAll((error) => {
+            console.error("Streaming error:", error)
+            writer.write(encoder.encode(`data: {"error": "${error}"}\n\n`))
+            writer.close()
+            return Effect.succeed(undefined)
+          })
+        )
+      )
+
+      // Return the readable stream as SSE response
+      return new Response(readable, {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",

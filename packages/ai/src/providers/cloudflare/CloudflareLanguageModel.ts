@@ -7,7 +7,7 @@ import * as Layer from "effect/Layer"
 import * as Stream from "effect/Stream"
 import { AiError } from "../../core/AiError.js"
 import * as AiLanguageModel from "../../core/AiLanguageModel.js"
-import * as AiResponse from "../../core/AiResponse.js"
+import type * as AiResponse from "../../core/AiResponse.js"
 import { CloudflareClient } from "./CloudflareClient.js"
 import { convertToCloudflareMessages } from "./internal/utilities.js"
 
@@ -67,19 +67,29 @@ export const makeLanguageModel = (options: {
     const generateText = (
       input: AiLanguageModel.AiLanguageModelOptions
     ): Effect.Effect<AiResponse.AiResponse, AiError, never> => {
-      // Collect the stream into a single response
-      return Stream.runCollect(streamText(input)).pipe(
-        Effect.map((chunks) => {
-          const responses: Array<AiResponse.AiResponse> = []
-          for (const chunk of chunks) {
-            for (const part of chunk.parts) {
-              responses.push(AiResponse.AiResponse.make({ parts: [part] }, { disableValidation: true }))
-            }
-          }
-          return AiResponse.AiResponse.make({
-            parts: responses.flatMap((r) => r.parts)
-          }, { disableValidation: true })
-        })
+      const messages = convertToCloudflareMessages(input.prompt.messages)
+
+      // Use the non-streaming complete method
+      return client.complete({
+        model: options.model,
+        messages,
+        temperature: options.temperature,
+        max_tokens: options.maxTokens,
+        top_p: options.topP,
+        frequency_penalty: options.frequencyPenalty,
+        presence_penalty: options.presencePenalty,
+        stop: options.stop,
+        stream: false
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.fail(
+            new AiError({
+              module: "CloudflareLanguageModel",
+              method: "generateText",
+              description: `Cloudflare API Error: ${error.message}`
+            })
+          )
+        )
       )
     }
 
