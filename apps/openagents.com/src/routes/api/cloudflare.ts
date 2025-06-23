@@ -1,14 +1,15 @@
 import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
 import { Config, Effect, Layer, Stream } from "effect"
-import { Elysia } from "elysia"
 
 // Cloudflare configuration from environment
 const CloudflareApiKey = Config.redacted("CLOUDFLARE_API_KEY")
 const CloudflareAccountId = Config.string("CLOUDFLARE_ACCOUNT_ID")
 
-export const cloudflareApi = new Elysia({ prefix: "/api/cloudflare" })
-  .get("/status", async () => {
+export const cloudflareApi = (app: any) => {
+  const prefix = "/api/cloudflare"
+
+  app.get(`${prefix}/status`, async () => {
     try {
       // Check if Cloudflare is configured
       const configResult = await Effect.runPromise(
@@ -29,7 +30,8 @@ export const cloudflareApi = new Elysia({ prefix: "/api/cloudflare" })
       return Response.json({ available: false })
     }
   })
-  .post("/chat", async ({ body }: { body: any }) => {
+
+  app.post(`${prefix}/chat`, async ({ body }: { body: any }) => {
     try {
       const { messages, model } = body
 
@@ -146,3 +148,4 @@ export const cloudflareApi = new Elysia({ prefix: "/api/cloudflare" })
       return Response.json({ error: error.message }, { status: 500 })
     }
   })
+}

@@ -1,14 +1,15 @@
 import * as Nostr from "@openagentsinc/nostr"
 import { RelayDatabase, RelayDatabaseLive } from "@openagentsinc/relay"
 import { Effect, Layer, Runtime } from "effect"
-import { Elysia } from "elysia"
 
 // Create a runtime with database layer
 const runtime = Runtime.defaultRuntime
 
-export const channelsApi = new Elysia({ prefix: "/api/channels" })
+export const channelsApi = (app: any) => {
+  const prefix = "/api/channels"
+
   // Create a new channel
-  .post("/create", async ({ body }: { body: { name: string; about?: string; picture?: string } }) => {
+  app.post(`${prefix}/create`, async ({ body }: { body: { name: string; about?: string; picture?: string } }) => {
     try {
       const program = Effect.gen(function*() {
         const crypto = yield* Nostr.CryptoService.CryptoService
@@ -77,9 +78,10 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       )
     }
   })
+
   // Send a message to a channel
-  .post(
-    "/message",
+  app.post(
+    `${prefix}/message`,
     async ({ body }: { body: { channelId: string; content: string; replyTo?: string; privateKey?: string } }) => {
       try {
         const program = Effect.gen(function*() {
@@ -144,8 +146,9 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       }
     }
   )
+
   // List all channels
-  .get("/list", async () => {
+  app.get(`${prefix}/list`, async () => {
     try {
       const program = Effect.gen(function*() {
         const database = yield* RelayDatabase
@@ -172,8 +175,9 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       })
     }
   })
+
   // Get channel details and recent messages
-  .get("/:id", async ({ params }: { params: { id: string } }) => {
+  app.get(`${prefix}/:id`, async ({ params }: { params: { id: string } }) => {
     try {
       const program = Effect.gen(function*() {
         const database = yield* RelayDatabase
@@ -219,3 +223,4 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       })
     }
   })
+}

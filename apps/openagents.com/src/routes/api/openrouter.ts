@@ -1,10 +1,11 @@
 import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
 import { Effect, Layer, Redacted, Stream } from "effect"
-import { Elysia } from "elysia"
 
-export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
-  .post("/chat", async ({ body, headers }: { body: any; headers: Record<string, string | undefined> }) => {
+export const openrouterApi = (app: any) => {
+  const prefix = "/api/openrouter"
+
+  app.post(`${prefix}/chat`, async ({ body, headers }: { body: any; headers: Record<string, string | undefined> }) => {
     try {
       const { messages, model } = body
       const apiKey = headers["x-api-key"]
@@ -115,3 +116,4 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
       return Response.json({ error: error.message }, { status: 500 })
     }
   })
+}
