@@ -3,6 +3,7 @@ import { html } from "@openagentsinc/psionic"
 export function navigation({ current }: { current: string }) {
   const rightLinks = [
     { href: "/gfn", label: "⚡ GFN", key: "gfn", title: "Group-Forming Network Calculator" },
+    { href: "/import", label: "📥 Import", key: "import", title: "Import Claude Code conversations" },
     { href: "/docs", label: "§ Docs", key: "docs" },
     { href: "/components", label: "◊ Examples", key: "components" },
     { href: "https://github.com/openagentsinc/openagents", label: "§ Github", key: "github", external: true }
