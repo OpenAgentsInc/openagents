@@ -10,7 +10,7 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
 - **`@openagentsinc/cli`** - Command-line interface demo (placeholder for future development)
-- **`@openagentsinc/ui`** - WebTUI CSS library
+- **`@openagentsinc/ui`** - Custom Tailwind theme with Basecoat CSS design system
 - **`@openagentsinc/ai`** - AI provider abstraction
 - **`@openagentsinc/psionic`** - Hypermedia web framework with built-in component explorer
 
@@ -119,7 +119,7 @@ pnpm --filter=@openagentsinc/sdk test
 ```
 sdk → nostr (NIP-06 key derivation)
 cli → ai (AI features)
-ui → (standalone, WebTUI CSS)
+ui → (standalone, Tailwind + Basecoat CSS)
 psionic → (standalone, web framework)
 openagents.com → psionic, sdk, nostr (main website)
 ```
@@ -299,32 +299,42 @@ bun src/orchestrate.ts "$(cat test-config.json)"
 
 For detailed usage, configuration options, and troubleshooting, see [docs/autotest.md](docs/autotest.md).
 
-## Component Library Reference
+## UI and Styling
 
-**For Coding Agents**: Use [docs/components.md](docs/components.md) as the definitive guide to all UI components. This contains complete documentation for:
+### UI Package
+The `@openagentsinc/ui` package provides:
+- **Custom Tailwind theme** with OpenAgents color palette (black, offblack, darkgray, etc.)
+- **Basecoat CSS** integration for modern component styling
+- **Multiple themes**: Zinc (default), Catppuccin, Gruvbox, Nord
+- **Berkeley Mono** font as the primary monospace font
 
-### WebTUI Components (Attribute-Based Styling)
-- **Button**: `<button is-="button" variant-="foreground1" box-="square">Text</button>`
-- **Input/Textarea**: `<input is-="input" box-="square">` and `<textarea is-="textarea">`
-- **Dialog**: `<dialog position-="center-center" box-="square">` with 9-point positioning
-- **Badge**: `<span is-="badge" variant-="foreground0" cap-="round">Status</span>`
-- **Form Controls**: Checkbox, radio, switch with `box-="square/round/double"`
-- **Popover/Tooltip**: `<details is-="popover">` and `<div is-="tooltip">`
-- **Typography**: Automatic styling for headings, lists, and semantic HTML
+### Component Patterns
+Components in `apps/openagents.com/src/components/` use:
+- **Template literals** with Psionic's `html` tag
+- **CSS-in-JS** with Psionic's `css` tag for scoped styles
+- **CSS variables** for theming (--text, --offblack, --darkgray, etc.)
+- **Tailwind classes** where appropriate
 
-### Custom OpenAgents Components
-- **Navigation**: `${navigation({ current: "home" })}` with responsive header
-- **Theme Switcher**: `${themeSwitcher()}` with 5 built-in themes (zinc, catppuccin, gruvbox, nord)
+Example component pattern:
+```typescript
+import { html, css } from "@openagentsinc/psionic"
 
-### Key Principles
-- **Attribute-based styling**: Use `is-="component"` instead of CSS classes
-- **Box system**: All components support `box-="square/round/double"` ASCII borders
-- **Color system**: `foreground0-2` (bright to dim) and `background0-3` (dark to light)
-- **Semantic HTML first**: WebTUI enhances rather than replaces standard HTML
-
-**Quick Reference**: Most common pattern is `<element is-="component" variant-="foreground1" box-="square">content</element>`
-
-**DO NOT explore the component library manually** - everything you need is documented in [docs/components.md](docs/components.md).
+export function myComponent({ title }: { title: string }) {
+  return html`
+    <div class="my-component">
+      <h2>${title}</h2>
+    </div>
+    
+    <style>
+      .my-component {
+        background: var(--offblack);
+        color: var(--text);
+        padding: 1rem;
+      }
+    </style>
+  `
+}
+```
 
 ## Database Migrations
 
