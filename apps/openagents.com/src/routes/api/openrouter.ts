@@ -15,7 +15,7 @@ export const openrouterApi = (app: any) => {
           return headers["x-api-key"]
         }) as Effect.Effect<string | undefined, never, never>
       )
-      
+
       // Use header API key first, fall back to environment variable
       const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
 
@@ -60,7 +60,7 @@ export const openrouterApi = (app: any) => {
           return headers["x-api-key"]
         }) as Effect.Effect<string | undefined, never, never>
       )
-      
+
       // Use header API key first, fall back to environment variable
       const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
 
