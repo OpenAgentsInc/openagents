@@ -120,22 +120,12 @@ export const layer = (options: {
  */
 export const models = {
   // Text Generation Models
+  LLAMA_4_SCOUT_17B_INSTRUCT: "@cf/meta/llama-4-scout-17b-16e-instruct",
+  LLAMA_3_3_70B_INSTRUCT_FP8_FAST: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   LLAMA_3_1_8B_INSTRUCT: "@cf/meta/llama-3.1-8b-instruct",
-  LLAMA_3_1_70B_INSTRUCT: "@cf/meta/llama-3.1-70b-instruct",
   LLAMA_3_2_11B_VISION: "@cf/meta/llama-3.2-11b-vision-instruct",
   LLAMA_3_2_3B_INSTRUCT: "@cf/meta/llama-3.2-3b-instruct",
   LLAMA_3_2_1B_INSTRUCT: "@cf/meta/llama-3.2-1b-instruct",
-
-  // Gemma Models
-  GEMMA_2_9B_IT: "@cf/google/gemma-2-9b-it",
-  GEMMA_7B_IT: "@cf/google/gemma-7b-it",
-
-  // Mistral Models
-  MISTRAL_7B_INSTRUCT: "@cf/mistral/mistral-7b-instruct-v0.1",
-
-  // Qwen Models
-  QWEN_1_5_7B_CHAT: "@cf/qwen/qwen1.5-7b-chat-awq",
-  QWEN_1_5_14B_CHAT: "@cf/qwen/qwen1.5-14b-chat-awq",
 
   // Code Models
   DEEPSEEK_R1_DISTILL_32B: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
@@ -156,11 +146,22 @@ export const models = {
  */
 export const presets = {
   /**
+   * Latest Llama 4 Scout - Default free model
+   */
+  llama4_scout: (options?: Partial<Parameters<typeof makeLanguageModel>[0]>) =>
+    makeLanguageModel({
+      model: models.LLAMA_4_SCOUT_17B_INSTRUCT,
+      temperature: 0.7,
+      maxTokens: 4096,
+      ...options
+    }),
+
+  /**
    * High-performance general purpose model
    */
-  llama31_70b: (options?: Partial<Parameters<typeof makeLanguageModel>[0]>) =>
+  llama33_70b: (options?: Partial<Parameters<typeof makeLanguageModel>[0]>) =>
     makeLanguageModel({
-      model: models.LLAMA_3_1_70B_INSTRUCT,
+      model: models.LLAMA_3_3_70B_INSTRUCT_FP8_FAST,
       temperature: 0.7,
       maxTokens: 4096,
       ...options
@@ -205,17 +206,6 @@ export const presets = {
   deepseek_r1: (options?: Partial<Parameters<typeof makeLanguageModel>[0]>) =>
     makeLanguageModel({
       model: models.DEEPSEEK_R1_DISTILL_32B,
-      temperature: 0.7,
-      maxTokens: 4096,
-      ...options
-    }),
-
-  /**
-   * Multilingual support
-   */
-  gemma_9b: (options?: Partial<Parameters<typeof makeLanguageModel>[0]>) =>
-    makeLanguageModel({
-      model: models.GEMMA_2_9B_IT,
       temperature: 0.7,
       maxTokens: 4096,
       ...options

@@ -83,7 +83,7 @@ interface UsagePart {
 
 ### 1. Cloudflare Workers AI
 
-**Models**: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, `@cf/meta/llama-3.1-8b-instruct`
+**Models**: `@cf/meta/llama-4-scout-17b-16e-instruct`, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`, `@cf/meta/llama-3.1-8b-instruct`
 
 #### Configuration
 ```typescript

@@ -156,7 +156,7 @@ export function cloudflareChat(ctx: RouteContext) {
   return Effect.gen(function* () {
     // 1. Parse request
     const bodyText = yield* ctx.request.text
-    const { messages, model = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" } = JSON.parse(bodyText)
+    const { messages, model = "@cf/meta/llama-4-scout-17b-16e-instruct" } = JSON.parse(bodyText)
     
     // 2. Get client and create AI stream
     const client = yield* CloudflareClient
@@ -438,7 +438,7 @@ test("streaming endpoint", async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       messages: [{ role: "user", content: "Hi" }],
-      model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+      model: "@cf/meta/llama-4-scout-17b-16e-instruct"
     })
   })
   
