@@ -568,16 +568,16 @@ export function chat() {
         }
 
         .status-dot.checking {
-          background: #f59e0b;
+          background: var(--warning);
           animation: pulse 1s infinite;
         }
 
         .status-dot.online {
-          background: #10b981;
+          background: var(--success);
         }
 
         .status-dot.offline {
-          background: #ef4444;
+          background: var(--danger);
         }
 
         @keyframes pulse {
@@ -615,11 +615,11 @@ export function chat() {
         }
 
         .api-key-status.success {
-          color: #10b981;
+          color: var(--success);
         }
 
         .api-key-status.error {
-          color: #ef4444;
+          color: var(--danger);
         }
 
         .model-list {

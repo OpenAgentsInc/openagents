@@ -1,4 +1,4 @@
-import { document, html } from "@openagentsinc/psionic"
+import { css, document, html } from "@openagentsinc/psionic"
 import { baseStyles } from "../styles"
 
 // Mock data for demo
@@ -183,16 +183,430 @@ function renderCodeMessage(content: string) {
   `
 }
 
+const chatStyles = css`
+  /* Chat UI Styles - Zinc Theme */
+
+  /* Main container */
+  .chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--background0);
+    color: var(--foreground1);
+  }
+
+  /* Header */
+  .chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--background1);
+    border-bottom: 1px solid var(--foreground2);
+  }
+
+  .chat-header a {
+    color: var(--foreground2);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .chat-header a:hover {
+    color: var(--foreground1);
+  }
+
+  .model-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--foreground0);
+    font-size: 0.875rem;
+  }
+
+  .model-indicator-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--foreground0);
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* Main layout */
+  .chat-main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .chat-sidebar {
+    width: 260px;
+    background: var(--background1);
+    border-right: 1px solid var(--foreground2);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .thread-header {
+    padding: 1rem;
+    border-bottom: 1px solid var(--foreground2);
+  }
+
+  .new-thread-button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--background2);
+    color: var(--foreground1);
+    border: 1px solid var(--foreground2);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+
+  .new-thread-button:hover {
+    background: var(--background3);
+    border-color: var(--foreground0);
+  }
+
+  .thread-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+  }
+
+  .thread-item {
+    padding: 0.75rem;
+    margin-bottom: 0.25rem;
+    cursor: pointer;
+    border-radius: 0.375rem;
+    transition: background 0.2s;
+  }
+
+  .thread-item:hover {
+    background: var(--background2);
+  }
+
+  .thread-item.active {
+    background: var(--background2);
+    border: 1px solid var(--foreground0);
+  }
+
+  .thread-title {
+    font-weight: 500;
+    color: var(--foreground1);
+    margin-bottom: 0.25rem;
+  }
+
+  .thread-preview {
+    font-size: 0.875rem;
+    color: var(--foreground0);
+    margin-bottom: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .thread-meta {
+    font-size: 0.75rem;
+    color: var(--overlay0);
+  }
+
+  /* Chat content */
+  .chat-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--background0);
+  }
+
+  /* Messages */
+  .messages-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem 1rem;
+  }
+
+  .messages-wrapper {
+    max-width: 48rem;
+    margin: 0 auto;
+  }
+
+  .message {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    align-items: flex-start;
+  }
+
+  .message-avatar {
+    width: 2rem;
+    height: 2rem;
+    background: var(--background2);
+    border: 1px solid var(--foreground2);
+    border-radius: 0.375rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  .message-avatar.user {
+    background: var(--background2);
+    color: var(--foreground1);
+  }
+
+  .message-avatar.assistant {
+    background: var(--foreground0);
+    color: var(--background0);
+  }
+
+  .message-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .message-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .message-name {
+    font-weight: 500;
+    color: var(--foreground1);
+  }
+
+  .message-time {
+    font-size: 0.75rem;
+    color: var(--overlay0);
+  }
+
+  .message-body {
+    color: var(--foreground1);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .message-body.assistant {
+    background: var(--background1);
+    padding: 1rem;
+    border: 1px solid var(--foreground2);
+    border-radius: 0.375rem;
+  }
+
+  .message-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .message-action-button {
+    padding: 0.375rem;
+    background: transparent;
+    border: 1px solid var(--foreground2);
+    border-radius: 0.25rem;
+    color: var(--foreground0);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .message-action-button:hover {
+    background: var(--background2);
+    border-color: var(--foreground0);
+    color: var(--foreground1);
+  }
+
+  /* Code blocks */
+  .message-code {
+    margin: 0.5rem 0;
+    border: 1px solid var(--foreground2);
+    border-radius: 0.375rem;
+    overflow: hidden;
+    background: var(--background0);
+  }
+
+  .code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: var(--background2);
+    border-bottom: 1px solid var(--foreground2);
+  }
+
+  .code-language {
+    font-size: 0.75rem;
+    color: var(--foreground0);
+    text-transform: uppercase;
+  }
+
+  .message-code pre {
+    margin: 0;
+    padding: 1rem;
+    overflow-x: auto;
+    background: var(--background0);
+  }
+
+  .message-code code {
+    font-family: "Berkeley Mono", monospace;
+    font-size: 0.875rem;
+    color: var(--foreground1);
+  }
+
+  /* Input area */
+  .chat-input-container {
+    padding: 1rem;
+    background: var(--background1);
+    border-top: 1px solid var(--foreground2);
+  }
+
+  .chat-input-wrapper {
+    max-width: 48rem;
+    margin: 0 auto;
+  }
+
+  .chat-input-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+  }
+
+  .chat-input {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    background: var(--background0);
+    border: 1px solid var(--foreground2);
+    border-radius: 0.375rem;
+    color: var(--foreground1);
+    font-family: inherit;
+    resize: none;
+    min-height: 2.75rem;
+    max-height: 10rem;
+    overflow-y: auto;
+    transition: border-color 0.2s;
+  }
+
+  .chat-input:focus {
+    outline: none;
+    border-color: var(--foreground0);
+  }
+
+  .chat-input::placeholder {
+    color: var(--overlay0);
+  }
+
+  .chat-send-button {
+    padding: 0.75rem 1.5rem;
+    background: var(--foreground0);
+    color: var(--background0);
+    border: 1px solid var(--foreground0);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: inherit;
+  }
+
+  .chat-send-button:hover {
+    background: var(--foreground1);
+    border-color: var(--foreground1);
+  }
+
+  .chat-send-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Utility classes from Tailwind migration */
+  .text-xl { font-size: 1.25rem; }
+  .font-bold { font-weight: 700; }
+  .text-white { color: var(--foreground2); }
+  .text-zinc-200 { color: var(--foreground1); }
+  .text-zinc-400 { color: var(--foreground0); }
+  .text-zinc-700 { color: var(--overlay1); }
+  .bg-zinc-700 { background-color: var(--background3); }
+  .hover\:text-white:hover { color: var(--foreground2); }
+  .hover\:text-zinc-200:hover { color: var(--foreground1); }
+  .transition-colors { transition-property: color; transition-duration: 200ms; }
+  .flex { display: flex; }
+  .items-center { align-items: center; }
+  .justify-center { justify-content: center; }
+  .gap-6 { gap: 1.5rem; }
+  .w-8 { width: 2rem; }
+  .h-8 { height: 2rem; }
+  .w-4 { width: 1rem; }
+  .h-4 { height: 1rem; }
+  .w-3 { width: 0.75rem; }
+  .h-3 { height: 0.75rem; }
+  .rounded-full { border-radius: 9999px; }
+  .text-xs { font-size: 0.75rem; }
+  .text-sm { font-size: 0.875rem; }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--background1);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--background3);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--overlay0);
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .chat-sidebar {
+      position: absolute;
+      left: -260px;
+      height: 100%;
+      transition: left 0.3s;
+      z-index: 10;
+    }
+    
+    .chat-sidebar.open {
+      left: 0;
+    }
+    
+    .messages-container {
+      padding: 1rem 0.5rem;
+    }
+  }
+`
+
 export async function home() {
   return document({
     title: "OpenAgents",
-    styles: baseStyles,
+    styles: css`${baseStyles}
+${chatStyles}`,
     body: html`
       <div class="chat-container">
         <!-- Header -->
         <div class="chat-header">
           <div class="flex items-center gap-6">
-            <a href="/" class="text-xl font-bold text-white hover:text-gray-200 transition-colors">
+            <a href="/" class="text-xl font-bold text-white hover:text-zinc-200 transition-colors">
               OpenAgents
             </a>
             <div class="model-indicator">
@@ -201,10 +615,10 @@ export async function home() {
             </div>
           </div>
           <nav class="flex items-center gap-6">
-            <a href="/agents" class="text-sm text-gray-400 hover:text-white transition-colors">Agents</a>
-            <a href="/docs" class="text-sm text-gray-400 hover:text-white transition-colors">Docs</a>
-            <a href="/blog" class="text-sm text-gray-400 hover:text-white transition-colors">Blog</a>
-            <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-200">
+            <a href="/agents" class="text-sm text-zinc-400 hover:text-white transition-colors">Agents</a>
+            <a href="/docs" class="text-sm text-zinc-400 hover:text-white transition-colors">Docs</a>
+            <a href="/blog" class="text-sm text-zinc-400 hover:text-white transition-colors">Blog</a>
+            <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-200">
               U
             </div>
           </nav>
