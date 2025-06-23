@@ -1,68 +1,13 @@
 import { css, document, html, renderMarkdown } from "@openagentsinc/psionic"
+import {
+  chatClientScript,
+  chatStyles as sharedChatStyles,
+  renderChatMessage,
+  renderThreadItem
+} from "../lib/chat-utils"
 import { baseStyles } from "../styles"
 
-// Mock thread data - in real implementation this would come from database
-const mockThreads = {
-  "1": {
-    id: "1",
-    title: "Bitcoin Lightning Integration",
-    messages: [
-      {
-        id: "1",
-        role: "user",
-        content: "How can I integrate Lightning payments into my agent?",
-        timestamp: "2 hours ago"
-      },
-      {
-        id: "2",
-        role: "assistant",
-        content:
-          "Great question! Lightning Network integration for agents involves several key components:\n\n1. **Lightning Node Setup**: You'll need to connect to a Lightning node (LND, CLN, or Eclair)\n2. **Invoice Generation**: Create invoices for payments to your agent\n3. **Payment Processing**: Handle incoming payments and verify them\n4. **Agent Responses**: Gate agent responses behind payment verification\n\nHere's a basic example using LND:\n\n```javascript\nconst lnd = require('@lightninglabs/lnd-grpc')\n\n// Generate invoice\nconst invoice = await lnd.addInvoice({\n  value: 100, // 100 sats\n  memo: 'Agent conversation'\n})\n\n// Check payment status\nconst isPaymentReceived = await lnd.lookupInvoice({\n  payment_hash: invoice.payment_hash\n})\n```\n\nWould you like me to dive deeper into any specific aspect?",
-        timestamp: "2 hours ago"
-      }
-    ]
-  },
-  "2": {
-    id: "2",
-    title: "Nostr Protocol Questions",
-    messages: [
-      {
-        id: "3",
-        role: "user",
-        content: "I need help understanding NIP-06 key derivation for agents. How does it work?",
-        timestamp: "Yesterday"
-      },
-      {
-        id: "4",
-        role: "assistant",
-        content:
-          "NIP-06 defines hierarchical deterministic key derivation for Nostr, which is perfect for agent systems!\n\n**Key Concepts:**\n\n1. **Master Seed**: A single seed phrase generates all keys\n2. **Derivation Path**: Each agent gets a unique path like `m/44'/1'/0'/0/0`\n3. **Agent Identity**: Each path creates a unique Nostr keypair\n\n**Implementation:**\n\n```typescript\nimport { generateMnemonic, mnemonicToSeedSync } from 'bip39'\nimport { HDKey } from '@scure/bip32'\nimport { schnorr } from '@noble/curves/secp256k1'\n\n// Generate master seed\nconst mnemonic = generateMnemonic()\nconst seed = mnemonicToSeedSync(mnemonic)\nconst hdkey = HDKey.fromMasterSeed(seed)\n\n// Derive agent key (agent index 0)\nconst agentPath = \"m/44'/1'/0'/0/0\"\nconst agentKey = hdkey.derive(agentPath)\nconst privateKey = agentKey.privateKey\nconst publicKey = schnorr.getPublicKey(privateKey)\n```\n\nThis ensures each agent has a deterministic but unique identity!",
-        timestamp: "Yesterday"
-      }
-    ]
-  },
-  "3": {
-    id: "3",
-    title: "Agent Development",
-    messages: [
-      {
-        id: "5",
-        role: "user",
-        content: "What's the best way to structure an autonomous agent?",
-        timestamp: "3 days ago"
-      },
-      {
-        id: "6",
-        role: "assistant",
-        content:
-          "Excellent question! Here's a proven architecture for autonomous agents:\n\n## Core Components\n\n**1. Agent Runtime**\n- Event loop for continuous operation\n- State management and persistence\n- Resource monitoring (balance, compute)\n\n**2. Communication Layer**\n- Nostr for decentralized messaging\n- WebSocket connections for real-time\n- HTTP APIs for external services\n\n**3. Decision Engine**\n- Goal-oriented planning\n- Action selection based on state\n- Learning from outcomes\n\n**4. Tool Integration**\n- Lightning payments\n- External API calls\n- File system operations\n- Web scraping capabilities\n\n## Recommended Structure\n\n```\nagent/\n├── core/\n│   ├── runtime.ts      # Main event loop\n│   ├── state.ts        # State management\n│   └── scheduler.ts    # Task scheduling\n├── communication/\n│   ├── nostr.ts        # Nostr client\n│   └── api.ts          # HTTP client\n├── tools/\n│   ├── lightning.ts    # Payment tools\n│   ├── web.ts          # Web tools\n│   └── file.ts         # File tools\n└── planning/\n    ├── goals.ts        # Goal management\n    └── actions.ts      # Action execution\n```\n\nWant me to elaborate on any specific component?",
-        timestamp: "3 days ago"
-      }
-    ]
-  }
-}
-
-// V1 exact styling (reuse from home.ts but make it modular)
+// Additional chat-specific styles
 const chatStyles = css`
   /* V1 Color Palette */
   :root {
@@ -91,145 +36,21 @@ const chatStyles = css`
   .sidebar-closed { width: 0px; border-right: 1px solid rgba(0, 0, 0, 0); }
   .hmmm { transition: margin-left 0.3s ease-in-out; }
 
-  /* Messages */
-  .message {
-    display: flex;
-    gap: 12px;
-    padding-left: 50px;
-    margin-bottom: 24px;
-  }
-
-  .message-avatar {
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--darkgray);
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .message-avatar.user { padding: 2px; }
-  .message-avatar.assistant { padding: 5px; }
-  .message-avatar svg { width: 100%; height: 100%; color: var(--white); }
-
-  .message-content { flex: 1; max-width: 936px; }
-  .message-author { font-weight: 600; color: var(--white); margin-bottom: 4px; }
-  .message-body { color: var(--text); line-height: 1.6; }
-
-  /* Inline code */
-  .message-body code {
+  /* Model selector */
+  .model-selector {
     background-color: var(--offblack);
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-size: 14px;
-  }
-
-  /* Code blocks - WebTUI pre with Shiki highlighting */
-  .message-body pre[is-="pre"] {
-    margin: 16px 0;
-    overflow-x: auto;
-  }
-
-  .message-body pre[is-="pre"] code { 
-    background: none; 
-    padding: 0; 
-    font-size: 14px;
-    line-height: 1.5;
-  }
-
-  /* Markdown content styling */
-  .message-body p { margin: 0 0 16px 0; }
-  .message-body p:last-child { margin-bottom: 0; }
-  
-  .message-body ul, .message-body ol { 
-    margin: 0 0 16px 0; 
-    padding-left: 24px;
-  }
-  
-  .message-body li { margin: 4px 0; }
-  
-  .message-body blockquote {
-    border-left: 4px solid var(--darkgray);
-    padding-left: 16px;
-    margin: 16px 0;
-    color: var(--gray);
-  }
-  
-  .message-body h1, .message-body h2, .message-body h3, 
-  .message-body h4, .message-body h5, .message-body h6 {
-    margin: 24px 0 16px 0;
-    font-weight: 600;
-  }
-  
-  .message-body h1 { font-size: 1.5em; }
-  .message-body h2 { font-size: 1.3em; }
-  .message-body h3 { font-size: 1.1em; }
-  
-  .message-body a {
-    color: var(--white);
-    text-decoration: underline;
-  }
-  
-  .message-body a:hover {
-    color: var(--gray);
-  }
-
-  /* Chat input */
-  .chat-input {
-    background-color: transparent;
-    border: 2px solid var(--input-border);
+    border: 1px solid var(--darkgray);
     border-radius: 6px;
-    padding: 10px 40px 10px 16px;
-    color: var(--white);
-    font-size: 16px;
-    min-height: 48px;
-    resize: none;
-    font-family: inherit;
-    width: 100%;
-    transition: all 300ms ease-in-out;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--lightgray);
   }
 
-  .chat-input:focus {
-    outline: none !important;
-    border-color: var(--white) !important;
-    box-shadow: none !important;
-  }
-
-  .chat-input::placeholder { color: var(--placeholder); }
-
-  .send-button {
-    position: absolute;
-    top: 10px;
-    right: 6px;
-    width: 28px;
-    height: 28px;
-    background-color: var(--white);
-    color: var(--black);
-    border: none;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    padding: 0;
-    margin: 0;
-  }
-
-  .send-button:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.9); }
-  .send-button:disabled { background-color: var(--gray); cursor: not-allowed; }
-  .send-button svg { width: 24px; height: 24px; }
-
-  .model-selector { color: var(--gray); font-size: 14px; }
-
+  /* Sidebar footer */
   .sidebar-footer {
-    border-top: 1px solid var(--offblack);
-    padding: 4px 4px;
-    color: var(--gray);
-    font-size: 14px;
-    margin-top: auto;
+    padding: 12px 0;
+    border-top: 1px solid #2B2B2D;
+    color: var(--text);
   }
 
   .sidebar-footer ol {
@@ -241,69 +62,39 @@ const chatStyles = css`
     gap: 8px;
   }
 
-  .sidebar-footer .footer-bottom {
-    display: flex;
-    flex-direction: row;
-    gap: 4px;
-    padding: 12px 12px 0;
-    font-size: 12px;
-    opacity: 0.75;
-    color: var(--gray);
-  }
-
-  .sidebar-footer .footer-bottom a { color: inherit; text-decoration: none; }
-  .sidebar-footer .footer-bottom a:hover { color: var(--white); }
+  ${sharedChatStyles}
 `
 
-function renderThread(thread: { id: string; title: string; active: boolean }) {
-  return html`
-    <div class="relative z-[15]">
-      <div class="group relative rounded-lg active:opacity-90 px-3 ${thread.active ? "bg-[#262626]" : ""}">
-        <a href="/chat/${thread.id}" class="flex items-center gap-2 py-1">
-          <div class="relative grow overflow-hidden whitespace-nowrap text-white">
-            ${thread.title}
-          </div>
-        </a>
-      </div>
-    </div>
-  `
-}
-
-async function renderMessage(message: { role: string; content: string; timestamp: string }) {
-  // Render markdown content with syntax highlighting
-  const renderedContent = await renderMarkdown(message.content)
-
-  return html`
-    <div class="message">
-      <div class="message-avatar ${message.role}">
-        ${
-    message.role === "user" ?
-      html`
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-        ` :
-      html`
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-          </svg>
-        `
-  }
-      </div>
-      <div class="message-content">
-        <div class="message-author">${message.role === "user" ? "You" : "Assistant"}</div>
-        <div class="message-body">${renderedContent}</div>
-      </div>
-    </div>
-  `
-}
-
 export async function chat(ctx: { params: { id: string } }) {
-  const chatId = ctx.params.id
-  const currentThread = mockThreads[chatId as keyof typeof mockThreads]
+  const conversationId = ctx.params.id
 
-  if (!currentThread) {
+  // Import server-side only here to avoid bundling issues
+  const { getConversationWithMessages, getConversations } = await import("../lib/chat-client")
+
+  // Try to load the conversation and messages
+  let conversation: any = null
+  let messages: Array<any> = []
+  let conversationExists = true
+
+  try {
+    const result = await getConversationWithMessages(conversationId)
+    conversation = result.conversation
+    messages = result.messages as Array<any>
+  } catch {
+    // Conversation not found
+    conversationExists = false
+  }
+
+  // Load all conversations for sidebar
+  let allConversations: Array<any> = []
+  try {
+    allConversations = await getConversations() as Array<any>
+  } catch (error) {
+    console.error("Failed to load conversations:", error)
+  }
+
+  // If conversation doesn't exist, show 404
+  if (!conversationExists) {
     return document({
       title: "Chat Not Found - OpenAgents",
       styles: baseStyles + chatStyles,
@@ -311,7 +102,7 @@ export async function chat(ctx: { params: { id: string } }) {
         <div style="display: flex; height: 100vh; align-items: center; justify-content: center; background: black; color: white;">
           <div style="text-align: center;">
             <h1>Chat Not Found</h1>
-            <p>The chat thread "${chatId}" could not be found.</p>
+            <p>The conversation "${conversationId}" could not be found.</p>
             <a href="/" style="color: white; text-decoration: underline;">← Back to Home</a>
           </div>
         </div>
@@ -319,14 +110,16 @@ export async function chat(ctx: { params: { id: string } }) {
     })
   }
 
-  // Create threads list with current one marked as active
-  const allThreads = Object.values(mockThreads).map((thread) => ({
-    ...thread,
-    active: thread.id === chatId
-  }))
+  // Render messages with markdown
+  const renderedMessages = await Promise.all(
+    messages.map(async (msg) => ({
+      ...msg,
+      rendered: await renderMarkdown(msg.content)
+    }))
+  )
 
   return document({
-    title: `${currentThread.title} - OpenAgents`,
+    title: `${conversation?.title || "Chat"} - OpenAgents`,
     styles: baseStyles + chatStyles,
     body: html`
       <div style="display: flex; height: 100vh; overflow: hidden; background: black;">
@@ -361,8 +154,19 @@ export async function chat(ctx: { params: { id: string } }) {
             <!-- Thread list -->
             <div style="flex: 1; overflow-y: auto;">
               <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 4px;">
-                <ol style="list-style: none; margin: 0; padding: 0;">
-                  ${allThreads.map((thread) => `<li>${renderThread(thread)}</li>`).join("")}
+                <ol id="thread-list" style="list-style: none; margin: 0; padding: 0;">
+                  ${
+      allConversations.map((conv) =>
+        html`
+                    <li>${
+          renderThreadItem({
+            ...conv,
+            active: conv.id === conversationId
+          })
+        }</li>
+                  `
+      ).join("")
+    }
                 </ol>
               </div>
             </div>
@@ -408,7 +212,7 @@ export async function chat(ctx: { params: { id: string } }) {
           <!-- Messages -->
           <div id="messages-container" style="flex: 1; overflow-y: auto; padding: 80px 20px 20px;">
             <div style="max-width: 800px; margin: 0 auto;">
-              ${(await Promise.all(currentThread.messages.map((message) => renderMessage(message)))).join("")}
+              ${renderedMessages.map((message) => renderChatMessage(message)).join("")}
             </div>
           </div>
 
@@ -422,19 +226,17 @@ export async function chat(ctx: { params: { id: string } }) {
                   placeholder="Continue the conversation..."
                   rows="1"
                   autocomplete="off"
-                  autofocus
-                  style="outline: none;"
-                  oninput="this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 200) + 'px'; document.getElementById('sendBtn').disabled = !this.value.trim();"
                 ></textarea>
-                <button id="sendBtn" class="send-button" disabled onclick="sendMessage()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                <button id="submit-button" class="submit-button">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="19" x2="12" y2="5"></line>
+                    <polyline points="5 12 12 5 19 12"></polyline>
                   </svg>
                 </button>
               </div>
-              <div style="text-align: center; color: var(--gray); font-size: 12px; margin: 8px 0;">
-                Continue existing conversation with llama-3.3-70b
+              <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--gray);">
+                <span>Shift + Enter for new line</span>
+                <span>⌘ Enter to send</span>
               </div>
             </div>
           </div>
@@ -442,94 +244,21 @@ export async function chat(ctx: { params: { id: string } }) {
       </div>
 
       <script>
-        // Simple message continuation functionality
-        async function sendMessage() {
-          const input = document.getElementById('chat-input')
-          const sendBtn = document.getElementById('sendBtn')
-          const message = input.value.trim()
-          
-          if (!message) return
-          
-          // Add user message to UI
-          const container = document.getElementById('messages-container')
-          const messagesWrapper = container.querySelector('div')
-          
-          const userMessageHtml = \`
-            <div class="message">
-              <div class="message-avatar user">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="12" cy="7" r="4"></circle>
-                </svg>
-              </div>
-              <div class="message-content">
-                <div class="message-author">You</div>
-                <div class="message-body">\${message}</div>
-              </div>
-            </div>
-          \`
-          
-          messagesWrapper.insertAdjacentHTML('beforeend', userMessageHtml)
-          container.scrollTop = container.scrollHeight
-          
-          // Clear input
-          input.value = ''
-          input.style.height = 'auto'
-          sendBtn.disabled = true
-          
-          // Show typing indicator
-          const typingHtml = \`
-            <div class="message" id="typing-message">
-              <div class="message-avatar assistant">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-                </svg>
-              </div>
-              <div class="message-content">
-                <div class="message-author">Assistant</div>
-                <div class="message-body">Typing...</div>
-              </div>
-            </div>
-          \`
-          
-          messagesWrapper.insertAdjacentHTML('beforeend', typingHtml)
-          container.scrollTop = container.scrollHeight
-          
-          // Simulate response (in real implementation, call API)
-          setTimeout(() => {
-            const typingMsg = document.getElementById('typing-message')
-            if (typingMsg) {
-              typingMsg.remove()
-            }
-            
-            const responseHtml = \`
-              <div class="message">
-                <div class="message-avatar assistant">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-                  </svg>
-                </div>
-                <div class="message-content">
-                  <div class="message-author">Assistant</div>
-                  <div class="message-body">I understand you'd like to continue our conversation about "\${message}". In a full implementation, this would connect to the streaming chat API to provide real responses. For now, this demonstrates the message thread UI working properly.</div>
-                </div>
-              </div>
-            \`
-            
-            messagesWrapper.insertAdjacentHTML('beforeend', responseHtml)
-            container.scrollTop = container.scrollHeight
-            
-            input.focus()
-          }, 1500)
-        }
+        // Set conversation ID for the client script
+        window.CONVERSATION_ID = "${conversationId}";
         
-        // Enter key to send
-        document.getElementById('chat-input').addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            sendMessage()
-          }
-        })
+        // Simple markdown rendering for now
+        window.renderMarkdown = async function(text) {
+          // Basic HTML escaping
+          const div = document.createElement('div');
+          div.textContent = text;
+          const escaped = div.innerHTML;
+          
+          // Preserve line breaks
+          return escaped.replace(/\\n/g, '<br>');
+        };
+        
+        ${chatClientScript}
       </script>
     `
   })

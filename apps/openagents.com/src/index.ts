@@ -27,6 +27,12 @@ import { ollamaApi } from './routes/api/ollama'
 import { openrouterApi } from './routes/api/openrouter'
 import { cloudflareApi } from './routes/api/cloudflare'
 import { channelsApi } from './routes/api/channels'
+import { 
+  listConversations, 
+  createConversationRoute, 
+  updateConversation, 
+  addMessageRoute 
+} from './routes/api/conversations'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -81,6 +87,12 @@ app.elysia.use(ollamaApi)
 app.elysia.use(openrouterApi)
 app.elysia.use(cloudflareApi)
 app.elysia.use(channelsApi)
+
+// Conversation API routes
+app.elysia.get('/api/conversations', listConversations)
+app.elysia.post('/api/conversations', createConversationRoute)
+app.elysia.patch('/api/conversations/:id', updateConversation)
+app.elysia.post('/api/conversations/:id/messages', addMessageRoute)
 
 // Mount Nostr relay
 // TODO: Re-enable when WebSocket support is implemented in Effect
