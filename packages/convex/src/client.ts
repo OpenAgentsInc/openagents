@@ -4,9 +4,9 @@
  * @since 1.0.0
  */
 
+import { ConvexHttpClient } from "convex/browser"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
-import { ConvexHttpClient } from "convex/browser"
 import { api } from "../convex/_generated/api.js"
 
 /**
@@ -96,8 +96,8 @@ export type ChatMessage = Schema.Schema.Type<typeof ChatMessage>
  */
 const getConvexClient = () => {
   // Support both Node and browser environments
-  const url = typeof process !== 'undefined' && process.env?.CONVEX_URL 
-    ? process.env.CONVEX_URL 
+  const url = typeof process !== "undefined" && process.env?.CONVEX_URL
+    ? process.env.CONVEX_URL
     : "https://proficient-panther-764.convex.cloud"
   return new ConvexHttpClient(url)
 }
@@ -151,7 +151,7 @@ export class ConvexClient {
       Effect.tryPromise({
         try: async () => {
           const results = await ConvexClient.client.query(api.events.list, stripUndefined(filters))
-          return results as NostrEvent[]
+          return results as Array<NostrEvent>
         },
         catch: (error) => new Error(`Failed to list events: ${error}`)
       }),
@@ -192,7 +192,7 @@ export class ConvexClient {
       Effect.tryPromise({
         try: async () => {
           const results = await ConvexClient.client.query(api.agents.listActive, {})
-          return results as AgentProfile[]
+          return results as Array<AgentProfile>
         },
         catch: (error) => new Error(`Failed to list agents: ${error}`)
       }),
@@ -233,7 +233,7 @@ export class ConvexClient {
       Effect.tryPromise({
         try: async () => {
           const results = await ConvexClient.client.query(api.sessions.listByUser, { userId })
-          return results as ChatSession[]
+          return results as Array<ChatSession>
         },
         catch: (error) => new Error(`Failed to list sessions: ${error}`)
       }),
@@ -244,9 +244,9 @@ export class ConvexClient {
     updateActivity: (sessionId: string) =>
       Effect.tryPromise({
         try: async () => {
-          await ConvexClient.client.mutation(api.sessions.updateActivity, { 
-            sessionId, 
-            timestamp: Date.now() 
+          await ConvexClient.client.mutation(api.sessions.updateActivity, {
+            sessionId,
+            timestamp: Date.now()
           })
           return undefined
         },
@@ -276,11 +276,11 @@ export class ConvexClient {
     listBySession: (sessionId: string, limit = 50) =>
       Effect.tryPromise({
         try: async () => {
-          const results = await ConvexClient.client.query(api.messages.listBySession, { 
-            sessionId, 
-            limit 
+          const results = await ConvexClient.client.query(api.messages.listBySession, {
+            sessionId,
+            limit
           })
-          return results as ChatMessage[]
+          return results as Array<ChatMessage>
         },
         catch: (error) => new Error(`Failed to list messages: ${error}`)
       }),
@@ -288,14 +288,14 @@ export class ConvexClient {
     /**
      * Subscribe to new messages in a session
      */
-    subscribeToSession: (sessionId: string, callback: (messages: Array<ChatMessage>) => void) =>
+    subscribeToSession: (_sessionId: string, _callback: (messages: Array<ChatMessage>) => void) =>
       Effect.sync(() => {
         // Note: For real-time subscriptions, you need ConvexClient (not HttpClient)
         // This requires importing from "convex/browser" and using WebSocket connection
         const unsubscribe = () => {
           // Cleanup logic would go here
         }
-        
+
         // For now, return a cleanup function
         return unsubscribe
       })
