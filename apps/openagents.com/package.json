@@ -33,11 +33,15 @@
     "mysql2": "^3.11.5"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.10",
     "@types/bun": "^1.2.16",
     "@vitejs/plugin-legacy": "^6.1.1",
+    "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.0",
     "esbuild": "^0.25.5",
     "gray-matter": "^4.0.3",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.0.0",
     "vite": "6.0.3"
   }
 }

@@ -55,7 +55,7 @@ const app = createPsionicApp({
     navigation: navigation({ current: 'components' }),
     baseClass: ''
   },
-  // Disable Tailwind CDN since we're using Basecoat with proper build
+  // Keep Tailwind CDN disabled since we're using Vite bundling
   tailwind: {
     enabled: false
   }

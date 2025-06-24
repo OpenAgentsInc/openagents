@@ -20,6 +20,7 @@ export function document(options: {
   styles?: string
   body: string
   meta?: Record<string, string>
+  head?: string
 }): string {
   const metaTags = options.meta
     ? Object.entries(options.meta)
@@ -36,6 +37,7 @@ export function document(options: {
         <title>${options.title || "Psionic App"}</title>
         <link rel="icon" type="image/x-icon" href="/favicon.ico">
         ${metaTags}
+        ${options.head || ""}
         ${options.styles ? `<style>${options.styles}</style>` : ""}
       </head>
       <body>
