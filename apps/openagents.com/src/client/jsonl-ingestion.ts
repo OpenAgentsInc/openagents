@@ -30,7 +30,7 @@ interface ToolResultContentPart {
 
 interface UserMessage {
   role: "user"
-  content: (TextContentPart | ToolResultContentPart)[]
+  content: Array<TextContentPart | ToolResultContentPart>
 }
 
 interface AssistantMessageUsage {
@@ -46,7 +46,7 @@ interface AssistantMessage {
   type: "message"
   role: "assistant"
   model: string
-  content: (TextContentPart | ThinkingContentPart | ToolUseContentPart)[]
+  content: Array<TextContentPart | ThinkingContentPart | ToolUseContentPart>
   stop_reason: string | null
   stop_sequence: string | null
   usage: AssistantMessageUsage
@@ -99,10 +99,8 @@ export class JSONLIngestion {
     if (!this.dropZone) {
       console.error("Could not find drop zone element")
       return
-    }
-
-    // Prevent default drag behaviors
-    ["dragenter", "dragover", "dragleave", "drop"].forEach(eventName => {
+    } // Prevent default drag behaviors
+    ;["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
       document.addEventListener(eventName, this.preventDefaults, false)
       this.dropZone!.addEventListener(eventName, this.preventDefaults, false)
     })
@@ -121,14 +119,14 @@ export class JSONLIngestion {
     e.stopPropagation()
   }
 
-  private handleDragEnter(e: DragEvent) {
+  private handleDragEnter(_e: DragEvent) {
     this.dragCounter++
     if (this.dragCounter === 1) {
       this.showDropOverlay()
     }
   }
 
-  private handleDragLeave(e: DragEvent) {
+  private handleDragLeave(_e: DragEvent) {
     this.dragCounter--
     if (this.dragCounter === 0) {
       this.hideDropOverlay()
@@ -151,7 +149,7 @@ export class JSONLIngestion {
     }
 
     const file = e.dataTransfer.files[0]
-    
+
     // Check if it's a JSONL file
     if (!file.name.endsWith(".jsonl") && !file.name.endsWith(".json")) {
       console.error("Please drop a JSONL or JSON file")
@@ -160,20 +158,20 @@ export class JSONLIngestion {
     }
 
     console.log("Processing file:", file.name)
-    
+
     try {
       const text = await file.text()
       const entries = this.parseJSONL(text)
-      
+
       console.log("=== JSONL Ingestion Complete ===")
       console.log("File:", file.name)
       console.log("Total entries:", entries.length)
       console.log("Entries by type:", this.getEntriesByType(entries))
       console.log("Full data:", entries)
-      
+
       // For now, just log the data as requested
       // TODO: Process and display the conversation data in the chat UI
-      
+
       this.showSuccess(`Successfully loaded ${entries.length} entries from ${file.name}`)
     } catch (error) {
       console.error("Error processing file:", error)
@@ -181,9 +179,9 @@ export class JSONLIngestion {
     }
   }
 
-  private parseJSONL(text: string): LogEntry[] {
+  private parseJSONL(text: string): Array<LogEntry> {
     const lines = text.trim().split("\n")
-    const entries: LogEntry[] = []
+    const entries: Array<LogEntry> = []
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim()
@@ -200,11 +198,11 @@ export class JSONLIngestion {
     return entries
   }
 
-  private getEntriesByType(entries: LogEntry[]) {
-    const summary = entries.filter(e => e.type === "summary")
-    const user = entries.filter(e => e.type === "user")
-    const assistant = entries.filter(e => e.type === "assistant")
-    
+  private getEntriesByType(entries: Array<LogEntry>) {
+    const summary = entries.filter((e) => e.type === "summary")
+    const user = entries.filter((e) => e.type === "user")
+    const assistant = entries.filter((e) => e.type === "assistant")
+
     return {
       summary: summary.length,
       user: user.length,
@@ -251,15 +249,15 @@ export class JSONLIngestion {
     const notification = document.createElement("div")
     notification.className = `jsonl-notification ${type}`
     notification.textContent = message
-    
+
     // Add to page
     document.body.appendChild(notification)
-    
+
     // Trigger animation
     setTimeout(() => {
       notification.classList.add("visible")
     }, 10)
-    
+
     // Remove after 3 seconds
     setTimeout(() => {
       notification.classList.remove("visible")

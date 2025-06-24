@@ -3,8 +3,8 @@
  * Handles chat UI interactions, message streaming, and conversation management
  */
 
-import { ProseMirrorEditor } from "./prosemirror-setup"
 import { jsonlIngestion } from "./jsonl-ingestion"
+import { ProseMirrorEditor } from "./prosemirror-setup"
 
 interface ChatClient {
   createConversation: (title: string) => Promise<string>
