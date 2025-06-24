@@ -197,7 +197,7 @@ async function streamAssistantResponse(message: string) {
     }
 
     // Create assistant message container
-    addMessageToUI("assistant", "<div class=\"thinking-indicator\">Thinking...</div>")
+    addMessageToUI("assistant", "<div class=\"dot-flashing\"></div>")
 
     const messagesContainer = document.getElementById("messages-container")
     const allMessages = messagesContainer?.querySelectorAll(".message")
