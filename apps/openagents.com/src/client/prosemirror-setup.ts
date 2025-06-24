@@ -17,12 +17,14 @@ const schema = new Schema({
     },
     paragraph: {
       content: "inline*",
+      group: "block",
       toDOM() {
         return ["p", 0]
       },
       parseDOM: [{ tag: "p" }]
     },
     text: {
+      group: "inline",
       inline: true
     },
     hard_break: {
