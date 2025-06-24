@@ -449,4 +449,3 @@ export const fromPlainMessage = (message: PlainMessage): Message => {
       })
   }
 }
-

@@ -266,4 +266,3 @@ export const createTool = <Name extends string, Parameters, Result, Error = Tool
   requirements: undefined,
   execute: config.execute
 })
-
