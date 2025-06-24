@@ -91,7 +91,7 @@ export type ChatMessage = Schema.Schema.Type<typeof ChatMessage>
 
 /**
  * High-level client for Convex operations
- * 
+ *
  * Ready for Convex backend deployment:
  * - Convex backend deployed at: https://proficient-panther-764.convex.cloud
  * - Schema and functions are live and ready
