@@ -5,21 +5,42 @@ import { chatStyles, renderChatMessage } from "../../lib/chat-utils"
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../../lib/models-config"
 import { baseStyles } from "../../styles"
 
-// Read HTML and CSS files at runtime from the source directory
-const chatViewHTML = fs.readFileSync(
-  path.join(process.cwd(), "src", "components", "chat-view", "chat-view.html"),
-  "utf-8"
-)
-const chatViewCSS = fs.readFileSync(
-  path.join(process.cwd(), "src", "components", "chat-view", "chat-view.css"),
-  "utf-8"
-)
+// File paths for HTML and CSS
+const chatViewHTMLPath = path.join(process.cwd(), "src", "components", "chat-view", "chat-view.html")
+const chatViewCSSPath = path.join(process.cwd(), "src", "components", "chat-view", "chat-view.css")
+
+// Cache for production
+let cachedHTML: string | null = null
+let cachedCSS: string | null = null
 
 export interface ChatViewProps {
   conversationId?: string
 }
 
 export async function createChatView({ conversationId }: ChatViewProps) {
+  // Determine if we're in development mode
+  const isDev = process.env.NODE_ENV !== "production"
+  
+  // Read HTML and CSS files - fresh in dev, cached in production
+  let chatViewHTML: string
+  let chatViewCSS: string
+  
+  if (isDev) {
+    // Read fresh files in development mode for hot reloading
+    chatViewHTML = fs.readFileSync(chatViewHTMLPath, "utf-8")
+    chatViewCSS = fs.readFileSync(chatViewCSSPath, "utf-8")
+  } else {
+    // Use cached files in production
+    if (!cachedHTML) {
+      cachedHTML = fs.readFileSync(chatViewHTMLPath, "utf-8")
+    }
+    if (!cachedCSS) {
+      cachedCSS = fs.readFileSync(chatViewCSSPath, "utf-8")
+    }
+    chatViewHTML = cachedHTML
+    chatViewCSS = cachedCSS
+  }
+
   // Import server-side only here to avoid bundling issues
   const { getConversationWithMessages, getConversations } = await import("../../lib/chat-client")
 
@@ -138,8 +159,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     .replace("<!-- Messages will be dynamically added here -->", messagesHTML)
     .replace("<!-- Model options will be populated dynamically -->", modelOptionsHTML)
 
-  // Determine if we're in development mode
-  const isDev = process.env.NODE_ENV !== "production"
+  // Script base URL for development vs production
   const scriptBase = isDev ? "http://localhost:5173/src/client" : "/js"
 
   return document({
