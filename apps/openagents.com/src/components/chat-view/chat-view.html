@@ -13,16 +13,16 @@
 
   <!-- Sidebar -->
   <aside id="sidebar" class="sidebar">
-    <div class="sidebar-inner">
+    <div class="flex h-full flex-col">
       <!-- Sidebar Header -->
-      <div class="sidebar-header">
-        <div class="header-top">
-          <a href="/" class="logo">
-            <span class="logo-text">OpenAgents</span>
+      <div class="flex flex-col gap-2 p-4 pb-0">
+        <h1 class="flex h-8 items-center justify-center text-lg">
+          <a href="/" class="text-sm font-semibold text-white">
+            OpenAgents
           </a>
-        </div>
-        <div class="new-chat-wrapper">
-          <button onclick="window.location.href='/'" class="new-chat-btn">
+        </h1>
+        <div class="px-1">
+          <button onclick="window.location.href='/'" class="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-800 bg-transparent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-900">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -30,18 +30,20 @@
             <span>New chat</span>
           </button>
         </div>
-        <div class="search-wrapper">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" class="search-icon">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.3-4.3"></path>
-          </svg>
-          <input type="text" placeholder="Search" class="search-input" />
+        <div class="border-b border-gray-800 px-3">
+          <div class="flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" class="-ml-1 mr-3 text-gray-500">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.3-4.3"></path>
+            </svg>
+            <input type="text" placeholder="Search" class="w-full bg-transparent py-2 text-sm text-white placeholder-gray-500 focus:outline-none" />
+          </div>
         </div>
       </div>
 
       <!-- Sidebar Content -->
-      <div class="sidebar-content">
+      <div class="flex-1 overflow-y-auto p-2">
         <!-- Thread list will be populated dynamically -->
         <div id="thread-list-container">
           <!-- Thread groups will be inserted here -->
@@ -49,40 +51,40 @@
       </div>
 
       <!-- Sidebar Footer -->
-      <div class="sidebar-footer">
-        <nav class="footer-nav">
-          <a href="/store" class="footer-link">
+      <div class="border-t border-gray-800 p-3">
+        <nav class="flex flex-col gap-1">
+          <a href="/store" class="flex items-center justify-between rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-900 hover:text-white">
             <span>Agent Store</span>
-            <span class="badge">Beta</span>
+            <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs">Beta</span>
           </a>
-          <a href="/agents" class="footer-link">My Agents</a>
-          <a href="/settings" class="footer-link">Settings</a>
-          <a href="/import" class="footer-link">Import</a>
-          <div class="footer-divider"></div>
-          <a href="/blog" class="footer-link">Blog</a>
-          <a href="https://openagents.com/docs" class="footer-link">
+          <a href="/agents" class="flex items-center justify-between rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-900 hover:text-white">My Agents</a>
+          <a href="/settings" class="flex items-center justify-between rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-900 hover:text-white">Settings</a>
+          <a href="/import" class="flex items-center justify-between rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-900 hover:text-white">Import</a>
+          <div class="my-2 h-px bg-gray-800"></div>
+          <a href="/blog" class="flex items-center justify-between rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-900 hover:text-white">Blog</a>
+          <a href="https://openagents.com/docs" class="flex items-center justify-between rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-900 hover:text-white">
             <span>Docs</span>
           </a>
-          <a href="https://stacker.news/~openagents" target="_blank" class="footer-link">
+          <a href="https://stacker.news/~openagents" target="_blank" class="flex items-center justify-between rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-900 hover:text-white">
             <span>Community</span>
-            <svg class="external-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
               <polyline points="15 3 21 3 21 9"></polyline>
               <line x1="10" y1="14" x2="21" y2="3"></line>
             </svg>
           </a>
-          <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" class="footer-link">
+          <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" class="flex items-center justify-between rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-900 hover:text-white">
             <span>Source code</span>
-            <svg class="external-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
               <polyline points="15 3 21 3 21 9"></polyline>
               <line x1="10" y1="14" x2="21" y2="3"></line>
             </svg>
           </a>
-          <div class="footer-bottom">
-            <a href="/terms">Terms</a>
+          <div class="mt-3 flex gap-2 px-3 text-xs text-gray-500">
+            <a href="/terms" class="hover:text-white">Terms</a>
             <span>·</span>
-            <a href="/privacy">Privacy</a>
+            <a href="/privacy" class="hover:text-white">Privacy</a>
           </div>
         </nav>
       </div>

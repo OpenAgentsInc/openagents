@@ -57,17 +57,17 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   // Generate thread list HTML
   const threadListHTML = allConversations.length > 0 ?
     html`
-    <div class="chat-group">
-      <div class="group-header">
-        <span class="group-label">Recent</span>
+    <div class="p-2">
+      <div class="px-1.5 mb-1">
+        <span class="text-xs font-medium text-gray-500 uppercase">Recent</span>
       </div>
-      <ul class="chat-list">
+      <ul class="flex flex-col gap-1">
         ${
       allConversations.map((conv) =>
         html`
-          <li class="chat-item ${conv.id === conversationId ? "active" : ""}">
-            <a href="/chat/${conv.id}">
-              <span class="chat-title">${conv.title}</span>
+          <li>
+            <a href="/chat/${conv.id}" class="block px-2 py-1.5 text-sm rounded-md transition-colors ${conv.id === conversationId ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-900 hover:text-white"}">
+              <span>${conv.title}</span>
             </a>
           </li>
         `
