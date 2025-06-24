@@ -37,7 +37,7 @@ export function cloudflareChat(
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText)
-    
+
     // Handle both single message and messages array formats
     let messages = body.messages
     if (!messages && body.message) {
@@ -46,7 +46,7 @@ export function cloudflareChat(
         { role: "user", content: body.message }
       ]
     }
-    
+
     const model = body.model || "@cf/meta/llama-3.1-8b-instruct"
 
     const apiKey = process.env.CLOUDFLARE_API_KEY

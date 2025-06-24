@@ -55,7 +55,7 @@ export function openrouterChat(
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText)
-    
+
     // Handle both single message and messages array formats
     let messages = body.messages
     if (!messages && body.message) {
@@ -64,7 +64,7 @@ export function openrouterChat(
         { role: "user", content: body.message }
       ]
     }
-    
+
     const model = body.model
     const openrouterApiKey = body.openrouterApiKey
 

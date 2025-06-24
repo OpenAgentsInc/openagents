@@ -248,8 +248,10 @@ async function streamAssistantResponse(message: string) {
 
           try {
             const parsed = JSON.parse(data)
-            if (parsed.content) {
-              fullContent += parsed.content
+            // Handle OpenAI-compatible SSE format
+            const content = parsed.choices?.[0]?.delta?.content
+            if (content) {
+              fullContent += content
               // Convert markdown to HTML for display
               const htmlContent = await convertMarkdown(fullContent)
               messageBody.innerHTML = htmlContent
@@ -378,9 +380,8 @@ export function initializeChat() {
       }
     })
   }
-}
+} // Export necessary functions for global access
 
-// Export necessary functions for global access
 ;(window as any).sendMessage = sendMessage
 
 // Functions are already exported above

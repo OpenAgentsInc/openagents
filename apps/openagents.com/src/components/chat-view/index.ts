@@ -141,7 +141,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   // Determine if we're in development mode
   const isDev = process.env.NODE_ENV !== "production"
   const scriptBase = isDev ? "http://localhost:5173/src/client" : "/js"
-  
+
   return document({
     title,
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
