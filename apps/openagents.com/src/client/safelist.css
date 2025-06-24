@@ -83,17 +83,26 @@
 
 /* OpenCode-style Message Block Classes */
 .border-l-4 {}
+.border-r-4 {}
 .border-l-terminal-accent {}
+.border-r-terminal-success {}
 .border-l-terminal-success {}
 .border-l-gray {}
 .text-terminal-accent {}
 .text-terminal-success {}
 .text-lightgray {}
 .pl-4 {}
+.pr-4 {}
 .pt-3 {}
 .pb-3 {}
 .font-mono {}
 .max-w-none {}
+.max-w-\[70\%\] {}
+.max-w-\[90\%\] {}
+.text-right {}
+.ml-auto {}
+.mr-0 {}
+.justify-end {}
 .leading-relaxed {}
 
 /* Tool Message Classes */
