@@ -18,6 +18,11 @@ interface ConnectionState {
   readonly subscriptions: HashMap.HashMap<SubscriptionId, SubscriptionState>
   readonly isActive: boolean
   readonly connectedAt: Date
+  // NIP-42 authentication state
+  readonly isAuthenticated: boolean
+  readonly authenticatedPubkey?: string
+  readonly challenge?: string
+  readonly authRequired: boolean
 }
 
 interface SubscriptionState {
@@ -169,6 +174,19 @@ const parseClientMessage = (raw: string): Effect.Effect<ClientMessage, MessageEr
         return ["CLOSE", closeSubscriptionIdResult] as ClientMessage
       }
 
+      case "AUTH": {
+        if (args.length !== 1 || typeof args[0] !== "object") {
+          return yield* Effect.fail(
+            new MessageError({
+              message: "AUTH message must have exactly one event object",
+              messageType: "AUTH",
+              rawMessage: parsed
+            })
+          )
+        }
+        return ["AUTH", args[0] as NostrEvent] as ClientMessage
+      }
+
       default:
         return yield* Effect.fail(
           new MessageError({
@@ -182,6 +200,15 @@ const parseClientMessage = (raw: string): Effect.Effect<ClientMessage, MessageEr
 
 // Create relay message
 const createRelayMessage = (type: string, ...args: Array<unknown>): string => JSON.stringify([type, ...args])
+
+// Generate authentication challenge
+const generateAuthChallenge = (): string => {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
 
 // Live implementation
 export const NostrRelayLive = Layer.effect(
@@ -200,12 +227,18 @@ export const NostrRelayLive = Layer.effect(
 
     const handleConnection = (connectionId: string): Effect.Effect<ConnectionHandler, RelayError> =>
       Effect.gen(function*() {
+        // Generate auth challenge for this connection
+        const challenge = generateAuthChallenge()
+        
         // Initialize connection state
         const connectionState: ConnectionState = {
           id: connectionId,
           subscriptions: HashMap.empty(),
           isActive: true,
-          connectedAt: new Date()
+          connectedAt: new Date(),
+          isAuthenticated: false,
+          challenge,
+          authRequired: false // Can be made configurable later
         }
 
         yield* Ref.update(connections, HashMap.set(connectionId, connectionState))
@@ -299,6 +332,55 @@ export const NostrRelayLive = Layer.effect(
                 const closedMessage = createRelayMessage("CLOSED", subscriptionId, "subscription closed")
                 responses.push(closedMessage)
                 console.log(`[${connectionId}] ${closedMessage}`)
+                break
+              }
+
+              case "AUTH": {
+                const authEvent = message[1]
+                
+                // Get current connection state
+                const conns = yield* Ref.get(connections)
+                const connState = HashMap.get(conns, connectionId)
+                
+                if (connState._tag === "None") {
+                  responses.push(createRelayMessage("OK", authEvent.id, false, "auth-required: connection not found"))
+                  break
+                }
+                
+                const state = connState.value
+                
+                // Verify auth event
+                if (authEvent.kind !== 22242) {
+                  responses.push(createRelayMessage("OK", authEvent.id, false, "auth-required: must be kind 22242"))
+                  break
+                }
+                
+                // Check challenge tag
+                const challengeTag = authEvent.tags.find(t => t[0] === "challenge")
+                if (!challengeTag || challengeTag[1] !== state.challenge) {
+                  responses.push(createRelayMessage("OK", authEvent.id, false, "auth-required: invalid challenge"))
+                  break
+                }
+                
+                // Check relay tag
+                const relayTag = authEvent.tags.find(t => t[0] === "relay")
+                if (!relayTag) {
+                  responses.push(createRelayMessage("OK", authEvent.id, false, "auth-required: missing relay tag"))
+                  break
+                }
+                
+                // TODO: Verify event signature (would need EventService)
+                // For now, assume valid if structure is correct
+                
+                // Update connection state as authenticated
+                yield* Ref.update(connections, HashMap.modify(connectionId, (conn) => ({
+                  ...conn,
+                  isAuthenticated: true,
+                  authenticatedPubkey: authEvent.pubkey
+                })))
+                
+                responses.push(createRelayMessage("OK", authEvent.id, true, ""))
+                console.log(`[${connectionId}] Authenticated as ${authEvent.pubkey}`)
                 break
               }
             }
