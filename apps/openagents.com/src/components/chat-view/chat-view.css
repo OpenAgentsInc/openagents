@@ -881,3 +881,82 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* JSONL Ingestion Drag and Drop Styles */
+#jsonl-drop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+}
+
+#jsonl-drop-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.drop-overlay-content {
+  background: var(--offblack);
+  border: 2px dashed var(--input-border);
+  border-radius: 12px;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text);
+  max-width: 400px;
+}
+
+.drop-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+  color: var(--gray);
+}
+
+.drop-text {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+/* JSONL Notification Styles */
+.jsonl-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: var(--offblack);
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  z-index: 10000;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: all 0.3s ease;
+  max-width: 300px;
+}
+
+.jsonl-notification.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.jsonl-notification.success {
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.jsonl-notification.error {
+  border-color: #ef4444;
+  color: #ef4444;
+}
