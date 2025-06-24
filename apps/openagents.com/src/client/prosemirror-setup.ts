@@ -64,11 +64,23 @@ function newLineCommand(state: EditorState, dispatch?: (tr: Transaction) => void
 
 // Create the keymap
 function createKeymap(onSubmit: (text: string) => void) {
-  return keymap({
+  // Put our custom keybindings first so they take precedence
+  const customKeys = {
     "Enter": submitCommand(onSubmit),
-    "Shift-Enter": newLineCommand,
-    // Include some basic editing commands from baseKeymap
-    ...baseKeymap
+    "Shift-Enter": newLineCommand
+  }
+  
+  // Filter out Enter from baseKeymap to prevent conflicts
+  const filteredBaseKeymap: { [key: string]: any } = {}
+  for (const key in baseKeymap) {
+    if (key !== "Enter") {
+      filteredBaseKeymap[key] = baseKeymap[key]
+    }
+  }
+  
+  return keymap({
+    ...customKeys,
+    ...filteredBaseKeymap
   })
 }
 
