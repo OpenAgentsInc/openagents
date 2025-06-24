@@ -66,7 +66,11 @@ export async function createChatView({ conversationId }: ChatViewProps) {
       allConversations.map((conv) =>
         html`
           <li>
-            <a href="/chat/${conv.id}" class="block px-3 py-1.5 text-sm rounded-md transition-colors ${conv.id === conversationId ? "bg-[rgba(255,255,255,0.1)] text-[#D7D8E5]" : "text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]"}">
+            <a href="/chat/${conv.id}" class="block px-3 py-1.5 text-sm rounded-md transition-colors ${
+          conv.id === conversationId
+            ? "bg-[rgba(255,255,255,0.1)] text-[#D7D8E5]"
+            : "text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]"
+        }">
               <span>${conv.title}</span>
             </a>
           </li>
