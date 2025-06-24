@@ -3,6 +3,8 @@
  * Handles chat UI interactions, message streaming, and conversation management
  */
 
+import { ProseMirrorEditor } from "./prosemirror-setup"
+
 interface ChatClient {
   createConversation: (title: string) => Promise<string>
   addMessage: (conversationId: string, role: string, content: string) => Promise<void>
@@ -14,6 +16,7 @@ interface ChatClient {
 let isGenerating = false
 let currentStreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null
 let currentConversationId: string | null = null
+let proseMirrorEditor: ProseMirrorEditor | null = null
 
 // Create chat client
 const chatClient: ChatClient = {
@@ -53,7 +56,8 @@ const chatClient: ChatClient = {
 function escapeHtml(text: string): string {
   const div = document.createElement("div")
   div.textContent = text
-  return div.innerHTML
+  // Replace newlines with <br> tags after escaping
+  return div.innerHTML.replace(/\n/g, "<br>")
 }
 
 export async function loadConversations() {
@@ -93,19 +97,21 @@ export async function loadConversations() {
 }
 
 export async function sendMessage(message: string) {
+  console.log("=== sendMessage Debug ===")
+  console.log("Message received (with escapes):", JSON.stringify(message))
+  console.log("Message received (raw):", message)
+  console.log("Message length:", message.length)
+
   if (isGenerating || !message.trim()) return
 
-  const input = document.getElementById("chat-input") as HTMLTextAreaElement
   const submitButton = document.getElementById("submit-button") as HTMLButtonElement
 
-  if (!input || !submitButton) return
+  if (!proseMirrorEditor || !submitButton) return
 
-  // Clear input and update UI state
-  input.value = ""
-  input.style.height = "auto"
+  // Update UI state
   isGenerating = true
   submitButton.disabled = true
-  input.disabled = true
+  proseMirrorEditor.setDisabled(true)
 
   // Create conversation if needed
   if (!currentConversationId) {
@@ -290,14 +296,13 @@ async function convertMarkdown(markdown: string): Promise<string> {
 }
 
 function resetInputState() {
-  const input = document.getElementById("chat-input") as HTMLTextAreaElement
   const submitButton = document.getElementById("submit-button") as HTMLButtonElement
 
-  if (input && submitButton) {
+  if (proseMirrorEditor && submitButton) {
     isGenerating = false
     submitButton.disabled = false
-    input.disabled = false
-    input.focus()
+    proseMirrorEditor.setDisabled(false)
+    proseMirrorEditor.focus()
   }
 }
 
@@ -314,36 +319,41 @@ export function initializeChat() {
   if (form) {
     form.addEventListener("submit", async (e) => {
       e.preventDefault()
-      const input = document.getElementById("chat-input") as HTMLTextAreaElement
-      if (input?.value.trim()) {
-        await sendMessage(input.value.trim())
+      if (proseMirrorEditor) {
+        const text = proseMirrorEditor.getText()
+        if (text) {
+          await sendMessage(text)
+        }
       }
     })
   }
 
-  // Set up input auto-resize
-  const input = document.getElementById("chat-input") as HTMLTextAreaElement
-  if (input) {
-    input.addEventListener("input", () => {
-      input.style.height = "auto"
-      input.style.height = input.scrollHeight + "px"
-
-      // Enable/disable submit button
-      const submitButton = document.getElementById("submit-button") as HTMLButtonElement
-      if (submitButton) {
-        submitButton.disabled = !input.value.trim() || isGenerating
-      }
+  // Set up ProseMirror editor
+  const inputContainer = document.getElementById("chat-input")
+  if (inputContainer) {
+    proseMirrorEditor = new ProseMirrorEditor({
+      mount: inputContainer,
+      onSubmit: async (text) => {
+        await sendMessage(text)
+      },
+      placeholder: "Message OpenAgents..."
     })
 
-    // Handle Enter key
-    input.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault()
-        if (input.value.trim() && !isGenerating) {
-          await sendMessage(input.value.trim())
-        }
+    // Set up submit button state monitoring
+    const submitButton = document.getElementById("submit-button") as HTMLButtonElement
+    if (submitButton) {
+      // Monitor for changes to update submit button state
+      const view = proseMirrorEditor.getView()
+      const originalDispatchTransaction = view.dispatch.bind(view)
+      view.dispatch = (tr) => {
+        originalDispatchTransaction(tr)
+        const hasText = view.state.doc.textContent.trim().length > 0
+        submitButton.disabled = !hasText || isGenerating
       }
-    })
+    }
+
+    // Focus the editor
+    proseMirrorEditor.focus()
   }
 
   // Stop generation on button click

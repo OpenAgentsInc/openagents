@@ -575,6 +575,65 @@ body {
   color: rgba(255, 255, 255, 0.4);
 }
 
+/* ProseMirror Editor Styles */
+.chat-input-container {
+  width: 100%;
+  min-height: 48px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.prosemirror-editor {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--white);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  padding: 4px 0;
+  resize: none;
+  outline: none;
+  min-height: 48px;
+}
+
+.prosemirror-editor:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.prosemirror-editor.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ProseMirror paragraph styles */
+.prosemirror-editor p {
+  margin: 0;
+  padding: 0;
+}
+
+.prosemirror-editor p + p {
+  margin-top: 0.5em;
+}
+
+/* ProseMirror placeholder */
+.prosemirror-editor.empty::before {
+  content: attr(data-placeholder);
+  color: rgba(255, 255, 255, 0.4);
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Hide ProseMirror's default focus outline */
+.ProseMirror:focus {
+  outline: none;
+}
+
+.ProseMirror-focused {
+  outline: none;
+}
+
 .input-actions {
   display: flex;
   justify-content: space-between;
