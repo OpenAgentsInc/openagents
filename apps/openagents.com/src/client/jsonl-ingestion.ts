@@ -175,7 +175,7 @@ export class JSONLIngestion {
       this.showSuccess(`Successfully loaded ${entries.length} entries from ${file.name}`)
     } catch (error) {
       console.error("Error processing file:", error)
-      this.showError(`Error processing file: ${error.message}`)
+      this.showError(`Error processing file: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -190,7 +190,7 @@ export class JSONLIngestion {
           const entry = JSON.parse(line)
           entries.push(entry)
         } catch (error) {
-          console.warn(`Failed to parse line ${i + 1}:`, error.message)
+          console.warn(`Failed to parse line ${i + 1}:`, error instanceof Error ? error.message : String(error))
         }
       }
     }
