@@ -206,8 +206,8 @@ const generateAuthChallenge = (): string => {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)
   return Array.from(bytes)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
 }
 
 // Live implementation
@@ -229,7 +229,7 @@ export const NostrRelayLive = Layer.effect(
       Effect.gen(function*() {
         // Generate auth challenge for this connection
         const challenge = generateAuthChallenge()
-        
+
         // Initialize connection state
         const connectionState: ConnectionState = {
           id: connectionId,
@@ -337,48 +337,51 @@ export const NostrRelayLive = Layer.effect(
 
               case "AUTH": {
                 const authEvent = message[1]
-                
+
                 // Get current connection state
                 const conns = yield* Ref.get(connections)
                 const connState = HashMap.get(conns, connectionId)
-                
+
                 if (connState._tag === "None") {
                   responses.push(createRelayMessage("OK", authEvent.id, false, "auth-required: connection not found"))
                   break
                 }
-                
+
                 const state = connState.value
-                
+
                 // Verify auth event
                 if (authEvent.kind !== 22242) {
                   responses.push(createRelayMessage("OK", authEvent.id, false, "auth-required: must be kind 22242"))
                   break
                 }
-                
+
                 // Check challenge tag
-                const challengeTag = authEvent.tags.find(t => t[0] === "challenge")
+                const challengeTag = authEvent.tags.find((t) => t[0] === "challenge")
                 if (!challengeTag || challengeTag[1] !== state.challenge) {
                   responses.push(createRelayMessage("OK", authEvent.id, false, "auth-required: invalid challenge"))
                   break
                 }
-                
+
                 // Check relay tag
-                const relayTag = authEvent.tags.find(t => t[0] === "relay")
+                const relayTag = authEvent.tags.find((t) => t[0] === "relay")
                 if (!relayTag) {
                   responses.push(createRelayMessage("OK", authEvent.id, false, "auth-required: missing relay tag"))
                   break
                 }
-                
+
                 // TODO: Verify event signature (would need EventService)
                 // For now, assume valid if structure is correct
-                
+
                 // Update connection state as authenticated
-                yield* Ref.update(connections, HashMap.modify(connectionId, (conn) => ({
-                  ...conn,
-                  isAuthenticated: true,
-                  authenticatedPubkey: authEvent.pubkey
-                })))
-                
+                yield* Ref.update(
+                  connections,
+                  HashMap.modify(connectionId, (conn) => ({
+                    ...conn,
+                    isAuthenticated: true,
+                    authenticatedPubkey: authEvent.pubkey
+                  }))
+                )
+
                 responses.push(createRelayMessage("OK", authEvent.id, true, ""))
                 console.log(`[${connectionId}] Authenticated as ${authEvent.pubkey}`)
                 break

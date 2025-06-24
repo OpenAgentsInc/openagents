@@ -7,6 +7,7 @@
     "src/providers/openrouter/**/*",
     "src/providers/cloudflare/**/*",
     "src/core/**/*",
+    "src/types/**/*",
     "src/internal.ts",
     "src/config/ClaudeCodeConfig.ts",
     "src/errors/index.ts",
