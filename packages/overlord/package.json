@@ -32,8 +32,9 @@
     "@effect/platform": "0.84.6",
     "@effect/platform-node": "0.85.2",
     "@openagentsinc/ai": "workspace:^",
+    "@openagentsinc/convex": "workspace:^",
     "@openagentsinc/sdk": "workspace:^",
-    "effect": "3.16.3",
+    "effect": "3.16.8",
     "ws": "^8.18.0"
   },
   "devDependencies": {
