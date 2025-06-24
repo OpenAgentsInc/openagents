@@ -93,6 +93,7 @@ const detectCommand = Command.make("detect").pipe(
     }).pipe(
       Effect.provide(OverlordService.OverlordServiceLive),
       Effect.provide(FileWatcher.FileWatcherLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
       Effect.provide(NodeContext.layer),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
@@ -134,6 +135,7 @@ const transportCommand = Command.make("transport", {
       }
     }).pipe(
       Effect.provide(OverlordService.OverlordServiceLive),
+      Effect.provide(FileWatcher.FileWatcherLive),
       Effect.provide(WebSocketClient.WebSocketClientLive),
       Effect.provide(NodeContext.layer),
       Effect.catchAll((error) =>
@@ -191,6 +193,8 @@ const statusCommand = Command.make("status").pipe(
       }
     }).pipe(
       Effect.provide(OverlordService.OverlordServiceLive),
+      Effect.provide(FileWatcher.FileWatcherLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
       Effect.provide(NodeContext.layer),
       Effect.catchAll((error) =>
         Effect.gen(function*() {

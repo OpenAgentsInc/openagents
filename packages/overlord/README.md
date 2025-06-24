@@ -1,83 +1,113 @@
 # Overlord - Claude Code Sync Service
 
-Overlord is a StarCraft-themed CLI service that bridges local Claude Code instances with OpenAgents.com, enabling centralized management of AI development sessions.
+Overlord watches your Claude Code conversations on your computer and syncs them to the cloud so you can view them on OpenAgents.com.
 
-## Overview
+## What Problem Does This Solve?
 
-Named after the StarCraft Zerg unit that provides oversight and coordination, Overlord monitors your local Claude Code JSONL files and synchronizes them with a cloud database, enabling:
+Right now, when you use Claude Code, all your conversations are stored as files on your computer in hidden folders. You can't:
+- See them in a nice interface
+- Access them from another computer  
+- Search through old conversations easily
+- Track how much you're spending
+- Share interesting conversations
 
-- 📊 **Centralized Dashboard** - View all Claude Code sessions from OpenAgents.com
-- 🔄 **Real-time Sync** - Automatic synchronization of conversation data
-- 🎮 **Remote Control** - Execute commands on your local machine from the web (future)
-- 📈 **Analytics** - Track usage, costs, and productivity metrics
-- 🤝 **Collaboration** - Share sessions with team members
+Overlord fixes this by automatically syncing your conversations to the cloud.
 
-## Installation
+## How to Use It
 
-```bash
-# Install globally
-pnpm install -g @openagentsinc/overlord
-
-# Or run directly with pnpm
-pnpm exec overlord
-```
-
-## Usage
-
-### Spawn the Daemon
-
-Start Overlord to monitor your Claude Code sessions:
-
-```bash
-overlord spawn --user-id=your-user-id --api-key=your-api-key
-```
-
-### Detect Claude Installations
-
-Find Claude Code installations on your machine:
+### 1. Check if Overlord can find your Claude Code files
 
 ```bash
 overlord detect
 ```
 
-### Transport Sessions
-
-Manually sync sessions to the cloud:
-
-```bash
-# Sync all sessions
-overlord transport all --user-id=your-user-id --api-key=your-api-key
-
-# Sync specific session
-overlord transport abc-123-def --user-id=your-user-id --api-key=your-api-key
+This shows you where Claude Code is storing your conversations. You should see something like:
+```
+✅ Found 1 Claude Code installation(s):
+   📁 /Users/yourname/.claude/projects/
+      Sessions: 42
+      Last active: 2025-06-24T12:30:00Z
 ```
 
-### Check Status
-
-View daemon status:
+### 2. Start syncing your conversations
 
 ```bash
-overlord status
+overlord spawn --user-id=your-email --api-key=your-key
 ```
 
-## StarCraft Theme
+This starts a background process that watches for new messages in your Claude Code conversations.
 
-All commands follow StarCraft Overlord terminology:
+### 3. What happens automatically
 
+- Every time you send a message to Claude Code
+- Or Claude responds to you  
+- Overlord sees the change and sends it to OpenAgents.com
+- You can then log into OpenAgents.com and see all your conversations
+
+## What You'll See on OpenAgents.com (Coming in Phase 2)
+
+- All your Claude Code sessions organized by project
+- How much each conversation cost
+- Search across all your conversations
+- Nice formatting for code blocks and responses
+- Usage analytics and insights
+
+## Current Status
+
+**Phase 1 (Complete)**: The "watcher" part that monitors your files
+**Phase 2 (Next)**: The website interface to view your synced conversations
+**Phase 3 (Future)**: Remote control of Claude Code from the web
+**Phase 4 (Future)**: Team collaboration features
+
+Think of it like Dropbox for your Claude Code conversations - it watches for changes and syncs them automatically.
+
+## Technical Details
+
+### Installation
+
+```bash
+# Install globally
+pnpm install -g @openagentsinc/overlord
+
+# Or run from the package directory
+cd packages/overlord
+pnpm build
+node dist/esm/bin.js --help
+```
+
+### All Commands
+
+```bash
+overlord spawn --user-id=xxx --api-key=yyy  # Start the sync daemon
+overlord detect                             # Find Claude installations
+overlord transport                          # Manually sync sessions
+overlord status                             # Check if daemon is running
+overlord evolve                             # Update to latest version
+```
+
+### StarCraft Theme
+
+The commands are themed after StarCraft's Overlord unit:
 - **spawn** - Start the daemon (like spawning a unit)
-- **detect** - Reconnaissance of Claude installations
+- **detect** - Reconnaissance of Claude installations  
 - **transport** - Move data to the cloud (like transporting units)
 - **burrow/unburrow** - Background/foreground operation
 - **evolve** - Update to latest version
 
-## Architecture
+### Architecture
 
-Overlord consists of:
-
+Under the hood, Overlord uses:
 1. **File Watcher** - Monitors `~/.claude/projects/` for JSONL changes
-2. **WebSocket Client** - Real-time connection to OpenAgents.com
+2. **WebSocket Client** - Real-time connection to OpenAgents.com  
 3. **JSONL Parser** - Processes Claude Code conversation data
-4. **Sync Engine** - Handles bidirectional data synchronization
+4. **Sync Engine** - Handles uploading changes to the cloud
+
+### Security
+
+- API keys are never logged or stored locally
+- All data is encrypted in transit
+- You control what gets synced
+- Remote features require explicit permission
 
 ## Development
 
@@ -85,32 +115,20 @@ Overlord consists of:
 # Build the package
 pnpm build
 
-# Run tests
+# Run tests  
 pnpm test
 
 # Type checking
 pnpm check
 ```
 
-## Database Schema
+## Troubleshooting
 
-See `database/schema.sql` for the PlanetScale schema used to store:
-- Claude sessions
-- Conversation messages
-- Machine registry
-- Remote commands
+### "Service not found" error
+Make sure you're running the command from the right directory or have installed it globally.
 
-## Security
+### Can't find Claude installations
+Claude Code stores files in `~/.claude/projects/` or `~/.config/claude/projects/`. Make sure you have used Claude Code at least once.
 
-- API keys are never logged or stored locally
-- WebSocket connections use secure authentication
-- All data is encrypted in transit
-- Remote command execution requires explicit permissions
-
-## Future Features
-
-- 🖥️ Remote terminal access
-- 📁 File browser and editor
-- 🤖 Start Claude Code sessions remotely
-- 📊 Advanced analytics and insights
-- 👥 Team collaboration features
+### WebSocket connection fails
+The OpenAgents.com sync endpoint isn't deployed yet. This is coming in Phase 2.
