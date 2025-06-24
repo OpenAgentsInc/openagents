@@ -36,6 +36,12 @@ export * as Nip06Service from "./nip06/Nip06Service.js"
 export * as Nip28Service from "./nip28/Nip28Service.js"
 
 /**
+ * NIP-42: Authentication of clients to relays
+ * @module
+ */
+export * as Nip42Service from "./nip42/Nip42Service.js"
+
+/**
  * NIP-90: Data Vending Machine Service
  * Implements AI service marketplace with job request/result protocol
  * @module

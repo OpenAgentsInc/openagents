@@ -171,10 +171,17 @@ export const CloseMessage = Schema.Tuple(
   SubscriptionId
 )
 
+// NIP-42 AUTH message from client to relay
+export const AuthMessage = Schema.Tuple(
+  Schema.Literal("AUTH"),
+  NostrEvent
+)
+
 export const ClientMessage = Schema.Union(
   EventMessage,
   ReqMessage,
-  CloseMessage
+  CloseMessage,
+  AuthMessage
 )
 export type ClientMessage = Schema.Schema.Type<typeof ClientMessage>
 
@@ -208,12 +215,19 @@ export const NoticeMessage = Schema.Tuple(
   Schema.String
 )
 
+// NIP-42 AUTH challenge from relay to client
+export const RelayAuthMessage = Schema.Tuple(
+  Schema.Literal("AUTH"),
+  Schema.String // challenge string
+)
+
 export const RelayMessage = Schema.Union(
   RelayEventMessage,
   OkMessage,
   EoseMessage,
   ClosedMessage,
-  NoticeMessage
+  NoticeMessage,
+  RelayAuthMessage
 )
 export type RelayMessage = Schema.Schema.Type<typeof RelayMessage>
 
@@ -228,6 +242,41 @@ export const OkPrefix = Schema.Literal(
   "error"
 )
 export type OkPrefix = Schema.Schema.Type<typeof OkPrefix>
+
+// NIP-42 Auth Event schema
+export const AuthEventKind = 22242 as const
+
+export class AuthEvent extends Schema.Class<AuthEvent>("AuthEvent")({
+  id: EventId,
+  pubkey: PublicKey,
+  created_at: UnixTimestamp,
+  kind: Schema.Literal(AuthEventKind),
+  tags: Schema.Array(Tag).pipe(
+    Schema.filter((tags) => {
+      // Must have relay and challenge tags
+      const hasRelay = tags.some((tag) => tag[0] === "relay")
+      const hasChallenge = tags.some((tag) => tag[0] === "challenge")
+      return hasRelay && hasChallenge
+    })
+  ),
+  content: Schema.String, // Usually empty
+  sig: Signature
+}, {
+  title: "AuthEvent",
+  description: "NIP-42 authentication event (kind 22242)"
+}) {}
+
+// Auth challenge
+export const AuthChallenge = pipe(
+  Schema.String,
+  Schema.minLength(16),
+  Schema.brand("AuthChallenge"),
+  Schema.annotations({
+    title: "AuthChallenge",
+    description: "Random challenge string from relay (min 16 chars)"
+  })
+)
+export type AuthChallenge = Schema.Schema.Type<typeof AuthChallenge>
 
 // NIP-06 schemas
 export const Mnemonic = pipe(

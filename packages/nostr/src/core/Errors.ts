@@ -105,3 +105,14 @@ export class KeyDerivationError extends Schema.TaggedError<KeyDerivationError>()
   path: Schema.String,
   reason: Schema.String
 }) {}
+
+// NIP-42 errors
+export class Nip42Error extends Schema.TaggedError<Nip42Error>()("Nip42Error", {
+  operation: Schema.Literal("generateChallenge", "createAuthEvent", "verifyAuthEvent", "authenticate"),
+  reason: Schema.String
+}) {}
+
+export class AuthenticationError extends Schema.TaggedError<AuthenticationError>()("AuthenticationError", {
+  relayUrl: Schema.String,
+  reason: Schema.String
+}) {}

@@ -15,6 +15,12 @@ export * as AiResponse from "./core/AiResponse.js"
 export * as AiError from "./core/AiError.js"
 
 /**
+ * Standardized types aligned with Vercel AI SDK v5
+ * @since 1.0.0
+ */
+export * from "./types/index.js"
+
+/**
  * Ollama provider for local LLMs
  * @since 1.0.0
  */

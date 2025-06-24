@@ -106,6 +106,14 @@ This document provides a detailed overview of what's currently implemented in th
 - ✅ Service announcement (kind 31990)
 - ✅ Payment integration hooks
 
+#### NIP-42: Authentication of clients to relays (`nip42/Nip42Service.ts`)
+- ✅ Challenge generation
+- ✅ Auth event creation (kind 22242)
+- ✅ Auth event verification
+- ✅ Authentication state management
+- ✅ Challenge-response flow
+- ✅ Integration with RelayService
+
 ### OpenAgents Extensions
 
 1. **AgentProfileService** (`agent-profile/AgentProfileService.ts`)
@@ -121,7 +129,7 @@ This document provides a detailed overview of what's currently implemented in th
    - ❌ Ephemeral events (kinds 20000-29999)
 
 2. **RelayService**
-   - ❌ AUTH support (NIP-42)
+   - ✅ AUTH support (NIP-42) - Implemented in relay package
    - ❌ Relay information document (NIP-11)
 
 ## ❌ Not Implemented
@@ -129,7 +137,7 @@ This document provides a detailed overview of what's currently implemented in th
 ### From Issue #913 Roadmap
 
 **Phase 2: Advanced Encryption & Auth**
-- NIP-42: Authentication of clients to relays
+- ~~NIP-42: Authentication of clients to relays~~ ✅ Implemented
 - NIP-46: Nostr Remote Signing
 
 **Phase 3: Social & Discovery Features**
@@ -163,7 +171,7 @@ This document provides a detailed overview of what's currently implemented in th
 - NIP-36: Sensitive Content
 - NIP-39: External Identities
 - NIP-40: Expiration Timestamp
-- NIP-42: Authentication of clients to relays
+- ~~NIP-42: Authentication of clients to relays~~ ✅ Implemented
 - NIP-45: Counting results
 - NIP-46: Nostr Connect
 - NIP-47: Wallet Connect
@@ -215,7 +223,6 @@ This document provides a detailed overview of what's currently implemented in th
 1. **Priority NIPs for Agent Functionality**
    - NIP-47: Wallet Connect (for payments)
    - NIP-46: Remote Signing (for secure key management)
-   - NIP-42: Client Authentication (for private relays)
 
 2. **Infrastructure Improvements**
    - Implement caching layer
