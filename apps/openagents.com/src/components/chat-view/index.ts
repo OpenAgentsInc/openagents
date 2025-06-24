@@ -144,7 +144,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   return document({
     title,
-    head: isDev ? "" : "<link rel=\"stylesheet\" href=\"/css/main.css\">",
+    head: "<link rel=\"stylesheet\" href=\"" + (isDev ? "http://localhost:5173/src/client/main.css" : "/css/client.css") + "\">",
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
     body: html`
       ${processedHTML}

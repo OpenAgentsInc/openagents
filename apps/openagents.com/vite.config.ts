@@ -60,16 +60,16 @@ export default defineConfig({
     // Proxy API and chat routes to Bun server
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        target: "http://localhost:3003",
         changeOrigin: true
       },
       "/chat": {
-        target: "http://localhost:3000", 
+        target: "http://localhost:3003", 
         changeOrigin: true
       },
       // Proxy WebSocket connections for hot reload
       "/ws": {
-        target: "ws://localhost:3000",
+        target: "ws://localhost:3003",
         ws: true
       }
     }
