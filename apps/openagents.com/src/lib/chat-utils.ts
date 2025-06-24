@@ -16,10 +16,6 @@ export function renderChatMessage(message: {
   return html`
     <div class="message">
       <div class="message-block ${message.role}">
-        <div class="message-header">
-          <span class="message-role ${message.role}">${message.role === "user" ? "You" : "Assistant"}</span>
-          ${displayTime ? html`<span class="message-time">${displayTime}</span>` : ""}
-        </div>
         <div class="message-body">${message.rendered || message.content}</div>
       </div>
     </div>
@@ -165,10 +161,6 @@ export const chatClientScript = `
     const userMessageHtml = \`
       <div class="message">
         <div class="message-block user">
-          <div class="message-header">
-            <span class="message-role user">You</span>
-            <span class="message-time">\${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-          </div>
           <div class="message-body">\${escapeHtml(message)}</div>
         </div>
       </div>
@@ -192,10 +184,6 @@ export const chatClientScript = `
     const assistantMessageHtml = \`
       <div class="message" id="\${messageId}">
         <div class="message-block assistant">
-          <div class="message-header">
-            <span class="message-role assistant">Assistant</span>
-            <span class="message-time">\${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-          </div>
           <div class="message-body assistant-response-body"><div class="dot-flashing"></div></div>
         </div>
       </div>
@@ -450,6 +438,8 @@ export const chatStyles = `
     border-left-color: #7aa2f7; /* Terminal accent blue */
   }
   
+  /* Message header styles - removed as headers are no longer displayed */
+  /*
   .message-header {
     display: flex;
     align-items: center;
@@ -465,11 +455,11 @@ export const chatStyles = `
   }
   
   .message-role.user {
-    color: #9ece6a; /* Match border color */
+    color: #9ece6a;
   }
   
   .message-role.assistant {
-    color: #7aa2f7; /* Match border color */
+    color: #7aa2f7;
   }
   
   .message-time {
@@ -478,6 +468,7 @@ export const chatStyles = `
     font-weight: normal;
     font-family: var(--font-family-mono);
   }
+  */
   
   .message-body {
     color: var(--text);

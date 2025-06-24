@@ -86,8 +86,8 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  height: 1.75rem;
-  width: 1.75rem;
+  height: 1.875rem;
+  width: 1.875rem;
   background: var(--bg-primary);
   border: none;
   border-radius: 0.375rem;
@@ -252,6 +252,8 @@ body {
   border-left-color: var(--color-gray); /* Muted gray */
 }
 
+/* Message header styles - removed as headers are no longer displayed */
+/*
 .message-header {
   display: flex;
   align-items: center;
@@ -267,15 +269,15 @@ body {
 }
 
 .message-role.user {
-  color: #9ece6a; /* Match border color */
+  color: #9ece6a;
 }
 
 .message-role.assistant {
-  color: #7aa2f7; /* Match border color */
+  color: #7aa2f7;
 }
 
 .message-role.tool {
-  color: var(--lightgray); /* Muted color */
+  color: var(--lightgray);
 }
 
 .message-time {
@@ -284,6 +286,7 @@ body {
   font-weight: normal;
   font-family: var(--font-family-mono);
 }
+*/
 
 .message-body {
   color: var(--text);
