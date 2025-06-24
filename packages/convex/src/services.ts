@@ -3,16 +3,16 @@
  * @since 1.0.0
  */
 
-import * as Effect from "effect/Effect"
-import * as Context from "effect/Context"
-import * as Layer from "effect/Layer"
-import * as Config from "effect/Config"
-import * as Schema from "effect/Schema"
-import * as Data from "effect/Data"
-import * as Schedule from "effect/Schedule"
-import { pipe } from "effect/Function"
 import { ConvexHttpClient } from "convex/browser"
 import type { FunctionReference, OptionalRestArgs } from "convex/server"
+import * as Config from "effect/Config"
+import * as Context from "effect/Context"
+import * as Data from "effect/Data"
+import * as Effect from "effect/Effect"
+import { pipe } from "effect/Function"
+import * as Layer from "effect/Layer"
+import * as Schedule from "effect/Schedule"
+import * as Schema from "effect/Schema"
 
 /**
  * Tagged error types for Convex operations
@@ -93,7 +93,7 @@ export type ConvexConfig = Schema.Schema.Type<typeof ConvexConfig>
 /**
  * Live implementation of ConvexService
  */
-const make = Effect.gen(function* () {
+const make = Effect.gen(function*() {
   const convexUrl = yield* Config.string("CONVEX_URL")
   const authToken = yield* Config.option(Config.string("CONVEX_AUTH_TOKEN"))
 
@@ -108,34 +108,37 @@ const make = Effect.gen(function* () {
     query: (functionReference, args) =>
       Effect.tryPromise({
         try: () => client.query(functionReference, args),
-        catch: (error) => new ConvexQueryError({
-          functionName: "query",
-          message: error instanceof Error ? error.message : "Unknown query error",
-          cause: error
-        })
+        catch: (error) =>
+          new ConvexQueryError({
+            functionName: "query",
+            message: error instanceof Error ? error.message : "Unknown query error",
+            cause: error
+          })
       }),
 
     mutation: (functionReference, args) =>
       Effect.tryPromise({
         try: () => client.mutation(functionReference, args),
-        catch: (error) => new ConvexMutationError({
-          functionName: "mutation",
-          message: error instanceof Error ? error.message : "Unknown mutation error",
-          cause: error
-        })
+        catch: (error) =>
+          new ConvexMutationError({
+            functionName: "mutation",
+            message: error instanceof Error ? error.message : "Unknown mutation error",
+            cause: error
+          })
       }),
 
     action: (functionReference, args) =>
       Effect.tryPromise({
         try: () => client.action(functionReference, args),
-        catch: (error) => new ConvexActionError({
-          functionName: "action",
-          message: error instanceof Error ? error.message : "Unknown action error",
-          cause: error
-        })
+        catch: (error) =>
+          new ConvexActionError({
+            functionName: "action",
+            message: error instanceof Error ? error.message : "Unknown action error",
+            cause: error
+          })
       }),
 
-    subscribe: (functionReference, args, callback) =>
+    subscribe: (_functionReference, _args, _callback) =>
       Effect.sync(() => {
         // Note: Real-time subscriptions require ConvexClient (WebSocket), not ConvexHttpClient
         // For now, return a no-op function. This should be updated when proper client is available
@@ -154,8 +157,7 @@ export const ConvexServiceLive = Layer.effect(ConvexService, make)
  */
 export const withConvex = <A>(
   effect: Effect.Effect<A, any, ConvexService>
-): Effect.Effect<A, any, never> =>
-  pipe(effect, Effect.provide(ConvexServiceLive))
+): Effect.Effect<A, any, never> => pipe(effect, Effect.provide(ConvexServiceLive))
 
 /**
  * Schema mapping utilities for converting between Effect schemas and Convex data
@@ -164,16 +166,12 @@ export namespace SchemaMapping {
   /**
    * Convert Effect Schema validation to Convex-compatible data
    */
-  export const encodeForConvex = <A, I>(schema: Schema.Schema<A, I>) =>
-    (value: A) =>
-      Schema.encode(schema)(value)
+  export const encodeForConvex = <A, I>(schema: Schema.Schema<A, I>) => (value: A) => Schema.encode(schema)(value)
 
   /**
    * Decode Convex data using Effect Schema
    */
-  export const decodeFromConvex = <A, I>(schema: Schema.Schema<A, I>) =>
-    (value: I) =>
-      Schema.decode(schema)(value)
+  export const decodeFromConvex = <A, I>(schema: Schema.Schema<A, I>) => (value: I) => Schema.decode(schema)(value)
 
   /**
    * Create a bidirectional mapping between Effect Schema and Convex
@@ -188,7 +186,6 @@ export namespace SchemaMapping {
  * Retry policies for Convex operations
  */
 export namespace RetryPolicies {
-
   /**
    * Default retry policy for transient errors
    */
@@ -222,7 +219,7 @@ export namespace ConvexHelpers {
     functionReference: FunctionReference<"query", "public", any, T>,
     args?: OptionalRestArgs<FunctionReference<"query", "public", any, T>>
   ) =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       const convex = yield* ConvexService
       return yield* pipe(
         convex.query(functionReference, args),
@@ -243,7 +240,7 @@ export namespace ConvexHelpers {
     functionReference: FunctionReference<"mutation", "public", any, T>,
     args?: OptionalRestArgs<FunctionReference<"mutation", "public", any, T>>
   ) =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       const convex = yield* ConvexService
       return yield* pipe(
         convex.mutation(functionReference, args),

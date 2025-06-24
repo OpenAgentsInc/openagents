@@ -3,9 +3,9 @@
  * @since 1.0.0
  */
 
-import { describe, it, expect } from "vitest"
 import * as Schema from "effect/Schema"
-import { NostrEvent, AgentProfile, ChatSession, ChatMessage } from "../src/client.js"
+import { describe, expect, it } from "vitest"
+import { AgentProfile, ChatMessage, ChatSession, NostrEvent } from "../src/client.js"
 
 describe("Convex Schemas", () => {
   describe("NostrEvent", () => {
@@ -17,7 +17,8 @@ describe("Convex Schemas", () => {
         kind: 1,
         tags: [["e", "event_id"], ["p", "pubkey"]],
         content: "Hello Nostr!",
-        sig: "signature1234567890signature1234567890signature1234567890signature1234567890signature1234567890signature1234567890"
+        sig:
+          "signature1234567890signature1234567890signature1234567890signature1234567890signature1234567890signature1234567890"
       }
 
       const result = Schema.decodeUnknownSync(NostrEvent)(validEvent)
@@ -26,7 +27,7 @@ describe("Convex Schemas", () => {
 
     it("should fail validation for invalid event", () => {
       const invalidEvent = {
-        id: "short",
+        id: "short"
         // missing required fields
       }
 

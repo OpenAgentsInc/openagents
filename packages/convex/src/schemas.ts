@@ -19,7 +19,7 @@ const events = defineTable({
   tags: v.array(v.array(v.string())), // Event tags
   content: v.string(), // Event content
   sig: v.string(), // Signature (128 chars)
-  
+
   // Relay metadata
   received_at: v.number(), // When relay received the event
   relay_url: v.optional(v.string()) // Relay URL
@@ -214,7 +214,7 @@ export default defineSchema({
   channels,
   job_requests,
   relay_stats,
-  
+
   // Chat/Overlord tables
   sessions,
   messages,

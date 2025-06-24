@@ -102,8 +102,8 @@ export class ConvexClient {
     /**
      * Store a new Nostr event
      */
-    create: (event: NostrEvent) =>
-      Effect.gen(function* () {
+    create: (_event: NostrEvent) =>
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo("ConvexClient.events.create called")
         return yield* Effect.succeed("placeholder-event-id")
@@ -112,14 +112,14 @@ export class ConvexClient {
     /**
      * Query events by filters
      */
-    list: (filters: {
+    list: (_filters: {
       pubkey?: string
       kind?: number
       since?: number
       until?: number
       limit?: number
     }) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo("ConvexClient.events.list called")
         return yield* Effect.succeed([])
@@ -129,7 +129,7 @@ export class ConvexClient {
      * Get event by ID
      */
     getById: (id: string) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo(`ConvexClient.events.getById called with id: ${id}`)
         return yield* Effect.succeed(null)
@@ -143,8 +143,8 @@ export class ConvexClient {
     /**
      * Create or update an agent profile
      */
-    upsert: (profile: AgentProfile) =>
-      Effect.gen(function* () {
+    upsert: (_profile: AgentProfile) =>
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo("ConvexClient.agents.upsert called")
         return yield* Effect.succeed("placeholder-agent-id")
@@ -154,7 +154,7 @@ export class ConvexClient {
      * List active agents
      */
     listActive: () =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo("ConvexClient.agents.listActive called")
         return yield* Effect.succeed([])
@@ -164,7 +164,7 @@ export class ConvexClient {
      * Get agent by pubkey
      */
     getByPubkey: (pubkey: string) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo(`ConvexClient.agents.getByPubkey called with pubkey: ${pubkey}`)
         return yield* Effect.succeed(null)
@@ -178,8 +178,8 @@ export class ConvexClient {
     /**
      * Create a new chat session
      */
-    create: (session: ChatSession) =>
-      Effect.gen(function* () {
+    create: (_session: ChatSession) =>
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo("ConvexClient.sessions.create called")
         return yield* Effect.succeed("placeholder-session-id")
@@ -189,7 +189,7 @@ export class ConvexClient {
      * Get sessions for a user
      */
     listByUser: (userId: string) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo(`ConvexClient.sessions.listByUser called with userId: ${userId}`)
         return yield* Effect.succeed([])
@@ -199,7 +199,7 @@ export class ConvexClient {
      * Update session activity
      */
     updateActivity: (sessionId: string) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo(`ConvexClient.sessions.updateActivity called with sessionId: ${sessionId}`)
         return yield* Effect.succeed(undefined)
@@ -213,8 +213,8 @@ export class ConvexClient {
     /**
      * Add a message to a session
      */
-    create: (message: ChatMessage) =>
-      Effect.gen(function* () {
+    create: (_message: ChatMessage) =>
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo("ConvexClient.messages.create called")
         return yield* Effect.succeed("placeholder-message-id")
@@ -224,17 +224,19 @@ export class ConvexClient {
      * Get messages for a session
      */
     listBySession: (sessionId: string, limit = 50) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
-        yield* Effect.logInfo(`ConvexClient.messages.listBySession called with sessionId: ${sessionId}, limit: ${limit}`)
+        yield* Effect.logInfo(
+          `ConvexClient.messages.listBySession called with sessionId: ${sessionId}, limit: ${limit}`
+        )
         return yield* Effect.succeed([])
       }),
 
     /**
      * Subscribe to new messages in a session
      */
-    subscribeToSession: (sessionId: string, callback: (messages: ChatMessage[]) => void) =>
-      Effect.gen(function* () {
+    subscribeToSession: (sessionId: string, _callback: (messages: Array<ChatMessage>) => void) =>
+      Effect.gen(function*() {
         // TODO: Replace with actual generated API reference after Convex deployment
         yield* Effect.logInfo(`ConvexClient.messages.subscribeToSession called with sessionId: ${sessionId}`)
         return yield* Effect.succeed(() => {})
