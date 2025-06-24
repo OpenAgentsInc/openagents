@@ -1,10 +1,9 @@
 /**
- * Standardized tool types supporting both Vercel AI SDK and Effect patterns
+ * Standardized tool types supporting Vercel AI SDK patterns with Effect Schema
  * @since 1.0.0
  */
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
-import type { ZodSchema } from "zod"
 
 // =============================================================================
 // Core Tool Definition (Vercel AI SDK Compatible)
@@ -32,9 +31,9 @@ export interface CoreToolDefinition<TParameters = any, TResult = any> {
 
   /**
    * Schema for validating tool parameters
-   * Supports both Effect Schema and Zod
+   * Uses Effect Schema for runtime validation
    */
-  parameters: Schema.Schema<TParameters, any, any> | ZodSchema<TParameters>
+  parameters: Schema.Schema<TParameters, any, any>
 
   /**
    * Function to execute the tool
@@ -88,11 +87,6 @@ export const fromCore = <N extends string, P, R>(
   name: N,
   definition: CoreToolDefinition<P, R>
 ): Tool<N, P, R, ToolError, never> => {
-  // Convert Zod schema to Effect Schema if needed
-  const parametersSchema = isZodSchema(definition.parameters)
-    ? Schema.Any // TODO: Implement Zod to Effect Schema conversion
-    : definition.parameters as Schema.Schema<P, any, any>
-
   // Create execute function that handles both Promise and Effect returns
   const execute = (args: P): Effect.Effect<R, ToolError, never> => {
     const result = definition.execute(args)
@@ -115,7 +109,7 @@ export const fromCore = <N extends string, P, R>(
   return {
     name,
     description: definition.description,
-    parametersSchema,
+    parametersSchema: definition.parameters as Schema.Schema<P, any, any>,
     resultSchema: Schema.Any,
     errorSchema: ToolError,
     requirements: undefined,
@@ -239,13 +233,6 @@ export type ToolChoice = typeof ToolChoice.Type
 // =============================================================================
 
 /**
- * Type guard for Zod schemas
- */
-function isZodSchema(schema: any): schema is ZodSchema {
-  return schema && typeof schema.parse === "function" && typeof schema.safeParse === "function"
-}
-
-/**
  * Type guard for Promises
  */
 function isPromise<T>(value: any): value is Promise<T> {
@@ -279,3 +266,4 @@ export const createTool = <Name extends string, Parameters, Result, Error = Tool
   requirements: undefined,
   execute: config.execute
 })
+
