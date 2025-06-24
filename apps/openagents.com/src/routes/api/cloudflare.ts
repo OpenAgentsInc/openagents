@@ -139,7 +139,7 @@ export function cloudflareChat(
       return yield* Stream.toReadableStreamEffect(sseStream).pipe(
         Effect.provide(layers)
       )
-    })
+    }).pipe(Effect.provide(layers))
 
     // Return the response with SSE headers
     return HttpServerResponse.raw(readableStream, {
