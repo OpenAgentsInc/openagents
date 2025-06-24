@@ -44,18 +44,31 @@ function submitCommand(onSubmit: (text: string) => void) {
   return (state: EditorState, dispatch?: (tr: Transaction) => void): boolean => {
     // Get the plain text content with line breaks preserved
     let text = ""
-    state.doc.descendants((node) => {
+    let isFirstParagraph = true
+
+    console.log("=== Submit Command Debug ===")
+    console.log("Document:", state.doc.toJSON())
+
+    state.doc.descendants((node, pos) => {
+      console.log(`Node at pos ${pos}:`, { type: node.type.name, text: node.text })
+
       if (node.isText) {
         text += node.text
       } else if (node.type.name === "hard_break") {
+        console.log("Found hard break, adding newline")
         text += "\n"
-      } else if (node.type.name === "paragraph" && text.length > 0) {
-        // Add newline between paragraphs (but not before the first one)
-        text += "\n"
+      } else if (node.type.name === "paragraph") {
+        if (!isFirstParagraph) {
+          text += "\n"
+        }
+        isFirstParagraph = false
       }
     })
 
     text = text.trim()
+    console.log("Text to submit (with escapes):", JSON.stringify(text))
+    console.log("Text to submit (raw):", text)
+
     if (!text) return false
 
     if (dispatch) {
@@ -172,17 +185,31 @@ export class ProseMirrorEditor {
   getText(): string {
     let text = ""
     const doc = this.view.state.doc
+    let isFirstParagraph = true
 
-    doc.descendants((node) => {
+    console.log("=== ProseMirror getText Debug ===")
+    console.log("Document structure:", doc.toJSON())
+
+    doc.descendants((node, pos) => {
+      console.log(`Node at pos ${pos}:`, { type: node.type.name, text: node.text })
+
       if (node.isText) {
         text += node.text
       } else if (node.type.name === "hard_break") {
+        console.log("Adding line break")
         text += "\n"
-      } else if (node.type.name === "paragraph" && text.length > 0) {
-        // Add newline between paragraphs (but not before the first one)
-        text += "\n"
+      } else if (node.type.name === "paragraph") {
+        if (!isFirstParagraph) {
+          // Add newline between paragraphs
+          text += "\n"
+        }
+        isFirstParagraph = false
       }
     })
+
+    console.log("Final text with escapes:", JSON.stringify(text))
+    console.log("Final text raw:", text)
+    console.log("=== End Debug ===")
 
     return text.trim()
   }

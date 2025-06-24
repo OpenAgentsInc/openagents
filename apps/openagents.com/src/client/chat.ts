@@ -56,7 +56,8 @@ const chatClient: ChatClient = {
 function escapeHtml(text: string): string {
   const div = document.createElement("div")
   div.textContent = text
-  return div.innerHTML
+  // Replace newlines with <br> tags after escaping
+  return div.innerHTML.replace(/\n/g, "<br>")
 }
 
 export async function loadConversations() {
@@ -96,6 +97,11 @@ export async function loadConversations() {
 }
 
 export async function sendMessage(message: string) {
+  console.log("=== sendMessage Debug ===")
+  console.log("Message received (with escapes):", JSON.stringify(message))
+  console.log("Message received (raw):", message)
+  console.log("Message length:", message.length)
+
   if (isGenerating || !message.trim()) return
 
   const submitButton = document.getElementById("submit-button") as HTMLButtonElement
