@@ -1,6 +1,7 @@
 import { Args, Command, Options } from "@effect/cli"
 import { NodeContext } from "@effect/platform-node"
 import { Console, Effect, Option } from "effect"
+import * as ConvexSync from "./services/ConvexSync.js"
 import * as FileWatcher from "./services/FileWatcher.js"
 import * as OverlordService from "./services/OverlordService.js"
 import * as WebSocketClient from "./services/WebSocketClient.js"
@@ -53,6 +54,7 @@ const spawnCommand = Command.make("spawn", {
       yield* Effect.never
     }).pipe(
       Effect.provide(OverlordService.OverlordServiceLive),
+      Effect.provide(ConvexSync.ConvexSyncServiceLive),
       Effect.provide(FileWatcher.FileWatcherLive),
       Effect.provide(WebSocketClient.WebSocketClientLive),
       Effect.provide(NodeContext.layer),
@@ -92,6 +94,7 @@ const detectCommand = Command.make("detect").pipe(
       }
     }).pipe(
       Effect.provide(OverlordService.OverlordServiceLive),
+      Effect.provide(ConvexSync.ConvexSyncServiceLive),
       Effect.provide(FileWatcher.FileWatcherLive),
       Effect.provide(WebSocketClient.WebSocketClientLive),
       Effect.provide(NodeContext.layer),
@@ -135,12 +138,121 @@ const transportCommand = Command.make("transport", {
       }
     }).pipe(
       Effect.provide(OverlordService.OverlordServiceLive),
+      Effect.provide(ConvexSync.ConvexSyncServiceLive),
       Effect.provide(FileWatcher.FileWatcherLive),
       Effect.provide(WebSocketClient.WebSocketClientLive),
       Effect.provide(NodeContext.layer),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
           yield* Console.error(`❌ Transport failed: ${error}`)
+          yield* Effect.fail(error)
+        })
+      )
+    )
+  )
+)
+
+// Import command - for testing with limited conversations
+const limitOption = Options.integer("limit").pipe(
+  Options.withDescription("Maximum number of conversations to import"),
+  Options.withDefault(10),
+  Options.optional
+)
+
+const importCommand = Command.make("import", {
+  userId: userIdOption,
+  apiKey: apiKeyOption,
+  limit: limitOption
+}).pipe(
+  Command.withDescription("Import Claude Code conversations to Convex (for testing)"),
+  Command.withHandler(({ apiKey: _apiKey, limit, userId }) =>
+    Effect.gen(function*() {
+      const service = yield* OverlordService.OverlordService
+      const maxLimit = Option.getOrElse(limit, () => 10)
+
+      yield* Console.log(`📥 Importing up to ${maxLimit} Claude Code conversations...`)
+
+      // First detect installations
+      const installations = yield* service.detectClaudeInstallations()
+      if (installations.length === 0) {
+        yield* Console.log("❌ No Claude Code installations found")
+        return
+      }
+
+      // Get all JSONL files
+      const fileWatcher = yield* FileWatcher.FileWatcher
+      const convexSync = yield* ConvexSync.ConvexSyncService
+      const claudePaths = yield* fileWatcher.findClaudePaths()
+
+      let imported = 0
+      let failed = 0
+      const errors: Array<string> = []
+
+      for (const claudePath of claudePaths) {
+        if (imported >= maxLimit) break
+
+        const files = yield* Effect.tryPromise(() =>
+          import("node:fs/promises").then((fs) => fs.readdir(claudePath, { recursive: true }))
+        )
+        const jsonlFiles = files
+          .filter((f): f is string => typeof f === "string" && f.endsWith(".jsonl"))
+          .sort((a, b) => b.localeCompare(a)) // Sort newest first
+
+        for (const file of jsonlFiles) {
+          if (imported >= maxLimit) break
+
+          const filePath = `${claudePath}/${file}`
+          const sessionId = file.replace(".jsonl", "").split("/").pop() || file
+
+          yield* Console.log(`  📄 Importing session ${sessionId}...`)
+
+          yield* Effect.gen(function*() {
+            // Read and parse file
+            const fs = yield* Effect.tryPromise(() => import("node:fs/promises"))
+            const content = yield* Effect.tryPromise(() => fs.readFile(filePath, "utf-8"))
+
+            const JSONLParser = yield* Effect.tryPromise(() => import("./services/JSONLParser.js"))
+            const entries = yield* JSONLParser.parseJSONL(content)
+
+            // Extract project path
+            const parts = filePath.split("/")
+            const claudeIndex = parts.findIndex((p) => p === "Claude")
+            const projectPath = claudeIndex >= 0 && claudeIndex + 1 < parts.length
+              ? parts[claudeIndex + 1]
+              : "unknown"
+
+            // Save to Convex
+            yield* convexSync.saveSession(sessionId, userId, projectPath, entries)
+
+            imported++
+            yield* Console.log(`    ✅ Imported ${entries.length} entries`)
+          }).pipe(
+            Effect.catchAll((error) => {
+              failed++
+              errors.push(`${sessionId}: ${error}`)
+              return Console.log(`    ❌ Failed: ${error}`)
+            })
+          )
+        }
+      }
+
+      yield* Console.log(`\n📊 Import Summary:`)
+      yield* Console.log(`   ✅ Imported: ${imported} sessions`)
+      if (failed > 0) {
+        yield* Console.log(`   ❌ Failed: ${failed} sessions`)
+        for (const err of errors) {
+          yield* Console.log(`      - ${err}`)
+        }
+      }
+    }).pipe(
+      Effect.provide(OverlordService.OverlordServiceLive),
+      Effect.provide(ConvexSync.ConvexSyncServiceLive),
+      Effect.provide(FileWatcher.FileWatcherLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
+      Effect.provide(NodeContext.layer),
+      Effect.catchAll((error) =>
+        Effect.gen(function*() {
+          yield* Console.error(`❌ Import failed: ${error}`)
           yield* Effect.fail(error)
         })
       )
@@ -193,6 +305,7 @@ const statusCommand = Command.make("status").pipe(
       }
     }).pipe(
       Effect.provide(OverlordService.OverlordServiceLive),
+      Effect.provide(ConvexSync.ConvexSyncServiceLive),
       Effect.provide(FileWatcher.FileWatcherLive),
       Effect.provide(WebSocketClient.WebSocketClientLive),
       Effect.provide(NodeContext.layer),
@@ -225,6 +338,7 @@ const overlordCommand = Command.make("overlord").pipe(
     spawnCommand,
     detectCommand,
     transportCommand,
+    importCommand,
     burrowCommand,
     unburrowCommand,
     statusCommand,

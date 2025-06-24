@@ -239,6 +239,18 @@ export class ConvexClient {
       }),
 
     /**
+     * Get session by ID
+     */
+    getById: (sessionId: string) =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.query(api.sessions.getById, { sessionId })
+          return result as ChatSession | null
+        },
+        catch: (error) => new Error(`Failed to get session: ${error}`)
+      }),
+
+    /**
      * Update session activity
      */
     updateActivity: (sessionId: string) =>
@@ -283,6 +295,33 @@ export class ConvexClient {
           return results as Array<ChatMessage>
         },
         catch: (error) => new Error(`Failed to list messages: ${error}`)
+      }),
+
+    /**
+     * Get message by UUID
+     */
+    getByUuid: (sessionId: string, entryUuid: string) =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.query(api.messages.getByUuid, { entryUuid })
+          return result as ChatMessage | null
+        },
+        catch: (error) => new Error(`Failed to get message: ${error}`)
+      }),
+
+    /**
+     * Add image to a message
+     * Note: messageId should be the Convex document ID returned from create()
+     */
+    addImage: (messageId: string, _image: { image_data: string; mime_type: string; position: number }) =>
+      Effect.tryPromise({
+        try: async () => {
+          // Images table is separate but we don't have a specific mutation for it yet
+          // For now, we'll need to handle this differently
+          console.warn("Image storage not yet implemented in Convex functions")
+          return messageId
+        },
+        catch: (error) => new Error(`Failed to add image: ${error}`)
       }),
 
     /**

@@ -61,7 +61,9 @@ export const logEntryToMessageRecord = (
         ...base,
         entry_type: "user",
         role: "user",
-        content: entry.message.text
+        content: typeof entry.message.text === "string"
+          ? entry.message.text
+          : JSON.stringify(entry.message.text)
         // Images handled separately
       }
 
@@ -70,10 +72,18 @@ export const logEntryToMessageRecord = (
         ...base,
         entry_type: "assistant",
         role: "assistant",
-        content: entry.message.content,
+        content: typeof entry.message.content === "string"
+          ? entry.message.content
+          : JSON.stringify(entry.message.content),
         thinking: entry.message.thinking,
         model: entry.message.model,
-        token_usage: entry.message.usage,
+        token_usage: entry.message.usage
+          ? {
+            input_tokens: entry.message.usage.input_tokens || 0,
+            output_tokens: entry.message.usage.output_tokens || 0,
+            total_tokens: (entry.message.usage.input_tokens || 0) + (entry.message.usage.output_tokens || 0)
+          }
+          : undefined,
         cost: calculateCost(entry.message.usage)
       }
 

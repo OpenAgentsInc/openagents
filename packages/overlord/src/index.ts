@@ -4,6 +4,13 @@ export * as Overlord from "./Overlord.js"
 
 export * as bin from "./bin.js"
 
+/**
+ * Convex synchronization service for Overlord
+ * Handles saving Claude Code conversations to Convex database
+ * @since Phase 2
+ */
+export * as ConvexSync from "./services/ConvexSync.js"
+
 
 export * as DatabaseMapper from "./services/DatabaseMapper.js"
 
