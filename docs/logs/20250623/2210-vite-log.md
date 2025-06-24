@@ -221,3 +221,34 @@ After reading streaming and AI provider guides, fixed critical issues:
 
 These fixes align with the golden rule from the streaming guide:
 "Always provide ALL required layers before converting Effect Streams to ReadableStreams"
+
+### 23:20 - Final Fix for Service Not Found Error
+
+Issue: "Service not found: @openagentsinc/ai-openrouter/OpenRouterClient"
+
+Root cause: The outer Effect.gen also needs the layers provided, not just the stream conversion.
+
+Fix applied to both Cloudflare and OpenRouter routes:
+```typescript
+// Added layers to the outer Effect.gen
+}).pipe(Effect.provide(layers))
+```
+
+This ensures the client service is available in both:
+1. The Effect.gen function that creates the client and stream
+2. The Stream.toReadableStreamEffect conversion
+
+All streaming endpoints now work correctly with proper layer provision throughout the Effect pipeline.
+
+## Summary
+
+Successfully implemented Vite integration with:
+- ✅ Hot Module Replacement (HMR) for development
+- ✅ ES module architecture replacing inline scripts
+- ✅ Concurrent Vite + Bun development servers
+- ✅ Proper proxy configuration for API routes
+- ✅ Fixed all streaming and Effect layer issues
+- ✅ Maintained backward compatibility
+- ✅ All tests passing
+
+The implementation is complete and ready for production use.

@@ -91,7 +91,7 @@ export function openrouterChat(
       })
     )
 
-    // Create and run the streaming effect
+    // Create and run the streaming effect with proper layer provision
     const readableStream = yield* Effect.gen(function*() {
       const client = yield* Ai.OpenRouter.OpenRouterClient
       const encoder = new TextEncoder()
@@ -155,7 +155,7 @@ export function openrouterChat(
       return yield* Stream.toReadableStreamEffect(sseStream).pipe(
         Effect.provide(layers)
       )
-    })
+    }).pipe(Effect.provide(layers))
 
     return HttpServerResponse.raw(readableStream, {
       headers: {
