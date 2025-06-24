@@ -1,13 +1,7 @@
 {
-  "functions": "convex/",
-  "authInfo": [
-    {
-      "domain": "https://openagents.com",
-      "applicationID": "convex"
-    }
-  ],
-  "generateCommonJSApi": false,
   "node": {
-    "externalPackages": ["effect"]
+    "externalPackages": [
+      "effect"
+    ]
   }
 }

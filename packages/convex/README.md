@@ -29,10 +29,10 @@ pnpm add @openagentsinc/convex
 
 ### 1. Setup Environment
 
-Create a `.env` file based on `.env.example`:
+Copy the environment variables from `.env.local` (created during deployment):
 
 ```bash
-CONVEX_URL=https://your-deployment-name.convex.cloud
+CONVEX_URL=https://proficient-panther-764.convex.cloud
 CONVEX_AUTH_TOKEN=your_auth_token_here  # Optional
 ```
 
@@ -202,23 +202,25 @@ pnpm test
 
 ### Convex Setup
 
+✅ **Already Deployed!** The Convex backend is live at:
+- **Project**: `openagentsdotcom` in team `christopher-david`
+- **Dashboard**: https://dashboard.convex.dev/t/christopher-david/openagentsdotcom
+- **Deployment URL**: https://proficient-panther-764.convex.cloud
+
 ```bash
-# Initialize Convex (run once)
-npx convex init
-
-# Deploy schema and functions
-npx convex deploy
-
 # Development mode with hot reloading
 npx convex dev
+
+# Deploy updates to schema and functions
+npx convex dev --once
 ```
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `CONVEX_URL` | Convex deployment URL | Yes |
-| `CONVEX_AUTH_TOKEN` | Auth token for server operations | No |
+| Variable | Description | Required | Value |
+|----------|-------------|----------|-------|
+| `CONVEX_URL` | Convex deployment URL | Yes | `https://proficient-panther-764.convex.cloud` |
+| `CONVEX_AUTH_TOKEN` | Auth token for server operations | No | (Generate from dashboard if needed) |
 
 ## License
 

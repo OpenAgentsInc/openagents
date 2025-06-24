@@ -71,11 +71,11 @@ export const list = query({
     }
 
     if (args.since !== undefined) {
-      query = query.filter(q => q.gte(q.field("created_at"), args.since))
+      query = query.filter(q => q.gte(q.field("created_at"), args.since!))
     }
 
     if (args.until !== undefined) {
-      query = query.filter(q => q.lte(q.field("created_at"), args.until))
+      query = query.filter(q => q.lte(q.field("created_at"), args.until!))
     }
 
     // Order by created_at descending and apply limit
