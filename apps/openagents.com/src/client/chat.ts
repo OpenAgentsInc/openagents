@@ -145,8 +145,6 @@ function addMessageToUI(role: "user" | "assistant", content: string) {
 
   if (!messagesDiv) return
 
-  // Format timestamp
-  const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   const messageHtml = `
     <div class="message">
       <div class="message-block ${role}">

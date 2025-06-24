@@ -9,10 +9,6 @@ export function renderChatMessage(message: {
   timestamp?: number
   rendered?: string
 }) {
-  const displayTime = message.timestamp
-    ? new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : ""
-
   return html`
     <div class="message">
       <div class="message-block ${message.role}">
