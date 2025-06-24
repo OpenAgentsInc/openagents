@@ -25,7 +25,9 @@ export default defineConfig({
       output: {
         entryFileNames: "[name].js",
         chunkFileNames: "[name]-[hash].js",
-        assetFileNames: "../assets/[name]-[hash][extname]"
+        assetFileNames: "../assets/[name]-[hash][extname]",
+        format: "es",
+        exports: "named"
       }
     },
     target: "es2020",

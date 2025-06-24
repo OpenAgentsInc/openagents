@@ -155,3 +155,69 @@ Final state:
 - SDK browser bundle remains separate (complex esbuild setup)
 
 Ready to commit and create PR.
+
+### 22:55 - Verified Root Scripts
+
+Confirmed that `pnpm site` command still works correctly:
+- Root package.json: `"site": "pnpm --filter=@openagentsinc/openagents.com run dev"`
+- openagents.com package.json: `"dev": "concurrently \"bun run dev:server\" \"bun run dev:client\""`
+
+This launches both:
+- Bun server on port 3000 (handles SSR and API routes)
+- Vite dev server on port 5173 (serves client assets with HMR)
+
+Vite proxies API/chat routes to Bun, so developers access the site at http://localhost:3000 as before.
+
+### 23:00 - Fixed Development Mode Issues
+
+Issue: "The requested module '/js/chat.js' does not provide an export named 'initializeChat'"
+
+Root causes:
+1. In dev mode, need to load from Vite server, not built files
+2. Export was missing from built module
+3. Vite output format needed to be ES modules
+
+Fixes applied:
+1. ✅ Added development mode detection in chat-view component
+2. ✅ Ensured initializeChat is properly exported
+3. ✅ Updated Vite config to use ES module format
+4. ✅ Added explicit exports config
+
+Now both development and production modes work correctly:
+- Dev: Loads TypeScript files from Vite dev server with HMR
+- Prod: Loads built JavaScript files from public/js/
+
+### 23:10 - Fixed API Integration Issues
+
+After reading streaming and AI provider guides, fixed critical issues:
+
+1. **Message Format Mismatch**:
+   - Routes expected `messages` array: `[{ role: "user", content: "..." }]`
+   - Client was sending `{ message: "string", conversationId: "...", model: "..." }`
+   - Fixed by converting single message to messages array in routes
+
+2. **API Key Handling**:
+   - OpenRouter route wasn't using API key from request body
+   - Fixed to check body.openrouterApiKey first, then header, then env
+
+3. **Critical Streaming Layer Bug**:
+   - Layers were provided to outer Effect.gen instead of Stream.toReadableStreamEffect
+   - This caused "Service not found" errors in Effect context
+   - Fixed by providing layers directly to stream conversion:
+   ```typescript
+   // ❌ WRONG
+   return yield* Stream.toReadableStreamEffect(sseStream)
+   }).pipe(Effect.provide(layers))
+   
+   // ✅ CORRECT  
+   return yield* Stream.toReadableStreamEffect(sseStream).pipe(
+     Effect.provide(layers)
+   )
+   ```
+
+4. **Response Wrapping**:
+   - Routes were wrapping ReadableStream in Response object
+   - Fixed to pass ReadableStream directly to HttpServerResponse.raw
+
+These fixes align with the golden rule from the streaming guide:
+"Always provide ALL required layers before converting Effect Streams to ReadableStreams"

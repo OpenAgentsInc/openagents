@@ -202,7 +202,7 @@ async function streamAssistantResponse(message: string) {
   }
 
   try {
-    const endpoint = modelData.provider === "cloudflare" ? "/api/cloudflare" : "/api/openrouter"
+    const endpoint = modelData.provider === "cloudflare" ? "/api/cloudflare/chat" : "/api/openrouter/chat"
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -378,6 +378,9 @@ export function initializeChat() {
       }
     })
   }
-} // Export necessary functions for global access
+}
 
+// Export necessary functions for global access
 ;(window as any).sendMessage = sendMessage
+
+// Functions are already exported above

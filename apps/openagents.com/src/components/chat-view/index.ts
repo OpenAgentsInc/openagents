@@ -138,6 +138,10 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     .replace("<!-- Messages will be dynamically added here -->", messagesHTML)
     .replace("<!-- Model options will be populated dynamically -->", modelOptionsHTML)
 
+  // Determine if we're in development mode
+  const isDev = process.env.NODE_ENV !== "production"
+  const scriptBase = isDev ? "http://localhost:5173/src/client" : "/js"
+  
   return document({
     title,
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
@@ -146,8 +150,8 @@ export async function createChatView({ conversationId }: ChatViewProps) {
       
       <script type="module">
         // Import chat module
-        import { initializeChat } from '/js/chat.js';
-        import { initializeModelSelector } from '/js/model-selector.js';
+        import { initializeChat } from '${scriptBase}/chat.${isDev ? "ts" : "js"}';
+        import { initializeModelSelector } from '${scriptBase}/model-selector.${isDev ? "ts" : "js"}';
         
         // Set conversation ID globally
         window.CONVERSATION_ID = ${conversationId ? `"${conversationId}"` : "null"};
