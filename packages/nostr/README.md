@@ -259,6 +259,38 @@ const program = Effect.gen(function* () {
 })
 ```
 
+#### NIP-42: Authentication of clients to relays
+Challenge-response authentication for relay connections.
+
+```typescript
+import { Nip42Service } from "@openagentsinc/nostr"
+
+const program = Effect.gen(function* () {
+  const auth = yield* Nip42Service
+  
+  // Generate challenge (relay side)
+  const challenge = yield* auth.generateChallenge()
+  
+  // Create auth event (client side)
+  const authEvent = yield* auth.createAuthEvent({
+    challenge: challengeFromRelay,
+    relayUrl: "wss://relay.example.com",
+    privateKey: yourPrivateKey
+  })
+  
+  // Send AUTH message to relay
+  // ["AUTH", authEvent]
+  
+  // Verify auth event (relay side)
+  const isValid = yield* auth.verifyAuthEvent({
+    event: authEvent,
+    challenge: challenge,
+    relayUrl: "wss://relay.example.com"
+  })
+  console.log(isValid) // true if valid
+})
+```
+
 #### NIP-44: Versioned Encryption
 Modern encryption standard (recommended over NIP-04).
 

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./safelist.css";
+@import "prosemirror-view/style/prosemirror.css";
 
 /* Tailwind v4 theme configuration */
 @theme {
