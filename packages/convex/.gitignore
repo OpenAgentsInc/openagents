@@ -8,7 +8,7 @@ build/
 .env.local
 
 # Convex generated files
-convex/_generated/
+# Note: _generated files are committed as they're part of the API
 .convex/
 
 # Node modules

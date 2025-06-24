@@ -4,6 +4,7 @@
     "composite": true,
     "declaration": true,
     "outDir": "build/esm",
+    "declarationDir": "build/dts",
     "stripInternal": true
   },
   "include": ["src/**/*"],
