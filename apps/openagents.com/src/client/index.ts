@@ -4,7 +4,7 @@
  */
 
 // Import styles
-import './main.css'
+import "./main.css"
 
 // Initialize any global client functionality
 console.log("OpenAgents client initialized")
