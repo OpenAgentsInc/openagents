@@ -664,7 +664,7 @@ body {
   right: 0;
   z-index: 10;
   pointer-events: none;
-  padding: 0 8px;
+  padding: 0;
   transition: left 0.3s ease-in-out;
 }
 
@@ -686,7 +686,7 @@ body {
 
 .input-gradient-wrapper {
   background: transparent;
-  padding: 8px;
+  padding: 0;
 }
 
 .chat-form {
@@ -697,7 +697,8 @@ body {
   background: rgba(0, 0, 0, 0.88);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-bottom: 0;
+  border-radius: 0;
   padding: 12px;
   box-shadow: 
     rgba(0, 0, 0, 0.1) 0px 80px 50px 0px, 
@@ -737,6 +738,7 @@ body {
 
 .chat-input:focus {
   outline: none;
+  box-shadow: none;
 }
 
 .chat-input::placeholder {
