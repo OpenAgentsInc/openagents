@@ -4,6 +4,7 @@
  */
 
 import { ProseMirrorEditor } from "./prosemirror-setup"
+import { jsonlIngestion } from "./jsonl-ingestion"
 
 interface ChatClient {
   createConversation: (title: string) => Promise<string>
@@ -367,6 +368,9 @@ export function initializeChat() {
       }
     })
   }
+
+  // Initialize JSONL ingestion
+  jsonlIngestion.initialize()
 } // Export necessary functions for global access
 
 ;(window as any).sendMessage = sendMessage
