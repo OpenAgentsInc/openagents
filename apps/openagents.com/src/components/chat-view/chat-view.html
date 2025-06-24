@@ -96,50 +96,63 @@
     
     <!-- Input Area -->
     <div class="input-area">
-      <div class="input-container">
-        <form class="chat-form">
-          <div class="input-inner">
-            <textarea 
-              id="chat-input"
-              name="input" 
-              placeholder="Message OpenAgents..." 
-              class="chat-input" 
-              rows="1"
-              autocomplete="off"
-              autofocus
-            ></textarea>
-            <button id="submit-button" type="submit" class="submit-button" disabled>
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="m5 12 7-7 7 7"></path>
-                <path d="M12 19V5"></path>
-              </svg>
-            </button>
-          </div>
-          <div class="input-footer">
-            <div class="input-controls">
-              <div class="model-selector-container">
-                <button id="model-selector-button" type="button" class="model-selector-button" onclick="toggleModelDropdown()">
-                  <span id="selected-model-name">Llama 4 Scout 17B</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="m6 9 6 6 6-6"></path>
-                  </svg>
-                </button>
-                <div id="model-selector-dropdown" class="model-selector-dropdown">
-                  <!-- Model options will be populated dynamically -->
+      <div class="input-wrapper">
+        <div class="input-container">
+          <div class="input-gradient-wrapper">
+            <form class="chat-form">
+              <div class="input-content">
+                <div class="input-row">
+                  <textarea 
+                    id="chat-input"
+                    name="input" 
+                    placeholder="Message OpenAgents..." 
+                    class="chat-input" 
+                    rows="1"
+                    autocomplete="off"
+                    autofocus
+                  ></textarea>
+                </div>
+                <div class="input-actions">
+                  <div class="left-actions">
+                    <div class="model-selector-container">
+                      <button id="model-selector-button" type="button" class="model-selector-button" onclick="toggleModelDropdown()">
+                        <span id="selected-model-name">Llama 4 Scout 17B</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="m6 9 6 6 6-6"></path>
+                        </svg>
+                      </button>
+                      <div id="model-selector-dropdown" class="model-selector-dropdown">
+                        <!-- Model options will be populated dynamically -->
+                      </div>
+                    </div>
+                    <button type="button" class="search-button" title="Web search (Pro feature)" disabled>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                        <path d="M2 12h20"></path>
+                      </svg>
+                      <span>Search</span>
+                    </button>
+                    <button type="button" class="attach-button" title="Attach files (Pro feature)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13.234 20.252 21 12.3"></path>
+                        <path d="m16 6-8.414 8.586a2 2 0 0 0 0 2.828 2 2 0 0 0 2.828 0l8.414-8.586a4 4 0 0 0 0-5.656 4 4 0 0 0-5.656 0l-8.415 8.585a6 6 0 1 0 8.486 8.486"></path>
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="right-actions">
+                    <button id="submit-button" type="submit" class="submit-button" disabled>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="m5 12 7-7 7 7"></path>
+                        <path d="M12 19V5"></path>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <button type="button" class="attach-button" title="Attach files (Subscriber feature)">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M13.234 20.252 21 12.3"></path>
-                  <path d="m16 6-8.414 8.586a2 2 0 0 0 0 2.828 2 2 0 0 0 2.828 0l8.414-8.586a4 4 0 0 0 0-5.656 4 4 0 0 0-5.656 0l-8.415 8.585a6 6 0 1 0 8.486 8.486"></path>
-                </svg>
-              </button>
-            </div>
-            <div class="input-info">
-              <span class="messages-remaining">You have <strong>10</strong> free messages remaining.</span>
-            </div>
+            </form>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   </main>
