@@ -164,7 +164,32 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   return document({
     title,
-    head: isDev ? "" : "<link rel=\"stylesheet\" href=\"/css/client.css\">",
+    head: isDev ? 
+      `<link rel="preload" href="http://localhost:5173/src/client/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+       <noscript><link rel="stylesheet" href="http://localhost:5173/src/client/main.css"></noscript>
+       <style>
+         /* Critical CSS to prevent FOUC - basic layout and colors */
+         body { 
+           background-color: #1a1a1a; 
+           color: #f5f5f5; 
+           font-family: ui-monospace, monospace;
+           margin: 0;
+         }
+         .chat-container { 
+           display: flex; 
+           height: 100vh; 
+         }
+         .sidebar { 
+           width: 16rem; 
+           background-color: #0a0a0a; 
+           border-right: 1px solid #333;
+         }
+         .main-content { 
+           flex: 1; 
+           background-color: #1a1a1a; 
+         }
+       </style>` : 
+      "<link rel=\"stylesheet\" href=\"/css/client.css\">",
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
     body: html`
       ${processedHTML}
