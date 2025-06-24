@@ -2,9 +2,10 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "target": "esnext",
-    "lib": ["esnext"],
+    "lib": ["esnext", "dom"],
     "module": "esnext",
     "moduleResolution": "bundler",
+    "types": ["node"],
     "strict": true,
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,

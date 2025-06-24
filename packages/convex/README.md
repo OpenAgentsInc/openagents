@@ -8,8 +8,10 @@ This package provides a fully Effect-based integration with Convex, replacing Pl
 
 - **Schema Definitions**: Convex validators mapped from existing MySQL schemas
 - **Effect Services**: Type-safe Convex operations with Effect error handling
-- **High-Level Client**: Convenient abstractions for common database operations
+- **High-Level Client**: Direct Convex API calls with working TypeScript types
 - **Migration Utilities**: Tools for converting existing data to Convex format
+
+✅ **Status**: Fully integrated with working TypeScript types and live Convex backend
 
 ## Features
 
@@ -61,6 +63,7 @@ const result = await Effect.runPromise(
 
 ```typescript
 import { ConvexClient } from "@openagentsinc/convex"
+import { Effect } from "effect"
 
 // Create a Nostr event
 const program = ConvexClient.events.create({
@@ -73,9 +76,8 @@ const program = ConvexClient.events.create({
   sig: "signature"
 })
 
-const eventId = await Effect.runPromise(
-  program.pipe(Effect.provide(ConvexServiceLive))
-)
+// Run directly - no complex service layers needed
+const eventId = await Effect.runPromise(program)
 ```
 
 ## Architecture

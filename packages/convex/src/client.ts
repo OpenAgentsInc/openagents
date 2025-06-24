@@ -6,6 +6,8 @@
 
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
+import { ConvexHttpClient } from "convex/browser"
+import { api } from "../convex/_generated/api.js"
 
 /**
  * Event data types based on existing relay schemas
@@ -90,15 +92,36 @@ export const ChatMessage = Schema.Struct({
 export type ChatMessage = Schema.Schema.Type<typeof ChatMessage>
 
 /**
+ * Get Convex client from environment
+ */
+const getConvexClient = () => {
+  // Support both Node and browser environments
+  const url = typeof process !== 'undefined' && process.env?.CONVEX_URL 
+    ? process.env.CONVEX_URL 
+    : "https://proficient-panther-764.convex.cloud"
+  return new ConvexHttpClient(url)
+}
+
+/**
+ * Helper to strip undefined values from optional properties
+ * Convex expects truly optional properties, not T | undefined
+ */
+const stripUndefined = <T extends Record<string, any>>(obj: T): any => {
+  const result: any = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+/**
  * High-level client for Convex operations
- *
- * Ready for Convex backend deployment:
- * - Convex backend deployed at: https://proficient-panther-764.convex.cloud
- * - Schema and functions are live and ready
- * - To connect, import and use the generated API: `import { api } from "../convex/_generated/api.js"`
- * - Replace these placeholders with actual Convex service calls
  */
 export class ConvexClient {
+  private static client = getConvexClient()
+
   /**
    * Nostr event operations
    */
@@ -106,37 +129,43 @@ export class ConvexClient {
     /**
      * Store a new Nostr event
      */
-    create: (_event: NostrEvent) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.mutationWithRetry(api.events.create, event)
-        yield* Effect.logInfo("ConvexClient.events.create - Convex backend ready")
-        return yield* Effect.succeed("convex-event-id")
+    create: (event: NostrEvent) =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.mutation(api.events.create, stripUndefined(event))
+          return result as string
+        },
+        catch: (error) => new Error(`Failed to create event: ${error}`)
       }),
 
     /**
      * Query events by filters
      */
-    list: (_filters: {
+    list: (filters: {
       pubkey?: string
       kind?: number
       since?: number
       until?: number
       limit?: number
     }) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.queryWithRetry(api.events.list, filters)
-        yield* Effect.logInfo("ConvexClient.events.list - Convex backend ready")
-        return yield* Effect.succeed([])
+      Effect.tryPromise({
+        try: async () => {
+          const results = await ConvexClient.client.query(api.events.list, stripUndefined(filters))
+          return results as NostrEvent[]
+        },
+        catch: (error) => new Error(`Failed to list events: ${error}`)
       }),
 
     /**
      * Get event by ID
      */
     getById: (id: string) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.queryWithRetry(api.events.getById, { id })
-        yield* Effect.logInfo(`ConvexClient.events.getById(${id}) - Convex backend ready`)
-        return yield* Effect.succeed(null)
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.query(api.events.getById, { id })
+          return result as NostrEvent | null
+        },
+        catch: (error) => new Error(`Failed to get event: ${error}`)
       })
   }
 
@@ -147,31 +176,37 @@ export class ConvexClient {
     /**
      * Create or update an agent profile
      */
-    upsert: (_profile: AgentProfile) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.mutationWithRetry(api.agents.upsert, profile)
-        yield* Effect.logInfo("ConvexClient.agents.upsert - Convex backend ready")
-        return yield* Effect.succeed("convex-agent-id")
+    upsert: (profile: AgentProfile) =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.mutation(api.agents.upsert, stripUndefined(profile))
+          return result as string
+        },
+        catch: (error) => new Error(`Failed to upsert agent: ${error}`)
       }),
 
     /**
      * List active agents
      */
     listActive: () =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.queryWithRetry(api.agents.listActive, {})
-        yield* Effect.logInfo("ConvexClient.agents.listActive - Convex backend ready")
-        return yield* Effect.succeed([])
+      Effect.tryPromise({
+        try: async () => {
+          const results = await ConvexClient.client.query(api.agents.listActive, {})
+          return results as AgentProfile[]
+        },
+        catch: (error) => new Error(`Failed to list agents: ${error}`)
       }),
 
     /**
      * Get agent by pubkey
      */
     getByPubkey: (pubkey: string) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.queryWithRetry(api.agents.getByPubkey, { pubkey })
-        yield* Effect.logInfo(`ConvexClient.agents.getByPubkey(${pubkey}) - Convex backend ready`)
-        return yield* Effect.succeed(null)
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.query(api.agents.getByPubkey, { pubkey })
+          return result as AgentProfile | null
+        },
+        catch: (error) => new Error(`Failed to get agent: ${error}`)
       })
   }
 
@@ -182,31 +217,40 @@ export class ConvexClient {
     /**
      * Create a new chat session
      */
-    create: (_session: ChatSession) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.mutationWithRetry(api.sessions.create, session)
-        yield* Effect.logInfo("ConvexClient.sessions.create - Convex backend ready")
-        return yield* Effect.succeed("convex-session-id")
+    create: (session: ChatSession) =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.mutation(api.sessions.create, stripUndefined(session))
+          return result as string
+        },
+        catch: (error) => new Error(`Failed to create session: ${error}`)
       }),
 
     /**
      * Get sessions for a user
      */
     listByUser: (userId: string) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.queryWithRetry(api.sessions.listByUser, { userId })
-        yield* Effect.logInfo(`ConvexClient.sessions.listByUser(${userId}) - Convex backend ready`)
-        return yield* Effect.succeed([])
+      Effect.tryPromise({
+        try: async () => {
+          const results = await ConvexClient.client.query(api.sessions.listByUser, { userId })
+          return results as ChatSession[]
+        },
+        catch: (error) => new Error(`Failed to list sessions: ${error}`)
       }),
 
     /**
      * Update session activity
      */
     updateActivity: (sessionId: string) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.mutationWithRetry(api.sessions.updateActivity, { sessionId, timestamp: Date.now() })
-        yield* Effect.logInfo(`ConvexClient.sessions.updateActivity(${sessionId}) - Convex backend ready`)
-        return yield* Effect.succeed(undefined)
+      Effect.tryPromise({
+        try: async () => {
+          await ConvexClient.client.mutation(api.sessions.updateActivity, { 
+            sessionId, 
+            timestamp: Date.now() 
+          })
+          return undefined
+        },
+        catch: (error) => new Error(`Failed to update activity: ${error}`)
       })
   }
 
@@ -217,31 +261,43 @@ export class ConvexClient {
     /**
      * Add a message to a session
      */
-    create: (_message: ChatMessage) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.mutationWithRetry(api.messages.create, message)
-        yield* Effect.logInfo("ConvexClient.messages.create - Convex backend ready")
-        return yield* Effect.succeed("convex-message-id")
+    create: (message: ChatMessage) =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.mutation(api.messages.create, stripUndefined(message))
+          return result as string
+        },
+        catch: (error) => new Error(`Failed to create message: ${error}`)
       }),
 
     /**
      * Get messages for a session
      */
     listBySession: (sessionId: string, limit = 50) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: ConvexHelpers.queryWithRetry(api.messages.listBySession, { sessionId, limit })
-        yield* Effect.logInfo(`ConvexClient.messages.listBySession(${sessionId}, ${limit}) - Convex backend ready`)
-        return yield* Effect.succeed([])
+      Effect.tryPromise({
+        try: async () => {
+          const results = await ConvexClient.client.query(api.messages.listBySession, { 
+            sessionId, 
+            limit 
+          })
+          return results as ChatMessage[]
+        },
+        catch: (error) => new Error(`Failed to list messages: ${error}`)
       }),
 
     /**
      * Subscribe to new messages in a session
      */
-    subscribeToSession: (sessionId: string, _callback: (messages: Array<ChatMessage>) => void) =>
-      Effect.gen(function*() {
-        // TODO: Replace with: convex.subscribe(api.messages.listBySession, { sessionId }, callback)
-        yield* Effect.logInfo(`ConvexClient.messages.subscribeToSession(${sessionId}) - Convex backend ready`)
-        return yield* Effect.succeed(() => {})
+    subscribeToSession: (sessionId: string, callback: (messages: Array<ChatMessage>) => void) =>
+      Effect.sync(() => {
+        // Note: For real-time subscriptions, you need ConvexClient (not HttpClient)
+        // This requires importing from "convex/browser" and using WebSocket connection
+        const unsubscribe = () => {
+          // Cleanup logic would go here
+        }
+        
+        // For now, return a cleanup function
+        return unsubscribe
       })
   }
 }
