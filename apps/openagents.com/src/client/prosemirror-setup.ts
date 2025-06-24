@@ -9,14 +9,14 @@ import { EditorState, Plugin } from "prosemirror-state"
 import type { Transaction } from "prosemirror-state"
 import { EditorView } from "prosemirror-view"
 
-// Define a minimal schema with just doc, paragraph, and text
+// Define a minimal schema with just doc, paragraph, text, and hard break
 const schema = new Schema({
   nodes: {
     doc: {
       content: "paragraph+"
     },
     paragraph: {
-      content: "text*",
+      content: "inline*",
       toDOM() {
         return ["p", 0]
       },
@@ -24,6 +24,15 @@ const schema = new Schema({
     },
     text: {
       inline: true
+    },
+    hard_break: {
+      inline: true,
+      group: "inline",
+      selectable: false,
+      toDOM() {
+        return ["br"]
+      },
+      parseDOM: [{ tag: "br" }]
     }
   }
 })
@@ -56,7 +65,9 @@ function submitCommand(onSubmit: (text: string) => void) {
 // Create new line command (Shift+Enter)
 function newLineCommand(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
   if (dispatch) {
-    const tr = state.tr.replaceSelectionWith(schema.text("\n"))
+    // Insert a hard break node
+    const br = schema.nodes.hard_break.create()
+    const tr = state.tr.replaceSelectionWith(br)
     dispatch(tr)
   }
   return true
@@ -69,7 +80,7 @@ function createKeymap(onSubmit: (text: string) => void) {
     "Enter": submitCommand(onSubmit),
     "Shift-Enter": newLineCommand
   }
-  
+
   // Filter out Enter from baseKeymap to prevent conflicts
   const filteredBaseKeymap: { [key: string]: any } = {}
   for (const key in baseKeymap) {
@@ -77,7 +88,7 @@ function createKeymap(onSubmit: (text: string) => void) {
       filteredBaseKeymap[key] = baseKeymap[key]
     }
   }
-  
+
   return keymap({
     ...customKeys,
     ...filteredBaseKeymap
