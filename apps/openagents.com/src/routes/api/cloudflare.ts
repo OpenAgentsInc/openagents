@@ -37,7 +37,17 @@ export function cloudflareChat(
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText)
-    const { messages, model } = body
+
+    // Handle both single message and messages array formats
+    let messages = body.messages
+    if (!messages && body.message) {
+      // Convert single message to messages array
+      messages = [
+        { role: "user", content: body.message }
+      ]
+    }
+
+    const model = body.model || "@cf/meta/llama-3.1-8b-instruct"
 
     const apiKey = process.env.CLOUDFLARE_API_KEY
     const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
@@ -125,23 +135,23 @@ export function cloudflareChat(
         })
       )
 
-      // Convert to ReadableStream
-      return yield* Stream.toReadableStreamEffect(sseStream)
+      // Convert to ReadableStream with ALL layers provided
+      return yield* Stream.toReadableStreamEffect(sseStream).pipe(
+        Effect.provide(layers)
+      )
     }).pipe(Effect.provide(layers))
 
     // Return the response with SSE headers
-    return HttpServerResponse.raw(
-      new Response(readableStream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type"
-        }
-      })
-    )
+    return HttpServerResponse.raw(readableStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    })
   }).pipe(
     Effect.catchAll((error: any) => {
       console.error("Cloudflare API error:", error)

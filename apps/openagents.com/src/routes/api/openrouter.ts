@@ -55,14 +55,25 @@ export function openrouterChat(
   return Effect.gen(function*() {
     const bodyText = yield* ctx.request.text
     const body = JSON.parse(bodyText)
-    const { messages, model } = body
+
+    // Handle both single message and messages array formats
+    let messages = body.messages
+    if (!messages && body.message) {
+      // Convert single message to messages array
+      messages = [
+        { role: "user", content: body.message }
+      ]
+    }
+
+    const model = body.model
+    const openrouterApiKey = body.openrouterApiKey
 
     // Get header from Effect HttpServerRequest
     const headers = ctx.request.headers
     const apiKeyFromHeader = Option.getOrNull(Headers.get(headers, "x-api-key"))
 
-    // Use header API key first, fall back to environment variable
-    const apiKey = apiKeyFromHeader || process.env.OPENROUTER_API_KEY
+    // Use body API key first, then header, then environment variable
+    const apiKey = openrouterApiKey || apiKeyFromHeader || process.env.OPENROUTER_API_KEY
 
     if (!apiKey) {
       return yield* HttpServerResponse.json({ error: "API key required" }, { status: 401 })
@@ -80,7 +91,7 @@ export function openrouterChat(
       })
     )
 
-    // Create and run the streaming effect
+    // Create and run the streaming effect with proper layer provision
     const readableStream = yield* Effect.gen(function*() {
       const client = yield* Ai.OpenRouter.OpenRouterClient
       const encoder = new TextEncoder()
@@ -140,19 +151,19 @@ export function openrouterChat(
         })
       )
 
-      // Convert to ReadableStream
-      return yield* Stream.toReadableStreamEffect(sseStream)
+      // Convert to ReadableStream with ALL layers provided
+      return yield* Stream.toReadableStreamEffect(sseStream).pipe(
+        Effect.provide(layers)
+      )
     }).pipe(Effect.provide(layers))
 
-    return HttpServerResponse.raw(
-      new Response(readableStream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive"
-        }
-      })
-    )
+    return HttpServerResponse.raw(readableStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive"
+      }
+    })
   }).pipe(
     Effect.catchAll((error: any) => {
       console.error("OpenRouter API error:", error)

@@ -1,0 +1,2 @@
+console.log("OpenAgents client initialized");function t(){const r=localStorage.getItem("theme")||"zinc";document.documentElement.setAttribute("data-theme",r),window.addEventListener("error",e=>{console.error("Global error:",e.error)}),"serviceWorker"in navigator&&navigator.serviceWorker.register("/sw.js").catch(e=>{console.error("Service worker registration failed:",e)})}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",t):t();
+//# sourceMappingURL=client.js.map

@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot --env-file=../../.env src/index.ts",
+    "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
+    "dev:server": "bun run --hot --env-file=../../.env src/index.ts",
+    "dev:client": "vite",
     "build": "tsc && bun run build:client && bun run build:sdk && bun run generate:llms-txt",
-    "build:client": "bun run src/build-client.ts",
+    "build:client": "vite build",
+    "build:client:legacy": "bun run src/build-client.ts",
     "build:sdk": "bun run src/build-sdk-browser.ts",
     "typecheck": "tsc --noEmit",
-    "generate:llms-txt": "tsx ../../scripts/generate-llms-txt.ts"
+    "generate:llms-txt": "tsx ../../scripts/generate-llms-txt.ts",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@effect/platform": "0.85.2",
@@ -30,7 +34,10 @@
   },
   "devDependencies": {
     "@types/bun": "^1.2.16",
+    "@vitejs/plugin-legacy": "^6.1.1",
+    "concurrently": "^9.2.0",
     "esbuild": "^0.25.5",
-    "gray-matter": "^4.0.3"
+    "gray-matter": "^4.0.3",
+    "vite": "6.0.3"
   }
 }
