@@ -685,18 +685,8 @@ body {
 }
 
 .input-gradient-wrapper {
-  background: rgba(0, 0, 0, 0.88);
-  backdrop-filter: blur(12px);
-  border-radius: 20px 20px 0 0;
-  padding: 8px 8px 0;
-  border: 1px solid;
-  border-bottom: 0;
-  border-image: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(255, 255, 255, 0.05) 50%,
-    transparent 100%
-  ) 1;
+  background: transparent;
+  padding: 8px;
 }
 
 .chat-form {
@@ -704,11 +694,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-bottom: 0;
-  border-radius: 12px 12px 0 0;
-  padding: 12px 12px 0;
+  border-radius: 12px;
+  padding: 12px;
   box-shadow: 
     rgba(0, 0, 0, 0.1) 0px 80px 50px 0px, 
     rgba(0, 0, 0, 0.07) 0px 50px 30px 0px, 
@@ -758,7 +748,6 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-top: 4px;
-  padding-bottom: 8px;
 }
 
 .left-actions {
