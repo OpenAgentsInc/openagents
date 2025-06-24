@@ -15,25 +15,9 @@ export function renderChatMessage(message: {
 
   return html`
     <div class="message">
-      <div class="message-avatar ${message.role}">
-        ${
-    message.role === "user" ?
-      html`
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-          ` :
-      html`
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-            </svg>
-          `
-  }
-      </div>
-      <div class="message-content">
-        <div class="message-author">
-          ${message.role === "user" ? "You" : "Assistant"}
+      <div class="message-block ${message.role}">
+        <div class="message-header">
+          <span class="message-role ${message.role}">${message.role === "user" ? "You" : "Assistant"}</span>
           ${displayTime ? html`<span class="message-time">${displayTime}</span>` : ""}
         </div>
         <div class="message-body">${message.rendered || message.content}</div>
@@ -180,14 +164,11 @@ export const chatClientScript = `
     
     const userMessageHtml = \`
       <div class="message">
-        <div class="message-avatar user">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-        </div>
-        <div class="message-content">
-          <div class="message-author">You</div>
+        <div class="message-block user">
+          <div class="message-header">
+            <span class="message-role user">You</span>
+            <span class="message-time">\${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
           <div class="message-body">\${escapeHtml(message)}</div>
         </div>
       </div>
@@ -210,13 +191,11 @@ export const chatClientScript = `
     const messageId = \`assistant-message-\${Date.now()}\`;
     const assistantMessageHtml = \`
       <div class="message" id="\${messageId}">
-        <div class="message-avatar assistant">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-          </svg>
-        </div>
-        <div class="message-content">
-          <div class="message-author">Assistant</div>
+        <div class="message-block assistant">
+          <div class="message-header">
+            <span class="message-role assistant">Assistant</span>
+            <span class="message-time">\${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
           <div class="message-body assistant-response-body"><div class="dot-flashing"></div></div>
         </div>
       </div>
@@ -231,7 +210,7 @@ export const chatClientScript = `
     // Add existing messages from the DOM (excluding loading dots)
     const existingMessages = messagesDiv.querySelectorAll('.message');
     existingMessages.forEach(msg => {
-      const isUser = msg.querySelector('.message-avatar.user');
+      const isUser = msg.querySelector('.message-block.user');
       const messageBody = msg.querySelector('.message-body');
       const hasLoadingDots = messageBody?.querySelector('.dot-flashing');
       const content = messageBody?.textContent?.trim();
@@ -435,10 +414,68 @@ export const chatClientScript = `
 export const chatStyles = `
   /* Message styling */
   .message {
+    display: block;
+    margin-bottom: 1.5rem;
+    width: 100%;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  
+  .message-block {
+    border-left: 4px solid var(--color-terminal-accent);
+    padding-left: 1rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    background: transparent;
+    border-radius: 0;
+  }
+  
+  /* User message styling */
+  .message-block.user {
+    border-left-color: #9ece6a; /* Terminal success green */
+  }
+  
+  /* Assistant message styling */
+  .message-block.assistant {
+    border-left-color: #7aa2f7; /* Terminal accent blue */
+  }
+  
+  .message-header {
     display: flex;
-    gap: 12px;
-    padding-left: 50px;
-    margin-bottom: 24px;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .message-role {
+    font-weight: 600;
+    color: var(--white);
+    font-size: 14px;
+    font-family: var(--font-family-mono);
+  }
+  
+  .message-role.user {
+    color: #9ece6a; /* Match border color */
+  }
+  
+  .message-role.assistant {
+    color: #7aa2f7; /* Match border color */
+  }
+  
+  .message-time {
+    font-size: 12px;
+    color: var(--gray);
+    font-weight: normal;
+    font-family: var(--font-family-mono);
+  }
+  
+  .message-body {
+    color: var(--text);
+    line-height: 1.6;
+    font-family: var(--font-family-mono);
+    font-size: 14px;
+    max-width: none;
   }
   
   /* 3-dot loading animation */
@@ -492,39 +529,6 @@ export const chatStyles = `
       background-color: rgba(255, 255, 255, 0.2);
     }
   }
-
-  .message-avatar {
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--darkgray);
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .message-avatar.user { padding: 2px; }
-  .message-avatar.assistant { padding: 5px; }
-  .message-avatar svg { width: 100%; height: 100%; color: var(--white); }
-
-  .message-content { flex: 1; max-width: 936px; }
-  .message-author { 
-    font-weight: 600; 
-    color: var(--white); 
-    margin-bottom: 4px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .message-time {
-    font-size: 12px;
-    color: var(--gray);
-    font-weight: normal;
-  }
-  
-  .message-body { color: var(--text); line-height: 1.6; }
 
   /* Inline code */
   .message-body code {
