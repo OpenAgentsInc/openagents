@@ -144,12 +144,16 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   return document({
     title,
-    head: "<link rel=\"stylesheet\" href=\"" + (isDev ? "http://localhost:5173/src/client/main.css" : "/css/client.css") + "\">",
+    head: isDev ? "" : "<link rel=\"stylesheet\" href=\"/css/client.css\">",
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
     body: html`
       ${processedHTML}
       
+      ${isDev ? '<script type="module" src="http://localhost:5173/@vite/client"></script>' : ''}
       <script type="module">
+        // Import client initialization (includes CSS in dev mode)
+        import { initializeClient } from '${scriptBase}/index.${isDev ? "ts" : "js"}';
+        
         // Import chat module
         import { initializeChat } from '${scriptBase}/chat.${isDev ? "ts" : "js"}';
         import { initializeModelSelector } from '${scriptBase}/model-selector.${isDev ? "ts" : "js"}';
@@ -162,6 +166,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
         window.DEFAULT_MODEL = '${DEFAULT_MODEL}';
         
         // Initialize components
+        initializeClient();
         initializeModelSelector();
         initializeChat();
       </script>
