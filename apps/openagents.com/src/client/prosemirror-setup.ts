@@ -42,9 +42,20 @@ const schema = new Schema({
 // Create submit command
 function submitCommand(onSubmit: (text: string) => void) {
   return (state: EditorState, dispatch?: (tr: Transaction) => void): boolean => {
-    // Get the plain text content
-    const text = state.doc.textContent.trim()
+    // Get the plain text content with line breaks preserved
+    let text = ""
+    state.doc.descendants((node) => {
+      if (node.isText) {
+        text += node.text
+      } else if (node.type.name === "hard_break") {
+        text += "\n"
+      } else if (node.type.name === "paragraph" && text.length > 0) {
+        // Add newline between paragraphs (but not before the first one)
+        text += "\n"
+      }
+    })
 
+    text = text.trim()
     if (!text) return false
 
     if (dispatch) {
@@ -157,9 +168,23 @@ export class ProseMirrorEditor {
     }
   }
 
-  // Get plain text content
+  // Get plain text content with line breaks preserved
   getText(): string {
-    return this.view.state.doc.textContent.trim()
+    let text = ""
+    const doc = this.view.state.doc
+
+    doc.descendants((node) => {
+      if (node.isText) {
+        text += node.text
+      } else if (node.type.name === "hard_break") {
+        text += "\n"
+      } else if (node.type.name === "paragraph" && text.length > 0) {
+        // Add newline between paragraphs (but not before the first one)
+        text += "\n"
+      }
+    })
+
+    return text.trim()
   }
 
   // Clear the editor
