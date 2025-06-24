@@ -20,11 +20,11 @@ export interface ChatViewProps {
 export async function createChatView({ conversationId }: ChatViewProps) {
   // Determine if we're in development mode
   const isDev = process.env.NODE_ENV !== "production"
-  
+
   // Read HTML and CSS files - fresh in dev, cached in production
   let chatViewHTML: string
   let chatViewCSS: string
-  
+
   if (isDev) {
     // Read fresh files in development mode for hot reloading
     chatViewHTML = fs.readFileSync(chatViewHTMLPath, "utf-8")
@@ -164,7 +164,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   return document({
     title,
-    head: isDev ? 
+    head: isDev ?
       `<link rel="preload" href="http://localhost:5173/src/client/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
        <noscript><link rel="stylesheet" href="http://localhost:5173/src/client/main.css"></noscript>
        <style>
@@ -188,13 +188,13 @@ export async function createChatView({ conversationId }: ChatViewProps) {
            flex: 1; 
            background-color: #1a1a1a; 
          }
-       </style>` : 
+       </style>` :
       "<link rel=\"stylesheet\" href=\"/css/client.css\">",
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
     body: html`
       ${processedHTML}
       
-      ${isDev ? '<script type="module" src="http://localhost:5173/@vite/client"></script>' : ''}
+      ${isDev ? "<script type=\"module\" src=\"http://localhost:5173/@vite/client\"></script>" : ""}
       <script type="module">
         // Import client initialization (includes CSS in dev mode)
         import { initializeClient } from '${scriptBase}/index.${isDev ? "ts" : "js"}';
