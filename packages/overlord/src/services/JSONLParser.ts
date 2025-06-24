@@ -30,12 +30,17 @@ export interface AssistantMessage {
 
 export interface ToolUse {
   readonly type: "tool_use"
+  readonly uuid: string
+  readonly timestamp: string
   readonly name: string
   readonly input: unknown
+  readonly tool_use_id: string
 }
 
 export interface ToolResult {
   readonly type: "tool_result"
+  readonly uuid: string
+  readonly timestamp: string
   readonly tool_use_id: string
   readonly output: string
   readonly is_error?: boolean
@@ -43,12 +48,13 @@ export interface ToolResult {
 
 export interface ConversationSummary {
   readonly type: "summary"
+  readonly uuid: string
   readonly timestamp: string
   readonly summary: string
   readonly turn_count: number
 }
 
-export type LogEntry = UserMessage | AssistantMessage | ConversationSummary
+export type LogEntry = UserMessage | AssistantMessage | ConversationSummary | ToolUse | ToolResult
 
 // Parse JSONL content
 export const parseJSONL = (content: string): Effect.Effect<ReadonlyArray<LogEntry>, Error> =>
@@ -87,12 +93,30 @@ export const parseJSONL = (content: string): Effect.Effect<ReadonlyArray<LogEntr
         } else if (parsed.type === "summary") {
           entries.push({
             type: "summary",
+            uuid: parsed.uuid || `summary-${index}`,
             timestamp: parsed.timestamp || new Date().toISOString(),
             summary: parsed.summary || "",
             turn_count: parsed.turn_count || 0
           })
+        } else if (parsed.type === "tool_use") {
+          entries.push({
+            type: "tool_use",
+            uuid: parsed.uuid || `tool-use-${index}`,
+            timestamp: parsed.timestamp || new Date().toISOString(),
+            name: parsed.name || "",
+            input: parsed.input || {},
+            tool_use_id: parsed.id || parsed.tool_use_id || `tool-${index}`
+          })
+        } else if (parsed.type === "tool_result") {
+          entries.push({
+            type: "tool_result",
+            uuid: parsed.uuid || `tool-result-${index}`,
+            timestamp: parsed.timestamp || new Date().toISOString(),
+            tool_use_id: parsed.tool_use_id || "",
+            output: parsed.output || parsed.content || "",
+            is_error: parsed.is_error || false
+          })
         }
-        // Skip other types like tool_use, tool_result for now
       } catch (error) {
         yield* Effect.logWarning(`Failed to parse line ${index + 1}: ${error}`)
         // Continue parsing other lines

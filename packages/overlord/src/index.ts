@@ -5,6 +5,9 @@ export * as Overlord from "./Overlord.js"
 export * as bin from "./bin.js"
 
 
+export * as DatabaseMapper from "./services/DatabaseMapper.js"
+
+
 export * as FileWatcher from "./services/FileWatcher.js"
 
 
