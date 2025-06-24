@@ -1,0 +1,143 @@
+import { Effect } from "effect"
+
+// Claude Code JSONL entry types
+export interface UserMessage {
+  readonly type: "user"
+  readonly uuid: string
+  readonly timestamp: string
+  readonly message: {
+    readonly text: string
+    readonly images?: ReadonlyArray<string>
+  }
+}
+
+export interface AssistantMessage {
+  readonly type: "assistant"
+  readonly uuid: string
+  readonly timestamp: string
+  readonly message: {
+    readonly role: "assistant"
+    readonly content: string
+    readonly thinking?: string
+    readonly model?: string
+    readonly usage?: {
+      readonly input_tokens: number
+      readonly output_tokens: number
+      readonly total_tokens: number
+    }
+  }
+}
+
+export interface ToolUse {
+  readonly type: "tool_use"
+  readonly name: string
+  readonly input: unknown
+}
+
+export interface ToolResult {
+  readonly type: "tool_result"
+  readonly tool_use_id: string
+  readonly output: string
+  readonly is_error?: boolean
+}
+
+export interface ConversationSummary {
+  readonly type: "summary"
+  readonly timestamp: string
+  readonly summary: string
+  readonly turn_count: number
+}
+
+export type LogEntry = UserMessage | AssistantMessage | ConversationSummary
+
+// Parse JSONL content
+export const parseJSONL = (content: string): Effect.Effect<ReadonlyArray<LogEntry>, Error> =>
+  Effect.gen(function*() {
+    const lines = content.trim().split("\n").filter((line) => line.trim())
+    const entries: Array<LogEntry> = []
+
+    for (const [index, line] of lines.entries()) {
+      try {
+        const parsed = JSON.parse(line)
+
+        // Validate and transform based on type
+        if (parsed.type === "user") {
+          entries.push({
+            type: "user",
+            uuid: parsed.uuid || `user-${index}`,
+            timestamp: parsed.timestamp || new Date().toISOString(),
+            message: {
+              text: parsed.message?.text || parsed.content || "",
+              images: parsed.message?.images
+            }
+          })
+        } else if (parsed.type === "assistant") {
+          entries.push({
+            type: "assistant",
+            uuid: parsed.uuid || `assistant-${index}`,
+            timestamp: parsed.timestamp || new Date().toISOString(),
+            message: {
+              role: "assistant",
+              content: parsed.message?.content || parsed.content || "",
+              thinking: parsed.message?.thinking,
+              model: parsed.message?.model || parsed.model,
+              usage: parsed.message?.usage || parsed.usage
+            }
+          })
+        } else if (parsed.type === "summary") {
+          entries.push({
+            type: "summary",
+            timestamp: parsed.timestamp || new Date().toISOString(),
+            summary: parsed.summary || "",
+            turn_count: parsed.turn_count || 0
+          })
+        }
+        // Skip other types like tool_use, tool_result for now
+      } catch (error) {
+        yield* Effect.logWarning(`Failed to parse line ${index + 1}: ${error}`)
+        // Continue parsing other lines
+      }
+    }
+
+    return entries
+  })
+
+// Extract session metadata from entries
+export const extractSessionMetadata = (entries: ReadonlyArray<LogEntry>) => {
+  const metadata = {
+    messageCount: entries.length,
+    userMessages: entries.filter((e) => e.type === "user").length,
+    assistantMessages: entries.filter((e) => e.type === "assistant").length,
+    firstMessage: entries[0]?.timestamp,
+    lastMessage: entries[entries.length - 1]?.timestamp,
+    totalTokens: 0,
+    totalCost: 0,
+    models: new Set<string>()
+  }
+
+  // Calculate token usage and models used
+  for (const entry of entries) {
+    if (entry.type === "assistant" && entry.message.usage) {
+      metadata.totalTokens += entry.message.usage.total_tokens
+    }
+    if (entry.type === "assistant" && entry.message.model) {
+      metadata.models.add(entry.message.model)
+    }
+  }
+
+  // Estimate cost (rough approximation)
+  // Claude 3.5 Sonnet: $3/1M input, $15/1M output
+  const inputTokens = entries
+    .filter((e) => e.type === "assistant")
+    .reduce((sum, e) => sum + (e.message.usage?.input_tokens || 0), 0)
+  const outputTokens = entries
+    .filter((e) => e.type === "assistant")
+    .reduce((sum, e) => sum + (e.message.usage?.output_tokens || 0), 0)
+
+  metadata.totalCost = (inputTokens * 3 / 1_000_000) + (outputTokens * 15 / 1_000_000)
+
+  return {
+    ...metadata,
+    models: Array.from(metadata.models)
+  }
+}

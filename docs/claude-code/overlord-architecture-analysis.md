@@ -348,25 +348,25 @@ interface CommandPermissions {
 
 ## Technical Implementation Strategy
 
-### Phase 1: Foundation (Week 1-2)
+### Phase 1: Foundation (Hours 1-16)
 1. **Restore CLI Package**: Recover and enhance the deleted `packages/cli`
 2. **Basic File Watching**: Implement JSONL file monitoring
 3. **Database Schema**: Create new tables for Claude Code data
 4. **WebSocket Infrastructure**: Basic client-server communication
 
-### Phase 2: Core Sync (Week 3-4)
+### Phase 2: Core Sync (Hours 17-32)
 1. **JSONL Parsing Pipeline**: Convert local files to database records
 2. **Bidirectional Sync**: Handle file changes and database updates
 3. **Session Management**: Track active sessions and metadata
 4. **Basic Web UI**: Display synced conversations
 
-### Phase 3: Remote Control (Week 5-6)
+### Phase 3: Remote Control (Hours 33-48)
 1. **Command Execution**: Bash, file operations, Claude prompts
 2. **Real-time Streaming**: Live command output and session updates
 3. **Security Framework**: Permissions and authentication
 4. **Advanced Web UI**: Remote control panel
 
-### Phase 4: Analytics & Polish (Week 7-8)
+### Phase 4: Analytics & Polish (Hours 49-64)
 1. **Usage Analytics**: Cost tracking, productivity metrics
 2. **Advanced Features**: Collaboration, sharing, team management
 3. **Performance Optimization**: Efficient sync, caching
