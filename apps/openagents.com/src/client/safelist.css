@@ -59,3 +59,23 @@
 .text-gray-400 {}
 .text-xs {}
 .uppercase {}
+
+/* Navigation and footer styles */
+.border-t {}
+.border-zinc-500 {}
+.mt-auto {}
+.my-2 {}
+.h-px {}
+.justify-between {}
+.rounded-md {}
+.px-3 {}
+.py-1\.5 {}
+.text-\[rgba\(255\,255\,255\,0\.7\)\] {}
+.hover\:bg-\[rgba\(255\,255\,255\,0\.05\)\] {}
+.hover\:text-\[\#D7D8E5\] {}
+.bg-\[rgba\(255\,255\,255\,0\.05\)\] {}
+.px-1\.5 {}
+.py-0\.5 {}
+.text-\[0\.625rem\] {}
+.text-\[rgba\(255\,255\,255\,0\.5\)\] {}
+.bg-\[rgba\(255\,255\,255\,0\.1\)\] {}
