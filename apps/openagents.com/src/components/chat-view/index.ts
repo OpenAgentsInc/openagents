@@ -5,21 +5,42 @@ import { chatStyles, renderChatMessage } from "../../lib/chat-utils"
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../../lib/models-config"
 import { baseStyles } from "../../styles"
 
-// Read HTML and CSS files at runtime from the source directory
-const chatViewHTML = fs.readFileSync(
-  path.join(process.cwd(), "src", "components", "chat-view", "chat-view.html"),
-  "utf-8"
-)
-const chatViewCSS = fs.readFileSync(
-  path.join(process.cwd(), "src", "components", "chat-view", "chat-view.css"),
-  "utf-8"
-)
+// File paths for HTML and CSS
+const chatViewHTMLPath = path.join(process.cwd(), "src", "components", "chat-view", "chat-view.html")
+const chatViewCSSPath = path.join(process.cwd(), "src", "components", "chat-view", "chat-view.css")
+
+// Cache for production
+let cachedHTML: string | null = null
+let cachedCSS: string | null = null
 
 export interface ChatViewProps {
   conversationId?: string
 }
 
 export async function createChatView({ conversationId }: ChatViewProps) {
+  // Determine if we're in development mode
+  const isDev = process.env.NODE_ENV !== "production"
+
+  // Read HTML and CSS files - fresh in dev, cached in production
+  let chatViewHTML: string
+  let chatViewCSS: string
+
+  if (isDev) {
+    // Read fresh files in development mode for hot reloading
+    chatViewHTML = fs.readFileSync(chatViewHTMLPath, "utf-8")
+    chatViewCSS = fs.readFileSync(chatViewCSSPath, "utf-8")
+  } else {
+    // Use cached files in production
+    if (!cachedHTML) {
+      cachedHTML = fs.readFileSync(chatViewHTMLPath, "utf-8")
+    }
+    if (!cachedCSS) {
+      cachedCSS = fs.readFileSync(chatViewCSSPath, "utf-8")
+    }
+    chatViewHTML = cachedHTML
+    chatViewCSS = cachedCSS
+  }
+
   // Import server-side only here to avoid bundling issues
   const { getConversationWithMessages, getConversations } = await import("../../lib/chat-client")
 
@@ -138,17 +159,46 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     .replace("<!-- Messages will be dynamically added here -->", messagesHTML)
     .replace("<!-- Model options will be populated dynamically -->", modelOptionsHTML)
 
-  // Determine if we're in development mode
-  const isDev = process.env.NODE_ENV !== "production"
+  // Script base URL for development vs production
   const scriptBase = isDev ? "http://localhost:5173/src/client" : "/js"
 
   return document({
     title,
+    head: isDev ?
+      `<link rel="preload" href="http://localhost:5173/src/client/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+       <noscript><link rel="stylesheet" href="http://localhost:5173/src/client/main.css"></noscript>
+       <style>
+         /* Critical CSS to prevent FOUC - basic layout and colors */
+         body { 
+           background-color: #1a1a1a; 
+           color: #f5f5f5; 
+           font-family: ui-monospace, monospace;
+           margin: 0;
+         }
+         .chat-container { 
+           display: flex; 
+           height: 100vh; 
+         }
+         .sidebar { 
+           width: 16rem; 
+           background-color: #0a0a0a; 
+           border-right: 1px solid #333;
+         }
+         .main-content { 
+           flex: 1; 
+           background-color: #1a1a1a; 
+         }
+       </style>` :
+      "<link rel=\"stylesheet\" href=\"/css/client.css\">",
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
     body: html`
       ${processedHTML}
       
+      ${isDev ? "<script type=\"module\" src=\"http://localhost:5173/@vite/client\"></script>" : ""}
       <script type="module">
+        // Import client initialization (includes CSS in dev mode)
+        import { initializeClient } from '${scriptBase}/index.${isDev ? "ts" : "js"}';
+        
         // Import chat module
         import { initializeChat } from '${scriptBase}/chat.${isDev ? "ts" : "js"}';
         import { initializeModelSelector } from '${scriptBase}/model-selector.${isDev ? "ts" : "js"}';
@@ -161,6 +211,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
         window.DEFAULT_MODEL = '${DEFAULT_MODEL}';
         
         // Initialize components
+        initializeClient();
         initializeModelSelector();
         initializeChat();
       </script>

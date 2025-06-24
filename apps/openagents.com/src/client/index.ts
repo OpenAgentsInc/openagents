@@ -3,8 +3,8 @@
  * This file initializes client-side functionality and sets up global utilities
  */
 
-// Import styles if needed
-// import './styles/main.css'
+// Import styles
+import "./main.css"
 
 // Initialize any global client functionality
 console.log("OpenAgents client initialized")
