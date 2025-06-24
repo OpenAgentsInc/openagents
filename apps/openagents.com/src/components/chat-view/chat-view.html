@@ -15,14 +15,15 @@
   <aside id="sidebar" class="sidebar">
     <div class="flex h-full flex-col">
       <!-- Sidebar Header -->
-      <div class="flex flex-col gap-2 p-4 pb-0">
+      <div class="flex flex-col gap-2 pt-[8px] p-4 pb-0">
         <h1 class="flex h-8 items-center justify-center text-lg">
           <a href="/" class="text-sm font-semibold text-white">
             OpenAgents
           </a>
         </h1>
         <div class="px-1">
-          <button onclick="window.location.href='/'" class="flex w-full items-center justify-center gap-2 rounded-lg border border-[rgba(255,255,255,0.1)] bg-transparent px-4 py-2 text-sm font-medium text-[#D7D8E5] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:border-[rgba(255,255,255,0.2)]">
+          <button onclick="window.location.href='/'"
+            class="flex w-full items-center justify-center gap-2 rounded-lg border border-[rgba(255,255,255,0.1)] bg-transparent px-4 py-2 text-sm font-medium text-[#D7D8E5] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:border-[rgba(255,255,255,0.2)]">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -41,21 +42,30 @@
       </div>
 
       <!-- Sidebar Footer -->
-      <div class="border-t border-[rgba(255,255,255,0.15)] p-3 mt-auto">
+      <div class="border-t border-zinc-500 p-3 mt-auto">
         <nav class="flex flex-col gap-0.5">
-          <a href="/store" class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">
+          <a href="/store"
+            class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">
             <span>Agent Store</span>
-            <span class="rounded bg-[rgba(255,255,255,0.05)] px-1.5 py-0.5 text-[0.625rem] text-[rgba(255,255,255,0.5)]">Beta</span>
+            <span
+              class="rounded bg-[rgba(255,255,255,0.05)] px-1.5 py-0.5 text-[0.625rem] text-[rgba(255,255,255,0.5)]">Beta</span>
           </a>
-          <a href="/agents" class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">My Agents</a>
-          <a href="/settings" class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">Settings</a>
-          <a href="/import" class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">Import</a>
+          <a href="/agents"
+            class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">My
+            Agents</a>
+          <a href="/settings"
+            class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">Settings</a>
+          <a href="/import"
+            class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">Import</a>
           <div class="my-2 h-px bg-[rgba(255,255,255,0.1)]"></div>
-          <a href="/blog" class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">Blog</a>
-          <a href="https://openagents.com/docs" class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">
+          <a href="/blog"
+            class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">Blog</a>
+          <a href="https://openagents.com/docs"
+            class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">
             <span>Docs</span>
           </a>
-          <a href="https://stacker.news/~openagents" target="_blank" class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">
+          <a href="https://stacker.news/~openagents" target="_blank"
+            class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">
             <span>Community</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -63,7 +73,8 @@
               <line x1="10" y1="14" x2="21" y2="3"></line>
             </svg>
           </a>
-          <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">
+          <a href="https://github.com/OpenAgentsInc/openagents" target="_blank"
+            class="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-[rgba(255,255,255,0.7)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]">
             <span>Source code</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
