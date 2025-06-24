@@ -228,26 +228,14 @@ body {
   border-radius: 0;
 }
 
-/* User message styling - right aligned with right border */
+/* User message styling */
 .message-block.user {
-  border-left: none;
-  border-right: 4px solid #9ece6a; /* Terminal success green */
-  padding-left: 0;
-  padding-right: 1rem;
-  margin-left: auto;
-  margin-right: 0;
-  max-width: 70%; /* Limit width for better chat bubble effect */
-  text-align: right;
-}
-
-.message-block.user .message-header {
-  justify-content: flex-end;
+  border-left-color: #9ece6a; /* Terminal success green */
 }
 
 /* Assistant message styling */
 .message-block.assistant {
   border-left-color: #7aa2f7; /* Terminal accent blue */
-  max-width: 90%; /* Slightly wider for assistant responses */
 }
 
 /* Tool message styling */
