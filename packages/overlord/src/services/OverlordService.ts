@@ -2,6 +2,7 @@ import { Context, Effect, Layer, pipe, Ref, Schedule, Stream } from "effect"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
+import * as ConvexSync from "./ConvexSync.js"
 import * as FileWatcher from "./FileWatcher.js"
 import * as JSONLParser from "./JSONLParser.js"
 import * as WebSocketClient from "./WebSocketClient.js"
@@ -52,6 +53,7 @@ export const OverlordServiceLive = Layer.effect(
   Effect.gen(function*() {
     const fileWatcher = yield* FileWatcher.FileWatcher
     const wsClient = yield* WebSocketClient.WebSocketClient
+    const convexSync = yield* ConvexSync.ConvexSyncService
 
     // Daemon state
     const daemonState = yield* Ref.make({
@@ -303,26 +305,48 @@ export const OverlordServiceLive = Layer.effect(
       return `${seconds}s`
     }
 
-    const syncSessionFile = (filePath: string, sessionId: string, _auth: { userId: string; apiKey: string }) =>
+    const syncSessionFile = (filePath: string, sessionId: string, auth: { userId: string; apiKey: string }) =>
       Effect.gen(function*() {
         const content = yield* Effect.tryPromise(() => fs.readFile(filePath, "utf-8"))
 
         const entries = yield* JSONLParser.parseJSONL(content)
 
-        // Send session update
+        // Extract project path from file path
+        const projectPath = extractProjectPath(filePath)
+
+        // Save to Convex
+        yield* convexSync.saveSession(sessionId, auth.userId, projectPath, entries)
+
+        // Also send session update to WebSocket for real-time notification
         const message: WebSocketClient.OverlordMessage = {
           type: "session_update",
           machineId: getMachineId(),
           timestamp: new Date().toISOString(),
           data: {
             sessionId,
-            entries,
-            filePath
+            entries: entries.length, // Just send count, not full data
+            filePath,
+            synced: true
           }
         }
 
-        yield* wsClient.send(message)
+        yield* wsClient.send(message).pipe(
+          Effect.catchAll((error) => Effect.logError(`Failed to send WebSocket update: ${error}`))
+        )
       })
+
+    // Extract project path from file path
+    const extractProjectPath = (filePath: string): string => {
+      // Claude stores conversations in folders like:
+      // ~/Library/Mobile Documents/com~apple~CloudDocs/Claude/<project-hash>/conversations/<session-id>.jsonl
+      const parts = filePath.split("/")
+      const claudeIndex = parts.findIndex((p) => p === "Claude")
+      if (claudeIndex >= 0 && claudeIndex + 1 < parts.length) {
+        return parts[claudeIndex + 1]
+      }
+      // Fallback to parent directory name
+      return path.basename(path.dirname(path.dirname(filePath)))
+    }
 
     return {
       startDaemon,
