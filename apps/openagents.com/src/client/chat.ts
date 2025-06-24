@@ -3,6 +3,7 @@
  * Handles chat UI interactions, message streaming, and conversation management
  */
 
+import { jsonlIngestion } from "./jsonl-ingestion"
 import { ProseMirrorEditor } from "./prosemirror-setup"
 
 interface ChatClient {
@@ -367,6 +368,9 @@ export function initializeChat() {
       }
     })
   }
+
+  // Initialize JSONL ingestion
+  jsonlIngestion.initialize()
 } // Export necessary functions for global access
 
 ;(window as any).sendMessage = sendMessage

@@ -51,6 +51,12 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - Required if: Modifying chat UI, refactoring layout, working on sidebar/header, styling changes
 - Why: Complex layout with fixed positioning, transitions, and state management requires understanding
 
+### JSONL File Ingestion & Claude Code Conversations
+**MANDATORY READING**: `/docs/guides/jsonl-ingestion-guide.md`
+- Required if: Working with file upload/drag-drop, JSONL parsing, conversation data ingestion
+- Quick Reference: `/docs/guides/jsonl-ingestion-quick-reference.md`
+- Why: Comprehensive drag-and-drop system with specific data structures and error handling patterns
+
 **⚠️ FAILURE TO READ THESE GUIDES WILL RESULT IN:**
 - "Service not found" errors that are difficult to debug
 - Streaming responses that hang forever
