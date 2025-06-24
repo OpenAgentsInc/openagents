@@ -9,17 +9,9 @@ export function renderChatMessage(message: {
   timestamp?: number
   rendered?: string
 }) {
-  const displayTime = message.timestamp
-    ? new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : ""
-
   return html`
     <div class="message">
       <div class="message-block ${message.role}">
-        <div class="message-header">
-          <span class="message-role ${message.role}">${message.role === "user" ? "You" : "Assistant"}</span>
-          ${displayTime ? html`<span class="message-time">${displayTime}</span>` : ""}
-        </div>
         <div class="message-body">${message.rendered || message.content}</div>
       </div>
     </div>
@@ -165,10 +157,6 @@ export const chatClientScript = `
     const userMessageHtml = \`
       <div class="message">
         <div class="message-block user">
-          <div class="message-header">
-            <span class="message-role user">You</span>
-            <span class="message-time">\${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-          </div>
           <div class="message-body">\${escapeHtml(message)}</div>
         </div>
       </div>
@@ -192,10 +180,6 @@ export const chatClientScript = `
     const assistantMessageHtml = \`
       <div class="message" id="\${messageId}">
         <div class="message-block assistant">
-          <div class="message-header">
-            <span class="message-role assistant">Assistant</span>
-            <span class="message-time">\${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-          </div>
           <div class="message-body assistant-response-body"><div class="dot-flashing"></div></div>
         </div>
       </div>
@@ -414,21 +398,30 @@ export const chatClientScript = `
 export const chatStyles = `
   /* Message styling */
   .message {
-    display: block;
+    display: flex;
     margin-bottom: 1.5rem;
-    width: 100%;
-    max-width: 800px;
+    max-width: 700px;
     margin-left: auto;
     margin-right: auto;
+    width: 100%;
+  }
+  
+  .message.user {
+    justify-content: flex-end;
+  }
+  
+  .message.assistant,
+  .message.tool {
+    justify-content: flex-start;
   }
   
   .message-block {
     border-left: 4px solid var(--color-terminal-accent);
-    padding-left: 1rem;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-    background: transparent;
+    padding: 0.75rem 1rem;
+    background: #101010;
     border-radius: 0;
+    display: inline-block;
+    word-wrap: break-word;
   }
   
   /* User message styling */
@@ -441,6 +434,8 @@ export const chatStyles = `
     border-left-color: #7aa2f7; /* Terminal accent blue */
   }
   
+  /* Message header styles - removed as headers are no longer displayed */
+  /*
   .message-header {
     display: flex;
     align-items: center;
@@ -456,11 +451,11 @@ export const chatStyles = `
   }
   
   .message-role.user {
-    color: #9ece6a; /* Match border color */
+    color: #9ece6a;
   }
   
   .message-role.assistant {
-    color: #7aa2f7; /* Match border color */
+    color: #7aa2f7;
   }
   
   .message-time {
@@ -469,6 +464,7 @@ export const chatStyles = `
     font-weight: normal;
     font-family: var(--font-family-mono);
   }
+  */
   
   .message-body {
     color: var(--text);
