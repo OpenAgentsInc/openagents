@@ -1,0 +1,61 @@
+/*
+  Safelist: Force inclusion of classes used in server-side templates
+  This ensures classes from TypeScript template strings are included
+*/
+
+/* Sidebar classes */
+.flex-col {}
+.gap-2 {}
+.pt-\[8px\] {}
+.p-4 {}
+.pb-0 {}
+.h-8 {}
+.items-center {}
+.justify-center {}
+.text-lg {}
+.text-sm {}
+.font-semibold {}
+.text-white {}
+.px-1 {}
+.w-full {}
+.gap-2 {}
+.rounded-lg {}
+.border {}
+.border-\[rgba\(255\,255\,255\,0\.1\)\] {}
+.bg-transparent {}
+.px-4 {}
+.py-2 {}
+.font-medium {}
+.text-\[\#D7D8E5\] {}
+.transition-colors {}
+.hover\:bg-\[rgba\(255\,255\,255\,0\.05\)\] {}
+.hover\:border-\[rgba\(255\,255\,255\,0\.2\)\] {}
+
+/* Chat interface classes */
+.flex {}
+.flex-row {}
+.h-full {}
+.bg-gray-900 {}
+.text-white {}
+.overflow-hidden {}
+
+/* Messages */
+.p-6 {}
+.space-y-4 {}
+.max-w-4xl {}
+.mx-auto {}
+
+/* Model selector */
+.mb-4 {}
+.relative {}
+.cursor-pointer {}
+.border-gray-800 {}
+.bg-gray-950 {}
+.py-3 {}
+
+/* Common utilities */
+.mt-4 {}
+.mb-2 {}
+.text-gray-400 {}
+.text-xs {}
+.uppercase {}

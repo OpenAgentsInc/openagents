@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./safelist.css";
 
 /* Tailwind v4 theme configuration */
 @theme {

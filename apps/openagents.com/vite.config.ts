@@ -6,7 +6,17 @@ import { fileURLToPath } from "url"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
-  plugins: [tailwindcss()],
+  plugins: [
+    tailwindcss({
+      base: path.resolve(__dirname, "."),
+      content: {
+        files: [
+          "./src/**/*.{ts,js,html}",
+          "./stories/**/*.{ts,js,html}",
+        ]
+      }
+    })
+  ],
   root: __dirname,
   base: "/",
   publicDir: "static", // Use a different public dir to avoid conflict
