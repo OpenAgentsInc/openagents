@@ -1,7 +1,7 @@
 import { css, document, html, renderMarkdown } from "@openagentsinc/psionic"
 import fs from "fs"
 import path from "path"
-import { chatClientScript, chatStyles, renderChatMessage } from "../../lib/chat-utils"
+import { chatStyles, renderChatMessage } from "../../lib/chat-utils"
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../../lib/models-config"
 import { baseStyles } from "../../styles"
 
@@ -138,128 +138,31 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     .replace("<!-- Messages will be dynamically added here -->", messagesHTML)
     .replace("<!-- Model options will be populated dynamically -->", modelOptionsHTML)
 
+  // Determine if we're in development mode
+  const isDev = process.env.NODE_ENV !== "production"
+  const scriptBase = isDev ? "http://localhost:5173/src/client" : "/js"
+
   return document({
     title,
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
     body: html`
       ${processedHTML}
       
-      <script>
-        // Set conversation ID
+      <script type="module">
+        // Import chat module
+        import { initializeChat } from '${scriptBase}/chat.${isDev ? "ts" : "js"}';
+        import { initializeModelSelector } from '${scriptBase}/model-selector.${isDev ? "ts" : "js"}';
+        
+        // Set conversation ID globally
         window.CONVERSATION_ID = ${conversationId ? `"${conversationId}"` : "null"};
         
-        // Model selector functionality
-        let selectedModel = localStorage.getItem('selectedModel') || '${DEFAULT_MODEL}';
-        let openrouterApiKey = localStorage.getItem('openrouterApiKey') || '';
-        let hasServerKey = false;
+        // Set model config globally
+        window.AVAILABLE_MODELS = ${JSON.stringify(AVAILABLE_MODELS)};
+        window.DEFAULT_MODEL = '${DEFAULT_MODEL}';
         
-        // Update selected model display on load
-        const modelConfig = ${JSON.stringify(AVAILABLE_MODELS)};
-        const currentModel = modelConfig.find(m => m.id === selectedModel);
-        if (currentModel) {
-          document.getElementById('selected-model-name').textContent = currentModel.name;
-        }
-        
-        // Check server configuration
-        async function checkConfig() {
-          try {
-            const response = await fetch('/api/config');
-            const config = await response.json();
-            hasServerKey = config.hasOpenRouterKey;
-            
-            // Update UI based on API key availability
-            const hasAnyKey = openrouterApiKey || hasServerKey;
-            document.querySelectorAll('.openrouter-model').forEach(option => {
-              if (!hasAnyKey) {
-                option.classList.add('locked');
-              } else {
-                option.classList.remove('locked');
-                const lockIcon = option.querySelector('.lock-icon');
-                if (lockIcon) lockIcon.style.display = 'none';
-              }
-            });
-          } catch (error) {
-            console.error('Failed to check config:', error);
-          }
-        }
-        
-        // Check config on load
-        checkConfig();
-        
-        function toggleModelDropdown() {
-          const dropdown = document.getElementById('model-selector-dropdown');
-          dropdown.classList.toggle('open');
-          
-          // Close dropdown when clicking outside
-          if (dropdown.classList.contains('open')) {
-            setTimeout(() => {
-              document.addEventListener('click', closeDropdownOnClickOutside);
-            }, 0);
-          }
-        }
-        
-        function closeDropdownOnClickOutside(event) {
-          const container = document.querySelector('.model-selector-container');
-          if (!container.contains(event.target)) {
-            document.getElementById('model-selector-dropdown').classList.remove('open');
-            document.removeEventListener('click', closeDropdownOnClickOutside);
-          }
-        }
-        
-        function selectModel(modelId) {
-          const model = modelConfig.find(m => m.id === modelId);
-          if (!model) return;
-          
-          // Check if OpenRouter API key is needed
-          if (model.provider === 'openrouter' && !openrouterApiKey && !hasServerKey) {
-            document.getElementById('api-key-notice').style.display = 'block';
-            return;
-          }
-          
-          // Update selection
-          selectedModel = modelId;
-          localStorage.setItem('selectedModel', modelId);
-          
-          // Update UI
-          document.getElementById('selected-model-name').textContent = model.name;
-          document.getElementById('model-selector-dropdown').classList.remove('open');
-          document.removeEventListener('click', closeDropdownOnClickOutside);
-          
-          // Update selected state
-          document.querySelectorAll('.model-option').forEach(option => {
-            option.classList.toggle('selected', option.dataset.modelId === modelId);
-          });
-        }
-        
-        // Mark current selection on load
-        document.addEventListener('DOMContentLoaded', () => {
-          document.querySelectorAll('.model-option').forEach(option => {
-            option.classList.toggle('selected', option.dataset.modelId === selectedModel);
-          });
-        });
-        
-        // Make selectedModel available globally
-        window.SELECTED_MODEL = selectedModel;
-        window.getSelectedModel = () => {
-          const model = modelConfig.find(m => m.id === selectedModel);
-          return { id: selectedModel, provider: model?.provider || 'cloudflare' };
-        };
-        
-        // Check for API key updates
-        window.addEventListener('storage', (e) => {
-          if (e.key === 'openrouterApiKey') {
-            openrouterApiKey = e.newValue || '';
-            // Hide API key notice if key was added
-            if (openrouterApiKey) {
-              document.getElementById('api-key-notice').style.display = 'none';
-            }
-            // Re-check config to update UI
-            checkConfig();
-          }
-        });
-        
-        // Use the shared chat client script
-        ${chatClientScript}
+        // Initialize components
+        initializeModelSelector();
+        initializeChat();
       </script>
     `
   })
