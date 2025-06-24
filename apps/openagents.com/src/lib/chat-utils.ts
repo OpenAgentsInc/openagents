@@ -414,21 +414,30 @@ export const chatClientScript = `
 export const chatStyles = `
   /* Message styling */
   .message {
-    display: block;
+    display: flex;
     margin-bottom: 1.5rem;
-    width: 100%;
-    max-width: 800px;
+    max-width: 700px;
     margin-left: auto;
     margin-right: auto;
+    width: 100%;
+  }
+  
+  .message.user {
+    justify-content: flex-end;
+  }
+  
+  .message.assistant,
+  .message.tool {
+    justify-content: flex-start;
   }
   
   .message-block {
     border-left: 4px solid var(--color-terminal-accent);
-    padding-left: 1rem;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-    background: transparent;
+    padding: 0.75rem 1rem;
+    background: #101010;
     border-radius: 0;
+    display: inline-block;
+    word-wrap: break-word;
   }
   
   /* User message styling */

@@ -43,7 +43,7 @@ body {
   --input-border: #3D3E42;
   --placeholder: #777A81;
   --active-thread: #262626;
-  --sidebar-border: rgba(255, 255, 255, 0.15);
+  --sidebar-border: #1E1E1E;
 }
 
 /* Layout wrapper */
@@ -63,7 +63,7 @@ body {
   background: var(--bg-sidebar);
   border-right: 1px solid var(--sidebar-border);
   position: relative;
-  transition: transform 0.3s ease-in-out;
+  transition: transform 0.15s ease-in-out;
   flex-shrink: 0;
 }
 
@@ -81,14 +81,14 @@ body {
   position: fixed;
   top: 0.75rem;
   left: 0.75rem;
-  z-index: 100;
+  z-index: 1000;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   height: 1.75rem;
   width: 1.75rem;
-  background: transparent;
+  background: var(--bg-primary);
   border: none;
   border-radius: 0.375rem;
   color: var(--text-muted);
@@ -133,7 +133,7 @@ body {
   overflow: hidden;
   position: relative;
   height: 100vh;
-  transition: margin-left 0.3s ease-in-out;
+  transition: margin-left 0.15s ease-in-out;
   margin-left: 0;
 }
 
@@ -205,27 +205,36 @@ body {
 }
 
 .messages-inner {
-  max-width: 800px;
+  max-width: 700px;
   margin: 0 auto;
 }
 
 /* OpenCode-style Message Blocks */
 .message {
-  display: block;
+  display: flex;
   margin-bottom: 1.5rem;
-  width: 100%;
-  max-width: 800px;
+  max-width: 700px;
   margin-left: auto;
   margin-right: auto;
+  width: 100%;
+}
+
+.message.user {
+  justify-content: flex-end;
+}
+
+.message.assistant,
+.message.tool {
+  justify-content: flex-start;
 }
 
 .message-block {
   border-left: 4px solid var(--color-terminal-accent); /* Default: Assistant color */
-  padding-left: 1rem;
-  padding-top: 0.75rem;
-  padding-bottom: 0.75rem;
-  background: transparent;
+  padding: 0.75rem 1rem;
+  background: #101010;
   border-radius: 0;
+  display: inline-block;
+  word-wrap: break-word;
 }
 
 /* User message styling */
@@ -483,7 +492,7 @@ body {
   z-index: 10;
   pointer-events: none;
   padding: 0;
-  transition: left 0.3s ease-in-out;
+  transition: left 0.15s ease-in-out;
 }
 
 .input-area.sidebar-collapsed-input {
