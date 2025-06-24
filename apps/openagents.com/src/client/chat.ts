@@ -145,33 +145,16 @@ function addMessageToUI(role: "user" | "assistant", content: string) {
 
   if (!messagesDiv) return
 
-  const messageHtml = role === "user" ?
-    `
+  // Format timestamp
+  const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const messageHtml = `
     <div class="message">
-      <div class="message-avatar user">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-          <circle cx="12" cy="7" r="4"></circle>
-        </svg>
-      </div>
-      <div class="message-content">
-        <div class="message-author">You</div>
-        <div class="message-body">${escapeHtml(content)}</div>
-      </div>
-    </div>
-  ` :
-    `
-    <div class="message">
-      <div class="message-avatar">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <line x1="12" y1="8" x2="12" y2="16"></line>
-          <line x1="8" y1="12" x2="16" y2="12"></line>
-        </svg>
-      </div>
-      <div class="message-content">
-        <div class="message-author">Assistant</div>
-        <div class="message-body">${content}</div>
+      <div class="message-block ${role}">
+        <div class="message-header">
+          <span class="message-role ${role}">${role === "user" ? "You" : "Assistant"}</span>
+          <span class="message-time">${timestamp}</span>
+        </div>
+        <div class="message-body">${role === "user" ? escapeHtml(content) : content}</div>
       </div>
     </div>
   `
