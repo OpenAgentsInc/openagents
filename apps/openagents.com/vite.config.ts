@@ -1,17 +1,19 @@
 import { defineConfig } from "vite"
+import tailwindcss from "@tailwindcss/vite"
 import path from "path"
 import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  plugins: [tailwindcss()],
   root: __dirname,
   base: "/",
   publicDir: "static", // Use a different public dir to avoid conflict
   
   // Entry points for client code
   build: {
-    outDir: "public/js",
+    outDir: "public",
     emptyOutDir: false, // Don't clear public dir as it has other assets
     rollupOptions: {
       input: {
@@ -23,9 +25,14 @@ export default defineConfig({
         "model-selector": path.resolve(__dirname, "src/client/model-selector.ts")
       },
       output: {
-        entryFileNames: "[name].js",
-        chunkFileNames: "[name]-[hash].js",
-        assetFileNames: "../assets/[name]-[hash][extname]",
+        entryFileNames: "js/[name].js",
+        chunkFileNames: "js/[name]-[hash].js",
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name?.endsWith('.css')) {
+            return 'css/[name][extname]'
+          }
+          return 'assets/[name]-[hash][extname]'
+        },
         format: "es",
         exports: "named"
       }

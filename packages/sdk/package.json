@@ -30,7 +30,6 @@
   "dependencies": {
     "@buildonspark/spark-sdk": "^0.1.40",
     "@openagentsinc/ai": "workspace:^",
-    "@openagentsinc/container": "workspace:^",
     "@openagentsinc/nostr": "workspace:^",
     "effect": "3.16.8"
   },
