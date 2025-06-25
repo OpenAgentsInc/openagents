@@ -57,6 +57,12 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - Quick Reference: `/docs/guides/jsonl-ingestion-quick-reference.md`
 - Why: Comprehensive drag-and-drop system with specific data structures and error handling patterns
 
+### JSONL Parser & Claude Code Message Formats
+**MANDATORY READING**: `/docs/guides/jsonl-parser-comprehensive-guide.md`
+- Required if: Working with Overlord, parsing Claude Code files, handling empty messages, tool extraction
+- Quick Reference: `/docs/guides/jsonl-parser-quick-reference.md`
+- Why: Complex message formats, edge cases for tool-only messages, and database integration patterns
+
 **⚠️ FAILURE TO READ THESE GUIDES WILL RESULT IN:**
 - "Service not found" errors that are difficult to debug
 - Streaming responses that hang forever
