@@ -130,7 +130,7 @@ export function getConversationWithMessages(sessionId: string) {
       // Find the most accurate summary (highest turn_count + latest timestamp)
       const summaries = messages.filter((msg: any) => msg.entry_type === "summary" && msg.summary)
       let bestSummary: any = null
-      
+
       if (summaries.length > 0) {
         bestSummary = summaries.sort((a: any, b: any) => {
           // First priority: highest turn count (most comprehensive)
@@ -140,7 +140,7 @@ export function getConversationWithMessages(sessionId: string) {
           // Second priority: latest timestamp (most recent)
           return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         })[0]
-        
+
         debug(`Selected best summary from ${summaries.length} summaries:`, {
           selectedUuid: bestSummary.entry_uuid,
           turnCount: bestSummary.turn_count,

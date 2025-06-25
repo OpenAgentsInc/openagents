@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Schema from "effect/Schema"
 import { AiEmbeddingModel } from "../core/AiEmbeddingModel.js"
-import { AiError } from "../core/AiError.js"
+import type { AiError } from "../core/AiError.js"
 
 /**
  * Configuration for the message embedding service
@@ -84,12 +84,14 @@ export declare namespace MessageEmbeddingService {
      * Generate embedding for a single message
      */
     readonly embedMessage: (message: MessageContent) => Effect.Effect<EmbeddingResult, AiError>
-    
+
     /**
      * Generate embeddings for multiple messages in batch
      */
-    readonly embedMessages: (messages: ReadonlyArray<MessageContent>) => Effect.Effect<ReadonlyArray<EmbeddingResult>, AiError>
-    
+    readonly embedMessages: (
+      messages: ReadonlyArray<MessageContent>
+    ) => Effect.Effect<ReadonlyArray<EmbeddingResult>, AiError>
+
     /**
      * Get the configuration
      */
@@ -105,43 +107,43 @@ const prepareMessageText = (
   message: MessageContent,
   config: MessageEmbeddingConfig
 ): string => {
-  const parts: string[] = []
-  
+  const parts: Array<string> = []
+
   // Add role/type prefix for context
   if (message.role) {
     parts.push(`[${message.role}]`)
   } else if (message.entry_type) {
     parts.push(`[${message.entry_type}]`)
   }
-  
+
   // Add main content
   if (message.content) {
     parts.push(message.content)
   }
-  
+
   // Add summary if present
   if (message.summary) {
     parts.push(`Summary: ${message.summary}`)
   }
-  
+
   // Add thinking content if configured
   if (config.includeThinking && message.thinking) {
     parts.push(`Thinking: ${message.thinking}`)
   }
-  
+
   // Add tool output if configured
   if (config.includeToolOutputs && message.tool_output) {
     parts.push(`Tool Output: ${message.tool_output}`)
   }
-  
+
   // Join and truncate if needed
   let text = parts.join(" ").trim()
   const truncated = config.maxContentLength && text.length > config.maxContentLength
-  
+
   if (truncated && config.maxContentLength) {
     text = text.substring(0, config.maxContentLength) + "..."
   }
-  
+
   return text
 }
 
@@ -151,13 +153,13 @@ const prepareMessageText = (
  * @category Constructors
  */
 export const make = (config: MessageEmbeddingConfig) =>
-  Effect.gen(function* () {
+  Effect.gen(function*() {
     const embeddingModel = yield* AiEmbeddingModel
-    
+
     const embedMessage = (message: MessageContent) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const inputText = prepareMessageText(message, config)
-        
+
         // Skip empty messages
         if (!inputText) {
           return {
@@ -168,9 +170,9 @@ export const make = (config: MessageEmbeddingConfig) =>
             truncated: false
           }
         }
-        
+
         const embedding = yield* embeddingModel.embed(inputText)
-        
+
         return {
           embedding,
           model: config.model,
@@ -187,7 +189,7 @@ export const make = (config: MessageEmbeddingConfig) =>
           }
         })
       )
-    
+
     const embedMessages = (messages: ReadonlyArray<MessageContent>) =>
       Effect.forEach(messages, embedMessage, {
         concurrency: 5, // Process up to 5 messages in parallel
@@ -200,7 +202,7 @@ export const make = (config: MessageEmbeddingConfig) =>
           }
         })
       )
-    
+
     return MessageEmbeddingService.of({
       embedMessage,
       embedMessages,
@@ -213,8 +215,7 @@ export const make = (config: MessageEmbeddingConfig) =>
  * @since 1.0.0
  * @category Layers
  */
-export const layer = (config: MessageEmbeddingConfig) =>
-  Layer.effect(MessageEmbeddingService, make(config))
+export const layer = (config: MessageEmbeddingConfig) => Layer.effect(MessageEmbeddingService, make(config))
 
 /**
  * Default configuration for OpenAI embeddings

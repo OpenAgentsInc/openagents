@@ -8,8 +8,8 @@ import { Context, Effect, Layer } from "effect"
 import * as DatabaseMapper from "./DatabaseMapper.js"
 import type * as JSONLParser from "./JSONLParser.js"
 
-// Import embedding services
-import { ConvexEmbeddingService, MessageEmbeddingService, OpenAI } from "@openagentsinc/ai"
+// Import embedding services (for future implementation)
+// import { ConvexEmbeddingService, MessageEmbeddingService, OpenAI } from "@openagentsinc/ai"
 
 // Embedding configuration
 export interface EmbeddingConfig {
@@ -38,55 +38,26 @@ const shouldGenerateEmbedding = (messageRecord: any): boolean => {
   // Generate embeddings for user messages, assistant messages, and tool outputs
   // Skip empty content and summary entries
   if (messageRecord.entry_type === "summary") return false
-  
+
   const hasContent = messageRecord.content && messageRecord.content.trim().length > 0
   const hasThinking = messageRecord.thinking && messageRecord.thinking.trim().length > 0
   const hasToolOutput = messageRecord.tool_output && messageRecord.tool_output.trim().length > 0
-  
+
   return hasContent || hasThinking || hasToolOutput
 }
 
 const generateEmbeddingForMessage = (
   messageId: any,
-  messageRecord: any, 
+  messageRecord: any,
   embeddingConfig: EmbeddingConfig
 ) =>
   Effect.gen(function*() {
-    // Create a mock ConvexMessage for the embedding service
-    const convexMessage = {
-      _id: messageId,
-      session_id: messageRecord.session_id,
-      content: messageRecord.content,
-      thinking: messageRecord.thinking,
-      entry_type: messageRecord.entry_type,
-      role: messageRecord.role,
-      summary: messageRecord.summary,
-      tool_output: messageRecord.tool_output
-    }
-
-    // Create embedding service layers
-    const openAiLayer = OpenAI.OpenAiEmbeddingModel.layer({
-      apiKey: embeddingConfig.apiKey || process.env.OPENAI_API_KEY || "",
-      model: embeddingConfig.model
-    })
-    
-    const messageEmbeddingLayer = MessageEmbeddingService.layer({})
-    const convexEmbeddingLayer = ConvexEmbeddingService.layer({})
-    
-    // Generate and store embedding
-    const embeddingService = yield* ConvexEmbeddingService
-    yield* embeddingService.embedAndStore(convexMessage)
-    
-    yield* Effect.log(`✨ Generated embedding for message ${messageRecord.entry_uuid}`)
-  }).pipe(
-    Effect.provide(
-      Layer.mergeAll(
-        openAiLayer,
-        messageEmbeddingLayer, 
-        convexEmbeddingLayer
-      )
+    // TODO: Implement embedding generation with proper service layers
+    // For now, just log that embedding would be generated
+    yield* Effect.log(
+      `✨ Would generate embedding for message ${messageRecord.entry_uuid} with model ${embeddingConfig.model}`
     )
-  )
+  })
 
 // Implementation
 export const ConvexSyncServiceLive = Layer.succeed(
@@ -163,7 +134,7 @@ export const ConvexSyncServiceLive = Layer.succeed(
             // Generate embeddings if enabled
             if (embeddingConfig?.enabled && shouldGenerateEmbedding(messageRecord)) {
               yield* generateEmbeddingForMessage(messageId, messageRecord, embeddingConfig).pipe(
-                Effect.catchAll((error) => 
+                Effect.catchAll((error) =>
                   Effect.logWarning(`Failed to generate embedding for message ${messageRecord.entry_uuid}: ${error}`)
                 )
               )

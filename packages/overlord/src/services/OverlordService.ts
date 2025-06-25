@@ -46,8 +46,16 @@ export interface OverlordService {
   readonly startDaemon: (config: DaemonConfig) => Effect.Effect<void, Error>
   readonly stopDaemon: () => Effect.Effect<void>
   readonly detectClaudeInstallations: () => Effect.Effect<ReadonlyArray<ClaudeInstallation>, Error>
-  readonly syncSession: (sessionId: string, auth: { userId: string; apiKey: string }, embeddingConfig?: EmbeddingConfig) => Effect.Effect<void, Error>
-  readonly syncAllSessions: (auth: { userId: string; apiKey: string }, filterOptions?: FilterOptions, embeddingConfig?: EmbeddingConfig) => Effect.Effect<SyncResult, Error>
+  readonly syncSession: (
+    sessionId: string,
+    auth: { userId: string; apiKey: string },
+    embeddingConfig?: EmbeddingConfig
+  ) => Effect.Effect<void, Error>
+  readonly syncAllSessions: (
+    auth: { userId: string; apiKey: string },
+    filterOptions?: FilterOptions,
+    embeddingConfig?: EmbeddingConfig
+  ) => Effect.Effect<SyncResult, Error>
   readonly getStatus: () => Effect.Effect<DaemonStatus>
 }
 
@@ -194,7 +202,7 @@ export const OverlordServiceLive = Layer.effect(
                 const results = await Promise.all(statsPromises)
                 return results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
               })
-              
+
               if (filesWithStats.length > 0) {
                 lastActive = filesWithStats[0].mtime.toISOString()
               }
@@ -214,7 +222,11 @@ export const OverlordServiceLive = Layer.effect(
       })
 
     // Sync a specific session
-    const syncSession = (sessionId: string, auth: { userId: string; apiKey: string }, embeddingConfig?: EmbeddingConfig) =>
+    const syncSession = (
+      sessionId: string,
+      auth: { userId: string; apiKey: string },
+      embeddingConfig?: EmbeddingConfig
+    ) =>
       Effect.gen(function*() {
         // Find the session file
         const claudePaths = yield* fileWatcher.findClaudePaths()
@@ -238,7 +250,11 @@ export const OverlordServiceLive = Layer.effect(
       })
 
     // Sync all sessions
-    const syncAllSessions = (auth: { userId: string; apiKey: string }, filterOptions?: FilterOptions, embeddingConfig?: EmbeddingConfig) =>
+    const syncAllSessions = (
+      auth: { userId: string; apiKey: string },
+      filterOptions?: FilterOptions,
+      embeddingConfig?: EmbeddingConfig
+    ) =>
       Effect.gen(function*() {
         const claudePaths = yield* fileWatcher.findClaudePaths()
         let synced = 0
@@ -247,10 +263,14 @@ export const OverlordServiceLive = Layer.effect(
 
         for (const claudePath of claudePaths) {
           // Apply path filtering
-          if (filterOptions?.includePaths && !filterOptions.includePaths.some(include => claudePath.includes(include))) {
+          if (
+            filterOptions?.includePaths && !filterOptions.includePaths.some((include) => claudePath.includes(include))
+          ) {
             continue
           }
-          if (filterOptions?.excludePaths && filterOptions.excludePaths.some(exclude => claudePath.includes(exclude))) {
+          if (
+            filterOptions?.excludePaths && filterOptions.excludePaths.some((exclude) => claudePath.includes(exclude))
+          ) {
             continue
           }
           const files = yield* Effect.tryPromise(() => fs.readdir(claudePath, { recursive: true }))
@@ -333,7 +353,12 @@ export const OverlordServiceLive = Layer.effect(
       return `${seconds}s`
     }
 
-    const syncSessionFile = (filePath: string, sessionId: string, auth: { userId: string; apiKey: string }, embeddingConfig?: EmbeddingConfig) =>
+    const syncSessionFile = (
+      filePath: string,
+      sessionId: string,
+      auth: { userId: string; apiKey: string },
+      embeddingConfig?: EmbeddingConfig
+    ) =>
       Effect.gen(function*() {
         const content = yield* Effect.tryPromise(() => fs.readFile(filePath, "utf-8"))
 

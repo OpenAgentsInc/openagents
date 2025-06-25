@@ -32,7 +32,7 @@ function formatToolResult(content: string): string {
       "<div class=\"file-listing\">" +
       "<div style=\"margin-bottom: 0.5rem;\">📁 File listing (" + fileCount + " files)</div>" +
       "<details class=\"tool-result-details\">" +
-      "<summary style=\"cursor: pointer; color: #a855f7;\">Show all files</summary>" +
+      "<summary style=\"cursor: pointer; color: rgba(255, 255, 255, 0.7);\">Show all files</summary>" +
       "<pre style=\"margin-top: 0.5rem; max-height: 400px; overflow-y: auto;\">" +
       lines.map(escapeHtml).join("\n") +
       "</pre>" +
@@ -50,7 +50,7 @@ function formatToolResult(content: string): string {
       "<div class=\"long-content\">" +
       "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
       "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
-      "<summary style=\"cursor: pointer; color: #a855f7; font-size: 12px;\">Show full content (" + content.length +
+      "<summary style=\"cursor: pointer; color: rgba(255, 255, 255, 0.7); font-size: 12px;\">Show full content (" + content.length +
       " characters, " + lines.length + " lines)</summary>" +
       "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" +
       escapeHtml(content) +

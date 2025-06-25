@@ -3,13 +3,13 @@
  * @since 1.0.0
  */
 
+import { ConvexClient, type Id } from "@openagentsinc/convex"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Schema from "effect/Schema"
-import { ConvexClient, type Id } from "@openagentsinc/convex"
-import { MessageEmbeddingService, type MessageContent, type EmbeddingResult } from "./MessageEmbeddingService.js"
 import { AiError } from "../core/AiError.js"
+import { type MessageContent, MessageEmbeddingService } from "./MessageEmbeddingService.js"
 
 /**
  * Configuration for Convex embedding service
@@ -67,22 +67,24 @@ export declare namespace ConvexEmbeddingService {
      * Generate and store embedding for a message
      */
     readonly embedAndStore: (message: ConvexMessage) => Effect.Effect<Id<"message_embeddings">, AiError>
-    
+
     /**
      * Generate and store embeddings for multiple messages
      */
-    readonly embedAndStoreBatch: (messages: ReadonlyArray<ConvexMessage>) => Effect.Effect<ReadonlyArray<{ message_id: Id<"messages">, embedding_id: Id<"message_embeddings"> }>, AiError>
-    
+    readonly embedAndStoreBatch: (
+      messages: ReadonlyArray<ConvexMessage>
+    ) => Effect.Effect<ReadonlyArray<{ message_id: Id<"messages">; embedding_id: Id<"message_embeddings"> }>, AiError>
+
     /**
      * Search for similar messages
      */
     readonly searchSimilar: (options: {
-      query_embedding: number[]
+      query_embedding: Array<number>
       session_id?: string
       limit?: number
       model_filter?: string
     }) => Effect.Effect<ReadonlyArray<SimilaritySearchResult>, AiError>
-    
+
     /**
      * Search for similar messages using text query
      */
@@ -92,7 +94,7 @@ export declare namespace ConvexEmbeddingService {
       limit?: number
       model_filter?: string
     }) => Effect.Effect<ReadonlyArray<SimilaritySearchResult>, AiError>
-    
+
     /**
      * Get embedding statistics
      */
@@ -111,31 +113,33 @@ export declare namespace ConvexEmbeddingService {
  * @category Constructors
  */
 export const make = (config: ConvexEmbeddingConfig = {}) =>
-  Effect.gen(function* () {
+  Effect.gen(function*() {
     const convexClient = yield* ConvexClient
     const embeddingService = yield* MessageEmbeddingService
-    
+
     const embedAndStore = (message: ConvexMessage) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // Generate embedding
         const result = yield* embeddingService.embedMessage(message)
-        
+
         // Store in Convex
         const embeddingId = yield* Effect.tryPromise({
-          try: () => convexClient.mutation("embeddings:storeEmbedding", {
-            message_id: message._id,
-            embedding: result.embedding,
-            model: result.model,
-            dimensions: result.dimensions
-          }),
-          catch: (error) => new AiError({
-            module: "ConvexEmbeddingService",
-            method: "embedAndStore",
-            description: "Failed to store embedding in Convex",
-            cause: error
-          })
+          try: () =>
+            convexClient.mutation("embeddings:storeEmbedding", {
+              message_id: message._id,
+              embedding: result.embedding,
+              model: result.model,
+              dimensions: result.dimensions
+            }),
+          catch: (error) =>
+            new AiError({
+              module: "ConvexEmbeddingService",
+              method: "embedAndStore",
+              description: "Failed to store embedding in Convex",
+              cause: error
+            })
         })
-        
+
         return embeddingId as Id<"message_embeddings">
       }).pipe(
         Effect.withSpan("ConvexEmbeddingService.embedAndStore", {
@@ -146,19 +150,19 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
           }
         })
       )
-    
+
     const embedAndStoreBatch = (messages: ReadonlyArray<ConvexMessage>) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const batchSize = config.batchSize ?? 10
-        const results: Array<{ message_id: Id<"messages">, embedding_id: Id<"message_embeddings"> }> = []
-        
+        const results: Array<{ message_id: Id<"messages">; embedding_id: Id<"message_embeddings"> }> = []
+
         // Process in batches
         for (let i = 0; i < messages.length; i += batchSize) {
           const batch = messages.slice(i, i + batchSize)
-          
+
           // Generate embeddings for batch
           const embeddings = yield* embeddingService.embedMessages(batch)
-          
+
           // Prepare batch storage data
           const embeddingData = batch.map((message, index) => ({
             message_id: message._id,
@@ -166,23 +170,27 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
             model: embeddings[index].model,
             dimensions: embeddings[index].dimensions
           }))
-          
+
           // Store batch in Convex
           const batchResults = yield* Effect.tryPromise({
-            try: () => convexClient.mutation("embeddings:batchStoreEmbeddings", {
-              embeddings: embeddingData
-            }),
-            catch: (error) => new AiError({
-              module: "ConvexEmbeddingService",
-              method: "embedAndStoreBatch",
-              description: "Failed to batch store embeddings in Convex",
-              cause: error
-            })
+            try: () =>
+              convexClient.mutation("embeddings:batchStoreEmbeddings", {
+                embeddings: embeddingData
+              }),
+            catch: (error) =>
+              new AiError({
+                module: "ConvexEmbeddingService",
+                method: "embedAndStoreBatch",
+                description: "Failed to batch store embeddings in Convex",
+                cause: error
+              })
           })
-          
-          results.push(...batchResults)
+
+          for (const result of batchResults) {
+            results.push(result)
+          }
         }
-        
+
         return results
       }).pipe(
         Effect.withSpan("ConvexEmbeddingService.embedAndStoreBatch", {
@@ -192,26 +200,28 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
           }
         })
       )
-    
+
     const searchSimilar = (options: {
-      query_embedding: number[]
+      query_embedding: Array<number>
       session_id?: string
       limit?: number
       model_filter?: string
     }) =>
       Effect.tryPromise({
-        try: () => convexClient.action("embeddings:similarMessages", {
-          query_embedding: options.query_embedding,
-          session_id: options.session_id,
-          limit: options.limit,
-          model_filter: options.model_filter
-        }),
-        catch: (error) => new AiError({
-          module: "ConvexEmbeddingService",
-          method: "searchSimilar",
-          description: "Failed to search similar messages",
-          cause: error
-        })
+        try: () =>
+          convexClient.action("embeddings:similarMessages", {
+            query_embedding: options.query_embedding,
+            session_id: options.session_id,
+            limit: options.limit,
+            model_filter: options.model_filter
+          }),
+        catch: (error) =>
+          new AiError({
+            module: "ConvexEmbeddingService",
+            method: "searchSimilar",
+            description: "Failed to search similar messages",
+            cause: error
+          })
       }).pipe(
         Effect.withSpan("ConvexEmbeddingService.searchSimilar", {
           attributes: {
@@ -221,14 +231,14 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
           }
         })
       )
-    
+
     const searchSimilarByText = (options: {
       query_text: string
       session_id?: string
       limit?: number
       model_filter?: string
     }) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // Generate embedding for query text
         const queryEmbedding = yield* embeddingService.embedMessage({
           content: options.query_text,
@@ -238,7 +248,7 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
           summary: undefined,
           tool_output: undefined
         })
-        
+
         // Search with the generated embedding
         return yield* searchSimilar({
           query_embedding: queryEmbedding.embedding,
@@ -254,18 +264,20 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
           }
         })
       )
-    
+
     const getStats = (session_id?: string) =>
       Effect.tryPromise({
-        try: () => convexClient.query("embeddings:getEmbeddingStats", {
-          session_id
-        }),
-        catch: (error) => new AiError({
-          module: "ConvexEmbeddingService",
-          method: "getStats",
-          description: "Failed to get embedding statistics",
-          cause: error
-        })
+        try: () =>
+          convexClient.query("embeddings:getEmbeddingStats", {
+            session_id
+          }),
+        catch: (error) =>
+          new AiError({
+            module: "ConvexEmbeddingService",
+            method: "getStats",
+            description: "Failed to get embedding statistics",
+            cause: error
+          })
       }).pipe(
         Effect.withSpan("ConvexEmbeddingService.getStats", {
           attributes: {
@@ -273,7 +285,7 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
           }
         })
       )
-    
+
     return ConvexEmbeddingService.of({
       embedAndStore,
       embedAndStoreBatch,
@@ -288,5 +300,4 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
  * @since 1.0.0
  * @category Layers
  */
-export const layer = (config: ConvexEmbeddingConfig = {}) =>
-  Layer.effect(ConvexEmbeddingService, make(config))
+export const layer = (config: ConvexEmbeddingConfig = {}) => Layer.effect(ConvexEmbeddingService, make(config))
