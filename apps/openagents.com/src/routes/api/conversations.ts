@@ -1,7 +1,7 @@
 import { HttpServerResponse } from "@effect/platform"
 import type { RouteContext } from "@openagentsinc/psionic"
 import { Effect } from "effect"
-import { addMessage, createConversation, getConversations, updateConversationTitle } from "../../lib/chat-client"
+import { addMessage, createConversation, getConversations, updateConversationTitle } from "../../lib/chat-client-convex"
 
 /**
  * GET /api/conversations - List all conversations
@@ -11,7 +11,8 @@ export function listConversations(
 ) {
   return Effect.gen(function*() {
     try {
-      const conversations = yield* Effect.promise(() => getConversations())
+      // getConversations returns an Effect, so we yield* it directly
+      const conversations = yield* getConversations()
       return yield* HttpServerResponse.json(conversations)
     } catch (error) {
       console.error("Failed to list conversations:", error)

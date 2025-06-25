@@ -345,6 +345,27 @@ export class ConvexClient {
       }),
 
     /**
+     * Update message fields (comprehensive update)
+     */
+    update: (args: {
+      entryUuid: string
+      content?: string
+      thinking?: string
+      tool_name?: string
+      tool_input?: any
+      tool_use_id?: string
+      tool_output?: string
+      tool_is_error?: boolean
+    }) =>
+      Effect.tryPromise({
+        try: async () => {
+          await ConvexClient.client.mutation(api.messages.update, stripUndefined(args))
+          return undefined
+        },
+        catch: (error) => new Error(`Failed to update message: ${error}`)
+      }),
+
+    /**
      * Add image to a message
      * Note: messageId should be the Convex document ID returned from create()
      */
@@ -372,6 +393,23 @@ export class ConvexClient {
 
         // For now, return a cleanup function
         return unsubscribe
+      })
+  }
+
+  /**
+   * Data deletion operations
+   */
+  static readonly admin = {
+    /**
+     * Delete all data from Convex
+     */
+    deleteEverything: () =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.mutation(api.deleteAll.deleteEverything, {})
+          return result as { messagesDeleted: number; sessionsDeleted: number }
+        },
+        catch: (error) => new Error(`Failed to delete all data: ${error}`)
       })
   }
 }

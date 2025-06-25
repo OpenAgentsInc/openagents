@@ -51,11 +51,15 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - Required if: Modifying chat UI, refactoring layout, working on sidebar/header, styling changes
 - Why: Complex layout with fixed positioning, transitions, and state management requires understanding
 
-### JSONL File Ingestion & Claude Code Conversations
-**MANDATORY READING**: `/docs/guides/jsonl-ingestion-guide.md`
-- Required if: Working with file upload/drag-drop, JSONL parsing, conversation data ingestion
-- Quick Reference: `/docs/guides/jsonl-ingestion-quick-reference.md`
-- Why: Comprehensive drag-and-drop system with specific data structures and error handling patterns
+### JSONL Frontend Processing (Drag & Drop)
+**MANDATORY READING**: `/docs/guides/jsonl-frontend-guide.md`
+- Required if: Working with browser drag-drop, file upload UI, client-side JSONL viewing
+- Why: Complete implementation of the drag-and-drop system for viewing Claude Code files
+
+### JSONL Backend Processing (Overlord Parser)
+**MANDATORY READING**: `/docs/guides/jsonl-backend-guide.md`
+- Required if: Working with Overlord service, database sync, parsing Claude Code files, handling empty messages
+- Why: Complex message formats, tool extraction, edge cases, and database integration patterns
 
 **⚠️ FAILURE TO READ THESE GUIDES WILL RESULT IN:**
 - "Service not found" errors that are difficult to debug
@@ -486,6 +490,23 @@ const readable = yield* Stream.toReadableStreamEffect(stream).pipe(
 
 **READ**: `/docs/guides/streaming-architecture.md` for complete understanding
 
+### ❌ NEVER Use Placeholder Code
+
+**ABSOLUTELY FORBIDDEN**: Using "log what we would do" patterns or placeholder implementations.
+
+**Examples of BANNED patterns**:
+- "For now, just log what we would update"
+- "Would update X with Y"
+- "TODO: implement this later"
+- Mock implementations that don't actually perform the requested action
+
+**REQUIRED**: Always implement the actual functionality. If you're updating database records, perform the actual update. If you're processing data, actually process it. No placeholders, no logging "what would happen" - make it happen.
+
+**Why This Matters**:
+- Placeholder code wastes time and creates technical debt
+- The user expects working implementations, not promises of future work
+- "Log what we would do" patterns make debugging harder and delay real solutions
+
 **Never take shortcuts. Never simplify. Always respect the architectural decisions that were made for production systems.**
 
 ## Final Reminder: Architecture Guides Are NOT Optional
@@ -509,3 +530,11 @@ If you've made it this far and are about to start coding, ask yourself:
 **The #1 cause of wasted debugging time is agents who think they can figure it out without reading the guides first.**
 
 Don't be that agent. Read the guides. Your future self will thank you.
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+NEVER use placeholder code or "log what we would do" patterns. Always implement the actual functionality.
+When updating database records, ALWAYS perform the actual update, not just log what would be updated.

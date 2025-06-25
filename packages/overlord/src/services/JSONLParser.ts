@@ -76,10 +76,17 @@ export const parseJSONL = (content: string): Effect.Effect<ReadonlyArray<LogEntr
           } else if (parsed.message?.content) {
             // Array of content objects format
             if (Array.isArray(parsed.message.content)) {
-              const textParts = parsed.message.content
-                .filter((item: any) => item.type === "text")
-                .map((item: any) => item.text)
-              textContent = textParts.join("\n")
+              // Check if it's a tool_result
+              if (parsed.message.content.length > 0 && parsed.message.content[0].type === "tool_result") {
+                // Store the entire array as JSON for tool results
+                textContent = JSON.stringify(parsed.message.content)
+              } else {
+                // Extract text parts only
+                const textParts = parsed.message.content
+                  .filter((item: any) => item.type === "text")
+                  .map((item: any) => item.text)
+                textContent = textParts.join("\n")
+              }
             } else if (typeof parsed.message.content === "string") {
               textContent = parsed.message.content
             }

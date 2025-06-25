@@ -151,6 +151,28 @@ export function getConversationWithMessages(sessionId: string) {
             parsedContent.substring(0, 100) + (parsedContent.length > 100 ? "..." : "")
           )
 
+          // Extract tool metadata from content if it's embedded
+          let extractedToolMetadata: any = {}
+          if (msg.content && typeof msg.content === "string" && msg.content.includes("\"type\":\"tool_use\"")) {
+            try {
+              const parsed = JSON.parse(msg.content)
+              if (Array.isArray(parsed)) {
+                const toolUse = parsed.find((item: any) => item.type === "tool_use")
+                if (toolUse) {
+                  extractedToolMetadata = {
+                    toolName: toolUse.name,
+                    toolInput: toolUse.input,
+                    toolUseId: toolUse.id,
+                    hasEmbeddedTool: true
+                  }
+                  debug(`Extracted tool metadata from content:`, extractedToolMetadata)
+                }
+              }
+            } catch (e) {
+              debug(`Failed to extract tool metadata from content:`, e)
+            }
+          }
+
           return {
             id: msg.entry_uuid,
             conversationId: msg.session_id,
@@ -158,18 +180,37 @@ export function getConversationWithMessages(sessionId: string) {
             content: parsedContent,
             timestamp: new Date(msg.timestamp),
             model: msg.model,
+
+            // Raw database fields for complete debugging
+            _dbId: msg._id,
+            _creationTime: msg._creationTime,
+            sessionId: msg.session_id,
+
             metadata: {
+              // Entry classification
               entryType: msg.entry_type,
-              thinking: msg.thinking,
-              summary: msg.summary,
-              toolName: msg.tool_name,
-              toolInput: msg.tool_input,
-              toolUseId: msg.tool_use_id,
+
+              // Tool information
+              hasEmbeddedTool: extractedToolMetadata.hasEmbeddedTool || false,
+              toolName: msg.tool_name || extractedToolMetadata.toolName,
+              toolInput: msg.tool_input || extractedToolMetadata.toolInput,
+              toolUseId: msg.tool_use_id || extractedToolMetadata.toolUseId,
               toolOutput: msg.tool_output,
               toolIsError: msg.tool_is_error,
+
+              // Claude Code fields
+              thinking: msg.thinking,
+              summary: msg.summary,
+
+              // Usage and cost tracking
               tokenUsage: msg.token_usage,
+              tokenCountInput: msg.token_count_input,
+              tokenCountOutput: msg.token_count_output,
               cost: msg.cost,
-              turnCount: msg.turn_count
+
+              // Session tracking
+              turnCount: msg.turn_count,
+              model: msg.model
             }
           }
         })
@@ -256,6 +297,27 @@ function parseMessageContent(message: any): string {
                 debug(`Found text field in parsed user content`)
                 return parsed.text
               }
+              // Check for tool_result format (incorrectly categorized as user)
+              if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].type === "tool_result") {
+                debug(`User message is actually a tool_result that was mis-categorized`)
+                const toolResult = parsed[0]
+                const content = toolResult.content || ""
+                const toolUseId = toolResult.tool_use_id || ""
+                const isError = toolResult.is_error || false
+
+                // Handle empty tool results
+                if (!content || content.trim() === "") {
+                  debug(`Tool result has empty content`)
+                  return `📤 Tool Result (${toolUseId}): [No output]${isError ? " - ERROR" : ""}`
+                }
+
+                // Format tool result nicely
+                if (content.includes("→")) {
+                  // It's file content with line numbers
+                  return `📤 Tool Result (${toolUseId}):\n\`\`\`\n${content}\n\`\`\`${isError ? "\n[ERROR]" : ""}`
+                }
+                return `📤 Tool Result (${toolUseId}): ${content}${isError ? " [ERROR]" : ""}`
+              }
               // If it's an array format
               if (Array.isArray(parsed)) {
                 const textParts = parsed
@@ -306,6 +368,16 @@ function parseMessageContent(message: any): string {
           const parsed = JSON.parse(message.content)
           // Handle multi-part messages (text + tool use)
           if (Array.isArray(parsed)) {
+            const textParts = parsed.filter((part: any) => part.type === "text")
+            const toolParts = parsed.filter((part: any) => part.type === "tool_use")
+
+            // If there's no text but there are tools, show tool invocation
+            if (textParts.length === 0 && toolParts.length > 0) {
+              debug(`Assistant message contains only tool_use, no text`)
+              const tool = toolParts[0]
+              return `🔧 Using tool: ${tool.name}`
+            }
+
             const parts = parsed.map((part: any) => {
               if (part.type === "text") {
                 return part.text || ""
