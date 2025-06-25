@@ -24,6 +24,18 @@ const endpointOption = Options.text("endpoint").pipe(
   Options.optional
 )
 
+const includePathOption = Options.text("include-path").pipe(
+  Options.withDescription("Only sync projects containing this path substring (can be used multiple times)"),
+  Options.withAlias("i"),
+  Options.repeated
+)
+
+const excludePathOption = Options.text("exclude-path").pipe(
+  Options.withDescription("Exclude projects containing this path substring (can be used multiple times)"),
+  Options.withAlias("e"),
+  Options.repeated
+)
+
 // Main daemon command - "spawn" in StarCraft terms
 const spawnCommand = Command.make("spawn", {
   userId: userIdOption,
@@ -117,16 +129,27 @@ const sessionIdArg = Args.text({ name: "sessionId" }).pipe(
 const transportCommand = Command.make("transport", {
   sessionId: sessionIdArg,
   userId: userIdOption,
-  apiKey: apiKeyOption
+  apiKey: apiKeyOption,
+  includePaths: includePathOption,
+  excludePaths: excludePathOption
 }).pipe(
   Command.withDescription("Transport (sync) Claude Code sessions to the cloud"),
-  Command.withHandler(({ apiKey, sessionId, userId }) =>
+  Command.withHandler(({ apiKey, sessionId, userId, includePaths, excludePaths }) =>
     Effect.gen(function*() {
       const service = yield* OverlordService.OverlordService
 
+      // Create filter options
+      const filterOptions = {
+        includePaths: includePaths.length > 0 ? includePaths : undefined,
+        excludePaths: excludePaths.length > 0 ? excludePaths : undefined
+      }
+
       if (Option.isNone(sessionId) || Option.getOrElse(sessionId, () => "") === "all") {
         yield* Console.log("🚀 Transporting all sessions to the cloud...")
-        const result = yield* service.syncAllSessions({ userId, apiKey })
+        if (filterOptions.includePaths || filterOptions.excludePaths) {
+          yield* Console.log(`📂 Path filtering: include=${filterOptions.includePaths?.join(", ") || "all"}, exclude=${filterOptions.excludePaths?.join(", ") || "none"}`)
+        }
+        const result = yield* service.syncAllSessions({ userId, apiKey }, filterOptions)
         yield* Console.log(`✅ Transported ${result.synced} sessions`)
         if (result.failed > 0) {
           yield* Console.log(`⚠️  Failed to sync ${result.failed} sessions`)
@@ -162,15 +185,26 @@ const limitOption = Options.integer("limit").pipe(
 const importCommand = Command.make("import", {
   userId: userIdOption,
   apiKey: apiKeyOption,
-  limit: limitOption
+  limit: limitOption,
+  includePaths: includePathOption,
+  excludePaths: excludePathOption
 }).pipe(
   Command.withDescription("Import Claude Code conversations to Convex (for testing)"),
-  Command.withHandler(({ apiKey: _apiKey, limit, userId }) =>
+  Command.withHandler(({ apiKey: _apiKey, limit, userId, includePaths, excludePaths }) =>
     Effect.gen(function*() {
       const service = yield* OverlordService.OverlordService
       const maxLimit = Option.getOrElse(limit, () => 10)
 
+      // Create filter options
+      const filterOptions = {
+        includePaths: includePaths.length > 0 ? includePaths : undefined,
+        excludePaths: excludePaths.length > 0 ? excludePaths : undefined
+      }
+
       yield* Console.log(`📥 Importing up to ${maxLimit} Claude Code conversations...`)
+      if (filterOptions.includePaths || filterOptions.excludePaths) {
+        yield* Console.log(`📂 Path filtering: include=${filterOptions.includePaths?.join(", ") || "all"}, exclude=${filterOptions.excludePaths?.join(", ") || "none"}`)
+      }
 
       // First detect installations
       const installations = yield* service.detectClaudeInstallations()
@@ -190,6 +224,16 @@ const importCommand = Command.make("import", {
 
       for (const claudePath of claudePaths) {
         if (imported >= maxLimit) break
+
+        // Apply path filtering
+        if (filterOptions.includePaths && !filterOptions.includePaths.some(include => claudePath.includes(include))) {
+          yield* Console.log(`  ⏭️  Skipping ${claudePath} (not in include paths)`)
+          continue
+        }
+        if (filterOptions.excludePaths && filterOptions.excludePaths.some(exclude => claudePath.includes(exclude))) {
+          yield* Console.log(`  ⏭️  Skipping ${claudePath} (in exclude paths)`)
+          continue
+        }
 
         const fs = yield* Effect.tryPromise(() => import("node:fs/promises"))
         const files = yield* Effect.tryPromise(() =>

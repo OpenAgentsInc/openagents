@@ -26,6 +26,11 @@ export interface SyncResult {
   readonly errors: ReadonlyArray<string>
 }
 
+export interface FilterOptions {
+  readonly includePaths?: ReadonlyArray<string>
+  readonly excludePaths?: ReadonlyArray<string>
+}
+
 export interface DaemonStatus {
   readonly running: boolean
   readonly uptime: string
@@ -41,7 +46,7 @@ export interface OverlordService {
   readonly stopDaemon: () => Effect.Effect<void>
   readonly detectClaudeInstallations: () => Effect.Effect<ReadonlyArray<ClaudeInstallation>, Error>
   readonly syncSession: (sessionId: string, auth: { userId: string; apiKey: string }) => Effect.Effect<void, Error>
-  readonly syncAllSessions: (auth: { userId: string; apiKey: string }) => Effect.Effect<SyncResult, Error>
+  readonly syncAllSessions: (auth: { userId: string; apiKey: string }, filterOptions?: FilterOptions) => Effect.Effect<SyncResult, Error>
   readonly getStatus: () => Effect.Effect<DaemonStatus>
 }
 
@@ -231,7 +236,7 @@ export const OverlordServiceLive = Layer.effect(
       })
 
     // Sync all sessions
-    const syncAllSessions = (auth: { userId: string; apiKey: string }) =>
+    const syncAllSessions = (auth: { userId: string; apiKey: string }, filterOptions?: FilterOptions) =>
       Effect.gen(function*() {
         const claudePaths = yield* fileWatcher.findClaudePaths()
         let synced = 0
@@ -239,6 +244,13 @@ export const OverlordServiceLive = Layer.effect(
         const errors: Array<string> = []
 
         for (const claudePath of claudePaths) {
+          // Apply path filtering
+          if (filterOptions?.includePaths && !filterOptions.includePaths.some(include => claudePath.includes(include))) {
+            continue
+          }
+          if (filterOptions?.excludePaths && filterOptions.excludePaths.some(exclude => claudePath.includes(exclude))) {
+            continue
+          }
           const files = yield* Effect.tryPromise(() => fs.readdir(claudePath, { recursive: true }))
           const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"))
 
