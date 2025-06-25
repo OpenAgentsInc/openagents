@@ -2,6 +2,7 @@ import { Args, Command, Options } from "@effect/cli"
 import { NodeContext } from "@effect/platform-node"
 import { Console, Effect, Option } from "effect"
 import * as ConvexSync from "./services/ConvexSync.js"
+import type { EmbeddingConfig } from "./services/ConvexSync.js"
 import * as FileWatcher from "./services/FileWatcher.js"
 import * as OverlordService from "./services/OverlordService.js"
 import * as WebSocketClient from "./services/WebSocketClient.js"
@@ -21,6 +22,30 @@ const apiKeyOption = Options.text("api-key").pipe(
 const endpointOption = Options.text("endpoint").pipe(
   Options.withDescription("WebSocket endpoint (default: wss://openagents.com/ws)"),
   Options.withDefault("wss://openagents.com/ws"),
+  Options.optional
+)
+
+const includePathOption = Options.text("include-path").pipe(
+  Options.withDescription("Only sync projects containing this path substring (can be used multiple times)"),
+  Options.withAlias("i"),
+  Options.repeated
+)
+
+const excludePathOption = Options.text("exclude-path").pipe(
+  Options.withDescription("Exclude projects containing this path substring (can be used multiple times)"),
+  Options.withAlias("e"),
+  Options.repeated
+)
+
+const enableEmbeddingsOption = Options.boolean("enable-embeddings").pipe(
+  Options.withDescription("Generate vector embeddings for semantic search (requires OpenAI API key)"),
+  Options.withDefault(false),
+  Options.optional
+)
+
+const embeddingModelOption = Options.text("embedding-model").pipe(
+  Options.withDescription("OpenAI embedding model to use"),
+  Options.withDefault("text-embedding-3-small"),
   Options.optional
 )
 
@@ -117,23 +142,53 @@ const sessionIdArg = Args.text({ name: "sessionId" }).pipe(
 const transportCommand = Command.make("transport", {
   sessionId: sessionIdArg,
   userId: userIdOption,
-  apiKey: apiKeyOption
+  apiKey: apiKeyOption,
+  includePaths: includePathOption,
+  excludePaths: excludePathOption,
+  enableEmbeddings: enableEmbeddingsOption,
+  embeddingModel: embeddingModelOption
 }).pipe(
   Command.withDescription("Transport (sync) Claude Code sessions to the cloud"),
-  Command.withHandler(({ apiKey, sessionId, userId }) =>
+  Command.withHandler(({ apiKey, embeddingModel, enableEmbeddings, excludePaths, includePaths, sessionId, userId }) =>
     Effect.gen(function*() {
       const service = yield* OverlordService.OverlordService
 
+      // Create filter options
+      const filterOptions: OverlordService.FilterOptions = {
+        ...(includePaths.length > 0 && { includePaths: includePaths as ReadonlyArray<string> }),
+        ...(excludePaths.length > 0 && { excludePaths: excludePaths as ReadonlyArray<string> })
+      }
+
+      // Create embedding configuration
+      const embeddingConfig = Option.getOrElse(enableEmbeddings, () => false) ?
+        {
+          enabled: true,
+          model: Option.getOrElse(embeddingModel, () => "text-embedding-3-small"),
+          ...(process.env.OPENAI_API_KEY && { apiKey: process.env.OPENAI_API_KEY })
+        } as const satisfies EmbeddingConfig :
+        undefined
+
+      if (embeddingConfig) {
+        yield* Console.log(`✨ Vector embeddings enabled using model: ${embeddingConfig.model}`)
+      }
+
       if (Option.isNone(sessionId) || Option.getOrElse(sessionId, () => "") === "all") {
         yield* Console.log("🚀 Transporting all sessions to the cloud...")
-        const result = yield* service.syncAllSessions({ userId, apiKey })
+        if (filterOptions.includePaths || filterOptions.excludePaths) {
+          yield* Console.log(
+            `📂 Path filtering: include=${filterOptions.includePaths?.join(", ") || "all"}, exclude=${
+              filterOptions.excludePaths?.join(", ") || "none"
+            }`
+          )
+        }
+        const result = yield* service.syncAllSessions({ userId, apiKey }, filterOptions, embeddingConfig)
         yield* Console.log(`✅ Transported ${result.synced} sessions`)
         if (result.failed > 0) {
           yield* Console.log(`⚠️  Failed to sync ${result.failed} sessions`)
         }
       } else {
         yield* Console.log(`🚀 Transporting session ${Option.getOrElse(sessionId, () => "")}...`)
-        yield* service.syncSession(Option.getOrElse(sessionId, () => ""), { userId, apiKey })
+        yield* service.syncSession(Option.getOrElse(sessionId, () => ""), { userId, apiKey }, embeddingConfig)
         yield* Console.log("✅ Session transported successfully")
       }
     }).pipe(
@@ -162,15 +217,46 @@ const limitOption = Options.integer("limit").pipe(
 const importCommand = Command.make("import", {
   userId: userIdOption,
   apiKey: apiKeyOption,
-  limit: limitOption
+  limit: limitOption,
+  includePaths: includePathOption,
+  excludePaths: excludePathOption,
+  enableEmbeddings: enableEmbeddingsOption,
+  embeddingModel: embeddingModelOption
 }).pipe(
   Command.withDescription("Import Claude Code conversations to Convex (for testing)"),
-  Command.withHandler(({ apiKey: _apiKey, limit, userId }) =>
+  Command.withHandler((
+    { apiKey: _apiKey, embeddingModel, enableEmbeddings, excludePaths, includePaths, limit, userId }
+  ) =>
     Effect.gen(function*() {
       const service = yield* OverlordService.OverlordService
       const maxLimit = Option.getOrElse(limit, () => 10)
 
+      // Create filter options
+      const filterOptions: OverlordService.FilterOptions = {
+        ...(includePaths.length > 0 && { includePaths: includePaths as ReadonlyArray<string> }),
+        ...(excludePaths.length > 0 && { excludePaths: excludePaths as ReadonlyArray<string> })
+      }
+
+      // Create embedding configuration
+      const embeddingConfig = Option.getOrElse(enableEmbeddings, () => false) ?
+        {
+          enabled: true,
+          model: Option.getOrElse(embeddingModel, () => "text-embedding-3-small"),
+          ...(process.env.OPENAI_API_KEY && { apiKey: process.env.OPENAI_API_KEY })
+        } as const satisfies EmbeddingConfig :
+        undefined
+
       yield* Console.log(`📥 Importing up to ${maxLimit} Claude Code conversations...`)
+      if (embeddingConfig) {
+        yield* Console.log(`✨ Vector embeddings enabled using model: ${embeddingConfig.model}`)
+      }
+      if (filterOptions.includePaths || filterOptions.excludePaths) {
+        yield* Console.log(
+          `📂 Path filtering: include=${filterOptions.includePaths?.join(", ") || "all"}, exclude=${
+            filterOptions.excludePaths?.join(", ") || "none"
+          }`
+        )
+      }
 
       // First detect installations
       const installations = yield* service.detectClaudeInstallations()
@@ -191,24 +277,41 @@ const importCommand = Command.make("import", {
       for (const claudePath of claudePaths) {
         if (imported >= maxLimit) break
 
-        const files = yield* Effect.tryPromise(() =>
-          import("node:fs/promises").then((fs) => fs.readdir(claudePath, { recursive: true }))
-        )
+        // Apply path filtering
+        if (filterOptions.includePaths && !filterOptions.includePaths.some((include) => claudePath.includes(include))) {
+          yield* Console.log(`  ⏭️  Skipping ${claudePath} (not in include paths)`)
+          continue
+        }
+        if (filterOptions.excludePaths && filterOptions.excludePaths.some((exclude) => claudePath.includes(exclude))) {
+          yield* Console.log(`  ⏭️  Skipping ${claudePath} (in exclude paths)`)
+          continue
+        }
+
+        const fs = yield* Effect.tryPromise(() => import("node:fs/promises"))
+        const files = yield* Effect.tryPromise(() => fs.readdir(claudePath, { recursive: true }))
         const jsonlFiles = files
           .filter((f): f is string => typeof f === "string" && f.endsWith(".jsonl"))
-          .sort((a, b) => b.localeCompare(a)) // Sort newest first
 
-        for (const file of jsonlFiles) {
+        // Get file stats and sort by modification time (newest first)
+        const filesWithStats = yield* Effect.tryPromise(async () => {
+          const statsPromises = jsonlFiles.map(async (file) => {
+            const filePath = `${claudePath}/${file}`
+            const stat = await fs.stat(filePath)
+            return { file, filePath, mtime: stat.mtime.getTime() }
+          })
+          const results = await Promise.all(statsPromises)
+          return results.sort((a, b) => b.mtime - a.mtime) // Sort by mtime descending (newest first)
+        })
+
+        for (const { file, filePath } of filesWithStats) {
           if (imported >= maxLimit) break
 
-          const filePath = `${claudePath}/${file}`
           const sessionId = file.replace(".jsonl", "").split("/").pop() || file
 
           yield* Console.log(`  📄 Importing session ${sessionId}...`)
 
           yield* Effect.gen(function*() {
             // Read and parse file
-            const fs = yield* Effect.tryPromise(() => import("node:fs/promises"))
             const content = yield* Effect.tryPromise(() => fs.readFile(filePath, "utf-8"))
 
             const JSONLParser = yield* Effect.tryPromise(() => import("./services/JSONLParser.js"))
@@ -251,7 +354,7 @@ const importCommand = Command.make("import", {
             }
 
             // Save to Convex
-            yield* convexSync.saveSession(sessionId, userId, projectPath, entries)
+            yield* convexSync.saveSession(sessionId, userId, projectPath, entries, embeddingConfig)
 
             imported++
             yield* Console.log(`    ✅ Imported ${entries.length} entries`)

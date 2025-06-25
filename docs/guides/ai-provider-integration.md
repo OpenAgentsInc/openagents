@@ -543,6 +543,207 @@ const client = http.pipe(
 )
 ```
 
+## Vector Embedding Services
+
+The AI package provides embedding services for semantic search and vector operations, supporting multiple embedding providers beyond OpenAI.
+
+### MessageEmbeddingService
+
+**Purpose**: Converts chat messages into vector embeddings for semantic search.
+
+```typescript
+class MessageEmbeddingService extends Context.Tag("MessageEmbeddingService")<
+  MessageEmbeddingService,
+  MessageEmbeddingService.Service
+>() {}
+
+export declare namespace MessageEmbeddingService {
+  export interface Service {
+    readonly embedMessage: (content: MessageContent) => Effect.Effect<EmbeddingResult, AiError>
+    readonly embedMessages: (contents: ReadonlyArray<MessageContent>) => Effect.Effect<ReadonlyArray<EmbeddingResult>, AiError>
+  }
+}
+```
+
+**Message Content Structure**:
+```typescript
+export interface MessageContent {
+  readonly content?: string | undefined
+  readonly entry_type: string
+  readonly role?: string | undefined
+  readonly thinking?: string | undefined
+  readonly summary?: string | undefined
+  readonly tool_output?: string | undefined
+}
+```
+
+**Configuration Options**:
+```typescript
+export interface MessageEmbeddingConfig {
+  readonly model: string                    // e.g., "text-embedding-3-small"
+  readonly includeThinking?: boolean        // Include thinking content (default: true)
+  readonly includeToolOutputs?: boolean     // Include tool outputs (default: true)
+  readonly maxTokens?: number              // Token limit (default: 8192)
+}
+```
+
+### ConvexEmbeddingService
+
+**Purpose**: Integrates embeddings with Convex database for storage and vector search.
+
+```typescript
+class ConvexEmbeddingService extends Context.Tag("ConvexEmbeddingService")<
+  ConvexEmbeddingService,
+  ConvexEmbeddingService.Service
+>() {}
+
+export declare namespace ConvexEmbeddingService {
+  export interface Service {
+    readonly embedAndStore: (message: ConvexMessage) => Effect.Effect<string, AiError>
+    readonly embedAndStoreBatch: (messages: ReadonlyArray<ConvexMessage>) => Effect.Effect<ReadonlyArray<{message_id: string; embedding_id: string}>, AiError>
+    readonly searchSimilar: (options: SimilaritySearchOptions) => Effect.Effect<ReadonlyArray<SimilaritySearchResult>, AiError>
+    readonly searchSimilarByText: (options: TextSearchOptions) => Effect.Effect<ReadonlyArray<SimilaritySearchResult>, AiError>
+    readonly getStats: (session_id?: string) => Effect.Effect<EmbeddingStats, AiError>
+  }
+}
+```
+
+### Embedding Provider Support
+
+**Local/Self-Hosted Options** (Recommended):
+- **Ollama** - Local embedding models via HTTP API
+- **Hugging Face Transformers** - Local model inference
+- **Sentence Transformers** - Local embedding generation
+- **Custom HTTP endpoints** - Any compatible embedding service
+
+**Cloud Options**:
+- **OpenAI** - text-embedding-3-small, text-embedding-ada-002
+- **Cohere** - embed-english-v3.0, embed-multilingual-v3.0
+- **Voyage AI** - voyage-large-2, voyage-code-2
+
+### Embedding Provider Implementation Pattern
+
+```typescript
+// Example: Ollama embedding provider
+export class OllamaEmbeddingProvider extends Effect.Service<OllamaEmbeddingProvider>()("OllamaEmbeddingProvider", {
+  effect: Effect.gen(function* () {
+    const config = yield* OllamaConfig
+    const http = yield* HttpClient.HttpClient
+    
+    return {
+      embed: (text: string, model: string) =>
+        Effect.gen(function* () {
+          const response = yield* http.request.post(`${config.baseUrl}/api/embeddings`).pipe(
+            HttpClient.request.jsonBody({
+              model,
+              prompt: text
+            }),
+            HttpClient.response.json
+          )
+          
+          return {
+            embedding: response.embedding,
+            model,
+            dimensions: response.embedding.length
+          }
+        })
+    }
+  })
+}) {}
+```
+
+### Integration with Overlord Sync
+
+The Overlord sync system integrates embedding generation during message synchronization:
+
+```typescript
+// CLI options for embedding control
+const enableEmbeddingsOption = Options.boolean("enable-embeddings").pipe(
+  Options.withDescription("Generate vector embeddings for semantic search"),
+  Options.withDefault(false)
+)
+
+const embeddingModelOption = Options.string("embedding-model").pipe(
+  Options.withDescription("Embedding model to use"),
+  Options.withDefault("text-embedding-3-small")
+)
+
+// Usage in sync commands
+overlord transport --enable-embeddings --embedding-model="nomic-embed-text"
+overlord import --enable-embeddings --embedding-model="all-MiniLM-L6-v2"
+```
+
+**Embedding Generation Flow**:
+1. Message parsed from JSONL
+2. Content filtered (skip empty/summary entries)
+3. Text extracted from message content, thinking, and tool outputs
+4. Embedding generated via configured provider
+5. Vector stored in Convex with 1536-dimensional index
+6. Embedding failures logged but don't break sync
+
+### Provider Configuration Examples
+
+**Ollama (Local)**:
+```typescript
+export const OllamaEmbeddingConfigLive = Layer.succeed(OllamaConfig, {
+  baseUrl: "http://localhost:11434",
+  model: "nomic-embed-text"  // Local embedding model
+})
+```
+
+**Hugging Face (Local)**:
+```typescript
+export const HuggingFaceEmbeddingConfigLive = Layer.succeed(HuggingFaceConfig, {
+  modelPath: "./models/all-MiniLM-L6-v2",  // Local model directory
+  maxLength: 512
+})
+```
+
+**Custom HTTP Service**:
+```typescript
+export const CustomEmbeddingConfigLive = Layer.succeed(CustomEmbeddingConfig, {
+  endpoint: "http://your-embedding-service.com/embed",
+  apiKey: process.env.CUSTOM_EMBEDDING_KEY,
+  model: "your-model-name"
+})
+```
+
+### Performance Considerations
+
+**Batch Processing**:
+```typescript
+// Process embeddings in configurable batches
+const batchSize = config.batchSize ?? 10
+for (let i = 0; i < messages.length; i += batchSize) {
+  const batch = messages.slice(i, i + batchSize)
+  yield* embeddingService.embedMessages(batch)
+}
+```
+
+**Content Filtering**:
+```typescript
+// Only generate embeddings for meaningful content
+const shouldGenerateEmbedding = (messageRecord: any): boolean => {
+  if (messageRecord.entry_type === "summary") return false
+  
+  const hasContent = messageRecord.content?.trim().length > 0
+  const hasThinking = messageRecord.thinking?.trim().length > 0
+  const hasToolOutput = messageRecord.tool_output?.trim().length > 0
+  
+  return hasContent || hasThinking || hasToolOutput
+}
+```
+
+**Error Resilience**:
+```typescript
+// Embedding failures don't break sync
+yield* generateEmbeddingForMessage(messageId, messageRecord, embeddingConfig).pipe(
+  Effect.catchAll((error) =>
+    Effect.logWarning(`Failed to generate embedding for message ${messageRecord.entry_uuid}: ${error}`)
+  )
+)
+```
+
 ---
 
-**Remember**: All AI providers must maintain compatibility with the OpenAI API format for seamless frontend integration.
+**Remember**: All AI providers must maintain compatibility with the OpenAI API format for seamless frontend integration. For embeddings, prefer local/self-hosted solutions to avoid external API dependencies and costs.

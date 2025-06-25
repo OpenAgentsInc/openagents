@@ -155,11 +155,18 @@ const makeBatched = Effect.fnUntraced(function*(options: {
   const client = yield* OpenAiClient
   const { config = {}, model } = options
   const { cache, maxBatchSize = 2048, ...rest } = config
-  return yield* AiEmbeddingModel.make({
-    cache,
-    maxBatchSize,
-    embedMany: (input) => makeRequest(client, model, input, rest)
-  })
+  return yield* AiEmbeddingModel.make(
+    cache !== undefined
+      ? {
+        maxBatchSize,
+        embedMany: (input) => makeRequest(client, model, input, rest),
+        cache
+      }
+      : {
+        maxBatchSize,
+        embedMany: (input) => makeRequest(client, model, input, rest)
+      }
+  )
 })
 
 /**

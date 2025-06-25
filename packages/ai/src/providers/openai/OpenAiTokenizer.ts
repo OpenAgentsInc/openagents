@@ -37,17 +37,17 @@ export const make = (options: { readonly model: string }) =>
                     part._tag === "ReasoningPart" ||
                     part._tag === "RedactedReasoningPart"
                   ) return Option.none()
-                  return Option.some(
-                    {
-                      role: message._tag === "UserMessage" ? "user" : "assistant",
-                      name: message._tag === "UserMessage" && Predicate.isNotUndefined(message.userName)
-                        ? message.userName
-                        : undefined,
-                      content: part._tag === "TextPart"
-                        ? part.text
-                        : JSON.stringify(part._tag === "ToolCallPart" ? part.params : part.result)
-                    } as const
-                  )
+                  // Build message object conditionally to satisfy exactOptionalPropertyTypes
+                  const role = message._tag === "UserMessage" ? "user" : "assistant"
+                  const content = part._tag === "TextPart"
+                    ? part.text
+                    : JSON.stringify(part._tag === "ToolCallPart" ? part.params : part.result)
+
+                  const chatMessage = message._tag === "UserMessage" && Predicate.isNotUndefined(message.userName)
+                    ? { role, content, name: message.userName } as const
+                    : { role, content } as const
+
+                  return Option.some(chatMessage)
                 }
               )),
             options.model as any

@@ -140,7 +140,13 @@ export declare namespace ProviderMetadata {
 export const model = (
   model: (string & {}) | Model,
   config?: Omit<Config.Service, "model">
-): AiModel.AiModel<AiLanguageModel.AiLanguageModel, OpenAiClient> => AiModel.make(layer({ model, config }))
+): AiModel.AiModel<AiLanguageModel.AiLanguageModel, OpenAiClient> => {
+  return AiModel.make(layer(
+    config !== undefined
+      ? { model, config }
+      : { model }
+  ))
+}
 
 /**
  * @since 1.0.0
@@ -149,8 +155,13 @@ export const model = (
 export const modelWithTokenizer = (
   model: (string & {}) | Model,
   config?: Omit<Config.Service, "model">
-): AiModel.AiModel<AiLanguageModel.AiLanguageModel | Tokenizer.Tokenizer, OpenAiClient> =>
-  AiModel.make(layerWithTokenizer({ model, config }))
+): AiModel.AiModel<AiLanguageModel.AiLanguageModel | Tokenizer.Tokenizer, OpenAiClient> => {
+  return AiModel.make(layerWithTokenizer(
+    config !== undefined
+      ? { model, config }
+      : { model }
+  ))
+}
 
 /**
  * @since 1.0.0
@@ -259,7 +270,14 @@ export const layer = (options: {
   readonly model: (string & {}) | Model
   readonly config?: Omit<Config.Service, "model">
 }): Layer.Layer<AiLanguageModel.AiLanguageModel, never, OpenAiClient> =>
-  Layer.effect(AiLanguageModel.AiLanguageModel, make({ model: options.model, config: options.config }))
+  Layer.effect(
+    AiLanguageModel.AiLanguageModel,
+    make(
+      options.config !== undefined
+        ? { model: options.model, config: options.config }
+        : { model: options.model }
+    )
+  )
 
 /**
  * @since 1.0.0

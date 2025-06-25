@@ -1,10 +1,11 @@
 import * as Predicate from "effect/Predicate"
-import type * as AiResponse from "../../core/AiResponse.js"
 
 /** @internal */
 export const ProviderMetadataKey = "@effect/ai-openai/OpenAiLanguageModel/ProviderMetadata"
 
-const finishReasonMap: Record<string, AiResponse.FinishReason> = {
+type FinishReason = "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other" | "unknown"
+
+const finishReasonMap: Record<string, FinishReason> = {
   content_filter: "content-filter",
   function_call: "tool-calls",
   length: "length",
@@ -13,7 +14,7 @@ const finishReasonMap: Record<string, AiResponse.FinishReason> = {
 }
 
 /** @internal */
-export const resolveFinishReason = (finishReason: string): AiResponse.FinishReason => {
+export const resolveFinishReason = (finishReason: string): FinishReason => {
   const reason = finishReasonMap[finishReason]
   return Predicate.isUndefined(reason) ? "unknown" : reason
 }
