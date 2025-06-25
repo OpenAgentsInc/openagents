@@ -296,11 +296,10 @@ export function renderChatMessage(message: {
   let roleClass = "user"
 
   // Check if this message contains tool result content
+  // Only consider it a tool result if it's specifically formatted as one, not just mentioning tools
   const messageContainsToolResult = isToolResultProcessed ||
     rawContent.startsWith("📤 Tool Result:") ||
-    rawContent.includes("📤 Tool Result") ||
-    (rawContent.startsWith("[{") && rawContent.includes("\"type\":\"tool_result\"")) ||
-    rawContent.includes("Tool Result (")
+    (rawContent.startsWith("[{") && rawContent.includes("\"type\":\"tool_result\""))
 
   if (isToolOnlyMessage) {
     roleClass = "tool"
