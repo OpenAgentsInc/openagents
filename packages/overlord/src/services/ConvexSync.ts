@@ -8,8 +8,8 @@ import { Context, Effect, Layer } from "effect"
 import * as DatabaseMapper from "./DatabaseMapper.js"
 import type * as JSONLParser from "./JSONLParser.js"
 
-// Import embedding services (for future implementation)
-// import { ConvexEmbeddingService, MessageEmbeddingService, OpenAI } from "@openagentsinc/ai"
+// Import embedding services
+import { MessageEmbeddingService, OpenAI } from "@openagentsinc/ai"
 
 // Embedding configuration
 export interface EmbeddingConfig {
@@ -47,22 +47,64 @@ const shouldGenerateEmbedding = (messageRecord: any): boolean => {
 }
 
 const generateEmbeddingForMessage = (
-  messageId: any,
+  messageId: string,
   messageRecord: any,
   embeddingConfig: EmbeddingConfig
 ) =>
   Effect.gen(function*() {
-    // TODO: Implement embedding generation with proper service layers
-    // For now, just log that embedding would be generated
     yield* Effect.log(
-      `✨ Would generate embedding for message ${messageRecord.entry_uuid} with model ${embeddingConfig.model}`
+      `🔥 Generating embedding for message ${messageRecord.entry_uuid} with model ${embeddingConfig.model}`
     )
+
+    // Create message content for embedding
+    const messageContent: any = {
+      content: messageRecord.content || "",
+      entry_type: messageRecord.entry_type,
+      role: messageRecord.role,
+      thinking: messageRecord.thinking,
+      summary: messageRecord.summary,
+      tool_output: messageRecord.tool_output
+    }
+
+    // Get embedding service
+    const embeddingService = yield* MessageEmbeddingService
+
+    // Generate embedding
+    const embeddingResult = yield* embeddingService.embedMessage(messageContent)
+    
+    yield* Effect.log(
+      `✅ Generated ${embeddingResult.dimensions}D embedding for message ${messageRecord.entry_uuid}`
+    )
+
+    // Store embedding in Convex using the storeEmbedding mutation
+    const embeddingId = yield* Effect.tryPromise({
+      try: async () => {
+        // Use ConvexHttpClient directly since it's not in the ConvexClient wrapper
+        const { ConvexHttpClient } = await import("convex/browser")
+        const url = process.env.CONVEX_URL || "https://proficient-panther-764.convex.cloud"
+        const convexClient = new ConvexHttpClient(url)
+        
+        return await convexClient.mutation("embeddings:storeEmbedding", {
+          message_id: messageId,
+          embedding: embeddingResult.embedding,
+          model: embeddingResult.model,
+          dimensions: embeddingResult.dimensions
+        })
+      },
+      catch: (error) => 
+        new Error(`Failed to store embedding in Convex: ${error}`)
+    })
+
+    yield* Effect.log(
+      `💾 Stored embedding ${embeddingId} for message ${messageRecord.entry_uuid}`
+    )
+
+    return embeddingId
   })
 
-// Implementation
-export const ConvexSyncServiceLive = Layer.succeed(
-  ConvexSyncService,
-  {
+// Implementation with embedding service dependencies
+const make = Effect.gen(function*() {
+  return {
     saveSession: (sessionId, userId, projectPath, entries, embeddingConfig) =>
       Effect.gen(function*() {
         // Create session record
@@ -178,4 +220,22 @@ export const ConvexSyncServiceLive = Layer.succeed(
         yield* Effect.log(`Synced ${entries.length} entries for session ${sessionId}`)
       })
   }
+})
+
+// Layer with embedding service dependencies
+export const ConvexSyncServiceLive = Layer.effect(
+  ConvexSyncService,
+  make
+).pipe(
+  Layer.provide(MessageEmbeddingService.layer({
+    model: "text-embedding-3-small",
+    includeThinking: true,
+    includeToolOutputs: true,
+    maxTokens: 8192
+  })),
+  Layer.provide(OpenAI.EmbeddingModel.layer("text-embedding-3-small")),
+  Layer.provide(OpenAI.layer({
+    apiKey: process.env.OPENAI_API_KEY || "",
+    baseURL: "https://api.openai.com/v1"
+  }))
 )
