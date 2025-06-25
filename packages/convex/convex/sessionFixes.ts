@@ -5,6 +5,7 @@
 
 import { v } from "convex/values"
 import { mutation, query } from "./_generated/server"
+import type { Mutation } from "convex/server"
 
 /**
  * Update session project information
@@ -36,7 +37,7 @@ export const updateProjectInfo = mutation({
 /**
  * Fix all sessions with "unknown" project paths
  */
-export const fixAllProjectNames = mutation({
+export const fixAllProjectNames: Mutation<any, any> = mutation({
   handler: async (ctx) => {
     const sessions = await ctx.db
       .query("sessions")
@@ -61,7 +62,7 @@ export const fixAllProjectNames = mutation({
 /**
  * Update session message count based on actual messages
  */
-export const fixMessageCounts = mutation({
+export const fixMessageCounts: Mutation<any, any> = mutation({
   handler: async (ctx) => {
     const sessions = await ctx.db.query("sessions").collect()
     
