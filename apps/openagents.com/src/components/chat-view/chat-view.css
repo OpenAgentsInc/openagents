@@ -1006,7 +1006,7 @@ body {
 }
 
 .debug-button {
-  padding: 4px;
+  padding: 8px 4px 4px 4px; /* Added 4px more top padding */
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
