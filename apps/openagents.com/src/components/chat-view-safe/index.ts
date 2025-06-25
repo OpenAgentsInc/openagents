@@ -10,9 +10,8 @@ export async function createChatViewSafe({ conversationId }: ChatViewSafeProps) 
   const { getConversationWithMessages, getConversations } = await import("../../lib/chat-client-convex")
 
   // Load all conversations for sidebar
-  let _allConversations: Array<any> = []
   try {
-    _allConversations = await getConversations() as Array<any>
+    await getConversations() as Array<any>
   } catch (error) {
     console.error("Failed to load conversations:", error)
   }
