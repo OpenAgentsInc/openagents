@@ -3,7 +3,8 @@
  * @since 1.0.0
  */
 
-import { ConvexHttpClient } from "convex/browser"
+// TODO: Re-enable when convex dependency is added back
+// import { ConvexHttpClient } from "convex/browser"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -114,11 +115,15 @@ export declare namespace ConvexEmbeddingService {
  */
 export const make = (config: ConvexEmbeddingConfig = {}) =>
   Effect.gen(function*() {
+    // TODO: Re-enable when convex dependency is added back
     // Get Convex client from environment
-    const url = typeof process !== "undefined" && process.env?.CONVEX_URL
-      ? process.env.CONVEX_URL
-      : "https://proficient-panther-764.convex.cloud"
-    const convexClient = new ConvexHttpClient(url)
+    // const url = typeof process !== "undefined" && process.env?.CONVEX_URL
+    //   ? process.env.CONVEX_URL
+    //   : "https://proficient-panther-764.convex.cloud"
+    // const convexClient = new ConvexHttpClient(url)
+    
+    // Temporary placeholder until convex dependency is restored
+    const convexClient = null as any
 
     const embeddingService = yield* MessageEmbeddingService
 
