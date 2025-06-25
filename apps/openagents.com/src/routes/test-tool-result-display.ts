@@ -6,7 +6,8 @@ export function testToolResultDisplay() {
   // Create a test message that matches the problematic one
   const toolResultMessage = {
     role: "user" as const,
-    content: `[{"tool_use_id":"toolu_01VcDCTXpXehuZGSP5zRBvgp","type":"tool_result","content":"-2473446063908168524speed_up.mov\\n05.rbxl\\n1024.jpg\\n12-31-2023 Open Agents Proof of Cash.xlsx\\n12-31-2023 OpenAgents Balance Sheet (DRAFT - Preliminary).pdf\\n12-31-2023 OpenAgents Profit & Loss (DRAFT - Preliminary).pdf\\n1500x500a.jpeg\\n1934-7685-002.2025.issue-058-en.pdf\\n2024 BTC SENT to Contractors.xlsx\\n2024-03-13_Order-od_KrOvXIf5rv.pdf\\n2024-03-13_Order-od_RqrMCZp5ju.pdf\\n2024-04-29_OpenAgents-Inc._Order-od_HC1YbJMsOF.pdf\\n2024-monthly-statements\\n2024-monthly-statements.zip\\n20240903 Shell\\n20240903 Shell 2\\n20241209_1405_Submersible Approaches Thermal Plant_simple_compose_01jepgc6ycefqab0chf2fjdvkh.mp4\\n20241209_2125_Atlantean Warrior Transformation_simple_compose_01jeq9khjkf4wrrjf6jg22yr2j.mp4\\n2025-03-03_Bitcoin-Park_Order-od_vPUG59bvWL.pdf","is_error":false}]`,
+    content:
+      `[{"tool_use_id":"toolu_01VcDCTXpXehuZGSP5zRBvgp","type":"tool_result","content":"-2473446063908168524speed_up.mov\\n05.rbxl\\n1024.jpg\\n12-31-2023 Open Agents Proof of Cash.xlsx\\n12-31-2023 OpenAgents Balance Sheet (DRAFT - Preliminary).pdf\\n12-31-2023 OpenAgents Profit & Loss (DRAFT - Preliminary).pdf\\n1500x500a.jpeg\\n1934-7685-002.2025.issue-058-en.pdf\\n2024 BTC SENT to Contractors.xlsx\\n2024-03-13_Order-od_KrOvXIf5rv.pdf\\n2024-03-13_Order-od_RqrMCZp5ju.pdf\\n2024-04-29_OpenAgents-Inc._Order-od_HC1YbJMsOF.pdf\\n2024-monthly-statements\\n2024-monthly-statements.zip\\n20240903 Shell\\n20240903 Shell 2\\n20241209_1405_Submersible Approaches Thermal Plant_simple_compose_01jepgc6ycefqab0chf2fjdvkh.mp4\\n20241209_2125_Atlantean Warrior Transformation_simple_compose_01jeq9khjkf4wrrjf6jg22yr2j.mp4\\n2025-03-03_Bitcoin-Park_Order-od_vPUG59bvWL.pdf","is_error":false}]`,
     timestamp: Date.now()
   }
 
@@ -76,10 +77,10 @@ export function testToolResultDisplay() {
           
           <div class="debug-info">
             <strong>Debug Info:</strong>
-            Content starts with '[{': ${toolResultMessage.content.startsWith('[{')}
+            Content starts with '[{': ${toolResultMessage.content.startsWith("[{")}
             Content length: ${toolResultMessage.content.length} characters
-            HTML contains 'tool-result-section': ${toolResultHTML.includes('tool-result-section')}
-            HTML contains 'Tool Result' label: ${toolResultHTML.includes('Tool Result')}
+            HTML contains 'tool-result-section': ${toolResultHTML.includes("tool-result-section")}
+            HTML contains 'Tool Result' label: ${toolResultHTML.includes("Tool Result")}
           </div>
         </div>
 

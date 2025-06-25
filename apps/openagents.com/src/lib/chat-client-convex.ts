@@ -153,11 +153,11 @@ export function getConversationWithMessages(sessionId: string) {
 
           // Extract tool metadata from content if it's embedded
           let extractedToolMetadata: any = {}
-          if (msg.content && typeof msg.content === 'string' && msg.content.includes('"type":"tool_use"')) {
+          if (msg.content && typeof msg.content === "string" && msg.content.includes("\"type\":\"tool_use\"")) {
             try {
               const parsed = JSON.parse(msg.content)
               if (Array.isArray(parsed)) {
-                const toolUse = parsed.find((item: any) => item.type === 'tool_use')
+                const toolUse = parsed.find((item: any) => item.type === "tool_use")
                 if (toolUse) {
                   extractedToolMetadata = {
                     toolName: toolUse.name,
@@ -343,14 +343,14 @@ function parseMessageContent(message: any): string {
           if (Array.isArray(parsed)) {
             const textParts = parsed.filter((part: any) => part.type === "text")
             const toolParts = parsed.filter((part: any) => part.type === "tool_use")
-            
+
             // If there's no text but there are tools, show tool invocation
             if (textParts.length === 0 && toolParts.length > 0) {
               debug(`Assistant message contains only tool_use, no text`)
               const tool = toolParts[0]
               return `🔧 Using tool: ${tool.name}`
             }
-            
+
             const parts = parsed.map((part: any) => {
               if (part.type === "text") {
                 return part.text || ""

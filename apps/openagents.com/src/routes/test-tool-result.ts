@@ -91,9 +91,9 @@ AgentCamp - Google Chrome 2025-05-28 08-33-45.mp4`,
       
       <h2>Detection Info:</h2>
       <pre>
-Content starts with "📤 Tool Result:": ${testMessage.content.startsWith('📤 Tool Result:')}
+Content starts with "📤 Tool Result:": ${testMessage.content.startsWith("📤 Tool Result:")}
 Content length: ${testMessage.content.length}
-Lines count: ${testMessage.content.split('\n').length}
+Lines count: ${testMessage.content.split("\n").length}
       </pre>
     `
   })

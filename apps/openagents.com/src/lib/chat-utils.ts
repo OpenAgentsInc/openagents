@@ -16,50 +16,50 @@ function escapeHtml(text: string): string {
  */
 function formatToolResult(content: string): string {
   // Check if content looks like a file listing
-  const lines = content.split('\n').filter(line => line.trim())
-  
+  const lines = content.split("\n").filter((line) => line.trim())
+
   // More strict file detection - must have file extensions and path separators
-  const looksLikeFiles = lines.length > 10 && 
-    lines.filter(line => line.includes('/')).length > lines.length * 0.8 &&
-    lines.filter(line => /\.(pdf|xlsx|mov|jpg|jpeg|png|mp4|zip|txt|js|ts|json|md)$/i.test(line)).length > lines.length * 0.5
-  
+  const looksLikeFiles = lines.length > 10 &&
+    lines.filter((line) => line.includes("/")).length > lines.length * 0.8 &&
+    lines.filter((line) => /\.(pdf|xlsx|mov|jpg|jpeg|png|mp4|zip|txt|js|ts|json|md)$/i.test(line)).length >
+      lines.length * 0.5
+
   if (looksLikeFiles) {
     // It's likely a file listing
     const fileCount = lines.length
-    
+
     return (
       "<div class=\"file-listing\">" +
       "<div style=\"margin-bottom: 0.5rem;\">📁 File listing (" + fileCount + " files)</div>" +
       "<details class=\"tool-result-details\">" +
       "<summary style=\"cursor: pointer; color: #9ece6a;\">Show all files</summary>" +
-      "<pre style=\"margin-top: 0.5rem; max-height: 400px; overflow-y: auto;\">" + 
-      lines.map(escapeHtml).join('\n') + 
+      "<pre style=\"margin-top: 0.5rem; max-height: 400px; overflow-y: auto;\">" +
+      lines.map(escapeHtml).join("\n") +
       "</pre>" +
       "</details>" +
       "</div>"
     )
   }
-  
+
   // For other long content, make it collapsible
   if (content.length > 300) {
-    const lines = content.split('\n')
-    const preview = lines.slice(0, 3).map(line => 
-      line.length > 80 ? line.substring(0, 80) + '...' : line
-    ).join('\n')
-    
+    const lines = content.split("\n")
+    const preview = lines.slice(0, 3).map((line) => line.length > 80 ? line.substring(0, 80) + "..." : line).join("\n")
+
     return (
       "<div class=\"long-content\">" +
       "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
       "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
-      "<summary style=\"cursor: pointer; color: #9ece6a; font-size: 12px;\">Show full content (" + content.length + " characters, " + lines.length + " lines)</summary>" +
-      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" + 
-      escapeHtml(content) + 
+      "<summary style=\"cursor: pointer; color: #9ece6a; font-size: 12px;\">Show full content (" + content.length +
+      " characters, " + lines.length + " lines)</summary>" +
+      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" +
+      escapeHtml(content) +
       "</pre>" +
       "</details>" +
       "</div>"
     )
   }
-  
+
   // Short content - just escape and wrap
   return "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(content) + "</pre>"
 }
@@ -77,30 +77,29 @@ export function renderChatMessage(message: {
 }) {
   // For tool results, we need to check BEFORE using rendered content
   // because markdown rendering wraps JSON in <p> tags
-  let content = ''
+  let content = ""
   let isToolResultProcessed = false
-  
+
   // Check if this is a user message with tool result JSON or plain text format
   // First check raw content, not rendered content
-  const rawContent = message.content || ''
-  
+  const rawContent = message.content || ""
+
   // Check for plain text tool result format (e.g., "📤 Tool Result: ...")
-  const isPlainTextToolResult = rawContent.startsWith('📤 Tool Result:')
-  
+  const isPlainTextToolResult = rawContent.startsWith("📤 Tool Result:")
+
   // Also check if it's HTML escaped or inside paragraph tags
-  const isToolResultJson = rawContent.startsWith('[{') || 
-    rawContent.startsWith('[&lt;{') || 
-    rawContent.startsWith('[&#123;') ||
-    rawContent.includes('<p>[{') ||
-    rawContent.includes('<p>[&lt;{')
-  
+  const isToolResultJson = rawContent.startsWith("[{") ||
+    rawContent.startsWith("[&lt;{") ||
+    rawContent.startsWith("[&#123;") ||
+    rawContent.includes("<p>[{") ||
+    rawContent.includes("<p>[&lt;{")
+
   // Handle plain text tool results
   if (message.role === "user" && isPlainTextToolResult) {
     // Extract content after "📤 Tool Result: "
-    const toolResultContent = rawContent.substring('📤 Tool Result: '.length).trim()
+    const toolResultContent = rawContent.substring("📤 Tool Result: ".length).trim()
     const formattedContent = formatToolResult(toolResultContent)
-    content = 
-      "<div class=\"tool-result-section\">" +
+    content = "<div class=\"tool-result-section\">" +
       "<div class=\"tool-result-header\">" +
       "<span class=\"tool-result-icon\">📤</span>" +
       "<span class=\"tool-result-label\">Tool Result</span>" +
@@ -110,91 +109,96 @@ export function renderChatMessage(message: {
       "</div>" +
       "</div>"
     isToolResultProcessed = true
-  }
-  // Handle JSON tool results
+  } // Handle JSON tool results
   else if (message.role === "user" && rawContent && isToolResultJson) {
     try {
       // Try to unescape if needed
-      const contentToparse = rawContent.startsWith('[{') ? rawContent : 
-        rawContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#123;/g, '{').replace(/&#125;/g, '}')
-      
+      const contentToparse = rawContent.startsWith("[{") ?
+        rawContent :
+        rawContent.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#123;/g, "{").replace(
+          /&#125;/g,
+          "}"
+        )
+
       const parsed = JSON.parse(contentToparse)
-      if (Array.isArray(parsed) && parsed[0]?.type === 'tool_result') {
+      if (Array.isArray(parsed) && parsed[0]?.type === "tool_result") {
         // Format tool result nicely - ignore any rendered markdown
         const toolResult = parsed[0]
-        const formattedContent = formatToolResult(toolResult.content || '')
-        content = 
-          "<div class=\"tool-result-section\">" +
+        const formattedContent = formatToolResult(toolResult.content || "")
+        content = "<div class=\"tool-result-section\">" +
           "<div class=\"tool-result-header\">" +
           "<span class=\"tool-result-icon\">📤</span>" +
           "<span class=\"tool-result-label\">Tool Result</span>" +
-          "<span class=\"tool-result-id\" style=\"font-size: 11px; opacity: 0.7; margin-left: 0.5rem;\">" + escapeHtml(toolResult.tool_use_id || '') + "</span>" +
+          "<span class=\"tool-result-id\" style=\"font-size: 11px; opacity: 0.7; margin-left: 0.5rem;\">" +
+          escapeHtml(toolResult.tool_use_id || "") + "</span>" +
           "</div>" +
           "<div class=\"tool-result-content\">" +
-          formattedContent +  // Don't wrap in pre tag - formatToolResult handles it
+          formattedContent + // Don't wrap in pre tag - formatToolResult handles it
           "</div>" +
           "</div>"
         isToolResultProcessed = true
       }
-    } catch (e) {
+    } catch {
       // Not valid JSON or not a tool result, use original content
     }
   }
-  
+
   // Only use rendered content if we didn't process a tool result
   if (!isToolResultProcessed) {
     content = message.rendered || escapeHtml(message.content)
   }
-  
+
   // Fallback: If content is extremely long (even if not detected as tool result), collapse it
-  if (content.length > 1000 && !content.includes('tool-result-section')) {
-    const lines = content.split('\n')
-    const preview = lines.slice(0, 5).map(line => 
-      line.length > 100 ? line.substring(0, 100) + '...' : line
-    ).join('\n')
-    
-    content = 
-      "<div class=\"long-message-section\">" +
+  if (content.length > 1000 && !content.includes("tool-result-section")) {
+    const lines = content.split("\n")
+    const preview = lines.slice(0, 5).map((line) => line.length > 100 ? line.substring(0, 100) + "..." : line).join(
+      "\n"
+    )
+
+    content = "<div class=\"long-message-section\">" +
       "<div class=\"long-message-header\" style=\"color: #f59e0b; margin-bottom: 0.5rem;\">" +
       "<span style=\"margin-right: 0.5rem;\">⚠️</span>" +
       "<span>Very long message (" + content.length + " characters)</span>" +
       "</div>" +
       "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
       "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
-      "<summary style=\"cursor: pointer; color: #f59e0b; font-size: 12px;\">Show full message (" + lines.length + " lines)</summary>" +
-      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" + 
-      escapeHtml(message.content || content) + 
+      "<summary style=\"cursor: pointer; color: #f59e0b; font-size: 12px;\">Show full message (" + lines.length +
+      " lines)</summary>" +
+      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" +
+      escapeHtml(message.content || content) +
       "</pre>" +
       "</details>" +
       "</div>"
   }
-  
+
   // Add tool information if present in metadata
   if (message.metadata?.hasEmbeddedTool && message.metadata?.toolName) {
-    const toolInput = message.metadata.toolInput ? 
-      escapeHtml(JSON.stringify(message.metadata.toolInput, null, 2)) : "";
-    
-    const toolInfo = 
-      "<div class=\"tool-section\">" +
+    const toolInput = message.metadata.toolInput ?
+      escapeHtml(JSON.stringify(message.metadata.toolInput, null, 2)) :
+      ""
+
+    const toolInfo = "<div class=\"tool-section\">" +
       "<div class=\"tool-header\">" +
       "<span class=\"tool-icon\">🔧</span>" +
       "<span class=\"tool-name\">" + escapeHtml(message.metadata.toolName) + "</span>" +
       "</div>" +
-      (toolInput ? "<div class=\"tool-input\">" +
+      (toolInput ?
+        "<div class=\"tool-input\">" +
         "<details>" +
         "<summary>View input</summary>" +
         "<pre>" + toolInput + "</pre>" +
         "</details>" +
-      "</div>" : "") +
-      "</div>";
-    
+        "</div>" :
+        "") +
+      "</div>"
+
     // Prepend tool info to content
     content = toolInfo + content
   }
-  
+
   // Only include debug section if explicitly enabled or in development
   const includeDebug = true // Re-enabled for debugging
-  
+
   let debugSection = ""
   if (includeDebug) {
     // Create a simplified debug object without the full content
@@ -203,23 +207,25 @@ export function renderChatMessage(message: {
       role: message.role,
       timestamp: message.timestamp,
       contentLength: message.content?.length || 0,
-      contentPreview: message.content?.substring(0, 100) + (message.content?.length > 100 ? '...' : ''),
+      contentPreview: message.content?.substring(0, 100) + (message.content?.length > 100 ? "..." : ""),
       hasRendered: !!message.rendered,
       renderedLength: message.rendered?.length || 0,
-      isToolResult: message.content?.startsWith('[{') && message.content?.includes('"tool_result"') || message.content?.startsWith('📤 Tool Result:'),
+      isToolResult: message.content?.startsWith("[{") && message.content?.includes("\"tool_result\"") ||
+        message.content?.startsWith("📤 Tool Result:"),
       startsWithBracket: message.content?.substring(0, 2),
-      metadata: message.metadata ? {
-        entryType: message.metadata.entryType,
-        hasEmbeddedTool: message.metadata.hasEmbeddedTool,
-        toolName: message.metadata.toolName,
-        toolUseId: message.metadata.toolUseId,
-        turnCount: message.metadata.turnCount
-      } : null
+      metadata: message.metadata ?
+        {
+          entryType: message.metadata.entryType,
+          hasEmbeddedTool: message.metadata.hasEmbeddedTool,
+          toolName: message.metadata.toolName,
+          toolUseId: message.metadata.toolUseId,
+          turnCount: message.metadata.turnCount
+        } :
+        null
     }
-    
+
     const debugJson = escapeHtml(JSON.stringify(debugObject, null, 2))
-    debugSection = 
-      "<div class=\"message-debug\">" +
+    debugSection = "<div class=\"message-debug\">" +
       "<details>" +
       "<summary>Debug Info</summary>" +
       "<pre class=\"debug-json\">" + debugJson + "</pre>" +
