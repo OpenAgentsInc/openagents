@@ -76,14 +76,20 @@ export function renderChatMessage(message: {
   metadata?: any
   [key: string]: any // Allow additional properties for debugging
 }) {
-  // Use the rendered content if available, otherwise escape the raw content
-  let content = message.rendered || escapeHtml(message.content)
+  // For tool results, we need to check BEFORE using rendered content
+  // because markdown rendering wraps JSON in <p> tags
+  let content = ''
+  let isToolResultProcessed = false
   
   // Check if this is a user message with tool result JSON
   // First check raw content, not rendered content
   const rawContent = message.content || ''
-  // Also check if it's HTML escaped
-  const isToolResultJson = rawContent.startsWith('[{') || rawContent.startsWith('[&lt;{') || rawContent.startsWith('[&#123;')
+  // Also check if it's HTML escaped or inside paragraph tags
+  const isToolResultJson = rawContent.startsWith('[{') || 
+    rawContent.startsWith('[&lt;{') || 
+    rawContent.startsWith('[&#123;') ||
+    rawContent.includes('<p>[{') ||
+    rawContent.includes('<p>[&lt;{')
   
   if (message.role === "user" && rawContent && isToolResultJson) {
     try {
@@ -107,10 +113,16 @@ export function renderChatMessage(message: {
           formattedContent +  // Don't wrap in pre tag - formatToolResult handles it
           "</div>" +
           "</div>"
+        isToolResultProcessed = true
       }
     } catch (e) {
       // Not valid JSON or not a tool result, use original content
     }
+  }
+  
+  // Only use rendered content if we didn't process a tool result
+  if (!isToolResultProcessed) {
+    content = message.rendered || escapeHtml(message.content)
   }
   
   // Fallback: If content is extremely long (even if not detected as tool result), collapse it
