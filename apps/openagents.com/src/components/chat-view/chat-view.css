@@ -228,7 +228,7 @@ body {
 /* OpenCode-style Message Blocks */
 .message {
   display: flex;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.25rem; /* Further reduced vertical spacing */
   max-width: 700px;
   margin-left: auto;
   margin-right: auto;
@@ -237,6 +237,7 @@ body {
 
 .message.user {
   justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .message.assistant,
@@ -245,39 +246,74 @@ body {
 }
 
 .message-block {
-  border-left: 4px solid var(--color-terminal-accent); /* Default: Assistant color */
-  padding: 0.75rem 1rem;
-  background: #101010;
-  border-radius: 0;
   display: inline-block;
   word-wrap: break-word;
+  position: relative;
 }
 
 /* User message styling */
 .message-block.user {
-  border-left-color: #9ece6a; /* Terminal success green */
+  border: 1px solid rgba(255, 255, 255, 0.5) !important; /* Brighter white border all around */
+  border-right-width: 4px !important;
+  border-right-color: rgba(255, 255, 255, 0.9) !important; /* Much brighter right accent */
+  border-left-width: 1px !important; /* Reset left border width */
+  border-left-color: rgba(255, 255, 255, 0.5) !important; /* White left border */
+  border-top-color: rgba(255, 255, 255, 0.5) !important; /* White top */
+  border-bottom-color: rgba(255, 255, 255, 0.5) !important; /* White bottom */
+  background: rgba(255, 255, 255, 0.03); /* Very subtle white background */
+  border-radius: 0; /* Rectangular - no rounding */
+  max-width: 85%;
+  margin-left: auto; /* Push to right */
+  margin-right: 1rem; /* Small spacing from right edge */
+  padding: 0.75rem 1rem;
+  color: rgba(255, 255, 255, 0.9); /* Bright white text */
 }
 
 /* Assistant message styling */
 .message-block.assistant {
-  border-left-color: #7aa2f7; /* Terminal accent blue */
+  border: none; /* No borders at all */
+  background: transparent; /* Transparent background */
+  border-radius: 0; /* Rectangular - no rounding */
+  max-width: 85%;
+  margin-right: auto;
+  margin-left: 1rem;
+  padding: 0.75rem 1rem;
 }
 
 /* Tool message styling */
 .message-block.tool {
-  border-left-color: #a855f7; /* Purple for tools */
-  margin-left: 60px;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important; /* 10% opacity white border */
+  border-left: 4px solid rgba(255, 255, 255, 0.1) !important; /* Same 10% opacity for left accent */
+  border-left-color: rgba(255, 255, 255, 0.1) !important; /* Force white, no purple */
+  background: rgba(255, 255, 255, 0.02); /* Extremely subtle white background */
+  border-radius: 0; /* Rectangular - no rounding */
+  margin-left: 1rem; /* Same as assistant messages */
+  margin-right: auto;
+  padding: 0.75rem 1rem;
+  max-width: 85%;
 }
 
 /* Tool result styling */
 .message-block.tool-result {
-  border-left-color: #a855f7; /* Purple for tool results */
-  margin-left: 60px;
+  border: 1px solid rgba(255, 255, 255, 0.1); /* 10% opacity white border */
+  border-left: 4px solid rgba(255, 255, 255, 0.1); /* Same 10% opacity for left accent */
+  background: rgba(255, 255, 255, 0.02); /* Extremely subtle white background */
+  border-radius: 0; /* Rectangular - no rounding */
+  margin-left: 1rem; /* Same as assistant messages */
+  margin-right: auto;
+  padding: 0.75rem 1rem;
+  max-width: 85%;
 }
 
 .message-block.tool-result-error {
-  border-left-color: #f7768e; /* Red for error results */
-  margin-left: 60px;
+  border: 1px solid rgba(255, 100, 100, 0.1); /* Very faint red border for errors */
+  border-left: 4px solid rgba(255, 100, 100, 0.2); /* Slightly brighter red left accent */
+  background: rgba(255, 100, 100, 0.03); /* Extremely subtle red background */
+  border-radius: 0; /* Rectangular - no rounding */
+  margin-left: 1rem; /* Same as assistant messages */
+  margin-right: auto;
+  padding: 0.75rem 1rem;
+  max-width: 85%;
 }
 
 /* Message header styles - removed as headers are no longer displayed */
@@ -350,7 +386,8 @@ body {
 }
 
 .tool-name {
-  color: #a855f7;
+  color: var(--lightgray) !important; /* Light gray, not purple */
+  font-weight: normal !important; /* Not bold */
 }
 
 .tool-status {
@@ -1030,9 +1067,9 @@ body {
   height: 16px;
 }
 
-/* Add extra padding to messages to accommodate debug button */
+/* Add minimal padding to messages */
 .message {
-  padding-bottom: 2rem; /* Extra space for debug button */
+  padding-bottom: 0.75rem; /* Reduced from 2rem */
 }
 
 /* Debug section styles */
