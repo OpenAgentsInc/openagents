@@ -50,7 +50,8 @@ function formatToolResult(content: string): string {
       "<div class=\"long-content\">" +
       "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
       "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
-      "<summary style=\"cursor: pointer; color: rgba(255, 255, 255, 0.7); font-size: 12px;\">Show full content (" + content.length +
+      "<summary style=\"cursor: pointer; color: rgba(255, 255, 255, 0.7); font-size: 12px;\">Show full content (" +
+      content.length +
       " characters, " + lines.length + " lines)</summary>" +
       "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" +
       escapeHtml(content) +
@@ -769,17 +770,17 @@ export const chatStyles = `
   
   /* Tool message styling */
   .message-block.tool {
-    border-left-color: #a855f7; /* Purple for tools */
+    border-left-color: rgba(255, 255, 255, 0.1); /* White for tools */
   }
   
   /* System message styling (for tool uses, etc) */
   .message-block.system {
-    border-left-color: #a855f7; /* Purple for system/tool messages */
+    border-left-color: rgba(255, 255, 255, 0.1); /* White for system/tool messages */
   }
   
-  /* Tool result styling - purple like tool calls */
+  /* Tool result styling - white like tool calls */
   .message-block.tool-result {
-    border-left-color: #a855f7; /* Purple for tool results */
+    border-left-color: rgba(255, 255, 255, 0.1); /* White for tool results */
   }
   
   /* Tool result error styling - red for errors */
@@ -811,7 +812,7 @@ export const chatStyles = `
     gap: 0.5rem;
     font-weight: 600;
     font-size: 13px;
-    color: #a855f7;
+    color: rgba(255, 255, 255, 0.7);
   }
   
   .tool-icon {
@@ -819,7 +820,7 @@ export const chatStyles = `
   }
   
   .tool-name {
-    color: #a855f7;
+    color: rgba(255, 255, 255, 0.7);
   }
   
   .tool-input {
@@ -852,17 +853,17 @@ export const chatStyles = `
     margin-bottom: 0.5rem;
     font-size: 13px;
     font-weight: 600;
-    color: #a855f7;
+    color: rgba(255, 255, 255, 0.7);
   }
   
   .tool-result-icon {
     font-size: 14px;
-    color: #a855f7;
+    color: rgba(255, 255, 255, 0.7);
   }
   
   .tool-result-label {
     font-weight: 600;
-    color: #a855f7;
+    color: rgba(255, 255, 255, 0.7);
   }
   
   .tool-result-id {
@@ -1088,7 +1089,7 @@ export const chatStyles = `
 
   /* Tool section styling (for tool invocations) */
   .tool-section {
-    border-left: 3px solid #a855f7;
+    border-left: 3px solid rgba(255, 255, 255, 0.1);
     padding-left: 1rem;
     margin-bottom: 0.5rem;
   }
@@ -1099,12 +1100,12 @@ export const chatStyles = `
   }
 
   .tool-icon {
-    color: #a855f7;
+    color: rgba(255, 255, 255, 0.7);
     margin-right: 0.5rem;
   }
 
   .tool-name {
-    color: #a855f7;
+    color: rgba(255, 255, 255, 0.7);
     font-weight: 600;
   }
 
