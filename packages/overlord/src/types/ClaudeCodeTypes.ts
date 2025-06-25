@@ -12,21 +12,21 @@ export interface ClaudeCodeCommand {
   readonly userId: string
   readonly timestamp: Date
   readonly data: {
-    readonly prompt?: string                    // For send_prompt
-    readonly projectPath?: string              // For start_session, switch_project
-    readonly maxTurns?: number                 // Conversation limits
-    readonly systemPrompt?: string             // Custom system prompts
-    readonly options?: ClaudeCodeOptions       // Additional options
+    readonly prompt?: string // For send_prompt
+    readonly projectPath?: string // For start_session, switch_project
+    readonly maxTurns?: number // Conversation limits
+    readonly systemPrompt?: string // Custom system prompts
+    readonly options?: ClaudeCodeOptions // Additional options
   }
 }
 
 // Claude Code execution options
 export interface ClaudeCodeOptions {
   readonly maxTurns?: number
-  readonly timeout?: number                    // Timeout in milliseconds
-  readonly temperature?: number                // Model temperature
-  readonly model?: string                      // Specific model to use
-  readonly includeThinking?: boolean           // Include Claude's thinking process
+  readonly timeout?: number // Timeout in milliseconds
+  readonly temperature?: number // Model temperature
+  readonly model?: string // Specific model to use
+  readonly includeThinking?: boolean // Include Claude's thinking process
 }
 
 // Response from Claude Code instances
@@ -37,22 +37,22 @@ export interface ClaudeCodeResponse {
   readonly machineId: string
   readonly timestamp: Date
   readonly data: {
-    readonly content?: string                  // Claude's response content
-    readonly thinking?: string                 // Claude's reasoning process
-    readonly toolUse?: ToolUseEvent           // File edits, commands run
+    readonly content?: string // Claude's response content
+    readonly thinking?: string // Claude's reasoning process
+    readonly toolUse?: ToolUseEvent // File edits, commands run
     readonly status?: "thinking" | "complete" | "error" | "cancelled"
-    readonly error?: string                    // Error message if status is error
-    readonly metadata?: ResponseMetadata       // Additional response metadata
+    readonly error?: string // Error message if status is error
+    readonly metadata?: ResponseMetadata // Additional response metadata
   }
 }
 
 // Tool use events from Claude Code
 export interface ToolUseEvent {
-  readonly toolName: string                   // "edit", "bash", "read", etc.
+  readonly toolName: string // "edit", "bash", "read", etc.
   readonly toolUseId: string
-  readonly input: unknown                     // Tool-specific input
-  readonly output?: string                    // Tool output (if completed)
-  readonly isError?: boolean                  // Whether tool execution failed
+  readonly input: unknown // Tool-specific input
+  readonly output?: string // Tool output (if completed)
+  readonly isError?: boolean // Whether tool execution failed
   readonly timestamp: Date
 }
 
@@ -64,7 +64,7 @@ export interface ResponseMetadata {
     readonly totalTokens: number
   }
   readonly modelUsed?: string
-  readonly processingTime?: number             // Time in milliseconds
+  readonly processingTime?: number // Time in milliseconds
 }
 
 // Claude Code session information
@@ -89,7 +89,7 @@ export interface MachineClaudeInfo {
   readonly hostname: string
   readonly claudeVersion: string
   readonly sdkVersion: string
-  readonly supportedFeatures: ReadonlyArray<string>  // ["file_edit", "command_exec", "git_ops"]
+  readonly supportedFeatures: ReadonlyArray<string> // ["file_edit", "command_exec", "git_ops"]
   readonly activeProjects: ReadonlyArray<string>
   readonly activeSessions: ReadonlyArray<ClaudeCodeSession>
   readonly lastHeartbeat: Date
@@ -138,7 +138,7 @@ export interface ClaudeCodeServiceConfig {
   readonly enableRemoteControl: boolean
   readonly maxConcurrentSessions: number
   readonly sessionTimeoutMs: number
-  readonly promptRateLimit: number            // Max prompts per minute
+  readonly promptRateLimit: number // Max prompts per minute
   readonly auditLogging: boolean
-  readonly allowedProjects?: ReadonlyArray<string>  // Project path restrictions
+  readonly allowedProjects?: ReadonlyArray<string> // Project path restrictions
 }

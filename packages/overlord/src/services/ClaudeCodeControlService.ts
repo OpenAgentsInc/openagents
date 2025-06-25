@@ -4,18 +4,18 @@
  * @since Phase 3
  */
 
-import { Context, Effect, Layer, Stream, Queue, Ref, Schedule } from "effect"
-import * as path from "node:path"
+import { Context, Effect, Layer, Queue, Ref, Schedule, Stream } from "effect"
 import * as fs from "node:fs/promises"
+import * as path from "node:path"
 import type {
+  ClaudeCodeAuditEvent,
   ClaudeCodeCommand,
-  ClaudeCodeResponse,
-  ClaudeCodeSession,
   ClaudeCodeOptions,
-  RemotePrompt,
+  ClaudeCodeResponse,
   ClaudeCodeServiceConfig,
+  ClaudeCodeSession,
   MachineClaudeInfo,
-  ClaudeCodeAuditEvent
+  RemotePrompt
 } from "../types/ClaudeCodeTypes.js"
 import * as WebSocketClient from "./WebSocketClient.js"
 
@@ -93,9 +93,7 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
     const validateProjectAccess = (projectPath: string): Effect.Effect<void, Error> =>
       Effect.gen(function*() {
         if (config.allowedProjects) {
-          const isAllowed = config.allowedProjects.some(allowedPath => 
-            projectPath.startsWith(allowedPath)
-          )
+          const isAllowed = config.allowedProjects.some((allowedPath) => projectPath.startsWith(allowedPath))
           if (!isAllowed) {
             yield* Effect.fail(new Error(`Access denied to project path: ${projectPath}`))
           }
@@ -108,14 +106,13 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
         })
       })
 
-
     // Audit logging
     const auditLog = (event: ClaudeCodeAuditEvent): Effect.Effect<void, Error> =>
       Effect.gen(function*() {
         if (!config.auditLogging) return
 
         yield* Effect.logInfo(`Claude Code Audit: ${event.eventType} - ${event.machineId}`)
-        
+
         // In real implementation, store in database
         // yield* ConvexSync.storeAuditEvent(event)
       })
@@ -156,9 +153,7 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
         }
 
         // Store prompt tracking
-        yield* Ref.update(activePrompts, (prompts) => 
-          new Map(prompts).set(promptId, remotePrompt)
-        )
+        yield* Ref.update(activePrompts, (prompts) => new Map(prompts).set(promptId, remotePrompt))
 
         // Send command via WebSocket
         yield* wsClient.send({
@@ -210,9 +205,7 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
         }
 
         // Store session
-        yield* Ref.update(activeSessions, (sessions) =>
-          new Map(sessions).set(sessionId, session)
-        )
+        yield* Ref.update(activeSessions, (sessions) => new Map(sessions).set(sessionId, session))
 
         // Send start command
         yield* wsClient.send({
@@ -294,7 +287,7 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
       Effect.gen(function*() {
         const sessions = yield* Ref.get(activeSessions)
         const machineSessions = Array.from(sessions.values()).filter(
-          session => session.machineId === machineId
+          (session) => session.machineId === machineId
         )
         return machineSessions
       })
@@ -311,7 +304,7 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
           claudeVersion: "unknown",
           sdkVersion: "unknown",
           supportedFeatures: ["file_edit", "command_exec", "git_ops"],
-          activeProjects: sessions.map(s => s.projectPath),
+          activeProjects: sessions.map((s) => s.projectPath),
           activeSessions: sessions,
           lastHeartbeat: new Date(),
           status: sessions.length > 0 ? "busy" : "online"
@@ -328,9 +321,7 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
 
         if (!queue) {
           queue = yield* Queue.unbounded<ClaudeCodeResponse>()
-          yield* Ref.update(responseQueues, (queues) =>
-            new Map(queues).set(sessionId, queue!)
-          )
+          yield* Ref.update(responseQueues, (queues) => new Map(queues).set(sessionId, queue!))
         }
 
         return Stream.fromQueue(queue)
@@ -341,7 +332,7 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
       Effect.gen(function*() {
         const prompts = yield* Ref.get(activePrompts)
         const sessionPrompts = Array.from(prompts.values()).filter(
-          prompt => prompt.sessionId === sessionId
+          (prompt) => prompt.sessionId === sessionId
         )
         return sessionPrompts.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime())
       })
@@ -363,7 +354,7 @@ export const ClaudeCodeControlServiceLive = Layer.effect(
     const sessionCleanup = Effect.gen(function*() {
       const sessions = yield* Ref.get(activeSessions)
       const now = Date.now()
-      const expiredSessions: string[] = []
+      const expiredSessions: Array<string> = []
 
       for (const [sessionId, session] of sessions) {
         const lastActivity = session.lastResponseAt || session.startedAt

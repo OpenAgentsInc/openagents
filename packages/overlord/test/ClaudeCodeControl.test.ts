@@ -3,8 +3,8 @@
  * @since Phase 3
  */
 
+import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
-import { Effect, TestContext } from "effect"
 import * as ClaudeCodeControlService from "../src/services/ClaudeCodeControlService.js"
 import * as WebSocketClient from "../src/services/WebSocketClient.js"
 
@@ -21,7 +21,7 @@ describe("ClaudeCodeControlService", () => {
   it("should start a new Claude Code session", async () => {
     const program = Effect.gen(function*() {
       const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
-      
+
       const session = yield* service.startSession(
         "test-machine",
         "/test/project/path",
@@ -36,7 +36,7 @@ describe("ClaudeCodeControlService", () => {
           status: "active"
         })
       )
-      
+
       expect(session.sessionId).toBeTruthy()
       expect(session.startedAt).toBeInstanceOf(Date)
     })
@@ -53,7 +53,7 @@ describe("ClaudeCodeControlService", () => {
   it("should send a prompt to a Claude Code session", async () => {
     const program = Effect.gen(function*() {
       const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
-      
+
       const prompt = yield* service.sendPrompt(
         "test-machine",
         "test-session",
@@ -69,7 +69,7 @@ describe("ClaudeCodeControlService", () => {
           status: "sent"
         })
       )
-      
+
       expect(prompt.promptId).toBeTruthy()
       expect(prompt.sentAt).toBeInstanceOf(Date)
     })
@@ -86,17 +86,17 @@ describe("ClaudeCodeControlService", () => {
   it("should get active sessions for a machine", async () => {
     const program = Effect.gen(function*() {
       const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
-      
+
       // Start a session first
       yield* service.startSession(
         "test-machine",
         "/test/project",
         "test-user"
       )
-      
+
       // Get active sessions
       const sessions = yield* service.getActiveSessions("test-machine")
-      
+
       expect(sessions).toHaveLength(1)
       expect(sessions[0]).toEqual(
         expect.objectContaining({
@@ -119,9 +119,9 @@ describe("ClaudeCodeControlService", () => {
   it("should get machine info with correct structure", async () => {
     const program = Effect.gen(function*() {
       const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
-      
+
       const info = yield* service.getMachineInfo("test-machine")
-      
+
       expect(info).toEqual(
         expect.objectContaining({
           machineId: "test-machine",
@@ -144,17 +144,17 @@ describe("ClaudeCodeControlService", () => {
   it("should end a Claude Code session", async () => {
     const program = Effect.gen(function*() {
       const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
-      
+
       // Start a session first
       const session = yield* service.startSession(
         "test-machine",
         "/test/project",
         "test-user"
       )
-      
+
       // End the session
       yield* service.endSession("test-machine", session.sessionId)
-      
+
       // Verify it's no longer in active sessions
       const sessions = yield* service.getActiveSessions("test-machine")
       expect(sessions).toHaveLength(0)
@@ -170,7 +170,7 @@ describe("ClaudeCodeControlService", () => {
   it("should validate project access", async () => {
     const program = Effect.gen(function*() {
       const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
-      
+
       // Try to start session with non-existent path
       const result = yield* service.startSession(
         "test-machine",
@@ -179,7 +179,7 @@ describe("ClaudeCodeControlService", () => {
       ).pipe(
         Effect.either
       )
-      
+
       expect(result._tag).toBe("Left")
     })
 
@@ -195,16 +195,16 @@ describe("Claude Code CLI Commands", () => {
   it("should have proper command structure", () => {
     // This test ensures the CLI commands are properly structured
     // In a real implementation, we'd test the actual command parsing
-    
+
     const expectedCommands = [
       "start",
-      "prompt", 
+      "prompt",
       "sessions",
       "stream",
       "end",
       "info"
     ]
-    
+
     // Verify we have all expected Claude Code subcommands
     expect(expectedCommands).toHaveLength(6)
     expect(expectedCommands).toContain("start")

@@ -1,12 +1,12 @@
 import { Args, Command, Options } from "@effect/cli"
 import { NodeContext } from "@effect/platform-node"
 import { Console, Effect, Option, Stream } from "effect"
+import * as ClaudeCodeControlService from "./services/ClaudeCodeControlService.js"
 import * as ConvexSync from "./services/ConvexSync.js"
 import type { EmbeddingConfig } from "./services/ConvexSync.js"
 import * as FileWatcher from "./services/FileWatcher.js"
 import * as OverlordService from "./services/OverlordService.js"
 import * as WebSocketClient from "./services/WebSocketClient.js"
-import * as ClaudeCodeControlService from "./services/ClaudeCodeControlService.js"
 
 // StarCraft-themed commands for Overlord
 
@@ -532,7 +532,7 @@ const claudePromptCommand = Command.make("prompt", {
   maxTurns: maxTurnsOption
 }).pipe(
   Command.withDescription("Send prompt to running Claude Code session"),
-  Command.withHandler(({ machineId, sessionId, prompt, maxTurns }) =>
+  Command.withHandler(({ machineId, maxTurns, prompt, sessionId }) =>
     Effect.gen(function*() {
       const promptText = Option.getOrElse(prompt, () => {
         // In real implementation, could prompt user for input
@@ -640,8 +640,7 @@ const claudeStreamCommand = Command.make("stream", {
           if (response.data.error) {
             yield* Console.log(`Error: ${response.data.error}`)
           }
-        })
-      )
+        }))
     }).pipe(
       Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
       Effect.provide(WebSocketClient.WebSocketClientLive),
