@@ -121,6 +121,8 @@ app.post('/api/markdown', renderMarkdownRoute)
 // Test route
 app.get('/api/test', testRoute)
 
+// Test route for tool result rendering
+
 // Debug routes
 
 // Mount Nostr relay

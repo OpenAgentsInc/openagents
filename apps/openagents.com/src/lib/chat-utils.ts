@@ -26,7 +26,6 @@ function formatToolResult(content: string): string {
   if (looksLikeFiles) {
     // It's likely a file listing
     const fileCount = lines.length
-    const preview = lines.slice(0, 5).map(escapeHtml).join('\n')
     
     return (
       "<div class=\"file-listing\">" +
@@ -81,9 +80,13 @@ export function renderChatMessage(message: {
   let content = ''
   let isToolResultProcessed = false
   
-  // Check if this is a user message with tool result JSON
+  // Check if this is a user message with tool result JSON or plain text format
   // First check raw content, not rendered content
   const rawContent = message.content || ''
+  
+  // Check for plain text tool result format (e.g., "📤 Tool Result: ...")
+  const isPlainTextToolResult = rawContent.startsWith('📤 Tool Result:')
+  
   // Also check if it's HTML escaped or inside paragraph tags
   const isToolResultJson = rawContent.startsWith('[{') || 
     rawContent.startsWith('[&lt;{') || 
@@ -91,7 +94,25 @@ export function renderChatMessage(message: {
     rawContent.includes('<p>[{') ||
     rawContent.includes('<p>[&lt;{')
   
-  if (message.role === "user" && rawContent && isToolResultJson) {
+  // Handle plain text tool results
+  if (message.role === "user" && isPlainTextToolResult) {
+    // Extract content after "📤 Tool Result: "
+    const toolResultContent = rawContent.substring('📤 Tool Result: '.length).trim()
+    const formattedContent = formatToolResult(toolResultContent)
+    content = 
+      "<div class=\"tool-result-section\">" +
+      "<div class=\"tool-result-header\">" +
+      "<span class=\"tool-result-icon\">📤</span>" +
+      "<span class=\"tool-result-label\">Tool Result</span>" +
+      "</div>" +
+      "<div class=\"tool-result-content\">" +
+      formattedContent +
+      "</div>" +
+      "</div>"
+    isToolResultProcessed = true
+  }
+  // Handle JSON tool results
+  else if (message.role === "user" && rawContent && isToolResultJson) {
     try {
       // Try to unescape if needed
       const contentToparse = rawContent.startsWith('[{') ? rawContent : 
@@ -185,7 +206,7 @@ export function renderChatMessage(message: {
       contentPreview: message.content?.substring(0, 100) + (message.content?.length > 100 ? '...' : ''),
       hasRendered: !!message.rendered,
       renderedLength: message.rendered?.length || 0,
-      isToolResult: message.content?.startsWith('[{') && message.content?.includes('"tool_result"'),
+      isToolResult: message.content?.startsWith('[{') && message.content?.includes('"tool_result"') || message.content?.startsWith('📤 Tool Result:'),
       startsWithBracket: message.content?.substring(0, 2),
       metadata: message.metadata ? {
         entryType: message.metadata.entryType,
