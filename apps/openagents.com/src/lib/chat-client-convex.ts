@@ -180,19 +180,37 @@ export function getConversationWithMessages(sessionId: string) {
             content: parsedContent,
             timestamp: new Date(msg.timestamp),
             model: msg.model,
+            
+            // Raw database fields for complete debugging
+            _dbId: msg._id,
+            _creationTime: msg._creationTime,
+            sessionId: msg.session_id,
+            
             metadata: {
+              // Entry classification
               entryType: msg.entry_type,
-              thinking: msg.thinking,
-              summary: msg.summary,
+              
+              // Tool information
+              hasEmbeddedTool: extractedToolMetadata.hasEmbeddedTool || false,
               toolName: msg.tool_name || extractedToolMetadata.toolName,
               toolInput: msg.tool_input || extractedToolMetadata.toolInput,
               toolUseId: msg.tool_use_id || extractedToolMetadata.toolUseId,
               toolOutput: msg.tool_output,
               toolIsError: msg.tool_is_error,
+              
+              // Claude Code fields
+              thinking: msg.thinking,
+              summary: msg.summary,
+              
+              // Usage and cost tracking
               tokenUsage: msg.token_usage,
+              tokenCountInput: msg.token_count_input,
+              tokenCountOutput: msg.token_count_output,
               cost: msg.cost,
+              
+              // Session tracking
               turnCount: msg.turn_count,
-              hasEmbeddedTool: extractedToolMetadata.hasEmbeddedTool || false
+              model: msg.model
             }
           }
         })
@@ -279,17 +297,26 @@ function parseMessageContent(message: any): string {
                 debug(`Found text field in parsed user content`)
                 return parsed.text
               }
-              // Check for tool_result format
+              // Check for tool_result format (incorrectly categorized as user)
               if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].type === "tool_result") {
-                debug(`User message is a tool_result`)
+                debug(`User message is actually a tool_result that was mis-categorized`)
                 const toolResult = parsed[0]
                 const content = toolResult.content || ""
+                const toolUseId = toolResult.tool_use_id || ""
+                const isError = toolResult.is_error || false
+                
+                // Handle empty tool results
+                if (!content || content.trim() === "") {
+                  debug(`Tool result has empty content`)
+                  return `📤 Tool Result (${toolUseId}): [No output]${isError ? " - ERROR" : ""}`
+                }
+                
                 // Format tool result nicely
                 if (content.includes("→")) {
                   // It's file content with line numbers
-                  return `📤 Tool Result:\n\`\`\`\n${content}\n\`\`\``
+                  return `📤 Tool Result (${toolUseId}):\n\`\`\`\n${content}\n\`\`\`${isError ? "\n[ERROR]" : ""}`
                 }
-                return `📤 Tool Result: ${content}`
+                return `📤 Tool Result (${toolUseId}): ${content}${isError ? " [ERROR]" : ""}`
               }
               // If it's an array format
               if (Array.isArray(parsed)) {

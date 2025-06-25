@@ -201,27 +201,60 @@ export function renderChatMessage(message: {
 
   let debugSection = ""
   if (includeDebug) {
-    // Create a simplified debug object without the full content
+    // Create a comprehensive debug object showing ALL database fields
     const debugObject = {
+      // Message identifiers
       id: message.id,
+      conversationId: message.conversationId,
+      
+      // Content and processing
       role: message.role,
-      timestamp: message.timestamp,
       contentLength: message.content?.length || 0,
       contentPreview: message.content?.substring(0, 100) + (message.content?.length > 100 ? "..." : ""),
       hasRendered: !!message.rendered,
       renderedLength: message.rendered?.length || 0,
+      
+      // Tool result detection
       isToolResult: message.content?.startsWith("[{") && message.content?.includes("\"tool_result\"") ||
         message.content?.startsWith("📤 Tool Result:"),
       startsWithBracket: message.content?.substring(0, 2),
-      metadata: message.metadata ?
-        {
-          entryType: message.metadata.entryType,
-          hasEmbeddedTool: message.metadata.hasEmbeddedTool,
-          toolName: message.metadata.toolName,
-          toolUseId: message.metadata.toolUseId,
-          turnCount: message.metadata.turnCount
-        } :
-        null
+      
+      // Timestamps
+      timestamp: message.timestamp,
+      timestampISO: message.timestamp ? new Date(message.timestamp).toISOString() : null,
+      
+      // ALL metadata fields from database
+      metadata: message.metadata ? {
+        // Entry classification
+        entryType: message.metadata.entryType,
+        
+        // Tool information  
+        hasEmbeddedTool: message.metadata.hasEmbeddedTool,
+        toolName: message.metadata.toolName,
+        toolInput: message.metadata.toolInput,
+        toolUseId: message.metadata.toolUseId,
+        toolOutput: message.metadata.toolOutput,
+        toolIsError: message.metadata.toolIsError,
+        
+        // Claude Code fields
+        thinking: message.metadata.thinking,
+        summary: message.metadata.summary,
+        
+        // Usage and cost tracking
+        tokenUsage: message.metadata.tokenUsage,
+        tokenCountInput: message.metadata.tokenCountInput,
+        tokenCountOutput: message.metadata.tokenCountOutput,
+        cost: message.metadata.cost,
+        
+        // Session tracking
+        turnCount: message.metadata.turnCount,
+        model: message.metadata.model
+      } : null,
+      
+      // Raw database fields (if available)
+      _dbId: message._dbId,
+      _creationTime: message._creationTime,
+      sessionId: message.sessionId
     }
 
     const debugJson = escapeHtml(JSON.stringify(debugObject, null, 2))
