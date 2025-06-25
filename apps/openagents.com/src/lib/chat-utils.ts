@@ -171,29 +171,51 @@ export function renderChatMessage(message: {
       "</div>"
   }
 
+  // Check if this is a tool-only message
+  const isToolOnlyMessage = message.metadata?.hasEmbeddedTool && 
+                           message.metadata?.toolName && 
+                           (!content || content.trim() === "")
+
   // Add tool information if present in metadata
   if (message.metadata?.hasEmbeddedTool && message.metadata?.toolName) {
     const toolInput = message.metadata.toolInput ?
       escapeHtml(JSON.stringify(message.metadata.toolInput, null, 2)) :
       ""
 
-    const toolInfo = "<div class=\"tool-section\">" +
-      "<div class=\"tool-header\">" +
-      "<span class=\"tool-icon\">🔧</span>" +
-      "<span class=\"tool-name\">" + escapeHtml(message.metadata.toolName) + "</span>" +
-      "</div>" +
-      (toolInput ?
-        "<div class=\"tool-input\">" +
-        "<details>" +
-        "<summary>View input</summary>" +
-        "<pre>" + toolInput + "</pre>" +
-        "</details>" +
-        "</div>" :
-        "") +
-      "</div>"
-
-    // Prepend tool info to content
-    content = toolInfo + content
+    if (isToolOnlyMessage) {
+      // For tool-only messages, show tool info directly without wrapper
+      content = "<div class=\"tool-header\">" +
+        "<span class=\"tool-icon\">🔧</span>" +
+        "<span class=\"tool-name\">" + escapeHtml(message.metadata.toolName) + "</span>" +
+        "</div>" +
+        (toolInput ?
+          "<div class=\"tool-input\">" +
+          "<details>" +
+          "<summary>View input</summary>" +
+          "<pre>" + toolInput + "</pre>" +
+          "</details>" +
+          "</div>" :
+          "")
+    } else {
+      // For messages with both tool and content, show tool in a section
+      const toolInfo = "<div class=\"tool-section\">" +
+        "<div class=\"tool-header\">" +
+        "<span class=\"tool-icon\">🔧</span>" +
+        "<span class=\"tool-name\">" + escapeHtml(message.metadata.toolName) + "</span>" +
+        "</div>" +
+        (toolInput ?
+          "<div class=\"tool-input\">" +
+          "<details>" +
+          "<summary>View input</summary>" +
+          "<pre>" + toolInput + "</pre>" +
+          "</details>" +
+          "</div>" :
+          "") +
+        "</div>"
+      
+      // Prepend tool info to content
+      content = toolInfo + content
+    }
   }
   
   // Skip rendering if there's no content at all
@@ -277,9 +299,12 @@ export function renderChatMessage(message: {
       "</div>"
   }
 
+  // Determine the role class for the message block
+  const roleClass = isToolOnlyMessage ? "tool" : message.role
+
   return (
     "<div class=\"message\">" +
-    "<div class=\"message-block " + message.role + " group relative\">" +
+    "<div class=\"message-block " + roleClass + " group relative\">" +
     "<div class=\"message-body\">" + content + "</div>" +
     debugSection +
     // Hover buttons container
