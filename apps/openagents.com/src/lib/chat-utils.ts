@@ -95,10 +95,10 @@ export function renderChatMessage(message: {
     rawContent.includes("<p>[&lt;{")
 
   // Check if this is an error tool result
-  const isErrorResult = rawContent.includes("[ERROR]") || 
-                       rawContent.includes("[Request interrupted") ||
-                       rawContent.includes("error:") ||
-                       rawContent.includes("Error:")
+  const isErrorResult = rawContent.includes("[ERROR]") ||
+    rawContent.includes("[Request interrupted") ||
+    rawContent.includes("error:") ||
+    rawContent.includes("Error:")
 
   // Handle plain text tool results
   if (message.role === "user" && isPlainTextToolResult) {
@@ -174,9 +174,9 @@ export function renderChatMessage(message: {
   }
 
   // Check if this is a tool-only message
-  const isToolOnlyMessage = message.metadata?.hasEmbeddedTool && 
-                           message.metadata?.toolName && 
-                           (!content || content.trim() === "")
+  const isToolOnlyMessage = message.metadata?.hasEmbeddedTool &&
+    message.metadata?.toolName &&
+    (!content || content.trim() === "")
 
   // Add tool information if present in metadata
   if (message.metadata?.hasEmbeddedTool && message.metadata?.toolName) {
@@ -208,12 +208,12 @@ export function renderChatMessage(message: {
           "</div>" :
           "") +
         "</div>"
-      
+
       // Prepend tool info to content
       content = toolInfo + content
     }
   }
-  
+
   // Skip rendering if there's no content at all
   if (!content || content.trim() === "") {
     return ""
@@ -226,7 +226,6 @@ export function renderChatMessage(message: {
   const messageDebugId = "debug-" + (message.id || Math.random().toString(36).substr(2, 9))
 
   let debugSection = ""
-  let debugData = ""
   if (includeDebug) {
     // Create a comprehensive debug object showing ALL database fields
     const debugObject = {
@@ -287,8 +286,7 @@ export function renderChatMessage(message: {
     }
 
     const debugJson = escapeHtml(JSON.stringify(debugObject, null, 2))
-    debugData = debugJson
-    
+
     // Create debug section (hidden by default)
     debugSection = "<div id=\"" + messageDebugId + "\" class=\"message-debug\" style=\"display: none;\">" +
       "<pre class=\"debug-json\">" + debugJson + "</pre>" +
@@ -297,12 +295,14 @@ export function renderChatMessage(message: {
 
   // Determine the role class for the message block
   let roleClass = "user"
-  
+
   // Check if this message contains tool result content
-  const messageContainsToolResult = isToolResultProcessed || 
-                                    rawContent.startsWith("📤 Tool Result:") ||
-                                    (rawContent.startsWith("[{") && rawContent.includes('"type":"tool_result"'))
-  
+  const messageContainsToolResult = isToolResultProcessed ||
+    rawContent.startsWith("📤 Tool Result:") ||
+    rawContent.includes("📤 Tool Result") ||
+    (rawContent.startsWith("[{") && rawContent.includes("\"type\":\"tool_result\"")) ||
+    rawContent.includes("Tool Result (")
+
   if (isToolOnlyMessage) {
     roleClass = "tool"
   } else if (messageContainsToolResult) {
@@ -321,7 +321,8 @@ export function renderChatMessage(message: {
     debugSection +
     // Hover buttons container
     "<div class=\"message-actions absolute right-0 mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100\">" +
-    "<button class=\"debug-button\" onclick=\"toggleDebug('" + messageDebugId + "')\" aria-label=\"Toggle debug info\">" +
+    "<button class=\"debug-button\" onclick=\"toggleDebug('" + messageDebugId +
+    "')\" aria-label=\"Toggle debug info\">" +
     // Bug icon SVG
     "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">" +
     "<path d=\"m8 2 1.88 1.88M14.12 3.88 16 2\"></path>" +
