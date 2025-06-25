@@ -160,12 +160,29 @@ export default defineSchema({
     tool_input: v.optional(v.any()),
     tool_use_id: v.optional(v.string()),
     tool_output: v.optional(v.string()),
-    tool_is_error: v.optional(v.boolean())
+    tool_is_error: v.optional(v.boolean()),
+    embedding_id: v.optional(v.id("message_embeddings"))
   })
     .index("by_session_id", ["session_id"])
     .index("by_entry_type", ["entry_type"])
     .index("by_timestamp", ["timestamp"])
-    .index("by_tool_use_id", ["tool_use_id"]),
+    .index("by_tool_use_id", ["tool_use_id"])
+    .index("by_embedding_id", ["embedding_id"]),
+
+  // Separate table for message embeddings to optimize storage and enable vector search
+  message_embeddings: defineTable({
+    message_id: v.id("messages"),
+    embedding: v.array(v.float64()),
+    model: v.string(), // e.g., "text-embedding-3-small", "text-embedding-ada-002"
+    dimensions: v.number(), // e.g., 1536 for OpenAI embeddings
+    created_at: v.number()
+  })
+    .index("by_message_id", ["message_id"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536, // OpenAI text-embedding-3-small dimensions
+      filterFields: ["model"]
+    }),
 
   images: defineTable({
     message_id: v.id("messages"),
