@@ -31,7 +31,7 @@ function transformSession(session: any) {
     project_path: session.project_path,
     raw_session: session
   })
-  
+
   return {
     id: session.id,
     title: session.project_name || session.project_path || "Untitled Session",
@@ -227,7 +227,7 @@ function parseMessageContent(message: any): string {
         hasContent: !!message.content,
         contentLength: message.content?.length || 0
       })
-      
+
       if (message.content) {
         debug(`User message content type: ${typeof message.content}`)
         try {

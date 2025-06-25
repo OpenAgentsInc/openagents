@@ -218,7 +218,7 @@ const importCommand = Command.make("import", {
             // Path format: ~/.claude/projects/{project-dir}/{session-id}.jsonl
             const parts = filePath.split("/")
             let projectPath = "unknown"
-            
+
             // Find .claude directory and extract project name
             const claudeDirIndex = parts.findIndex((p) => p === ".claude")
             if (claudeDirIndex >= 0 && claudeDirIndex + 2 < parts.length) {
@@ -226,7 +226,7 @@ const importCommand = Command.make("import", {
               if (projectDir && projectDir !== "projects") {
                 // Extract meaningful name from encoded project directory
                 // Format like "-Users-christopherdavid-code-yt-dlp" -> "yt-dlp"
-                const segments = projectDir.split("-").filter(p => p)
+                const segments = projectDir.split("-").filter((p) => p)
                 if (segments.length >= 2) {
                   const lastTwo = segments.slice(-2)
                   // If second-to-last is "code", just take the last part
@@ -241,7 +241,7 @@ const importCommand = Command.make("import", {
                 }
               }
             }
-            
+
             // Fallback: use parent directory of the JSONL file
             if (projectPath === "unknown") {
               const parentDir = parts[parts.length - 2]

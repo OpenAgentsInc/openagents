@@ -65,8 +65,8 @@ export declare const updateActivity: import("convex/server").RegisteredMutation<
  */
 export declare const updateStats: import("convex/server").RegisteredMutation<"public", {
     sessionId: string;
-    totalCost: number;
     messageCount: number;
+    totalCost: number;
 }, Promise<void>>;
 /**
  * Update session status
@@ -74,6 +74,14 @@ export declare const updateStats: import("convex/server").RegisteredMutation<"pu
 export declare const updateStatus: import("convex/server").RegisteredMutation<"public", {
     status: string;
     sessionId: string;
+}, Promise<void>>;
+/**
+ * Update session project information
+ */
+export declare const updateProject: import("convex/server").RegisteredMutation<"public", {
+    projectName?: string;
+    sessionId: string;
+    projectPath: string;
 }, Promise<void>>;
 /**
  * List recent sessions across all users

@@ -193,16 +193,16 @@ const extractProjectName = (projectPath: string): string => {
   if (projectPath === "unknown") {
     return "Unknown Project"
   }
-  
+
   // If it looks like a hash (long hex string), shorten it
   if (projectPath.length > 20 && /^[a-f0-9-]+$/.test(projectPath)) {
     return `Project ${projectPath.substring(0, 8)}`
   }
-  
+
   // Otherwise use the path as-is, with some cleanup
   return projectPath
     .replace(/[-_]/g, " ")
     .split(" ")
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ")
 }
