@@ -302,21 +302,20 @@ function parseMessageContent(message: any): string {
                 debug(`User message is actually a tool_result that was mis-categorized`)
                 const toolResult = parsed[0]
                 const content = toolResult.content || ""
-                const toolUseId = toolResult.tool_use_id || ""
                 const isError = toolResult.is_error || false
 
                 // Handle empty tool results
                 if (!content || content.trim() === "") {
                   debug(`Tool result has empty content`)
-                  return `📤 Tool Result (${toolUseId}): [No output]${isError ? " - ERROR" : ""}`
+                  return `📤 Tool Result: [No output]${isError ? " - ERROR" : ""}`
                 }
 
                 // Format tool result nicely
                 if (content.includes("→")) {
                   // It's file content with line numbers
-                  return `📤 Tool Result (${toolUseId}):\n\`\`\`\n${content}\n\`\`\`${isError ? "\n[ERROR]" : ""}`
+                  return `📤 Tool Result:\n\`\`\`\n${content}\n\`\`\`${isError ? "\n[ERROR]" : ""}`
                 }
-                return `📤 Tool Result (${toolUseId}): ${content}${isError ? " [ERROR]" : ""}`
+                return `📤 Tool Result: ${content}${isError ? " [ERROR]" : ""}`
               }
               // If it's an array format
               if (Array.isArray(parsed)) {
@@ -371,11 +370,11 @@ function parseMessageContent(message: any): string {
             const textParts = parsed.filter((part: any) => part.type === "text")
             const toolParts = parsed.filter((part: any) => part.type === "tool_use")
 
-            // If there's no text but there are tools, show tool invocation
+            // If there's no text but there are tools, return empty
+            // (tool info will be shown via metadata)
             if (textParts.length === 0 && toolParts.length > 0) {
               debug(`Assistant message contains only tool_use, no text`)
-              const tool = toolParts[0]
-              return `🔧 Using tool: ${tool.name}`
+              return ""
             }
 
             const parts = parsed.map((part: any) => {
@@ -415,10 +414,8 @@ function parseMessageContent(message: any): string {
 
     case "tool_use": {
       debug(`Formatting tool_use entry: ${message.tool_name}`)
-      const toolInputStr = typeof message.tool_input === "string"
-        ? message.tool_input
-        : JSON.stringify(message.tool_input, null, 2)
-      return `🔧 Tool: ${message.tool_name || "Unknown"}\n\nInput:\n\`\`\`json\n${toolInputStr}\n\`\`\``
+      // Return empty string since tool info is displayed via metadata
+      return ""
     }
 
     case "tool_result": {
