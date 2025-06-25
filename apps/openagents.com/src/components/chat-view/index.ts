@@ -272,6 +272,9 @@ export async function createChatView({ conversationId }: ChatViewProps) {
         window.AVAILABLE_MODELS = ${JSON.stringify(AVAILABLE_MODELS)};
         window.DEFAULT_MODEL = '${DEFAULT_MODEL}';
         
+        // Store server-rendered conversations to prevent re-fetching
+        window.SERVER_CONVERSATIONS = ${JSON.stringify(allConversations)};
+        
         // Initialize components
         initializeClient();
         initializeModelSelector();

@@ -162,7 +162,14 @@ export const chatClientScript = `
   // Load and render conversations in sidebar
   async function loadConversations() {
     try {
-      const conversations = await window.chatClient.getConversations();
+      // Use server-rendered conversations if available, otherwise fetch from API
+      let conversations;
+      if (window.SERVER_CONVERSATIONS && window.SERVER_CONVERSATIONS.length > 0) {
+        conversations = window.SERVER_CONVERSATIONS;
+      } else {
+        conversations = await window.chatClient.getConversations();
+      }
+      
       const threadList = document.querySelector('#thread-list');
       if (threadList && conversations.length > 0) {
         threadList.innerHTML = conversations.map(conv => \`
@@ -380,8 +387,7 @@ export const chatClientScript = `
         assistantResponse.textContent = 'No response received. Please check if Cloudflare API is configured.';
       }
       
-      // Reload conversations to update sidebar
-      await loadConversations();
+      // Don't reload conversations - we only show Convex data from server
       
     } catch (error) {
       console.error('Failed to get response:', error);
