@@ -51,17 +51,15 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - Required if: Modifying chat UI, refactoring layout, working on sidebar/header, styling changes
 - Why: Complex layout with fixed positioning, transitions, and state management requires understanding
 
-### JSONL File Ingestion & Claude Code Conversations
-**MANDATORY READING**: `/docs/guides/jsonl-ingestion-guide.md`
-- Required if: Working with file upload/drag-drop, JSONL parsing, conversation data ingestion
-- Quick Reference: `/docs/guides/jsonl-ingestion-quick-reference.md`
-- Why: Comprehensive drag-and-drop system with specific data structures and error handling patterns
+### JSONL Frontend Processing (Drag & Drop)
+**MANDATORY READING**: `/docs/guides/jsonl-frontend-guide.md`
+- Required if: Working with browser drag-drop, file upload UI, client-side JSONL viewing
+- Why: Complete implementation of the drag-and-drop system for viewing Claude Code files
 
-### JSONL Parser & Claude Code Message Formats
-**MANDATORY READING**: `/docs/guides/jsonl-parser-comprehensive-guide.md`
-- Required if: Working with Overlord, parsing Claude Code files, handling empty messages, tool extraction
-- Quick Reference: `/docs/guides/jsonl-parser-quick-reference.md`
-- Why: Complex message formats, edge cases for tool-only messages, and database integration patterns
+### JSONL Backend Processing (Overlord Parser)
+**MANDATORY READING**: `/docs/guides/jsonl-backend-guide.md`
+- Required if: Working with Overlord service, database sync, parsing Claude Code files, handling empty messages
+- Why: Complex message formats, tool extraction, edge cases, and database integration patterns
 
 **⚠️ FAILURE TO READ THESE GUIDES WILL RESULT IN:**
 - "Service not found" errors that are difficult to debug
