@@ -180,16 +180,16 @@ export function getConversationWithMessages(sessionId: string) {
             content: parsedContent,
             timestamp: new Date(msg.timestamp),
             model: msg.model,
-            
+
             // Raw database fields for complete debugging
             _dbId: msg._id,
             _creationTime: msg._creationTime,
             sessionId: msg.session_id,
-            
+
             metadata: {
               // Entry classification
               entryType: msg.entry_type,
-              
+
               // Tool information
               hasEmbeddedTool: extractedToolMetadata.hasEmbeddedTool || false,
               toolName: msg.tool_name || extractedToolMetadata.toolName,
@@ -197,17 +197,17 @@ export function getConversationWithMessages(sessionId: string) {
               toolUseId: msg.tool_use_id || extractedToolMetadata.toolUseId,
               toolOutput: msg.tool_output,
               toolIsError: msg.tool_is_error,
-              
+
               // Claude Code fields
               thinking: msg.thinking,
               summary: msg.summary,
-              
+
               // Usage and cost tracking
               tokenUsage: msg.token_usage,
               tokenCountInput: msg.token_count_input,
               tokenCountOutput: msg.token_count_output,
               cost: msg.cost,
-              
+
               // Session tracking
               turnCount: msg.turn_count,
               model: msg.model
@@ -304,13 +304,13 @@ function parseMessageContent(message: any): string {
                 const content = toolResult.content || ""
                 const toolUseId = toolResult.tool_use_id || ""
                 const isError = toolResult.is_error || false
-                
+
                 // Handle empty tool results
                 if (!content || content.trim() === "") {
                   debug(`Tool result has empty content`)
                   return `📤 Tool Result (${toolUseId}): [No output]${isError ? " - ERROR" : ""}`
                 }
-                
+
                 // Format tool result nicely
                 if (content.includes("→")) {
                   // It's file content with line numbers
