@@ -3,13 +3,13 @@ import { document, html } from "@openagentsinc/psionic"
 export async function testOneMessage() {
   // Get REAL messages from Convex
   const { getConversationWithMessages } = await import("../lib/chat-client-convex")
-  
+
   let messages = []
   try {
     // Get a random conversation
     const result = await getConversationWithMessages("claude-code-session-1750816776552")
     const allMessages = result.messages || []
-    
+
     // Pick 3 random messages
     const shuffled = [...allMessages].sort(() => Math.random() - 0.5)
     messages = shuffled.slice(0, 3)
@@ -21,7 +21,7 @@ export async function testOneMessage() {
       { role: "system", content: "Check the database connection" }
     ]
   }
-  
+
   // Render JUST THIS ONE MESSAGE - NO HTML WRAPPER!
   const messageHtml = html`
     <style>
@@ -47,10 +47,11 @@ export async function testOneMessage() {
     
     <h1>THREE MESSAGES IN A ROW</h1>
     
-    ${messages.map(msg => {
+    ${
+    messages.map((msg) => {
       const role = msg.role || msg.entry_type || "unknown"
       const content = msg.content || "[No content]"
-      
+
       if (role === "user") {
         return html`
           <div class="message" style="border-color: #9ece6a;">
@@ -70,13 +71,14 @@ export async function testOneMessage() {
           <div class="message" style="border-color: #bb9af7;">
             <h2>📋 ${role}</h2>
             <pre style="white-space: pre-wrap;">${content}</pre>
-            ${msg.metadata ? html`<pre>${JSON.stringify(msg.metadata, null, 2)}</pre>` : ''}
+            ${msg.metadata ? html`<pre>${JSON.stringify(msg.metadata, null, 2)}</pre>` : ""}
           </div>
         `
       }
-    }).join('')}
+    }).join("")
+  }
   `
-  
+
   return document({
     title: "Test One Message",
     body: messageHtml

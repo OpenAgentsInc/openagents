@@ -2,8 +2,8 @@
  * Convex-backed chat client for OpenAgents.com
  * This replaces the in-memory storage with Convex persistence
  */
-import { Effect } from "effect"
 import { client } from "@openagentsinc/convex"
+import { Effect } from "effect"
 
 const ConvexClient = client.ConvexClient
 
@@ -61,15 +61,15 @@ function debug(message: string, data?: any) {
  */
 export async function getConversations() {
   debug("getConversations called for user:", HARDCODED_USER_ID)
-  
+
   try {
     debug("Calling ConvexClient.sessions.listByUser")
     const sessions = await Effect.runPromise(
       ConvexClient.sessions.listByUser(HARDCODED_USER_ID)
-    ) as ConvexSession[]
-    
+    ) as Array<ConvexSession>
+
     debug("Sessions received from Convex:", { count: sessions.length, sessions })
-    
+
     // Transform to match expected format
     const transformed = sessions.map((session: ConvexSession) => ({
       id: session.id,
@@ -84,12 +84,12 @@ export async function getConversations() {
         projectPath: session.project_path
       }
     }))
-    
+
     debug("Transformed sessions:", transformed)
     return transformed
   } catch (error) {
     console.error("Failed to load conversations from Convex:", error)
-    debug("Error details:", { 
+    debug("Error details:", {
       error,
       message: error instanceof Error ? error.message : "Unknown error",
       stack: error instanceof Error ? error.stack : undefined
@@ -103,43 +103,43 @@ export async function getConversations() {
  */
 export async function getConversationWithMessages(sessionId: string) {
   debug("getConversationWithMessages called for session:", sessionId)
-  
+
   try {
     // Get session
     debug("Fetching session from Convex")
     const session = await Effect.runPromise(
       ConvexClient.sessions.getById(sessionId)
     ) as ConvexSession | null
-    
+
     debug("Session received:", session)
-    
+
     if (!session) {
       throw new Error("Session not found")
     }
-    
+
     // Get messages
     debug("Fetching messages from Convex")
     const messages = await Effect.runPromise(
       ConvexClient.messages.listBySession(sessionId, 1000) // Get up to 1000 messages
-    ) as ConvexMessage[]
-    
+    ) as Array<ConvexMessage>
+
     debug("Messages received:", { count: messages.length })
-    
+
     // Log first 5 messages in detail for debugging
     messages.slice(0, 5).forEach((msg, index) => {
       debug(`Message ${index}:`, {
         entry_uuid: msg.entry_uuid,
         entry_type: msg.entry_type,
         role: msg.role,
-        content: msg.content ? msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : '') : 'empty',
-        thinking: msg.thinking ? 'present' : 'absent',
-        summary: msg.summary ? 'present' : 'absent',
+        content: msg.content ? msg.content.substring(0, 100) + (msg.content.length > 100 ? "..." : "") : "empty",
+        thinking: msg.thinking ? "present" : "absent",
+        summary: msg.summary ? "present" : "absent",
         tool_name: msg.tool_name,
-        tool_output: msg.tool_output ? 'present' : 'absent',
+        tool_output: msg.tool_output ? "present" : "absent",
         timestamp: new Date(msg.timestamp).toISOString()
       })
     })
-    
+
     // Transform session to match expected format
     const conversation = {
       id: session.id,
@@ -154,7 +154,7 @@ export async function getConversationWithMessages(sessionId: string) {
         projectPath: session.project_path
       }
     }
-    
+
     // Transform messages to match expected format
     const transformedMessages = messages
       .filter((msg: ConvexMessage) => {
@@ -172,10 +172,13 @@ export async function getConversationWithMessages(sessionId: string) {
           hasContent: !!msg.content,
           contentType: typeof msg.content
         })
-        
+
         const parsedContent = parseMessageContent(msg)
-        debug(`Parsed content for ${msg.entry_uuid}:`, parsedContent.substring(0, 100) + (parsedContent.length > 100 ? '...' : ''))
-        
+        debug(
+          `Parsed content for ${msg.entry_uuid}:`,
+          parsedContent.substring(0, 100) + (parsedContent.length > 100 ? "..." : "")
+        )
+
         return {
           id: msg.entry_uuid,
           conversationId: msg.session_id,
@@ -198,7 +201,7 @@ export async function getConversationWithMessages(sessionId: string) {
           }
         }
       })
-    
+
     return { conversation, messages: transformedMessages }
   } catch (error) {
     console.error("Failed to load conversation from Convex:", error)
@@ -215,7 +218,7 @@ function determineRole(message: ConvexMessage): "user" | "assistant" | "system" 
     debug(`Using explicit role for ${message.entry_uuid}: ${message.role}`)
     return message.role as "user" | "assistant" | "system"
   }
-  
+
   // Then determine based on entry_type
   switch (message.entry_type) {
     case "user":
@@ -251,15 +254,17 @@ function parseMessageContent(message: ConvexMessage): string {
           // Check if it's already a string
           if (typeof message.content === "string") {
             // Check if it's HTML (Claude Code format) - we need to strip it
-            if (message.content.includes('<span') || message.content.includes('→') || message.content.includes('<div')) {
+            if (
+              message.content.includes("<span") || message.content.includes("→") || message.content.includes("<div")
+            ) {
               debug(`User content appears to be HTML from Claude Code`)
               // Strip HTML tags to get plain text
               const plainText = message.content
-                .replace(/<[^>]*>/g, '') // Remove HTML tags
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&amp;/g, '&')
-                .replace(/&quot;/g, '"')
+                .replace(/<[^>]*>/g, "") // Remove HTML tags
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/&amp;/g, "&")
+                .replace(/&quot;/g, "\"")
                 .replace(/&#39;/g, "'")
                 .trim()
               return plainText || message.content // Fallback to original if stripping fails
@@ -295,21 +300,24 @@ function parseMessageContent(message: ConvexMessage): string {
       // Show empty message indicator
       debug(`User message has empty content`)
       return "[Empty message]"
-      
+
     case "assistant":
       // Assistant messages might have complex content
       if (message.content) {
         debug(`Assistant message content type: ${typeof message.content}`)
         // Check if it's HTML (Claude Code format) - we need to strip it
-        if (typeof message.content === "string" && (message.content.includes('<span') || message.content.includes('→') || message.content.includes('<div'))) {
+        if (
+          typeof message.content === "string" &&
+          (message.content.includes("<span") || message.content.includes("→") || message.content.includes("<div"))
+        ) {
           debug(`Assistant content appears to be HTML from Claude Code`)
           // Strip HTML tags to get plain text
           const plainText = message.content
-            .replace(/<[^>]*>/g, '') // Remove HTML tags
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&')
-            .replace(/&quot;/g, '"')
+            .replace(/<[^>]*>/g, "") // Remove HTML tags
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&amp;/g, "&")
+            .replace(/&quot;/g, "\"")
             .replace(/&#39;/g, "'")
             .trim()
           return plainText || message.content // Fallback to original if stripping fails
@@ -329,7 +337,7 @@ function parseMessageContent(message: ConvexMessage): string {
               }
               return ""
             }).filter(Boolean)
-            
+
             const result = parts.join("\n").trim()
             debug(`Extracted assistant text from array: ${result.substring(0, 50)}...`)
             return result
@@ -352,27 +360,29 @@ function parseMessageContent(message: ConvexMessage): string {
         return `💭 [Thinking]\n${message.thinking}`
       }
       return ""
-      
-    case "tool_use":
+
+    case "tool_use": {
       debug(`Formatting tool_use entry: ${message.tool_name}`)
-      const toolInputStr = typeof message.tool_input === "string" 
-        ? message.tool_input 
+      const toolInputStr = typeof message.tool_input === "string"
+        ? message.tool_input
         : JSON.stringify(message.tool_input, null, 2)
       return `🔧 Tool: ${message.tool_name || "Unknown"}\n\nInput:\n\`\`\`json\n${toolInputStr}\n\`\`\``
-      
-    case "tool_result":
+    }
+
+    case "tool_result": {
       debug(`Formatting tool_result entry`)
       if (!message.tool_output) return "No output"
-      
+
       // Format tool output nicely
       const output = message.tool_output
       // Return plain text without markdown formatting to avoid breaking the layout
       return `📤 Tool Result:\n${output}`
-      
+    }
+
     case "summary":
       debug(`Formatting summary entry`)
       return `📝 Summary: ${message.summary || "No summary"}`
-      
+
     default:
       debug(`Unknown entry_type: ${message.entry_type}, returning content as-is`)
       return message.content || ""
@@ -382,7 +392,7 @@ function parseMessageContent(message: ConvexMessage): string {
 /**
  * Create a new conversation - for Claude Code sessions this is handled by Overlord
  */
-export async function createConversation(title?: string): Promise<string> {
+export async function createConversation(_title?: string): Promise<string> {
   throw new Error("Cannot create Claude Code sessions from web UI - use Overlord sync")
 }
 
@@ -390,9 +400,9 @@ export async function createConversation(title?: string): Promise<string> {
  * Add a message - for Claude Code sessions this is handled by Overlord
  */
 export async function addMessage(
-  conversationId: string,
-  role: "user" | "assistant",
-  content: string
+  _conversationId: string,
+  _role: "user" | "assistant",
+  _content: string
 ): Promise<void> {
   throw new Error("Cannot add messages to Claude Code sessions from web UI - use Overlord sync")
 }
@@ -401,8 +411,8 @@ export async function addMessage(
  * Update conversation title - for Claude Code sessions this is handled by Overlord
  */
 export async function updateConversationTitle(
-  conversationId: string,
-  title: string
+  _conversationId: string,
+  _title: string
 ): Promise<void> {
   throw new Error("Cannot update Claude Code sessions from web UI - use Overlord sync")
 }
@@ -410,7 +420,7 @@ export async function updateConversationTitle(
 /**
  * Delete a conversation - not supported for Claude Code sessions
  */
-export async function deleteConversation(conversationId: string): Promise<void> {
+export async function deleteConversation(_conversationId: string): Promise<void> {
   throw new Error("Cannot delete Claude Code sessions from web UI")
 }
 
@@ -420,7 +430,7 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 export async function searchConversations(query: string) {
   debug("searchConversations called with query:", query)
   const allConversations = await getConversations()
-  const filtered = allConversations.filter((conv: any) => 
+  const filtered = allConversations.filter((conv: any) =>
     conv.title?.toLowerCase().includes(query.toLowerCase()) ||
     conv.metadata?.projectPath?.toLowerCase().includes(query.toLowerCase())
   )

@@ -3,15 +3,15 @@ import { document, html } from "@openagentsinc/psionic"
 export async function testDebug280() {
   // Use the existing chat client
   const { getConversationWithMessages } = await import("../lib/chat-client-convex")
-  
+
   const result = await getConversationWithMessages("claude-code-session-1750816776552")
   const allMessages = result.messages || []
-  
+
   // Get messages 279-281 (0-indexed, so 279 = index 279)
   const targetMessages = allMessages.slice(279, 282)
-  
+
   console.log("\n=== DEBUGGING MESSAGES 280-282 ===")
-  
+
   const debugInfo = targetMessages.map((msg, idx) => {
     const msgNum = 280 + idx
     console.log(`\n--- Message ${msgNum} ---`)
@@ -20,18 +20,18 @@ export async function testDebug280() {
     console.log("Content exists:", !!msg.content)
     console.log("Content type:", typeof msg.content)
     console.log("Content length:", msg.content ? msg.content.length : 0)
-    
+
     if (msg.content) {
       console.log("First 200 chars:", msg.content.substring(0, 200))
-      console.log("Contains backslash-n:", msg.content.includes('\\n'))
-      console.log("Contains HTML tags:", msg.content.includes('<') || msg.content.includes('>'))
-      console.log("Contains quotes:", msg.content.includes('"') || msg.content.includes("'"))
+      console.log("Contains backslash-n:", msg.content.includes("\\n"))
+      console.log("Contains HTML tags:", msg.content.includes("<") || msg.content.includes(">"))
+      console.log("Contains quotes:", msg.content.includes("\"") || msg.content.includes("'"))
     }
-    
+
     if (msg.metadata) {
       console.log("Metadata:", JSON.stringify(msg.metadata, null, 2))
     }
-    
+
     return {
       num: msgNum,
       entry_type: msg.entry_type,
@@ -39,15 +39,17 @@ export async function testDebug280() {
       content: msg.content || "[No content]",
       metadata: msg.metadata,
       contentLength: msg.content ? msg.content.length : 0,
-      hasProblematicChars: msg.content ? (
-        msg.content.includes('\\n') || 
-        msg.content.includes('\\t') || 
-        msg.content.includes('<') || 
-        msg.content.includes('>')
-      ) : false
+      hasProblematicChars: msg.content ?
+        (
+          msg.content.includes("\\n") ||
+          msg.content.includes("\\t") ||
+          msg.content.includes("<") ||
+          msg.content.includes(">")
+        ) :
+        false
     }
   })
-  
+
   const messageHtml = html`
     <style>
       body {
@@ -93,28 +95,36 @@ export async function testDebug280() {
     <h1>Debug Messages 280-282</h1>
     <p>Check the console for detailed debug logs</p>
     
-    ${debugInfo.map(info => html`
-      <div class="message ${info.hasProblematicChars ? 'problematic' : ''}">
+    ${
+    debugInfo.map((info) =>
+      html`
+      <div class="message ${info.hasProblematicChars ? "problematic" : ""}">
         <h3>Message ${info.num}</h3>
         
         <div class="debug-info">
           <strong>Entry Type:</strong> ${info.entry_type}<br>
           <strong>Role:</strong> ${info.role}<br>
           <strong>Content Length:</strong> ${info.contentLength} chars<br>
-          ${info.hasProblematicChars ? html`<span class="warning">⚠️ Contains problematic characters</span><br>` : ''}
+          ${info.hasProblematicChars ? html`<span class="warning">⚠️ Contains problematic characters</span><br>` : ""}
         </div>
         
         <h4>Content:</h4>
         <div class="content-box">${info.content}</div>
         
-        ${info.metadata ? html`
+        ${
+        info.metadata ?
+          html`
           <h4>Metadata:</h4>
           <div class="content-box">${JSON.stringify(info.metadata, null, 2)}</div>
-        ` : ''}
+        ` :
+          ""
+      }
       </div>
-    `).join('')}
+    `
+    ).join("")
+  }
   `
-  
+
   return document({
     title: "Debug Messages 280",
     body: messageHtml

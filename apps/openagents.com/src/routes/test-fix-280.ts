@@ -2,13 +2,13 @@ import { document, html } from "@openagentsinc/psionic"
 
 export async function testFix280() {
   const { getConversationWithMessages } = await import("../lib/chat-client-convex")
-  
+
   const result = await getConversationWithMessages("claude-code-session-1750816776552")
   const allMessages = result.messages || []
-  
+
   // Get messages 278-282
   const messages = allMessages.slice(278, 283)
-  
+
   const messageHtml = html`
     <style>
       body {
@@ -64,18 +64,19 @@ export async function testFix280() {
     
     <h1>Fixed Messages 279-283</h1>
     
-    ${messages.map((msg, index) => {
+    ${
+    messages.map((msg, index) => {
       const msgNum = index + 279
       const role = msg.role || "system"
       let content = msg.content || "[No content]"
-      
+
       // SAFETY: Truncate extremely long content
       let isTruncated = false
       if (content.length > 2000) {
         content = content.substring(0, 2000)
         isTruncated = true
       }
-      
+
       // Create a pre element to contain the content safely
       return html`
         <div class="message ${role}">
@@ -85,13 +86,14 @@ export async function testFix280() {
           </div>
           <div class="message-content">
             <pre class="safe-content">${content}</pre>
-            ${isTruncated ? html`<div class="truncated">[TRUNCATED from ${msg.content.length} chars]</div>` : ''}
+            ${isTruncated ? html`<div class="truncated">[TRUNCATED from ${msg.content.length} chars]</div>` : ""}
           </div>
         </div>
       `
-    }).join('')}
+    }).join("")
+  }
   `
-  
+
   return document({
     title: "Fixed Message Display",
     body: messageHtml

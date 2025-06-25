@@ -2,14 +2,14 @@ import { document, html } from "@openagentsinc/psionic"
 
 export async function debugChat280() {
   const { getConversationWithMessages } = await import("../lib/chat-client-convex")
-  
+
   try {
     const result = await getConversationWithMessages("claude-code-session-1750816776552")
     const messages = result.messages || []
-    
+
     // Find message around index 280
     const problemMessages = messages.slice(275, 285)
-    
+
     return document({
       title: "Debug Chat Messages 275-285",
       body: html`
@@ -52,7 +52,8 @@ export async function debugChat280() {
         <h1>Debug Chat Messages 275-285</h1>
         <p>Total messages: ${messages.length}</p>
         
-        ${problemMessages.map((msg, i) => {
+        ${
+        problemMessages.map((msg, i) => {
           const index = i + 275
           return html`
             <div class="message">
@@ -66,13 +67,14 @@ export async function debugChat280() {
               </div>
             </div>
           `
-        }).join('')}
+        }).join("")
+      }
       `
     })
   } catch (error) {
     return document({
       title: "Error",
-      body: html`<h1>Error: ${error instanceof Error ? error.message : 'Unknown error'}</h1>`
+      body: html`<h1>Error: ${error instanceof Error ? error.message : "Unknown error"}</h1>`
     })
   }
 }

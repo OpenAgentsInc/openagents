@@ -10,9 +10,9 @@ export async function createChatViewSafe({ conversationId }: ChatViewSafeProps) 
   const { getConversationWithMessages, getConversations } = await import("../../lib/chat-client-convex")
 
   // Load all conversations for sidebar
-  let allConversations: Array<any> = []
+  let _allConversations: Array<any> = []
   try {
-    allConversations = await getConversations() as Array<any>
+    _allConversations = await getConversations() as Array<any>
   } catch (error) {
     console.error("Failed to load conversations:", error)
   }
@@ -91,7 +91,7 @@ export async function createChatViewSafe({ conversationId }: ChatViewSafeProps) 
     const role = msg.role || "system"
     const content = msg.content || "[no content]"
     const additionalClasses = getAdditionalClasses(msg.metadata)
-    
+
     html += `
       <div class="message ${role}">
         <div class="message-block ${role}${additionalClasses}">
@@ -116,20 +116,20 @@ export async function createChatViewSafe({ conversationId }: ChatViewSafeProps) 
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
 }
 
 function getAdditionalClasses(metadata: any): string {
   if (!metadata) return ""
-  
+
   let classes = ""
   if (metadata.entryType === "tool_use") classes += " tool-use"
   if (metadata.entryType === "tool_result") classes += " tool-result"
   if (metadata.entryType === "summary") classes += " summary"
-  
+
   return classes
 }

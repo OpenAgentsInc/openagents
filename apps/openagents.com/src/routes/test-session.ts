@@ -3,7 +3,7 @@ import { document, html } from "@openagentsinc/psionic"
 export async function testSession() {
   // Get messages from the specific session
   const { getConversationWithMessages } = await import("../lib/chat-client-convex")
-  
+
   let messages = []
   try {
     const result = await getConversationWithMessages("claude-code-session-1750816776552")
@@ -15,10 +15,10 @@ export async function testSession() {
       body: html`<h1>Error: ${error.message}</h1>`
     })
   }
-  
+
   // Take messages 279-282 to isolate the problem
   const next100 = messages.slice(279, 282)
-  
+
   const messageHtml = html`
     <style>
       body {
@@ -78,33 +78,39 @@ export async function testSession() {
     <h1>Session: claude-code-session-1750816776552</h1>
     <p>Showing messages 280-282 (${next100.length} messages) of ${messages.length} total</p>
     
-    ${next100.map((msg, index) => {
+    ${
+    next100.map((msg, index) => {
       const role = msg.role || "system"
       const content = msg.content || "[No content]"
-      
+
       // Check if content is too long (might break layout)
       const isTooLong = content.length > 10000
       const displayContent = isTooLong ? content.substring(0, 5000) + "\n\n[TRUNCATED - Content too long]" : content
-      
+
       return html`
         <div class="message ${role}">
           <div class="message-header">
             <span class="message-role">${role}</span>
             <span>Message ${index + 280}</span>
-            ${isTooLong ? html`<span style="color: red;"> ⚠️ TRUNCATED</span>` : ''}
+            ${isTooLong ? html`<span style="color: red;"> ⚠️ TRUNCATED</span>` : ""}
           </div>
           <div class="message-content"><pre style="white-space: pre-wrap; margin: 0;">${displayContent}</pre></div>
-          ${msg.metadata ? html`
+          ${
+        msg.metadata ?
+          html`
             <div class="metadata">
               <strong>Metadata:</strong><br>
               <pre style="margin: 0;">${JSON.stringify(msg.metadata, null, 2)}</pre>
             </div>
-          ` : ''}
+          ` :
+          ""
+      }
         </div>
       `
-    }).join('')}
+    }).join("")
+  }
   `
-  
+
   return document({
     title: "Test Session View",
     body: messageHtml

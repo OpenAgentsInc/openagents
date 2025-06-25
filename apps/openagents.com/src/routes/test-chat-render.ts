@@ -14,10 +14,10 @@ function test() {
 And some more text.`,
     timestamp: Date.now()
   }
-  
+
   // Render using the same function as chat view
   const rendered = renderChatMessage(testMessage)
-  
+
   return document({
     title: "Test Chat Render",
     body: html`
@@ -60,7 +60,7 @@ And some more text.`,
       <hr style="margin: 40px 0; border-color: #333;">
       
       <h2>Raw HTML Output:</h2>
-      <pre>${rendered.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+      <pre>${rendered.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
     `
   })
 }

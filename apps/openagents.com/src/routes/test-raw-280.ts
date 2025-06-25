@@ -2,24 +2,24 @@ import { document, html } from "@openagentsinc/psionic"
 
 export async function testRaw280() {
   const { getConversationWithMessages } = await import("../lib/chat-client-convex")
-  
+
   const result = await getConversationWithMessages("claude-code-session-1750816776552")
   const allMessages = result.messages || []
-  
+
   // Get message 280 specifically (index 279)
   const msg280 = allMessages[279]
-  
+
   if (!msg280) {
     return document({
       title: "Error",
       body: html`<h1>Message 280 not found</h1>`
     })
   }
-  
+
   // Create a safe display of the content
   const content = msg280.content || "[No content]"
   const truncatedContent = content.length > 1000 ? content.substring(0, 1000) + "...[TRUNCATED]" : content
-  
+
   const messageHtml = html`
     <style>
       body {
@@ -58,13 +58,17 @@ Content Type: ${typeof content}
     <h2>Full Message Object (JSON):</h2>
     <pre>${JSON.stringify(msg280, null, 2)}</pre>
     
-    ${content.length > 5000 ? html`
+    ${
+    content.length > 5000 ?
+      html`
       <div class="warning">
         ⚠️ This message has ${content.length} characters which might be breaking the layout!
       </div>
-    ` : ''}
+    ` :
+      ""
+  }
   `
-  
+
   return document({
     title: "Raw Message 280",
     body: messageHtml

@@ -20,22 +20,22 @@ export interface ChatViewProps {
 // Helper function to escape HTML
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
 }
 
 // Helper function to get additional classes based on metadata
 function getAdditionalClasses(metadata: any): string {
   if (!metadata) return ""
-  
+
   let classes = ""
   if (metadata.entryType === "tool_use") classes += " tool-use"
   if (metadata.entryType === "tool_result") classes += " tool-result"
   if (metadata.entryType === "summary") classes += " summary"
-  
+
   return classes
 }
 
@@ -49,21 +49,23 @@ function renderChatMessageSafe(message: {
 }): string {
   // For system messages (tool use, summaries, etc.), use a different style
   const blockClass = message.role === "system" ? "system" : message.role
-  
+
   // Check if this is a tool-related message based on metadata
   const additionalClasses = getAdditionalClasses(message.metadata)
-  
+
   // Skip empty messages
   if (!message.content || message.content.trim() === "") {
     return ""
   }
-  
+
   // Build HTML as string to safely contain content with special characters
   return `
     <div class="message ${message.role}">
       <div class="message-block ${blockClass}${additionalClasses}">
         <div class="message-body">
-          <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0; background: transparent; padding: 0;">${escapeHtml(message.content)}</pre>
+          <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0; background: transparent; padding: 0;">${
+    escapeHtml(message.content)
+  }</pre>
         </div>
       </div>
     </div>
@@ -139,13 +141,13 @@ export async function createChatView({ conversationId }: ChatViewProps) {
         <span class="text-xs font-medium text-[rgba(255,255,255,0.5)] uppercase">Recent</span>
       </div>
       <ul class="flex flex-col gap-0.5">`
-    
+
     for (const conv of allConversations) {
       const isActive = conv.id === conversationId
       const className = isActive
         ? "bg-[rgba(255,255,255,0.1)] text-[#D7D8E5]"
         : "text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]"
-      
+
       threadListHTML += `
         <li>
           <a href="/chat/${conv.id}" class="block px-3 py-1.5 text-sm rounded-md transition-colors ${className}">
@@ -153,7 +155,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
           </a>
         </li>`
     }
-    
+
     threadListHTML += `
       </ul>
     </div>`
@@ -169,24 +171,28 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   // Generate model options HTML as a string
   let modelOptionsHTML = `<div class="model-group">Cloudflare (Free)</div>`
-  
-  const cloudflareModels = AVAILABLE_MODELS.filter(m => m.provider === "cloudflare")
+
+  const cloudflareModels = AVAILABLE_MODELS.filter((m) => m.provider === "cloudflare")
   for (const model of cloudflareModels) {
     modelOptionsHTML += `
-      <div class="model-option" data-model-id="${escapeHtml(model.id)}" onclick="selectModel('${escapeHtml(model.id)}')">
+      <div class="model-option" data-model-id="${escapeHtml(model.id)}" onclick="selectModel('${
+      escapeHtml(model.id)
+    }')">
         <div class="model-name">${escapeHtml(model.name)}</div>
         ${model.description ? `<div class="model-description">${escapeHtml(model.description)}</div>` : ""}
       </div>`
   }
-  
+
   modelOptionsHTML += `
     <div class="model-group">OpenRouter (API Key Required)</div>
     <div id="openrouter-models">`
-  
-  const openrouterModels = AVAILABLE_MODELS.filter(m => m.provider === "openrouter")
+
+  const openrouterModels = AVAILABLE_MODELS.filter((m) => m.provider === "openrouter")
   for (const model of openrouterModels) {
     modelOptionsHTML += `
-      <div class="model-option openrouter-model" data-model-id="${escapeHtml(model.id)}" onclick="selectModel('${escapeHtml(model.id)}')">
+      <div class="model-option openrouter-model" data-model-id="${escapeHtml(model.id)}" onclick="selectModel('${
+      escapeHtml(model.id)
+    }')">
         <div class="model-name">
           ${escapeHtml(model.name)}
           <svg class="lock-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -197,7 +203,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
         ${model.description ? `<div class="model-description">${escapeHtml(model.description)}</div>` : ""}
       </div>`
   }
-  
+
   modelOptionsHTML += `
     </div>
     
@@ -213,7 +219,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   // Script base URL for development vs production
   const scriptBase = isDev ? "http://localhost:5173/src/client" : "/js"
-  
+
   // Build the head content
   const headContent = isDev ?
     `<link rel="preload" href="http://localhost:5173/src/client/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
@@ -240,7 +246,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
          background-color: #1a1a1a; 
        }
      </style>` :
-    '<link rel="stylesheet" href="/css/client.css">'
+    "<link rel=\"stylesheet\" href=\"/css/client.css\">"
 
   // Build the complete HTML document as a string
   const html = `<!DOCTYPE html>
@@ -256,7 +262,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 <body>
   ${processedHTML}
   
-  ${isDev ? '<script type="module" src="http://localhost:5173/@vite/client"></script>' : ''}
+  ${isDev ? "<script type=\"module\" src=\"http://localhost:5173/@vite/client\"></script>" : ""}
   <script type="module">
     // Import client initialization (includes CSS in dev mode)
     import { initializeClient } from '${scriptBase}/index.${isDev ? "ts" : "js"}';

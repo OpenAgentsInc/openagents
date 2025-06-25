@@ -10,7 +10,7 @@ export function debugConversations(_ctx: RouteContext) {
   return Effect.gen(function*() {
     try {
       const conversations = yield* Effect.promise(() => getConversations())
-      
+
       return yield* HttpServerResponse.json({
         totalCount: conversations.length,
         conversations: conversations.map((conv: any) => ({
