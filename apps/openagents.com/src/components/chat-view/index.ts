@@ -291,6 +291,16 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     body: html`
       ${processedHTML}
       
+      <script>
+        // Toggle debug info visibility
+        function toggleDebug(debugId) {
+          const debugElement = document.getElementById(debugId);
+          if (debugElement) {
+            debugElement.style.display = debugElement.style.display === 'none' ? 'block' : 'none';
+          }
+        }
+      </script>
+      
       ${isDev ? "<script type=\"module\" src=\"http://localhost:5173/@vite/client\"></script>" : ""}
       <script type="module">
         // Import client initialization (includes CSS in dev mode)

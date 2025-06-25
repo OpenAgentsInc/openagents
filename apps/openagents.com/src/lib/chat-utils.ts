@@ -199,7 +199,11 @@ export function renderChatMessage(message: {
   // Only include debug section if explicitly enabled or in development
   const includeDebug = true // Re-enabled for debugging
 
+  // Generate a unique ID for this message's debug section
+  const messageDebugId = "debug-" + (message.id || Math.random().toString(36).substr(2, 9))
+
   let debugSection = ""
+  let debugData = ""
   if (includeDebug) {
     // Create a comprehensive debug object showing ALL database fields
     const debugObject = {
@@ -260,19 +264,37 @@ export function renderChatMessage(message: {
     }
 
     const debugJson = escapeHtml(JSON.stringify(debugObject, null, 2))
-    debugSection = "<div class=\"message-debug\">" +
-      "<details>" +
-      "<summary>Debug Info</summary>" +
+    debugData = debugJson
+    
+    // Create debug section (hidden by default)
+    debugSection = "<div id=\"" + messageDebugId + "\" class=\"message-debug\" style=\"display: none;\">" +
       "<pre class=\"debug-json\">" + debugJson + "</pre>" +
-      "</details>" +
       "</div>"
   }
 
   return (
     "<div class=\"message\">" +
-    "<div class=\"message-block " + message.role + "\">" +
+    "<div class=\"message-block " + message.role + " group relative\">" +
     "<div class=\"message-body\">" + content + "</div>" +
     debugSection +
+    // Hover buttons container
+    "<div class=\"message-actions absolute right-0 mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100\">" +
+    "<button class=\"debug-button\" onclick=\"toggleDebug('" + messageDebugId + "')\" aria-label=\"Toggle debug info\">" +
+    // Bug icon SVG
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">" +
+    "<path d=\"m8 2 1.88 1.88M14.12 3.88 16 2\"></path>" +
+    "<path d=\"M9 7.13v-1a3.003 3.003 0 1 1 6 0v1\"></path>" +
+    "<path d=\"M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6z\"></path>" +
+    "<path d=\"M12 20v-9\"></path>" +
+    "<path d=\"M6.53 9C4.6 8.8 3 7.1 3 5\"></path>" +
+    "<path d=\"M6 13H2\"></path>" +
+    "<path d=\"M3 21c0-2.1 1.7-3.9 3.8-4\"></path>" +
+    "<path d=\"M20.97 5c0 2.1-1.6 3.8-3.5 4\"></path>" +
+    "<path d=\"M22 13h-4\"></path>" +
+    "<path d=\"M17.2 17c2.1.1 3.8 1.9 3.8 4\"></path>" +
+    "</svg>" +
+    "</button>" +
+    "</div>" +
     "</div>" +
     "</div>"
   )
@@ -992,28 +1014,6 @@ export const chatStyles = `
   }
 
   /* Debug section styling - only shown when enabled */
-  .message-debug {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--offblack);
-  }
-
-  .message-debug details {
-    margin: 0;
-  }
-
-  .message-debug summary {
-    color: var(--gray);
-    font-size: 11px;
-    font-family: var(--font-family-mono);
-    cursor: pointer;
-    user-select: none;
-    padding: 2px 0;
-  }
-
-  .message-debug summary:hover {
-    color: var(--white);
-  }
 
   .debug-json {
     background-color: var(--black);
@@ -1090,5 +1090,59 @@ export const chatStyles = `
   .tool-name {
     color: #a855f7;
     font-weight: 600;
+  }
+
+  /* Group hover functionality */
+  .group {
+    position: relative;
+  }
+
+  /* Message actions (hover buttons) */
+  .message-actions {
+    position: absolute;
+    right: 0;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .group:hover .message-actions {
+    opacity: 1;
+  }
+
+  /* Debug button styling */
+  .debug-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--gray);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .debug-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--lightgray);
+  }
+
+  .debug-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Debug section when visible */
+  .message-debug {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--offblack);
   }
 `
