@@ -60,8 +60,6 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   // Import server-side only here to avoid bundling issues
   const { getConversationWithMessages, getConversations } = await import("../../lib/chat-client-convex")
-
-  // Import Effect
   const { Effect } = await import("effect")
 
   // Load all conversations for sidebar
