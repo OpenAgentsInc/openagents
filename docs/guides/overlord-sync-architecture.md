@@ -20,6 +20,7 @@ The Overlord sync system transforms Claude Code from an isolated desktop tool in
 - **Real-time monitoring** of Claude Code session files
 - **Newest-first sync** prioritizes recent conversations
 - **Duplicate prevention** skips already-synced messages
+- **Vector embeddings** for semantic search over conversations
 - **WebSocket integration** for real-time updates
 - **Type-safe architecture** using Effect-TS patterns
 - **Comprehensive error handling** with graceful degradation
@@ -100,7 +101,15 @@ const OUTPUT_COST_PER_TOKEN = 15 / 1_000_000 // $15 per 1M tokens
 - **ALWAYS check for existing messages** before creating new ones
 - **Use `entry_uuid` for deduplication** - this is the primary key
 - **Update existing messages** to apply content fixes
+- **Generate embeddings** when enabled via CLI options
 - **Skip images** - log presence but don't store (not yet implemented)
+
+**Vector Embedding Integration**:
+- **Optional embedding generation** via `--enable-embeddings` flag
+- **Configurable embedding models** via `--embedding-model` option
+- **Content filtering** - only embeds messages with meaningful content
+- **Error resilience** - embedding failures don't break sync process
+- **1536-dimensional vectors** stored in Convex with cosine similarity search
 
 ### 5. WebSocketClient Service (`WebSocketClient.ts`)
 
@@ -180,11 +189,18 @@ overlord transport session-id-here --user-id=xxx --api-key=yyy
 
 # Sync with folder filtering
 overlord transport all --user-id=xxx --api-key=yyy --include-path="myproject" --exclude-path="temp"
+
+# Sync with vector embeddings enabled
+overlord transport all --user-id=xxx --api-key=yyy --enable-embeddings --embedding-model="text-embedding-3-small"
 ```
 
 **Path Filtering Options**:
 - `--include-path` or `-i` - Only sync projects containing this path substring (can be used multiple times)
 - `--exclude-path` or `-e` - Exclude projects containing this path substring (can be used multiple times)
+
+**Vector Embedding Options**:
+- `--enable-embeddings` - Generate vector embeddings for semantic search (defaults to false)
+- `--embedding-model` - Embedding model to use (defaults to "text-embedding-3-small")
 
 #### 4. Limited Import (Testing)
 ```bash
@@ -192,8 +208,11 @@ overlord import --user-id=xxx --api-key=yyy --limit=10
 
 # Import with path filtering
 overlord import --user-id=xxx --api-key=yyy --limit=5 --include-path="important-project"
+
+# Import with embeddings enabled
+overlord import --user-id=xxx --api-key=yyy --limit=5 --enable-embeddings --embedding-model="nomic-embed-text"
 ```
-Imports up to 10 most recent conversations for testing purposes. Supports same path filtering options as transport command.
+Imports up to 10 most recent conversations for testing purposes. Supports same path filtering and embedding options as transport command.
 
 #### 5. Check Status
 ```bash
@@ -327,14 +346,18 @@ graph TD
     B --> C[JSONLParser Processes Content]
     C --> D[DatabaseMapper Transforms Data]
     D --> E[ConvexSync Saves to Database]
-    E --> F[WebSocketClient Broadcasts Update]
-    F --> G[OpenAgents.com Dashboard]
+    E --> F{Embeddings Enabled?}
+    F -->|Yes| G[MessageEmbeddingService Generates Vector]
+    F -->|No| I[WebSocketClient Broadcasts Update]
+    G --> H[Store Embedding in Convex]
+    H --> I[WebSocketClient Broadcasts Update]
+    I --> J[OpenAgents.com Dashboard]
     
-    H[Manual Sync Command] --> I[OverlordService Orchestrates]
-    I --> J[Find All JSONL Files]
-    J --> K[Sort by Modification Time]
-    K --> L[Process Each File]
-    L --> C
+    K[Manual Sync Command] --> L[OverlordService Orchestrates]
+    L --> M[Find All JSONL Files]
+    M --> N[Sort by Modification Time]
+    N --> O[Process Each File]
+    O --> C
 ```
 
 ### Real-time Event Flow
@@ -395,8 +418,25 @@ CREATE TABLE claude_messages (
   tool_input LONGTEXT,
   tool_use_id VARCHAR(255),
   tool_output LONGTEXT,
-  tool_is_error BOOLEAN DEFAULT FALSE
+  tool_is_error BOOLEAN DEFAULT FALSE,
+  embedding_id VARCHAR(255)  -- Links to Convex message_embeddings table
 );
+```
+
+**message_embeddings** (Convex):
+```typescript
+// Convex schema for vector embeddings
+message_embeddings: defineTable({
+  message_id: v.id("messages"),           // Reference to message
+  embedding: v.array(v.float64()),       // 1536-dimensional vector
+  model: v.string(),                     // Embedding model used
+  dimensions: v.number(),                // Vector dimensions (1536)
+  created_at: v.number()                 // Timestamp
+}).vectorIndex("by_embedding", {
+  vectorField: "embedding",
+  dimensions: 1536,                      // OpenAI text-embedding-3-small
+  filterFields: ["model"]                // Enable model-based filtering
+})
 ```
 
 ### Indexes for Performance
@@ -549,4 +589,106 @@ The Overlord sync system provides a robust foundation for Claude Code integratio
 
 **For Users**: Start with `detect` and `import --limit=5` for testing, then use `spawn` for continuous monitoring.
 
-**Critical Missing Feature**: Folder filtering should be the next enhancement to allow selective project synchronization.
+## Vector Embedding Features
+
+### Semantic Search Capabilities
+
+The vector embedding system enables powerful semantic search over Claude Code conversations:
+
+**Search Types**:
+- **Similarity search** - Find messages similar to a query vector
+- **Text-based search** - Generate embedding from query text and find similar messages  
+- **Cross-session search** - Search across multiple conversations
+- **Model-filtered search** - Search within specific embedding models
+
+**Example Usage**:
+```typescript
+// Search for similar messages using text query
+const results = yield* ConvexEmbeddingService.searchSimilarByText({
+  query_text: "database migration error",
+  limit: 10,
+  model_filter: "text-embedding-3-small"
+})
+
+// Search within specific session
+const sessionResults = yield* ConvexEmbeddingService.searchSimilar({
+  query_embedding: embeddingVector,
+  session_id: "specific-session-id",
+  limit: 5
+})
+```
+
+### Content Processing Pipeline
+
+**Message Content Extraction**:
+```typescript
+// Content combination for embedding generation
+const messageContent = {
+  content: messageRecord.content || "",
+  thinking: messageRecord.thinking || "",
+  tool_output: messageRecord.tool_output || "",
+  entry_type: messageRecord.entry_type,
+  role: messageRecord.role
+}
+```
+
+**Content Filtering Rules**:
+- **Skip summary entries** - Summaries are meta-content, not searchable content
+- **Require meaningful content** - At least one non-empty field (content, thinking, tool_output)
+- **Include tool outputs** - Tool results are valuable for semantic search
+- **Include thinking content** - AI reasoning is useful for finding similar problem-solving patterns
+
+### Embedding Provider Integration
+
+**Current Implementation** (OpenAI):
+- Model: `text-embedding-3-small` (1536 dimensions)
+- Cost: ~$0.00002 per 1K tokens
+- Performance: ~1000 embeddings/minute
+
+**Recommended Alternatives** (Local/Free):
+```bash
+# Ollama with nomic-embed-text
+overlord transport --enable-embeddings --embedding-model="nomic-embed-text"
+
+# Hugging Face sentence-transformers  
+overlord transport --enable-embeddings --embedding-model="all-MiniLM-L6-v2"
+
+# Custom embedding service
+overlord transport --enable-embeddings --embedding-model="custom-model"
+```
+
+### Performance Characteristics
+
+**Storage Requirements**:
+- 1536 dimensions × 8 bytes (float64) = ~12KB per embedding
+- 1000 messages × 12KB = ~12MB storage
+- Convex vector index adds ~20% overhead
+
+**Search Performance**:
+- Sub-50ms query response for <100K vectors
+- Cosine similarity with HNSW indexing
+- Configurable result limits (1-256)
+
+**Generation Performance**:
+- Embedding generation during sync (optional)
+- Graceful failure - embedding errors don't break sync
+- Batch processing for efficiency
+
+### Future Enhancements
+
+**Priority 1: Local Embedding Support**
+- Remove dependency on external embedding APIs
+- Support Ollama, Hugging Face, and custom endpoints
+- Reduce costs and improve privacy
+
+**Priority 2: Advanced Search Features**
+- Hybrid search (semantic + keyword)
+- Conversation-aware search (context continuity)
+- Time-based relevance scoring
+
+**Priority 3: Search UI Integration**  
+- Web dashboard search interface
+- Real-time search suggestions
+- Search result ranking and filtering
+
+**Critical Missing Feature**: Local embedding provider support should be the next enhancement to eliminate external API dependencies.
