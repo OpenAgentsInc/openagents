@@ -18,7 +18,12 @@ function formatToolResult(content: string): string {
   // Check if content looks like a file listing
   const lines = content.split('\n').filter(line => line.trim())
   
-  if (lines.length > 10 && lines.every(line => !line.includes(' ') || line.endsWith('.pdf') || line.endsWith('.xlsx') || line.endsWith('.mov') || line.endsWith('.jpg') || line.endsWith('.jpeg') || line.endsWith('.png'))) {
+  // More strict file detection - must have file extensions and path separators
+  const looksLikeFiles = lines.length > 10 && 
+    lines.filter(line => line.includes('/')).length > lines.length * 0.8 &&
+    lines.filter(line => /\.(pdf|xlsx|mov|jpg|jpeg|png|mp4|zip|txt|js|ts|json|md)$/i.test(line)).length > lines.length * 0.5
+  
+  if (looksLikeFiles) {
     // It's likely a file listing
     const fileCount = lines.length
     const preview = lines.slice(0, 5).map(escapeHtml).join('\n')
@@ -37,14 +42,18 @@ function formatToolResult(content: string): string {
   }
   
   // For other long content, make it collapsible
-  if (content.length > 500) {
-    const preview = escapeHtml(content.substring(0, 200))
+  if (content.length > 300) {
+    const lines = content.split('\n')
+    const preview = lines.slice(0, 3).map(line => 
+      line.length > 80 ? line.substring(0, 80) + '...' : line
+    ).join('\n')
+    
     return (
       "<div class=\"long-content\">" +
-      "<div style=\"white-space: pre-wrap; word-break: break-word;\">" + preview + "...</div>" +
+      "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
       "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
-      "<summary style=\"cursor: pointer; color: #9ece6a;\">Show full content (" + content.length + " characters)</summary>" +
-      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto;\">" + 
+      "<summary style=\"cursor: pointer; color: #9ece6a; font-size: 12px;\">Show full content (" + content.length + " characters, " + lines.length + " lines)</summary>" +
+      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" + 
       escapeHtml(content) + 
       "</pre>" +
       "</details>" +
@@ -53,7 +62,7 @@ function formatToolResult(content: string): string {
   }
   
   // Short content - just escape and wrap
-  return "<pre style=\"white-space: pre-wrap; word-break: break-word;\">" + escapeHtml(content) + "</pre>"
+  return "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(content) + "</pre>"
 }
 
 /**
@@ -119,7 +128,7 @@ export function renderChatMessage(message: {
   }
   
   // Only include debug section if explicitly enabled or in development
-  const includeDebug = false // Set to true to enable debug sections
+  const includeDebug = true // Re-enabled for debugging
   
   let debugSection = ""
   if (includeDebug) {
@@ -129,8 +138,16 @@ export function renderChatMessage(message: {
       role: message.role,
       timestamp: message.timestamp,
       contentLength: message.content?.length || 0,
+      contentPreview: message.content?.substring(0, 100) + (message.content?.length > 100 ? '...' : ''),
       hasRendered: !!message.rendered,
-      metadata: message.metadata
+      isToolResult: message.content?.startsWith('[{') && message.content?.includes('"tool_result"'),
+      metadata: message.metadata ? {
+        entryType: message.metadata.entryType,
+        hasEmbeddedTool: message.metadata.hasEmbeddedTool,
+        toolName: message.metadata.toolName,
+        toolUseId: message.metadata.toolUseId,
+        turnCount: message.metadata.turnCount
+      } : null
     }
     
     const debugJson = escapeHtml(JSON.stringify(debugObject, null, 2))
