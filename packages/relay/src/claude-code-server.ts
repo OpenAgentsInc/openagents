@@ -3,7 +3,7 @@
  * Handles machine registration, command routing, and real-time communication
  */
 import { Schema as S } from "@effect/schema"
-import { Context, Data, Effect, HashMap, Layer, Queue, Ref, Stream, Option } from "effect"
+import { Context, Data, Effect, HashMap, Layer, Option, Queue, Ref, Stream } from "effect"
 // Types will be imported from overlord once it's built
 interface ClaudeCodeCommand {
   readonly commandId: string
@@ -181,33 +181,33 @@ export class ClaudeCodeWebSocketServer extends Context.Tag("ClaudeCodeWebSocketS
       machineId: string,
       machineInfo: MachineClaudeInfo
     ) => Effect.Effect<void, ClaudeCodeServerError>
-    
+
     readonly updateMachineHeartbeat: (
       machineId: string,
       sessions: ReadonlyArray<ClaudeCodeSession>
     ) => Effect.Effect<void, MachineNotFoundError>
-    
+
     readonly handleMachineResponse: (
       machineId: string,
       response: ClaudeCodeResponse
     ) => Effect.Effect<void, ClaudeCodeServerError>
-    
+
     // Client connection methods
     readonly registerClient: (
       connectionId: string,
       userId: string
     ) => Effect.Effect<ClientConnectionHandler, ClaudeCodeServerError>
-    
+
     // Command routing
     readonly routeCommand: (
       command: ClaudeCodeCommand
     ) => Effect.Effect<void, MachineNotFoundError | ClaudeCodeServerError>
-    
+
     // Query methods
     readonly getActiveMachines: () => Effect.Effect<ReadonlyArray<MachineClaudeInfo>>
     readonly getMachineSessions: (machineId: string) => Effect.Effect<ReadonlyArray<ClaudeCodeSession>>
     readonly getStats: () => Effect.Effect<ClaudeCodeServerStats>
-    
+
     // Connection cleanup
     readonly removeConnection: (connectionId: string) => Effect.Effect<void>
   }
@@ -248,350 +248,368 @@ export const ClaudeCodeWebSocketServerLive = Layer.effect(
     const clients = yield* Ref.make(HashMap.empty<string, ClientConnection>())
     const connectionToMachine = yield* Ref.make(HashMap.empty<string, string>())
     const connectionToClient = yield* Ref.make(HashMap.empty<string, string>())
-    
+
     // Response queues for clients
     const clientQueues = yield* Ref.make(HashMap.empty<string, Queue.Queue<ServerMessage>>())
-    
+
     // Command queues for machines
     const machineQueues = yield* Ref.make(HashMap.empty<string, Queue.Queue<ClaudeCodeCommand>>())
-    
+
     // Statistics
     const stats = yield* Ref.make({
       commandsRouted: 0,
       responsesDelivered: 0
     })
-    
+
     // Helper to broadcast to subscribed clients
     const broadcastToClients = (
       message: ServerMessage,
       targetMachineId?: string
-    ) => Effect.gen(function*() {
-      const allClients = yield* Ref.get(clients)
-      const queues = yield* Ref.get(clientQueues)
-      
-      let notifiedCount = 0
-      
-      for (const [clientId, client] of allClients) {
-        if (!client.isActive) continue
-        
-        // Check if client is subscribed to this machine
-        if (targetMachineId && !client.subscribedMachines.has(targetMachineId)) continue
-        
-        const queue = HashMap.get(queues, clientId)
-        if (Option.isSome(queue)) {
-          yield* Queue.offer(queue.value, message)
-          notifiedCount++
+    ) =>
+      Effect.gen(function*() {
+        const allClients = yield* Ref.get(clients)
+        const queues = yield* Ref.get(clientQueues)
+
+        let notifiedCount = 0
+
+        for (const [clientId, client] of allClients) {
+          if (!client.isActive) continue
+
+          // Check if client is subscribed to this machine
+          if (targetMachineId && !client.subscribedMachines.has(targetMachineId)) continue
+
+          const queue = HashMap.get(queues, clientId)
+          if (Option.isSome(queue)) {
+            yield* Queue.offer(queue.value, message)
+            notifiedCount++
+          }
         }
-      }
-      
-      yield* Ref.update(stats, (s) => ({
-        ...s,
-        responsesDelivered: s.responsesDelivered + notifiedCount
-      }))
-      
-      return notifiedCount
-    })
-    
+
+        yield* Ref.update(stats, (s) => ({
+          ...s,
+          responsesDelivered: s.responsesDelivered + notifiedCount
+        }))
+
+        return notifiedCount
+      })
+
     // Machine registration
     const registerMachine = (
       connectionId: string,
       machineId: string,
       machineInfo: MachineClaudeInfo
-    ) => Effect.gen(function*() {
-      const connection: MachineConnection = {
-        id: machineId,
-        connectionId,
-        machineInfo,
-        activeSessions: HashMap.empty(),
-        isActive: true,
-        connectedAt: new Date(),
-        lastHeartbeat: new Date()
-      }
-      
-      yield* Ref.update(machines, HashMap.set(machineId, connection))
-      yield* Ref.update(connectionToMachine, HashMap.set(connectionId, machineId))
-      
-      // Create command queue for this machine
-      const queue = yield* Queue.unbounded<ClaudeCodeCommand>()
-      yield* Ref.update(machineQueues, HashMap.set(machineId, queue))
-      
-      // Notify all clients about new machine
-      yield* broadcastToClients({
-        type: "machine_status",
-        machineId,
-        status: "online"
+    ) =>
+      Effect.gen(function*() {
+        const connection: MachineConnection = {
+          id: machineId,
+          connectionId,
+          machineInfo,
+          activeSessions: HashMap.empty(),
+          isActive: true,
+          connectedAt: new Date(),
+          lastHeartbeat: new Date()
+        }
+
+        yield* Ref.update(machines, HashMap.set(machineId, connection))
+        yield* Ref.update(connectionToMachine, HashMap.set(connectionId, machineId))
+
+        // Create command queue for this machine
+        const queue = yield* Queue.unbounded<ClaudeCodeCommand>()
+        yield* Ref.update(machineQueues, HashMap.set(machineId, queue))
+
+        // Notify all clients about new machine
+        yield* broadcastToClients({
+          type: "machine_status",
+          machineId,
+          status: "online"
+        })
+
+        yield* Effect.log(`Machine registered: ${machineId} (${machineInfo.hostname})`)
       })
-      
-      yield* Effect.log(`Machine registered: ${machineId} (${machineInfo.hostname})`)
-    })
-    
+
     // Heartbeat update
     const updateMachineHeartbeat = (
       machineId: string,
       sessions: ReadonlyArray<ClaudeCodeSession>
-    ) => Effect.gen(function*() {
-      const allMachines = yield* Ref.get(machines)
-      const machine = HashMap.get(allMachines, machineId)
-      
-      return yield* machine.pipe(
-        Option.match({
-          onNone: () => Effect.fail(new MachineNotFoundError({ machineId })),
-          onSome: (machineValue) => {
-            const updatedMachine = {
-              ...machineValue,
-              lastHeartbeat: new Date(),
-              activeSessions: sessions.reduce(
-                (acc, session) => HashMap.set(acc, session.sessionId, session),
-                HashMap.empty<string, ClaudeCodeSession>()
-              )
+    ) =>
+      Effect.gen(function*() {
+        const allMachines = yield* Ref.get(machines)
+        const machine = HashMap.get(allMachines, machineId)
+
+        return yield* machine.pipe(
+          Option.match({
+            onNone: () => Effect.fail(new MachineNotFoundError({ machineId })),
+            onSome: (machineValue) => {
+              const updatedMachine = {
+                ...machineValue,
+                lastHeartbeat: new Date(),
+                activeSessions: sessions.reduce(
+                  (acc, session) => HashMap.set(acc, session.sessionId, session),
+                  HashMap.empty<string, ClaudeCodeSession>()
+                )
+              }
+
+              return Ref.update(machines, HashMap.set(machineId, updatedMachine))
             }
-            
-            return Ref.update(machines, HashMap.set(machineId, updatedMachine))
-          }
-        })
-      )
-    })
-    
+          })
+        )
+      })
+
     // Handle response from machine
     const handleMachineResponse = (
       machineId: string,
       response: ClaudeCodeResponse
-    ) => Effect.gen(function*() {
-      // Broadcast response to all subscribed clients
-      yield* broadcastToClients({
-        type: "response",
-        response
-      }, machineId)
-    })
-    
+    ) =>
+      Effect.gen(function*() {
+        // Broadcast response to all subscribed clients
+        yield* broadcastToClients({
+          type: "response",
+          response
+        }, machineId)
+      })
+
     // Client registration
     const registerClient = (
       connectionId: string,
       userId: string
-    ) => Effect.gen(function*() {
-      const client: ClientConnection = {
-        id: connectionId,
-        userId,
-        subscribedMachines: new Set(),
-        isActive: true,
-        connectedAt: new Date()
-      }
-      
-      yield* Ref.update(clients, HashMap.set(connectionId, client))
-      yield* Ref.update(connectionToClient, HashMap.set(connectionId, connectionId))
-      
-      // Create response queue for this client
-      const queue = yield* Queue.unbounded<ServerMessage>()
-      yield* Ref.update(clientQueues, HashMap.set(connectionId, queue))
-      
-      // Create client handler
-      const handler: ClientConnectionHandler = {
-        processMessage: (rawMessage: string) => Effect.gen(function*() {
-          const parsed = yield* S.decodeUnknown(ClientMessage)(JSON.parse(rawMessage))
-          const responses: Array<string> = []
-          
-          switch (parsed.type) {
-            case "subscribe":
-              yield* handler.subscribeToMachines(parsed.machineIds)
-              responses.push(JSON.stringify({ type: "subscribed", machineIds: parsed.machineIds }))
-              break
-              
-            case "command":
-              yield* routeCommand(parsed.command as ClaudeCodeCommand)
-              responses.push(JSON.stringify({ type: "command_sent" }))
-              break
-              
-            case "query":
-              if (parsed.query.type === "machines") {
-                const machines = yield* getActiveMachines()
-                responses.push(JSON.stringify({ type: "machines", machines }))
-              } else {
-                const sessions = yield* getMachineSessions(parsed.query.machineId)
-                responses.push(JSON.stringify({ type: "sessions", sessions }))
-              }
-              break
-          }
-          
-          return responses
-        }).pipe(
-          Effect.catchTag("ParseError", (error) => 
-            Effect.fail(new ClaudeCodeServerError({ message: `Parse error: ${error.message}` }))
-          ),
-          Effect.catchTag("MachineNotFoundError", (error) => 
-            Effect.fail(new ClaudeCodeServerError({ 
-              message: `Machine not found: ${error.machineId}`,
-              machineId: error.machineId 
-            }))
-          )
-        ),
-        
-        close: () => Effect.gen(function*() {
-          yield* Ref.update(clients, HashMap.remove(connectionId))
-          yield* Ref.update(connectionToClient, HashMap.remove(connectionId))
-          yield* Ref.update(clientQueues, HashMap.remove(connectionId))
-        }),
-        
-        subscribeToMachines: (machineIds: ReadonlyArray<string>) => Effect.gen(function*() {
-          yield* Ref.update(clients, (allClients) => {
-            const client = HashMap.get(allClients, connectionId)
-            if (Option.isSome(client)) {
-              const clientValue = Option.getOrThrow(client)
-              return HashMap.set(allClients, connectionId, {
-                ...clientValue,
-                subscribedMachines: new Set([...clientValue.subscribedMachines, ...machineIds])
-              })
-            }
-            return allClients
-          })
-        }),
-        
-        getResponseStream: () => {
-          const queue = Ref.get(clientQueues).pipe(
-            Effect.map(HashMap.get(connectionId)),
-            Effect.flatMap((option) => 
-              Option.isSome(option) 
-                ? Effect.succeed(option.value)
-                : Effect.fail(new ClaudeCodeServerError({ message: "Client queue not found" }))
-            )
-          )
-          
-          return Stream.fromQueue(Effect.runSync(queue))
+    ) =>
+      Effect.gen(function*() {
+        const client: ClientConnection = {
+          id: connectionId,
+          userId,
+          subscribedMachines: new Set(),
+          isActive: true,
+          connectedAt: new Date()
         }
-      }
-      
-      yield* Effect.log(`Client registered: ${userId} (${connectionId})`)
-      return handler
-    })
-    
+
+        yield* Ref.update(clients, HashMap.set(connectionId, client))
+        yield* Ref.update(connectionToClient, HashMap.set(connectionId, connectionId))
+
+        // Create response queue for this client
+        const queue = yield* Queue.unbounded<ServerMessage>()
+        yield* Ref.update(clientQueues, HashMap.set(connectionId, queue))
+
+        // Create client handler
+        const handler: ClientConnectionHandler = {
+          processMessage: (rawMessage: string) =>
+            Effect.gen(function*() {
+              const parsed = yield* S.decodeUnknown(ClientMessage)(JSON.parse(rawMessage))
+              const responses: Array<string> = []
+
+              switch (parsed.type) {
+                case "subscribe":
+                  yield* handler.subscribeToMachines(parsed.machineIds)
+                  responses.push(JSON.stringify({ type: "subscribed", machineIds: parsed.machineIds }))
+                  break
+
+                case "command":
+                  yield* routeCommand(parsed.command as ClaudeCodeCommand)
+                  responses.push(JSON.stringify({ type: "command_sent" }))
+                  break
+
+                case "query":
+                  if (parsed.query.type === "machines") {
+                    const machines = yield* getActiveMachines()
+                    responses.push(JSON.stringify({ type: "machines", machines }))
+                  } else {
+                    const sessions = yield* getMachineSessions(parsed.query.machineId)
+                    responses.push(JSON.stringify({ type: "sessions", sessions }))
+                  }
+                  break
+              }
+
+              return responses
+            }).pipe(
+              Effect.catchTag(
+                "ParseError",
+                (error) => Effect.fail(new ClaudeCodeServerError({ message: `Parse error: ${error.message}` }))
+              ),
+              Effect.catchTag("MachineNotFoundError", (error) =>
+                Effect.fail(
+                  new ClaudeCodeServerError({
+                    message: `Machine not found: ${error.machineId}`,
+                    machineId: error.machineId
+                  })
+                ))
+            ),
+
+          close: () =>
+            Effect.gen(function*() {
+              yield* Ref.update(clients, HashMap.remove(connectionId))
+              yield* Ref.update(connectionToClient, HashMap.remove(connectionId))
+              yield* Ref.update(clientQueues, HashMap.remove(connectionId))
+            }),
+
+          subscribeToMachines: (machineIds: ReadonlyArray<string>) =>
+            Effect.gen(function*() {
+              yield* Ref.update(clients, (allClients) => {
+                const client = HashMap.get(allClients, connectionId)
+                if (Option.isSome(client)) {
+                  const clientValue = Option.getOrThrow(client)
+                  return HashMap.set(allClients, connectionId, {
+                    ...clientValue,
+                    subscribedMachines: new Set([...clientValue.subscribedMachines, ...machineIds])
+                  })
+                }
+                return allClients
+              })
+            }),
+
+          getResponseStream: () => {
+            const queue = Ref.get(clientQueues).pipe(
+              Effect.map(HashMap.get(connectionId)),
+              Effect.flatMap((option) =>
+                Option.isSome(option)
+                  ? Effect.succeed(option.value)
+                  : Effect.fail(new ClaudeCodeServerError({ message: "Client queue not found" }))
+              )
+            )
+
+            return Stream.fromQueue(Effect.runSync(queue))
+          }
+        }
+
+        yield* Effect.log(`Client registered: ${userId} (${connectionId})`)
+        return handler
+      })
+
     // Command routing
     const routeCommand = (
       command: ClaudeCodeCommand
-    ) => Effect.gen(function*() {
-      const allMachines = yield* Ref.get(machines)
-      const machine = HashMap.get(allMachines, command.machineId)
-      
-      if (Option.isNone(machine)) {
-        yield* Effect.fail(new MachineNotFoundError({ machineId: command.machineId }))
-      } else {
-        const queues = yield* Ref.get(machineQueues)
-        const queue = HashMap.get(queues, command.machineId)
-        
-        if (Option.isSome(queue)) {
-          yield* Queue.offer(queue.value, command)
-          yield* Ref.update(stats, (s) => ({
-            ...s,
-            commandsRouted: s.commandsRouted + 1
-          }))
-          yield* Effect.log(`Command routed to machine ${command.machineId}: ${command.type}`)
+    ) =>
+      Effect.gen(function*() {
+        const allMachines = yield* Ref.get(machines)
+        const machine = HashMap.get(allMachines, command.machineId)
+
+        if (Option.isNone(machine)) {
+          yield* Effect.fail(new MachineNotFoundError({ machineId: command.machineId }))
         } else {
-          yield* Effect.fail(new ClaudeCodeServerError({ 
-            message: "Machine command queue not found",
-            machineId: command.machineId
-          }))
-        }
-      }
-    })
-    
-    // Query methods
-    const getActiveMachines = () => Effect.gen(function*() {
-      const allMachines = yield* Ref.get(machines)
-      return Array.from(HashMap.values(allMachines))
-        .filter((m: MachineConnection) => m.isActive)
-        .map((m: MachineConnection) => ({
-          ...m.machineInfo,
-          machineId: m.id,
-          activeSessions: Array.from(HashMap.values(m.activeSessions)),
-          lastHeartbeat: m.lastHeartbeat,
-          status: "online" as const
-        }))
-    })
-    
-    const getMachineSessions = (machineId: string) => Effect.gen(function*() {
-      const allMachines = yield* Ref.get(machines)
-      const machine = HashMap.get(allMachines, machineId)
-      
-      return machine.pipe(
-        Option.match({
-          onNone: () => [],
-          onSome: (machineValue) => Array.from(HashMap.values(machineValue.activeSessions))
-        })
-      )
-    })
-    
-    const getStats = () => Effect.gen(function*() {
-      const allMachines = yield* Ref.get(machines)
-      const allClients = yield* Ref.get(clients)
-      const currentStats = yield* Ref.get(stats)
-      
-      const activeMachines = Array.from(HashMap.values(allMachines)).filter((m: MachineConnection) => m.isActive)
-      const totalSessions = activeMachines.reduce(
-        (sum: number, m: MachineConnection) => sum + HashMap.size(m.activeSessions),
-        0
-      )
-      const activeSessions = activeMachines.reduce(
-        (sum: number, m: MachineConnection) => sum + Array.from(HashMap.values(m.activeSessions))
-          .filter((s: ClaudeCodeSession) => s.status === "active").length,
-        0
-      )
-      
-      return {
-        totalMachines: HashMap.size(allMachines),
-        activeMachines: activeMachines.length,
-        totalSessions,
-        activeSessions,
-        totalClients: HashMap.size(allClients),
-        activeClients: Array.from(HashMap.values(allClients)).filter((c: ClientConnection) => c.isActive).length,
-        ...currentStats
-      }
-    })
-    
-    // Connection cleanup
-    const removeConnection = (connectionId: string) => Effect.gen(function*() {
-      // Check if it's a machine connection
-      const machineMap = yield* Ref.get(connectionToMachine)
-      const machineId = HashMap.get(machineMap, connectionId)
-      
-      if (Option.isSome(machineId)) {
-        const machineIdValue = machineId.value
-        yield* Ref.update(machines, (allMachines) => {
-          const machine = HashMap.get(allMachines, machineIdValue)
-          if (Option.isSome(machine)) {
-            const machineValue = machine.value
-            return HashMap.set(allMachines, machineIdValue, {
-              ...machineValue,
-              isActive: false
-            })
+          const queues = yield* Ref.get(machineQueues)
+          const queue = HashMap.get(queues, command.machineId)
+
+          if (Option.isSome(queue)) {
+            yield* Queue.offer(queue.value, command)
+            yield* Ref.update(stats, (s) => ({
+              ...s,
+              commandsRouted: s.commandsRouted + 1
+            }))
+            yield* Effect.log(`Command routed to machine ${command.machineId}: ${command.type}`)
+          } else {
+            yield* Effect.fail(
+              new ClaudeCodeServerError({
+                message: "Machine command queue not found",
+                machineId: command.machineId
+              })
+            )
           }
-          return allMachines
-        })
-        yield* Ref.update(connectionToMachine, HashMap.remove(connectionId))
-        yield* Ref.update(machineQueues, HashMap.remove(machineIdValue))
-        
-        // Notify clients about machine going offline
-        yield* broadcastToClients({
-          type: "machine_status",
-          machineId: machineIdValue,
-          status: "offline"
-        })
-        
-        yield* Effect.log(`Machine disconnected: ${machineIdValue}`)
-        return
-      }
-      
-      // Check if it's a client connection
-      const clientMap = yield* Ref.get(connectionToClient)
-      const clientId = HashMap.get(clientMap, connectionId)
-      
-      if (Option.isSome(clientId)) {
-        const clientIdValue = clientId.value
-        yield* Ref.update(clients, HashMap.remove(clientIdValue))
-        yield* Ref.update(connectionToClient, HashMap.remove(connectionId))
-        yield* Ref.update(clientQueues, HashMap.remove(clientIdValue))
-        
-        yield* Effect.log(`Client disconnected: ${clientIdValue}`)
-      }
-    })
-    
+        }
+      })
+
+    // Query methods
+    const getActiveMachines = () =>
+      Effect.gen(function*() {
+        const allMachines = yield* Ref.get(machines)
+        return Array.from(HashMap.values(allMachines))
+          .filter((m: MachineConnection) => m.isActive)
+          .map((m: MachineConnection) => ({
+            ...m.machineInfo,
+            machineId: m.id,
+            activeSessions: Array.from(HashMap.values(m.activeSessions)),
+            lastHeartbeat: m.lastHeartbeat,
+            status: "online" as const
+          }))
+      })
+
+    const getMachineSessions = (machineId: string) =>
+      Effect.gen(function*() {
+        const allMachines = yield* Ref.get(machines)
+        const machine = HashMap.get(allMachines, machineId)
+
+        return machine.pipe(
+          Option.match({
+            onNone: () => [],
+            onSome: (machineValue) => Array.from(HashMap.values(machineValue.activeSessions))
+          })
+        )
+      })
+
+    const getStats = () =>
+      Effect.gen(function*() {
+        const allMachines = yield* Ref.get(machines)
+        const allClients = yield* Ref.get(clients)
+        const currentStats = yield* Ref.get(stats)
+
+        const activeMachines = Array.from(HashMap.values(allMachines)).filter((m: MachineConnection) => m.isActive)
+        const totalSessions = activeMachines.reduce(
+          (sum: number, m: MachineConnection) => sum + HashMap.size(m.activeSessions),
+          0
+        )
+        const activeSessions = activeMachines.reduce(
+          (sum: number, m: MachineConnection) =>
+            sum + Array.from(HashMap.values(m.activeSessions))
+              .filter((s: ClaudeCodeSession) => s.status === "active").length,
+          0
+        )
+
+        return {
+          totalMachines: HashMap.size(allMachines),
+          activeMachines: activeMachines.length,
+          totalSessions,
+          activeSessions,
+          totalClients: HashMap.size(allClients),
+          activeClients: Array.from(HashMap.values(allClients)).filter((c: ClientConnection) => c.isActive).length,
+          ...currentStats
+        }
+      })
+
+    // Connection cleanup
+    const removeConnection = (connectionId: string) =>
+      Effect.gen(function*() {
+        // Check if it's a machine connection
+        const machineMap = yield* Ref.get(connectionToMachine)
+        const machineId = HashMap.get(machineMap, connectionId)
+
+        if (Option.isSome(machineId)) {
+          const machineIdValue = machineId.value
+          yield* Ref.update(machines, (allMachines) => {
+            const machine = HashMap.get(allMachines, machineIdValue)
+            if (Option.isSome(machine)) {
+              const machineValue = machine.value
+              return HashMap.set(allMachines, machineIdValue, {
+                ...machineValue,
+                isActive: false
+              })
+            }
+            return allMachines
+          })
+          yield* Ref.update(connectionToMachine, HashMap.remove(connectionId))
+          yield* Ref.update(machineQueues, HashMap.remove(machineIdValue))
+
+          // Notify clients about machine going offline
+          yield* broadcastToClients({
+            type: "machine_status",
+            machineId: machineIdValue,
+            status: "offline"
+          })
+
+          yield* Effect.log(`Machine disconnected: ${machineIdValue}`)
+          return
+        }
+
+        // Check if it's a client connection
+        const clientMap = yield* Ref.get(connectionToClient)
+        const clientId = HashMap.get(clientMap, connectionId)
+
+        if (Option.isSome(clientId)) {
+          const clientIdValue = clientId.value
+          yield* Ref.update(clients, HashMap.remove(clientIdValue))
+          yield* Ref.update(connectionToClient, HashMap.remove(connectionId))
+          yield* Ref.update(clientQueues, HashMap.remove(clientIdValue))
+
+          yield* Effect.log(`Client disconnected: ${clientIdValue}`)
+        }
+      })
+
     return {
       registerMachine,
       updateMachineHeartbeat,

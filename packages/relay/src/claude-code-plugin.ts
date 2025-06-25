@@ -4,12 +4,12 @@
  */
 import { Effect, Runtime, Stream } from "effect"
 import type { Elysia } from "elysia"
-import { 
-  ClaudeCodeWebSocketServer, 
+import {
+  ClaudeCodeWebSocketServer,
   ClaudeCodeWebSocketServerLive,
   type ClientConnectionHandler,
-  type MachineMessage,
-  type MachineConnectionHandler
+  type MachineConnectionHandler,
+  type MachineMessage
 } from "./claude-code-server.js"
 // Schema import not needed since we're not using it
 
@@ -58,12 +58,12 @@ export interface ClaudeCodePluginConfig {
 // Create Psionic plugin for Claude Code WebSocket server
 export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
   const {
-    path = "/claude-code",
     authRequired = true,
     enableMetrics = true,
-    metricsPath = "/claude-code/metrics",
+    maxClients = 1000,
     maxMachines = 100,
-    maxClients = 1000
+    metricsPath = "/claude-code/metrics",
+    path = "/claude-code"
   } = config
 
   return (app: Elysia) => {
@@ -80,30 +80,28 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
     const wsToConnectionId = new Map<any, string>()
 
     // Generate unique connection ID
-    const generateConnectionId = (): string => 
-      `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const generateConnectionId = (): string => `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     // Helper to authenticate connection
     const authenticateConnection = (request: Request): { userId?: string; machineId?: string } => {
       const auth = request.headers.get("Authorization")
       if (!auth) return {}
-      
+
       // Parse auth header
       // Format: "Bearer user:${userId}" or "Bearer machine:${machineId}:${apiKey}"
       const [type, ...parts] = auth.replace("Bearer ", "").split(":")
-      
+
       if (type === "user") {
         return { userId: parts[0] }
       } else if (type === "machine") {
         return { machineId: parts[0] }
       }
-      
+
       return {}
     }
 
     // Machine WebSocket endpoint
     app.ws(`${path}/machine`, {
-
       message: async (ws: any, message: any) => {
         const connectionId = wsToConnectionId.get(ws)
         if (!connectionId) {
@@ -143,13 +141,13 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
                     status: "online"
                   }
                 )
-                
+
                 // Update connection info
                 connections.set(connectionId, {
                   ...connection,
                   machineId: parsed.machineId
                 })
-                
+
                 ws.send(JSON.stringify({ type: "registered", machineId: parsed.machineId }))
                 break
 
@@ -175,9 +173,9 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
           await Runtime.runPromise(runtime as Runtime.Runtime<ClaudeCodeWebSocketServer>)(program)
         } catch (error) {
           console.error("Error processing machine message:", error)
-          ws.send(JSON.stringify({ 
-            type: "error", 
-            error: error instanceof Error ? error.message : "Unknown error" 
+          ws.send(JSON.stringify({
+            type: "error",
+            error: error instanceof Error ? error.message : "Unknown error"
           }))
         }
       },
@@ -188,7 +186,7 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
 
         // Check machine limit
         const machineCount = Array.from(connections.values())
-          .filter(c => c.type === "machine").length
+          .filter((c) => c.type === "machine").length
         if (machineCount >= maxMachines) {
           console.log(`Machine limit reached: ${machineCount}/${maxMachines}`)
           ws.close(1008, "Machine limit reached")
@@ -204,7 +202,7 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
         connections.set(connectionId, connection)
 
         console.log(`[Claude Code] Machine connection opened: ${connectionId}`)
-        
+
         // Request registration
         ws.send(JSON.stringify({ type: "register_request" }))
       },
@@ -232,7 +230,6 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
 
     // Client WebSocket endpoint
     app.ws(`${path}/client`, {
-
       message: async (ws: any, message: any) => {
         const connectionId = wsToConnectionId.get(ws)
         if (!connectionId) {
@@ -250,7 +247,7 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
         try {
           const messageStr = typeof message === "string" ? message : JSON.stringify(message)
           const handler = connection.handler as ClientConnectionHandler
-          
+
           const responses = await Runtime.runPromise(runtime as Runtime.Runtime<ClaudeCodeWebSocketServer>)(
             handler.processMessage(messageStr).pipe(Effect.provide(MainLayer))
           )
@@ -261,9 +258,9 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
           }
         } catch (error) {
           console.error("Error processing client message:", error)
-          ws.send(JSON.stringify({ 
-            type: "error", 
-            error: error instanceof Error ? error.message : "Unknown error" 
+          ws.send(JSON.stringify({
+            type: "error",
+            error: error instanceof Error ? error.message : "Unknown error"
           }))
         }
       },
@@ -274,7 +271,7 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
 
         // Check client limit
         const clientCount = Array.from(connections.values())
-          .filter(c => c.type === "client").length
+          .filter((c) => c.type === "client").length
         if (clientCount >= maxClients) {
           console.log(`Client limit reached: ${clientCount}/${maxClients}`)
           ws.close(1008, "Client limit reached")
@@ -306,8 +303,7 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
             yield* Stream.runForEach(responseStream, (message) =>
               Effect.sync(() => {
                 ws.send(JSON.stringify(message))
-              })
-            ).pipe(Effect.fork)
+              })).pipe(Effect.fork)
 
             // Send initial machine list
             const machines = yield* server.getActiveMachines()
@@ -366,26 +362,25 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
           program.pipe(
             Effect.provide(MainLayer),
             Effect.catchTag("MachineNotFoundError", (error) =>
-              Effect.succeed({ 
-                success: false, 
-                error: `Machine not found: ${error.machineId}` 
-              })
-            )
+              Effect.succeed({
+                success: false,
+                error: `Machine not found: ${error.machineId}`
+              }))
           )
         )
 
         return Response.json(result)
       } catch (error) {
         console.error("Error processing command:", error)
-        return Response.json({ 
-          success: false, 
-          error: error instanceof Error ? error.message : "Unknown error" 
+        return Response.json({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error"
         }, { status: 500 })
       }
     })
 
     // Query endpoints
-    app.get(`${path}/machines`, async ({ request }) => {
+    app.get(`${path}/machines`, async () => {
       try {
         const program = Effect.gen(function*() {
           const server = yield* ClaudeCodeWebSocketServer
@@ -433,9 +428,9 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
               ...stats,
               connections: {
                 machines: Array.from(connections.values())
-                  .filter(c => c.type === "machine").length,
+                  .filter((c) => c.type === "machine").length,
                 clients: Array.from(connections.values())
-                  .filter(c => c.type === "client").length,
+                  .filter((c) => c.type === "client").length,
                 total: connections.size
               },
               memory: process.memoryUsage(),
@@ -463,9 +458,9 @@ export const createClaudeCodePlugin = (config: ClaudeCodePluginConfig = {}) => {
       timestamp: new Date().toISOString(),
       connections: {
         machines: Array.from(connections.values())
-          .filter(c => c.type === "machine").length,
+          .filter((c) => c.type === "machine").length,
         clients: Array.from(connections.values())
-          .filter(c => c.type === "client").length
+          .filter((c) => c.type === "client").length
       }
     }))
 
