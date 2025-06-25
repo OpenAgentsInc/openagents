@@ -4,12 +4,53 @@
  */
 import { Schema as S } from "@effect/schema"
 import { Context, Data, Effect, HashMap, Layer, Queue, Ref, Stream, Option } from "effect"
-import type {
-  ClaudeCodeCommand,
-  ClaudeCodeResponse,
-  ClaudeCodeSession,
-  MachineClaudeInfo
-} from "@openagentsinc/overlord"
+// Types will be imported from overlord once it's built
+interface ClaudeCodeCommand {
+  readonly commandId: string
+  readonly type: "start_session" | "send_prompt" | "end_session" | "get_status" | "switch_project"
+  readonly machineId: string
+  readonly sessionId?: string
+  readonly userId: string
+  readonly timestamp: Date
+  readonly data: Record<string, any>
+}
+
+interface ClaudeCodeResponse {
+  readonly type: string
+  readonly commandId: string
+  readonly sessionId: string
+  readonly machineId: string
+  readonly timestamp: Date
+  readonly data: any
+}
+
+interface ClaudeCodeSession {
+  readonly sessionId: string
+  readonly machineId: string
+  readonly userId: string
+  readonly projectPath: string
+  readonly projectName: string
+  readonly status: "active" | "idle" | "ended"
+  readonly claudeVersion: string
+  readonly startedAt: Date
+  readonly endedAt?: Date
+  readonly lastPromptAt?: Date
+  readonly lastResponseAt?: Date
+  readonly messageCount: number
+  readonly totalTokens: number
+}
+
+interface MachineClaudeInfo {
+  readonly machineId: string
+  readonly hostname: string
+  readonly claudeVersion: string
+  readonly sdkVersion: string
+  readonly supportedFeatures: ReadonlyArray<string>
+  readonly activeProjects: ReadonlyArray<string>
+  readonly activeSessions: ReadonlyArray<ClaudeCodeSession>
+  readonly lastHeartbeat: Date
+  readonly status: "online" | "offline" | "busy"
+}
 
 // Machine connection state
 interface MachineConnection {
