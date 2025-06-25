@@ -207,8 +207,8 @@ export function renderChatMessage(message: {
           "") +
         "</div>"
 
-      // Prepend tool info to content
-      content = toolInfo + content
+      // Append tool info to content (text first, then tool)
+      content = content + toolInfo
     }
   }
 
