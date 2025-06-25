@@ -12,6 +12,59 @@ function escapeHtml(text: string): string {
 }
 
 /**
+ * Format tool result content for display
+ */
+function formatToolResult(content: string): string {
+  // Check if content looks like a file listing
+  const lines = content.split("\n").filter((line) => line.trim())
+
+  // More strict file detection - must have file extensions and path separators
+  const looksLikeFiles = lines.length > 10 &&
+    lines.filter((line) => line.includes("/")).length > lines.length * 0.8 &&
+    lines.filter((line) => /\.(pdf|xlsx|mov|jpg|jpeg|png|mp4|zip|txt|js|ts|json|md)$/i.test(line)).length >
+      lines.length * 0.5
+
+  if (looksLikeFiles) {
+    // It's likely a file listing
+    const fileCount = lines.length
+
+    return (
+      "<div class=\"file-listing\">" +
+      "<div style=\"margin-bottom: 0.5rem;\">📁 File listing (" + fileCount + " files)</div>" +
+      "<details class=\"tool-result-details\">" +
+      "<summary style=\"cursor: pointer; color: #9ece6a;\">Show all files</summary>" +
+      "<pre style=\"margin-top: 0.5rem; max-height: 400px; overflow-y: auto;\">" +
+      lines.map(escapeHtml).join("\n") +
+      "</pre>" +
+      "</details>" +
+      "</div>"
+    )
+  }
+
+  // For other long content, make it collapsible
+  if (content.length > 300) {
+    const lines = content.split("\n")
+    const preview = lines.slice(0, 3).map((line) => line.length > 80 ? line.substring(0, 80) + "..." : line).join("\n")
+
+    return (
+      "<div class=\"long-content\">" +
+      "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
+      "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
+      "<summary style=\"cursor: pointer; color: #9ece6a; font-size: 12px;\">Show full content (" + content.length +
+      " characters, " + lines.length + " lines)</summary>" +
+      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" +
+      escapeHtml(content) +
+      "</pre>" +
+      "</details>" +
+      "</div>"
+    )
+  }
+
+  // Short content - just escape and wrap
+  return "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(content) + "</pre>"
+}
+
+/**
  * Generate HTML for a chat message (using string concatenation instead of template literals)
  */
 export function renderChatMessage(message: {
@@ -19,14 +72,207 @@ export function renderChatMessage(message: {
   content: string
   timestamp?: number
   rendered?: string
+  metadata?: any
+  [key: string]: any // Allow additional properties for debugging
 }) {
-  // Use the rendered content if available, otherwise escape the raw content
-  const content = message.rendered || escapeHtml(message.content)
+  // For tool results, we need to check BEFORE using rendered content
+  // because markdown rendering wraps JSON in <p> tags
+  let content = ""
+  let isToolResultProcessed = false
+
+  // Check if this is a user message with tool result JSON or plain text format
+  // First check raw content, not rendered content
+  const rawContent = message.content || ""
+
+  // Check for plain text tool result format (e.g., "📤 Tool Result: ...")
+  const isPlainTextToolResult = rawContent.startsWith("📤 Tool Result:")
+
+  // Also check if it's HTML escaped or inside paragraph tags
+  const isToolResultJson = rawContent.startsWith("[{") ||
+    rawContent.startsWith("[&lt;{") ||
+    rawContent.startsWith("[&#123;") ||
+    rawContent.includes("<p>[{") ||
+    rawContent.includes("<p>[&lt;{")
+
+  // Handle plain text tool results
+  if (message.role === "user" && isPlainTextToolResult) {
+    // Extract content after "📤 Tool Result: "
+    const toolResultContent = rawContent.substring("📤 Tool Result: ".length).trim()
+    const formattedContent = formatToolResult(toolResultContent)
+    content = "<div class=\"tool-result-section\">" +
+      "<div class=\"tool-result-header\">" +
+      "<span class=\"tool-result-icon\">📤</span>" +
+      "<span class=\"tool-result-label\">Tool Result</span>" +
+      "</div>" +
+      "<div class=\"tool-result-content\">" +
+      formattedContent +
+      "</div>" +
+      "</div>"
+    isToolResultProcessed = true
+  } // Handle JSON tool results
+  else if (message.role === "user" && rawContent && isToolResultJson) {
+    try {
+      // Try to unescape if needed
+      const contentToparse = rawContent.startsWith("[{") ?
+        rawContent :
+        rawContent.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#123;/g, "{").replace(
+          /&#125;/g,
+          "}"
+        )
+
+      const parsed = JSON.parse(contentToparse)
+      if (Array.isArray(parsed) && parsed[0]?.type === "tool_result") {
+        // Format tool result nicely - ignore any rendered markdown
+        const toolResult = parsed[0]
+        const formattedContent = formatToolResult(toolResult.content || "")
+        content = "<div class=\"tool-result-section\">" +
+          "<div class=\"tool-result-header\">" +
+          "<span class=\"tool-result-icon\">📤</span>" +
+          "<span class=\"tool-result-label\">Tool Result</span>" +
+          "<span class=\"tool-result-id\" style=\"font-size: 11px; opacity: 0.7; margin-left: 0.5rem;\">" +
+          escapeHtml(toolResult.tool_use_id || "") + "</span>" +
+          "</div>" +
+          "<div class=\"tool-result-content\">" +
+          formattedContent + // Don't wrap in pre tag - formatToolResult handles it
+          "</div>" +
+          "</div>"
+        isToolResultProcessed = true
+      }
+    } catch {
+      // Not valid JSON or not a tool result, use original content
+    }
+  }
+
+  // Only use rendered content if we didn't process a tool result
+  if (!isToolResultProcessed) {
+    content = message.rendered || escapeHtml(message.content)
+  }
+
+  // Fallback: If content is extremely long (even if not detected as tool result), collapse it
+  if (content.length > 1000 && !content.includes("tool-result-section")) {
+    const lines = content.split("\n")
+    const preview = lines.slice(0, 5).map((line) => line.length > 100 ? line.substring(0, 100) + "..." : line).join(
+      "\n"
+    )
+
+    content = "<div class=\"long-message-section\">" +
+      "<div class=\"long-message-header\" style=\"color: #f59e0b; margin-bottom: 0.5rem;\">" +
+      "<span style=\"margin-right: 0.5rem;\">⚠️</span>" +
+      "<span>Very long message (" + content.length + " characters)</span>" +
+      "</div>" +
+      "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
+      "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
+      "<summary style=\"cursor: pointer; color: #f59e0b; font-size: 12px;\">Show full message (" + lines.length +
+      " lines)</summary>" +
+      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" +
+      escapeHtml(message.content || content) +
+      "</pre>" +
+      "</details>" +
+      "</div>"
+  }
+
+  // Add tool information if present in metadata
+  if (message.metadata?.hasEmbeddedTool && message.metadata?.toolName) {
+    const toolInput = message.metadata.toolInput ?
+      escapeHtml(JSON.stringify(message.metadata.toolInput, null, 2)) :
+      ""
+
+    const toolInfo = "<div class=\"tool-section\">" +
+      "<div class=\"tool-header\">" +
+      "<span class=\"tool-icon\">🔧</span>" +
+      "<span class=\"tool-name\">" + escapeHtml(message.metadata.toolName) + "</span>" +
+      "</div>" +
+      (toolInput ?
+        "<div class=\"tool-input\">" +
+        "<details>" +
+        "<summary>View input</summary>" +
+        "<pre>" + toolInput + "</pre>" +
+        "</details>" +
+        "</div>" :
+        "") +
+      "</div>"
+
+    // Prepend tool info to content
+    content = toolInfo + content
+  }
+
+  // Only include debug section if explicitly enabled or in development
+  const includeDebug = true // Re-enabled for debugging
+
+  let debugSection = ""
+  if (includeDebug) {
+    // Create a comprehensive debug object showing ALL database fields
+    const debugObject = {
+      // Message identifiers
+      id: message.id,
+      conversationId: message.conversationId,
+
+      // Content and processing
+      role: message.role,
+      contentLength: message.content?.length || 0,
+      contentPreview: message.content?.substring(0, 100) + (message.content?.length > 100 ? "..." : ""),
+      hasRendered: !!message.rendered,
+      renderedLength: message.rendered?.length || 0,
+
+      // Tool result detection
+      isToolResult: message.content?.startsWith("[{") && message.content?.includes("\"tool_result\"") ||
+        message.content?.startsWith("📤 Tool Result:"),
+      startsWithBracket: message.content?.substring(0, 2),
+
+      // Timestamps
+      timestamp: message.timestamp,
+      timestampISO: message.timestamp ? new Date(message.timestamp).toISOString() : null,
+
+      // ALL metadata fields from database
+      metadata: message.metadata ?
+        {
+          // Entry classification
+          entryType: message.metadata.entryType,
+
+          // Tool information
+          hasEmbeddedTool: message.metadata.hasEmbeddedTool,
+          toolName: message.metadata.toolName,
+          toolInput: message.metadata.toolInput,
+          toolUseId: message.metadata.toolUseId,
+          toolOutput: message.metadata.toolOutput,
+          toolIsError: message.metadata.toolIsError,
+
+          // Claude Code fields
+          thinking: message.metadata.thinking,
+          summary: message.metadata.summary,
+
+          // Usage and cost tracking
+          tokenUsage: message.metadata.tokenUsage,
+          tokenCountInput: message.metadata.tokenCountInput,
+          tokenCountOutput: message.metadata.tokenCountOutput,
+          cost: message.metadata.cost,
+
+          // Session tracking
+          turnCount: message.metadata.turnCount,
+          model: message.metadata.model
+        } :
+        null,
+
+      // Raw database fields (if available)
+      _dbId: message._dbId,
+      _creationTime: message._creationTime,
+      sessionId: message.sessionId
+    }
+
+    const debugJson = escapeHtml(JSON.stringify(debugObject, null, 2))
+    debugSection = "<div class=\"message-debug\">" +
+      "<details>" +
+      "<summary>Debug Info</summary>" +
+      "<pre class=\"debug-json\">" + debugJson + "</pre>" +
+      "</details>" +
+      "</div>"
+  }
 
   return (
     "<div class=\"message\">" +
     "<div class=\"message-block " + message.role + "\">" +
     "<div class=\"message-body\">" + content + "</div>" +
+    debugSection +
     "</div>" +
     "</div>"
   )
@@ -110,7 +356,14 @@ export const chatClientScript = `
   // Load and render conversations in sidebar
   async function loadConversations() {
     try {
-      const conversations = await window.chatClient.getConversations();
+      // Use server-rendered conversations if available, otherwise fetch from API
+      let conversations;
+      if (window.SERVER_CONVERSATIONS && window.SERVER_CONVERSATIONS.length > 0) {
+        conversations = window.SERVER_CONVERSATIONS;
+      } else {
+        conversations = await window.chatClient.getConversations();
+      }
+      
       const threadList = document.querySelector('#thread-list');
       if (threadList && conversations.length > 0) {
         threadList.innerHTML = conversations.map(conv => \`
@@ -328,8 +581,7 @@ export const chatClientScript = `
         assistantResponse.textContent = 'No response received. Please check if Cloudflare API is configured.';
       }
       
-      // Reload conversations to update sidebar
-      await loadConversations();
+      // Don't reload conversations - we only show Convex data from server
       
     } catch (error) {
       console.error('Failed to get response:', error);
@@ -439,6 +691,7 @@ export const chatStyles = `
     border-radius: 0;
     display: inline-block;
     word-wrap: break-word;
+    max-width: 100%;
   }
   
   /* User message styling */
@@ -451,37 +704,10 @@ export const chatStyles = `
     border-left-color: #7aa2f7; /* Terminal accent blue */
   }
   
-  /* Message header styles - removed as headers are no longer displayed */
-  /*
-  .message-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
+  /* Tool message styling */
+  .message-block.tool {
+    border-left-color: #a855f7; /* Purple for tools */
   }
-  
-  .message-role {
-    font-weight: 600;
-    color: var(--white);
-    font-size: 14px;
-    font-family: var(--font-family-mono);
-  }
-  
-  .message-role.user {
-    color: #9ece6a;
-  }
-  
-  .message-role.assistant {
-    color: #7aa2f7;
-  }
-  
-  .message-time {
-    font-size: 12px;
-    color: var(--gray);
-    font-weight: normal;
-    font-family: var(--font-family-mono);
-  }
-  */
   
   .message-body {
     color: var(--text);
@@ -489,6 +715,111 @@ export const chatStyles = `
     font-family: var(--font-family-mono);
     font-size: 14px;
     max-width: none;
+    word-break: break-word;
+  }
+  
+  /* Tool section styling */
+  .tool-section {
+    background: rgba(168, 85, 247, 0.05);
+    border: 1px solid rgba(168, 85, 247, 0.2);
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .tool-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 13px;
+    color: #a855f7;
+  }
+  
+  .tool-icon {
+    font-size: 14px;
+  }
+  
+  .tool-name {
+    color: #a855f7;
+  }
+  
+  .tool-input {
+    margin-top: 0.5rem;
+  }
+  
+  .tool-input details {
+    margin: 0;
+  }
+  
+  .tool-input summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--gray);
+    user-select: none;
+  }
+  
+  .tool-input summary:hover {
+    color: var(--white);
+  }
+  
+  .tool-input pre {
+    margin: 0.5rem 0 0 0;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    font-size: 11px;
+    overflow-x: auto;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  
+  /* Tool result section styling */
+  .tool-result-section {
+    background: rgba(34, 197, 94, 0.05);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: 6px;
+    padding: 0.75rem;
+  }
+  
+  .tool-result-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 13px;
+  }
+  
+  .tool-result-icon {
+    font-size: 14px;
+  }
+  
+  .tool-result-label {
+    font-weight: 600;
+    color: #22c55e;
+  }
+  
+  .tool-result-id {
+    font-size: 11px;
+    color: var(--gray);
+    font-family: var(--font-family-mono);
+  }
+  
+  .tool-result-content {
+    margin-top: 0.5rem;
+  }
+  
+  .tool-result-content pre {
+    margin: 0;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    font-size: 12px;
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
   
   /* 3-dot loading animation */
@@ -658,5 +989,106 @@ export const chatStyles = `
   .submit-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* Debug section styling - only shown when enabled */
+  .message-debug {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--offblack);
+  }
+
+  .message-debug details {
+    margin: 0;
+  }
+
+  .message-debug summary {
+    color: var(--gray);
+    font-size: 11px;
+    font-family: var(--font-family-mono);
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 0;
+  }
+
+  .message-debug summary:hover {
+    color: var(--white);
+  }
+
+  .debug-json {
+    background-color: var(--black);
+    border: 1px solid var(--offblack);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 4px 0 0 0;
+    font-size: 10px;
+    font-family: var(--font-family-mono);
+    color: var(--gray);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    max-width: 100%;
+  }
+
+  /* Tool result section styling */
+  .tool-result-section {
+    border-left: 3px solid #9ece6a;
+    padding-left: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .tool-result-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .tool-result-icon {
+    color: #9ece6a;
+    margin-right: 0.5rem;
+  }
+
+  .tool-result-label {
+    color: #9ece6a;
+    font-weight: 600;
+  }
+
+  .tool-result-content {
+    font-size: 14px;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .tool-result-details summary {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tool-result-details summary:hover {
+    text-decoration: underline;
+  }
+
+  /* Tool section styling (for tool invocations) */
+  .tool-section {
+    border-left: 3px solid #a855f7;
+    padding-left: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .tool-header {
+    display: flex;
+    align-items: center;
+  }
+
+  .tool-icon {
+    color: #a855f7;
+    margin-right: 0.5rem;
+  }
+
+  .tool-name {
+    color: #a855f7;
+    font-weight: 600;
   }
 `

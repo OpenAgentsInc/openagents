@@ -101,7 +101,31 @@ export const ConvexSyncServiceLive = Layer.succeed(
               )
             }
           } else {
-            // Skip updating existing messages for now (function not deployed)
+            // Update existing message content to apply fixes
+            if (
+              messageRecord.content !== undefined || messageRecord.thinking !== undefined ||
+              messageRecord.tool_name !== undefined || messageRecord.tool_use_id !== undefined
+            ) {
+              yield* Effect.log(
+                `Updating message ${messageRecord.entry_uuid} with content length: ${
+                  messageRecord.content?.length || 0
+                }`
+              )
+
+              // Update the message with new content
+              const updateArgs: any = { entryUuid: messageRecord.entry_uuid }
+              if (messageRecord.content !== undefined) updateArgs.content = messageRecord.content
+              if (messageRecord.thinking !== undefined) updateArgs.thinking = messageRecord.thinking
+              if (messageRecord.tool_name !== undefined) updateArgs.tool_name = messageRecord.tool_name
+              if (messageRecord.tool_input !== undefined) updateArgs.tool_input = messageRecord.tool_input
+              if (messageRecord.tool_use_id !== undefined) updateArgs.tool_use_id = messageRecord.tool_use_id
+              if (messageRecord.tool_output !== undefined) updateArgs.tool_output = messageRecord.tool_output
+              if (messageRecord.tool_is_error !== undefined) updateArgs.tool_is_error = messageRecord.tool_is_error
+
+              yield* client.ConvexClient.messages.update(updateArgs).pipe(
+                Effect.catchAll((error) => Effect.log(`Failed to update message content: ${error}`))
+              )
+            }
           }
         }
 
