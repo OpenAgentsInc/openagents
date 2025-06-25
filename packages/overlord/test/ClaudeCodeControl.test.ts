@@ -3,13 +3,13 @@
  * @since Phase 3
  */
 
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import { describe, expect, it } from "vitest"
 import * as ClaudeCodeControlService from "../src/services/ClaudeCodeControlService.js"
 import * as WebSocketClient from "../src/services/WebSocketClient.js"
 
 // Mock WebSocket client for testing
-const MockWebSocketClientLive = WebSocketClient.WebSocketClient.of({
+const MockWebSocketClientLive = Layer.succeed(WebSocketClient.WebSocketClient, {
   connect: () => Effect.succeed(undefined),
   disconnect: () => Effect.succeed(undefined),
   send: () => Effect.succeed(undefined),
@@ -24,14 +24,14 @@ describe("ClaudeCodeControlService", () => {
 
       const session = yield* service.startSession(
         "test-machine",
-        "/test/project/path",
+        process.cwd(),
         "test-user"
       )
 
       expect(session).toEqual(
         expect.objectContaining({
           machineId: "test-machine",
-          projectPath: "/test/project/path",
+          projectPath: process.cwd(),
           userId: "test-user",
           status: "active"
         })
@@ -39,11 +39,14 @@ describe("ClaudeCodeControlService", () => {
 
       expect(session.sessionId).toBeTruthy()
       expect(session.startedAt).toBeInstanceOf(Date)
+      
+      return session
     })
 
     const result = await program.pipe(
-      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
-      Effect.provide(MockWebSocketClientLive),
+      Effect.provide(
+        Layer.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive, MockWebSocketClientLive)
+      ),
       Effect.runPromise
     )
 
@@ -72,11 +75,14 @@ describe("ClaudeCodeControlService", () => {
 
       expect(prompt.promptId).toBeTruthy()
       expect(prompt.sentAt).toBeInstanceOf(Date)
+      
+      return prompt
     })
 
     const result = await program.pipe(
-      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
-      Effect.provide(MockWebSocketClientLive),
+      Effect.provide(
+        Layer.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive, MockWebSocketClientLive)
+      ),
       Effect.runPromise
     )
 
@@ -90,7 +96,7 @@ describe("ClaudeCodeControlService", () => {
       // Start a session first
       yield* service.startSession(
         "test-machine",
-        "/test/project",
+        process.cwd(),
         "test-user"
       )
 
@@ -101,15 +107,18 @@ describe("ClaudeCodeControlService", () => {
       expect(sessions[0]).toEqual(
         expect.objectContaining({
           machineId: "test-machine",
-          projectPath: "/test/project",
+          projectPath: process.cwd(),
           status: "active"
         })
       )
+      
+      return sessions
     })
 
     const result = await program.pipe(
-      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
-      Effect.provide(MockWebSocketClientLive),
+      Effect.provide(
+        Layer.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive, MockWebSocketClientLive)
+      ),
       Effect.runPromise
     )
 
@@ -130,11 +139,14 @@ describe("ClaudeCodeControlService", () => {
           lastHeartbeat: expect.any(Date)
         })
       )
+      
+      return info
     })
 
     const result = await program.pipe(
-      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
-      Effect.provide(MockWebSocketClientLive),
+      Effect.provide(
+        Layer.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive, MockWebSocketClientLive)
+      ),
       Effect.runPromise
     )
 
@@ -148,7 +160,7 @@ describe("ClaudeCodeControlService", () => {
       // Start a session first
       const session = yield* service.startSession(
         "test-machine",
-        "/test/project",
+        process.cwd(),
         "test-user"
       )
 
@@ -161,8 +173,9 @@ describe("ClaudeCodeControlService", () => {
     })
 
     await program.pipe(
-      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
-      Effect.provide(MockWebSocketClientLive),
+      Effect.provide(
+        Layer.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive, MockWebSocketClientLive)
+      ),
       Effect.runPromise
     )
   })
@@ -184,8 +197,9 @@ describe("ClaudeCodeControlService", () => {
     })
 
     await program.pipe(
-      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
-      Effect.provide(MockWebSocketClientLive),
+      Effect.provide(
+        Layer.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive, MockWebSocketClientLive)
+      ),
       Effect.runPromise
     )
   })
