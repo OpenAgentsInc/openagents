@@ -13,6 +13,14 @@ export * as AiPrompt from "./core/AiInput.js"
 export * as AiMessage from "./core/AiInput.js"
 export * as AiResponse from "./core/AiResponse.js"
 export * as AiError from "./core/AiError.js"
+export * as AiEmbeddingModel from "./core/AiEmbeddingModel.js"
+
+/**
+ * AI services
+ * @since 1.0.0
+ */
+export * as MessageEmbeddingService from "./services/MessageEmbeddingService.js"
+export * as ConvexEmbeddingService from "./services/ConvexEmbeddingService.js"
 
 /**
  * Standardized types aligned with Vercel AI SDK v5
@@ -37,6 +45,12 @@ export * as OpenRouter from "./providers/openrouter/index.js"
  * @since 1.0.0
  */
 export * as Cloudflare from "./providers/cloudflare/index.js"
+
+/**
+ * OpenAI provider for GPT models and embeddings
+ * @since 1.0.0
+ */
+export * as OpenAI from "./providers/openai/index.js"
 
 /**
  * Internal exports for CLI integration

@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
 import * as ConvexSync from "./ConvexSync.js"
+import type { EmbeddingConfig } from "./ConvexSync.js"
 import * as FileWatcher from "./FileWatcher.js"
 import * as JSONLParser from "./JSONLParser.js"
 import * as WebSocketClient from "./WebSocketClient.js"
@@ -45,8 +46,8 @@ export interface OverlordService {
   readonly startDaemon: (config: DaemonConfig) => Effect.Effect<void, Error>
   readonly stopDaemon: () => Effect.Effect<void>
   readonly detectClaudeInstallations: () => Effect.Effect<ReadonlyArray<ClaudeInstallation>, Error>
-  readonly syncSession: (sessionId: string, auth: { userId: string; apiKey: string }) => Effect.Effect<void, Error>
-  readonly syncAllSessions: (auth: { userId: string; apiKey: string }, filterOptions?: FilterOptions) => Effect.Effect<SyncResult, Error>
+  readonly syncSession: (sessionId: string, auth: { userId: string; apiKey: string }, embeddingConfig?: EmbeddingConfig) => Effect.Effect<void, Error>
+  readonly syncAllSessions: (auth: { userId: string; apiKey: string }, filterOptions?: FilterOptions, embeddingConfig?: EmbeddingConfig) => Effect.Effect<SyncResult, Error>
   readonly getStatus: () => Effect.Effect<DaemonStatus>
 }
 
@@ -118,8 +119,9 @@ export const OverlordServiceLive = Layer.effect(
               )
 
               // If file was created or modified, parse and sync content
+              // Note: Daemon mode doesn't support embeddings yet - only manual sync commands
               if (event.action !== "deleted") {
-                yield* syncSessionFile(event.filePath, event.sessionId, config)
+                yield* syncSessionFile(event.filePath, event.sessionId, config, undefined)
               }
             })
           ),
@@ -212,7 +214,7 @@ export const OverlordServiceLive = Layer.effect(
       })
 
     // Sync a specific session
-    const syncSession = (sessionId: string, auth: { userId: string; apiKey: string }) =>
+    const syncSession = (sessionId: string, auth: { userId: string; apiKey: string }, embeddingConfig?: EmbeddingConfig) =>
       Effect.gen(function*() {
         // Find the session file
         const claudePaths = yield* fileWatcher.findClaudePaths()
@@ -232,11 +234,11 @@ export const OverlordServiceLive = Layer.effect(
           return
         }
 
-        yield* syncSessionFile(sessionFile, sessionId, auth)
+        yield* syncSessionFile(sessionFile, sessionId, auth, embeddingConfig)
       })
 
     // Sync all sessions
-    const syncAllSessions = (auth: { userId: string; apiKey: string }, filterOptions?: FilterOptions) =>
+    const syncAllSessions = (auth: { userId: string; apiKey: string }, filterOptions?: FilterOptions, embeddingConfig?: EmbeddingConfig) =>
       Effect.gen(function*() {
         const claudePaths = yield* fileWatcher.findClaudePaths()
         let synced = 0
@@ -268,7 +270,7 @@ export const OverlordServiceLive = Layer.effect(
           for (const { file, filePath } of filesWithStats) {
             const sessionId = path.basename(file, ".jsonl")
 
-            yield* syncSessionFile(filePath, sessionId, auth).pipe(
+            yield* syncSessionFile(filePath, sessionId, auth, embeddingConfig).pipe(
               Effect.tap(() =>
                 Effect.sync(() => {
                   synced++
@@ -331,7 +333,7 @@ export const OverlordServiceLive = Layer.effect(
       return `${seconds}s`
     }
 
-    const syncSessionFile = (filePath: string, sessionId: string, auth: { userId: string; apiKey: string }) =>
+    const syncSessionFile = (filePath: string, sessionId: string, auth: { userId: string; apiKey: string }, embeddingConfig?: EmbeddingConfig) =>
       Effect.gen(function*() {
         const content = yield* Effect.tryPromise(() => fs.readFile(filePath, "utf-8"))
 
@@ -341,7 +343,7 @@ export const OverlordServiceLive = Layer.effect(
         const projectPath = extractProjectPath(filePath)
 
         // Save to Convex
-        yield* convexSync.saveSession(sessionId, auth.userId, projectPath, entries)
+        yield* convexSync.saveSession(sessionId, auth.userId, projectPath, entries, embeddingConfig)
 
         // Also send session update to WebSocket for real-time notification
         const message: WebSocketClient.OverlordMessage = {

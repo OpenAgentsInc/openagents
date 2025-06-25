@@ -8,13 +8,24 @@ import { Context, Effect, Layer } from "effect"
 import * as DatabaseMapper from "./DatabaseMapper.js"
 import type * as JSONLParser from "./JSONLParser.js"
 
+// Import embedding services
+import { ConvexEmbeddingService, MessageEmbeddingService, OpenAI } from "@openagentsinc/ai"
+
+// Embedding configuration
+export interface EmbeddingConfig {
+  readonly enabled: boolean
+  readonly model: string
+  readonly apiKey?: string | undefined
+}
+
 // Service interface
 export interface ConvexSyncService {
   readonly saveSession: (
     sessionId: string,
     userId: string,
     projectPath: string,
-    entries: ReadonlyArray<JSONLParser.LogEntry>
+    entries: ReadonlyArray<JSONLParser.LogEntry>,
+    embeddingConfig?: EmbeddingConfig
   ) => Effect.Effect<void, Error>
 }
 
@@ -22,11 +33,66 @@ export const ConvexSyncService = Context.GenericTag<ConvexSyncService>(
   "@openagentsinc/overlord/ConvexSyncService"
 )
 
+// Helper functions for embedding generation
+const shouldGenerateEmbedding = (messageRecord: any): boolean => {
+  // Generate embeddings for user messages, assistant messages, and tool outputs
+  // Skip empty content and summary entries
+  if (messageRecord.entry_type === "summary") return false
+  
+  const hasContent = messageRecord.content && messageRecord.content.trim().length > 0
+  const hasThinking = messageRecord.thinking && messageRecord.thinking.trim().length > 0
+  const hasToolOutput = messageRecord.tool_output && messageRecord.tool_output.trim().length > 0
+  
+  return hasContent || hasThinking || hasToolOutput
+}
+
+const generateEmbeddingForMessage = (
+  messageId: any,
+  messageRecord: any, 
+  embeddingConfig: EmbeddingConfig
+) =>
+  Effect.gen(function*() {
+    // Create a mock ConvexMessage for the embedding service
+    const convexMessage = {
+      _id: messageId,
+      session_id: messageRecord.session_id,
+      content: messageRecord.content,
+      thinking: messageRecord.thinking,
+      entry_type: messageRecord.entry_type,
+      role: messageRecord.role,
+      summary: messageRecord.summary,
+      tool_output: messageRecord.tool_output
+    }
+
+    // Create embedding service layers
+    const openAiLayer = OpenAI.OpenAiEmbeddingModel.layer({
+      apiKey: embeddingConfig.apiKey || process.env.OPENAI_API_KEY || "",
+      model: embeddingConfig.model
+    })
+    
+    const messageEmbeddingLayer = MessageEmbeddingService.layer({})
+    const convexEmbeddingLayer = ConvexEmbeddingService.layer({})
+    
+    // Generate and store embedding
+    const embeddingService = yield* ConvexEmbeddingService
+    yield* embeddingService.embedAndStore(convexMessage)
+    
+    yield* Effect.log(`✨ Generated embedding for message ${messageRecord.entry_uuid}`)
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        openAiLayer,
+        messageEmbeddingLayer, 
+        convexEmbeddingLayer
+      )
+    )
+  )
+
 // Implementation
 export const ConvexSyncServiceLive = Layer.succeed(
   ConvexSyncService,
   {
-    saveSession: (sessionId, userId, projectPath, entries) =>
+    saveSession: (sessionId, userId, projectPath, entries, embeddingConfig) =>
       Effect.gen(function*() {
         // Create session record
         const sessionRecord = DatabaseMapper.createSessionRecord(
@@ -74,7 +140,7 @@ export const ConvexSyncServiceLive = Layer.succeed(
           )
 
           if (!existingMessage) {
-            yield* client.ConvexClient.messages.create({
+            const messageId = yield* client.ConvexClient.messages.create({
               session_id: messageRecord.session_id,
               entry_uuid: messageRecord.entry_uuid,
               entry_type: messageRecord.entry_type,
@@ -93,6 +159,15 @@ export const ConvexSyncServiceLive = Layer.succeed(
               tool_output: messageRecord.tool_output,
               tool_is_error: messageRecord.tool_is_error
             })
+
+            // Generate embeddings if enabled
+            if (embeddingConfig?.enabled && shouldGenerateEmbedding(messageRecord)) {
+              yield* generateEmbeddingForMessage(messageId, messageRecord, embeddingConfig).pipe(
+                Effect.catchAll((error) => 
+                  Effect.logWarning(`Failed to generate embedding for message ${messageRecord.entry_uuid}: ${error}`)
+                )
+              )
+            }
 
             // Log warning for images (not yet implemented)
             if (entry.type === "user" && entry.message.images && entry.message.images.length > 0) {

@@ -2,6 +2,7 @@ import { Args, Command, Options } from "@effect/cli"
 import { NodeContext } from "@effect/platform-node"
 import { Console, Effect, Option } from "effect"
 import * as ConvexSync from "./services/ConvexSync.js"
+import type { EmbeddingConfig } from "./services/ConvexSync.js"
 import * as FileWatcher from "./services/FileWatcher.js"
 import * as OverlordService from "./services/OverlordService.js"
 import * as WebSocketClient from "./services/WebSocketClient.js"
@@ -34,6 +35,18 @@ const excludePathOption = Options.text("exclude-path").pipe(
   Options.withDescription("Exclude projects containing this path substring (can be used multiple times)"),
   Options.withAlias("e"),
   Options.repeated
+)
+
+const enableEmbeddingsOption = Options.boolean("enable-embeddings").pipe(
+  Options.withDescription("Generate vector embeddings for semantic search (requires OpenAI API key)"),
+  Options.withDefault(false),
+  Options.optional
+)
+
+const embeddingModelOption = Options.text("embedding-model").pipe(
+  Options.withDescription("OpenAI embedding model to use"),
+  Options.withDefault("text-embedding-3-small"),
+  Options.optional
 )
 
 // Main daemon command - "spawn" in StarCraft terms
@@ -131,17 +144,30 @@ const transportCommand = Command.make("transport", {
   userId: userIdOption,
   apiKey: apiKeyOption,
   includePaths: includePathOption,
-  excludePaths: excludePathOption
+  excludePaths: excludePathOption,
+  enableEmbeddings: enableEmbeddingsOption,
+  embeddingModel: embeddingModelOption
 }).pipe(
   Command.withDescription("Transport (sync) Claude Code sessions to the cloud"),
-  Command.withHandler(({ apiKey, sessionId, userId, includePaths, excludePaths }) =>
+  Command.withHandler(({ apiKey, sessionId, userId, includePaths, excludePaths, enableEmbeddings, embeddingModel }) =>
     Effect.gen(function*() {
       const service = yield* OverlordService.OverlordService
 
       // Create filter options
-      const filterOptions = {
-        includePaths: includePaths.length > 0 ? includePaths : undefined,
-        excludePaths: excludePaths.length > 0 ? excludePaths : undefined
+      const filterOptions: OverlordService.FilterOptions = {
+        ...(includePaths.length > 0 && { includePaths: includePaths as ReadonlyArray<string> }),
+        ...(excludePaths.length > 0 && { excludePaths: excludePaths as ReadonlyArray<string> })
+      }
+
+      // Create embedding configuration
+      const embeddingConfig = Option.getOrElse(enableEmbeddings, () => false) ? {
+        enabled: true,
+        model: Option.getOrElse(embeddingModel, () => "text-embedding-3-small"),
+        ...(process.env.OPENAI_API_KEY && { apiKey: process.env.OPENAI_API_KEY })
+      } as const satisfies EmbeddingConfig : undefined
+
+      if (embeddingConfig) {
+        yield* Console.log(`✨ Vector embeddings enabled using model: ${embeddingConfig.model}`)
       }
 
       if (Option.isNone(sessionId) || Option.getOrElse(sessionId, () => "") === "all") {
@@ -149,14 +175,14 @@ const transportCommand = Command.make("transport", {
         if (filterOptions.includePaths || filterOptions.excludePaths) {
           yield* Console.log(`📂 Path filtering: include=${filterOptions.includePaths?.join(", ") || "all"}, exclude=${filterOptions.excludePaths?.join(", ") || "none"}`)
         }
-        const result = yield* service.syncAllSessions({ userId, apiKey }, filterOptions)
+        const result = yield* service.syncAllSessions({ userId, apiKey }, filterOptions, embeddingConfig)
         yield* Console.log(`✅ Transported ${result.synced} sessions`)
         if (result.failed > 0) {
           yield* Console.log(`⚠️  Failed to sync ${result.failed} sessions`)
         }
       } else {
         yield* Console.log(`🚀 Transporting session ${Option.getOrElse(sessionId, () => "")}...`)
-        yield* service.syncSession(Option.getOrElse(sessionId, () => ""), { userId, apiKey })
+        yield* service.syncSession(Option.getOrElse(sessionId, () => ""), { userId, apiKey }, embeddingConfig)
         yield* Console.log("✅ Session transported successfully")
       }
     }).pipe(
@@ -187,21 +213,33 @@ const importCommand = Command.make("import", {
   apiKey: apiKeyOption,
   limit: limitOption,
   includePaths: includePathOption,
-  excludePaths: excludePathOption
+  excludePaths: excludePathOption,
+  enableEmbeddings: enableEmbeddingsOption,
+  embeddingModel: embeddingModelOption
 }).pipe(
   Command.withDescription("Import Claude Code conversations to Convex (for testing)"),
-  Command.withHandler(({ apiKey: _apiKey, limit, userId, includePaths, excludePaths }) =>
+  Command.withHandler(({ apiKey: _apiKey, limit, userId, includePaths, excludePaths, enableEmbeddings, embeddingModel }) =>
     Effect.gen(function*() {
       const service = yield* OverlordService.OverlordService
       const maxLimit = Option.getOrElse(limit, () => 10)
 
       // Create filter options
-      const filterOptions = {
-        includePaths: includePaths.length > 0 ? includePaths : undefined,
-        excludePaths: excludePaths.length > 0 ? excludePaths : undefined
+      const filterOptions: OverlordService.FilterOptions = {
+        ...(includePaths.length > 0 && { includePaths: includePaths as ReadonlyArray<string> }),
+        ...(excludePaths.length > 0 && { excludePaths: excludePaths as ReadonlyArray<string> })
       }
 
+      // Create embedding configuration
+      const embeddingConfig = Option.getOrElse(enableEmbeddings, () => false) ? {
+        enabled: true,
+        model: Option.getOrElse(embeddingModel, () => "text-embedding-3-small"),
+        ...(process.env.OPENAI_API_KEY && { apiKey: process.env.OPENAI_API_KEY })
+      } as const satisfies EmbeddingConfig : undefined
+
       yield* Console.log(`📥 Importing up to ${maxLimit} Claude Code conversations...`)
+      if (embeddingConfig) {
+        yield* Console.log(`✨ Vector embeddings enabled using model: ${embeddingConfig.model}`)
+      }
       if (filterOptions.includePaths || filterOptions.excludePaths) {
         yield* Console.log(`📂 Path filtering: include=${filterOptions.includePaths?.join(", ") || "all"}, exclude=${filterOptions.excludePaths?.join(", ") || "none"}`)
       }
@@ -304,7 +342,7 @@ const importCommand = Command.make("import", {
             }
 
             // Save to Convex
-            yield* convexSync.saveSession(sessionId, userId, projectPath, entries)
+            yield* convexSync.saveSession(sessionId, userId, projectPath, entries, embeddingConfig)
 
             imported++
             yield* Console.log(`    ✅ Imported ${entries.length} entries`)
