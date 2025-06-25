@@ -297,9 +297,16 @@ export function renderChatMessage(message: {
 
   // Determine the role class for the message block
   let roleClass = "user"
+  
+  // Check if this message contains tool result content
+  const messageContainsToolResult = isToolResultProcessed || 
+                                    rawContent.startsWith("📤 Tool Result:") ||
+                                    (rawContent.startsWith("[{") && rawContent.includes('"type":"tool_result"'))
+  
   if (isToolOnlyMessage) {
     roleClass = "tool"
-  } else if (isToolResultProcessed) {
+  } else if (messageContainsToolResult) {
+    // Any message containing tool result content should be styled as tool result
     roleClass = isErrorResult ? "tool-result-error" : "tool-result"
   } else if (message.metadata?.entryType === "tool_result") {
     roleClass = isErrorResult ? "tool-result-error" : "tool-result"
