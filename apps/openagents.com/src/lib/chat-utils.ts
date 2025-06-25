@@ -190,10 +190,7 @@ export function renderChatMessage(message: {
         "</div>" +
         (toolInput ?
           "<div class=\"tool-input\">" +
-          "<details>" +
-          "<summary>View input</summary>" +
           "<pre>" + toolInput + "</pre>" +
-          "</details>" +
           "</div>" :
           "")
     } else {
@@ -205,10 +202,7 @@ export function renderChatMessage(message: {
         "</div>" +
         (toolInput ?
           "<div class=\"tool-input\">" +
-          "<details>" +
-          "<summary>View input</summary>" +
           "<pre>" + toolInput + "</pre>" +
-          "</details>" +
           "</div>" :
           "") +
         "</div>"
@@ -803,21 +797,6 @@ export const chatStyles = `
   
   .tool-input {
     margin-top: 0.5rem;
-  }
-  
-  .tool-input details {
-    margin: 0;
-  }
-  
-  .tool-input summary {
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--gray);
-    user-select: none;
-  }
-  
-  .tool-input summary:hover {
-    color: var(--white);
   }
   
   .tool-input pre {
