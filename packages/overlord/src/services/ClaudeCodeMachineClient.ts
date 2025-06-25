@@ -82,7 +82,7 @@ export const MachineClientConfig = Context.GenericTag<MachineClientConfig>(
 
 // Service interface
 export interface ClaudeCodeMachineClient {
-  readonly connect: () => Effect.Effect<void, MachineClientError | ClaudeCodeNotFoundError>
+  readonly connect: () => Effect.Effect<void, MachineClientError | ClaudeCodeNotFoundError | Error>
   readonly disconnect: () => Effect.Effect<void>
   readonly getStatus: () => Effect.Effect<{
     connected: boolean
@@ -139,7 +139,7 @@ export const ClaudeCodeMachineClientLive = Layer.effect(
           // Try to execute with --version
           yield* Effect.tryPromise(() => 
             new Promise((resolve, reject) => {
-              const child = spawn(claudePath, ["--version"], { 
+              const child: any = spawn(claudePath, ["--version"], { 
                 timeout: 5000,
                 stdio: ["ignore", "pipe", "pipe"]
               })
@@ -170,10 +170,10 @@ export const ClaudeCodeMachineClientLive = Layer.effect(
       // Get Claude version
       const claudeVersion = yield* Effect.tryPromise({
         try: () => new Promise<string>((resolve) => {
-          const child = spawn(claudePath, ["--version"], { stdio: ["ignore", "pipe", "pipe"] })
+          const child: any = spawn(claudePath as string, ["--version"], { stdio: ["ignore", "pipe", "pipe"] })
           let output = ""
           
-          child.stdout?.on("data", (data) => { output += data.toString() })
+          child.stdout?.on("data", (data: any) => { output += data.toString() })
           child.on("exit", () => { 
             resolve(output.trim() || "unknown") 
           })
@@ -220,7 +220,7 @@ export const ClaudeCodeMachineClientLive = Layer.effect(
         return
       }
       
-      const claudePath = yield* detectClaudeCode()
+      yield* detectClaudeCode() // Just verify Claude is installed
       const projectPath = command.data.projectPath
       
       if (!projectPath) {
