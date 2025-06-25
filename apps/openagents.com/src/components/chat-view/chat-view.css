@@ -209,6 +209,22 @@ body {
   margin: 0 auto;
 }
 
+/* Conversation Title */
+.conversation-title {
+  margin-bottom: 3rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.conversation-title h1 {
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.4;
+  font-family: var(--font-family-mono);
+}
+
 /* OpenCode-style Message Blocks */
 .message {
   display: flex;
