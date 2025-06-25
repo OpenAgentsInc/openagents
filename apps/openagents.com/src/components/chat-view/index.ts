@@ -88,8 +88,57 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     }
   }
 
+  // Extract summary from messages
+  let conversationTitle = null
+  let messagesToRender = messages
+
+  // Find summary message by checking metadata or id
+  const summaryIndex = messages.findIndex((msg) =>
+    (msg.metadata?.entryType === "summary") ||
+    (msg.id === "summary-0") ||
+    (msg.role === "system" && msg.content.includes("Summary:"))
+  )
+
+  if (summaryIndex !== -1) {
+    const summaryMessage = messages[summaryIndex]
+    // Extract title from metadata first, then fall back to parsing content
+    if (summaryMessage.metadata?.summary) {
+      conversationTitle = summaryMessage.metadata.summary
+    } else if (summaryMessage.content.includes("Summary:")) {
+      conversationTitle = summaryMessage.content.substring(summaryMessage.content.indexOf("Summary:") + 8).trim()
+    }
+
+    // Remove the summary message from the list to render
+    messagesToRender = messages.filter((_, index) => index !== summaryIndex)
+    console.log("Extracted conversation title:", conversationTitle)
+    console.log("Summary message:", summaryMessage)
+  }
+
+  // Filter out system messages with tool_use entry type (they're shown via metadata)
+  const filteredMessages = messagesToRender.filter((msg) => {
+    // Skip system messages that are tool uses (they're displayed via metadata)
+    if (msg.role === "system" && msg.metadata?.entryType === "tool_use") {
+      console.log("Filtering out tool_use system message:", msg.id)
+      return false
+    }
+
+    // Skip user messages that are actually tool results (already shown as tool results)
+    if (
+      msg.role === "user" && msg.content && (
+        msg.content.includes("[Request interrupted by user for tool use]") ||
+        msg.content.includes("📤 Tool Result") ||
+        (msg.content.startsWith("[{") && msg.content.includes("\"type\":\"tool_result\""))
+      )
+    ) {
+      console.log("Filtering out duplicate tool result shown as user message:", msg.id)
+      return false
+    }
+
+    return true
+  })
+
   // Show all messages (template literal issue is now fixed)
-  const limitedMessages = messages
+  const limitedMessages = filteredMessages
   console.log("Showing all messages:", limitedMessages.length)
 
   // Render messages with markdown
@@ -143,6 +192,13 @@ export async function createChatView({ conversationId }: ChatViewProps) {
       </ul>
     </div>
   ` :
+    ""
+
+  // Generate conversation title HTML if we extracted one
+  const conversationTitleHTML = conversationTitle ?
+    `<div class="conversation-title">
+      <h1>${escapeHtml(conversationTitle)}</h1>
+    </div>` :
     ""
 
   // Generate messages HTML
@@ -206,6 +262,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   `
 
   // Escape content to prevent template literal issues
+  const safeConversationTitleHTML = conversationTitleHTML.replace(/`/g, "&#96;")
   const safeMessagesHTML = messagesHTML.replace(/`/g, "&#96;")
   const safeThreadListHTML = threadListHTML.replace(/`/g, "&#96;")
   const safeModelOptionsHTML = modelOptionsHTML.replace(/`/g, "&#96;")
@@ -218,6 +275,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   // Replace placeholders in HTML
   const processedHTML = chatViewHTML
     .replace("<!-- Thread groups will be inserted here -->", safeThreadListHTML)
+    .replace("<!-- Conversation Title will be inserted here -->", safeConversationTitleHTML)
     .replace("<!-- Messages will be dynamically added here -->", safeMessagesHTML)
     .replace("<!-- Model options will be populated dynamically -->", safeModelOptionsHTML)
 
@@ -255,6 +313,16 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     styles: baseStyles + css`${chatViewCSS}` + css`${chatStyles}`,
     body: html`
       ${processedHTML}
+      
+      <script>
+        // Toggle debug info visibility
+        function toggleDebug(debugId) {
+          const debugElement = document.getElementById(debugId);
+          if (debugElement) {
+            debugElement.style.display = debugElement.style.display === 'none' ? 'block' : 'none';
+          }
+        }
+      </script>
       
       ${isDev ? "<script type=\"module\" src=\"http://localhost:5173/@vite/client\"></script>" : ""}
       <script type="module">

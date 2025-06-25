@@ -32,7 +32,7 @@ function formatToolResult(content: string): string {
       "<div class=\"file-listing\">" +
       "<div style=\"margin-bottom: 0.5rem;\">📁 File listing (" + fileCount + " files)</div>" +
       "<details class=\"tool-result-details\">" +
-      "<summary style=\"cursor: pointer; color: #9ece6a;\">Show all files</summary>" +
+      "<summary style=\"cursor: pointer; color: #a855f7;\">Show all files</summary>" +
       "<pre style=\"margin-top: 0.5rem; max-height: 400px; overflow-y: auto;\">" +
       lines.map(escapeHtml).join("\n") +
       "</pre>" +
@@ -50,7 +50,7 @@ function formatToolResult(content: string): string {
       "<div class=\"long-content\">" +
       "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
       "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
-      "<summary style=\"cursor: pointer; color: #9ece6a; font-size: 12px;\">Show full content (" + content.length +
+      "<summary style=\"cursor: pointer; color: #a855f7; font-size: 12px;\">Show full content (" + content.length +
       " characters, " + lines.length + " lines)</summary>" +
       "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" +
       escapeHtml(content) +
@@ -68,7 +68,7 @@ function formatToolResult(content: string): string {
  * Generate HTML for a chat message (using string concatenation instead of template literals)
  */
 export function renderChatMessage(message: {
-  role: "user" | "assistant"
+  role: "user" | "assistant" | "system"
   content: string
   timestamp?: number
   rendered?: string
@@ -94,19 +94,23 @@ export function renderChatMessage(message: {
     rawContent.includes("<p>[{") ||
     rawContent.includes("<p>[&lt;{")
 
+  // Check if this is an error tool result
+  const isErrorResult = rawContent.includes("[ERROR]") ||
+    rawContent.includes("[Request interrupted") ||
+    rawContent.includes("error:") ||
+    rawContent.includes("Error:")
+
   // Handle plain text tool results
   if (message.role === "user" && isPlainTextToolResult) {
     // Extract content after "📤 Tool Result: "
     const toolResultContent = rawContent.substring("📤 Tool Result: ".length).trim()
     const formattedContent = formatToolResult(toolResultContent)
-    content = "<div class=\"tool-result-section\">" +
-      "<div class=\"tool-result-header\">" +
-      "<span class=\"tool-result-icon\">📤</span>" +
-      "<span class=\"tool-result-label\">Tool Result</span>" +
+    content = "<div class=\"tool-header\">" +
+      "<span class=\"tool-icon\">📤</span>" +
+      "<span class=\"tool-name\">Tool Result</span>" +
       "</div>" +
-      "<div class=\"tool-result-content\">" +
+      "<div class=\"tool-content\">" +
       formattedContent +
-      "</div>" +
       "</div>"
     isToolResultProcessed = true
   } // Handle JSON tool results
@@ -125,16 +129,12 @@ export function renderChatMessage(message: {
         // Format tool result nicely - ignore any rendered markdown
         const toolResult = parsed[0]
         const formattedContent = formatToolResult(toolResult.content || "")
-        content = "<div class=\"tool-result-section\">" +
-          "<div class=\"tool-result-header\">" +
-          "<span class=\"tool-result-icon\">📤</span>" +
-          "<span class=\"tool-result-label\">Tool Result</span>" +
-          "<span class=\"tool-result-id\" style=\"font-size: 11px; opacity: 0.7; margin-left: 0.5rem;\">" +
-          escapeHtml(toolResult.tool_use_id || "") + "</span>" +
+        content = "<div class=\"tool-header\">" +
+          "<span class=\"tool-icon\">📤</span>" +
+          "<span class=\"tool-name\">Tool Result</span>" +
           "</div>" +
-          "<div class=\"tool-result-content\">" +
-          formattedContent + // Don't wrap in pre tag - formatToolResult handles it
-          "</div>" +
+          "<div class=\"tool-content\">" +
+          formattedContent +
           "</div>"
         isToolResultProcessed = true
       }
@@ -171,33 +171,57 @@ export function renderChatMessage(message: {
       "</div>"
   }
 
+  // Check if this is a tool-only message
+  const isToolOnlyMessage = message.metadata?.hasEmbeddedTool &&
+    message.metadata?.toolName &&
+    (!content || content.trim() === "")
+
   // Add tool information if present in metadata
   if (message.metadata?.hasEmbeddedTool && message.metadata?.toolName) {
     const toolInput = message.metadata.toolInput ?
       escapeHtml(JSON.stringify(message.metadata.toolInput, null, 2)) :
       ""
 
-    const toolInfo = "<div class=\"tool-section\">" +
-      "<div class=\"tool-header\">" +
-      "<span class=\"tool-icon\">🔧</span>" +
-      "<span class=\"tool-name\">" + escapeHtml(message.metadata.toolName) + "</span>" +
-      "</div>" +
-      (toolInput ?
-        "<div class=\"tool-input\">" +
-        "<details>" +
-        "<summary>View input</summary>" +
-        "<pre>" + toolInput + "</pre>" +
-        "</details>" +
-        "</div>" :
-        "") +
-      "</div>"
+    if (isToolOnlyMessage) {
+      // For tool-only messages, show tool info directly without wrapper
+      content = "<div class=\"tool-header\">" +
+        "<span class=\"tool-icon\">🔧</span>" +
+        "<span class=\"tool-name\">" + escapeHtml(message.metadata.toolName) + "</span>" +
+        "</div>" +
+        (toolInput ?
+          "<div class=\"tool-input\">" +
+          "<pre>" + toolInput + "</pre>" +
+          "</div>" :
+          "")
+    } else {
+      // For messages with both tool and content, show tool in a section
+      const toolInfo = "<div class=\"tool-section\">" +
+        "<div class=\"tool-header\">" +
+        "<span class=\"tool-icon\">🔧</span>" +
+        "<span class=\"tool-name\">" + escapeHtml(message.metadata.toolName) + "</span>" +
+        "</div>" +
+        (toolInput ?
+          "<div class=\"tool-input\">" +
+          "<pre>" + toolInput + "</pre>" +
+          "</div>" :
+          "") +
+        "</div>"
 
-    // Prepend tool info to content
-    content = toolInfo + content
+      // Prepend tool info to content
+      content = toolInfo + content
+    }
+  }
+
+  // Skip rendering if there's no content at all
+  if (!content || content.trim() === "") {
+    return ""
   }
 
   // Only include debug section if explicitly enabled or in development
   const includeDebug = true // Re-enabled for debugging
+
+  // Generate a unique ID for this message's debug section
+  const messageDebugId = "debug-" + (message.id || Math.random().toString(36).substr(2, 9))
 
   let debugSection = ""
   if (includeDebug) {
@@ -260,19 +284,58 @@ export function renderChatMessage(message: {
     }
 
     const debugJson = escapeHtml(JSON.stringify(debugObject, null, 2))
-    debugSection = "<div class=\"message-debug\">" +
-      "<details>" +
-      "<summary>Debug Info</summary>" +
+
+    // Create debug section (hidden by default)
+    debugSection = "<div id=\"" + messageDebugId + "\" class=\"message-debug\" style=\"display: none;\">" +
       "<pre class=\"debug-json\">" + debugJson + "</pre>" +
-      "</details>" +
       "</div>"
+  }
+
+  // Determine the role class for the message block
+  let roleClass = "user"
+
+  // Check if this message contains tool result content
+  const messageContainsToolResult = isToolResultProcessed ||
+    rawContent.startsWith("📤 Tool Result:") ||
+    rawContent.includes("📤 Tool Result") ||
+    (rawContent.startsWith("[{") && rawContent.includes("\"type\":\"tool_result\"")) ||
+    rawContent.includes("Tool Result (")
+
+  if (isToolOnlyMessage) {
+    roleClass = "tool"
+  } else if (messageContainsToolResult) {
+    // Any message containing tool result content should be styled as tool result
+    roleClass = isErrorResult ? "tool-result-error" : "tool-result"
+  } else if (message.metadata?.entryType === "tool_result") {
+    roleClass = isErrorResult ? "tool-result-error" : "tool-result"
+  } else {
+    roleClass = message.role
   }
 
   return (
     "<div class=\"message\">" +
-    "<div class=\"message-block " + message.role + "\">" +
+    "<div class=\"message-block " + roleClass + " group relative\">" +
     "<div class=\"message-body\">" + content + "</div>" +
     debugSection +
+    // Hover buttons container
+    "<div class=\"message-actions\">" +
+    "<button class=\"debug-button\" onclick=\"toggleDebug('" + messageDebugId +
+    "')\" aria-label=\"Toggle debug info\">" +
+    // Bug icon SVG
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">" +
+    "<path d=\"m8 2 1.88 1.88M14.12 3.88 16 2\"></path>" +
+    "<path d=\"M9 7.13v-1a3.003 3.003 0 1 1 6 0v1\"></path>" +
+    "<path d=\"M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6z\"></path>" +
+    "<path d=\"M12 20v-9\"></path>" +
+    "<path d=\"M6.53 9C4.6 8.8 3 7.1 3 5\"></path>" +
+    "<path d=\"M6 13H2\"></path>" +
+    "<path d=\"M3 21c0-2.1 1.7-3.9 3.8-4\"></path>" +
+    "<path d=\"M20.97 5c0 2.1-1.6 3.8-3.5 4\"></path>" +
+    "<path d=\"M22 13h-4\"></path>" +
+    "<path d=\"M17.2 17c2.1.1 3.8 1.9 3.8 4\"></path>" +
+    "</svg>" +
+    "</button>" +
+    "</div>" +
     "</div>" +
     "</div>"
   )
@@ -709,6 +772,21 @@ export const chatStyles = `
     border-left-color: #a855f7; /* Purple for tools */
   }
   
+  /* System message styling (for tool uses, etc) */
+  .message-block.system {
+    border-left-color: #a855f7; /* Purple for system/tool messages */
+  }
+  
+  /* Tool result styling - purple like tool calls */
+  .message-block.tool-result {
+    border-left-color: #a855f7; /* Purple for tool results */
+  }
+  
+  /* Tool result error styling - red for errors */
+  .message-block.tool-result-error {
+    border-left-color: #ef4444; /* Red for error results */
+  }
+  
   .message-body {
     color: var(--text);
     line-height: 1.6;
@@ -748,21 +826,6 @@ export const chatStyles = `
     margin-top: 0.5rem;
   }
   
-  .tool-input details {
-    margin: 0;
-  }
-  
-  .tool-input summary {
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--gray);
-    user-select: none;
-  }
-  
-  .tool-input summary:hover {
-    color: var(--white);
-  }
-  
   .tool-input pre {
     margin: 0.5rem 0 0 0;
     padding: 0.5rem;
@@ -776,8 +839,8 @@ export const chatStyles = `
   
   /* Tool result section styling */
   .tool-result-section {
-    background: rgba(34, 197, 94, 0.05);
-    border: 1px solid rgba(34, 197, 94, 0.2);
+    background: rgba(168, 85, 247, 0.05);
+    border: 1px solid rgba(168, 85, 247, 0.2);
     border-radius: 6px;
     padding: 0.75rem;
   }
@@ -788,15 +851,18 @@ export const chatStyles = `
     gap: 0.5rem;
     margin-bottom: 0.5rem;
     font-size: 13px;
+    font-weight: 600;
+    color: #a855f7;
   }
   
   .tool-result-icon {
     font-size: 14px;
+    color: #a855f7;
   }
   
   .tool-result-label {
     font-weight: 600;
-    color: #22c55e;
+    color: #a855f7;
   }
   
   .tool-result-id {
@@ -820,6 +886,15 @@ export const chatStyles = `
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-word;
+  }
+  
+  .tool-result-details summary {
+    cursor: pointer;
+    user-select: none;
+  }
+  
+  .tool-result-details summary:hover {
+    text-decoration: underline;
   }
   
   /* 3-dot loading animation */
@@ -992,28 +1067,6 @@ export const chatStyles = `
   }
 
   /* Debug section styling - only shown when enabled */
-  .message-debug {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--offblack);
-  }
-
-  .message-debug details {
-    margin: 0;
-  }
-
-  .message-debug summary {
-    color: var(--gray);
-    font-size: 11px;
-    font-family: var(--font-family-mono);
-    cursor: pointer;
-    user-select: none;
-    padding: 2px 0;
-  }
-
-  .message-debug summary:hover {
-    color: var(--white);
-  }
 
   .debug-json {
     background-color: var(--black);
@@ -1032,43 +1085,6 @@ export const chatStyles = `
     max-width: 100%;
   }
 
-  /* Tool result section styling */
-  .tool-result-section {
-    border-left: 3px solid #9ece6a;
-    padding-left: 1rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .tool-result-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 0.5rem;
-  }
-
-  .tool-result-icon {
-    color: #9ece6a;
-    margin-right: 0.5rem;
-  }
-
-  .tool-result-label {
-    color: #9ece6a;
-    font-weight: 600;
-  }
-
-  .tool-result-content {
-    font-size: 14px;
-    max-width: 100%;
-    overflow-x: hidden;
-  }
-
-  .tool-result-details summary {
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .tool-result-details summary:hover {
-    text-decoration: underline;
-  }
 
   /* Tool section styling (for tool invocations) */
   .tool-section {
@@ -1090,5 +1106,59 @@ export const chatStyles = `
   .tool-name {
     color: #a855f7;
     font-weight: 600;
+  }
+
+  /* Group hover functionality */
+  .group {
+    position: relative;
+  }
+
+  /* Message actions (hover buttons) */
+  .message-actions {
+    position: absolute;
+    right: 0;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .group:hover .message-actions {
+    opacity: 1;
+  }
+
+  /* Debug button styling */
+  .debug-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--gray);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .debug-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--lightgray);
+  }
+
+  .debug-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Debug section when visible */
+  .message-debug {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--offblack);
   }
 `
