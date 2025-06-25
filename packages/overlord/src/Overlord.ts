@@ -1,7 +1,9 @@
 import { Args, Command, Options } from "@effect/cli"
 import { NodeContext } from "@effect/platform-node"
-import { Console, Effect, Option, Stream } from "effect"
+import { Console, Effect, Layer, Option, Stream } from "effect"
+import * as os from "node:os"
 import * as ClaudeCodeControlService from "./services/ClaudeCodeControlService.js"
+import * as ClaudeCodeMachineClient from "./services/ClaudeCodeMachineClient.js"
 import * as ConvexSync from "./services/ConvexSync.js"
 import type { EmbeddingConfig } from "./services/ConvexSync.js"
 import * as FileWatcher from "./services/FileWatcher.js"
@@ -471,6 +473,12 @@ const machineIdOption = Options.text("machine-id").pipe(
   Options.withAlias("m")
 )
 
+const optionalMachineIdOption = Options.text("machine-id").pipe(
+  Options.withDescription("Machine ID (defaults to hostname)"),
+  Options.withAlias("m"),
+  Options.optional
+)
+
 const sessionIdOption = Options.text("session-id").pipe(
   Options.withDescription("Claude Code session ID"),
   Options.withAlias("s")
@@ -724,10 +732,104 @@ const claudeInfoCommand = Command.make("info", {
   )
 )
 
+// Claude Code: Connect machine to server
+const serverUrlOption = Options.text("server-url").pipe(
+  Options.withDescription("Claude Code WebSocket server URL"),
+  Options.withDefault("ws://localhost:3003/claude-code"),
+  Options.optional
+)
+
+const claudePathOption = Options.text("claude-path").pipe(
+  Options.withDescription("Path to Claude Code executable"),
+  Options.optional
+)
+
+const claudeConnectCommand = Command.make("connect", {
+  serverUrl: serverUrlOption,
+  apiKey: apiKeyOption,
+  machineId: optionalMachineIdOption,
+  claudePath: claudePathOption
+}).pipe(
+  Command.withDescription("Connect this machine to Claude Code WebSocket server"),
+  Command.withHandler(({ serverUrl, apiKey, machineId, claudePath }) =>
+    Effect.gen(function*() {
+      yield* Console.log(`🔌 Connecting to Claude Code server...`)
+      yield* Console.log(`📡 Server: ${Option.getOrElse(serverUrl, () => "ws://localhost:3003/claude-code")}`)
+      yield* Console.log(`🤖 Machine ID: ${Option.getOrElse(machineId, () => os.hostname())}`)
+      
+      const actualMachineId = Option.getOrElse(machineId, () => os.hostname())
+      const actualServerUrl = Option.getOrElse(serverUrl, () => "ws://localhost:3003/claude-code")
+      
+      const actualMachineIdValue = actualMachineId
+      const actualServerUrlValue = actualServerUrl
+      const apiKeyValue = apiKey
+      const claudePathValue = Option.isSome(claudePath) ? claudePath.value : undefined
+      
+      return yield* Effect.gen(function*() {
+        const client = yield* ClaudeCodeMachineClient.ClaudeCodeMachineClient
+        
+        // Connect to server
+        yield* client.connect().pipe(
+          Effect.catchAll((error: any) =>
+            Effect.gen(function*() {
+              yield* Console.error(`❌ ${error.message || error}`)
+              if (error._tag === "ClaudeCodeNotFoundError") {
+                yield* Console.log(`\n📝 Please ensure Claude Code is installed:`)
+                yield* Console.log(`   1. Download from https://claude.ai/code`)
+                yield* Console.log(`   2. Install it to your system`)
+                yield* Console.log(`   3. Or specify the path with --claude-path`)
+              }
+              yield* Effect.fail(error)
+            })
+          )
+        )
+        
+        yield* Console.log(`✅ Connected to Claude Code server`)
+        yield* Console.log(`📊 Machine registered as: ${actualMachineIdValue}`)
+        
+        // Get initial status
+        const status = yield* client.getStatus()
+        yield* Console.log(`\n📋 Machine Status:`)
+        yield* Console.log(`   Hostname: ${status.machineInfo.hostname}`)
+        yield* Console.log(`   Claude Version: ${status.machineInfo.claudeVersion}`)
+        yield* Console.log(`   Supported Features: ${status.machineInfo.supportedFeatures.join(", ")}`)
+        yield* Console.log(`   Active Sessions: ${status.activeSessions.length}`)
+        
+        yield* Console.log(`\n🎮 Machine is now ready to receive commands`)
+        yield* Console.log(`Press Ctrl+C to disconnect`)
+        
+        // Keep running
+        yield* Effect.never
+      }).pipe(
+        Effect.provide(Layer.merge(
+          ClaudeCodeMachineClient.ClaudeCodeMachineClientLive,
+          Layer.succeed(ClaudeCodeMachineClient.MachineClientConfig, {
+            serverUrl: actualServerUrlValue,
+            machineId: actualMachineIdValue,
+            apiKey: apiKeyValue,
+            ...(claudePathValue && { claudeCodePath: claudePathValue }),
+            heartbeatInterval: 30000,
+            reconnectDelay: 5000,
+            maxReconnectAttempts: 10
+          })
+        )),
+        Effect.provide(NodeContext.layer),
+        Effect.catchAll((error) =>
+          Effect.gen(function*() {
+            yield* Console.error(`❌ Failed to connect: ${error}`)
+            yield* Effect.fail(error)
+          })
+        )
+      )
+    })
+  )
+)
+
 // Claude Code control subcommand
 const claudeCommand = Command.make("claude").pipe(
   Command.withDescription("Control Claude Code instances remotely"),
   Command.withSubcommands([
+    claudeConnectCommand,
     claudeStartCommand,
     claudePromptCommand,
     claudeSessionsCommand,
