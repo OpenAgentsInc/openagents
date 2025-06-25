@@ -14,6 +14,7 @@ import { docs, docPage } from './routes/docs'
 import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
 import { chat } from './routes/chat'
+import { chatV2 } from './routes/chat-v2'
 import { store } from './routes/store'
 import { create } from './routes/create'
 import { settings } from './routes/settings'
@@ -72,6 +73,7 @@ app.route('/store', store)
 app.route('/create', create)
 app.route('/settings', settings)
 app.route('/chat/:id', chat)
+app.route('/chat-v2/:id', chatV2)
 app.route('/docs', docs)
 app.route('/docs/:slug', docPage)
 app.route('/about', about)
