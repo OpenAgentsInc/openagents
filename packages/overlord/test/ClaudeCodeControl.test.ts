@@ -39,7 +39,7 @@ describe("ClaudeCodeControlService", () => {
 
       expect(session.sessionId).toBeTruthy()
       expect(session.startedAt).toBeInstanceOf(Date)
-      
+
       return session
     })
 
@@ -75,7 +75,7 @@ describe("ClaudeCodeControlService", () => {
 
       expect(prompt.promptId).toBeTruthy()
       expect(prompt.sentAt).toBeInstanceOf(Date)
-      
+
       return prompt
     })
 
@@ -111,7 +111,7 @@ describe("ClaudeCodeControlService", () => {
           status: "active"
         })
       )
-      
+
       return sessions
     })
 
@@ -139,7 +139,7 @@ describe("ClaudeCodeControlService", () => {
           lastHeartbeat: expect.any(Date)
         })
       )
-      
+
       return info
     })
 
