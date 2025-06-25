@@ -14,8 +14,11 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as agents from "../agents.js";
+import type * as deleteAll from "../deleteAll.js";
+import type * as deleteBatch from "../deleteBatch.js";
 import type * as events from "../events.js";
 import type * as messages from "../messages.js";
+import type * as sessionFixes from "../sessionFixes.js";
 import type * as sessions from "../sessions.js";
 
 /**
@@ -28,8 +31,11 @@ import type * as sessions from "../sessions.js";
  */
 declare const fullApi: ApiFromModules<{
   agents: typeof agents;
+  deleteAll: typeof deleteAll;
+  deleteBatch: typeof deleteBatch;
   events: typeof events;
   messages: typeof messages;
+  sessionFixes: typeof sessionFixes;
   sessions: typeof sessions;
 }>;
 export declare const api: FilterApi<

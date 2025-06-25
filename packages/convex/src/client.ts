@@ -395,6 +395,23 @@ export class ConvexClient {
         return unsubscribe
       })
   }
+
+  /**
+   * Data deletion operations
+   */
+  static readonly admin = {
+    /**
+     * Delete all data from Convex
+     */
+    deleteEverything: () =>
+      Effect.tryPromise({
+        try: async () => {
+          const result = await ConvexClient.client.mutation(api.deleteAll.deleteEverything, {})
+          return result as { messagesDeleted: number; sessionsDeleted: number }
+        },
+        catch: (error) => new Error(`Failed to delete all data: ${error}`)
+      })
+  }
 }
 
 /**
