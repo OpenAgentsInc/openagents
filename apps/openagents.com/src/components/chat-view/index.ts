@@ -81,8 +81,8 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     }
   }
 
-  // Render messages 26-50 (next 25 messages)
-  const limitedMessages = messages.slice(25, 50)
+  // Render messages 51-65 (next 15 messages)
+  const limitedMessages = messages.slice(50, 65)
 
   // Render messages with markdown
   const renderedMessages = await Promise.all(
