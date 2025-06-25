@@ -80,11 +80,20 @@ export function renderChatMessage(message: {
   let content = message.rendered || escapeHtml(message.content)
   
   // Check if this is a user message with tool result JSON
-  if (message.role === "user" && message.content && message.content.startsWith('[{')) {
+  // First check raw content, not rendered content
+  const rawContent = message.content || ''
+  // Also check if it's HTML escaped
+  const isToolResultJson = rawContent.startsWith('[{') || rawContent.startsWith('[&lt;{') || rawContent.startsWith('[&#123;')
+  
+  if (message.role === "user" && rawContent && isToolResultJson) {
     try {
-      const parsed = JSON.parse(message.content)
+      // Try to unescape if needed
+      const contentToparse = rawContent.startsWith('[{') ? rawContent : 
+        rawContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#123;/g, '{').replace(/&#125;/g, '}')
+      
+      const parsed = JSON.parse(contentToparse)
       if (Array.isArray(parsed) && parsed[0]?.type === 'tool_result') {
-        // Format tool result nicely
+        // Format tool result nicely - ignore any rendered markdown
         const toolResult = parsed[0]
         const formattedContent = formatToolResult(toolResult.content || '')
         content = 
@@ -102,6 +111,29 @@ export function renderChatMessage(message: {
     } catch (e) {
       // Not valid JSON or not a tool result, use original content
     }
+  }
+  
+  // Fallback: If content is extremely long (even if not detected as tool result), collapse it
+  if (content.length > 1000 && !content.includes('tool-result-section')) {
+    const lines = content.split('\n')
+    const preview = lines.slice(0, 5).map(line => 
+      line.length > 100 ? line.substring(0, 100) + '...' : line
+    ).join('\n')
+    
+    content = 
+      "<div class=\"long-message-section\">" +
+      "<div class=\"long-message-header\" style=\"color: #f59e0b; margin-bottom: 0.5rem;\">" +
+      "<span style=\"margin-right: 0.5rem;\">⚠️</span>" +
+      "<span>Very long message (" + content.length + " characters)</span>" +
+      "</div>" +
+      "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
+      "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
+      "<summary style=\"cursor: pointer; color: #f59e0b; font-size: 12px;\">Show full message (" + lines.length + " lines)</summary>" +
+      "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" + 
+      escapeHtml(message.content || content) + 
+      "</pre>" +
+      "</details>" +
+      "</div>"
   }
   
   // Add tool information if present in metadata
@@ -140,7 +172,9 @@ export function renderChatMessage(message: {
       contentLength: message.content?.length || 0,
       contentPreview: message.content?.substring(0, 100) + (message.content?.length > 100 ? '...' : ''),
       hasRendered: !!message.rendered,
+      renderedLength: message.rendered?.length || 0,
       isToolResult: message.content?.startsWith('[{') && message.content?.includes('"tool_result"'),
+      startsWithBracket: message.content?.substring(0, 2),
       metadata: message.metadata ? {
         entryType: message.metadata.entryType,
         hasEmbeddedTool: message.metadata.hasEmbeddedTool,

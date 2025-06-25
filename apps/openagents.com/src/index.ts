@@ -36,6 +36,7 @@ import {
 } from './routes/api/conversations'
 import { renderMarkdownRoute } from './routes/api/markdown'
 import { testRoute } from './routes/api/test'
+import { testToolResultDisplay } from './routes/test-tool-result-display'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -84,6 +85,7 @@ app.route('/channels/:id', channelViewRoute)
 app.route('/gfn', gfn)
 app.route('/slides', slides)
 app.route('/import', importRoute)
+app.route('/test-tool-result', testToolResultDisplay)
 
 // Mount API routes
 // Ollama API
