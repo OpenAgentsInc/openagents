@@ -263,6 +263,22 @@ export class ConvexClient {
           return undefined
         },
         catch: (error) => new Error(`Failed to update activity: ${error}`)
+      }),
+
+    /**
+     * Update session project information
+     */
+    updateProject: (sessionId: string, projectPath: string, projectName?: string) =>
+      Effect.tryPromise({
+        try: async () => {
+          const args: any = { sessionId, projectPath }
+          if (projectName !== undefined) {
+            args.projectName = projectName
+          }
+          await ConvexClient.client.mutation(api.sessions.updateProject, args)
+          return undefined
+        },
+        catch: (error) => new Error(`Failed to update project: ${error}`)
       })
   }
 
@@ -307,6 +323,25 @@ export class ConvexClient {
           return result as ChatMessage | null
         },
         catch: (error) => new Error(`Failed to get message: ${error}`)
+      }),
+
+    /**
+     * Update message content
+     */
+    updateContent: (entryUuid: string, content?: string, thinking?: string) =>
+      Effect.tryPromise({
+        try: async () => {
+          const args: any = { entryUuid }
+          if (content !== undefined) {
+            args.content = content
+          }
+          if (thinking !== undefined) {
+            args.thinking = thinking
+          }
+          await ConvexClient.client.mutation(api.messages.updateContent, args)
+          return undefined
+        },
+        catch: (error) => new Error(`Failed to update message content: ${error}`)
       }),
 
     /**

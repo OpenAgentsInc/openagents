@@ -133,6 +133,37 @@ export const updateStatus = mutation({
 })
 
 /**
+ * Update session project information
+ */
+export const updateProject = mutation({
+  args: {
+    sessionId: v.string(),
+    projectPath: v.string(),
+    projectName: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("sessions")
+      .filter(q => q.eq(q.field("id"), args.sessionId))
+      .first()
+
+    if (!session) {
+      throw new Error(`Session not found: ${args.sessionId}`)
+    }
+
+    const updateData: any = {
+      project_path: args.projectPath,
+      last_activity: Date.now()
+    }
+    if (args.projectName !== undefined) {
+      updateData.project_name = args.projectName
+    }
+
+    return await ctx.db.patch(session._id, updateData)
+  }
+})
+
+/**
  * List recent sessions across all users
  */
 export const listRecent = query({

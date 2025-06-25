@@ -13,8 +13,8 @@ const ConvexClient = client.ConvexClient
 // NOTE: Sessions were imported with "claude-code-user" as the user_id
 const HARDCODED_USER_ID = "claude-code-user"
 
-// Debug logging helper - DISABLED
-const DEBUG = false
+// Debug logging helper - ENABLED for debugging
+const DEBUG = true
 function debug(message: string, data?: any) {
   if (DEBUG) {
     console.log(`[chat-client-convex] ${message}`, data || "")
@@ -25,6 +25,13 @@ function debug(message: string, data?: any) {
  * Transform ConvexSession to expected format
  */
 function transformSession(session: any) {
+  debug("Transforming session:", {
+    id: session.id,
+    project_name: session.project_name,
+    project_path: session.project_path,
+    raw_session: session
+  })
+  
   return {
     id: session.id,
     title: session.project_name || session.project_path || "Untitled Session",
@@ -214,6 +221,13 @@ function parseMessageContent(message: any): string {
   switch (message.entry_type) {
     case "user":
       // User messages from Claude Code have content in a specific format
+      debug(`User message raw data:`, {
+        content: message.content,
+        contentType: typeof message.content,
+        hasContent: !!message.content,
+        contentLength: message.content?.length || 0
+      })
+      
       if (message.content) {
         debug(`User message content type: ${typeof message.content}`)
         try {

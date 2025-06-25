@@ -188,9 +188,21 @@ export const createSessionRecord = (
   }
 }
 
-// Extract a friendly project name from the hashed path
+// Extract a friendly project name from the project path
 const extractProjectName = (projectPath: string): string => {
-  // Project paths are hashed, so we can't get the real name
-  // In Phase 2, we might want to store a mapping
-  return `Project ${projectPath.substring(0, 8)}`
+  if (projectPath === "unknown") {
+    return "Unknown Project"
+  }
+  
+  // If it looks like a hash (long hex string), shorten it
+  if (projectPath.length > 20 && /^[a-f0-9-]+$/.test(projectPath)) {
+    return `Project ${projectPath.substring(0, 8)}`
+  }
+  
+  // Otherwise use the path as-is, with some cleanup
+  return projectPath
+    .replace(/[-_]/g, " ")
+    .split(" ")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
 }
