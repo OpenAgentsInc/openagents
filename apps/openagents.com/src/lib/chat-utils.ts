@@ -32,7 +32,7 @@ function formatToolResult(content: string): string {
       "<div class=\"file-listing\">" +
       "<div style=\"margin-bottom: 0.5rem;\">📁 File listing (" + fileCount + " files)</div>" +
       "<details class=\"tool-result-details\">" +
-      "<summary style=\"cursor: pointer; color: #9ece6a;\">Show all files</summary>" +
+      "<summary style=\"cursor: pointer; color: #a855f7;\">Show all files</summary>" +
       "<pre style=\"margin-top: 0.5rem; max-height: 400px; overflow-y: auto;\">" +
       lines.map(escapeHtml).join("\n") +
       "</pre>" +
@@ -50,7 +50,7 @@ function formatToolResult(content: string): string {
       "<div class=\"long-content\">" +
       "<pre style=\"white-space: pre-wrap; word-break: break-word; margin: 0;\">" + escapeHtml(preview) + "</pre>" +
       "<details class=\"tool-result-details\" style=\"margin-top: 0.5rem;\">" +
-      "<summary style=\"cursor: pointer; color: #9ece6a; font-size: 12px;\">Show full content (" + content.length +
+      "<summary style=\"cursor: pointer; color: #a855f7; font-size: 12px;\">Show full content (" + content.length +
       " characters, " + lines.length + " lines)</summary>" +
       "<pre style=\"margin-top: 0.5rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; background: var(--black); padding: 0.5rem; border-radius: 4px; font-size: 12px;\">" +
       escapeHtml(content) +
@@ -94,19 +94,23 @@ export function renderChatMessage(message: {
     rawContent.includes("<p>[{") ||
     rawContent.includes("<p>[&lt;{")
 
+  // Check if this is an error tool result
+  const isErrorResult = rawContent.includes("[ERROR]") || 
+                       rawContent.includes("[Request interrupted") ||
+                       rawContent.includes("error:") ||
+                       rawContent.includes("Error:")
+
   // Handle plain text tool results
   if (message.role === "user" && isPlainTextToolResult) {
     // Extract content after "📤 Tool Result: "
     const toolResultContent = rawContent.substring("📤 Tool Result: ".length).trim()
     const formattedContent = formatToolResult(toolResultContent)
-    content = "<div class=\"tool-result-section\">" +
-      "<div class=\"tool-result-header\">" +
+    content = "<div class=\"tool-result-header\">" +
       "<span class=\"tool-result-icon\">📤</span>" +
       "<span class=\"tool-result-label\">Tool Result</span>" +
       "</div>" +
       "<div class=\"tool-result-content\">" +
       formattedContent +
-      "</div>" +
       "</div>"
     isToolResultProcessed = true
   } // Handle JSON tool results
@@ -125,8 +129,7 @@ export function renderChatMessage(message: {
         // Format tool result nicely - ignore any rendered markdown
         const toolResult = parsed[0]
         const formattedContent = formatToolResult(toolResult.content || "")
-        content = "<div class=\"tool-result-section\">" +
-          "<div class=\"tool-result-header\">" +
+        content = "<div class=\"tool-result-header\">" +
           "<span class=\"tool-result-icon\">📤</span>" +
           "<span class=\"tool-result-label\">Tool Result</span>" +
           "<span class=\"tool-result-id\" style=\"font-size: 11px; opacity: 0.7; margin-left: 0.5rem;\">" +
@@ -134,7 +137,6 @@ export function renderChatMessage(message: {
           "</div>" +
           "<div class=\"tool-result-content\">" +
           formattedContent + // Don't wrap in pre tag - formatToolResult handles it
-          "</div>" +
           "</div>"
         isToolResultProcessed = true
       }
@@ -294,7 +296,16 @@ export function renderChatMessage(message: {
   }
 
   // Determine the role class for the message block
-  const roleClass = isToolOnlyMessage ? "tool" : message.role
+  let roleClass = "user"
+  if (isToolOnlyMessage) {
+    roleClass = "tool"
+  } else if (isToolResultProcessed) {
+    roleClass = isErrorResult ? "tool-result-error" : "tool-result"
+  } else if (message.metadata?.entryType === "tool_result") {
+    roleClass = isErrorResult ? "tool-result-error" : "tool-result"
+  } else {
+    roleClass = message.role
+  }
 
   return (
     "<div class=\"message\">" +
@@ -760,6 +771,16 @@ export const chatStyles = `
     border-left-color: #a855f7; /* Purple for system/tool messages */
   }
   
+  /* Tool result styling - purple like tool calls */
+  .message-block.tool-result {
+    border-left-color: #a855f7; /* Purple for tool results */
+  }
+  
+  /* Tool result error styling - red for errors */
+  .message-block.tool-result-error {
+    border-left-color: #ef4444; /* Red for error results */
+  }
+  
   .message-body {
     color: var(--text);
     line-height: 1.6;
@@ -812,8 +833,8 @@ export const chatStyles = `
   
   /* Tool result section styling */
   .tool-result-section {
-    background: rgba(34, 197, 94, 0.05);
-    border: 1px solid rgba(34, 197, 94, 0.2);
+    background: rgba(168, 85, 247, 0.05);
+    border: 1px solid rgba(168, 85, 247, 0.2);
     border-radius: 6px;
     padding: 0.75rem;
   }
@@ -824,15 +845,18 @@ export const chatStyles = `
     gap: 0.5rem;
     margin-bottom: 0.5rem;
     font-size: 13px;
+    font-weight: 600;
+    color: #a855f7;
   }
   
   .tool-result-icon {
     font-size: 14px;
+    color: #a855f7;
   }
   
   .tool-result-label {
     font-weight: 600;
-    color: #22c55e;
+    color: #a855f7;
   }
   
   .tool-result-id {
@@ -856,6 +880,15 @@ export const chatStyles = `
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-word;
+  }
+  
+  .tool-result-details summary {
+    cursor: pointer;
+    user-select: none;
+  }
+  
+  .tool-result-details summary:hover {
+    text-decoration: underline;
   }
   
   /* 3-dot loading animation */
@@ -1046,43 +1079,6 @@ export const chatStyles = `
     max-width: 100%;
   }
 
-  /* Tool result section styling */
-  .tool-result-section {
-    border-left: 3px solid #9ece6a;
-    padding-left: 1rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .tool-result-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 0.5rem;
-  }
-
-  .tool-result-icon {
-    color: #9ece6a;
-    margin-right: 0.5rem;
-  }
-
-  .tool-result-label {
-    color: #9ece6a;
-    font-weight: 600;
-  }
-
-  .tool-result-content {
-    font-size: 14px;
-    max-width: 100%;
-    overflow-x: hidden;
-  }
-
-  .tool-result-details summary {
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .tool-result-details summary:hover {
-    text-decoration: underline;
-  }
 
   /* Tool section styling (for tool invocations) */
   .tool-section {
