@@ -5,6 +5,13 @@ export * as Overlord from "./Overlord.js"
 export * as bin from "./bin.js"
 
 /**
+ * Claude Code Control Service
+ * Manages remote control and interaction with local Claude Code instances
+ * @since Phase 3
+ */
+export * as ClaudeCodeControlService from "./services/ClaudeCodeControlService.js"
+
+/**
  * Convex synchronization service for Overlord
  * Handles saving Claude Code conversations to Convex database
  * @since Phase 2
@@ -25,3 +32,9 @@ export * as OverlordService from "./services/OverlordService.js"
 
 
 export * as WebSocketClient from "./services/WebSocketClient.js"
+
+/**
+ * Type definitions for Claude Code control and integration
+ * @since Phase 3
+ */
+export * as ClaudeCodeTypes from "./types/ClaudeCodeTypes.js"
