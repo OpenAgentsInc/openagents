@@ -42,6 +42,7 @@
   "dependencies": {
     "@effect/experimental": "0.49.2",
     "@effect/platform": "^0.85.2",
+    "@effect/schema": "^0.75.5",
     "@effect/sql": "^0.38.2",
     "@effect/sql-mysql2": "^0.39.2",
     "@planetscale/database": "^1.19.0",

@@ -422,9 +422,9 @@ export const ClaudeCodeWebSocketServerLive = Layer.effect(
             }).pipe(
               Effect.catchTag(
                 "ParseError",
-                (error) => Effect.fail(new ClaudeCodeServerError({ message: `Parse error: ${error.message}` }))
+                (error: any) => Effect.fail(new ClaudeCodeServerError({ message: `Parse error: ${error.message}` }))
               ),
-              Effect.catchTag("MachineNotFoundError", (error) =>
+              Effect.catchTag("MachineNotFoundError", (error: any) =>
                 Effect.fail(
                   new ClaudeCodeServerError({
                     message: `Machine not found: ${error.machineId}`,
