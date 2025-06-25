@@ -1,7 +1,18 @@
-import { html } from "@openagentsinc/psionic"
+/**
+ * Escape HTML to prevent template literal issues
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/`/g, "&#96;") // Critical: escape backticks
+}
 
 /**
- * Generate HTML for a chat message
+ * Generate HTML for a chat message (using string concatenation instead of template literals)
  */
 export function renderChatMessage(message: {
   role: "user" | "assistant"
@@ -9,17 +20,20 @@ export function renderChatMessage(message: {
   timestamp?: number
   rendered?: string
 }) {
-  return html`
-    <div class="message">
-      <div class="message-block ${message.role}">
-        <div class="message-body">${message.rendered || message.content}</div>
-      </div>
-    </div>
-  `
+  // Use the rendered content if available, otherwise escape the raw content
+  const content = message.rendered || escapeHtml(message.content)
+
+  return (
+    "<div class=\"message\">" +
+    "<div class=\"message-block " + message.role + "\">" +
+    "<div class=\"message-body\">" + content + "</div>" +
+    "</div>" +
+    "</div>"
+  )
 }
 
 /**
- * Generate HTML for a thread item in the sidebar
+ * Generate HTML for a thread item in the sidebar (using string concatenation)
  */
 export function renderThreadItem(thread: {
   id: string
@@ -27,17 +41,20 @@ export function renderThreadItem(thread: {
   lastMessageAt?: number
   active?: boolean
 }) {
-  return html`
-    <div class="relative z-[15]">
-      <div class="group relative rounded-lg active:opacity-90 px-3 ${thread.active ? "bg-[#262626]" : ""}">
-        <a href="/chat/${thread.id}" class="flex items-center gap-2 py-1">
-          <div class="relative grow overflow-hidden whitespace-nowrap text-white">
-            ${thread.title}
-          </div>
-        </a>
-      </div>
-    </div>
-  `
+  const bgClass = thread.active ? "bg-[#262626]" : ""
+  const safeTitle = escapeHtml(thread.title)
+
+  return (
+    "<div class=\"relative z-[15]\">" +
+    "<div class=\"group relative rounded-lg active:opacity-90 px-3 " + bgClass + "\">" +
+    "<a href=\"/chat/" + thread.id + "\" class=\"flex items-center gap-2 py-1\">" +
+    "<div class=\"relative grow overflow-hidden whitespace-nowrap text-white\">" +
+    safeTitle +
+    "</div>" +
+    "</a>" +
+    "</div>" +
+    "</div>"
+  )
 }
 
 /**

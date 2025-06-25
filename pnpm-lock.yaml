@@ -156,6 +156,9 @@ importers:
       '@openagentsinc/ai':
         specifier: workspace:*
         version: link:../../packages/ai/dist
+      '@openagentsinc/convex':
+        specifier: workspace:*
+        version: link:../../packages/convex
       '@openagentsinc/nostr':
         specifier: workspace:*
         version: link:../../packages/nostr/dist

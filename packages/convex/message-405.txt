@@ -1,0 +1,40 @@
+   380→      const paramRegex = /:(\w+)/g
+   381→      const params: Array<string> = []
+   382→      let match
+   383→      while ((match = paramRegex.exec(path)) !== null) {
+   384→        params.push(match[1])
+   385→      }
+   386→
+   387→      if (params.length > 0) {
+   388→        // TODO: Proper param extraction with Effect Router
+   389→        // For now, we'll do basic pattern matching
+   390→        const url = new URL(request.url)
+   391→        const pathname = url.pathname
+   392→
+   393→        // Convert :param to regex pattern
+   394→        let pattern = path
+   395→        params.forEach(() => {
+   396→          pattern = pattern.replace(/:(\w+)/, "([^/]+)")
+   397→        })
+   398→        pattern = `^${pattern}$`
+   399→
+   400→        const regex = new RegExp(pattern)
+   401→        const routeMatch = pathname.match(regex)
+   402→
+   403→        if (routeMatch) {
+   404→          params.forEach((param, index) => {
+   405→            context.params[param] = routeMatch[index + 1]
+   406→          })
+   407→        }
+   408→      }
+   409→
+   410→      // Handle the request
+   411→      try {
+   412→        const result = yield* Effect.promise(() => Promise.resolve(handler(context)))
+   413→
+   414→        // Handle different response types
+   415→        if (result instanceof Response) {
+   416→          const arrayBuffer = yield* Effect.promise(() => result.arrayBuffer())
+   417→          return HttpServerResponse.raw(arrayBuffer, {
+   418→            status: result.status,
+   419→            headers: Object.fromEntries(result.headers.entries())
