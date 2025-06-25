@@ -121,7 +121,7 @@ export const make = (config: ConvexEmbeddingConfig = {}) =>
     //   ? process.env.CONVEX_URL
     //   : "https://proficient-panther-764.convex.cloud"
     // const convexClient = new ConvexHttpClient(url)
-    
+
     // Temporary placeholder until convex dependency is restored
     const convexClient = null as any
 

@@ -71,7 +71,7 @@ const generateEmbeddingForMessage = (
 
     // Generate embedding
     const embeddingResult = yield* embeddingService.embedMessage(messageContent)
-    
+
     yield* Effect.log(
       `✅ Generated ${embeddingResult.dimensions}D embedding for message ${messageRecord.entry_uuid}`
     )
@@ -83,7 +83,7 @@ const generateEmbeddingForMessage = (
         const { ConvexHttpClient } = await import("convex/browser")
         const url = process.env.CONVEX_URL || "https://proficient-panther-764.convex.cloud"
         const convexClient = new ConvexHttpClient(url)
-        
+
         return await convexClient.mutation("embeddings:storeEmbedding", {
           message_id: messageId,
           embedding: embeddingResult.embedding,
@@ -91,8 +91,7 @@ const generateEmbeddingForMessage = (
           dimensions: embeddingResult.dimensions
         })
       },
-      catch: (error) => 
-        new Error(`Failed to store embedding in Convex: ${error}`)
+      catch: (error) => new Error(`Failed to store embedding in Convex: ${error}`)
     })
 
     yield* Effect.log(
@@ -103,129 +102,125 @@ const generateEmbeddingForMessage = (
   })
 
 // Implementation with embedding service dependencies
-const make = Effect.gen(function*() {
-  return {
-    saveSession: (sessionId, userId, projectPath, entries, embeddingConfig) =>
-      Effect.gen(function*() {
-        // Create session record
-        const sessionRecord = DatabaseMapper.createSessionRecord(
-          sessionId,
-          userId,
-          projectPath,
-          entries
-        )
+const makeService: ConvexSyncService = {
+  saveSession: (sessionId, userId, projectPath, entries, embeddingConfig) =>
+    Effect.gen(function*() {
+      // Create session record
+      const sessionRecord = DatabaseMapper.createSessionRecord(
+        sessionId,
+        userId,
+        projectPath,
+        entries
+      )
 
-        // Check if session exists
-        const existingSession = yield* client.ConvexClient.sessions.getById(sessionId).pipe(
+      // Check if session exists
+      const existingSession = yield* client.ConvexClient.sessions.getById(sessionId).pipe(
+        Effect.catchAll(() => Effect.succeed(null))
+      )
+
+      if (!existingSession) {
+        // Create new session
+        yield* client.ConvexClient.sessions.create({
+          id: sessionRecord.id,
+          user_id: sessionRecord.user_id,
+          project_path: sessionRecord.project_path,
+          project_name: sessionRecord.project_name,
+          status: sessionRecord.status,
+          started_at: sessionRecord.started_at.getTime(),
+          last_activity: sessionRecord.last_activity.getTime(),
+          message_count: sessionRecord.message_count,
+          total_cost: sessionRecord.total_cost
+        })
+        yield* Effect.log(`Created new session: ${sessionId}`)
+      } else {
+        // Update existing session (skip project update if function not deployed)
+        yield* client.ConvexClient.sessions.updateActivity(sessionId)
+        yield* Effect.log(`Updated existing session: ${sessionId}`)
+      }
+
+      // Save all messages
+      for (const entry of entries) {
+        const messageRecord = DatabaseMapper.logEntryToMessageRecord(entry, sessionId)
+
+        // Check if message exists
+        const existingMessage = yield* client.ConvexClient.messages.getByUuid(
+          sessionId,
+          messageRecord.entry_uuid
+        ).pipe(
           Effect.catchAll(() => Effect.succeed(null))
         )
 
-        if (!existingSession) {
-          // Create new session
-          yield* client.ConvexClient.sessions.create({
-            id: sessionRecord.id,
-            user_id: sessionRecord.user_id,
-            project_path: sessionRecord.project_path,
-            project_name: sessionRecord.project_name,
-            status: sessionRecord.status,
-            started_at: sessionRecord.started_at.getTime(),
-            last_activity: sessionRecord.last_activity.getTime(),
-            message_count: sessionRecord.message_count,
-            total_cost: sessionRecord.total_cost
+        if (!existingMessage) {
+          const messageId = yield* client.ConvexClient.messages.create({
+            session_id: messageRecord.session_id,
+            entry_uuid: messageRecord.entry_uuid,
+            entry_type: messageRecord.entry_type,
+            role: messageRecord.role,
+            content: messageRecord.content,
+            thinking: messageRecord.thinking,
+            summary: messageRecord.summary,
+            model: messageRecord.model,
+            token_usage: messageRecord.token_usage,
+            cost: messageRecord.cost,
+            timestamp: messageRecord.timestamp.getTime(),
+            turn_count: messageRecord.turn_count,
+            tool_name: messageRecord.tool_name,
+            tool_input: messageRecord.tool_input,
+            tool_use_id: messageRecord.tool_use_id,
+            tool_output: messageRecord.tool_output,
+            tool_is_error: messageRecord.tool_is_error
           })
-          yield* Effect.log(`Created new session: ${sessionId}`)
+
+          // Generate embeddings if enabled
+          if (embeddingConfig?.enabled && shouldGenerateEmbedding(messageRecord)) {
+            yield* generateEmbeddingForMessage(messageId, messageRecord, embeddingConfig).pipe(
+              Effect.catchAll((error) =>
+                Effect.logWarning(`Failed to generate embedding for message ${messageRecord.entry_uuid}: ${error}`)
+              )
+            )
+          }
+
+          // Log warning for images (not yet implemented)
+          if (entry.type === "user" && entry.message.images && entry.message.images.length > 0) {
+            yield* Effect.logWarning(
+              `Message ${entry.uuid} has ${entry.message.images.length} images - image storage not yet implemented`
+            )
+          }
         } else {
-          // Update existing session (skip project update if function not deployed)
-          yield* client.ConvexClient.sessions.updateActivity(sessionId)
-          yield* Effect.log(`Updated existing session: ${sessionId}`)
-        }
+          // Update existing message content to apply fixes
+          if (
+            messageRecord.content !== undefined || messageRecord.thinking !== undefined ||
+            messageRecord.tool_name !== undefined || messageRecord.tool_use_id !== undefined
+          ) {
+            yield* Effect.log(
+              `Updating message ${messageRecord.entry_uuid} with content length: ${messageRecord.content?.length || 0}`
+            )
 
-        // Save all messages
-        for (const entry of entries) {
-          const messageRecord = DatabaseMapper.logEntryToMessageRecord(entry, sessionId)
+            // Update the message with new content
+            const updateArgs: any = { entryUuid: messageRecord.entry_uuid }
+            if (messageRecord.content !== undefined) updateArgs.content = messageRecord.content
+            if (messageRecord.thinking !== undefined) updateArgs.thinking = messageRecord.thinking
+            if (messageRecord.tool_name !== undefined) updateArgs.tool_name = messageRecord.tool_name
+            if (messageRecord.tool_input !== undefined) updateArgs.tool_input = messageRecord.tool_input
+            if (messageRecord.tool_use_id !== undefined) updateArgs.tool_use_id = messageRecord.tool_use_id
+            if (messageRecord.tool_output !== undefined) updateArgs.tool_output = messageRecord.tool_output
+            if (messageRecord.tool_is_error !== undefined) updateArgs.tool_is_error = messageRecord.tool_is_error
 
-          // Check if message exists
-          const existingMessage = yield* client.ConvexClient.messages.getByUuid(
-            sessionId,
-            messageRecord.entry_uuid
-          ).pipe(
-            Effect.catchAll(() => Effect.succeed(null))
-          )
-
-          if (!existingMessage) {
-            const messageId = yield* client.ConvexClient.messages.create({
-              session_id: messageRecord.session_id,
-              entry_uuid: messageRecord.entry_uuid,
-              entry_type: messageRecord.entry_type,
-              role: messageRecord.role,
-              content: messageRecord.content,
-              thinking: messageRecord.thinking,
-              summary: messageRecord.summary,
-              model: messageRecord.model,
-              token_usage: messageRecord.token_usage,
-              cost: messageRecord.cost,
-              timestamp: messageRecord.timestamp.getTime(),
-              turn_count: messageRecord.turn_count,
-              tool_name: messageRecord.tool_name,
-              tool_input: messageRecord.tool_input,
-              tool_use_id: messageRecord.tool_use_id,
-              tool_output: messageRecord.tool_output,
-              tool_is_error: messageRecord.tool_is_error
-            })
-
-            // Generate embeddings if enabled
-            if (embeddingConfig?.enabled && shouldGenerateEmbedding(messageRecord)) {
-              yield* generateEmbeddingForMessage(messageId, messageRecord, embeddingConfig).pipe(
-                Effect.catchAll((error) =>
-                  Effect.logWarning(`Failed to generate embedding for message ${messageRecord.entry_uuid}: ${error}`)
-                )
-              )
-            }
-
-            // Log warning for images (not yet implemented)
-            if (entry.type === "user" && entry.message.images && entry.message.images.length > 0) {
-              yield* Effect.logWarning(
-                `Message ${entry.uuid} has ${entry.message.images.length} images - image storage not yet implemented`
-              )
-            }
-          } else {
-            // Update existing message content to apply fixes
-            if (
-              messageRecord.content !== undefined || messageRecord.thinking !== undefined ||
-              messageRecord.tool_name !== undefined || messageRecord.tool_use_id !== undefined
-            ) {
-              yield* Effect.log(
-                `Updating message ${messageRecord.entry_uuid} with content length: ${
-                  messageRecord.content?.length || 0
-                }`
-              )
-
-              // Update the message with new content
-              const updateArgs: any = { entryUuid: messageRecord.entry_uuid }
-              if (messageRecord.content !== undefined) updateArgs.content = messageRecord.content
-              if (messageRecord.thinking !== undefined) updateArgs.thinking = messageRecord.thinking
-              if (messageRecord.tool_name !== undefined) updateArgs.tool_name = messageRecord.tool_name
-              if (messageRecord.tool_input !== undefined) updateArgs.tool_input = messageRecord.tool_input
-              if (messageRecord.tool_use_id !== undefined) updateArgs.tool_use_id = messageRecord.tool_use_id
-              if (messageRecord.tool_output !== undefined) updateArgs.tool_output = messageRecord.tool_output
-              if (messageRecord.tool_is_error !== undefined) updateArgs.tool_is_error = messageRecord.tool_is_error
-
-              yield* client.ConvexClient.messages.update(updateArgs).pipe(
-                Effect.catchAll((error) => Effect.log(`Failed to update message content: ${error}`))
-              )
-            }
+            yield* client.ConvexClient.messages.update(updateArgs).pipe(
+              Effect.catchAll((error) => Effect.log(`Failed to update message content: ${error}`))
+            )
           }
         }
+      }
 
-        yield* Effect.log(`Synced ${entries.length} entries for session ${sessionId}`)
-      })
-  }
-})
+      yield* Effect.log(`Synced ${entries.length} entries for session ${sessionId}`)
+    })
+}
 
 // Layer with embedding service dependencies
-export const ConvexSyncServiceLive = Layer.effect(
+export const ConvexSyncServiceLive = Layer.succeed(
   ConvexSyncService,
-  make
+  makeService
 ).pipe(
   Layer.provide(MessageEmbeddingService.layer({
     model: "text-embedding-3-small",
