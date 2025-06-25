@@ -253,6 +253,9 @@ importers:
       '@effect/schema':
         specifier: 0.75.5
         version: 0.75.5(effect@3.16.8)
+      convex:
+        specifier: ^1.16.7
+        version: 1.17.0
       effect:
         specifier: 3.16.8
         version: 3.16.8

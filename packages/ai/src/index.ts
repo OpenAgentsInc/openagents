@@ -20,7 +20,8 @@ export * as AiEmbeddingModel from "./core/AiEmbeddingModel.js"
  * @since 1.0.0
  */
 export * as MessageEmbeddingService from "./services/MessageEmbeddingService.js"
-export * as ConvexEmbeddingService from "./services/ConvexEmbeddingService.js"
+// TODO: Re-enable when Convex integration is complete
+// export * as ConvexEmbeddingService from "./services/ConvexEmbeddingService.js"
 
 /**
  * Standardized types aligned with Vercel AI SDK v5
