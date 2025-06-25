@@ -114,8 +114,18 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     console.log("Summary message:", summaryMessage)
   }
 
+  // Filter out system messages with tool_use entry type (they're shown via metadata)
+  const filteredMessages = messagesToRender.filter(msg => {
+    // Skip system messages that are tool uses (they're displayed via metadata)
+    if (msg.role === "system" && msg.metadata?.entryType === "tool_use") {
+      console.log("Filtering out tool_use system message:", msg.id)
+      return false
+    }
+    return true
+  })
+  
   // Show all messages (template literal issue is now fixed)
-  const limitedMessages = messagesToRender
+  const limitedMessages = filteredMessages
   console.log("Showing all messages:", limitedMessages.length)
 
   // Render messages with markdown

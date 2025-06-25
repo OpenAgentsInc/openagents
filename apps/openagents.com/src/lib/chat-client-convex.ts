@@ -415,10 +415,8 @@ function parseMessageContent(message: any): string {
 
     case "tool_use": {
       debug(`Formatting tool_use entry: ${message.tool_name}`)
-      const toolInputStr = typeof message.tool_input === "string"
-        ? message.tool_input
-        : JSON.stringify(message.tool_input, null, 2)
-      return `🔧 Tool: ${message.tool_name || "Unknown"}\n\nInput:\n\`\`\`json\n${toolInputStr}\n\`\`\``
+      // Return empty string since tool info is displayed via metadata
+      return ""
     }
 
     case "tool_result": {

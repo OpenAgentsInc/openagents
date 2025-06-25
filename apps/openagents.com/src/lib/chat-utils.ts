@@ -68,7 +68,7 @@ function formatToolResult(content: string): string {
  * Generate HTML for a chat message (using string concatenation instead of template literals)
  */
 export function renderChatMessage(message: {
-  role: "user" | "assistant"
+  role: "user" | "assistant" | "system"
   content: string
   timestamp?: number
   rendered?: string
@@ -194,6 +194,11 @@ export function renderChatMessage(message: {
 
     // Prepend tool info to content
     content = toolInfo + content
+  }
+  
+  // Skip rendering if there's no content at all
+  if (!content || content.trim() === "") {
+    return ""
   }
 
   // Only include debug section if explicitly enabled or in development
@@ -729,6 +734,11 @@ export const chatStyles = `
   /* Tool message styling */
   .message-block.tool {
     border-left-color: #a855f7; /* Purple for tools */
+  }
+  
+  /* System message styling (for tool uses, etc) */
+  .message-block.system {
+    border-left-color: #a855f7; /* Purple for system/tool messages */
   }
   
   .message-body {
