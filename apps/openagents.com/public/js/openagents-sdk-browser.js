@@ -40354,6 +40354,16 @@ var KeyDerivationError = class extends Schema_exports.TaggedError()("KeyDerivati
   reason: Schema_exports.String
 }) {
 };
+var Nip42Error = class extends Schema_exports.TaggedError()("Nip42Error", {
+  operation: Schema_exports.Literal("generateChallenge", "createAuthEvent", "verifyAuthEvent", "authenticate"),
+  reason: Schema_exports.String
+}) {
+};
+var AuthenticationError = class extends Schema_exports.TaggedError()("AuthenticationError", {
+  relayUrl: Schema_exports.String,
+  reason: Schema_exports.String
+}) {
+};
 
 // ../../packages/nostr/src/core/Schema.ts
 var EventId = pipe(
@@ -40493,10 +40503,15 @@ var CloseMessage = Schema_exports.Tuple(
   Schema_exports.Literal("CLOSE"),
   SubscriptionId
 );
+var AuthMessage = Schema_exports.Tuple(
+  Schema_exports.Literal("AUTH"),
+  NostrEvent
+);
 var ClientMessage = Schema_exports.Union(
   EventMessage,
   ReqMessage,
-  CloseMessage
+  CloseMessage,
+  AuthMessage
 );
 var RelayEventMessage = Schema_exports.Tuple(
   Schema_exports.Literal("EVENT"),
@@ -40522,12 +40537,18 @@ var NoticeMessage = Schema_exports.Tuple(
   Schema_exports.Literal("NOTICE"),
   Schema_exports.String
 );
+var RelayAuthMessage = Schema_exports.Tuple(
+  Schema_exports.Literal("AUTH"),
+  Schema_exports.String
+  // challenge string
+);
 var RelayMessage = Schema_exports.Union(
   RelayEventMessage,
   OkMessage,
   EoseMessage,
   ClosedMessage,
-  NoticeMessage
+  NoticeMessage,
+  RelayAuthMessage
 );
 var OkPrefix = Schema_exports.Literal(
   "duplicate",
@@ -40537,6 +40558,36 @@ var OkPrefix = Schema_exports.Literal(
   "invalid",
   "restricted",
   "error"
+);
+var AuthEventKind = 22242;
+var AuthEvent = class extends Schema_exports.Class("AuthEvent")({
+  id: EventId,
+  pubkey: PublicKey,
+  created_at: UnixTimestamp,
+  kind: Schema_exports.Literal(AuthEventKind),
+  tags: Schema_exports.Array(Tag4).pipe(
+    Schema_exports.filter((tags) => {
+      const hasRelay = tags.some((tag3) => tag3[0] === "relay");
+      const hasChallenge = tags.some((tag3) => tag3[0] === "challenge");
+      return hasRelay && hasChallenge;
+    })
+  ),
+  content: Schema_exports.String,
+  // Usually empty
+  sig: Signature
+}, {
+  title: "AuthEvent",
+  description: "NIP-42 authentication event (kind 22242)"
+}) {
+};
+var AuthChallenge = pipe(
+  Schema_exports.String,
+  Schema_exports.minLength(16),
+  Schema_exports.brand("AuthChallenge"),
+  Schema_exports.annotations({
+    title: "AuthChallenge",
+    description: "Random challenge string from relay (min 16 chars)"
+  })
 );
 var Mnemonic = pipe(
   Schema_exports.String,
@@ -54147,6 +54198,199 @@ var AiServiceLive = Layer_exports.succeed(
     })
   }
 );
+
+// ../../packages/ai/src/types/messages.ts
+var TokenUsage = class extends Class6("TokenUsage")({
+  promptTokens: Number$,
+  completionTokens: Number$,
+  totalTokens: Number$
+}) {
+};
+var ProviderMetadata2 = Record({
+  key: String$,
+  value: Record({
+    key: String$,
+    value: Unknown
+  })
+});
+var MessageMetadata2 = class extends Class6("MessageMetadata")({
+  id: optional(String$),
+  createdAt: optional(Date$),
+  model: optional(String$),
+  usage: optional(TokenUsage),
+  custom: optional(Record({
+    key: String$,
+    value: Unknown
+  }))
+}) {
+};
+var TextPart3 = class extends TaggedClass3("TextPart")("text", {
+  text: String$,
+  annotations: optional(Array$(Unknown))
+}) {
+};
+var ImagePart2 = class extends TaggedClass3("ImagePart")("image", {
+  image: Union2(
+    String$,
+    // base64
+    instanceOf(Uint8Array)
+  ),
+  mimeType: optional(String$)
+}) {
+};
+var ImageUrlPart2 = class extends TaggedClass3("ImageUrlPart")("image-url", {
+  url: String$
+}) {
+};
+var FilePart2 = class extends TaggedClass3("FilePart")("file", {
+  data: Union2(
+    String$,
+    // base64
+    instanceOf(Uint8Array)
+  ),
+  mimeType: String$,
+  name: optional(String$)
+}) {
+};
+var FileUrlPart2 = class extends TaggedClass3("FileUrlPart")("file-url", {
+  url: String$
+}) {
+};
+var ToolCallId4 = ToolCallId;
+var ToolCallPart3 = class extends TaggedClass3("ToolCallPart")("tool-call", {
+  toolCallId: ToolCallId4,
+  toolName: String$,
+  args: Unknown
+}) {
+};
+var ToolResultPart = class extends TaggedClass3("ToolResultPart")("tool-result", {
+  toolCallId: ToolCallId4,
+  toolName: String$,
+  result: Unknown,
+  isError: optional(Boolean$)
+}) {
+};
+var ReasoningPart3 = class extends TaggedClass3("ReasoningPart")("reasoning", {
+  reasoning: String$,
+  signature: optional(String$),
+  isRedacted: optional(Boolean$)
+}) {
+};
+var ContentPart = Union2(
+  TextPart3,
+  ImagePart2,
+  ImageUrlPart2,
+  FilePart2,
+  FileUrlPart2,
+  ToolCallPart3,
+  ToolResultPart,
+  ReasoningPart3
+);
+var UserMessage2 = class extends Class6("UserMessage")({
+  role: Literal2("user"),
+  content: Array$(Union2(
+    TextPart3,
+    ImagePart2,
+    ImageUrlPart2,
+    FilePart2,
+    FileUrlPart2
+  )),
+  name: optional(String$),
+  metadata: optional(MessageMetadata2)
+}) {
+};
+var AssistantMessage2 = class extends Class6("AssistantMessage")({
+  role: Literal2("assistant"),
+  content: Array$(Union2(
+    TextPart3,
+    ReasoningPart3,
+    ToolCallPart3
+  )),
+  metadata: optional(MessageMetadata2)
+}) {
+};
+var SystemMessage = class extends Class6("SystemMessage")({
+  role: Literal2("system"),
+  content: String$,
+  metadata: optional(MessageMetadata2)
+}) {
+};
+var ToolMessage2 = class extends Class6("ToolMessage")({
+  role: Literal2("tool"),
+  content: Array$(ToolResultPart),
+  metadata: optional(MessageMetadata2)
+}) {
+};
+var Message2 = Union2(
+  UserMessage2,
+  AssistantMessage2,
+  SystemMessage,
+  ToolMessage2
+);
+var FinishReason2 = Literal2(
+  "stop",
+  "length",
+  "content-filter",
+  "tool-calls",
+  "error",
+  "other"
+);
+var ResponseMetadata = class extends Class6("ResponseMetadata")({
+  id: optional(String$),
+  model: optional(String$),
+  timestamp: optional(Date$),
+  usage: optional(TokenUsage),
+  finishReason: optional(FinishReason2),
+  providerMetadata: optional(ProviderMetadata2)
+}) {
+};
+
+// ../../packages/ai/src/types/tools.ts
+var ToolError = class extends TaggedError2("ToolError")("ToolError", {
+  toolName: String$,
+  message: String$,
+  cause: optional(Unknown)
+}) {
+};
+var ToolChoice = Union2(
+  Literal2("auto"),
+  Literal2("none"),
+  Literal2("required"),
+  Struct({
+    type: Literal2("tool"),
+    toolName: String$
+  })
+);
+
+// ../../packages/ai/src/types/providers.ts
+var AIError = class extends TaggedError2("AIError")("AIError", {
+  message: String$,
+  cause: optional(Unknown),
+  isRetryable: optional(Boolean$)
+}) {
+};
+var APICallError = class extends TaggedError2("APICallError")("APICallError", {
+  message: String$,
+  statusCode: optional(Number$),
+  responseBody: optional(String$),
+  cause: optional(Unknown),
+  isRetryable: optional(Boolean$)
+}) {
+};
+var InvalidPromptError = class extends TaggedError2("InvalidPromptError")("InvalidPromptError", {
+  message: String$,
+  cause: optional(Unknown)
+}) {
+};
+var ProviderRegistry = class extends Tag2("ProviderRegistry")() {
+};
+var ProviderNotFoundError = class extends TaggedError2(
+  "ProviderNotFoundError"
+)("ProviderNotFoundError", {
+  providerId: String$,
+  availableProviders: Array$(String$)
+}) {
+};
 
 // ../../packages/ai/src/providers/ollama/index.ts
 var OllamaClient = class extends Tag2("@openagentsinc/ai/OllamaClient")() {

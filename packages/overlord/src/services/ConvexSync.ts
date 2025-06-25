@@ -101,7 +101,15 @@ export const ConvexSyncServiceLive = Layer.succeed(
               )
             }
           } else {
-            // Skip updating existing messages for now (function not deployed)
+            // For testing: try to update existing message content to apply fixes
+            try {
+              if (messageRecord.content !== undefined || messageRecord.thinking !== undefined) {
+                // For now, just log what we would update rather than actually updating
+                yield* Effect.log(`Would update message ${messageRecord.entry_uuid} with content length: ${messageRecord.content?.length || 0}`)
+              }
+            } catch (error) {
+              yield* Effect.log(`Failed to update message content: ${error}`)
+            }
           }
         }
 

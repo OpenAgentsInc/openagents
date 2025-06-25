@@ -19,14 +19,24 @@ export function renderChatMessage(message: {
   content: string
   timestamp?: number
   rendered?: string
+  [key: string]: any // Allow additional properties for debugging
 }) {
   // Use the rendered content if available, otherwise escape the raw content
   const content = message.rendered || escapeHtml(message.content)
+  
+  // Create debug JSON (escaped for HTML)
+  const debugJson = escapeHtml(JSON.stringify(message, null, 2))
 
   return (
     "<div class=\"message\">" +
     "<div class=\"message-block " + message.role + "\">" +
     "<div class=\"message-body\">" + content + "</div>" +
+    "<div class=\"message-debug\">" +
+    "<details>" +
+    "<summary>Debug JSON</summary>" +
+    "<pre class=\"debug-json\">" + debugJson + "</pre>" +
+    "</details>" +
+    "</div>" +
     "</div>" +
     "</div>"
   )
@@ -658,5 +668,44 @@ export const chatStyles = `
   .submit-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* Debug section styling */
+  .message-debug {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--offblack);
+  }
+
+  .message-debug details {
+    margin: 0;
+  }
+
+  .message-debug summary {
+    color: var(--gray);
+    font-size: 11px;
+    font-family: var(--font-family-mono);
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 0;
+  }
+
+  .message-debug summary:hover {
+    color: var(--white);
+  }
+
+  .debug-json {
+    background-color: var(--black);
+    border: 1px solid var(--offblack);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 4px 0 0 0;
+    font-size: 10px;
+    font-family: var(--font-family-mono);
+    color: var(--gray);
+    overflow-x: auto;
+    white-space: pre;
+    max-height: 200px;
+    overflow-y: auto;
   }
 `
