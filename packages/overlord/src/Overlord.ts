@@ -1,11 +1,12 @@
 import { Args, Command, Options } from "@effect/cli"
 import { NodeContext } from "@effect/platform-node"
-import { Console, Effect, Option } from "effect"
+import { Console, Effect, Option, Stream } from "effect"
 import * as ConvexSync from "./services/ConvexSync.js"
 import type { EmbeddingConfig } from "./services/ConvexSync.js"
 import * as FileWatcher from "./services/FileWatcher.js"
 import * as OverlordService from "./services/OverlordService.js"
 import * as WebSocketClient from "./services/WebSocketClient.js"
+import * as ClaudeCodeControlService from "./services/ClaudeCodeControlService.js"
 
 // StarCraft-themed commands for Overlord
 
@@ -463,6 +464,280 @@ const evolveCommand = Command.make("evolve").pipe(
   )
 )
 
+// Claude Code Control Commands (Phase 3)
+
+const machineIdOption = Options.text("machine-id").pipe(
+  Options.withDescription("Machine ID to control Claude Code on"),
+  Options.withAlias("m")
+)
+
+const sessionIdOption = Options.text("session-id").pipe(
+  Options.withDescription("Claude Code session ID"),
+  Options.withAlias("s")
+)
+
+const projectPathOption = Options.text("project-path").pipe(
+  Options.withDescription("Project path for new Claude Code session"),
+  Options.withAlias("p")
+)
+
+const promptOption = Options.text("prompt").pipe(
+  Options.withDescription("Prompt to send to Claude Code"),
+  Options.optional
+)
+
+const maxTurnsOption = Options.integer("max-turns").pipe(
+  Options.withDescription("Maximum conversation turns"),
+  Options.withDefault(5),
+  Options.optional
+)
+
+// Claude Code: Start new session remotely
+const claudeStartCommand = Command.make("start", {
+  machineId: machineIdOption,
+  projectPath: projectPathOption,
+  userId: userIdOption
+}).pipe(
+  Command.withDescription("Start new Claude Code session on remote machine"),
+  Command.withHandler(({ machineId, projectPath, userId }) =>
+    Effect.gen(function*() {
+      yield* Console.log(`🚀 Starting Claude Code session on ${machineId}`)
+      yield* Console.log(`📁 Project: ${projectPath}`)
+
+      const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
+      const session = yield* service.startSession(machineId, projectPath, userId)
+
+      yield* Console.log(`✅ Session started: ${session.sessionId}`)
+      yield* Console.log(`📊 Status: ${session.status}`)
+      yield* Console.log(`🕐 Started at: ${session.startedAt.toISOString()}`)
+    }).pipe(
+      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
+      Effect.provide(NodeContext.layer),
+      Effect.catchAll((error) =>
+        Effect.gen(function*() {
+          yield* Console.error(`❌ Failed to start Claude Code session: ${error}`)
+          yield* Effect.fail(error)
+        })
+      )
+    )
+  )
+)
+
+// Claude Code: Send prompt to running session
+const claudePromptCommand = Command.make("prompt", {
+  machineId: machineIdOption,
+  sessionId: sessionIdOption,
+  prompt: promptOption,
+  maxTurns: maxTurnsOption
+}).pipe(
+  Command.withDescription("Send prompt to running Claude Code session"),
+  Command.withHandler(({ machineId, sessionId, prompt, maxTurns }) =>
+    Effect.gen(function*() {
+      const promptText = Option.getOrElse(prompt, () => {
+        // In real implementation, could prompt user for input
+        return "Help me with this project"
+      })
+
+      yield* Console.log(`💬 Sending prompt to ${sessionId} on ${machineId}`)
+      yield* Console.log(`📝 Prompt: ${promptText}`)
+
+      const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
+      const remotePrompt = yield* service.sendPrompt(
+        machineId,
+        sessionId,
+        promptText,
+        {
+          maxTurns: Option.getOrElse(maxTurns, () => 5)
+        }
+      )
+
+      yield* Console.log(`✅ Prompt sent: ${remotePrompt.promptId}`)
+      yield* Console.log(`⏰ Status: ${remotePrompt.status}`)
+      yield* Console.log(`📡 Use 'overlord claude stream --session-id=${sessionId}' to see responses`)
+    }).pipe(
+      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
+      Effect.provide(NodeContext.layer),
+      Effect.catchAll((error) =>
+        Effect.gen(function*() {
+          yield* Console.error(`❌ Failed to send prompt: ${error}`)
+          yield* Effect.fail(error)
+        })
+      )
+    )
+  )
+)
+
+// Claude Code: List active sessions
+const claudeSessionsCommand = Command.make("sessions", {
+  machineId: machineIdOption
+}).pipe(
+  Command.withDescription("List active Claude Code sessions on machine"),
+  Command.withHandler(({ machineId }) =>
+    Effect.gen(function*() {
+      yield* Console.log(`📋 Active Claude Code sessions on ${machineId}`)
+
+      const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
+      const sessions = yield* service.getActiveSessions(machineId)
+
+      if (sessions.length === 0) {
+        yield* Console.log("❌ No active sessions found")
+        return
+      }
+
+      yield* Console.log(`✅ Found ${sessions.length} active session(s):`)
+      for (const session of sessions) {
+        yield* Console.log(`   🎯 ${session.sessionId}`)
+        yield* Console.log(`      Project: ${session.projectPath}`)
+        yield* Console.log(`      Status: ${session.status}`)
+        yield* Console.log(`      Messages: ${session.messageCount}`)
+        yield* Console.log(`      Started: ${session.startedAt.toISOString()}`)
+        if (session.lastPromptAt) {
+          yield* Console.log(`      Last prompt: ${session.lastPromptAt.toISOString()}`)
+        }
+      }
+    }).pipe(
+      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
+      Effect.provide(NodeContext.layer),
+      Effect.catchAll((error) =>
+        Effect.gen(function*() {
+          yield* Console.error(`❌ Failed to list sessions: ${error}`)
+          yield* Effect.fail(error)
+        })
+      )
+    )
+  )
+)
+
+// Claude Code: Stream responses from session
+const claudeStreamCommand = Command.make("stream", {
+  sessionId: sessionIdOption
+}).pipe(
+  Command.withDescription("Stream real-time responses from Claude Code session"),
+  Command.withHandler(({ sessionId }) =>
+    Effect.gen(function*() {
+      yield* Console.log(`📡 Streaming responses from session ${sessionId}`)
+      yield* Console.log("Press Ctrl+C to stop streaming")
+
+      const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
+      const responseStream = yield* service.streamResponses(sessionId)
+
+      // Stream responses
+      yield* Stream.runForEach(responseStream, (response) =>
+        Effect.gen(function*() {
+          yield* Console.log(`\n[${response.timestamp.toISOString()}] ${response.type}`)
+          if (response.data.content) {
+            yield* Console.log(`Content: ${response.data.content}`)
+          }
+          if (response.data.thinking) {
+            yield* Console.log(`Thinking: ${response.data.thinking}`)
+          }
+          if (response.data.toolUse) {
+            yield* Console.log(`Tool: ${response.data.toolUse.toolName} - ${response.data.toolUse.input}`)
+          }
+          if (response.data.error) {
+            yield* Console.log(`Error: ${response.data.error}`)
+          }
+        })
+      )
+    }).pipe(
+      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
+      Effect.provide(NodeContext.layer),
+      Effect.catchAll((error) =>
+        Effect.gen(function*() {
+          yield* Console.error(`❌ Failed to stream responses: ${error}`)
+          yield* Effect.fail(error)
+        })
+      )
+    )
+  )
+)
+
+// Claude Code: End session
+const claudeEndCommand = Command.make("end", {
+  machineId: machineIdOption,
+  sessionId: sessionIdOption
+}).pipe(
+  Command.withDescription("End Claude Code session on remote machine"),
+  Command.withHandler(({ machineId, sessionId }) =>
+    Effect.gen(function*() {
+      yield* Console.log(`🛑 Ending Claude Code session ${sessionId} on ${machineId}`)
+
+      const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
+      yield* service.endSession(machineId, sessionId)
+
+      yield* Console.log("✅ Session ended successfully")
+    }).pipe(
+      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
+      Effect.provide(NodeContext.layer),
+      Effect.catchAll((error) =>
+        Effect.gen(function*() {
+          yield* Console.error(`❌ Failed to end session: ${error}`)
+          yield* Effect.fail(error)
+        })
+      )
+    )
+  )
+)
+
+// Claude Code: Get machine info
+const claudeInfoCommand = Command.make("info", {
+  machineId: machineIdOption
+}).pipe(
+  Command.withDescription("Get Claude Code information for machine"),
+  Command.withHandler(({ machineId }) =>
+    Effect.gen(function*() {
+      yield* Console.log(`🖥️  Claude Code info for ${machineId}`)
+
+      const service = yield* ClaudeCodeControlService.ClaudeCodeControlService
+      const info = yield* service.getMachineInfo(machineId)
+
+      yield* Console.log(`   🏷️  Hostname: ${info.hostname}`)
+      yield* Console.log(`   🤖 Claude version: ${info.claudeVersion}`)
+      yield* Console.log(`   📦 SDK version: ${info.sdkVersion}`)
+      yield* Console.log(`   ✨ Features: ${info.supportedFeatures.join(", ")}`)
+      yield* Console.log(`   📁 Active projects: ${info.activeProjects.length}`)
+      yield* Console.log(`   🎯 Active sessions: ${info.activeSessions.length}`)
+      yield* Console.log(`   💓 Status: ${info.status}`)
+      yield* Console.log(`   ⏰ Last heartbeat: ${info.lastHeartbeat.toISOString()}`)
+
+      if (info.activeSessions.length > 0) {
+        yield* Console.log("\n   📋 Sessions:")
+        for (const session of info.activeSessions) {
+          yield* Console.log(`      • ${session.sessionId} (${session.projectName}) - ${session.status}`)
+        }
+      }
+    }).pipe(
+      Effect.provide(ClaudeCodeControlService.ClaudeCodeControlServiceLive),
+      Effect.provide(WebSocketClient.WebSocketClientLive),
+      Effect.provide(NodeContext.layer),
+      Effect.catchAll((error) =>
+        Effect.gen(function*() {
+          yield* Console.error(`❌ Failed to get machine info: ${error}`)
+          yield* Effect.fail(error)
+        })
+      )
+    )
+  )
+)
+
+// Claude Code control subcommand
+const claudeCommand = Command.make("claude").pipe(
+  Command.withDescription("Control Claude Code instances remotely"),
+  Command.withSubcommands([
+    claudeStartCommand,
+    claudePromptCommand,
+    claudeSessionsCommand,
+    claudeStreamCommand,
+    claudeEndCommand,
+    claudeInfoCommand
+  ])
+)
+
 // Main command
 const overlordCommand = Command.make("overlord").pipe(
   Command.withDescription("Overlord - Claude Code sync service (StarCraft-themed)"),
@@ -474,7 +749,8 @@ const overlordCommand = Command.make("overlord").pipe(
     burrowCommand,
     unburrowCommand,
     statusCommand,
-    evolveCommand
+    evolveCommand,
+    claudeCommand
   ])
 )
 

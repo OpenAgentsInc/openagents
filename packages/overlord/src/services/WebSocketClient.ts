@@ -4,15 +4,16 @@ import WebSocket from "ws"
 
 // Message types
 export interface OverlordMessage {
-  readonly type: "heartbeat" | "file_change" | "command_result" | "session_update"
+  readonly type: "heartbeat" | "file_change" | "command_result" | "session_update" | "claude_response" | "claude_status"
   readonly machineId: string
   readonly timestamp: string
   readonly data: unknown
 }
 
 export interface ServerMessage {
-  readonly type: "execute_command" | "sync_request" | "config_update"
-  readonly commandId: string
+  readonly type: "execute_command" | "sync_request" | "config_update" | "claude_command" | "claude_control"
+  readonly commandId?: string
+  readonly messageId?: string
   readonly timestamp: string
   readonly data: unknown
 }
