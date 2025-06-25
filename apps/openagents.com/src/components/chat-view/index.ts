@@ -17,7 +17,24 @@ export interface ChatViewProps {
   conversationId?: string
 }
 
+// HTML escape function to prevent template literal issues
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/`/g, "&#96;") // Critical: escape backticks to prevent template literal issues
+}
+
+// Note: Using escapeHtml for user content safety
+
 export async function createChatView({ conversationId }: ChatViewProps) {
+  console.log("=== createChatView called ===")
+  console.log("conversationId:", conversationId)
+  console.log("typeof conversationId:", typeof conversationId)
+
   // Determine if we're in development mode
   const isDev = process.env.NODE_ENV !== "production"
 
@@ -42,12 +59,15 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   }
 
   // Import server-side only here to avoid bundling issues
-  const { getConversationWithMessages, getConversations } = await import("../../lib/chat-client")
+  const { getConversationWithMessages, getConversations } = await import("../../lib/chat-client-convex")
+  const { Effect } = await import("effect")
 
   // Load all conversations for sidebar
   let allConversations: Array<any> = []
   try {
-    allConversations = await getConversations() as Array<any>
+    console.log("Loading conversations...")
+    allConversations = await Effect.runPromise(getConversations()) as Array<any>
+    console.log("Loaded conversations:", allConversations.length)
   } catch (error) {
     console.error("Failed to load conversations:", error)
   }
@@ -57,25 +77,45 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   let conversation: any = null
   if (conversationId) {
     try {
-      const result = await getConversationWithMessages(conversationId)
+      console.log("Loading conversation with messages for:", conversationId)
+      const result = await Effect.runPromise(getConversationWithMessages(conversationId))
       conversation = result.conversation
       messages = result.messages as Array<any>
+      console.log("Loaded messages:", messages.length)
+      console.log("Message range 66-80:", messages.slice(65, 80).length)
     } catch (error) {
       console.error("Failed to load conversation:", error)
     }
   }
 
+  // Show all messages (template literal issue is now fixed)
+  const limitedMessages = messages
+  console.log("Showing all messages:", limitedMessages.length)
+
   // Render messages with markdown
+  console.log("Starting markdown rendering...")
   const renderedMessages = await Promise.all(
-    messages.map(async (msg) => ({
-      ...msg,
-      rendered: await renderMarkdown(msg.content)
-    }))
+    limitedMessages.map(async (msg, index) => {
+      try {
+        const rendered = await renderMarkdown(msg.content)
+        return {
+          ...msg,
+          rendered
+        }
+      } catch (error) {
+        console.error(`Failed to render message ${index + 1}:`, error)
+        return {
+          ...msg,
+          rendered: escapeHtml(msg.content)
+        }
+      }
+    })
   )
+  console.log("Markdown rendering complete")
 
-  const title = conversation?.title || "Chat - OpenAgents"
+  const title = escapeHtml(conversation?.title || "Chat - OpenAgents")
 
-  // Generate thread list HTML
+  // Generate thread list HTML with safe escaping
   const threadListHTML = allConversations.length > 0 ?
     html`
     <div class="mt-2">
@@ -84,19 +124,21 @@ export async function createChatView({ conversationId }: ChatViewProps) {
       </div>
       <ul class="flex flex-col gap-0.5">
         ${
-      allConversations.map((conv) =>
-        html`
+      allConversations.map((conv) => {
+        // Escape the title to prevent template literal issues
+        const safeTitle = escapeHtml(conv.title || "Untitled Chat")
+        const activeClass = conv.id === conversationId
+          ? "bg-[rgba(255,255,255,0.1)] text-[#D7D8E5]"
+          : "text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]"
+
+        return html`
           <li>
-            <a href="/chat/${conv.id}" class="block px-3 py-1.5 text-sm rounded-md transition-colors ${
-          conv.id === conversationId
-            ? "bg-[rgba(255,255,255,0.1)] text-[#D7D8E5]"
-            : "text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]"
-        }">
-              <span>${conv.title}</span>
+            <a href="/chat/${conv.id}" class="block px-3 py-1.5 text-sm rounded-md transition-colors ${activeClass}">
+              <span>${safeTitle}</span>
             </a>
           </li>
         `
-      ).join("")
+      }).join("")
     }
       </ul>
     </div>
@@ -104,9 +146,19 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     ""
 
   // Generate messages HTML
+  console.log("Generating messages HTML...")
   const messagesHTML = renderedMessages.length > 0 ?
-    renderedMessages.map((message) => renderChatMessage(message)).join("") :
+    renderedMessages.map((message, index) => {
+      try {
+        const html = renderChatMessage(message)
+        return html
+      } catch (error) {
+        console.error(`Failed to generate HTML for message ${index + 1}:`, error)
+        return `<div class="message"><div class="message-block assistant"><div class="message-body">Error rendering message</div></div></div>`
+      }
+    }).join("") :
     ""
+  console.log("Messages HTML generation complete, total length:", messagesHTML.length)
 
   // Generate model options HTML
   const modelOptionsHTML = html`
@@ -153,11 +205,21 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     </div>
   `
 
+  // Escape content to prevent template literal issues
+  const safeMessagesHTML = messagesHTML.replace(/`/g, "&#96;")
+  const safeThreadListHTML = threadListHTML.replace(/`/g, "&#96;")
+  const safeModelOptionsHTML = modelOptionsHTML.replace(/`/g, "&#96;")
+
+  console.log("Escaped HTML content:")
+  console.log("- messagesHTML backticks replaced:", (messagesHTML.match(/`/g) || []).length)
+  console.log("- threadListHTML backticks replaced:", (threadListHTML.match(/`/g) || []).length)
+  console.log("- modelOptionsHTML backticks replaced:", (modelOptionsHTML.match(/`/g) || []).length)
+
   // Replace placeholders in HTML
   const processedHTML = chatViewHTML
-    .replace("<!-- Thread groups will be inserted here -->", threadListHTML)
-    .replace("<!-- Messages will be dynamically added here -->", messagesHTML)
-    .replace("<!-- Model options will be populated dynamically -->", modelOptionsHTML)
+    .replace("<!-- Thread groups will be inserted here -->", safeThreadListHTML)
+    .replace("<!-- Messages will be dynamically added here -->", safeMessagesHTML)
+    .replace("<!-- Model options will be populated dynamically -->", safeModelOptionsHTML)
 
   // Script base URL for development vs production
   const scriptBase = isDev ? "http://localhost:5173/src/client" : "/js"

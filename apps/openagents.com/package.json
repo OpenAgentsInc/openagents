@@ -22,6 +22,7 @@
     "@noble/curves": "1.2.0",
     "@noble/hashes": "1.3.1",
     "@openagentsinc/ai": "workspace:*",
+    "@openagentsinc/convex": "workspace:*",
     "@openagentsinc/nostr": "workspace:*",
     "@openagentsinc/psionic": "workspace:*",
     "@openagentsinc/relay": "workspace:*",
