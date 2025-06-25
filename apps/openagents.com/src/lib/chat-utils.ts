@@ -23,7 +23,27 @@ export function renderChatMessage(message: {
   [key: string]: any // Allow additional properties for debugging
 }) {
   // Use the rendered content if available, otherwise escape the raw content
-  const content = message.rendered || escapeHtml(message.content)
+  let content = message.rendered || escapeHtml(message.content)
+  
+  // Add tool information if present
+  if (message.metadata?.hasEmbeddedTool && message.metadata?.toolName) {
+    const toolInput = message.metadata.toolInput ? 
+      escapeHtml(JSON.stringify(message.metadata.toolInput, null, 2)) : "";
+    
+    const toolInfo = 
+      "<div class=\"tool-section\" style=\"border-left: 3px solid #a855f7; margin-bottom: 0.5rem;\">" +
+      "<div class=\"tool-header\">" +
+      "<span style=\"color: #a855f7; margin-right: 0.5rem;\">🔧</span>" +
+      "<span class=\"tool-name\" style=\"color: #a855f7; font-weight: 600;\">" + escapeHtml(message.metadata.toolName) + "</span>" +
+      "</div>" +
+      (toolInput ? "<div class=\"tool-content\" style=\"font-size: 12px; margin-top: 0.25rem; opacity: 0.8;\">" +
+        "<pre style=\"margin: 0; font-size: 11px; max-height: 100px; overflow-y: auto;\">" + toolInput + "</pre>" +
+      "</div>" : "") +
+      "</div>";
+    
+    // Prepend tool info to content
+    content = toolInfo + content
+  }
   
   // Create debug object that includes all fields and flattens metadata
   const debugObject = {
@@ -481,6 +501,11 @@ export const chatStyles = `
   /* Assistant message styling */
   .message-block.assistant {
     border-left-color: #7aa2f7; /* Terminal accent blue */
+  }
+  
+  /* Tool message styling */
+  .message-block.tool {
+    border-left-color: #a855f7; /* Purple for tools */
   }
   
   /* Message header styles - removed as headers are no longer displayed */

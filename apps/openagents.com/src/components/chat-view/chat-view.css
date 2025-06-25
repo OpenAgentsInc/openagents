@@ -249,7 +249,7 @@ body {
 
 /* Tool message styling */
 .message-block.tool {
-  border-left-color: var(--color-gray); /* Muted gray */
+  border-left-color: #a855f7; /* Purple for tools */
 }
 
 /* Message header styles - removed as headers are no longer displayed */
@@ -303,8 +303,8 @@ body {
 }
 
 .tool-section {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(168, 85, 247, 0.05);
+  border: 1px solid rgba(168, 85, 247, 0.2);
   border-radius: 6px;
   padding: 0.75rem;
   margin: 0.5rem 0;
@@ -322,7 +322,7 @@ body {
 }
 
 .tool-name {
-  color: var(--white);
+  color: #a855f7;
 }
 
 .tool-status {
