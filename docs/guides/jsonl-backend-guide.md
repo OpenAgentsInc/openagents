@@ -30,7 +30,8 @@ This guide covers the Overlord service's JSONL parser that processes Claude Code
 - Parser: `packages/overlord/src/services/JSONLParser.ts`
 - Mapper: `packages/overlord/src/services/DatabaseMapper.ts`
 - Sync: `packages/overlord/src/services/ConvexSync.ts`
-- Display: `apps/openagents.com/src/lib/chat-client-convex.ts`
+- Display Logic: `apps/openagents.com/src/lib/chat-client-convex.ts`
+- Display Formatting: `apps/openagents.com/src/lib/chat-utils.ts`
 
 ### Debug Commands
 ```bash
@@ -326,6 +327,53 @@ Messages are stored with full metadata:
 1. Parse tool-only messages to show tool names
 2. Extract tool_result content for display
 3. Add fallback for unparseable content
+
+### Issue: Long Tool Results Breaking Layout
+
+**Symptoms**:
+- Tool results with file listings showing hundreds of lines
+- Debug JSON expanding off screen to the right
+- Layout breaking with horizontal scrollbars
+
+**Solutions Implemented**:
+
+1. **Collapsible Tool Results** (in `chat-utils.ts`):
+   ```typescript
+   // File listings show summary with expandable details
+   if (lines.length > 10 && /* file pattern check */) {
+     return `<details><summary>Show all ${count} files</summary>...`
+   }
+   
+   // Long content shows preview with full view
+   if (content.length > 500) {
+     return `<div>preview...</div><details><summary>Show full content</summary>...`
+   }
+   ```
+
+2. **Constrained Debug JSON**:
+   ```css
+   .debug-json {
+     white-space: pre-wrap;
+     word-break: break-word;
+     max-width: 100%;
+   }
+   ```
+
+3. **Visual Distinction**:
+   - Tool invocations: Purple border/text (#a855f7)
+   - Tool results: Green border/text (#9ece6a)
+   - Both have collapsible sections for long content
+
+### Issue: Debug JSON Breaking Layout
+
+**Symptom**: Debug JSON sections causing horizontal overflow
+
+**Solution**: Debug sections disabled by default in production:
+```typescript
+const includeDebug = false // Set to true only for debugging
+```
+
+When enabled, debug JSON is constrained with CSS to prevent overflow.
 
 ### Issue: Missing Tool Information
 
