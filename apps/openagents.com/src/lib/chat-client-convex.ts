@@ -371,11 +371,11 @@ function parseMessageContent(message: any): string {
             const textParts = parsed.filter((part: any) => part.type === "text")
             const toolParts = parsed.filter((part: any) => part.type === "tool_use")
 
-            // If there's no text but there are tools, show tool invocation
+            // If there's no text but there are tools, return empty
+            // (tool info will be shown via metadata)
             if (textParts.length === 0 && toolParts.length > 0) {
               debug(`Assistant message contains only tool_use, no text`)
-              const tool = toolParts[0]
-              return `🔧 Using tool: ${tool.name}`
+              return ""
             }
 
             const parts = parsed.map((part: any) => {
