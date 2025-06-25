@@ -102,70 +102,70 @@ export function getConversationWithMessages(sessionId: string) {
         return { conversation: transformSession(session), messages: [] }
       }
 
-    // Log first 5 messages in detail for debugging
-    messages.slice(0, 5).forEach((msg: any, index: number) => {
-      debug(`Message ${index}:`, {
-        entry_uuid: msg.entry_uuid,
-        entry_type: msg.entry_type,
-        role: msg.role,
-        content: msg.content ? msg.content.substring(0, 100) + (msg.content.length > 100 ? "..." : "") : "empty",
-        thinking: msg.thinking ? "present" : "absent",
-        summary: msg.summary ? "present" : "absent",
-        tool_name: msg.tool_name,
-        tool_output: msg.tool_output ? "present" : "absent",
-        timestamp: new Date(msg.timestamp).toISOString()
-      })
-    })
-
-    // Transform session to match expected format
-    const conversation = transformSession(session)
-
-    // Transform messages to match expected format
-    const transformedMessages = messages
-      .filter((msg: any) => {
-        // Filter out entries that shouldn't be displayed as messages
-        if (msg.entry_type === "summary" && !msg.summary) {
-          debug(`Filtering out empty summary entry ${msg.entry_uuid}`)
-          return false
-        }
-        return true
-      })
-      .map((msg: any) => {
-        debug(`Transforming message ${msg.entry_uuid}:`, {
+      // Log first 5 messages in detail for debugging
+      messages.slice(0, 5).forEach((msg: any, index: number) => {
+        debug(`Message ${index}:`, {
+          entry_uuid: msg.entry_uuid,
           entry_type: msg.entry_type,
           role: msg.role,
-          hasContent: !!msg.content,
-          contentType: typeof msg.content
+          content: msg.content ? msg.content.substring(0, 100) + (msg.content.length > 100 ? "..." : "") : "empty",
+          thinking: msg.thinking ? "present" : "absent",
+          summary: msg.summary ? "present" : "absent",
+          tool_name: msg.tool_name,
+          tool_output: msg.tool_output ? "present" : "absent",
+          timestamp: new Date(msg.timestamp).toISOString()
         })
-
-        const parsedContent = parseMessageContent(msg)
-        debug(
-          `Parsed content for ${msg.entry_uuid}:`,
-          parsedContent.substring(0, 100) + (parsedContent.length > 100 ? "..." : "")
-        )
-
-        return {
-          id: msg.entry_uuid,
-          conversationId: msg.session_id,
-          role: determineRole(msg),
-          content: parsedContent,
-          timestamp: new Date(msg.timestamp),
-          model: msg.model,
-          metadata: {
-            entryType: msg.entry_type,
-            thinking: msg.thinking,
-            summary: msg.summary,
-            toolName: msg.tool_name,
-            toolInput: msg.tool_input,
-            toolUseId: msg.tool_use_id,
-            toolOutput: msg.tool_output,
-            toolIsError: msg.tool_is_error,
-            tokenUsage: msg.token_usage,
-            cost: msg.cost,
-            turnCount: msg.turn_count
-          }
-        }
       })
+
+      // Transform session to match expected format
+      const conversation = transformSession(session)
+
+      // Transform messages to match expected format
+      const transformedMessages = messages
+        .filter((msg: any) => {
+          // Filter out entries that shouldn't be displayed as messages
+          if (msg.entry_type === "summary" && !msg.summary) {
+            debug(`Filtering out empty summary entry ${msg.entry_uuid}`)
+            return false
+          }
+          return true
+        })
+        .map((msg: any) => {
+          debug(`Transforming message ${msg.entry_uuid}:`, {
+            entry_type: msg.entry_type,
+            role: msg.role,
+            hasContent: !!msg.content,
+            contentType: typeof msg.content
+          })
+
+          const parsedContent = parseMessageContent(msg)
+          debug(
+            `Parsed content for ${msg.entry_uuid}:`,
+            parsedContent.substring(0, 100) + (parsedContent.length > 100 ? "..." : "")
+          )
+
+          return {
+            id: msg.entry_uuid,
+            conversationId: msg.session_id,
+            role: determineRole(msg),
+            content: parsedContent,
+            timestamp: new Date(msg.timestamp),
+            model: msg.model,
+            metadata: {
+              entryType: msg.entry_type,
+              thinking: msg.thinking,
+              summary: msg.summary,
+              toolName: msg.tool_name,
+              toolInput: msg.tool_input,
+              toolUseId: msg.tool_use_id,
+              toolOutput: msg.tool_output,
+              toolIsError: msg.tool_is_error,
+              tokenUsage: msg.token_usage,
+              cost: msg.cost,
+              turnCount: msg.turn_count
+            }
+          }
+        })
 
       return { conversation, messages: transformedMessages }
     } catch (error) {

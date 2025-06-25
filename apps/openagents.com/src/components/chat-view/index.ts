@@ -83,7 +83,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
 
   // Limit to first 25 messages to fix rendering issues
   const limitedMessages = messages.slice(0, 25)
-  
+
   // Render messages with markdown
   const renderedMessages = await Promise.all(
     limitedMessages.map(async (msg) => ({
@@ -109,7 +109,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
         const activeClass = conv.id === conversationId
           ? "bg-[rgba(255,255,255,0.1)] text-[#D7D8E5]"
           : "text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#D7D8E5]"
-        
+
         return html`
           <li>
             <a href="/chat/${conv.id}" class="block px-3 py-1.5 text-sm rounded-md transition-colors ${activeClass}">
