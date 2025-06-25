@@ -121,6 +121,19 @@ export async function createChatView({ conversationId }: ChatViewProps) {
       console.log("Filtering out tool_use system message:", msg.id)
       return false
     }
+
+    // Skip user messages that are actually tool results (already shown as tool results)
+    if (
+      msg.role === "user" && msg.content && (
+        msg.content.includes("[Request interrupted by user for tool use]") ||
+        msg.content.includes("📤 Tool Result") ||
+        (msg.content.startsWith("[{") && msg.content.includes("\"type\":\"tool_result\""))
+      )
+    ) {
+      console.log("Filtering out duplicate tool result shown as user message:", msg.id)
+      return false
+    }
+
     return true
   })
 

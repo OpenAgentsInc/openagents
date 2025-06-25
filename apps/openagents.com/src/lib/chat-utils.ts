@@ -318,11 +318,11 @@ export function renderChatMessage(message: {
     "<div class=\"message-body\">" + content + "</div>" +
     debugSection +
     // Hover buttons container
-    "<div class=\"message-actions absolute right-0 mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100\">" +
+    "<div class=\"message-actions\">" +
     "<button class=\"debug-button\" onclick=\"toggleDebug('" + messageDebugId +
     "')\" aria-label=\"Toggle debug info\">" +
     // Bug icon SVG
-    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">" +
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">" +
     "<path d=\"m8 2 1.88 1.88M14.12 3.88 16 2\"></path>" +
     "<path d=\"M9 7.13v-1a3.003 3.003 0 1 1 6 0v1\"></path>" +
     "<path d=\"M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6z\"></path>" +

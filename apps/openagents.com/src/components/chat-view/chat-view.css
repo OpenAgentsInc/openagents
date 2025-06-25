@@ -988,3 +988,68 @@ body {
   border-color: #ef4444;
   color: #ef4444;
 }
+
+/* Debug button styles */
+.message-actions {
+  position: absolute;
+  right: 0;
+  bottom: -30px; /* Position below the message block to avoid overlap */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.group:hover .message-actions {
+  opacity: 1;
+}
+
+.debug-button {
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--gray);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.debug-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--lightgray);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.debug-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Add extra padding to messages to accommodate debug button */
+.message {
+  padding-bottom: 2rem; /* Extra space for debug button */
+}
+
+/* Debug section styles */
+.message-debug {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--lightgray);
+  overflow-x: auto;
+}
+
+.debug-json {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  line-height: 1.4;
+}
