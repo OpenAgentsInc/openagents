@@ -177,15 +177,19 @@ export const OverlordServiceLive = Layer.effect(
 
             let lastActive: string | null = null
             if (jsonlFiles.length > 0) {
-              // Find most recent file
-              let mostRecent = 0
-              for (const file of jsonlFiles) {
-                const filePath = path.join(claudePath, file)
-                const fileStat = yield* Effect.tryPromise(() => fs.stat(filePath))
-                if (fileStat.mtime.getTime() > mostRecent) {
-                  mostRecent = fileStat.mtime.getTime()
-                  lastActive = fileStat.mtime.toISOString()
-                }
+              // Get file stats and find most recent
+              const filesWithStats = yield* Effect.tryPromise(async () => {
+                const statsPromises = jsonlFiles.map(async (file) => {
+                  const filePath = path.join(claudePath, file)
+                  const fileStat = await fs.stat(filePath)
+                  return { file, mtime: fileStat.mtime }
+                })
+                const results = await Promise.all(statsPromises)
+                return results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
+              })
+              
+              if (filesWithStats.length > 0) {
+                lastActive = filesWithStats[0].mtime.toISOString()
               }
             }
 
@@ -238,8 +242,18 @@ export const OverlordServiceLive = Layer.effect(
           const files = yield* Effect.tryPromise(() => fs.readdir(claudePath, { recursive: true }))
           const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"))
 
-          for (const file of jsonlFiles) {
-            const filePath = path.join(claudePath, file)
+          // Get file stats and sort by modification time (newest first)
+          const filesWithStats = yield* Effect.tryPromise(async () => {
+            const statsPromises = jsonlFiles.map(async (file) => {
+              const filePath = path.join(claudePath, file)
+              const fileStat = await fs.stat(filePath)
+              return { file, filePath, mtime: fileStat.mtime.getTime() }
+            })
+            const results = await Promise.all(statsPromises)
+            return results.sort((a, b) => b.mtime - a.mtime) // Sort by mtime descending (newest first)
+          })
+
+          for (const { file, filePath } of filesWithStats) {
             const sessionId = path.basename(file, ".jsonl")
 
             yield* syncSessionFile(filePath, sessionId, auth).pipe(

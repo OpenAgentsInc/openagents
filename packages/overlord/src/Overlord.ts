@@ -191,24 +191,33 @@ const importCommand = Command.make("import", {
       for (const claudePath of claudePaths) {
         if (imported >= maxLimit) break
 
+        const fs = yield* Effect.tryPromise(() => import("node:fs/promises"))
         const files = yield* Effect.tryPromise(() =>
-          import("node:fs/promises").then((fs) => fs.readdir(claudePath, { recursive: true }))
+          fs.readdir(claudePath, { recursive: true })
         )
         const jsonlFiles = files
           .filter((f): f is string => typeof f === "string" && f.endsWith(".jsonl"))
-          .sort((a, b) => b.localeCompare(a)) // Sort newest first
 
-        for (const file of jsonlFiles) {
+        // Get file stats and sort by modification time (newest first)
+        const filesWithStats = yield* Effect.tryPromise(async () => {
+          const statsPromises = jsonlFiles.map(async (file) => {
+            const filePath = `${claudePath}/${file}`
+            const stat = await fs.stat(filePath)
+            return { file, filePath, mtime: stat.mtime.getTime() }
+          })
+          const results = await Promise.all(statsPromises)
+          return results.sort((a, b) => b.mtime - a.mtime) // Sort by mtime descending (newest first)
+        })
+
+        for (const { file, filePath } of filesWithStats) {
           if (imported >= maxLimit) break
 
-          const filePath = `${claudePath}/${file}`
           const sessionId = file.replace(".jsonl", "").split("/").pop() || file
 
           yield* Console.log(`  📄 Importing session ${sessionId}...`)
 
           yield* Effect.gen(function*() {
             // Read and parse file
-            const fs = yield* Effect.tryPromise(() => import("node:fs/promises"))
             const content = yield* Effect.tryPromise(() => fs.readFile(filePath, "utf-8"))
 
             const JSONLParser = yield* Effect.tryPromise(() => import("./services/JSONLParser.js"))
