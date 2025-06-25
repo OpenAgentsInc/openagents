@@ -127,13 +127,42 @@ export function getConversationWithMessages(sessionId: string) {
       // Transform session to match expected format
       const conversation = transformSession(session)
 
+      // Find the most accurate summary (highest turn_count + latest timestamp)
+      const summaries = messages.filter((msg: any) => msg.entry_type === "summary" && msg.summary)
+      let bestSummary: any = null
+      
+      if (summaries.length > 0) {
+        bestSummary = summaries.sort((a: any, b: any) => {
+          // First priority: highest turn count (most comprehensive)
+          if (a.turn_count !== b.turn_count) {
+            return (b.turn_count || 0) - (a.turn_count || 0)
+          }
+          // Second priority: latest timestamp (most recent)
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        })[0]
+        
+        debug(`Selected best summary from ${summaries.length} summaries:`, {
+          selectedUuid: bestSummary.entry_uuid,
+          turnCount: bestSummary.turn_count,
+          timestamp: bestSummary.timestamp,
+          summary: bestSummary.summary.substring(0, 100) + "..."
+        })
+      }
+
       // Transform messages to match expected format
       const transformedMessages = messages
         .filter((msg: any) => {
           // Filter out entries that shouldn't be displayed as messages
-          if (msg.entry_type === "summary" && !msg.summary) {
-            debug(`Filtering out empty summary entry ${msg.entry_uuid}`)
-            return false
+          if (msg.entry_type === "summary") {
+            // Only show the most accurate summary, filter out all others
+            if (!msg.summary) {
+              debug(`Filtering out empty summary entry ${msg.entry_uuid}`)
+              return false
+            }
+            if (bestSummary && msg.entry_uuid !== bestSummary.entry_uuid) {
+              debug(`Filtering out less accurate summary entry ${msg.entry_uuid}`)
+              return false
+            }
           }
           return true
         })
