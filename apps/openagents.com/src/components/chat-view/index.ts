@@ -91,14 +91,14 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   // Extract summary from messages
   let conversationTitle = null
   let messagesToRender = messages
-  
+
   // Find summary message by checking metadata or id
-  const summaryIndex = messages.findIndex(msg => 
-    (msg.metadata?.entryType === "summary") || 
+  const summaryIndex = messages.findIndex((msg) =>
+    (msg.metadata?.entryType === "summary") ||
     (msg.id === "summary-0") ||
     (msg.role === "system" && msg.content.includes("Summary:"))
   )
-  
+
   if (summaryIndex !== -1) {
     const summaryMessage = messages[summaryIndex]
     // Extract title from metadata first, then fall back to parsing content
@@ -107,7 +107,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     } else if (summaryMessage.content.includes("Summary:")) {
       conversationTitle = summaryMessage.content.substring(summaryMessage.content.indexOf("Summary:") + 8).trim()
     }
-    
+
     // Remove the summary message from the list to render
     messagesToRender = messages.filter((_, index) => index !== summaryIndex)
     console.log("Extracted conversation title:", conversationTitle)
@@ -172,10 +172,11 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     ""
 
   // Generate conversation title HTML if we extracted one
-  const conversationTitleHTML = conversationTitle ? 
+  const conversationTitleHTML = conversationTitle ?
     `<div class="conversation-title">
       <h1>${escapeHtml(conversationTitle)}</h1>
-    </div>` : ""
+    </div>` :
+    ""
 
   // Generate messages HTML
   console.log("Generating messages HTML...")
