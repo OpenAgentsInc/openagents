@@ -279,6 +279,18 @@ function parseMessageContent(message: any): string {
                 debug(`Found text field in parsed user content`)
                 return parsed.text
               }
+              // Check for tool_result format
+              if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].type === "tool_result") {
+                debug(`User message is a tool_result`)
+                const toolResult = parsed[0]
+                const content = toolResult.content || ""
+                // Format tool result nicely
+                if (content.includes("→")) {
+                  // It's file content with line numbers
+                  return `📤 Tool Result:\n\`\`\`\n${content}\n\`\`\``
+                }
+                return `📤 Tool Result: ${content}`
+              }
               // If it's an array format
               if (Array.isArray(parsed)) {
                 const textParts = parsed
@@ -329,6 +341,16 @@ function parseMessageContent(message: any): string {
           const parsed = JSON.parse(message.content)
           // Handle multi-part messages (text + tool use)
           if (Array.isArray(parsed)) {
+            const textParts = parsed.filter((part: any) => part.type === "text")
+            const toolParts = parsed.filter((part: any) => part.type === "tool_use")
+            
+            // If there's no text but there are tools, show tool invocation
+            if (textParts.length === 0 && toolParts.length > 0) {
+              debug(`Assistant message contains only tool_use, no text`)
+              const tool = toolParts[0]
+              return `🔧 Using tool: ${tool.name}`
+            }
+            
             const parts = parsed.map((part: any) => {
               if (part.type === "text") {
                 return part.text || ""

@@ -119,6 +119,8 @@ app.post('/api/markdown', renderMarkdownRoute)
 // Test route
 app.get('/api/test', testRoute)
 
+// Debug routes
+
 // Mount Nostr relay
 // TODO: Re-enable when WebSocket support is implemented in Effect
 // app.elysia.use(createRelayPlugin({
