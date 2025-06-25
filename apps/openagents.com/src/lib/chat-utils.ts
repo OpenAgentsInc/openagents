@@ -22,13 +22,13 @@ export function renderChatMessage(message: {
 }) {
   // Use the rendered content if available, otherwise escape the raw content
   const content = message.rendered || escapeHtml(message.content)
-  
+
   return (
-    '<div class="message">' +
-      '<div class="message-block ' + message.role + '">' +
-        '<div class="message-body">' + content + '</div>' +
-      '</div>' +
-    '</div>'
+    "<div class=\"message\">" +
+    "<div class=\"message-block " + message.role + "\">" +
+    "<div class=\"message-body\">" + content + "</div>" +
+    "</div>" +
+    "</div>"
   )
 }
 
@@ -43,17 +43,17 @@ export function renderThreadItem(thread: {
 }) {
   const bgClass = thread.active ? "bg-[#262626]" : ""
   const safeTitle = escapeHtml(thread.title)
-  
+
   return (
-    '<div class="relative z-[15]">' +
-      '<div class="group relative rounded-lg active:opacity-90 px-3 ' + bgClass + '">' +
-        '<a href="/chat/' + thread.id + '" class="flex items-center gap-2 py-1">' +
-          '<div class="relative grow overflow-hidden whitespace-nowrap text-white">' +
-            safeTitle +
-          '</div>' +
-        '</a>' +
-      '</div>' +
-    '</div>'
+    "<div class=\"relative z-[15]\">" +
+    "<div class=\"group relative rounded-lg active:opacity-90 px-3 " + bgClass + "\">" +
+    "<a href=\"/chat/" + thread.id + "\" class=\"flex items-center gap-2 py-1\">" +
+    "<div class=\"relative grow overflow-hidden whitespace-nowrap text-white\">" +
+    safeTitle +
+    "</div>" +
+    "</a>" +
+    "</div>" +
+    "</div>"
   )
 }
 

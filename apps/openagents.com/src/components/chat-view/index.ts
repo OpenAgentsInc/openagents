@@ -34,7 +34,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   console.log("=== createChatView called ===")
   console.log("conversationId:", conversationId)
   console.log("typeof conversationId:", typeof conversationId)
-  
+
   // Determine if we're in development mode
   const isDev = process.env.NODE_ENV !== "production"
 
@@ -211,7 +211,7 @@ export async function createChatView({ conversationId }: ChatViewProps) {
   const safeMessagesHTML = messagesHTML.replace(/`/g, "&#96;")
   const safeThreadListHTML = threadListHTML.replace(/`/g, "&#96;")
   const safeModelOptionsHTML = modelOptionsHTML.replace(/`/g, "&#96;")
-  
+
   console.log("Escaped HTML content:")
   console.log("- messagesHTML backticks replaced:", (messagesHTML.match(/`/g) || []).length)
   console.log("- threadListHTML backticks replaced:", (threadListHTML.match(/`/g) || []).length)
