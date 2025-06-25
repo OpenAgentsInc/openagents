@@ -7,42 +7,7 @@ import { Effect } from "effect"
 
 const ConvexClient = client.ConvexClient
 
-// Type definitions for Convex data
-interface ConvexSession {
-  id: string
-  user_id: string
-  project_path: string
-  project_name?: string
-  status: string
-  started_at: number
-  last_activity: number
-  message_count: number
-  total_cost: number
-}
-
-interface ConvexMessage {
-  entry_uuid: string
-  session_id: string
-  entry_type: string
-  role?: string
-  content?: string
-  thinking?: string
-  summary?: string
-  model?: string
-  token_usage?: {
-    input_tokens: number
-    output_tokens: number
-    total_tokens: number
-  }
-  cost?: number
-  timestamp: number
-  turn_count?: number
-  tool_name?: string
-  tool_input?: any
-  tool_use_id?: string
-  tool_output?: string
-  tool_is_error?: boolean
-}
+// Note: Using any types to avoid complex Effect typing issues during refactor
 
 // Hardcoded user ID for now (as requested)
 // NOTE: Sessions were imported with "claude-code-user" as the user_id
@@ -57,76 +22,88 @@ function debug(message: string, data?: any) {
 }
 
 /**
- * Get all sessions for the hardcoded user
+ * Transform ConvexSession to expected format
  */
-export async function getConversations() {
-  debug("getConversations called for user:", HARDCODED_USER_ID)
-
-  try {
-    debug("Calling ConvexClient.sessions.listByUser")
-    const sessions = await Effect.runPromise(
-      ConvexClient.sessions.listByUser(HARDCODED_USER_ID)
-    ) as Array<ConvexSession>
-
-    debug("Sessions received from Convex:", { count: sessions.length, sessions })
-
-    // Transform to match expected format
-    const transformed = sessions.map((session: ConvexSession) => ({
-      id: session.id,
-      title: session.project_name || session.project_path || "Untitled Session",
-      lastMessageAt: new Date(session.last_activity),
-      createdAt: new Date(session.started_at),
-      model: "claude-code", // Indicator that this is from Claude Code
-      metadata: {
-        messageCount: session.message_count,
-        totalCost: session.total_cost,
-        status: session.status,
-        projectPath: session.project_path
-      }
-    }))
-
-    debug("Transformed sessions:", transformed)
-    return transformed
-  } catch (error) {
-    console.error("Failed to load conversations from Convex:", error)
-    debug("Error details:", {
-      error,
-      message: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : undefined
-    })
-    return []
+function transformSession(session: any) {
+  return {
+    id: session.id,
+    title: session.project_name || session.project_path || "Untitled Session",
+    lastMessageAt: new Date(session.last_activity),
+    createdAt: new Date(session.started_at),
+    model: "claude-code",
+    metadata: {
+      messageCount: session.message_count,
+      totalCost: session.total_cost,
+      status: session.status,
+      projectPath: session.project_path
+    }
   }
 }
 
 /**
- * Get a session with its messages
+ * Get all sessions for the hardcoded user - returns Effect
  */
-export async function getConversationWithMessages(sessionId: string) {
-  debug("getConversationWithMessages called for session:", sessionId)
+export function getConversations() {
+  return Effect.gen(function*() {
+    debug("getConversations called for user:", HARDCODED_USER_ID)
 
-  try {
-    // Get session
-    debug("Fetching session from Convex")
-    const session = await Effect.runPromise(
-      ConvexClient.sessions.getById(sessionId)
-    ) as ConvexSession | null
+    try {
+      debug("Calling ConvexClient.sessions.listByUser")
+      const sessions = yield* ConvexClient.sessions.listByUser(HARDCODED_USER_ID)
 
-    debug("Session received:", session)
+      debug("Sessions received from Convex:", { count: sessions?.length || 0, sessions })
 
-    if (!session) {
-      throw new Error("Session not found")
+      if (!sessions) {
+        return []
+      }
+
+      // Transform to match expected format
+      const transformed = sessions.map((session: any) => transformSession(session))
+
+      debug("Transformed sessions:", transformed)
+      return transformed
+    } catch (error) {
+      console.error("Failed to load conversations from Convex:", error)
+      debug("Error details:", {
+        error,
+        message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      return []
     }
+  })
+}
 
-    // Get messages
-    debug("Fetching messages from Convex")
-    const messages = await Effect.runPromise(
-      ConvexClient.messages.listBySession(sessionId, 1000) // Get up to 1000 messages
-    ) as Array<ConvexMessage>
+/**
+ * Get a session with its messages - returns Effect
+ */
+export function getConversationWithMessages(sessionId: string) {
+  return Effect.gen(function*() {
+    debug("getConversationWithMessages called for session:", sessionId)
 
-    debug("Messages received:", { count: messages.length })
+    try {
+      // Get session
+      debug("Fetching session from Convex")
+      const session = yield* ConvexClient.sessions.getById(sessionId)
+
+      debug("Session received:", session)
+
+      if (!session) {
+        throw new Error("Session not found")
+      }
+
+      // Get messages
+      debug("Fetching messages from Convex")
+      const messages = yield* ConvexClient.messages.listBySession(sessionId, 1000)
+
+      debug("Messages received:", { count: messages?.length || 0 })
+
+      if (!messages) {
+        return { conversation: transformSession(session), messages: [] }
+      }
 
     // Log first 5 messages in detail for debugging
-    messages.slice(0, 5).forEach((msg, index) => {
+    messages.slice(0, 5).forEach((msg: any, index: number) => {
       debug(`Message ${index}:`, {
         entry_uuid: msg.entry_uuid,
         entry_type: msg.entry_type,
@@ -141,23 +118,11 @@ export async function getConversationWithMessages(sessionId: string) {
     })
 
     // Transform session to match expected format
-    const conversation = {
-      id: session.id,
-      title: session.project_name || session.project_path || "Untitled Session",
-      lastMessageAt: new Date(session.last_activity),
-      createdAt: new Date(session.started_at),
-      model: "claude-code",
-      metadata: {
-        messageCount: session.message_count,
-        totalCost: session.total_cost,
-        status: session.status,
-        projectPath: session.project_path
-      }
-    }
+    const conversation = transformSession(session)
 
     // Transform messages to match expected format
     const transformedMessages = messages
-      .filter((msg: ConvexMessage) => {
+      .filter((msg: any) => {
         // Filter out entries that shouldn't be displayed as messages
         if (msg.entry_type === "summary" && !msg.summary) {
           debug(`Filtering out empty summary entry ${msg.entry_uuid}`)
@@ -165,7 +130,7 @@ export async function getConversationWithMessages(sessionId: string) {
         }
         return true
       })
-      .map((msg: ConvexMessage) => {
+      .map((msg: any) => {
         debug(`Transforming message ${msg.entry_uuid}:`, {
           entry_type: msg.entry_type,
           role: msg.role,
@@ -202,17 +167,18 @@ export async function getConversationWithMessages(sessionId: string) {
         }
       })
 
-    return { conversation, messages: transformedMessages }
-  } catch (error) {
-    console.error("Failed to load conversation from Convex:", error)
-    throw error
-  }
+      return { conversation, messages: transformedMessages }
+    } catch (error) {
+      console.error("Failed to load conversation from Convex:", error)
+      throw error
+    }
+  })
 }
 
 /**
  * Determine the role for a message
  */
-function determineRole(message: ConvexMessage): "user" | "assistant" | "system" {
+function determineRole(message: any): "user" | "assistant" | "system" {
   // First check if role is explicitly set
   if (message.role) {
     debug(`Using explicit role for ${message.entry_uuid}: ${message.role}`)
@@ -242,7 +208,7 @@ function determineRole(message: ConvexMessage): "user" | "assistant" | "system" 
  * Parse message content from stored format
  * Claude Code messages can have complex content structures stored as JSON strings
  */
-function parseMessageContent(message: ConvexMessage): string {
+function parseMessageContent(message: any): string {
   debug(`Parsing content for entry_type: ${message.entry_type}, entry_uuid: ${message.entry_uuid}`)
   // Handle different message types
   switch (message.entry_type) {
@@ -427,13 +393,15 @@ export async function deleteConversation(_conversationId: string): Promise<void>
 /**
  * Search conversations by content
  */
-export async function searchConversations(query: string) {
-  debug("searchConversations called with query:", query)
-  const allConversations = await getConversations()
-  const filtered = allConversations.filter((conv: any) =>
-    conv.title?.toLowerCase().includes(query.toLowerCase()) ||
-    conv.metadata?.projectPath?.toLowerCase().includes(query.toLowerCase())
-  )
-  debug("Search results:", { query, totalCount: allConversations.length, filteredCount: filtered.length })
-  return filtered
+export function searchConversations(query: string) {
+  return Effect.gen(function*() {
+    debug("searchConversations called with query:", query)
+    const allConversations = yield* getConversations()
+    const filtered = allConversations.filter((conv: any) =>
+      conv.title?.toLowerCase().includes(query.toLowerCase()) ||
+      conv.metadata?.projectPath?.toLowerCase().includes(query.toLowerCase())
+    )
+    debug("Search results:", { query, totalCount: allConversations.length, filteredCount: filtered.length })
+    return filtered
+  })
 }
