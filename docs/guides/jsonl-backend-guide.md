@@ -375,6 +375,33 @@ const includeDebug = false // Set to true only for debugging
 
 When enabled, debug JSON is constrained with CSS to prevent overflow.
 
+### Issue: Tool Results Not Detected Due to Markdown Rendering
+
+**Symptom**: Tool results showing as massive text blocks instead of formatted collapsible sections
+
+**Root Cause**: Markdown rendering wraps JSON content in `<p>` tags before tool result detection
+
+**Solution**: Process tool results BEFORE markdown rendering:
+```typescript
+// Check raw content for tool results BEFORE using rendered markdown
+const rawContent = message.content || ''
+const isToolResultJson = rawContent.startsWith('[{') || 
+  rawContent.includes('<p>[{') ||
+  rawContent.includes('<p>[&lt;{')
+
+if (message.role === "user" && rawContent && isToolResultJson) {
+  // Process tool result from raw content
+  // Set isToolResultProcessed = true
+}
+
+// Only use rendered content if we didn't process a tool result
+if (!isToolResultProcessed) {
+  content = message.rendered || escapeHtml(message.content)
+}
+```
+
+This ensures tool results are detected and formatted correctly regardless of markdown processing.
+
 ### Issue: Missing Tool Information
 
 **Symptoms**: Tool calls not visible in debug JSON
