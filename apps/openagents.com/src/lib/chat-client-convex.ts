@@ -151,6 +151,28 @@ export function getConversationWithMessages(sessionId: string) {
             parsedContent.substring(0, 100) + (parsedContent.length > 100 ? "..." : "")
           )
 
+          // Extract tool metadata from content if it's embedded
+          let extractedToolMetadata: any = {}
+          if (msg.content && typeof msg.content === 'string' && msg.content.includes('"type":"tool_use"')) {
+            try {
+              const parsed = JSON.parse(msg.content)
+              if (Array.isArray(parsed)) {
+                const toolUse = parsed.find((item: any) => item.type === 'tool_use')
+                if (toolUse) {
+                  extractedToolMetadata = {
+                    toolName: toolUse.name,
+                    toolInput: toolUse.input,
+                    toolUseId: toolUse.id,
+                    hasEmbeddedTool: true
+                  }
+                  debug(`Extracted tool metadata from content:`, extractedToolMetadata)
+                }
+              }
+            } catch (e) {
+              debug(`Failed to extract tool metadata from content:`, e)
+            }
+          }
+
           return {
             id: msg.entry_uuid,
             conversationId: msg.session_id,
@@ -162,14 +184,15 @@ export function getConversationWithMessages(sessionId: string) {
               entryType: msg.entry_type,
               thinking: msg.thinking,
               summary: msg.summary,
-              toolName: msg.tool_name,
-              toolInput: msg.tool_input,
-              toolUseId: msg.tool_use_id,
+              toolName: msg.tool_name || extractedToolMetadata.toolName,
+              toolInput: msg.tool_input || extractedToolMetadata.toolInput,
+              toolUseId: msg.tool_use_id || extractedToolMetadata.toolUseId,
               toolOutput: msg.tool_output,
               toolIsError: msg.tool_is_error,
               tokenUsage: msg.token_usage,
               cost: msg.cost,
-              turnCount: msg.turn_count
+              turnCount: msg.turn_count,
+              hasEmbeddedTool: extractedToolMetadata.hasEmbeddedTool || false
             }
           }
         })

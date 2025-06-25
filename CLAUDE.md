@@ -486,6 +486,23 @@ const readable = yield* Stream.toReadableStreamEffect(stream).pipe(
 
 **READ**: `/docs/guides/streaming-architecture.md` for complete understanding
 
+### ❌ NEVER Use Placeholder Code
+
+**ABSOLUTELY FORBIDDEN**: Using "log what we would do" patterns or placeholder implementations.
+
+**Examples of BANNED patterns**:
+- "For now, just log what we would update"
+- "Would update X with Y"
+- "TODO: implement this later"
+- Mock implementations that don't actually perform the requested action
+
+**REQUIRED**: Always implement the actual functionality. If you're updating database records, perform the actual update. If you're processing data, actually process it. No placeholders, no logging "what would happen" - make it happen.
+
+**Why This Matters**:
+- Placeholder code wastes time and creates technical debt
+- The user expects working implementations, not promises of future work
+- "Log what we would do" patterns make debugging harder and delay real solutions
+
 **Never take shortcuts. Never simplify. Always respect the architectural decisions that were made for production systems.**
 
 ## Final Reminder: Architecture Guides Are NOT Optional
@@ -509,3 +526,11 @@ If you've made it this far and are about to start coding, ask yourself:
 **The #1 cause of wasted debugging time is agents who think they can figure it out without reading the guides first.**
 
 Don't be that agent. Read the guides. Your future self will thank you.
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+NEVER use placeholder code or "log what we would do" patterns. Always implement the actual functionality.
+When updating database records, ALWAYS perform the actual update, not just log what would be updated.

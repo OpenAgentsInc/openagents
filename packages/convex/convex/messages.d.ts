@@ -224,6 +224,19 @@ export declare const updateContent: import("convex/server").RegisteredMutation<"
     entryUuid: string;
 }, Promise<void>>;
 /**
+ * Update message fields (comprehensive update for fixing imported data)
+ */
+export declare const update: import("convex/server").RegisteredMutation<"public", {
+    content?: string;
+    thinking?: string;
+    tool_name?: string;
+    tool_input?: any;
+    tool_use_id?: string;
+    tool_output?: string;
+    tool_is_error?: boolean;
+    entryUuid: string;
+}, Promise<void>>;
+/**
  * Get session message statistics
  */
 export declare const getSessionStats: import("convex/server").RegisteredQuery<"public", {

@@ -166,6 +166,46 @@ export const updateContent = mutation({
     }
 });
 /**
+ * Update message fields (comprehensive update for fixing imported data)
+ */
+export const update = mutation({
+    args: {
+        entryUuid: v.string(),
+        content: v.optional(v.string()),
+        thinking: v.optional(v.string()),
+        tool_name: v.optional(v.string()),
+        tool_input: v.optional(v.any()),
+        tool_use_id: v.optional(v.string()),
+        tool_output: v.optional(v.string()),
+        tool_is_error: v.optional(v.boolean())
+    },
+    handler: async (ctx, args) => {
+        const message = await ctx.db
+            .query("messages")
+            .filter(q => q.eq(q.field("entry_uuid"), args.entryUuid))
+            .first();
+        if (!message) {
+            throw new Error(`Message not found: ${args.entryUuid}`);
+        }
+        const updateData = {};
+        if (args.content !== undefined)
+            updateData.content = args.content;
+        if (args.thinking !== undefined)
+            updateData.thinking = args.thinking;
+        if (args.tool_name !== undefined)
+            updateData.tool_name = args.tool_name;
+        if (args.tool_input !== undefined)
+            updateData.tool_input = args.tool_input;
+        if (args.tool_use_id !== undefined)
+            updateData.tool_use_id = args.tool_use_id;
+        if (args.tool_output !== undefined)
+            updateData.tool_output = args.tool_output;
+        if (args.tool_is_error !== undefined)
+            updateData.tool_is_error = args.tool_is_error;
+        return await ctx.db.patch(message._id, updateData);
+    }
+});
+/**
  * Get session message statistics
  */
 export const getSessionStats = query({

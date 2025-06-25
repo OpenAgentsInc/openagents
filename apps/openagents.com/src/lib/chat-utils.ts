@@ -19,13 +19,35 @@ export function renderChatMessage(message: {
   content: string
   timestamp?: number
   rendered?: string
+  metadata?: any
   [key: string]: any // Allow additional properties for debugging
 }) {
   // Use the rendered content if available, otherwise escape the raw content
   const content = message.rendered || escapeHtml(message.content)
   
+  // Create debug object that includes all fields and flattens metadata
+  const debugObject = {
+    ...message,
+    // Flatten metadata fields for easier viewing
+    ...(message.metadata ? {
+      metadata: message.metadata,
+      // Also include flattened metadata fields at top level for visibility
+      entryType: message.metadata.entryType,
+      toolName: message.metadata.toolName,
+      toolInput: message.metadata.toolInput,
+      toolUseId: message.metadata.toolUseId,
+      toolOutput: message.metadata.toolOutput,
+      toolIsError: message.metadata.toolIsError,
+      thinking: message.metadata.thinking,
+      summary: message.metadata.summary,
+      tokenUsage: message.metadata.tokenUsage,
+      cost: message.metadata.cost,
+      turnCount: message.metadata.turnCount
+    } : {})
+  }
+  
   // Create debug JSON (escaped for HTML)
-  const debugJson = escapeHtml(JSON.stringify(message, null, 2))
+  const debugJson = escapeHtml(JSON.stringify(debugObject, null, 2))
 
   return (
     "<div class=\"message\">" +
