@@ -68,12 +68,32 @@ export const parseJSONL = (content: string): Effect.Effect<ReadonlyArray<LogEntr
 
         // Validate and transform based on type
         if (parsed.type === "user") {
+          // Extract text content from various possible structures
+          let textContent = ""
+          if (parsed.message?.text) {
+            // Simple text format
+            textContent = parsed.message.text
+          } else if (parsed.message?.content) {
+            // Array of content objects format
+            if (Array.isArray(parsed.message.content)) {
+              const textParts = parsed.message.content
+                .filter((item: any) => item.type === "text")
+                .map((item: any) => item.text)
+              textContent = textParts.join("\n")
+            } else if (typeof parsed.message.content === "string") {
+              textContent = parsed.message.content
+            }
+          } else if (parsed.content) {
+            // Direct content fallback
+            textContent = typeof parsed.content === "string" ? parsed.content : ""
+          }
+
           entries.push({
             type: "user",
             uuid: parsed.uuid || `user-${index}`,
             timestamp: parsed.timestamp || new Date().toISOString(),
             message: {
-              text: parsed.message?.text || parsed.content || "",
+              text: textContent,
               images: parsed.message?.images
             }
           })

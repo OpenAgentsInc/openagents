@@ -214,12 +214,41 @@ const importCommand = Command.make("import", {
             const JSONLParser = yield* Effect.tryPromise(() => import("./services/JSONLParser.js"))
             const entries = yield* JSONLParser.parseJSONL(content)
 
-            // Extract project path
+            // Extract project path from Claude Code file structure
+            // Path format: ~/.claude/projects/{project-dir}/{session-id}.jsonl
             const parts = filePath.split("/")
-            const claudeIndex = parts.findIndex((p) => p === "Claude")
-            const projectPath = claudeIndex >= 0 && claudeIndex + 1 < parts.length
-              ? parts[claudeIndex + 1]
-              : "unknown"
+            let projectPath = "unknown"
+            
+            // Find .claude directory and extract project name
+            const claudeDirIndex = parts.findIndex((p) => p === ".claude")
+            if (claudeDirIndex >= 0 && claudeDirIndex + 2 < parts.length) {
+              const projectDir = parts[claudeDirIndex + 2] // skip "projects" folder
+              if (projectDir && projectDir !== "projects") {
+                // Extract meaningful name from encoded project directory
+                // Format like "-Users-christopherdavid-code-yt-dlp" -> "yt-dlp"
+                const segments = projectDir.split("-").filter(p => p)
+                if (segments.length >= 2) {
+                  const lastTwo = segments.slice(-2)
+                  // If second-to-last is "code", just take the last part
+                  if (lastTwo[0] === "code") {
+                    projectPath = lastTwo[1]
+                  } else {
+                    // Take last two parts for compound names like "yt-dlp"
+                    projectPath = lastTwo.join("-")
+                  }
+                } else {
+                  projectPath = segments.pop() || projectDir
+                }
+              }
+            }
+            
+            // Fallback: use parent directory of the JSONL file
+            if (projectPath === "unknown") {
+              const parentDir = parts[parts.length - 2]
+              if (parentDir && parentDir !== "projects") {
+                projectPath = parentDir
+              }
+            }
 
             // Save to Convex
             yield* convexSync.saveSession(sessionId, userId, projectPath, entries)

@@ -56,7 +56,7 @@ export const ConvexSyncServiceLive = Layer.succeed(
           })
           yield* Effect.log(`Created new session: ${sessionId}`)
         } else {
-          // Update existing session
+          // Update existing session (skip project update if function not deployed)
           yield* client.ConvexClient.sessions.updateActivity(sessionId)
           yield* Effect.log(`Updated existing session: ${sessionId}`)
         }
@@ -100,6 +100,8 @@ export const ConvexSyncServiceLive = Layer.succeed(
                 `Message ${entry.uuid} has ${entry.message.images.length} images - image storage not yet implemented`
               )
             }
+          } else {
+            // Skip updating existing messages for now (function not deployed)
           }
         }
 
