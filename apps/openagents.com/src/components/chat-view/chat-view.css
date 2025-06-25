@@ -266,6 +266,18 @@ body {
 /* Tool message styling */
 .message-block.tool {
   border-left-color: #a855f7; /* Purple for tools */
+  margin-left: 60px;
+}
+
+/* Tool result styling */
+.message-block.tool-result {
+  border-left-color: #a855f7; /* Purple for tool results */
+  margin-left: 60px;
+}
+
+.message-block.tool-result-error {
+  border-left-color: #f7768e; /* Red for error results */
+  margin-left: 60px;
 }
 
 /* Message header styles - removed as headers are no longer displayed */

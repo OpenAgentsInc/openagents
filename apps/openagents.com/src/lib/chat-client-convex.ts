@@ -302,21 +302,20 @@ function parseMessageContent(message: any): string {
                 debug(`User message is actually a tool_result that was mis-categorized`)
                 const toolResult = parsed[0]
                 const content = toolResult.content || ""
-                const toolUseId = toolResult.tool_use_id || ""
                 const isError = toolResult.is_error || false
 
                 // Handle empty tool results
                 if (!content || content.trim() === "") {
                   debug(`Tool result has empty content`)
-                  return `📤 Tool Result (${toolUseId}): [No output]${isError ? " - ERROR" : ""}`
+                  return `📤 Tool Result: [No output]${isError ? " - ERROR" : ""}`
                 }
 
                 // Format tool result nicely
                 if (content.includes("→")) {
                   // It's file content with line numbers
-                  return `📤 Tool Result (${toolUseId}):\n\`\`\`\n${content}\n\`\`\`${isError ? "\n[ERROR]" : ""}`
+                  return `📤 Tool Result:\n\`\`\`\n${content}\n\`\`\`${isError ? "\n[ERROR]" : ""}`
                 }
-                return `📤 Tool Result (${toolUseId}): ${content}${isError ? " [ERROR]" : ""}`
+                return `📤 Tool Result: ${content}${isError ? " [ERROR]" : ""}`
               }
               // If it's an array format
               if (Array.isArray(parsed)) {

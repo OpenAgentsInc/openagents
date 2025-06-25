@@ -105,11 +105,11 @@ export function renderChatMessage(message: {
     // Extract content after "📤 Tool Result: "
     const toolResultContent = rawContent.substring("📤 Tool Result: ".length).trim()
     const formattedContent = formatToolResult(toolResultContent)
-    content = "<div class=\"tool-result-header\">" +
-      "<span class=\"tool-result-icon\">📤</span>" +
-      "<span class=\"tool-result-label\">Tool Result</span>" +
+    content = "<div class=\"tool-header\">" +
+      "<span class=\"tool-icon\">📤</span>" +
+      "<span class=\"tool-name\">Tool Result</span>" +
       "</div>" +
-      "<div class=\"tool-result-content\">" +
+      "<div class=\"tool-content\">" +
       formattedContent +
       "</div>"
     isToolResultProcessed = true
@@ -129,14 +129,12 @@ export function renderChatMessage(message: {
         // Format tool result nicely - ignore any rendered markdown
         const toolResult = parsed[0]
         const formattedContent = formatToolResult(toolResult.content || "")
-        content = "<div class=\"tool-result-header\">" +
-          "<span class=\"tool-result-icon\">📤</span>" +
-          "<span class=\"tool-result-label\">Tool Result</span>" +
-          "<span class=\"tool-result-id\" style=\"font-size: 11px; opacity: 0.7; margin-left: 0.5rem;\">" +
-          escapeHtml(toolResult.tool_use_id || "") + "</span>" +
+        content = "<div class=\"tool-header\">" +
+          "<span class=\"tool-icon\">📤</span>" +
+          "<span class=\"tool-name\">Tool Result</span>" +
           "</div>" +
-          "<div class=\"tool-result-content\">" +
-          formattedContent + // Don't wrap in pre tag - formatToolResult handles it
+          "<div class=\"tool-content\">" +
+          formattedContent +
           "</div>"
         isToolResultProcessed = true
       }
