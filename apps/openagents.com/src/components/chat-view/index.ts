@@ -81,8 +81,8 @@ export async function createChatView({ conversationId }: ChatViewProps) {
     }
   }
 
-  // Limit to first 25 messages to fix rendering issues
-  const limitedMessages = messages.slice(0, 25)
+  // Render messages 26-50 (next 25 messages)
+  const limitedMessages = messages.slice(25, 50)
 
   // Render messages with markdown
   const renderedMessages = await Promise.all(
