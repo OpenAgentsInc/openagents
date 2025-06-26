@@ -49,31 +49,69 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+// Debug story to test basic rendering
+export const DebugBasic: Story = {
+  args: {
+    children: 'This text should be visible',
+    as: 'div',
+    className: 'text-white',
+  },
+  render: (args) => (
+    <div style={{ padding: '20px', background: 'rgba(255,255,255,0.1)' }}>
+      <div style={{ color: 'white', marginBottom: '10px' }}>
+        Debug info: args = {JSON.stringify(args, null, 2)}
+      </div>
+      <Text {...args} />
+    </div>
+  ),
+}
+
+// Test without any animation
+export const PlainText: Story = {
+  args: {
+    children: '',
+  },
+  render: () => (
+    <div style={{ padding: '20px', backgroundColor: '#222' }}>
+      <Text className="text-white">Plain text without animation</Text>
+      <br />
+      <Text as="div" className="text-cyan-300">Cyan text as div</Text>
+      <br />
+      <Text as="p" className="text-yellow-300">Yellow text as p</Text>
+    </div>
+  ),
+}
+
+// Debug story with Animator
+export const DebugWithAnimator: Story = {
+  args: {
+    children: '',
+  },
+  render: () => (
+    <div style={{ color: 'white', border: '1px solid red', padding: '20px' }}>
+      <div>Outside Animator: This should be visible</div>
+      <Animator root active={true}>
+        <div>Inside Animator: This should also be visible</div>
+        <Text as="div" className="text-cyan-300">
+          Text component: This is cyan text
+        </Text>
+      </Animator>
+    </div>
+  ),
+}
+
 // Helper component for animated stories
+// NOTE: Text components need to be wrapped with Animated to run animations
 const AnimatedTextWrapper = ({ 
   children, 
-  duration = { enter: 1, exit: 0.5 },
-  activeTime = 3000,
-  inactiveTime = 1500 
+  duration = { enter: 1, exit: 0.5 }
 }: { 
   children: React.ReactNode
   duration?: { enter: number, exit: number }
-  activeTime?: number
-  inactiveTime?: number
 }) => {
-  const [active, setActive] = useState(true)
-
-  useEffect(() => {
-    const timeout = setTimeout(
-      () => setActive(!active),
-      active ? activeTime : inactiveTime
-    )
-    return () => clearTimeout(timeout)
-  }, [active, activeTime, inactiveTime])
-
   return (
-    <Animator root active={active} duration={duration}>
-      <Animated hideOnExited={false}>
+    <Animator root active={true} duration={duration}>
+      <Animated animated={['fade']}>
         {children}
       </Animated>
     </Animator>
@@ -84,12 +122,18 @@ export const Default: Story = {
   args: {
     children: 'The universe is a vast expanse of space and time.',
     as: 'div',
+    className: 'text-cyan-300',
   },
-  render: (args) => (
-    <AnimatedTextWrapper>
-      <Text {...args} />
-    </AnimatedTextWrapper>
-  ),
+  render: (args) => {
+    console.log('[Default Story] args:', args);
+    return (
+      <AnimatedTextWrapper>
+        <Text as={args.as} className={args.className}>
+          {args.children}
+        </Text>
+      </AnimatedTextWrapper>
+    );
+  },
 }
 
 export const SequenceAnimation: Story = {
@@ -101,7 +145,13 @@ export const SequenceAnimation: Story = {
   },
   render: (args) => (
     <AnimatedTextWrapper duration={{ enter: 2, exit: 1 }}>
-      <Text {...args} />
+      <Text 
+        as={args.as} 
+        manager={args.manager}
+        className={args.className}
+      >
+        {args.children}
+      </Text>
     </AnimatedTextWrapper>
   ),
 }
@@ -115,7 +165,13 @@ export const DecipherAnimation: Story = {
   },
   render: (args) => (
     <AnimatedTextWrapper duration={{ enter: 1.5, exit: 0.5 }}>
-      <Text {...args} />
+      <Text 
+        as={args.as} 
+        manager={args.manager}
+        className={args.className}
+      >
+        {args.children}
+      </Text>
     </AnimatedTextWrapper>
   ),
 }
@@ -217,7 +273,12 @@ export const CustomStyling: Story = {
   },
   render: (args) => (
     <AnimatedTextWrapper>
-      <Text {...args} />
+      <Text 
+        as={args.as}
+        contentStyle={args.contentStyle}
+      >
+        {args.children}
+      </Text>
     </AnimatedTextWrapper>
   ),
 }
@@ -234,7 +295,13 @@ export const MonospaceCode: Story = {
   },
   render: (args) => (
     <AnimatedTextWrapper duration={{ enter: 2, exit: 0.5 }}>
-      <Text {...args} />
+      <Text 
+        as={args.as}
+        manager={args.manager}
+        className={args.className}
+      >
+        {args.children}
+      </Text>
     </AnimatedTextWrapper>
   ),
 }
@@ -245,17 +312,17 @@ export const ShortMessages: Story = {
   },
   render: () => (
     <div className="space-y-4">
-      <AnimatedTextWrapper activeTime={2000} inactiveTime={1000}>
+      <AnimatedTextWrapper>
         <Text as="div" manager="decipher" className="text-cyan-300 font-mono text-2xl">
           SYSTEM READY
         </Text>
       </AnimatedTextWrapper>
-      <AnimatedTextWrapper activeTime={2000} inactiveTime={1000}>
+      <AnimatedTextWrapper>
         <Text as="div" manager="decipher" className="text-yellow-300 font-mono text-2xl">
           ACCESS GRANTED
         </Text>
       </AnimatedTextWrapper>
-      <AnimatedTextWrapper activeTime={2000} inactiveTime={1000}>
+      <AnimatedTextWrapper>
         <Text as="div" manager="decipher" className="text-red-400 font-mono text-2xl">
           WARNING: LOW POWER
         </Text>
@@ -305,7 +372,14 @@ export const CenteredText: Story = {
   render: (args) => (
     <div className="w-full max-w-lg">
       <AnimatedTextWrapper>
-        <Text {...args} />
+        <Text 
+          as={args.as}
+          manager={args.manager}
+          className={args.className}
+          contentStyle={args.contentStyle}
+        >
+          {args.children}
+        </Text>
       </AnimatedTextWrapper>
     </div>
   ),
@@ -358,7 +432,14 @@ export const Playground: Story = {
   render: (args) => (
     <div className="min-w-[400px]">
       <AnimatedTextWrapper>
-        <Text {...args} />
+        <Text 
+          as={args.as}
+          manager={args.manager}
+          className={args.className}
+          fixed={args.fixed}
+        >
+          {args.children}
+        </Text>
       </AnimatedTextWrapper>
     </div>
   ),

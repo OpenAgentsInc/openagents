@@ -28,7 +28,9 @@ export const WithAnimator: Story = {
   },
   render: () => (
     <Animator root active duration={{ enter: 1, exit: 0.5 }}>
-      <Text as="div">Text with Animator wrapper</Text>
+      <Animated>
+        <Text as="div" className="text-cyan-300">Text with Animator wrapper</Text>
+      </Animated>
     </Animator>
   ),
 }
@@ -41,7 +43,7 @@ export const WithAnimatorAndAnimated: Story = {
   render: () => (
     <Animator root active duration={{ enter: 1, exit: 0.5 }}>
       <Animated>
-        <Text as="div">Text with Animator and Animated wrapper</Text>
+        <Text as="div" className="text-cyan-300">Text with Animator and Animated wrapper</Text>
       </Animated>
     </Animator>
   ),
@@ -55,7 +57,7 @@ export const SequenceTest: Story = {
   render: () => (
     <Animator root active>
       <Animated>
-        <Text as="div" manager="sequence">
+        <Text as="div" manager="sequence" className="text-cyan-300">
           Testing sequence animation
         </Text>
       </Animated>
@@ -71,7 +73,7 @@ export const DecipherTest: Story = {
   render: () => (
     <Animator root active>
       <Animated>
-        <Text as="div" manager="decipher">
+        <Text as="div" manager="decipher" className="text-yellow-300 font-mono">
           TESTING DECIPHER
         </Text>
       </Animated>
@@ -87,7 +89,7 @@ export const InlineContent: Story = {
   render: () => (
     <Animator root active>
       <Animated>
-        <Text as="span">This is inline text</Text>
+        <Text as="span" className="text-cyan-300">This is inline text</Text>
       </Animated>
     </Animator>
   ),
@@ -102,7 +104,7 @@ export const ParagraphContent: Story = {
     <Animator root active>
       <Animated>
         <div>
-          <Text>This is a paragraph rendered as default p tag.</Text>
+          <Text className="text-cyan-300">This is a paragraph rendered as default p tag.</Text>
         </div>
       </Animated>
     </Animator>
