@@ -258,8 +258,8 @@ importers:
         specifier: ^3
         version: 3.3.1
       '@tailwindcss/postcss':
-        specifier: ^4
-        version: 4.0.0
+        specifier: ^4.0.1
+        version: 4.0.1
       '@types/node':
         specifier: ^20
         version: 20.12.14
@@ -281,11 +281,14 @@ importers:
       npm-run-all:
         specifier: ^4.1.5
         version: 4.1.5
+      postcss:
+        specifier: ^8.4.49
+        version: 8.5.6
       prettier:
         specifier: ^3.5.3
         version: 3.5.3
       tailwindcss:
-        specifier: ^4
+        specifier: ^4.0.0
         version: 4.0.0
       typescript:
         specifier: ^5
@@ -6725,15 +6728,15 @@ packages:
       '@tailwindcss/oxide-win32-x64-msvc': 4.1.10
     dev: true
 
-  /@tailwindcss/postcss@4.0.0:
-    resolution: {integrity: sha512-lI2bPk4TvwavHdehjr5WiC6HnZ59hacM6ySEo4RM/H7tsjWd8JpqiNW9ThH7rO/yKtrn4mGBoXshpvn8clXjPg==}
+  /@tailwindcss/postcss@4.0.1:
+    resolution: {integrity: sha512-fZHL49vCDauQymdm2U1jehuUeX8msYVDKB/2v+jWhTQleH3QE8J1dJ2dnL5tqRvB0udjBP4kwUC1ZIVIdv66YA==}
     dependencies:
       '@alloc/quick-lru': 5.2.0
       '@tailwindcss/node': 4.1.10
       '@tailwindcss/oxide': 4.1.10
       lightningcss: 1.30.1
       postcss: 8.5.6
-      tailwindcss: 4.0.0
+      tailwindcss: 4.0.1
     dev: true
 
   /@tailwindcss/vite@4.1.10(vite@6.0.3):
@@ -14537,6 +14540,10 @@ packages:
 
   /tailwindcss@4.0.0:
     resolution: {integrity: sha512-ULRPI3A+e39T7pSaf1xoi58AqqJxVCLg8F/uM5A3FadUbnyDTgltVnXJvdkTjwCOGA6NazqHVcwPJC5h2vRYVQ==}
+    dev: true
+
+  /tailwindcss@4.0.1:
+    resolution: {integrity: sha512-UK5Biiit/e+r3i0O223bisoS5+y7ZT1PM8Ojn0MxRHzXN1VPZ2KY6Lo6fhu1dOfCfyUAlK7Lt6wSxowRabATBw==}
     dev: true
 
   /tailwindcss@4.1.10:
