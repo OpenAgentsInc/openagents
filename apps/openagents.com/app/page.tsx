@@ -22,9 +22,9 @@ const HomePage = (): React.ReactElement => {
           <h1 className="text-2xl font-bold font-mono text-cyan-300">
             <Text>OpenAgents Chat</Text>
           </h1>
-          <p className="text-sm text-cyan-500/60 font-mono mt-1">
+          <div className="text-sm text-cyan-500/60 font-mono mt-1">
             <Text>Interact with AI agents powered by OpenRouter</Text>
-          </p>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto mb-4 border border-cyan-500/20 bg-black/30 p-4">
