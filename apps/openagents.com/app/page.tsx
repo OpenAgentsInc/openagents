@@ -1,119 +1,116 @@
-'use client'
+'use client';
 
-import React from 'react'
-import { Animator, Animated, BleepsOnAnimator, cx } from '@arwes/react'
-import Link from 'next/link'
-import { ArwesLogoType } from '@/components/ArwesLogoType'
-import { ButtonSimple } from '@/components/ButtonSimple'
-import { PageLayout } from '@/components/PageLayout'
-import { Rocket, FileText, Github, MessageSquare } from 'lucide-react'
+import React from 'react';
+import { useChat } from '@ai-sdk/react';
+import { cx, Text } from '@arwes/react';
+import { AppLayout } from '@/components/AppLayout';
+import { ButtonSimple } from '@/components/ButtonSimple';
+import { Send, Bot, User } from 'lucide-react';
 
-const Home = (): React.ReactElement => {
+const HomePage = (): React.ReactElement => {
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
+
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    handleSubmit(e);
+  };
+
   return (
-    <PageLayout>
-      <Animator combine manager="sequenceReverse">
-        <BleepsOnAnimator transitions={{ entering: 'info' }} continuous />
+    <AppLayout>
+      <div className="flex flex-col h-full">
 
-        <Animated
-          as="main"
-          className={cx('flex flex-col justify-center items-center gap-4 h-full w-full p-6', 'md:gap-8')}
-          animated={[['y', 24, 0, 0]]}
+        <div className="flex-1 overflow-y-auto mb-4 border border-cyan-500/20 bg-black/30 p-4">
+          {messages.length === 0 ? (
+            <div className="text-center text-cyan-500/40 py-16 font-mono text-sm">
+              <Text>Start a conversation...</Text>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={cx(
+                    'flex gap-3 p-3 rounded border',
+                    message.role === 'user' 
+                      ? 'bg-cyan-500/5 border-cyan-500/20' 
+                      : 'bg-purple-500/5 border-purple-500/20'
+                  )}
+                >
+                  <div className="flex-shrink-0 w-6 h-6">
+                    {message.role === 'user' ? (
+                      <User className="text-cyan-500" size={20} />
+                    ) : (
+                      <Bot className="text-purple-500" size={20} />
+                    )}
+                  </div>
+                  <div className="flex-1 font-mono text-sm">
+                    <div className={cx(
+                      'font-semibold mb-1 text-xs uppercase',
+                      message.role === 'user' ? 'text-cyan-400' : 'text-purple-400'
+                    )}>
+                      {message.role === 'user' ? 'You' : 'Agent'}
+                    </div>
+                    <div className="whitespace-pre-wrap break-words text-cyan-300/80">
+                      {message.content}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex gap-3 p-3 rounded border bg-purple-500/5 border-purple-500/20">
+                  <Bot className="text-purple-500 animate-pulse" size={20} />
+                  <div className="flex-1 font-mono text-sm">
+                    <div className="font-semibold mb-1 text-xs uppercase text-purple-400">
+                      Agent
+                    </div>
+                    <div className="text-purple-300/80">
+                      <span className="inline-block">Thinking</span>
+                      <span className="inline-block animate-pulse">...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <form
+          onSubmit={onSubmit}
+          className="flex gap-2"
         >
-        <Animator>
-          <Animated as="h1" className="pb-2" title="OpenAgents">
-            <ArwesLogoType className="text-6xl md:text-8xl" />
-          </Animated>
-        </Animator>
-
-        <Animator>
-          <Animated
-            as="nav"
-            className="flex flex-row justify-center items-center gap-2 md:gap-4 mt-8"
-            animated={['flicker']}
+          <input
+            type="text"
+            value={input}
+            onChange={handleInputChange}
+            placeholder="Type your message..."
+            className={cx(
+              'flex-1 px-4 py-3',
+              'bg-black/50 border border-cyan-500/30',
+              'text-cyan-300 font-mono text-sm',
+              'placeholder-cyan-500/30',
+              'focus:outline-none focus:border-cyan-500/50',
+              'focus:bg-black/70',
+              'transition-all duration-200'
+            )}
+            disabled={isLoading}
+            autoFocus
+          />
+          <ButtonSimple
+            type="submit"
+            title="Send message"
+            disabled={!input.trim() || isLoading}
+            className={cx(
+              'px-6',
+              !input.trim() || isLoading ? 'opacity-50 cursor-not-allowed' : ''
+            )}
           >
-            <Link href="/chat">
-              <ButtonSimple
-                tabIndex={-1}
-                title="Try Chat Demo"
-                animated={[['x', -24, 0, 0]]}
-              >
-                <MessageSquare size={14} />
-                <span>Try Chat</span>
-              </ButtonSimple>
-            </Link>
+            <Send size={16} />
+            <span>Send</span>
+          </ButtonSimple>
+        </form>
+      </div>
+    </AppLayout>
+  );
+};
 
-            <Link href="/signin">
-              <ButtonSimple
-                tabIndex={-1}
-                title="Get Started"
-                animated={[['x', -12, 0, 0]]}
-              >
-                <Rocket size={14} />
-                <span>Get Started</span>
-              </ButtonSimple>
-            </Link>
-
-            <Link href="/docs">
-              <ButtonSimple
-                tabIndex={-1}
-                title="Go to Documentation"
-                animated={[['x', 0, 0, 0]]}
-              >
-                <FileText size={14} />
-                <span>Documentation</span>
-              </ButtonSimple>
-            </Link>
-
-            <a href="https://github.com/OpenAgentsInc" target="_blank" rel="noopener noreferrer">
-              <ButtonSimple
-                tabIndex={-1}
-                title="Go to GitHub"
-                animated={[['x', 12, 0, 0]]}
-              >
-                <Github size={14} />
-                <span>GitHub</span>
-              </ButtonSimple>
-            </a>
-          </Animated>
-        </Animator>
-
-        {/* <Animator>
-          <Animated
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20 max-w-6xl mx-auto"
-            animated={['flicker']}
-          >
-            <div className="border border-cyan-500 p-6 bg-black/50 backdrop-blur">
-              <h3 className="text-xl font-bold mb-3 uppercase font-sans">
-                Lightning Native
-              </h3>
-              <p className="opacity-80 font-mono text-sm">
-                Agents that can send and receive Bitcoin payments instantly through the Lightning Network.
-              </p>
-            </div>
-
-            <div className="border border-cyan-500 p-6 bg-black/50 backdrop-blur">
-              <h3 className="text-xl font-bold mb-3 uppercase font-sans">
-                Nostr Protocol
-              </h3>
-              <p className="opacity-80 font-mono text-sm">
-                Decentralized communication between agents using the Nostr protocol for censorship resistance.
-              </p>
-            </div>
-
-            <div className="border border-cyan-500 p-6 bg-black/50 backdrop-blur">
-              <h3 className="text-xl font-bold mb-3 uppercase font-sans">
-                Effect System
-              </h3>
-              <p className="opacity-80 font-mono text-sm">
-                Built with Effect for robust error handling, async operations, and functional programming.
-              </p>
-            </div>
-          </Animated>
-        </Animator> */}
-      </Animated>
-    </Animator>
-    </PageLayout>
-  )
-}
-
-export default Home
+export default HomePage;

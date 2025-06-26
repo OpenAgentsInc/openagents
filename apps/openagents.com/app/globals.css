@@ -3,6 +3,11 @@
 :root {
   --background: #000000;
   --foreground: #00ffff;
+  
+  /* ARWES Theme Colors */
+  --arwes-primary-main: hsla(180, 69%, 15%, 1);
+  --arwes-primary-light: hsla(180, 69%, 25%, 1);
+  --arwes-primary-dark: hsla(180, 69%, 10%, 1);
 }
 
 html, body {
@@ -21,4 +26,17 @@ body {
 
 .font-mono {
   font-family: var(--font-berkeley-mono), monospace;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 30s linear infinite;
 }

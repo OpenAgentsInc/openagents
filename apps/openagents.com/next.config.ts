@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   reactStrictMode: false,
+  devIndicators: false
 };
 
 export default nextConfig;
