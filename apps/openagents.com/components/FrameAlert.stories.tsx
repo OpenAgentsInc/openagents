@@ -53,17 +53,17 @@ export const ErrorAlert: Story = {
     const [active, setActive] = useState(false)
     
     useEffect(() => {
-      const timer = setTimeout(() => setActive(true), 300)
+      const timer = setTimeout(() => setActive(true), 100)
       return () => clearTimeout(timer)
     }, [])
     
     return (
-      <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
+      <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
         <Animator active={active}>
           <AlertDemo>
             <FrameAlert variant="error" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   className="text-red-400 text-5xl mb-4"
                   animated={['flicker', ['y', 16, 0]]}
@@ -78,7 +78,7 @@ export const ErrorAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   as="p"
                   className="text-red-400/80"
@@ -100,17 +100,17 @@ export const WarningAlert: Story = {
     const [active, setActive] = useState(false)
     
     useEffect(() => {
-      const timer = setTimeout(() => setActive(true), 300)
+      const timer = setTimeout(() => setActive(true), 100)
       return () => clearTimeout(timer)
     }, [])
     
     return (
-      <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
+      <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
         <Animator active={active}>
           <AlertDemo>
             <FrameAlert variant="warning" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   className="text-orange-400 text-5xl mb-4"
                   animated={['flicker', ['y', 16, 0]]}
@@ -125,7 +125,7 @@ export const WarningAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   as="p"
                   className="text-orange-400/80"
@@ -147,17 +147,17 @@ export const SuccessAlert: Story = {
     const [active, setActive] = useState(false)
     
     useEffect(() => {
-      const timer = setTimeout(() => setActive(true), 300)
+      const timer = setTimeout(() => setActive(true), 100)
       return () => clearTimeout(timer)
     }, [])
     
     return (
-      <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
+      <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
         <Animator active={active}>
           <AlertDemo>
             <FrameAlert variant="success" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   className="text-green-400 text-5xl mb-4"
                   animated={['flicker', ['y', 16, 0]]}
@@ -172,7 +172,7 @@ export const SuccessAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   as="p"
                   className="text-green-400/80"
@@ -194,17 +194,17 @@ export const InfoAlert: Story = {
     const [active, setActive] = useState(false)
     
     useEffect(() => {
-      const timer = setTimeout(() => setActive(true), 300)
+      const timer = setTimeout(() => setActive(true), 100)
       return () => clearTimeout(timer)
     }, [])
     
     return (
-      <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
+      <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
         <Animator active={active}>
           <AlertDemo>
             <FrameAlert variant="info" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   className="text-cyan-400 text-5xl mb-4"
                   animated={['flicker', ['y', 16, 0]]}
@@ -219,7 +219,7 @@ export const InfoAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   as="p"
                   className="text-cyan-400/80"
@@ -241,12 +241,12 @@ export const WithoutIlluminator: Story = {
     const [active, setActive] = useState(false)
     
     useEffect(() => {
-      const timer = setTimeout(() => setActive(true), 300)
+      const timer = setTimeout(() => setActive(true), 100)
       return () => clearTimeout(timer)
     }, [])
     
     return (
-      <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
+      <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
         <Animator active={active}>
           <AlertDemo>
             <FrameAlert variant="error" showIlluminator={false} />
@@ -270,7 +270,7 @@ export const AllVariants: Story = {
     const [active, setActive] = useState(false)
     
     useEffect(() => {
-      const timer = setTimeout(() => setActive(true), 300)
+      const timer = setTimeout(() => setActive(true), 100)
       return () => clearTimeout(timer)
     }, [])
     
@@ -283,7 +283,7 @@ export const AllVariants: Story = {
     
     return (
       <div className="grid grid-cols-2 gap-8">
-        <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
+        <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
           <Animator active={active}>
             {variants.map((variant) => {
               const Icon = variant.icon
@@ -314,17 +314,17 @@ export const FullScreenAlert: Story = {
     const [active, setActive] = useState(false)
     
     useEffect(() => {
-      const timer = setTimeout(() => setActive(true), 300)
+      const timer = setTimeout(() => setActive(true), 100)
       return () => clearTimeout(timer)
     }, [])
     
     return (
       <div className="relative w-full h-screen bg-black">
-        <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
+        <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
           <Animator active={active}>
             <FrameAlert variant="error" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   className="text-red-400 text-8xl mb-8"
                   animated={['flicker', ['y', 20, 0]]}
@@ -339,7 +339,7 @@ export const FullScreenAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.3 }}>
+              <Animator duration={{ delay: 0.1 }>
                 <Animated
                   as="p"
                   className="text-red-400/80 text-2xl mb-8"
@@ -376,7 +376,7 @@ export const CustomContent: Story = {
     const [countdown, setCountdown] = useState(10)
     
     useEffect(() => {
-      const timer = setTimeout(() => setActive(true), 300)
+      const timer = setTimeout(() => setActive(true), 100)
       return () => clearTimeout(timer)
     }, [])
     
@@ -388,7 +388,7 @@ export const CustomContent: Story = {
     }, [active, countdown])
     
     return (
-      <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
+      <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
         <Animator active={active}>
           <AlertDemo width={600} height={400}>
             <FrameAlert variant="warning" />
