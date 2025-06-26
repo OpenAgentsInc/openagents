@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { ArwesLogoType } from '@/components/ArwesLogoType'
 import { ButtonSimple } from '@/components/ButtonSimple'
 import { PageLayout } from '@/components/PageLayout'
-import { Rocket, FileText, Github } from 'lucide-react'
+import { Rocket, FileText, Github, MessageSquare } from 'lucide-react'
 
 const Home = (): React.ReactElement => {
   return (
@@ -31,11 +31,22 @@ const Home = (): React.ReactElement => {
             className="flex flex-row justify-center items-center gap-2 md:gap-4 mt-8"
             animated={['flicker']}
           >
+            <Link href="/chat">
+              <ButtonSimple
+                tabIndex={-1}
+                title="Try Chat Demo"
+                animated={[['x', -24, 0, 0]]}
+              >
+                <MessageSquare size={14} />
+                <span>Try Chat</span>
+              </ButtonSimple>
+            </Link>
+
             <Link href="/signin">
               <ButtonSimple
                 tabIndex={-1}
                 title="Get Started"
-                animated={[['x', -24, 0, 0]]}
+                animated={[['x', -12, 0, 0]]}
               >
                 <Rocket size={14} />
                 <span>Get Started</span>
@@ -46,7 +57,7 @@ const Home = (): React.ReactElement => {
               <ButtonSimple
                 tabIndex={-1}
                 title="Go to Documentation"
-                animated={[['x', -12, 0, 0]]}
+                animated={[['x', 0, 0, 0]]}
               >
                 <FileText size={14} />
                 <span>Documentation</span>

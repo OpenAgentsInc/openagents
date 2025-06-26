@@ -20,7 +20,7 @@ const berkeleyMono = localFont({
     },
     {
       path: "../public/fonts/BerkeleyMono-Italic.woff2",
-      weight: "400", 
+      weight: "400",
       style: "italic",
     },
     {
@@ -38,8 +38,8 @@ const berkeleyMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "OpenAgents - Bitcoin-Powered Digital Agents",
-  description: "Build autonomous agents that can send and receive Bitcoin payments through the Lightning Network",
+  title: "OpenAgents",
+  description: "Your agent dealer",
   icons: {
     icon: "/favicon.ico",
     shortcut: "/favicon.ico",
