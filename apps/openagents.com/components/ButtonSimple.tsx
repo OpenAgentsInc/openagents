@@ -15,7 +15,7 @@ interface ButtonSimpleProps extends HTMLProps<HTMLButtonElement> {
   children: ReactNode
 }
 
-const ButtonSimple = memo((props: ButtonSimpleProps): JSX.Element => {
+const ButtonSimple = memo((props: ButtonSimpleProps): React.ReactElement => {
   const { className, animated, children, ...otherProps } = props
 
   const bleeps = useBleeps()

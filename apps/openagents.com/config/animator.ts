@@ -1,6 +1,4 @@
-import { type AnimatorSettings } from '@arwes/react-animator';
-
-export const animatorSettings: AnimatorSettings = {
+export const animatorSettings = {
   duration: {
     enter: 300,
     exit: 300,

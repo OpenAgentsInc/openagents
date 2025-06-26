@@ -8,7 +8,7 @@ import { ButtonSimple } from '@/components/ButtonSimple'
 import { PageLayout } from '@/components/PageLayout'
 import { Rocket, FileText, Github } from 'lucide-react'
 
-const Home = (): JSX.Element => {
+const Home = (): React.ReactElement => {
   return (
     <PageLayout>
       <Animator combine manager="sequenceReverse">

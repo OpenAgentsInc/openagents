@@ -1,6 +1,4 @@
-import { type BleepsSettings } from '@arwes/react-bleeps';
-
-export const bleepsSettings: BleepsSettings = {
+export const bleepsSettings = {
   master: {
     volume: 0.5
   },

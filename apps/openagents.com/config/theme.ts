@@ -1,6 +1,4 @@
-import { type CreateThemeSettings } from '@arwes/react';
-
-export const theme: CreateThemeSettings = {
+export const theme = {
   dark: true,
   
   colors: {
