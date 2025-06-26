@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/nextjs'
 import { MenuItem } from './MenuItem'
 import { Home, MessageSquare, Users, Settings, FileText } from 'lucide-react'
 
