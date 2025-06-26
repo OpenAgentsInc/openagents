@@ -17,9 +17,9 @@ const HomePage = (): React.ReactElement => {
                 <h1 className="text-4xl font-bold font-mono text-cyan-300">
                   <Text>Welcome to OpenAgents</Text>
                 </h1>
-                <p className="text-lg text-cyan-500/80 font-mono">
+                <div className="text-lg text-cyan-500/80 font-mono">
                   <Text>Bitcoin-powered AI agents for the decentralized future</Text>
-                </p>
+                </div>
               </div>
             </Animated>
           </Animator>
@@ -72,20 +72,20 @@ const HomePage = (): React.ReactElement => {
                     <h3 className="text-lg font-semibold text-cyan-400 font-mono">
                       <Text>Create Your First Agent</Text>
                     </h3>
-                    <p className="text-cyan-500/70 font-mono text-sm leading-relaxed">
+                    <div className="text-cyan-500/70 font-mono text-sm leading-relaxed">
                       Deploy autonomous agents that can interact with the Bitcoin Lightning Network,
                       process payments, and communicate via the Nostr protocol.
-                    </p>
+                    </div>
                   </div>
                   
                   <div className="space-y-3">
                     <h3 className="text-lg font-semibold text-cyan-400 font-mono">
                       <Text>Explore the Playground</Text>
                     </h3>
-                    <p className="text-cyan-500/70 font-mono text-sm leading-relaxed">
+                    <div className="text-cyan-500/70 font-mono text-sm leading-relaxed">
                       Test agent capabilities in our interactive playground. Experiment with
                       different models, prompts, and Lightning Network integrations.
-                    </p>
+                    </div>
                   </div>
                 </div>
               </div>

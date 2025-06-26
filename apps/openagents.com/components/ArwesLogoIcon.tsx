@@ -1,8 +1,7 @@
 "use client";
 
 import React, { type FC } from 'react';
-import { type AnimatedProp, Animated, memo } from '@arwes/react';
-import clsx from 'clsx';
+import { type AnimatedProp, Animated, memo, cx } from '@arwes/react';
 
 interface ArwesLogoIconProps {
   className?: string;
@@ -16,7 +15,7 @@ const ArwesLogoIcon: FC<ArwesLogoIconProps> = memo((props) => {
   return (
     <Animated
       as="svg"
-      className={clsx(className, hasRotation && 'animate-spin-slow')}
+      className={cx(className, hasRotation && 'animate-spin-slow')}
       animated={animated}
       viewBox="0 0 1000 1000"
       fill="none"
