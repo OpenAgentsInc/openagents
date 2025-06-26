@@ -8,6 +8,7 @@ config({ path: join(__dirname, '../.env') })
 
 import { createPsionicApp } from '@openagentsinc/psionic'
 // import { createRelayPlugin } from '@openagentsinc/relay'
+import { createClaudeCodePlugin } from '@openagentsinc/relay'
 import { home } from './routes/home'
 import { agents } from './routes/agents'
 import { docs, docPage } from './routes/docs'
@@ -37,6 +38,7 @@ import {
 import { renderMarkdownRoute } from './routes/api/markdown'
 import { testRoute } from './routes/api/test'
 import { testToolResultDisplay } from './routes/test-tool-result-display'
+import { GET as claudeCodeRoute } from './routes/claude-code'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -86,6 +88,7 @@ app.route('/gfn', gfn)
 app.route('/slides', slides)
 app.route('/import', importRoute)
 app.route('/test-tool-result', testToolResultDisplay)
+app.route('/claude-code', claudeCodeRoute)
 
 // Mount API routes
 // Ollama API
@@ -124,6 +127,17 @@ app.get('/api/test', testRoute)
 // Test route for tool result rendering
 
 // Debug routes
+
+// Mount Claude Code WebSocket server
+app.elysia.use(createClaudeCodePlugin({
+  path: '/claude-code',
+  authRequired: false, // For testing
+  enableMetrics: true,
+  metricsPath: '/claude-code/metrics',
+  maxMachines: 100,
+  maxClients: 1000,
+  heartbeatInterval: 30000
+}))
 
 // Mount Nostr relay
 // TODO: Re-enable when WebSocket support is implemented in Effect

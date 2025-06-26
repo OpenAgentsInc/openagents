@@ -32,6 +32,27 @@ export {
   type RelayPluginConfig
 } from "./psionic-plugin.js"
 
+// Claude Code WebSocket server exports
+export {
+  ClaudeCodeWebSocketServer,
+  ClaudeCodeWebSocketServerLive,
+  ClaudeCodeServerError,
+  MachineNotFoundError,
+  SessionNotFoundError,
+  type ClientConnectionHandler,
+  type MachineConnectionHandler,
+  type ClaudeCodeServerStats,
+  type MachineMessage,
+  type ClientMessage as ClaudeClientMessage,
+  type ServerMessage
+} from "./claude-code-server.js"
+
+// Claude Code plugin exports
+export {
+  createClaudeCodePlugin,
+  type ClaudeCodePluginConfig
+} from "./claude-code-plugin.js"
+
 // Re-export some common types from nostr package
 import type { Schema } from "@openagentsinc/nostr"
 export type NostrEvent = Schema.NostrEvent

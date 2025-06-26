@@ -12,6 +12,12 @@ export * as bin from "./bin.js"
 export * as ClaudeCodeControlService from "./services/ClaudeCodeControlService.js"
 
 /**
+ * Machine-side client for Claude Code WebSocket server
+ * Connects local Claude Code instances to the remote control server
+ */
+export * as ClaudeCodeMachineClient from "./services/ClaudeCodeMachineClient.js"
+
+/**
  * Convex synchronization service for Overlord
  * Handles saving Claude Code conversations to Convex database
  * @since Phase 2
