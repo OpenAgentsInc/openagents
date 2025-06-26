@@ -41,17 +41,12 @@ const AnimatedBox = () => {
 
 const AnimatedXBox = () => {
   return (
-    <AnimatedX
-      animated={[
-        ['x', -50, 0],
-        ['y', -20, 0],
-        ['rotate', -180, 0],
-        ['opacity', 0.3, 1]
-      ]}
+    <Animated
+      animated={[['x', -50, 0], ['y', -20, 0], ['rotate', -180, 0], ['opacity', 0.3, 1]]}
       className="w-32 h-32 bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center"
     >
-      <Text className="text-purple-300">AnimatedX</Text>
-    </AnimatedX>
+      <Text className="text-purple-300">Animated Multi</Text>
+    </Animated>
   )
 }
 

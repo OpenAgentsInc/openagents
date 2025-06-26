@@ -463,13 +463,15 @@ export const IlluminatorSVGDemo: Story = {
           
           {/* Illuminated area */}
           <g clipPath="url(#hexagon)">
-            <IlluminatorSVG 
-              svgRef={svgRef} 
-              color="hsl(180 50% 50% / 30%)" 
-              size={200}
-              x={mousePos.x}
-              y={mousePos.y}
-            />
+            {svgRef.current && (
+              <IlluminatorSVG 
+                svgRef={svgRef as React.RefObject<SVGSVGElement>} 
+                color="hsl(180 50% 50% / 30%)" 
+                size={200}
+                x={mousePos.x}
+                y={mousePos.y}
+              />
+            )}
           </g>
           
           {/* Hexagon frame */}

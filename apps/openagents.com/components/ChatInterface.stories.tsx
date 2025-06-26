@@ -21,29 +21,10 @@ import {
   Loader2, CheckCircle2, AlertCircle, FunctionSquare
 } from 'lucide-react'
 
-const bleepsSettings = {
-  master: { volume: 0.3 },
-  categories: {
-    interaction: { volume: 0.5 },
-    notification: { volume: 0.7 }
-  },
-  bleeps: {
-    click: {
-      category: 'interaction',
-      sources: [{ src: '/sounds/click.webm', type: 'audio/webm' }]
-    },
-    type: {
-      category: 'interaction', 
-      sources: [{ src: '/sounds/type.webm', type: 'audio/webm' }]
-    },
-    notify: {
-      category: 'notification',
-      sources: [{ src: '/sounds/notify.webm', type: 'audio/webm' }]
-    }
-  }
-}
-
-const bleeps = createBleep(bleepsSettings)
+// Simple bleep configuration for chat sounds
+const simpleBleep = createBleep({
+  sources: [{ src: '/sounds/click.webm', type: 'audio/webm' }]
+})
 
 const meta = {
   title: 'Examples/Chat Interface',
@@ -308,7 +289,7 @@ export class ChatService extends Effect.Service<ChatService>()('ChatService', {
     }, [])
     
     return (
-      <BleepsProvider bleeps={bleeps}>
+      <BleepsProvider bleeps={{}}>
         <div className="min-h-screen bg-black p-4">
           <AnimatorGeneralProvider duration={{ enter: 0.5, exit: 0.3 }}>
             <Animator active={active}>
@@ -361,7 +342,6 @@ export class ChatService extends Effect.Service<ChatService>()('ChatService', {
                         type="text"
                         placeholder="Type your message..."
                         className="flex-1 bg-cyan-500/10 border border-cyan-500/30 px-4 py-3 text-cyan-300 placeholder-cyan-600"
-                        onFocus={() => bleeps.click?.play()}
                       />
                       <button className="px-6 py-3 bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 hover:bg-cyan-500/30 flex items-center gap-2">
                         <Send size={16} />
