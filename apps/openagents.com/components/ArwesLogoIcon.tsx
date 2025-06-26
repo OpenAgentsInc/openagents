@@ -10,7 +10,7 @@ interface ArwesLogoIconProps {
   hasRotation?: boolean;
 }
 
-const ArwesLogoIcon: FC<ArwesLogoIconProps> = memo((props) => {
+const ArwesLogoIcon = memo((props: ArwesLogoIconProps) => {
   const { className, animated, hasRotation = true } = props;
 
   return (
@@ -56,6 +56,6 @@ const ArwesLogoIcon: FC<ArwesLogoIconProps> = memo((props) => {
   );
 });
 
-ArwesLogoIcon.displayName = 'ArwesLogoIcon';
+(ArwesLogoIcon as any).displayName = 'ArwesLogoIcon';
 
 export { ArwesLogoIcon };

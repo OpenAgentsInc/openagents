@@ -33,7 +33,8 @@ export const NavSidebar = (): React.ReactElement => {
             'w-full flex items-center gap-3 px-3 py-2.5',
             'text-cyan-300 hover:text-cyan-100',
             'font-mono text-sm uppercase tracking-wider',
-            'transition-all duration-200'
+            'transition-all duration-200',
+            'cursor-pointer'
           )}
         >
           <Plus size={18} className="text-cyan-300" />

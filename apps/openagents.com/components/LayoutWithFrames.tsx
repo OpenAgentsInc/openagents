@@ -147,7 +147,8 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
                     className={cx(
                       'p-2 rounded',
                       'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
-                      'transition-all duration-200'
+                      'transition-all duration-200',
+                      'cursor-pointer'
                     )}
                     title={isAudioEnabled ? 'Mute sounds' : 'Enable sounds'}
                   >
