@@ -407,7 +407,7 @@ export const StatusMessages: Story = {
 
     return (
       <div className="w-96">
-        <AnimatedTextWrapper activeTime={2500} inactiveTime={500}>
+        <AnimatedTextWrapper>
           <Text 
             as="div"
             manager="sequence" 
