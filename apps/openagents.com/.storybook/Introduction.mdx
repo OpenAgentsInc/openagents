@@ -1,0 +1,71 @@
+import { Meta } from '@storybook/blocks';
+
+<Meta title="Introduction" />
+
+# OpenAgents Component Library
+
+Welcome to the OpenAgents Storybook! This is a living documentation of our UI components built with **Arwes**, **Next.js**, and **Tailwind CSS**.
+
+## 🎨 Design System
+
+Our design system is inspired by sci-fi interfaces and built on top of the Arwes framework, featuring:
+
+- **Futuristic UI elements** with animated borders and effects
+- **Berkeley Mono** font for consistent typography
+- **Cyan and yellow** color palette for a cyberpunk aesthetic
+- **Component-driven development** for consistency and reusability
+
+## 🧩 Component Categories
+
+### Core Components
+- **ButtonSimple** - Primary button component with Arwes frame effects
+- **ArwesLogoIcon** - Animated logo icon
+- **MenuItem** - Navigation menu items with active states
+
+### Layout Components
+- **Background** - Animated background with dots and puffs
+- **NavSidebar** - Sidebar navigation component
+- **LayoutWithFrames** - Main layout with header, sidebar, and content areas
+
+### Effects & Animation
+All components support the Arwes animation system with:
+- Enter/exit animations
+- Sound effects (bleeps)
+- Illuminator effects on hover
+- Frame decorations
+
+## 🚀 Getting Started
+
+To use these components in your code:
+
+```tsx
+import { ButtonSimple } from '@/components/ButtonSimple'
+import { Send } from 'lucide-react'
+
+function MyComponent() {
+  return (
+    <ButtonSimple onClick={handleClick}>
+      <Send size={14} />
+      <span>Send Message</span>
+    </ButtonSimple>
+  )
+}
+```
+
+## 🛠 Development
+
+This Storybook is configured with:
+- **Next.js 15** with App Router support
+- **TypeScript** for type safety
+- **Tailwind CSS v4** for styling
+- **Arwes React** components and theme
+
+## 📚 Resources
+
+- [Arwes Documentation](https://arwes.dev/)
+- [Component-Driven Development](https://www.componentdriven.org/)
+- [OpenAgents GitHub](https://github.com/OpenAgentsInc/openagents)
+
+---
+
+Browse the components in the sidebar to see them in action!

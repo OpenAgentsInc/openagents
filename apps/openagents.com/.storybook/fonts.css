@@ -1,0 +1,65 @@
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&display=swap');
+
+/* Berkeley Mono Local Fonts */
+@font-face {
+  font-family: 'Berkeley Mono';
+  src: url('/fonts/BerkeleyMono-Regular.woff2') format('woff2'),
+       url('/fonts/BerkeleyMono-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Berkeley Mono';
+  src: url('/fonts/BerkeleyMono-Italic.woff2') format('woff2'),
+       url('/fonts/BerkeleyMono-Italic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Berkeley Mono';
+  src: url('/fonts/BerkeleyMono-Bold.woff2') format('woff2'),
+       url('/fonts/BerkeleyMono-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Berkeley Mono';
+  src: url('/fonts/BerkeleyMono-BoldItalic.woff2') format('woff2'),
+       url('/fonts/BerkeleyMono-BoldItalic.woff') format('woff');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* CSS Variables */
+:root {
+  --font-titillium: 'Titillium Web', sans-serif;
+  --font-berkeley-mono: 'Berkeley Mono', monospace;
+}
+
+/* Apply fonts to utility classes */
+.font-sans {
+  font-family: var(--font-titillium), sans-serif;
+}
+
+.font-mono {
+  font-family: var(--font-berkeley-mono), monospace;
+}
+
+/* Default body font */
+body {
+  font-family: var(--font-berkeley-mono), monospace;
+}
+
+/* Make sure Arwes Text component uses the fonts */
+[class*="arwes-react-text"],
+[class*="arwes-text"] {
+  font-family: inherit;
+}
