@@ -167,6 +167,9 @@ export const DifferentStates: Story = {
 }
 
 export const AnimatedButtons: Story = {
+  args: {
+    children: 'Button'
+  },
   render: () => {
     const [active, setActive] = useState(true)
     

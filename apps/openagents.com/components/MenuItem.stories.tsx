@@ -101,13 +101,17 @@ export const Navigation: Story = {
                 return (
                   <Animator key={item.id} duration={{ delay: item.delay }}>
                     <Animated animated={[['y', -10, 0], ['opacity', 0, 1]]}>
-                      <MenuItem 
-                        active={selectedItem === item.id}
+                      <button
                         onClick={() => setSelectedItem(item.id)}
+                        className="bg-transparent border-0 p-0 cursor-pointer"
                       >
-                        <Icon size={14} />
-                        <span>{item.label}</span>
-                      </MenuItem>
+                        <MenuItem 
+                          active={selectedItem === item.id}
+                        >
+                          <Icon size={14} />
+                          <span>{item.label}</span>
+                        </MenuItem>
+                      </button>
                     </Animated>
                   </Animator>
                 )
@@ -151,14 +155,18 @@ export const VerticalMenu: Story = {
                 return (
                   <Animator key={item.id} duration={{ delay: item.delay }}>
                     <Animated animated={[['x', -20, 0], ['opacity', 0, 1]]}>
-                      <MenuItem 
-                        active={selectedItem === item.id}
-                        className="justify-start"
+                      <button
                         onClick={() => setSelectedItem(item.id)}
+                        className="bg-transparent border-0 p-0 cursor-pointer w-full text-left"
                       >
-                        <Icon size={14} />
-                        <span>{item.label}</span>
-                      </MenuItem>
+                        <MenuItem 
+                          active={selectedItem === item.id}
+                          className="justify-start"
+                        >
+                          <Icon size={14} />
+                          <span>{item.label}</span>
+                        </MenuItem>
+                      </button>
                     </Animated>
                   </Animator>
                 )
@@ -201,12 +209,16 @@ export const IconOnly: Story = {
                 return (
                   <Animator key={item.id} duration={{ delay: item.delay }}>
                     <Animated animated={[['scale', 0.8, 1], ['opacity', 0, 1]]}>
-                      <MenuItem 
-                        active={selectedItem === item.id}
+                      <button
                         onClick={() => setSelectedItem(item.id)}
+                        className="bg-transparent border-0 p-0 cursor-pointer"
                       >
-                        <Icon size={16} />
-                      </MenuItem>
+                        <MenuItem 
+                          active={selectedItem === item.id}
+                        >
+                          <Icon size={16} />
+                        </MenuItem>
+                      </button>
                     </Animated>
                   </Animator>
                 )
@@ -220,6 +232,9 @@ export const IconOnly: Story = {
 }
 
 export const AnimatedTransitions: Story = {
+  args: {
+    children: 'Menu Item'
+  },
   render: () => {
     const [active, setActive] = useState(true)
     
