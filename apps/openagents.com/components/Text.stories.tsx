@@ -82,6 +82,56 @@ export const PlainText: Story = {
   ),
 }
 
+// Test font loading
+export const FontTest: Story = {
+  args: {
+    children: '',
+  },
+  render: () => (
+    <div style={{ padding: '20px', backgroundColor: '#1a1a1a' }}>
+      <div style={{ marginBottom: '20px' }}>
+        <h3 className="text-white mb-2">Berkeley Mono (monospace):</h3>
+        <Text className="font-mono text-cyan-300">
+          0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz
+        </Text>
+        <br />
+        <Text className="font-mono text-cyan-300" style={{ fontWeight: 700 }}>
+          Bold: 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ
+        </Text>
+        <br />
+        <Text className="font-mono text-cyan-300" style={{ fontStyle: 'italic' }}>
+          Italic: The quick brown fox jumps over the lazy dog
+        </Text>
+      </div>
+      <div style={{ marginBottom: '20px' }}>
+        <h3 className="text-white mb-2">Titillium Web (sans-serif):</h3>
+        <Text className="font-sans text-yellow-300">
+          0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz
+        </Text>
+        <br />
+        <Text className="font-sans text-yellow-300" style={{ fontWeight: 300 }}>
+          Light: The quick brown fox jumps over the lazy dog
+        </Text>
+        <br />
+        <Text className="font-sans text-yellow-300" style={{ fontWeight: 600 }}>
+          SemiBold: The quick brown fox jumps over the lazy dog
+        </Text>
+        <br />
+        <Text className="font-sans text-yellow-300" style={{ fontWeight: 700 }}>
+          Bold: THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG
+        </Text>
+      </div>
+      <div>
+        <h3 className="text-white mb-2">Font Info:</h3>
+        <div className="text-gray-400 font-mono text-sm">
+          <div>Berkeley Mono CSS Var: {getComputedStyle(document.documentElement).getPropertyValue('--font-berkeley-mono') || 'NOT SET'}</div>
+          <div>Titillium CSS Var: {getComputedStyle(document.documentElement).getPropertyValue('--font-titillium') || 'NOT SET'}</div>
+        </div>
+      </div>
+    </div>
+  ),
+}
+
 // Test like in actual app
 export const LikeInApp: Story = {
   args: {

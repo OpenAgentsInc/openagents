@@ -2,6 +2,7 @@ import type { Preview } from '@storybook/nextjs'
 import React from 'react'
 import { AnimatorGeneralProvider, BleepsProvider } from '@arwes/react'
 import '../app/globals.css'
+import './fonts.css'
 
 // Import Arwes configuration
 import { animatorGeneralSettings } from '../config/animator'
@@ -59,7 +60,7 @@ const preview: Preview = {
     (Story) => (
       <AnimatorGeneralProvider {...animatorGeneralSettings}>
         <BleepsProvider {...bleepsSettings}>
-          <div style={{ fontFamily: 'var(--font-berkeley-mono), monospace' }}>
+          <div className="font-mono">
             <Story />
           </div>
         </BleepsProvider>
