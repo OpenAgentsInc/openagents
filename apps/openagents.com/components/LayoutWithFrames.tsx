@@ -127,7 +127,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
                     )}
                     title="View on GitHub"
                   >
-                    <Github width={20} height={20} />
+                    <Github width={19} height={19} />
                   </a>
                   <a
                     href="https://x.com/OpenAgentsInc"
@@ -140,7 +140,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
                     )}
                     title="Follow on X"
                   >
-                    <X width={20} height={20} />
+                    <X width={19} height={19} />
                   </a>
                   <button
                     onClick={() => setIsAudioEnabled(!isAudioEnabled)}
@@ -151,7 +151,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
                     )}
                     title={isAudioEnabled ? 'Mute sounds' : 'Enable sounds'}
                   >
-                    {isAudioEnabled ? <SoundHigh width={20} height={20} /> : <SoundOff width={20} height={20} />}
+                    {isAudioEnabled ? <SoundHigh width={19} height={19} /> : <SoundOff width={19} height={19} />}
                   </button>
                 </div>
                 

@@ -101,6 +101,7 @@ const HomePage = (): React.ReactElement => {
               'transition-all duration-200'
             )}
             disabled={isLoading}
+            autoFocus
           />
           <ButtonSimple
             type="submit"

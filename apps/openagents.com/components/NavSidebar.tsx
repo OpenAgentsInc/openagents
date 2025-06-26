@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cx, Text } from '@arwes/react';
-import { Home, MessageSquare, Settings, FileText, Users, Zap } from 'lucide-react';
+import { Home, MessageSquare, Settings, FileText, Users, Zap, Plus } from 'lucide-react';
 
 interface NavItem {
   href: string;
@@ -25,7 +25,26 @@ export const NavSidebar = (): React.ReactElement => {
   const pathname = usePathname();
 
   return (
-    <nav className="w-full">
+    <nav className="w-full h-full flex flex-col">
+      {/* New Chat at top */}
+      <div className="mb-8">
+        <button
+          className={cx(
+            'w-full flex items-center gap-3 px-3 py-2.5',
+            'text-cyan-300 hover:text-cyan-100',
+            'font-mono text-sm uppercase tracking-wider',
+            'transition-all duration-200'
+          )}
+        >
+          <Plus size={18} className="text-cyan-300" />
+          <Text>New Chat</Text>
+        </button>
+      </div>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Navigation at bottom */}
       <div className="space-y-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href || 
@@ -36,13 +55,12 @@ export const NavSidebar = (): React.ReactElement => {
               key={item.href} 
               href={item.href}
               className={cx(
-                'relative flex items-center gap-3 px-3 py-2.5 w-full',
-                'border border-cyan-500/20',
+                'flex items-center gap-3 px-3 py-2',
                 'font-mono text-xs uppercase tracking-wider',
                 'transition-all duration-200',
                 isActive 
-                  ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/40' 
-                  : 'text-cyan-500/80 hover:bg-cyan-500/10 hover:text-cyan-300 hover:border-cyan-500/40'
+                  ? 'text-cyan-300' 
+                  : 'text-cyan-500/60 hover:text-cyan-300'
               )}
             >
               <span className={cx(
@@ -52,31 +70,9 @@ export const NavSidebar = (): React.ReactElement => {
                 {item.icon}
               </span>
               <Text>{item.label}</Text>
-              {isActive && (
-                <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-cyan-300" />
-              )}
             </Link>
           );
         })}
-      </div>
-
-      {/* Separator */}
-      <div className="my-6 border-t border-cyan-500/20" />
-
-      {/* Quick Actions */}
-      <div className="space-y-1">
-        <button
-          className={cx(
-            'w-full flex items-center gap-3 px-3 py-2.5',
-            'border border-dashed border-cyan-500/30',
-            'hover:bg-cyan-500/10 hover:text-cyan-300 hover:border-cyan-500/50',
-            'font-mono text-xs uppercase tracking-wider text-cyan-500/80',
-            'text-left transition-all duration-200'
-          )}
-        >
-          <span className="text-cyan-500/60 text-lg flex-shrink-0">+</span>
-          <Text>New Chat</Text>
-        </button>
       </div>
     </nav>
   );
