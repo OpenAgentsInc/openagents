@@ -6,8 +6,6 @@ import {
   AnimatedX,
   Text,
   FrameCorners,
-  useAnimated,
-  useAnimatedX,
   cx
 } from '@arwes/react'
 import React, { useState, useEffect, useRef } from 'react'
@@ -29,59 +27,31 @@ const meta = {
 export default meta
 type Story = StoryObj
 
-// Component using useAnimated hook
+// Simple animated components using the Animated component directly
 const AnimatedBox = () => {
-  const elementRef = useRef<HTMLDivElement>(null)
-  const animated = useAnimated({
-    elementRef,
-    animated: {
-      initialStyle: {
-        opacity: 0,
-        transform: 'scale(0.8) rotate(-45deg)'
-      },
-      transitions: {
-        entering: {
-          opacity: [0, 1],
-          transform: ['scale(0.8) rotate(-45deg)', 'scale(1) rotate(0deg)']
-        },
-        exiting: {
-          opacity: [1, 0],
-          transform: ['scale(1) rotate(0deg)', 'scale(0.8) rotate(45deg)']
-        }
-      }
-    }
-  })
-  
   return (
-    <div 
-      ref={elementRef}
+    <Animated
+      animated={[['scale', 0.8, 1], ['opacity', 0, 1]]}
       className="w-32 h-32 bg-cyan-500/20 border-2 border-cyan-500 flex items-center justify-center"
     >
-      <Text className="text-cyan-300">useAnimated</Text>
-    </div>
+      <Text className="text-cyan-300">Animated</Text>
+    </Animated>
   )
 }
 
-// Component using useAnimatedX hook
 const AnimatedXBox = () => {
-  const elementRef = useRef<HTMLDivElement>(null)
-  const animatedX = useAnimatedX({
-    elementRef,
-    animated: [
-      ['x', -50, 50],
-      ['y', -20, 20],
-      ['rotate', -180, 180],
-      ['opacity', 0.3, 1]
-    ]
-  })
-  
   return (
-    <div 
-      ref={elementRef}
+    <AnimatedX
+      animated={[
+        ['x', -50, 0],
+        ['y', -20, 0],
+        ['rotate', -180, 0],
+        ['opacity', 0.3, 1]
+      ]}
       className="w-32 h-32 bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center"
     >
-      <Text className="text-purple-300">useAnimatedX</Text>
-    </div>
+      <Text className="text-purple-300">AnimatedX</Text>
+    </AnimatedX>
   )
 }
 
@@ -111,60 +81,45 @@ export const AnimatedXDemo: Story = {
               {/* Simple transform */}
               <div className="space-y-4">
                 <Text className="text-cyan-400">Simple Transform</Text>
-                <AnimatedX
-                  animated={[
-                    ['x', -30, 0],
-                    ['opacity', 0, 1]
-                  ]}
+                <Animated
+                  animated={[['x', -30, 0], ['opacity', 0, 1]]}
                   className="w-48 h-24 bg-cyan-500/10 border border-cyan-500/50 flex items-center justify-center"
                 >
                   <Text className="text-cyan-300">Slide In</Text>
-                </AnimatedX>
+                </Animated>
               </div>
               
               {/* Rotation */}
               <div className="space-y-4">
                 <Text className="text-purple-400">Rotation</Text>
-                <AnimatedX
-                  animated={[
-                    ['rotate', -360, 0],
-                    ['opacity', 0, 1]
-                  ]}
+                <Animated
+                  animated={[['rotate', -360, 0], ['opacity', 0, 1]]}
                   className="w-48 h-24 bg-purple-500/10 border border-purple-500/50 flex items-center justify-center"
                 >
                   <Text className="text-purple-300">Rotate In</Text>
-                </AnimatedX>
+                </Animated>
               </div>
               
               {/* Scale */}
               <div className="space-y-4">
                 <Text className="text-green-400">Scale</Text>
-                <AnimatedX
-                  animated={[
-                    ['scale', 0, 1],
-                    ['opacity', 0, 1]
-                  ]}
+                <Animated
+                  animated={[['scale', 0, 1], ['opacity', 0, 1]]}
                   className="w-48 h-24 bg-green-500/10 border border-green-500/50 flex items-center justify-center"
                 >
                   <Text className="text-green-300">Scale Up</Text>
-                </AnimatedX>
+                </Animated>
               </div>
               
               {/* Complex */}
               <div className="space-y-4">
                 <Text className="text-yellow-400">Complex Animation</Text>
-                <AnimatedX
-                  animated={[
-                    ['x', -50, 0],
-                    ['y', -50, 0],
-                    ['rotate', -180, 0],
-                    ['scale', 0.5, 1],
-                    ['opacity', 0, 1]
-                  ]}
+                <Animated
+                  animated={[['x', -50, 0], ['y', -50, 0], ['rotate', -180, 0], ['scale', 0.5, 1], ['opacity', 0, 1]]}
                   className="w-48 h-24 bg-yellow-500/10 border border-yellow-500/50 flex items-center justify-center"
                 >
                   <Text className="text-yellow-300">Multi Transform</Text>
-                </AnimatedX>
+                </Animated>
               </div>
             </div>
           </Animator>
@@ -174,7 +129,7 @@ export const AnimatedXDemo: Story = {
   },
 }
 
-export const AnimationHooks: Story = {
+export const AnimationComponents: Story = {
   render: () => {
     const [active, setActive] = useState(false)
     
@@ -187,10 +142,10 @@ export const AnimationHooks: Story = {
       <div className="space-y-8 p-8">
         <div>
           <Text as="h2" className="text-2xl text-cyan-300 mb-4">
-            Animation Hooks
+            Animation Components
           </Text>
           <Text className="text-cyan-500 mb-6">
-            useAnimated and useAnimatedX for custom components
+            Animated and AnimatedX components for transform animations
           </Text>
         </div>
         
@@ -205,12 +160,12 @@ export const AnimationHooks: Story = {
           <Animator active={active}>
             <div className="grid grid-cols-2 gap-8">
               <div className="space-y-4">
-                <Text className="text-cyan-400">useAnimated Hook</Text>
+                <Text className="text-cyan-400">Animated Component</Text>
                 <AnimatedBox />
               </div>
               
               <div className="space-y-4">
-                <Text className="text-purple-400">useAnimatedX Hook</Text>
+                <Text className="text-purple-400">AnimatedX Component</Text>
                 <AnimatedXBox />
               </div>
             </div>
@@ -254,11 +209,8 @@ export const SequentialAnimations: Story = {
           <div className="relative h-64">
             {phases.map((p, index) => (
               <Animator key={p.label} active={phase === index}>
-                <AnimatedX
-                  animated={[
-                    ['scale', 0.8, 1],
-                    ['opacity', 0, 1]
-                  ]}
+                <Animated
+                  animated={[['scale', 0.8, 1], ['opacity', 0, 1]]}
                   className={cx(
                     'absolute inset-0 flex flex-col items-center justify-center',
                     phase !== index && 'pointer-events-none'
@@ -278,7 +230,7 @@ export const SequentialAnimations: Story = {
                       </Text>
                     </div>
                   </div>
-                </AnimatedX>
+                </Animated>
               </Animator>
             ))}
           </div>
@@ -386,13 +338,8 @@ export const InteractiveTransforms: Story = {
           <div className="flex items-center justify-center">
             <AnimatorGeneralProvider duration={{ enter: 0.3, exit: 0.3 }}>
               <Animator active={true}>
-                <AnimatedX
-                  animated={[
-                    ['x', 0, transform.x],
-                    ['y', 0, transform.y],
-                    ['rotate', 0, transform.rotate],
-                    ['scale', 1, transform.scale]
-                  ]}
+                <Animated
+                  animated={[['x', 0, transform.x], ['y', 0, transform.y], ['rotate', 0, transform.rotate], ['scale', 1, transform.scale]]}
                   className="relative"
                 >
                   <FrameCorners
@@ -407,7 +354,7 @@ export const InteractiveTransforms: Story = {
                       TRANSFORM
                     </Text>
                   </div>
-                </AnimatedX>
+                </Animated>
               </Animator>
             </AnimatorGeneralProvider>
           </div>
@@ -437,15 +384,15 @@ export const ParallaxLayers: Story = {
             <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
               <Animator active={true}>
                 {/* Background layer */}
-                <AnimatedX
+                <Animated
                   animated={[['y', 0, scrollY * 0.2]]}
                   className="fixed inset-0 pointer-events-none"
                 >
                   <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/10 to-purple-500/10" />
-                </AnimatedX>
+                </Animated>
                 
                 {/* Mid layer */}
-                <AnimatedX
+                <Animated
                   animated={[['y', 0, scrollY * 0.5]]}
                   className="absolute top-0 left-0 right-0 pointer-events-none"
                 >
@@ -458,7 +405,7 @@ export const ParallaxLayers: Story = {
                       />
                     ))}
                   </div>
-                </AnimatedX>
+                </Animated>
                 
                 {/* Foreground content */}
                 <div className="relative z-10 p-8 space-y-32">
@@ -469,12 +416,9 @@ export const ParallaxLayers: Story = {
                   </div>
                   
                   {[1, 2, 3, 4].map((section) => (
-                    <AnimatedX
+                    <Animated
                       key={section}
-                      animated={[
-                        ['x', -50 + (scrollY / 10), 0],
-                        ['opacity', 0.5, 1]
-                      ]}
+                      animated={[['x', -50 + (scrollY / 10), 0], ['opacity', 0.5, 1]]}
                       className="relative"
                     >
                       <FrameCorners
@@ -492,7 +436,7 @@ export const ParallaxLayers: Story = {
                           Content moves at different speeds creating depth
                         </Text>
                       </div>
-                    </AnimatedX>
+                    </Animated>
                   ))}
                 </div>
               </Animator>

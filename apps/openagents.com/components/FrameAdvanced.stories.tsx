@@ -423,7 +423,7 @@ export const MixedFrameLayouts: Story = {
 
 export const IlluminatorSVGDemo: Story = {
   render: () => {
-    const svgRef = useRef<SVGSVGElement>(null)
+    const svgRef = useRef<SVGSVGElement | null>(null)
     const [mousePos, setMousePos] = useState({ x: 150, y: 100 })
     
     useEffect(() => {

@@ -12,7 +12,7 @@ import {
   GridLines,
   Dots,
   BleepsProvider,
-  createBleeps
+  createBleep
 } from '@arwes/react'
 import React, { useState, useEffect, useRef } from 'react'
 import { 
@@ -43,7 +43,7 @@ const bleepsSettings = {
   }
 }
 
-const bleeps = createBleeps(bleepsSettings)
+const bleeps = createBleep(bleepsSettings)
 
 const meta = {
   title: 'Examples/Chat Interface',
