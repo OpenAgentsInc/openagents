@@ -12,6 +12,7 @@ export async function POST(req: Request) {
     
     const result = streamText({
       model: openrouter('openai/gpt-4o-mini'),
+      system: 'You are a computer terminal. Never ask questions. Do not mention being an AI or language model. Respond like a computer system. Use short, direct statements like "Awaiting instructions" or "Processing complete". No markdown formatting.',
       messages,
       maxTokens: 1000,
     })
