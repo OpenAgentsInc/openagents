@@ -98,7 +98,7 @@ interface UseChatHelpers {
 // Message Part Renderer
 const MessagePartRenderer = ({ part, onToolResult }: { 
   part: TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart
-  onToolResult?: (toolCallId: string, result: any) => void 
+  onToolResult?: ({ toolCallId, result }: { toolCallId: string; result: any }) => void 
 }) => {
   switch (part.type) {
     case 'text':
@@ -167,7 +167,7 @@ const ToolInvocationRenderer = ({
   onToolResult 
 }: { 
   toolInvocation: ToolInvocation
-  onToolResult?: (toolCallId: string, result: any) => void 
+  onToolResult?: ({ toolCallId, result }: { toolCallId: string; result: any }) => void 
 }) => {
   const getStatusIcon = () => {
     switch (toolInvocation.state) {
@@ -218,7 +218,7 @@ const ToolInvocationRenderer = ({
       {toolInvocation.state === 'call' && (
         <ToolCallInterface 
           toolCall={toolInvocation}
-          onResult={(result) => onToolResult?.(toolInvocation.toolCallId, result)}
+          onResult={(result) => onToolResult?.({ toolCallId: toolInvocation.toolCallId, result })}
         />
       )}
 
@@ -346,7 +346,7 @@ const ChatMessage = ({
   onToolResult 
 }: { 
   message: UIMessage
-  onToolResult?: (toolCallId: string, result: any) => void 
+  onToolResult?: ({ toolCallId, result }: { toolCallId: string; result: any }) => void 
 }) => {
   const isUser = message.role === 'user'
   const Icon = isUser ? User : Bot
@@ -592,34 +592,38 @@ export const ToolInvocationStates: Story = {
       search: 'result'
     })
 
-    const toolInvocations: Record<string, ToolInvocation> = {
-      weather: {
-        state: activeStates.weather,
-        toolCallId: 'call_weather',
-        toolName: 'getWeather',
-        args: { city: 'San Francisco', unit: 'C' },
-        ...(activeStates.weather === 'result' && { 
-          result: 'The weather in San Francisco is sunny, 24°C' 
-        })
-      },
-      confirmation: {
-        state: activeStates.confirmation,
-        toolCallId: 'call_confirm',
-        toolName: 'askForConfirmation',
-        args: { message: 'Do you want to proceed with deleting 5 files?' },
-        ...(activeStates.confirmation === 'result' && { 
-          result: 'confirmed' 
-        })
-      },
-      search: {
-        state: activeStates.search,
-        toolCallId: 'call_search',
-        toolName: 'searchDatabase',
-        args: { query: 'user preferences', limit: 10 },
-        ...(activeStates.search === 'result' && { 
-          result: { results: ['Setting A', 'Setting B'], totalCount: 2 } 
-        })
+    const createToolInvocation = (tool: string): ToolInvocation => {
+      const baseCall = {
+        toolCallId: `call_${tool}`,
+        toolName: tool === 'weather' ? 'getWeather' : 
+                  tool === 'confirmation' ? 'askForConfirmation' : 'searchDatabase',
+        args: tool === 'weather' ? { city: 'San Francisco', unit: 'C' } :
+              tool === 'confirmation' ? { message: 'Do you want to proceed with deleting 5 files?' } :
+              { query: 'user preferences', limit: 10 }
       }
+
+      const state = activeStates[tool]
+      
+      if (state === 'result') {
+        return {
+          ...baseCall,
+          state: 'result',
+          result: tool === 'weather' ? 'The weather in San Francisco is sunny, 24°C' :
+                  tool === 'confirmation' ? 'confirmed' :
+                  { results: ['Setting A', 'Setting B'], totalCount: 2 }
+        }
+      }
+      
+      return {
+        ...baseCall,
+        state
+      }
+    }
+
+    const toolInvocations = {
+      weather: createToolInvocation('weather'),
+      confirmation: createToolInvocation('confirmation'), 
+      search: createToolInvocation('search')
     }
 
     const updateState = (tool: string, newState: ToolInvocation['state']) => {
