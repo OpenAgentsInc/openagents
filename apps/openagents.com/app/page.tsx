@@ -1,159 +1,108 @@
-"use client";
+'use client'
 
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { api } from "../convex/_generated/api";
-import Link from "next/link";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { useRouter } from "next/navigation";
+import React from 'react'
+import { Animator, Animated, BleepsOnAnimator, cx } from '@arwes/react'
+import Link from 'next/link'
+import { ArwesLogoType } from '@/components/ArwesLogoType'
+import { ButtonSimple } from '@/components/ButtonSimple'
+import { PageLayout } from '@/components/PageLayout'
+import { Rocket, FileText, Github } from 'lucide-react'
 
-export default function Home() {
+const Home = (): JSX.Element => {
   return (
-    <>
-      <header className="sticky top-0 z-10 bg-background p-4 border-b-2 border-slate-200 dark:border-slate-800 flex flex-row justify-between items-center">
-        Convex + Next.js + Convex Auth
-        <SignOutButton />
-      </header>
-      <main className="p-8 flex flex-col gap-8">
-        <h1 className="text-4xl font-bold text-center">
-          Convex + Next.js + Convex Auth
-        </h1>
-        <Content />
-      </main>
-    </>
-  );
-}
+    <PageLayout>
+      <Animator combine manager="sequenceReverse">
+        <BleepsOnAnimator transitions={{ entering: 'info' }} continuous />
 
-function SignOutButton() {
-  const { isAuthenticated } = useConvexAuth();
-  const { signOut } = useAuthActions();
-  const router = useRouter();
-  return (
-    <>
-      {isAuthenticated && (
-        <button
-          className="bg-slate-200 dark:bg-slate-800 text-foreground rounded-md px-2 py-1"
-          onClick={() =>
-            void signOut().then(() => {
-              router.push("/signin");
-            })
-          }
+        <Animated
+          as="main"
+          className={cx('flex flex-col justify-center items-center gap-4 h-full w-full p-6', 'md:gap-8')}
+          animated={[['y', 24, 0, 0]]}
         >
-          Sign out
-        </button>
-      )}
-    </>
-  );
+        <Animator>
+          <Animated as="h1" className="pb-2" title="OpenAgents">
+            <ArwesLogoType className="text-6xl md:text-8xl" />
+          </Animated>
+        </Animator>
+
+        <Animator>
+          <Animated
+            as="nav"
+            className="flex flex-row justify-center items-center gap-2 md:gap-4 mt-8"
+            animated={['flicker']}
+          >
+            <Link href="/signin">
+              <ButtonSimple
+                tabIndex={-1}
+                title="Get Started"
+                animated={[['x', -24, 0, 0]]}
+              >
+                <Rocket size={14} />
+                <span>Get Started</span>
+              </ButtonSimple>
+            </Link>
+
+            <Link href="/docs">
+              <ButtonSimple
+                tabIndex={-1}
+                title="Go to Documentation"
+                animated={[['x', -12, 0, 0]]}
+              >
+                <FileText size={14} />
+                <span>Documentation</span>
+              </ButtonSimple>
+            </Link>
+
+            <a href="https://github.com/OpenAgentsInc" target="_blank" rel="noopener noreferrer">
+              <ButtonSimple
+                tabIndex={-1}
+                title="Go to GitHub"
+                animated={[['x', 12, 0, 0]]}
+              >
+                <Github size={14} />
+                <span>GitHub</span>
+              </ButtonSimple>
+            </a>
+          </Animated>
+        </Animator>
+
+        {/* <Animator>
+          <Animated
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20 max-w-6xl mx-auto"
+            animated={['flicker']}
+          >
+            <div className="border border-cyan-500 p-6 bg-black/50 backdrop-blur">
+              <h3 className="text-xl font-bold mb-3 uppercase font-sans">
+                Lightning Native
+              </h3>
+              <p className="opacity-80 font-mono text-sm">
+                Agents that can send and receive Bitcoin payments instantly through the Lightning Network.
+              </p>
+            </div>
+
+            <div className="border border-cyan-500 p-6 bg-black/50 backdrop-blur">
+              <h3 className="text-xl font-bold mb-3 uppercase font-sans">
+                Nostr Protocol
+              </h3>
+              <p className="opacity-80 font-mono text-sm">
+                Decentralized communication between agents using the Nostr protocol for censorship resistance.
+              </p>
+            </div>
+
+            <div className="border border-cyan-500 p-6 bg-black/50 backdrop-blur">
+              <h3 className="text-xl font-bold mb-3 uppercase font-sans">
+                Effect System
+              </h3>
+              <p className="opacity-80 font-mono text-sm">
+                Built with Effect for robust error handling, async operations, and functional programming.
+              </p>
+            </div>
+          </Animated>
+        </Animator> */}
+      </Animated>
+    </Animator>
+    </PageLayout>
+  )
 }
 
-function Content() {
-  const { viewer, numbers } =
-    useQuery(api.myFunctions.listNumbers, {
-      count: 10,
-    }) ?? {};
-  const addNumber = useMutation(api.myFunctions.addNumber);
-
-  if (viewer === undefined || numbers === undefined) {
-    return (
-      <div className="mx-auto">
-        <p>loading... (consider a loading skeleton)</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-8 max-w-lg mx-auto">
-      <p>Welcome {viewer ?? "Anonymous"}!</p>
-      <p>
-        Click the button below and open this page in another window - this data
-        is persisted in the Convex cloud database!
-      </p>
-      <p>
-        <button
-          className="bg-foreground text-background text-sm px-4 py-2 rounded-md"
-          onClick={() => {
-            void addNumber({ value: Math.floor(Math.random() * 10) });
-          }}
-        >
-          Add a random number
-        </button>
-      </p>
-      <p>
-        Numbers:{" "}
-        {numbers?.length === 0
-          ? "Click the button!"
-          : (numbers?.join(", ") ?? "...")}
-      </p>
-      <p>
-        Edit{" "}
-        <code className="text-sm font-bold font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded-md">
-          convex/myFunctions.ts
-        </code>{" "}
-        to change your backend
-      </p>
-      <p>
-        Edit{" "}
-        <code className="text-sm font-bold font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded-md">
-          app/page.tsx
-        </code>{" "}
-        to change your frontend
-      </p>
-      <p>
-        See the{" "}
-        <Link href="/server" className="underline hover:no-underline">
-          /server route
-        </Link>{" "}
-        for an example of loading data in a server component
-      </p>
-      <div className="flex flex-col">
-        <p className="text-lg font-bold">Useful resources:</p>
-        <div className="flex gap-2">
-          <div className="flex flex-col gap-2 w-1/2">
-            <ResourceCard
-              title="Convex docs"
-              description="Read comprehensive documentation for all Convex features."
-              href="https://docs.convex.dev/home"
-            />
-            <ResourceCard
-              title="Stack articles"
-              description="Learn about best practices, use cases, and more from a growing
-            collection of articles, videos, and walkthroughs."
-              href="https://www.typescriptlang.org/docs/handbook/2/basic-types.html"
-            />
-          </div>
-          <div className="flex flex-col gap-2 w-1/2">
-            <ResourceCard
-              title="Templates"
-              description="Browse our collection of templates to get started quickly."
-              href="https://www.convex.dev/templates"
-            />
-            <ResourceCard
-              title="Discord"
-              description="Join our developer community to ask questions, trade tips & tricks,
-            and show off your projects."
-              href="https://www.convex.dev/community"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ResourceCard({
-  title,
-  description,
-  href,
-}: {
-  title: string;
-  description: string;
-  href: string;
-}) {
-  return (
-    <div className="flex flex-col gap-2 bg-slate-200 dark:bg-slate-800 p-4 rounded-md h-28 overflow-auto">
-      <a href={href} className="text-sm underline hover:no-underline">
-        {title}
-      </a>
-      <p className="text-xs">{description}</p>
-    </div>
-  );
-}
+export default Home
