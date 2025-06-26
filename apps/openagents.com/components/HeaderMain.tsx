@@ -1,130 +1,217 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Animated, Animator, cx, Text, FrameOctagon } from '@arwes/react';
+import { usePathname } from 'next/navigation';
+import { 
+  type AnimatedProp, 
+  Animated, 
+  Animator, 
+  cx, 
+  Text, 
+  FrameOctagon,
+  styleFrameClipOctagon,
+  Illuminator,
+  memo
+} from '@arwes/react';
 import { useConvexAuth } from "convex/react";
 import { ArwesLogoType } from './ArwesLogoType';
-import { Menu, Search, Bell, User } from 'lucide-react';
+import { ArwesLogoIcon } from './ArwesLogoIcon';
+import { Menu as MenuIcon, Settings, Bell, User } from 'lucide-react';
+import { Menu } from './Menu';
+import { MenuItem } from './MenuItem';
 
 interface HeaderMainProps {
   className?: string;
+  animated?: AnimatedProp;
   onMenuToggle?: () => void;
 }
 
-export const HeaderMain = (props: HeaderMainProps): JSX.Element => {
-  const { className, onMenuToggle } = props;
+const HEIGHT_CLASS = 'h-10 md:h-12';
+
+export const HeaderMain = memo((props: HeaderMainProps): JSX.Element => {
+  const { className, animated, onMenuToggle } = props;
   const { isAuthenticated } = useConvexAuth();
+  const pathname = usePathname();
+  const isIndex = pathname === '/';
 
   return (
-    <header className={cx('relative border-b border-cyan-500/30 bg-black/80 backdrop-blur-md', className)}>
-      <div className="relative">
-        {/* Background Frame */}
-        <Animator>
-          <Animated
-            role="presentation"
-            className="absolute inset-0 overflow-hidden opacity-30"
-            animated={['flicker']}
-          >
-            <FrameOctagon />
-          </Animated>
-        </Animator>
-
-        {/* Content */}
-        <div className="relative flex items-center justify-between h-16 px-4 lg:px-8">
-          {/* Left Section */}
-          <div className="flex items-center gap-4">
-            {/* Mobile Menu Toggle */}
-            <button
-              onClick={onMenuToggle}
-              className="lg:hidden text-cyan-500 hover:text-cyan-300 transition-colors"
-            >
-              <Menu size={24} />
-            </button>
-
-            {/* Logo */}
-            <Link href="/" className="flex items-center">
-              <Animator>
-                <ArwesLogoType className="text-xl" />
-              </Animator>
-            </Link>
-          </div>
-
-          {/* Center Section - Search */}
-          <div className="hidden md:flex flex-1 max-w-xl mx-8">
-            <Animator>
+    <Animated
+      as="header"
+      className={cx('flex justify-center items-center select-none', className)}
+      animated={animated}
+    >
+      <div className={cx('flex mx-auto p-2 w-full max-w-screen-3xl', 'md:px-4', 'xl:py-4')}>
+        <div className={cx('relative flex-1 flex px-4')}>
+          {/* BACKGROUND */}
+          {!isIndex && (
+            <Animator merge>
               <Animated
-                className={cx(
-                  'relative w-full group',
-                  'border border-cyan-500/30 rounded',
-                  'hover:border-cyan-500/50 transition-colors'
-                )}
+                role="presentation"
+                className="absolute inset-0 overflow-hidden"
+                style={{
+                  clipPath: styleFrameClipOctagon({ squareSize: 8 })
+                }}
                 animated={['flicker']}
               >
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cyan-500/50" size={18} />
-                <input
-                  type="search"
-                  placeholder="Search agents, docs, commands..."
-                  className={cx(
-                    'w-full py-2 pl-10 pr-4 bg-transparent',
-                    'text-cyan-300 placeholder-cyan-500/50',
-                    'font-mono text-sm',
-                    'focus:outline-none focus:ring-1 focus:ring-cyan-500/50 rounded'
-                  )}
+                <FrameOctagon
+                  style={{
+                    '--arwes-frames-bg-color': 'hsla(180, 69%, 15%, 0.1)',
+                    '--arwes-frames-line-color': 'hsla(180, 69%, 15%, 0.5)'
+                  }}
+                  squareSize={8}
+                />
+                <Illuminator
+                  color="hsla(180, 69%, 25%, 0.1)"
+                  size={400}
                 />
               </Animated>
             </Animator>
-          </div>
+          )}
 
-          {/* Right Section */}
-          <div className="flex items-center gap-4">
+          {/* CONTENT */}
+          <div className="relative flex-1 flex flex-row justify-between items-center">
+            {/* LEFT PANEL */}
             <Animator combine manager="stagger">
-              {/* Notifications */}
-              <Animator>
-                <Animated
-                  as="button"
-                  className="relative text-cyan-500 hover:text-cyan-300 transition-colors"
-                  animated={['flicker']}
+              <Animated className="flex flex-row gap-4" animated={[['x', 16, 0, 0]]}>
+                <Link 
+                  className="transition-opacity ease-out duration-200 opacity-60 hover:opacity-100"
+                  href="/" 
+                  onClick={() => {}}
                 >
-                  <Bell size={20} />
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
-                </Animated>
-              </Animator>
-
-              {/* User Menu */}
-              <Animator>
-                {isAuthenticated ? (
-                  <Animated
-                    as="button"
-                    className={cx(
-                      'flex items-center gap-2 px-3 py-1.5 rounded',
-                      'border border-cyan-500/30 hover:border-cyan-500/50',
-                      'text-cyan-500 hover:text-cyan-300 transition-all'
-                    )}
-                    animated={['flicker']}
+                  <h1
+                    className={cx('flex flex-row justify-center items-center gap-2', HEIGHT_CLASS)}
+                    title="OpenAgents"
                   >
-                    <User size={18} />
-                    <Text className="hidden sm:block font-mono text-sm">Profile</Text>
-                  </Animated>
-                ) : (
-                  <Link href="/signin">
-                    <Animated
-                      className={cx(
-                        'flex items-center gap-2 px-3 py-1.5 rounded',
-                        'border border-cyan-500/30 hover:border-cyan-500/50',
-                        'text-cyan-500 hover:text-cyan-300 transition-all'
-                      )}
-                      animated={['flicker']}
+                    <Animator>
+                      <ArwesLogoIcon
+                        className={cx('w-5 h-5 md:w-6 md:h-6')}
+                        animated={['flicker']}
+                      />
+                    </Animator>
+
+                    <Animator
+                      merge
+                      condition={!isIndex}
+                      unmountOnExited
+                      unmountOnDisabled={isIndex}
                     >
-                      <Text className="font-mono text-sm uppercase">Sign In</Text>
-                    </Animated>
-                  </Link>
-                )}
+                      <ArwesLogoType className="h-3 md:h-4" animated={['flicker']} />
+                    </Animator>
+                  </h1>
+                </Link>
+
+                <Animator
+                  combine
+                  manager="stagger"
+                  condition={!isIndex}
+                  unmountOnExited
+                  unmountOnDisabled={isIndex}
+                >
+                  <Menu className={HEIGHT_CLASS}>
+                    <Animator>
+                      <MenuItem active={pathname === '/'} animated={['flicker']}>
+                        <Link href="/" title="Go to Home">
+                          <span className="hidden md:block">Home</span>
+                        </Link>
+                      </MenuItem>
+                    </Animator>
+                    <Animator>
+                      <MenuItem active={pathname.startsWith('/chat')} animated={['flicker']}>
+                        <Link href="/chat" title="Go to Chat">
+                          <span className="hidden md:block">Chat</span>
+                        </Link>
+                      </MenuItem>
+                    </Animator>
+                    <Animator>
+                      <MenuItem active={pathname.startsWith('/agents')} animated={['flicker']}>
+                        <Link href="/agents" title="Go to Agents">
+                          <span className="hidden md:block">Agents</span>
+                        </Link>
+                      </MenuItem>
+                    </Animator>
+                    <Animator>
+                      <MenuItem active={pathname.startsWith('/playground')} animated={['flicker']}>
+                        <Link href="/playground" title="Go to Playground">
+                          <span className="hidden md:block">Playground</span>
+                        </Link>
+                      </MenuItem>
+                    </Animator>
+                  </Menu>
+                </Animator>
+              </Animated>
+            </Animator>
+
+            {/* RIGHT PANEL */}
+            <Animator combine manager="switch">
+              <Animator
+                combine
+                manager="staggerReverse"
+              >
+                <Animated
+                  as="nav"
+                  className="flex flex-row gap-4"
+                  animated={[['x', -8, 0, 0]]}
+                >
+                  <Menu className={HEIGHT_CLASS}>
+                    <Animator>
+                      <MenuItem animated={['flicker']}>
+                        <button>
+                          <Settings />
+                        </button>
+                      </MenuItem>
+                    </Animator>
+                    {onMenuToggle && (
+                      <Animator>
+                        <MenuItem animated={['flicker']} className="lg:hidden">
+                          <button onClick={onMenuToggle}>
+                            <MenuIcon />
+                          </button>
+                        </MenuItem>
+                      </Animator>
+                    )}
+                  </Menu>
+
+                  <Menu className={cx(HEIGHT_CLASS, 'hidden lg:flex')}>
+                    <Animator>
+                      <MenuItem animated={['flicker']}>
+                        <a
+                          className="normal-case"
+                          href="https://github.com/OpenAgentsInc/openagents"
+                          target="github"
+                          title="View on GitHub"
+                        >
+                          v0.1.0
+                        </a>
+                      </MenuItem>
+                    </Animator>
+                  </Menu>
+
+                  <Menu className={HEIGHT_CLASS}>
+                    <Animator>
+                      <MenuItem animated={['flicker']}>
+                        <button
+                          title={isAuthenticated ? 'Profile' : 'Sign In'}
+                        >
+                          {isAuthenticated ? (
+                            <><User /> <span className="hidden md:block">Profile</span></>
+                          ) : (
+                            <Link href="/signin">
+                              <span className="uppercase">Sign In</span>
+                            </Link>
+                          )}
+                        </button>
+                      </MenuItem>
+                    </Animator>
+                  </Menu>
+                </Animated>
               </Animator>
             </Animator>
           </div>
         </div>
       </div>
-    </header>
+    </Animated>
   );
-};
+});
+
+HeaderMain.displayName = 'HeaderMain';

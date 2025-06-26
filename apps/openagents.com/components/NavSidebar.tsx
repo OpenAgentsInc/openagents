@@ -31,7 +31,7 @@ export const NavSidebar = (): JSX.Element => {
         
         <div className="mb-6">
           <Animated animated={['flicker']}>
-            <h2 className="text-cyan-500 font-mono text-xs uppercase tracking-wider mb-2 opacity-70">
+            <h2 className="text-cyan-500/60 font-mono text-xs uppercase tracking-wider mb-2">
               <Text>Navigation</Text>
             </h2>
           </Animated>
@@ -46,13 +46,13 @@ export const NavSidebar = (): JSX.Element => {
                 <Animated
                   className={cx(
                     'flex items-center gap-3 px-3 py-2 rounded transition-all duration-200',
-                    'hover:bg-cyan-500/10 hover:text-cyan-300',
-                    'font-mono text-sm uppercase tracking-wider',
-                    isActive ? 'bg-cyan-500/20 text-cyan-300' : 'text-cyan-500'
+                    'hover:bg-cyan-500/5 hover:text-cyan-300/80',
+                    'font-mono text-xs uppercase tracking-wider',
+                    isActive ? 'bg-cyan-500/10 text-cyan-300/70' : 'text-cyan-500/60'
                   )}
                   animated={['flicker']}
                 >
-                  <span className="opacity-70">{item.icon}</span>
+                  <span className="opacity-60">{item.icon}</span>
                   <Text>{item.label}</Text>
                 </Animated>
               </Link>
@@ -62,13 +62,13 @@ export const NavSidebar = (): JSX.Element => {
       </Animator>
 
       {/* Add a separator */}
-      <div className="my-6 border-t border-cyan-500/20" />
+      <div className="my-6 border-t border-cyan-500/10" />
 
       {/* Quick Actions */}
       <Animator combine manager="stagger" duration={{ stagger: 0.05 }}>
         <div className="mb-4">
           <Animated animated={['flicker']}>
-            <h2 className="text-cyan-500 font-mono text-xs uppercase tracking-wider mb-2 opacity-70">
+            <h2 className="text-cyan-500/60 font-mono text-xs uppercase tracking-wider mb-2">
               <Text>Quick Actions</Text>
             </h2>
           </Animated>
@@ -79,13 +79,13 @@ export const NavSidebar = (): JSX.Element => {
             as="button"
             className={cx(
               'w-full flex items-center gap-3 px-3 py-2 rounded transition-all duration-200',
-              'hover:bg-cyan-500/10 hover:text-cyan-300',
-              'font-mono text-sm uppercase tracking-wider text-cyan-500',
+              'hover:bg-cyan-500/5 hover:text-cyan-300/80',
+              'font-mono text-xs uppercase tracking-wider text-cyan-500/60',
               'text-left'
             )}
             animated={['flicker']}
           >
-            <span className="opacity-70">+</span>
+            <span className="opacity-60">+</span>
             <Text>New Chat</Text>
           </Animated>
         </Animator>

@@ -1,0 +1,56 @@
+"use client";
+
+import React, { type FC } from 'react';
+import { type AnimatedProp, Animated, memo } from '@arwes/react';
+import clsx from 'clsx';
+
+interface ArwesLogoIconProps {
+  className?: string;
+  animated?: AnimatedProp;
+  hasRotation?: boolean;
+}
+
+const ArwesLogoIcon: FC<ArwesLogoIconProps> = memo((props) => {
+  const { className, animated, hasRotation = true } = props;
+
+  return (
+    <Animated
+      as="svg"
+      className={clsx(className, hasRotation && 'animate-spin-slow')}
+      animated={animated}
+      viewBox="0 0 1000 1000"
+      fill="none"
+    >
+      <path
+        data-name="center"
+        fill="#00FFFF"
+        fillOpacity="0.8"
+        d="M470 470h60v60h-60z"
+      />
+      <path
+        data-name="middle"
+        fill="#009999"
+        fillOpacity="0.6"
+        d="M410 410h180v180h-180zM470 470h60v60h-60z"
+        fillRule="evenodd"
+      />
+      <path
+        data-name="out-bg"
+        fill="#003333"
+        fillOpacity="0.4"
+        d="M200 200h600v600h-600zM410 410v180h180v-180h-180z"
+        fillRule="evenodd"
+      />
+      <path
+        data-name="out"
+        fill="#00FFFF"
+        fillOpacity="0.8"
+        d="M200 200v100h100v-100h-100zM700 200v100h100v-100h-100zM200 700v100h100v-100h-100z"
+      />
+    </Animated>
+  );
+});
+
+ArwesLogoIcon.displayName = 'ArwesLogoIcon';
+
+export { ArwesLogoIcon };

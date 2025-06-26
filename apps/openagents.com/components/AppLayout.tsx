@@ -21,27 +21,43 @@ export const AppLayout = (props: AppLayoutProps): JSX.Element => {
   return (
     <AnimatorGeneralProvider {...animatorGeneralSettings}>
       <BleepsProvider {...bleepsSettings}>
-        <div className={cx('relative flex flex-col h-screen bg-black overflow-hidden', className)}>
+        <div 
+          className={cx('absolute inset-0 overflow-hidden flex flex-col', className)}
+          style={{
+            // ARWES frame colors
+            '--arwes-frames-bg-color': 'hsla(180, 69%, 15%, 0.15)',
+            '--arwes-frames-line-color': 'hsla(180, 69%, 15%, 0.8)',
+            '--arwes-frames-deco-color': 'hsla(180, 69%, 25%, 0.8)',
+            
+            // Scrollbar styling
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'hsla(180, 69%, 25%, 0.7) transparent'
+          }}
+        >
           {/* Background Effects */}
           <Animator combine>
-            <Background />
-          </Animator>
+            <Animator combine>
+              <Background />
+            </Animator>
 
-          {/* Main Layout Structure */}
-          <Animator combine manager="sequence">
-            <div className="relative flex-1 flex flex-col min-h-0">
-              {/* Header */}
-              <Animator>
-                <HeaderMain onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
-              </Animator>
+            {/* Main Layout Structure */}
+            <Animator combine manager="sequence">
+              <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
+                {/* Header */}
+                <Animator combine>
+                  <HeaderMain onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
+                </Animator>
 
-              {/* Content Area with Sidebars */}
-              <LayoutContent
-                leftSlot={<NavSidebar />}
-              >
-                {children}
-              </LayoutContent>
-            </div>
+                {/* Content Area with Sidebars */}
+                <div className="flex-1 flex min-w-0 min-h-0">
+                  <LayoutContent
+                    leftSlot={<NavSidebar />}
+                  >
+                    {children}
+                  </LayoutContent>
+                </div>
+              </div>
+            </Animator>
           </Animator>
 
           {/* Mobile Menu Overlay */}

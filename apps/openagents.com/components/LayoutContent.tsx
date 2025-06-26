@@ -22,7 +22,7 @@ export const LayoutContent = (props: LayoutContentProps): JSX.Element => {
             as="aside"
             className={cx(
               'hidden lg:block w-64 sticky top-0 h-screen',
-              'border-r border-cyan-500/30 bg-black/50'
+              'border-r border-cyan-500/10'
             )}
             animated={[['x', -20, 0, 0]]}
           >
@@ -53,7 +53,7 @@ export const LayoutContent = (props: LayoutContentProps): JSX.Element => {
             as="aside"
             className={cx(
               'hidden xl:block w-64 sticky top-0 h-screen',
-              'border-l border-cyan-500/30 bg-black/50'
+              'border-l border-cyan-500/10'
             )}
             animated={[['x', 20, 0, 0]]}
           >
