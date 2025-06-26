@@ -63,7 +63,7 @@ export const ErrorAlert: Story = {
           <AlertDemo>
             <FrameAlert variant="error" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   className="text-red-400 text-5xl mb-4"
                   animated={['flicker', ['y', 16, 0]]}
@@ -78,7 +78,7 @@ export const ErrorAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   as="p"
                   className="text-red-400/80"
@@ -110,7 +110,7 @@ export const WarningAlert: Story = {
           <AlertDemo>
             <FrameAlert variant="warning" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   className="text-orange-400 text-5xl mb-4"
                   animated={['flicker', ['y', 16, 0]]}
@@ -125,7 +125,7 @@ export const WarningAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   as="p"
                   className="text-orange-400/80"
@@ -157,7 +157,7 @@ export const SuccessAlert: Story = {
           <AlertDemo>
             <FrameAlert variant="success" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   className="text-green-400 text-5xl mb-4"
                   animated={['flicker', ['y', 16, 0]]}
@@ -172,7 +172,7 @@ export const SuccessAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   as="p"
                   className="text-green-400/80"
@@ -204,7 +204,7 @@ export const InfoAlert: Story = {
           <AlertDemo>
             <FrameAlert variant="info" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   className="text-cyan-400 text-5xl mb-4"
                   animated={['flicker', ['y', 16, 0]]}
@@ -219,7 +219,7 @@ export const InfoAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   as="p"
                   className="text-cyan-400/80"
@@ -324,7 +324,7 @@ export const FullScreenAlert: Story = {
           <Animator active={active}>
             <FrameAlert variant="error" />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   className="text-red-400 text-8xl mb-8"
                   animated={['flicker', ['y', 20, 0]]}
@@ -339,7 +339,7 @@ export const FullScreenAlert: Story = {
                 </Text>
               </Animator>
               
-              <Animator duration={{ delay: 0.1 }>
+              <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   as="p"
                   className="text-red-400/80 text-2xl mb-8"
