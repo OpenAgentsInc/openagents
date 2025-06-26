@@ -82,50 +82,72 @@ export const PlainText: Story = {
   ),
 }
 
-// Test font loading
+// Test font loading - Both fonts side by side
 export const FontTest: Story = {
   args: {
     children: '',
   },
   render: () => (
     <div style={{ padding: '20px', backgroundColor: '#1a1a1a' }}>
-      <div style={{ marginBottom: '20px' }}>
-        <h3 className="text-white mb-2">Berkeley Mono (monospace):</h3>
-        <Text className="font-mono text-cyan-300">
-          0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz
-        </Text>
-        <br />
-        <Text className="font-mono text-cyan-300" style={{ fontWeight: 700 }}>
-          Bold: 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ
-        </Text>
-        <br />
-        <Text className="font-mono text-cyan-300" style={{ fontStyle: 'italic' }}>
-          Italic: The quick brown fox jumps over the lazy dog
-        </Text>
+      <div className="grid grid-cols-2 gap-8">
+        {/* Berkeley Mono Column */}
+        <div>
+          <h3 className="text-white mb-4 font-bold">Berkeley Mono (monospace)</h3>
+          <div className="space-y-2">
+            <Text className="font-mono text-cyan-300" style={{ fontFamily: 'Berkeley Mono, monospace' }}>
+              ABCDEFGHIJKLMNOPQRSTUVWXYZ
+            </Text>
+            <Text className="font-mono text-cyan-300" style={{ fontFamily: 'Berkeley Mono, monospace' }}>
+              abcdefghijklmnopqrstuvwxyz
+            </Text>
+            <Text className="font-mono text-cyan-300" style={{ fontFamily: 'Berkeley Mono, monospace' }}>
+              0123456789 !@#$%^&*()
+            </Text>
+            <Text className="font-mono text-cyan-300" style={{ fontFamily: 'Berkeley Mono, monospace', fontWeight: 700 }}>
+              Bold: The quick brown fox
+            </Text>
+            <Text className="font-mono text-cyan-300" style={{ fontFamily: 'Berkeley Mono, monospace', fontStyle: 'italic' }}>
+              Italic: jumps over the lazy dog
+            </Text>
+          </div>
+        </div>
+
+        {/* Titillium Web Column */}
+        <div>
+          <h3 className="text-white mb-4 font-bold">Titillium Web (sans-serif)</h3>
+          <div className="space-y-2">
+            <Text className="font-sans text-yellow-300" style={{ fontFamily: 'Titillium Web, sans-serif' }}>
+              ABCDEFGHIJKLMNOPQRSTUVWXYZ
+            </Text>
+            <Text className="font-sans text-yellow-300" style={{ fontFamily: 'Titillium Web, sans-serif' }}>
+              abcdefghijklmnopqrstuvwxyz
+            </Text>
+            <Text className="font-sans text-yellow-300" style={{ fontFamily: 'Titillium Web, sans-serif' }}>
+              0123456789 !@#$%^&*()
+            </Text>
+            <Text className="font-sans text-yellow-300" style={{ fontFamily: 'Titillium Web, sans-serif', fontWeight: 300 }}>
+              Light: The quick brown fox
+            </Text>
+            <Text className="font-sans text-yellow-300" style={{ fontFamily: 'Titillium Web, sans-serif', fontWeight: 600 }}>
+              SemiBold: jumps over the
+            </Text>
+            <Text className="font-sans text-yellow-300" style={{ fontFamily: 'Titillium Web, sans-serif', fontWeight: 700 }}>
+              Bold: lazy dog
+            </Text>
+          </div>
+        </div>
       </div>
-      <div style={{ marginBottom: '20px' }}>
-        <h3 className="text-white mb-2">Titillium Web (sans-serif):</h3>
-        <Text className="font-sans text-yellow-300">
-          0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz
-        </Text>
-        <br />
-        <Text className="font-sans text-yellow-300" style={{ fontWeight: 300 }}>
-          Light: The quick brown fox jumps over the lazy dog
-        </Text>
-        <br />
-        <Text className="font-sans text-yellow-300" style={{ fontWeight: 600 }}>
-          SemiBold: The quick brown fox jumps over the lazy dog
-        </Text>
-        <br />
-        <Text className="font-sans text-yellow-300" style={{ fontWeight: 700 }}>
-          Bold: THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG
-        </Text>
-      </div>
-      <div>
-        <h3 className="text-white mb-2">Font Info:</h3>
-        <div className="text-gray-400 font-mono text-sm">
-          <div>Berkeley Mono CSS Var: {getComputedStyle(document.documentElement).getPropertyValue('--font-berkeley-mono') || 'NOT SET'}</div>
-          <div>Titillium CSS Var: {getComputedStyle(document.documentElement).getPropertyValue('--font-titillium') || 'NOT SET'}</div>
+
+      {/* Direct comparison */}
+      <div className="mt-8 space-y-4">
+        <h3 className="text-white font-bold">Direct Comparison:</h3>
+        <div className="space-y-2">
+          <Text className="text-cyan-300" style={{ fontFamily: 'Berkeley Mono, monospace', fontSize: '18px' }}>
+            Berkeley Mono: The future of digital agents is here
+          </Text>
+          <Text className="text-yellow-300" style={{ fontFamily: 'Titillium Web, sans-serif', fontSize: '18px' }}>
+            Titillium Web: The future of digital agents is here
+          </Text>
         </div>
       </div>
     </div>
