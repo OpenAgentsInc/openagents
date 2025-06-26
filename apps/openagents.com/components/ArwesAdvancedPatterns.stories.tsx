@@ -69,17 +69,17 @@ const AdvancedButton = memo(({
   children, 
   onClick 
 }: ButtonProps) => {
-  const frameRef = useRef<SVGSVGElement>(null)
+  const frameRef = useRef<SVGSVGElement | null>(null)
   const [isHovered, setIsHovered] = useState(false)
   
-  useFrameAssembler(frameRef)
+  useFrameAssembler(frameRef as React.RefObject<HTMLElement | SVGElement>)
   
   const handleClick = useCallback((event: MouseEvent<HTMLButtonElement>) => {
     onClick?.(event)
   }, [onClick])
   
   return (
-    <Animated
+    <Animated<HTMLButtonElement>
       as="button"
       className={cx(
         'relative inline-flex outline-none border-none bg-transparent cursor-pointer select-none',
@@ -101,14 +101,12 @@ const AdvancedButton = memo(({
         <Illuminator 
           size={120}
           color={theme.colors[color](3, { alpha: isHovered ? 0.3 : 0.1 })}
-          x={60} 
-          y={30}
         />
       </div>
       
       <FrameOctagon 
         elementRef={frameRef} 
-        squareSize="6px"
+        squareSize={6}
         style={{
           zIndex: 1,
           '--arwes-frames-line-color': theme.colors[color](5),
@@ -122,8 +120,6 @@ const AdvancedButton = memo(({
     </Animated>
   )
 })
-
-AdvancedButton.displayName = 'AdvancedButton'
 
 // Layout Switching System
 interface LayoutSwitcherProps {

@@ -52,28 +52,18 @@ const theme = {
 
 // Custom Frame component using useFrameAssembler
 const CustomFrame = memo(({ children }: { children: React.ReactNode }) => {
-  const frameRef = useRef<SVGSVGElement>(null)
-  useFrameAssembler(frameRef)
+  const frameRef = useRef<SVGSVGElement | null>(null)
+  useFrameAssembler(frameRef as React.RefObject<HTMLElement | SVGElement>)
   
   const frameSettings = {
     elements: [
       {
         name: 'line',
-        path: [
-          ['M', 10, 10],
-          ['h', '7%'],
-          ['l', 10, 10],
-          ['h', '7%']
-        ]
+        path: 'M 10 10 h 7% l 10 10 h 7%'
       },
       {
-        name: 'line',
-        path: [
-          ['M', '100%-10', 10],
-          ['h', '-7%'],
-          ['l', -10, 10],
-          ['h', '-7%']
-        ]
+        name: 'line', 
+        path: 'M calc(100% - 10px) 10 h -7% l -10 10 h -7%'
       }
     ]
   }
@@ -94,8 +84,6 @@ const CustomFrame = memo(({ children }: { children: React.ReactNode }) => {
     </div>
   )
 })
-
-CustomFrame.displayName = 'CustomFrame'
 
 // Sound automation demo
 const SoundDemo = () => {
@@ -374,8 +362,6 @@ export const IlluminatorDemo: Story = {
                   <Illuminator 
                     size={150}
                     color="hsla(180, 100%, 50%, 0.3)"
-                    x={mousePos.x}
-                    y={mousePos.y}
                   />
                   
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -528,13 +514,13 @@ export const UtilityFunctions: Story = {
                       
                       <div className="space-y-3">
                         <button
-                          onClick={() => setDemoClass(cx('demo-variant-a', { 'demo-active': true }))}
+                          onClick={() => setDemoClass(cx('demo-variant-a', 'demo-active'))}
                           className="px-4 py-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 hover:bg-cyan-500/30 mr-2"
                         >
                           Variant A
                         </button>
                         <button
-                          onClick={() => setDemoClass(cx('demo-variant-b', { 'demo-active': false }))}
+                          onClick={() => setDemoClass(cx('demo-variant-b'))}
                           className="px-4 py-2 bg-purple-500/20 text-purple-300 border border-purple-500/50 hover:bg-purple-500/30"
                         >
                           Variant B
