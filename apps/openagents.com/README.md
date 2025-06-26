@@ -1,46 +1,46 @@
-# openagents.com
+# Welcome to your Convex + Next.js + Convex Auth app
 
-The official OpenAgents website, built with Psionic hypermedia framework.
+This is a [Convex](https://convex.dev/) project created with [`npm create convex`](https://www.npmjs.com/package/create-convex).
 
-## Development
+After the initial setup (<2 minutes) you'll have a working full-stack app using:
 
-### Prerequisites
+- Convex as your backend (database, server logic)
+- [React](https://react.dev/) as your frontend (web page interactivity)
+- [Next.js](https://nextjs.org/) for optimized web hosting and page routing
+- [Tailwind](https://tailwindcss.com/) for building great looking accessible UI
+- [Convex Auth](https://labs.convex.dev/auth) for authentication
 
-- Bun runtime installed
-- Run `pnpm install` from the repository root
+## Get started
 
-### Running the development server
+If you just cloned this codebase and didn't use `npm create convex`, run:
 
-From the repository root:
-
-```bash
-pnpm --filter=@openagentsinc/openagents.com dev
+```
+npm install
+npm run dev
 ```
 
-Or from this directory:
+If you're reading this README on GitHub and want to use this template, run:
 
-```bash
-pnpm run dev
+```
+npm create convex@latest -- -t nextjs-convexauth
 ```
 
-The site will be available at http://localhost:3003
+## Learn more
 
-## Architecture
+To learn more about developing your project with Convex, check out:
 
-This is a Psionic application demonstrating:
+- The [Tour of Convex](https://docs.convex.dev/get-started) for a thorough introduction to Convex principles.
+- The rest of [Convex docs](https://docs.convex.dev/) to learn about all Convex features.
+- [Stack](https://stack.convex.dev/) for in-depth articles on advanced topics.
+- [Convex Auth docs](https://labs.convex.dev/auth) for documentation on the Convex Auth library.
 
-- Server-rendered hypermedia pages
-- Minimal client-side JavaScript
-- Real-time updates (coming soon with WebSocket integration)
-- Integration with OpenAgents SDK
+## Configuring other authentication methods
 
-## Pages
+To configure different authentication methods, see [Configuration](https://labs.convex.dev/auth/config) in the Convex Auth docs.
 
-- `/` - Landing page introducing OpenAgents
-- `/agents` - Agent marketplace (currently showing mock data)
-- `/docs` - Documentation and quick start guide
-- `/about` - Mission and technology overview
+## Join the community
 
-## Deployment
+Join thousands of developers building full-stack apps with Convex:
 
-Coming soon - this will be deployed as the main openagents.com website.
+- Join the [Convex Discord community](https://convex.dev/community) to get help in real-time.
+- Follow [Convex on GitHub](https://github.com/get-convex/), star and contribute to the open-source implementation of Convex.
