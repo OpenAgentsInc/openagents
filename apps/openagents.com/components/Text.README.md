@@ -57,11 +57,31 @@ The Text component is a core part of the Arwes design system, providing animated
 ## Best Practices
 
 1. **Always wrap in Animator/Animated** for proper animation lifecycle
-2. **Use monospace fonts** for technical/code content
-3. **Avoid `<br>` tags** with blinking effects
-4. **Keep decipher text short** - works best with brief messages
-5. **Use semantic HTML** with the `as` prop
-6. **Match color scheme** - cyan for primary, yellow for highlights, purple for AI
+2. **Use `as="div"`** when content contains block elements (h1-h6, p, div) to avoid HTML nesting errors
+3. **Use monospace fonts** for technical/code content
+4. **Avoid `<br>` tags** with blinking effects
+5. **Keep decipher text short** - works best with brief messages
+6. **Use semantic HTML** with the `as` prop
+7. **Match color scheme** - cyan for primary, yellow for highlights, purple for AI
+
+## Common Issues
+
+### HTML Nesting Errors
+If you see errors like "In HTML, `<p>` cannot be a descendant of `<p>`", use `as="div"`:
+
+```tsx
+// ❌ Wrong - causes nesting error
+<Text>
+  <h3>Title</h3>
+  <p>Content</p>
+</Text>
+
+// ✅ Correct
+<Text as="div">
+  <h3>Title</h3>
+  <p>Content</p>
+</Text>
+```
 
 ## Color Palette
 
