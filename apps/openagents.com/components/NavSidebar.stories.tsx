@@ -7,11 +7,6 @@ const meta = {
   component: NavSidebar,
   parameters: {
     layout: 'padded',
-    nextjs: {
-      navigation: {
-        pathname: '/',
-      },
-    },
   },
   tags: ['autodocs'],
 } satisfies Meta<typeof NavSidebar>
@@ -52,29 +47,32 @@ export const InContainer: Story = {
   ),
 }
 
-export const DifferentActiveRoutes: Story = {
+export const WithChatActive: Story = {
   parameters: {
-    docs: {
-      description: {
-        story: 'This shows how the sidebar would look with different active routes. In a real app, the active state is determined by the current route.',
+    nextjs: {
+      navigation: {
+        pathname: '/chat',
       },
     },
   },
   render: () => (
-    <div className="flex gap-4">
-      <div className="w-64 h-[600px] bg-black/50 rounded p-4">
-        <p className="text-cyan-300 text-xs mb-4">Active: Home</p>
-        <div className="h-full">
-          <NavSidebar />
-        </div>
-      </div>
-      
-      <div className="w-64 h-[600px] bg-black/50 rounded p-4">
-        <p className="text-cyan-300 text-xs mb-4">Active: Chat</p>
-        <div className="h-full">
-          <NavSidebar />
-        </div>
-      </div>
+    <div className="w-64 h-[600px] bg-black">
+      <NavSidebar />
+    </div>
+  ),
+}
+
+export const WithAgentsActive: Story = {
+  parameters: {
+    nextjs: {
+      navigation: {
+        pathname: '/agents',
+      },
+    },
+  },
+  render: () => (
+    <div className="w-64 h-[600px] bg-black">
+      <NavSidebar />
     </div>
   ),
 }

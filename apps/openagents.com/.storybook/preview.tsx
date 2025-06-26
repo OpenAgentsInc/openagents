@@ -7,6 +7,25 @@ import '../app/globals.css'
 import { animatorGeneralSettings } from '../config/animator'
 import { bleepsSettings } from '../config/bleeps'
 
+// Mock Next.js navigation
+const mockRouter = {
+  pathname: '/',
+  route: '/',
+  query: {},
+  asPath: '/',
+  push: () => Promise.resolve(true),
+  replace: () => Promise.resolve(true),
+  reload: () => {},
+  back: () => {},
+  prefetch: () => Promise.resolve(),
+  beforePopState: () => {},
+  events: {
+    on: () => {},
+    off: () => {},
+    emit: () => {},
+  },
+}
+
 const preview: Preview = {
   parameters: {
     controls: {
@@ -29,6 +48,12 @@ const preview: Preview = {
       ],
     },
     layout: 'padded',
+    nextjs: {
+      navigation: {
+        pathname: '/',
+      },
+      router: mockRouter,
+    },
   },
   decorators: [
     (Story) => (
