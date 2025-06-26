@@ -69,6 +69,9 @@ export const ActiveWithIcon: Story = {
 }
 
 export const Navigation: Story = {
+  args: {
+    children: 'Menu Item'
+  },
   render: () => (
     <nav className="bg-black/50 p-4 rounded">
       <ul className="flex gap-2">
@@ -98,6 +101,9 @@ export const Navigation: Story = {
 }
 
 export const VerticalMenu: Story = {
+  args: {
+    children: 'Menu Item'
+  },
   render: () => (
     <nav className="bg-black/50 p-4 rounded w-48">
       <ul className="flex flex-col gap-1">
@@ -127,6 +133,9 @@ export const VerticalMenu: Story = {
 }
 
 export const IconOnly: Story = {
+  args: {
+    children: 'Icon'
+  },
   render: () => (
     <nav className="bg-black/50 p-4 rounded">
       <ul className="flex gap-2">

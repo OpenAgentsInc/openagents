@@ -71,6 +71,9 @@ export const Large: Story = {
 }
 
 export const ButtonGroup: Story = {
+  args: {
+    children: 'Button'
+  },
   render: () => (
     <div className="flex gap-2">
       <ButtonSimple>
@@ -90,6 +93,9 @@ export const ButtonGroup: Story = {
 }
 
 export const DifferentStates: Story = {
+  args: {
+    children: 'Button'
+  },
   render: () => (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-4">
