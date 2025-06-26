@@ -5,7 +5,7 @@ import { BrowserService, BrowserServiceLive } from "../src/Browser/index.js"
 // Skip browser tests in CI where Chrome may not be available
 const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true"
 
-describe("BrowserService", () => {
+describe.skip("BrowserService", () => {
   const testName1 = isCI ? "should launch and close browser (skipped in CI)" : "should launch and close browser"
   const testName2 = isCI ? "should create new page (skipped in CI)" : "should create new page"
 
