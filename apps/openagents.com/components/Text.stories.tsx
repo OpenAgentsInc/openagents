@@ -23,9 +23,9 @@ const meta = {
     },
     as: {
       control: 'select',
-      options: ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'span'],
-      description: 'HTML element to render as',
-      defaultValue: 'p',
+      options: ['div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'],
+      description: 'HTML element to render as (use div to avoid nesting issues)',
+      defaultValue: 'div',
     },
     fixed: {
       control: 'boolean',
@@ -83,6 +83,7 @@ const AnimatedTextWrapper = ({
 export const Default: Story = {
   args: {
     children: 'The universe is a vast expanse of space and time.',
+    as: 'div',
   },
   render: (args) => (
     <AnimatedTextWrapper>
@@ -96,6 +97,7 @@ export const SequenceAnimation: Story = {
     manager: 'sequence',
     children: 'Characters appear one by one in sequence...',
     className: 'text-cyan-300',
+    as: 'div',
   },
   render: (args) => (
     <AnimatedTextWrapper duration={{ enter: 2, exit: 1 }}>
@@ -109,6 +111,7 @@ export const DecipherAnimation: Story = {
     manager: 'decipher',
     children: 'CLASSIFIED INFORMATION DECRYPTING...',
     className: 'font-mono text-yellow-300',
+    as: 'div',
   },
   render: (args) => (
     <AnimatedTextWrapper duration={{ enter: 1.5, exit: 0.5 }}>
@@ -147,7 +150,7 @@ export const HeadingStyles: Story = {
 export const ComplexContent: Story = {
   render: () => (
     <AnimatedTextWrapper duration={{ enter: 3, exit: 1 }}>
-      <Text fixed className="text-cyan-300 max-w-2xl">
+      <Text as="div" fixed className="text-cyan-300 max-w-2xl">
         <h3 className="text-xl font-bold mb-2">Advanced Neural Interface</h3>
         <p className="mb-2">
           The <strong>quantum processing unit</strong> operates at 
@@ -172,7 +175,7 @@ export const SideBySideComparison: Story = {
       <div className="flex-1">
         <h4 className="text-cyan-300 mb-2 font-mono text-sm">SEQUENCE</h4>
         <AnimatedTextWrapper>
-          <Text manager="sequence" className="text-cyan-300">
+          <Text as="div" manager="sequence" className="text-cyan-300">
             Characters appear one by one, creating a typewriter effect 
             with a blinking cursor at the end.
           </Text>
@@ -181,7 +184,7 @@ export const SideBySideComparison: Story = {
       <div className="flex-1">
         <h4 className="text-yellow-300 mb-2 font-mono text-sm">DECIPHER</h4>
         <AnimatedTextWrapper>
-          <Text manager="decipher" className="text-yellow-300 font-mono">
+          <Text as="div" manager="decipher" className="text-yellow-300 font-mono">
             All characters scramble and decrypt simultaneously into 
             the final message.
           </Text>
@@ -194,6 +197,7 @@ export const SideBySideComparison: Story = {
 export const CustomStyling: Story = {
   args: {
     children: 'Custom styled text with inline styles',
+    as: 'div',
     contentStyle: {
       background: 'linear-gradient(to right, #00ffff, #00ff00)',
       WebkitBackgroundClip: 'text',
@@ -230,17 +234,17 @@ export const ShortMessages: Story = {
   render: () => (
     <div className="space-y-4">
       <AnimatedTextWrapper activeTime={2000} inactiveTime={1000}>
-        <Text manager="decipher" className="text-cyan-300 font-mono text-2xl">
+        <Text as="div" manager="decipher" className="text-cyan-300 font-mono text-2xl">
           SYSTEM READY
         </Text>
       </AnimatedTextWrapper>
       <AnimatedTextWrapper activeTime={2000} inactiveTime={1000}>
-        <Text manager="decipher" className="text-yellow-300 font-mono text-2xl">
+        <Text as="div" manager="decipher" className="text-yellow-300 font-mono text-2xl">
           ACCESS GRANTED
         </Text>
       </AnimatedTextWrapper>
       <AnimatedTextWrapper activeTime={2000} inactiveTime={1000}>
-        <Text manager="decipher" className="text-red-400 font-mono text-2xl">
+        <Text as="div" manager="decipher" className="text-red-400 font-mono text-2xl">
           WARNING: LOW POWER
         </Text>
       </AnimatedTextWrapper>
@@ -254,7 +258,7 @@ export const FixedVsDynamic: Story = {
       <div>
         <h4 className="text-cyan-300 mb-2 font-mono text-sm">FIXED DURATION</h4>
         <AnimatedTextWrapper>
-          <Text fixed className="text-cyan-300">
+          <Text as="div" fixed className="text-cyan-300">
             This text has a fixed animation duration regardless of content length.
             The animation time is predetermined.
           </Text>
@@ -263,7 +267,7 @@ export const FixedVsDynamic: Story = {
       <div>
         <h4 className="text-yellow-300 mb-2 font-mono text-sm">DYNAMIC DURATION</h4>
         <AnimatedTextWrapper>
-          <Text className="text-yellow-300">
+          <Text as="div" className="text-yellow-300">
             This text adjusts its animation duration based on the content length.
             Longer text takes more time to animate.
           </Text>
@@ -278,6 +282,7 @@ export const CenteredText: Story = {
     manager: 'decipher',
     children: 'CENTERED DISPLAY',
     className: 'text-4xl font-bold text-cyan-300 text-center',
+    as: 'div',
     contentStyle: {
       textShadow: '0 0 20px rgba(0, 255, 255, 0.5)',
     },
@@ -312,6 +317,7 @@ export const StatusMessages: Story = {
       <div className="w-96">
         <AnimatedTextWrapper activeTime={2500} inactiveTime={500}>
           <Text 
+            as="div"
             manager="sequence" 
             className={cx('font-mono', messages[messageIndex].className)}
           >
@@ -327,7 +333,7 @@ export const Playground: Story = {
   args: {
     children: 'Experiment with different text animations and styles',
     manager: 'sequence',
-    as: 'p',
+    as: 'div',
     fixed: false,
     className: 'text-cyan-300',
   },
