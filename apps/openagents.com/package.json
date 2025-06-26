@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.81",
+    "arwes": "1.0.0-next.25020502",
     "convex": "^1.23.0",
     "next": "15.2.3",
     "react": "^19.1.0",
