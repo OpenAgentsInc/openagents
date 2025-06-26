@@ -121,6 +121,9 @@ export const DecipherAnimation: Story = {
 }
 
 export const HeadingStyles: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <div className="space-y-4">
       <AnimatedTextWrapper>
@@ -148,6 +151,9 @@ export const HeadingStyles: Story = {
 }
 
 export const ComplexContent: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <AnimatedTextWrapper duration={{ enter: 3, exit: 1 }}>
       <Text as="div" fixed className="text-cyan-300 max-w-2xl">
@@ -170,6 +176,9 @@ export const ComplexContent: Story = {
 }
 
 export const SideBySideComparison: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <div className="flex gap-8">
       <div className="flex-1">
@@ -231,6 +240,9 @@ export const MonospaceCode: Story = {
 }
 
 export const ShortMessages: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <div className="space-y-4">
       <AnimatedTextWrapper activeTime={2000} inactiveTime={1000}>
@@ -253,6 +265,9 @@ export const ShortMessages: Story = {
 }
 
 export const FixedVsDynamic: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <div className="space-y-8">
       <div>
@@ -297,6 +312,9 @@ export const CenteredText: Story = {
 }
 
 export const StatusMessages: Story = {
+  args: {
+    children: '',
+  },
   render: () => {
     const [messageIndex, setMessageIndex] = useState(0)
     const messages = [

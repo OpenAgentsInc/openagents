@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs'
 import { ArwesLogoType } from './ArwesLogoType'
-import { Animator } from '@arwes/react'
+import { Animator, cx } from '@arwes/react'
 import { useState, useEffect } from 'react'
 
 const meta = {
@@ -48,6 +48,7 @@ export const CustomText: Story = {
 }
 
 export const WithAnimation: Story = {
+  args: {},
   render: () => {
     const [active, setActive] = useState(true)
 
@@ -63,8 +64,8 @@ export const WithAnimation: Story = {
         <ArwesLogoType 
           text="OpenAgents" 
           animated={[
-            ['opacity', active ? 1 : 0.3],
-            ['scale', active ? 1 : 0.95]
+            ['opacity', active ? 0.3 : 1, active ? 1 : 0.3],
+            ['scale', active ? 0.95 : 1, active ? 1 : 0.95]
           ]}
         />
       </Animator>
@@ -73,6 +74,7 @@ export const WithAnimation: Story = {
 }
 
 export const DifferentSizes: Story = {
+  args: {},
   render: () => (
     <div className="space-y-4">
       <ArwesLogoType text="Small Logo" className="text-sm" />
@@ -85,6 +87,7 @@ export const DifferentSizes: Story = {
 }
 
 export const ColorVariations: Story = {
+  args: {},
   render: () => (
     <div className="space-y-4">
       <ArwesLogoType text="Cyan Logo" className="text-cyan-300" />
@@ -97,6 +100,7 @@ export const ColorVariations: Story = {
 }
 
 export const InHeader: Story = {
+  args: {},
   render: () => (
     <header className="bg-black/90 backdrop-blur-md border-b border-cyan-500/30 p-4">
       <div className="flex items-center gap-4">
@@ -112,6 +116,7 @@ export const InHeader: Story = {
 }
 
 export const WithSubtitle: Story = {
+  args: {},
   render: () => (
     <div className="text-center">
       <ArwesLogoType text="OpenAgents" className="text-4xl mb-2" />
@@ -123,6 +128,7 @@ export const WithSubtitle: Story = {
 }
 
 export const AnimatedSequence: Story = {
+  args: {},
   render: () => {
     const [textIndex, setTextIndex] = useState(0)
     const texts = ['OpenAgents', 'ARWES UI', 'SCI-FI', 'FUTURE']
@@ -149,6 +155,7 @@ export const AnimatedSequence: Story = {
 }
 
 export const LoadingState: Story = {
+  args: {},
   render: () => {
     const [loading, setLoading] = useState(true)
 

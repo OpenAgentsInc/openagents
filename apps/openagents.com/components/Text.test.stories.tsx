@@ -23,6 +23,9 @@ export const BasicText: Story = {
 
 // Test with Animator
 export const WithAnimator: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <Animator root active duration={{ enter: 1, exit: 0.5 }}>
       <Text as="div">Text with Animator wrapper</Text>
@@ -32,6 +35,9 @@ export const WithAnimator: Story = {
 
 // Test with Animator and Animated
 export const WithAnimatorAndAnimated: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <Animator root active duration={{ enter: 1, exit: 0.5 }}>
       <Animated>
@@ -43,6 +49,9 @@ export const WithAnimatorAndAnimated: Story = {
 
 // Test sequence animation
 export const SequenceTest: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <Animator root active>
       <Animated>
@@ -56,6 +65,9 @@ export const SequenceTest: Story = {
 
 // Test decipher animation
 export const DecipherTest: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <Animator root active>
       <Animated>
@@ -69,6 +81,9 @@ export const DecipherTest: Story = {
 
 // Test with inline content
 export const InlineContent: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <Animator root active>
       <Animated>
@@ -80,6 +95,9 @@ export const InlineContent: Story = {
 
 // Test with paragraph
 export const ParagraphContent: Story = {
+  args: {
+    children: '',
+  },
   render: () => (
     <Animator root active>
       <Animated>

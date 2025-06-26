@@ -28,6 +28,9 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const DotsEffect: Story = {
+  args: {
+    children: <></>,
+  },
   render: () => (
     <BackgroundEffectsDemo>
       <Animator root active>
@@ -47,6 +50,9 @@ export const DotsEffect: Story = {
 }
 
 export const DotsInverted: Story = {
+  args: {
+    children: <></>,
+  },
   render: () => (
     <BackgroundEffectsDemo>
       <Animator root active>
@@ -67,6 +73,9 @@ export const DotsInverted: Story = {
 }
 
 export const PuffsEffect: Story = {
+  args: {
+    children: <></>,
+  },
   render: () => (
     <BackgroundEffectsDemo>
       <Animator root active duration={{ interval: 8 }}>
@@ -87,6 +96,9 @@ export const PuffsEffect: Story = {
 }
 
 export const IlluminatorEffect: Story = {
+  args: {
+    children: <></>,
+  },
   render: () => (
     <BackgroundEffectsDemo>
       <Animator root active>
@@ -113,6 +125,9 @@ export const IlluminatorEffect: Story = {
 }
 
 export const CombinedEffects: Story = {
+  args: {
+    children: <></>,
+  },
   render: () => (
     <BackgroundEffectsDemo>
       <Animator root active duration={{ interval: 8 }}>
@@ -161,6 +176,9 @@ export const CombinedEffects: Story = {
 }
 
 export const ColorVariations: Story = {
+  args: {
+    children: <></>,
+  },
   render: () => (
     <div className="grid grid-cols-2 gap-4 p-4 bg-black">
       <BackgroundEffectsDemo>
@@ -203,6 +221,9 @@ export const ColorVariations: Story = {
 }
 
 export const AnimatedCard: Story = {
+  args: {
+    children: <></>,
+  },
   render: () => (
     <div className="p-8 bg-black">
       <div className="relative max-w-md mx-auto rounded-lg overflow-hidden border border-cyan-500/30">
@@ -241,6 +262,9 @@ export const AnimatedCard: Story = {
 }
 
 export const LoadingAnimation: Story = {
+  args: {
+    children: <></>,
+  },
   render: () => (
     <BackgroundEffectsDemo>
       <Animator root active duration={{ enter: 1, exit: 0.5, interval: 4 }}>
