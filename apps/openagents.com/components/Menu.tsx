@@ -14,7 +14,7 @@ export const Menu = (props: MenuProps): React.ReactElement => {
   return (
     <ul 
       className={cx(
-        'flex flex-row gap-2 list-none m-0 p-0',
+        'flex flex-row items-center gap-1 list-none m-0 p-0',
         className
       )}
     >

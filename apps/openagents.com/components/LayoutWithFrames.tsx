@@ -15,6 +15,7 @@ import { ArwesLogoIcon } from './ArwesLogoIcon';
 import { ArwesLogoType } from './ArwesLogoType';
 import { NavSidebar } from './NavSidebar';
 import { Menu as MenuIcon } from 'lucide-react';
+import { Github, X, SoundHigh, SoundOff } from 'iconoir-react';
 
 interface LayoutWithFramesProps {
   children: ReactNode;
@@ -26,6 +27,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
   const { children } = props;
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -110,12 +112,57 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
                 </nav>
               </div>
 
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden text-cyan-500"
-              >
-                <MenuIcon size={24} />
-              </button>
+              {/* Right side icons */}
+              <div className="flex items-center gap-3">
+                {/* Desktop icons */}
+                <div className="hidden md:flex items-center gap-2">
+                  <a
+                    href="https://github.com/OpenAgentsInc/openagents"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cx(
+                      'p-2 rounded',
+                      'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
+                      'transition-all duration-200'
+                    )}
+                    title="View on GitHub"
+                  >
+                    <Github width={20} height={20} />
+                  </a>
+                  <a
+                    href="https://x.com/OpenAgentsInc"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cx(
+                      'p-2 rounded',
+                      'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
+                      'transition-all duration-200'
+                    )}
+                    title="Follow on X"
+                  >
+                    <X width={20} height={20} />
+                  </a>
+                  <button
+                    onClick={() => setIsAudioEnabled(!isAudioEnabled)}
+                    className={cx(
+                      'p-2 rounded',
+                      'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
+                      'transition-all duration-200'
+                    )}
+                    title={isAudioEnabled ? 'Mute sounds' : 'Enable sounds'}
+                  >
+                    {isAudioEnabled ? <SoundHigh width={20} height={20} /> : <SoundOff width={20} height={20} />}
+                  </button>
+                </div>
+                
+                {/* Mobile menu button */}
+                <button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="md:hidden text-cyan-500 hover:text-cyan-300 p-2"
+                >
+                  <MenuIcon size={24} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
