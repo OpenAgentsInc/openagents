@@ -1,7 +1,8 @@
 "use client";
 
-import React, { type FC } from 'react';
-import { type AnimatedProp, Animated, memo, cx } from '@arwes/react';
+import React from 'react';
+import { Animated, memo, cx } from '@arwes/react';
+import type { AnimatedProp } from '@arwes/react';
 
 interface ArwesLogoIconProps {
   className?: string;
