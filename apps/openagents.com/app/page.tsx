@@ -18,14 +18,6 @@ const HomePage = (): React.ReactElement => {
   return (
     <AppLayout>
       <div className="flex flex-col h-full">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold font-mono text-cyan-300">
-            <Text>OpenAgents Chat</Text>
-          </h1>
-          <div className="text-sm text-cyan-500/60 font-mono mt-1">
-            <Text>Interact with AI agents powered by OpenRouter</Text>
-          </div>
-        </div>
 
         <div className="flex-1 overflow-y-auto mb-4 border border-cyan-500/20 bg-black/30 p-4">
           {messages.length === 0 ? (
