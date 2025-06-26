@@ -215,7 +215,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
               />
             </div>
             
-            <div className="relative p-8 h-full overflow-y-auto">
+            <div className="relative h-full overflow-y-auto">
               {children}
             </div>
           </div>
