@@ -14,12 +14,16 @@ const ArwesLogoIcon: FC<ArwesLogoIconProps> = memo((props) => {
 
   return (
     <Animated
-      as="svg"
+      as="div"
       className={cx(className, hasRotation && 'animate-spin-slow')}
       animated={animated}
-      viewBox="0 0 1000 1000"
-      fill="none"
     >
+      <svg
+        viewBox="0 0 1000 1000"
+        fill="none"
+        width="100%"
+        height="100%"
+      >
       <path
         data-name="center"
         fill="#00FFFF"
@@ -46,6 +50,7 @@ const ArwesLogoIcon: FC<ArwesLogoIconProps> = memo((props) => {
         fillOpacity="0.8"
         d="M200 200v100h100v-100h-100zM700 200v100h100v-100h-100zM200 700v100h100v-100h-100z"
       />
+      </svg>
     </Animated>
   );
 });
