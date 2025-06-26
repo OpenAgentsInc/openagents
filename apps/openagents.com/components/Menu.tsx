@@ -8,7 +8,7 @@ interface MenuProps {
   children: ReactNode;
 }
 
-export const Menu = (props: MenuProps): JSX.Element => {
+export const Menu = (props: MenuProps): React.ReactElement => {
   const { className, children } = props;
 
   return (

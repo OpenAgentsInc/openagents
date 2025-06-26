@@ -5,18 +5,15 @@ import { AnimatorGeneralProvider, BleepsProvider, Animator, cx } from '@arwes/re
 import { animatorGeneralSettings } from '@/config/animator';
 import { bleepsSettings } from '@/config/bleeps';
 import { Background } from './Background';
-import { HeaderMain } from './HeaderMain';
-import { NavSidebar } from './NavSidebar';
-import { LayoutContent } from './LayoutContent';
+import { LayoutWithFrames } from './LayoutWithFrames';
 
 interface AppLayoutProps {
   children: ReactNode;
   className?: string;
 }
 
-export const AppLayout = (props: AppLayoutProps): JSX.Element => {
+export const AppLayout = (props: AppLayoutProps): React.ReactElement => {
   const { children, className } = props;
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <AnimatorGeneralProvider {...animatorGeneralSettings}>
@@ -24,7 +21,7 @@ export const AppLayout = (props: AppLayoutProps): JSX.Element => {
         <div 
           className={cx('absolute inset-0 overflow-hidden flex flex-col', className)}
           style={{
-            // ARWES frame colors
+            // @ts-expect-error CSS variables
             '--arwes-frames-bg-color': 'hsla(180, 69%, 15%, 0.15)',
             '--arwes-frames-line-color': 'hsla(180, 69%, 15%, 0.8)',
             '--arwes-frames-deco-color': 'hsla(180, 69%, 25%, 0.8)',
@@ -34,53 +31,15 @@ export const AppLayout = (props: AppLayoutProps): JSX.Element => {
             scrollbarColor: 'hsla(180, 69%, 25%, 0.7) transparent'
           }}
         >
-          {/* Background Effects */}
           <Animator combine>
             <Animator combine>
               <Background />
             </Animator>
 
-            {/* Main Layout Structure */}
-            <Animator combine manager="sequence">
-              <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
-                {/* Header */}
-                <Animator combine>
-                  <HeaderMain onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
-                </Animator>
-
-                {/* Content Area with Sidebars */}
-                <div className="flex-1 flex min-w-0 min-h-0">
-                  <LayoutContent
-                    leftSlot={<NavSidebar />}
-                  >
-                    {children}
-                  </LayoutContent>
-                </div>
-              </div>
-            </Animator>
+            <LayoutWithFrames>
+              {children}
+            </LayoutWithFrames>
           </Animator>
-
-          {/* Mobile Menu Overlay */}
-          {mobileMenuOpen && (
-            <div className="lg:hidden fixed inset-0 z-50 bg-black/95 backdrop-blur-md">
-              <div className="flex flex-col h-full">
-                <div className="flex items-center justify-between p-4 border-b border-cyan-500/30">
-                  <h2 className="text-cyan-500 font-mono text-sm uppercase tracking-wider">Menu</h2>
-                  <button
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="text-cyan-500 hover:text-cyan-300 transition-colors"
-                  >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  <NavSidebar />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </BleepsProvider>
     </AnimatorGeneralProvider>

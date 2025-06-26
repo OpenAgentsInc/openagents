@@ -10,7 +10,7 @@ interface MenuItemProps {
   children: ReactNode;
 }
 
-export const MenuItem = (props: MenuItemProps): JSX.Element => {
+export const MenuItem = (props: MenuItemProps): React.ReactElement => {
   const { className, active, animated, children } = props;
 
   return (

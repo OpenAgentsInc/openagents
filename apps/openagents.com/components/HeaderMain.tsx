@@ -29,7 +29,7 @@ interface HeaderMainProps {
 
 const HEIGHT_CLASS = 'h-10 md:h-12';
 
-export const HeaderMain = memo((props: HeaderMainProps): JSX.Element => {
+export const HeaderMain = memo((props: HeaderMainProps): React.ReactElement => {
   const { className, animated, onMenuToggle } = props;
   const { isAuthenticated } = useConvexAuth();
   const pathname = usePathname();
@@ -56,6 +56,7 @@ export const HeaderMain = memo((props: HeaderMainProps): JSX.Element => {
               >
                 <FrameOctagon
                   style={{
+                    // @ts-expect-error CSS variables
                     '--arwes-frames-bg-color': 'hsla(180, 69%, 15%, 0.1)',
                     '--arwes-frames-line-color': 'hsla(180, 69%, 15%, 0.5)'
                   }}
@@ -214,4 +215,4 @@ export const HeaderMain = memo((props: HeaderMainProps): JSX.Element => {
   );
 });
 
-HeaderMain.displayName = 'HeaderMain';
+(HeaderMain as any).displayName = 'HeaderMain';

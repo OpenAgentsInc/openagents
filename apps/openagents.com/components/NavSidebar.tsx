@@ -21,7 +21,7 @@ const navItems: NavItem[] = [
   { href: '/settings', label: 'Settings', icon: <Settings size={18} /> },
 ];
 
-export const NavSidebar = (): JSX.Element => {
+export const NavSidebar = (): React.ReactElement => {
   const pathname = usePathname();
 
   return (

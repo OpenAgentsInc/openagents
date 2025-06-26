@@ -10,7 +10,7 @@ interface LayoutContentProps {
   rightSlot?: ReactNode;
 }
 
-export const LayoutContent = (props: LayoutContentProps): JSX.Element => {
+export const LayoutContent = (props: LayoutContentProps): React.ReactElement => {
   const { className, children, leftSlot, rightSlot } = props;
 
   return (
