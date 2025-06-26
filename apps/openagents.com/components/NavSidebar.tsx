@@ -22,7 +22,7 @@ const navItems: NavItem[] = [
 ];
 
 export const NavSidebar = (): React.ReactElement => {
-  const pathname = usePathname();
+  const pathname = usePathname() || '/';
 
   return (
     <nav className="w-full h-full flex flex-col">
