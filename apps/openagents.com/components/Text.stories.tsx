@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs'
 import { Text, Animator, Animated, cx } from '@arwes/react'
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 
 const meta = {
   title: 'Arwes/Text',
@@ -82,6 +82,123 @@ export const PlainText: Story = {
   ),
 }
 
+// Test like in actual app
+export const LikeInApp: Story = {
+  args: {
+    children: '',
+  },
+  render: () => (
+    <div className="text-center text-cyan-500/40 py-16 font-mono text-sm">
+      <Text>Start a conversation...</Text>
+    </div>
+  ),
+}
+
+// Test Text component directly
+export const TextDirect: Story = {
+  args: {
+    children: '',
+  },
+  render: () => {
+    const TextDebug = () => {
+      const [mounted, setMounted] = React.useState(false);
+      
+      React.useEffect(() => {
+        setMounted(true);
+        console.log('TextDirect mounted');
+      }, []);
+      
+      return (
+        <div style={{ padding: '20px' }}>
+          <div style={{ color: 'white', marginBottom: '10px' }}>
+            Mounted: {mounted ? 'YES' : 'NO'}
+          </div>
+          <div style={{ border: '2px solid red', padding: '10px', marginBottom: '10px' }}>
+            <span style={{ color: 'white' }}>Direct Text (no wrapper):</span>
+            <br />
+            <Text>Default Text component</Text>
+          </div>
+          <div style={{ border: '2px solid green', padding: '10px', marginBottom: '10px' }}>
+            <span style={{ color: 'white' }}>Text with explicit props:</span>
+            <br />
+            <Text as="div" className="text-cyan-300" style={{ fontSize: '20px' }}>
+              Text with props
+            </Text>
+          </div>
+          <div style={{ border: '2px solid blue', padding: '10px' }}>
+            <span style={{ color: 'white' }}>Text in Animator (no Animated):</span>
+            <br />
+            <Animator root active={true}>
+              <Text as="div" className="text-yellow-300">
+                Text in Animator
+              </Text>
+            </Animator>
+          </div>
+        </div>
+      );
+    };
+    
+    return <TextDebug />;
+  },
+}
+
+// Force visible text
+export const ForceVisible: Story = {
+  args: {
+    children: '',
+  },
+  render: () => (
+    <div style={{ backgroundColor: '#000', padding: '20px' }}>
+      <Text style={{ color: '#fff' }}>White text on black</Text>
+      <br />
+      <Text style={{ color: '#0ff' }}>Cyan text on black</Text>
+      <br />
+      <AnimatedTextWrapper>
+        <Text style={{ color: '#ff0' }}>Yellow text in wrapper</Text>
+      </AnimatedTextWrapper>
+      <br />
+      <AnimatedTextWrapper>
+        <Text as="div" manager="sequence" style={{ color: '#0f0' }}>
+          Green sequence text
+        </Text>
+      </AnimatedTextWrapper>
+      <br />
+      <AnimatedTextWrapper>
+        <Text as="div" manager="decipher" style={{ color: '#f0f' }}>
+          MAGENTA DECIPHER TEXT
+        </Text>
+      </AnimatedTextWrapper>
+    </div>
+  ),
+}
+
+// Debug visibility issues
+export const DebugVisibility: Story = {
+  args: {
+    children: '',
+  },
+  render: () => (
+    <div style={{ padding: '20px', backgroundColor: '#333' }}>
+      <div style={{ color: 'white', marginBottom: '20px' }}>Regular HTML divs:</div>
+      <div style={{ color: 'cyan' }}>This is a regular cyan div</div>
+      <div className="text-cyan-300">This uses Tailwind class</div>
+      
+      <div style={{ color: 'white', marginTop: '20px', marginBottom: '20px' }}>Text components:</div>
+      <Text style={{ color: 'yellow' }}>Text with inline style</Text>
+      <br />
+      <Text className="text-yellow-300">Text with Tailwind class</Text>
+      
+      <div style={{ color: 'white', marginTop: '20px', marginBottom: '20px' }}>Inside AnimatedTextWrapper:</div>
+      <AnimatedTextWrapper>
+        <div style={{ color: 'red' }}>Regular div inside wrapper</div>
+        <Text style={{ color: 'green' }}>Text with inline style inside wrapper</Text>
+        <br />
+        <Text className="text-green-400">Text with Tailwind inside wrapper</Text>
+      </AnimatedTextWrapper>
+    </div>
+  ),
+}
+
 // Debug story with Animator
 export const DebugWithAnimator: Story = {
   args: {
@@ -101,7 +218,8 @@ export const DebugWithAnimator: Story = {
 }
 
 // Helper component for animated stories
-// NOTE: Text components need to be wrapped with Animated to run animations
+// NOTE: For Storybook visibility, we're not using Animator wrapper
+// In production, you would wrap with Animator for animations
 const AnimatedTextWrapper = ({ 
   children, 
   duration = { enter: 1, exit: 0.5 }
@@ -109,13 +227,8 @@ const AnimatedTextWrapper = ({
   children: React.ReactNode
   duration?: { enter: number, exit: number }
 }) => {
-  return (
-    <Animator root active={true} duration={duration}>
-      <Animated animated={['fade']}>
-        {children}
-      </Animated>
-    </Animator>
-  )
+  // For now, just return children directly to ensure visibility
+  return <>{children}</>
 }
 
 export const Default: Story = {
@@ -127,11 +240,13 @@ export const Default: Story = {
   render: (args) => {
     console.log('[Default Story] args:', args);
     return (
-      <AnimatedTextWrapper>
-        <Text as={args.as} className={args.className}>
-          {args.children}
-        </Text>
-      </AnimatedTextWrapper>
+      <div style={{ padding: '20px', backgroundColor: '#1a1a1a' }}>
+        <AnimatedTextWrapper>
+          <Text as={args.as} className={args.className}>
+            {args.children}
+          </Text>
+        </AnimatedTextWrapper>
+      </div>
     );
   },
 }
@@ -144,15 +259,19 @@ export const SequenceAnimation: Story = {
     as: 'div',
   },
   render: (args) => (
-    <AnimatedTextWrapper duration={{ enter: 2, exit: 1 }}>
-      <Text 
-        as={args.as} 
-        manager={args.manager}
-        className={args.className}
-      >
-        {args.children}
-      </Text>
-    </AnimatedTextWrapper>
+    <div style={{ backgroundColor: '#222', padding: '20px' }}>
+      <AnimatedTextWrapper duration={{ enter: 2, exit: 1 }}>
+        <Text 
+          as={args.as} 
+          manager={args.manager}
+          className={args.className}
+          contentClassName={args.className}
+          style={{ color: 'cyan' }}
+        >
+          {args.children}
+        </Text>
+      </AnimatedTextWrapper>
+    </div>
   ),
 }
 
@@ -164,15 +283,17 @@ export const DecipherAnimation: Story = {
     as: 'div',
   },
   render: (args) => (
-    <AnimatedTextWrapper duration={{ enter: 1.5, exit: 0.5 }}>
-      <Text 
-        as={args.as} 
-        manager={args.manager}
-        className={args.className}
-      >
-        {args.children}
-      </Text>
-    </AnimatedTextWrapper>
+    <div style={{ backgroundColor: '#1a1a1a', padding: '20px' }}>
+      <AnimatedTextWrapper duration={{ enter: 1.5, exit: 0.5 }}>
+        <Text 
+          as={args.as} 
+          manager={args.manager}
+          className={args.className}
+        >
+          {args.children}
+        </Text>
+      </AnimatedTextWrapper>
+    </div>
   ),
 }
 
@@ -181,7 +302,7 @@ export const HeadingStyles: Story = {
     children: '',
   },
   render: () => (
-    <div className="space-y-4">
+    <div className="space-y-4 p-6" style={{ backgroundColor: '#1a1a1a' }}>
       <AnimatedTextWrapper>
         <Text as="h1" className="text-4xl font-bold text-cyan-300">
           Heading Level 1
@@ -211,23 +332,25 @@ export const ComplexContent: Story = {
     children: '',
   },
   render: () => (
-    <AnimatedTextWrapper duration={{ enter: 3, exit: 1 }}>
-      <Text as="div" fixed className="text-cyan-300 max-w-2xl">
-        <h3 className="text-xl font-bold mb-2">Advanced Neural Interface</h3>
-        <p className="mb-2">
-          The <strong>quantum processing unit</strong> operates at 
-          <abbr title="Terahertz">THz</abbr> frequencies, enabling 
-          <em>real-time</em> neural pathway mapping.
-        </p>
-        <p>
-          For more information, visit the{' '}
-          <a href="#" className="text-yellow-300 underline">
-            technical documentation
-          </a>{' '}
-          or contact the research team.
-        </p>
-      </Text>
-    </AnimatedTextWrapper>
+    <div style={{ backgroundColor: '#1a1a1a', padding: '20px' }}>
+      <AnimatedTextWrapper duration={{ enter: 3, exit: 1 }}>
+        <Text as="div" fixed className="text-cyan-300 max-w-2xl">
+          <h3 className="text-xl font-bold mb-2">Advanced Neural Interface</h3>
+          <p className="mb-2">
+            The <strong>quantum processing unit</strong> operates at 
+            <abbr title="Terahertz">THz</abbr> frequencies, enabling 
+            <em>real-time</em> neural pathway mapping.
+          </p>
+          <p>
+            For more information, visit the{' '}
+            <a href="#" className="text-yellow-300 underline">
+              technical documentation
+            </a>{' '}
+            or contact the research team.
+          </p>
+        </Text>
+      </AnimatedTextWrapper>
+    </div>
   ),
 }
 
@@ -239,21 +362,25 @@ export const SideBySideComparison: Story = {
     <div className="flex gap-8">
       <div className="flex-1">
         <h4 className="text-cyan-300 mb-2 font-mono text-sm">SEQUENCE</h4>
-        <AnimatedTextWrapper>
-          <Text as="div" manager="sequence" className="text-cyan-300">
-            Characters appear one by one, creating a typewriter effect 
-            with a blinking cursor at the end.
-          </Text>
-        </AnimatedTextWrapper>
+        <div style={{ backgroundColor: 'rgba(0,255,255,0.05)', padding: '10px' }}>
+          <AnimatedTextWrapper>
+            <Text as="div" manager="sequence" className="text-cyan-300">
+              Characters appear one by one, creating a typewriter effect 
+              with a blinking cursor at the end.
+            </Text>
+          </AnimatedTextWrapper>
+        </div>
       </div>
       <div className="flex-1">
         <h4 className="text-yellow-300 mb-2 font-mono text-sm">DECIPHER</h4>
-        <AnimatedTextWrapper>
-          <Text as="div" manager="decipher" className="text-yellow-300 font-mono">
-            All characters scramble and decrypt simultaneously into 
-            the final message.
-          </Text>
-        </AnimatedTextWrapper>
+        <div style={{ backgroundColor: 'rgba(255,255,0,0.05)', padding: '10px' }}>
+          <AnimatedTextWrapper>
+            <Text as="div" manager="decipher" className="text-yellow-300 font-mono">
+              All characters scramble and decrypt simultaneously into 
+              the final message.
+            </Text>
+          </AnimatedTextWrapper>
+        </div>
       </div>
     </div>
   ),
@@ -272,14 +399,16 @@ export const CustomStyling: Story = {
     },
   },
   render: (args) => (
-    <AnimatedTextWrapper>
-      <Text 
-        as={args.as}
-        contentStyle={args.contentStyle}
-      >
-        {args.children}
-      </Text>
-    </AnimatedTextWrapper>
+    <div style={{ backgroundColor: '#000', padding: '20px' }}>
+      <AnimatedTextWrapper>
+        <Text 
+          as={args.as}
+          contentStyle={args.contentStyle}
+        >
+          {args.children}
+        </Text>
+      </AnimatedTextWrapper>
+    </div>
   ),
 }
 
@@ -294,15 +423,17 @@ export const MonospaceCode: Story = {
     className: 'font-mono text-green-400 whitespace-pre bg-black/50 p-4 rounded',
   },
   render: (args) => (
-    <AnimatedTextWrapper duration={{ enter: 2, exit: 0.5 }}>
-      <Text 
-        as={args.as}
-        manager={args.manager}
-        className={args.className}
-      >
-        {args.children}
-      </Text>
-    </AnimatedTextWrapper>
+    <div style={{ backgroundColor: '#0a0a0a', padding: '20px' }}>
+      <AnimatedTextWrapper duration={{ enter: 2, exit: 0.5 }}>
+        <Text 
+          as={args.as}
+          manager={args.manager}
+          className={args.className}
+        >
+          {args.children}
+        </Text>
+      </AnimatedTextWrapper>
+    </div>
   ),
 }
 
@@ -311,7 +442,7 @@ export const ShortMessages: Story = {
     children: '',
   },
   render: () => (
-    <div className="space-y-4">
+    <div className="space-y-4 p-6" style={{ backgroundColor: '#0a0a0a' }}>
       <AnimatedTextWrapper>
         <Text as="div" manager="decipher" className="text-cyan-300 font-mono text-2xl">
           SYSTEM READY
@@ -336,7 +467,7 @@ export const FixedVsDynamic: Story = {
     children: '',
   },
   render: () => (
-    <div className="space-y-8">
+    <div className="space-y-8 p-6" style={{ backgroundColor: '#1a1a1a' }}>
       <div>
         <h4 className="text-cyan-300 mb-2 font-mono text-sm">FIXED DURATION</h4>
         <AnimatedTextWrapper>
@@ -370,7 +501,7 @@ export const CenteredText: Story = {
     },
   },
   render: (args) => (
-    <div className="w-full max-w-lg">
+    <div className="w-full max-w-lg mx-auto p-8" style={{ backgroundColor: '#0a0a0a' }}>
       <AnimatedTextWrapper>
         <Text 
           as={args.as}
@@ -406,7 +537,7 @@ export const StatusMessages: Story = {
     }, [])
 
     return (
-      <div className="w-96">
+      <div className="w-96 p-6" style={{ backgroundColor: '#0a0a0a' }}>
         <AnimatedTextWrapper>
           <Text 
             as="div"
@@ -430,7 +561,7 @@ export const Playground: Story = {
     className: 'text-cyan-300',
   },
   render: (args) => (
-    <div className="min-w-[400px]">
+    <div className="min-w-[400px] p-6" style={{ backgroundColor: '#1a1a1a' }}>
       <AnimatedTextWrapper>
         <Text 
           as={args.as}
