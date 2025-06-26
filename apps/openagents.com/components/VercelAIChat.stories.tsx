@@ -673,7 +673,7 @@ export const ToolInvocationStates: Story = {
                     <ToolInvocationRenderer 
                       key={tool.toolCallId}
                       toolInvocation={tool}
-                      onToolResult={(toolCallId, result) => {
+                      onToolResult={({ toolCallId, result }) => {
                         console.log('Tool result:', toolCallId, result)
                       }}
                     />
