@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs'
-import { Text, Animator, Animated, cx } from '@arwes/react'
+import { Text, Animator, Animated, AnimatorGeneralProvider, cx } from '@arwes/react'
 import React, { useState, useEffect } from 'react'
 
 const meta = {
@@ -49,41 +49,9 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// Debug story to test basic rendering
-export const DebugBasic: Story = {
-  args: {
-    children: 'This text should be visible',
-    as: 'div',
-    className: 'text-white',
-  },
-  render: (args) => (
-    <div style={{ padding: '20px', background: 'rgba(255,255,255,0.1)' }}>
-      <div style={{ color: 'white', marginBottom: '10px' }}>
-        Debug info: args = {JSON.stringify(args, null, 2)}
-      </div>
-      <Text {...args} />
-    </div>
-  ),
-}
 
-// Test without any animation
-export const PlainText: Story = {
-  args: {
-    children: '',
-  },
-  render: () => (
-    <div style={{ padding: '20px', backgroundColor: '#222' }}>
-      <Text className="text-white">Plain text without animation</Text>
-      <br />
-      <Text as="div" className="text-cyan-300">Cyan text as div</Text>
-      <br />
-      <Text as="p" className="text-yellow-300">Yellow text as p</Text>
-    </div>
-  ),
-}
-
-// Test font loading - Both fonts side by side
-export const FontTest: Story = {
+// Font loading showcase - Both fonts side by side
+export const FontShowcase: Story = {
   args: {
     children: '',
   },
@@ -154,153 +122,37 @@ export const FontTest: Story = {
   ),
 }
 
-// Test like in actual app
-export const LikeInApp: Story = {
-  args: {
-    children: '',
-  },
-  render: () => (
-    <div className="text-center text-cyan-500/40 py-16 font-mono text-sm">
-      <Text>Start a conversation...</Text>
-    </div>
-  ),
-}
 
-// Test Text component directly
-export const TextDirect: Story = {
-  args: {
-    children: '',
-  },
-  render: () => {
-    const TextDebug = () => {
-      const [mounted, setMounted] = React.useState(false);
-      
-      React.useEffect(() => {
-        setMounted(true);
-        console.log('TextDirect mounted');
-      }, []);
-      
-      return (
-        <div style={{ padding: '20px' }}>
-          <div style={{ color: 'white', marginBottom: '10px' }}>
-            Mounted: {mounted ? 'YES' : 'NO'}
-          </div>
-          <div style={{ border: '2px solid red', padding: '10px', marginBottom: '10px' }}>
-            <span style={{ color: 'white' }}>Direct Text (no wrapper):</span>
-            <br />
-            <Text>Default Text component</Text>
-          </div>
-          <div style={{ border: '2px solid green', padding: '10px', marginBottom: '10px' }}>
-            <span style={{ color: 'white' }}>Text with explicit props:</span>
-            <br />
-            <Text as="div" className="text-cyan-300" style={{ fontSize: '20px' }}>
-              Text with props
-            </Text>
-          </div>
-          <div style={{ border: '2px solid blue', padding: '10px' }}>
-            <span style={{ color: 'white' }}>Text in Animator (no Animated):</span>
-            <br />
-            <Animator root active={true}>
-              <Text as="div" className="text-yellow-300">
-                Text in Animator
-              </Text>
-            </Animator>
-          </div>
-        </div>
-      );
-    };
-    
-    return <TextDebug />;
-  },
-}
-
-// Force visible text
-export const ForceVisible: Story = {
-  args: {
-    children: '',
-  },
-  render: () => (
-    <div style={{ backgroundColor: '#000', padding: '20px' }}>
-      <Text style={{ color: '#fff' }}>White text on black</Text>
-      <br />
-      <Text style={{ color: '#0ff' }}>Cyan text on black</Text>
-      <br />
-      <AnimatedTextWrapper>
-        <Text style={{ color: '#ff0' }}>Yellow text in wrapper</Text>
-      </AnimatedTextWrapper>
-      <br />
-      <AnimatedTextWrapper>
-        <Text as="div" manager="sequence" style={{ color: '#0f0' }}>
-          Green sequence text
-        </Text>
-      </AnimatedTextWrapper>
-      <br />
-      <AnimatedTextWrapper>
-        <Text as="div" manager="decipher" style={{ color: '#f0f' }}>
-          MAGENTA DECIPHER TEXT
-        </Text>
-      </AnimatedTextWrapper>
-    </div>
-  ),
-}
-
-// Debug visibility issues
-export const DebugVisibility: Story = {
-  args: {
-    children: '',
-  },
-  render: () => (
-    <div style={{ padding: '20px', backgroundColor: '#333' }}>
-      <div style={{ color: 'white', marginBottom: '20px' }}>Regular HTML divs:</div>
-      <div style={{ color: 'cyan' }}>This is a regular cyan div</div>
-      <div className="text-cyan-300">This uses Tailwind class</div>
-      
-      <div style={{ color: 'white', marginTop: '20px', marginBottom: '20px' }}>Text components:</div>
-      <Text style={{ color: 'yellow' }}>Text with inline style</Text>
-      <br />
-      <Text className="text-yellow-300">Text with Tailwind class</Text>
-      
-      <div style={{ color: 'white', marginTop: '20px', marginBottom: '20px' }}>Inside AnimatedTextWrapper:</div>
-      <AnimatedTextWrapper>
-        <div style={{ color: 'red' }}>Regular div inside wrapper</div>
-        <Text style={{ color: 'green' }}>Text with inline style inside wrapper</Text>
-        <br />
-        <Text className="text-green-400">Text with Tailwind inside wrapper</Text>
-      </AnimatedTextWrapper>
-    </div>
-  ),
-}
-
-// Debug story with Animator
-export const DebugWithAnimator: Story = {
-  args: {
-    children: '',
-  },
-  render: () => (
-    <div style={{ color: 'white', border: '1px solid red', padding: '20px' }}>
-      <div>Outside Animator: This should be visible</div>
-      <Animator root active={true}>
-        <div>Inside Animator: This should also be visible</div>
-        <Text as="div" className="text-cyan-300">
-          Text component: This is cyan text
-        </Text>
-      </Animator>
-    </div>
-  ),
-}
-
-// Helper component for animated stories
-// NOTE: For Storybook visibility, we're not using Animator wrapper
-// In production, you would wrap with Animator for animations
+// Helper component for animated stories using proper Arwes animation pattern
 const AnimatedTextWrapper = ({ 
   children, 
-  duration = { enter: 1, exit: 0.5 }
+  duration = { enter: 1, exit: 0.5 },
+  initialActive = false,
+  autoActivate = true,
+  activationDelay = 300
 }: { 
   children: React.ReactNode
   duration?: { enter: number, exit: number }
+  initialActive?: boolean
+  autoActivate?: boolean
+  activationDelay?: number
 }) => {
-  // For now, just return children directly to ensure visibility
-  return <>{children}</>
+  const [active, setActive] = useState(initialActive)
+  
+  useEffect(() => {
+    if (autoActivate && !initialActive) {
+      const timer = setTimeout(() => setActive(true), activationDelay)
+      return () => clearTimeout(timer)
+    }
+  }, [autoActivate, initialActive, activationDelay])
+  
+  return (
+    <AnimatorGeneralProvider duration={duration}>
+      <Animator active={active}>
+        {children}
+      </Animator>
+    </AnimatorGeneralProvider>
+  )
 }
 
 export const Default: Story = {
@@ -309,18 +161,15 @@ export const Default: Story = {
     as: 'div',
     className: 'text-cyan-300',
   },
-  render: (args) => {
-    console.log('[Default Story] args:', args);
-    return (
-      <div style={{ padding: '20px', backgroundColor: '#1a1a1a' }}>
-        <AnimatedTextWrapper>
-          <Text as={args.as} className={args.className}>
-            {args.children}
-          </Text>
-        </AnimatedTextWrapper>
-      </div>
-    );
-  },
+  render: (args) => (
+    <div style={{ padding: '20px', backgroundColor: '#1a1a1a' }}>
+      <AnimatedTextWrapper>
+        <Text as={args.as} className={args.className}>
+          {args.children}
+        </Text>
+      </AnimatedTextWrapper>
+    </div>
+  ),
 }
 
 export const SequenceAnimation: Story = {
@@ -515,17 +364,17 @@ export const ShortMessages: Story = {
   },
   render: () => (
     <div className="space-y-4 p-6" style={{ backgroundColor: '#0a0a0a' }}>
-      <AnimatedTextWrapper>
+      <AnimatedTextWrapper activationDelay={100}>
         <Text as="div" manager="decipher" className="text-cyan-300 font-mono text-2xl">
           SYSTEM READY
         </Text>
       </AnimatedTextWrapper>
-      <AnimatedTextWrapper>
+      <AnimatedTextWrapper activationDelay={400}>
         <Text as="div" manager="decipher" className="text-yellow-300 font-mono text-2xl">
           ACCESS GRANTED
         </Text>
       </AnimatedTextWrapper>
-      <AnimatedTextWrapper>
+      <AnimatedTextWrapper activationDelay={700}>
         <Text as="div" manager="decipher" className="text-red-400 font-mono text-2xl">
           WARNING: LOW POWER
         </Text>
@@ -610,11 +459,12 @@ export const StatusMessages: Story = {
 
     return (
       <div className="w-96 p-6" style={{ backgroundColor: '#0a0a0a' }}>
-        <AnimatedTextWrapper>
+        <AnimatedTextWrapper initialActive={true}>
           <Text 
             as="div"
             manager="sequence" 
             className={cx('font-mono', messages[messageIndex].className)}
+            key={messageIndex} // Force re-animation when message changes
           >
             {messages[messageIndex].text}
           </Text>
