@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs'
 import { WorkspaceChat } from './WorkspaceChat'
+import { ToastProvider } from '../Toast'
 
 const meta = {
   title: 'Workspace/WorkspaceChat',
@@ -18,7 +19,14 @@ const meta = {
       control: 'text',
       description: 'Name of the current project'
     }
-  }
+  },
+  decorators: [
+    (Story) => (
+      <ToastProvider>
+        <Story />
+      </ToastProvider>
+    )
+  ]
 } satisfies Meta<typeof WorkspaceChat>
 
 export default meta
