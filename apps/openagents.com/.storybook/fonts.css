@@ -73,6 +73,49 @@ body {
   color: #ffffff !important;
 }
 
+/* Fix scroll issues in Storybook */
+html, body {
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 100% !important;
+}
+
+/* Fix Storybook's internal scroll containers */
+#storybook-root {
+  overflow: visible !important;
+  height: auto !important;
+}
+
+/* Fix the story canvas */
+.sb-show-main,
+.sb-main-padded,
+[id="panel-tab-content"] {
+  overflow: visible !important;
+  height: auto !important;
+}
+
+/* Override any h-screen or h-full in stories */
+.h-screen {
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
+.h-full {
+  height: auto !important;
+  min-height: 100% !important;
+}
+
+/* Fix overflow-hidden that blocks scrolling */
+.overflow-hidden {
+  overflow: visible !important;
+}
+
+/* Ensure the docs wrapper is scrollable */
+.css-1p8ieni { /* Storybook's main content wrapper */
+  overflow-y: auto !important;
+  height: 100vh !important;
+}
+
 /* Style docs headings */
 .sbdocs h1, .sbdocs h2, .sbdocs h3, .sbdocs h4, .sbdocs h5, .sbdocs h6 {
   color: #00ffff !important;
