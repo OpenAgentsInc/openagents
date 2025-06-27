@@ -202,7 +202,6 @@ export const DeploymentSuccess = ({
               url={deploymentUrl}
               status="active"
               animated={false}
-              onVisit={onVisitSite}
             />
           </div>
         </div>

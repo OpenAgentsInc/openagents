@@ -253,7 +253,6 @@ export const DeploymentProgress = ({
                 url={deploymentUrl}
                 status="active"
                 animated={false}
-                onVisit={onVisitSite}
               />
             </div>
             <button

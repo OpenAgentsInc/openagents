@@ -135,7 +135,7 @@ export const ChatInterface = ({
             {showModelBadge && (
               <ModelBadge
                 model={currentModel}
-                provider={currentProvider}
+                provider={currentProvider as any}
                 variant="outline"
                 size="small"
                 animated={false}
@@ -184,7 +184,7 @@ export const ChatInterface = ({
                 isStreaming={true}
                 timestamp={message.timestamp}
                 model={message.model}
-                provider={message.provider}
+                provider={message.provider as any}
                 animated={false}
               />
             ) : (
@@ -194,7 +194,7 @@ export const ChatInterface = ({
                 content={message.content}
                 timestamp={message.timestamp}
                 model={message.model}
-                provider={message.provider}
+                provider={message.provider as any}
                 status={message.error ? 'error' : 'complete'}
                 error={message.error}
                 animated={false}

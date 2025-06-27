@@ -365,7 +365,7 @@ export const Default: Story = {
 }
 
 export const AllStatuses: Story = {
-  args: {},
+  args: { toolName: 'sample_tool', status: 'pending' },
   render: () => (
     <div className="space-y-4">
       <ToolInvocation
@@ -415,7 +415,7 @@ export const AllStatuses: Story = {
 }
 
 export const FileOperations: Story = {
-  args: {},
+  args: { toolName: 'file_tool', status: 'pending' },
   render: () => (
     <div className="space-y-4">
       <ToolInvocation
@@ -465,7 +465,7 @@ export const FileOperations: Story = {
 }
 
 export const DatabaseOperations: Story = {
-  args: {},
+  args: { toolName: 'db_tool', status: 'pending' },
   render: () => (
     <div className="space-y-4">
       <ToolInvocation
@@ -490,7 +490,7 @@ export const DatabaseOperations: Story = {
 }
 
 export const LongRunningTool: Story = {
-  args: {},
+  args: { toolName: 'long_tool', status: 'pending' },
   render: () => {
     const [status, setStatus] = useState<'pending' | 'running' | 'complete'>('pending')
     const [startTime, setStartTime] = useState<Date>()
@@ -596,7 +596,7 @@ export const ComplexParameters: Story = {
 }
 
 export const ToolSequence: Story = {
-  args: {},
+  args: { toolName: 'sequence_tool', status: 'pending' },
   render: () => {
     const tools = [
       {
