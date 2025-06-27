@@ -63,3 +63,139 @@ body {
 [class*="arwes-text"] {
   font-family: inherit;
 }
+
+/* Force dark theme for Storybook docs */
+.docs-story, 
+.sbdocs, 
+.sbdocs-wrapper,
+.sbdocs-content {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Dark theme for docs containers - ensure proper scrolling */
+.sbdocs .sbdocs-wrapper {
+  background: #000000 !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  overflow-y: auto !important;
+}
+
+.sbdocs .sbdocs-content {
+  background: #000000 !important;
+  color: #ffffff !important;
+  height: auto !important;
+  overflow: visible !important;
+  padding-bottom: 50px !important;
+}
+
+/* Fix main docs container */
+.sbdocs {
+  height: auto !important;
+  overflow-y: auto !important;
+}
+
+/* Style docs headings */
+.sbdocs h1, .sbdocs h2, .sbdocs h3, .sbdocs h4, .sbdocs h5, .sbdocs h6 {
+  color: #00ffff !important;
+}
+
+/* Style docs text */
+.sbdocs p, .sbdocs li, .sbdocs span {
+  color: #ffffff !important;
+}
+
+/* Style docs code blocks */
+.sbdocs code {
+  background-color: #1a1a1a !important;
+  color: #00ffff !important;
+  border: 1px solid #333 !important;
+}
+
+/* Style docs tables */
+.sbdocs table {
+  background-color: #1a1a1a !important;
+  border: 1px solid #333 !important;
+}
+
+.sbdocs th, .sbdocs td {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  border: 1px solid #333 !important;
+}
+
+/* Style docs controls */
+.docblock-argstable {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+}
+
+.docblock-argstable th,
+.docblock-argstable td {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  border-color: #333 !important;
+}
+
+/* Force dark background on story canvas in docs */
+.docs-story .os-content {
+  background-color: #000000 !important;
+}
+
+/* Style the story preview area */
+.docs-story > div:first-child {
+  background-color: #000000 !important;
+  padding: 20px !important;
+  border-radius: 8px !important;
+  border: 1px solid #333 !important;
+}
+
+/* Ensure scrollable content */
+#storybook-docs-root {
+  height: auto !important;
+  overflow-y: auto !important;
+}
+
+/* Fix any overflow issues */
+body[data-theme="dark"] {
+  background-color: #000000 !important;
+  overflow-y: auto !important;
+}
+
+/* Make sure the main content area is scrollable */
+.css-1gl7wcr {
+  overflow-y: auto !important;
+  height: auto !important;
+}
+
+/* Fix Storybook docs layout issues */
+.sbdocs-wrapper .sbdocs-content {
+  max-height: none !important;
+  height: auto !important;
+}
+
+/* Ensure proper scrolling in iframe */
+iframe[title="storybook-preview-iframe"] {
+  height: auto !important;
+  min-height: 500px !important;
+}
+
+/* Fix docs page container height */
+.docs-page {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+/* Force scroll on main docs container */
+[data-side="docs"] {
+  overflow-y: auto !important;
+  height: 100vh !important;
+}
+
+/* Specific fix for the controls and documentation sections */
+.docblock-argstable-wrapper,
+.docblock-source,
+.docblock {
+  overflow: visible !important;
+  max-height: none !important;
+}
