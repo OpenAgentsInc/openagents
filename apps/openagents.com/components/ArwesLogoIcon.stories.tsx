@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs'
 import { ArwesLogoIcon } from './ArwesLogoIcon'
 
 const meta = {
-  title: 'Components/ArwesLogoIcon',
+  title: 'Foundation/Icons & Assets/ArwesLogoIcon',
   component: ArwesLogoIcon,
   parameters: {
     layout: 'centered',

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 
 const meta = {
-  title: 'Examples/Thread List',
+  title: 'Components/Data Display/ThreadList',
   parameters: {
     layout: 'fullscreen',
     docs: {

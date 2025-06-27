@@ -3,7 +3,7 @@ import { GridLines, MovingLines, AnimatorGeneralProvider, Animator, Text } from 
 import React, { useState, useEffect } from 'react'
 
 const meta = {
-  title: 'Arwes/Grid Lines',
+  title: 'Foundation/Arwes Core/Grid Lines',
   parameters: {
     layout: 'fullscreen',
     docs: {

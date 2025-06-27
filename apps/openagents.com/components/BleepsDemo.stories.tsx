@@ -11,7 +11,7 @@ import {
 import React, { useState, useEffect } from 'react'
 
 const meta = {
-  title: 'Arwes/Bleeps (Sound)',
+  title: 'Foundation/Arwes Core/Bleeps (Sound)',
   parameters: {
     layout: 'centered',
     docs: {

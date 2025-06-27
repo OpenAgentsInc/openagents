@@ -16,7 +16,7 @@ import {
 import React, { useState, useEffect } from 'react'
 
 const meta = {
-  title: 'Arwes/Frames',
+  title: 'Foundation/Arwes Core/Frames',
   parameters: {
     layout: 'centered',
     docs: {

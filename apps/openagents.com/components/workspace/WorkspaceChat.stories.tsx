@@ -3,7 +3,7 @@ import { WorkspaceChat } from './WorkspaceChat'
 import { ToastProvider } from '../Toast'
 
 const meta = {
-  title: 'Workspace/WorkspaceChat',
+  title: 'Features/Workspace/WorkspaceChat',
   component: WorkspaceChat,
   parameters: {
     layout: 'fullscreen',

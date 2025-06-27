@@ -4,7 +4,7 @@ import { AnimatorGeneralProvider, Animator } from '@arwes/react'
 import React, { useState, useEffect } from 'react'
 
 const meta = {
-  title: 'Components/Background',
+  title: 'Components/Layout/Background',
   component: Background,
   parameters: {
     layout: 'fullscreen',

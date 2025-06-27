@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 
 const meta = {
-  title: 'Examples/Chat Settings',
+  title: 'Features/Chat & AI/ChatSettings',
   parameters: {
     layout: 'fullscreen',
     docs: {

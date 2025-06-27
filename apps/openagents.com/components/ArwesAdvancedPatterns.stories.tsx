@@ -25,7 +25,7 @@ import React, { useState, useEffect, useRef, useCallback, ReactNode, MouseEvent 
 import { Layout, MousePointer, Eye, Zap, Settings } from 'lucide-react'
 
 const meta = {
-  title: 'Advanced/Playground Patterns',
+  title: 'Patterns & Examples/Advanced Techniques/Playground Patterns',
   parameters: {
     layout: 'fullscreen',
     docs: {

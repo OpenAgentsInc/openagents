@@ -25,7 +25,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Volume2, Palette, Frame, Zap } from 'lucide-react'
 
 const meta = {
-  title: 'Utilities/Arwes Advanced',
+  title: 'Foundation/Utilities/Arwes Advanced',
   parameters: {
     layout: 'centered',
     docs: {
