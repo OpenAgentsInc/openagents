@@ -5,6 +5,7 @@ import { ChatInterface } from './ChatInterface.stories'
 import { DeploymentProgress } from './DeploymentProgress.stories'
 import { GenerationProgress } from './GenerationProgress.stories'
 import { StatusBadge } from '../atoms/StatusBadge.stories'
+import { DeploymentTracker } from '../../DeploymentTracker'
 
 // Icon components
 const SidebarIcon = ({ className }: { className?: string }) => (
@@ -61,6 +62,7 @@ export interface ProjectWorkspaceProps {
   showToolbar?: boolean
   currentProject?: string
   overallStatus?: 'idle' | 'generating' | 'deploying' | 'complete' | 'error'
+  deploymentId?: string | null
   layout?: 'three-column' | 'two-column-left' | 'two-column-right' | 'single-column'
   animated?: boolean
   className?: string
@@ -77,6 +79,7 @@ export const ProjectWorkspace = ({
   showToolbar = true,
   currentProject = 'Bitcoin Puns Website',
   overallStatus = 'idle',
+  deploymentId = null,
   layout = 'three-column',
   animated = true,
   className = '',
@@ -116,7 +119,17 @@ export const ProjectWorkspace = ({
           />
         )
       case 'deployment':
-        return (
+        return deploymentId ? (
+          <DeploymentTracker
+            deploymentId={deploymentId}
+            projectName={currentProject}
+            onComplete={(url) => {
+              console.log('Deployment completed:', url)
+              // Handle deployment completion
+            }}
+            className="h-full p-4"
+          />
+        ) : (
           <DeploymentProgress
             projectName={currentProject}
             overallStatus={overallStatus === 'deploying' ? 'running' : overallStatus === 'complete' ? 'complete' : 'pending'}
@@ -523,6 +536,19 @@ export const CollapsedPanels: Story = {
     centerPanel: { id: 'center', title: 'Generation', type: 'generation' },
     rightPanel: { id: 'right', title: 'Deployment', type: 'deployment', isCollapsed: true },
     currentProject: 'Focused Generation View'
+  }
+}
+
+export const WebSocketDeployment: Story = {
+  args: {
+    leftPanel: { id: 'left', title: 'Chat', type: 'chat' },
+    centerPanel: { id: 'center', title: 'Generation', type: 'generation' },
+    rightPanel: { id: 'right', title: 'WebSocket Deployment', type: 'deployment' },
+    showToolbar: true,
+    currentProject: 'Real-time Deployment Demo',
+    overallStatus: 'deploying',
+    deploymentId: 'deploy-websocket-demo-12345',
+    layout: 'three-column'
   }
 }
 

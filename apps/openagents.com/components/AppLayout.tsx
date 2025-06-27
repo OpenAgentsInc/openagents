@@ -6,6 +6,8 @@ import { animatorGeneralSettings } from '@/config/animator';
 import { bleepsSettings } from '@/config/bleeps';
 import { Background } from './Background';
 import { LayoutWithFrames } from './LayoutWithFrames';
+import { PerformanceDashboard } from './PerformanceDashboard';
+import { initializePerformanceOptimizations } from './LazyComponents';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -14,6 +16,11 @@ interface AppLayoutProps {
 
 export const AppLayout = (props: AppLayoutProps): React.ReactElement => {
   const { children } = props;
+
+  // Initialize performance optimizations
+  React.useEffect(() => {
+    initializePerformanceOptimizations();
+  }, []);
 
   return (
     <AnimatorGeneralProvider {...animatorGeneralSettings}>
@@ -31,6 +38,7 @@ export const AppLayout = (props: AppLayoutProps): React.ReactElement => {
           <LayoutWithFrames>
             {children}
           </LayoutWithFrames>
+          <PerformanceDashboard />
         </div>
       </BleepsProvider>
     </AnimatorGeneralProvider>

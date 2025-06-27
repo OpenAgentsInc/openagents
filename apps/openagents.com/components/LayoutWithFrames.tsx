@@ -125,6 +125,38 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
                       <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
                     )}
                   </Link>
+                  <Link 
+                    href="/templates" 
+                    className={cx(
+                      'relative px-4 py-2',
+                      'text-cyan-500 hover:text-cyan-300',
+                      'font-mono text-xs uppercase tracking-wider',
+                      'transition-all duration-200',
+                      'hover:bg-cyan-500/10',
+                      pathname.startsWith('/templates') && 'text-cyan-300 bg-cyan-500/10'
+                    )}
+                  >
+                    <Text>Templates</Text>
+                    {pathname.startsWith('/templates') && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
+                    )}
+                  </Link>
+                  <Link 
+                    href="/gallery" 
+                    className={cx(
+                      'relative px-4 py-2',
+                      'text-cyan-500 hover:text-cyan-300',
+                      'font-mono text-xs uppercase tracking-wider',
+                      'transition-all duration-200',
+                      'hover:bg-cyan-500/10',
+                      pathname.startsWith('/gallery') && 'text-cyan-300 bg-cyan-500/10'
+                    )}
+                  >
+                    <Text>Gallery</Text>
+                    {pathname.startsWith('/gallery') && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
+                    )}
+                  </Link>
                 </nav>
               </div>
 

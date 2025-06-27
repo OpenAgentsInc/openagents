@@ -58,21 +58,24 @@ A comprehensive collection of Arwes-styled React components for the OpenAgents M
 16. **[DeploymentProgress](./organisms/DeploymentProgress.stories.tsx)**
     - Multi-stage deployment visualization showing initialization, building, optimizing, and deployment with progress tracking
 
-17. **[GenerationProgress](./organisms/GenerationProgress.stories.tsx)**
+17. **[DeploymentTracker](../../DeploymentTracker.tsx)**
+    - Real-time WebSocket deployment tracking with live progress updates, connection status, expandable logs, and toast notifications
+
+18. **[GenerationProgress](./organisms/GenerationProgress.stories.tsx)**
     - AI code generation progress tracker with multiple steps, file listings, and animated state transitions
 
-18. **[ProjectWorkspace](./organisms/ProjectWorkspace.stories.tsx)**
+19. **[ProjectWorkspace](./organisms/ProjectWorkspace.stories.tsx)**
     - Three-panel layout system with chat, generation, and deployment panels, supporting multiple layout configurations
 
 ### 📄 Templates (Full Page Layouts)
 
-19. **[BitcoinPunsDemo](./templates/BitcoinPunsDemo.stories.tsx)**
+20. **[BitcoinPunsDemo](./templates/BitcoinPunsDemo.stories.tsx)**
     - Complete interactive demo showcasing the full OpenAgents flow from chat to deployment with auto-progression
 
-20. **[DeploymentSuccess](./templates/DeploymentSuccess.stories.tsx)**
+21. **[DeploymentSuccess](./templates/DeploymentSuccess.stories.tsx)**
     - Celebration screen shown after successful deployment with confetti, stats, and action buttons
 
-21. **[DesktopRequired](./templates/DesktopRequired.stories.tsx)**
+22. **[DesktopRequired](./templates/DesktopRequired.stories.tsx)**
     - Desktop requirement alert screen with amber warning styling, enforcing minimum 1024px width for optimal experience
 
 ## Component Features
