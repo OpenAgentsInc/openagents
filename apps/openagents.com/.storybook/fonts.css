@@ -63,3 +63,121 @@ body {
 [class*="arwes-text"] {
   font-family: inherit;
 }
+
+/* Force dark theme for Storybook docs - minimal approach to avoid scroll issues */
+.docs-story, 
+.sbdocs, 
+.sbdocs-wrapper,
+.sbdocs-content {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Fix scroll issues in Storybook */
+html, body {
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 100% !important;
+}
+
+/* Fix Storybook's internal scroll containers */
+#storybook-root {
+  overflow: visible !important;
+  height: auto !important;
+}
+
+/* Fix the story canvas */
+.sb-show-main,
+.sb-main-padded,
+[id="panel-tab-content"] {
+  overflow: visible !important;
+  height: auto !important;
+}
+
+/* Override any h-screen or h-full in stories */
+.h-screen {
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
+.h-full {
+  height: auto !important;
+  min-height: 100% !important;
+}
+
+/* Fix overflow-hidden that blocks scrolling */
+.overflow-hidden {
+  overflow: visible !important;
+}
+
+/* Ensure the docs wrapper is scrollable */
+.css-1p8ieni { /* Storybook's main content wrapper */
+  overflow-y: auto !important;
+  height: 100vh !important;
+}
+
+/* Prevent auto-scrolling behaviors in Storybook */
+* {
+  scroll-behavior: auto !important;
+}
+
+/* Override smooth scrolling that causes jumps */
+html {
+  scroll-behavior: auto !important;
+}
+
+/* Prevent focus from causing scroll */
+*:focus {
+  scroll-margin: 0 !important;
+  scroll-padding: 0 !important;
+}
+
+/* Style docs headings */
+.sbdocs h1, .sbdocs h2, .sbdocs h3, .sbdocs h4, .sbdocs h5, .sbdocs h6 {
+  color: #00ffff !important;
+}
+
+/* Style docs text */
+.sbdocs p, .sbdocs li, .sbdocs span {
+  color: #ffffff !important;
+}
+
+/* Style docs code blocks */
+.sbdocs code {
+  background-color: #1a1a1a !important;
+  color: #00ffff !important;
+  border: 1px solid #333 !important;
+}
+
+/* Style docs tables */
+.sbdocs table {
+  background-color: #1a1a1a !important;
+  border: 1px solid #333 !important;
+}
+
+.sbdocs th, .sbdocs td {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  border: 1px solid #333 !important;
+}
+
+/* Style docs controls */
+.docblock-argstable {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+}
+
+.docblock-argstable th,
+.docblock-argstable td {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  border-color: #333 !important;
+}
+
+/* Style the story preview area */
+.docs-story > div:first-child {
+  background-color: #000000 !important;
+  padding: 20px !important;
+  border-radius: 8px !important;
+  border: 1px solid #333 !important;
+}

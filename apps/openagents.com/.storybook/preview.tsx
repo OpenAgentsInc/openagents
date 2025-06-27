@@ -48,6 +48,11 @@ const preview: Preview = {
         },
       ],
     },
+    docs: {
+      canvas: {
+        sourceState: 'shown',
+      },
+    },
     layout: 'padded',
     nextjs: {
       navigation: {
@@ -57,15 +62,30 @@ const preview: Preview = {
     },
   },
   decorators: [
-    (Story) => (
-      <AnimatorGeneralProvider {...animatorGeneralSettings}>
-        <BleepsProvider {...bleepsSettings}>
-          <div className="font-mono">
-            <Story />
-          </div>
-        </BleepsProvider>
-      </AnimatorGeneralProvider>
-    ),
+    (Story, context) => {
+      // Force dark background for all stories, especially docs
+      const isDocsMode = context.viewMode === 'docs'
+      
+      return (
+        <AnimatorGeneralProvider {...animatorGeneralSettings}>
+          <BleepsProvider {...bleepsSettings}>
+            <div 
+              className="font-mono"
+              style={{
+                backgroundColor: '#000000',
+                color: '#ffffff',
+                minHeight: isDocsMode ? 'auto' : 'auto',
+                padding: isDocsMode ? '20px' : '20px',
+                overflow: 'visible',
+                height: 'auto'
+              }}
+            >
+              <Story />
+            </div>
+          </BleepsProvider>
+        </AnimatorGeneralProvider>
+      )
+    },
   ],
 };
 
