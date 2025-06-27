@@ -55,7 +55,7 @@ export function BitcoinTracker() {
       {loading ? (
         <p>Loading...</p>
       ) : (
-        <h1>Bitcoin: ${price}</h1>
+        <h1>Bitcoin: $42,000</h1>
       )}
     </div>
   )
@@ -180,8 +180,8 @@ export const AutoPlayingDemoLoop = ({
   const [phase, setPhase] = useState<DemoPhase>('prompt')
   const [isPaused, setIsPaused] = useState(false)
   const [hasInteracted, setHasInteracted] = useState(false)
-  const phaseTimeoutRef = useRef<NodeJS.Timeout | undefined>()
-  const demoTimeoutRef = useRef<NodeJS.Timeout | undefined>()
+  const phaseTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  const demoTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const currentDemo = demos[currentDemoIndex]
 
   // Clear timeouts on unmount
@@ -201,32 +201,32 @@ export const AutoPlayingDemoLoop = ({
         case 'prompt':
           phaseTimeoutRef.current = setTimeout(() => {
             setPhase('streaming')
-          }, autoPlayDelay)
+          }, autoPlayDelay) as unknown as NodeJS.Timeout
           break
           
         case 'streaming':
           phaseTimeoutRef.current = setTimeout(() => {
             setPhase('building')
-          }, 3000) // Time for streaming message
+          }, 3000) as unknown as NodeJS.Timeout // Time for streaming message
           break
           
         case 'building':
           phaseTimeoutRef.current = setTimeout(() => {
             setPhase('deploying')
-          }, 2000) // Time for building phase
+          }, 2000) as unknown as NodeJS.Timeout // Time for building phase
           break
           
         case 'deploying':
           phaseTimeoutRef.current = setTimeout(() => {
             setPhase('success')
             onDemoComplete?.(currentDemo)
-          }, 2500) // Time for deployment
+          }, 2500) as unknown as NodeJS.Timeout // Time for deployment
           break
           
         case 'success':
           phaseTimeoutRef.current = setTimeout(() => {
             setPhase('transition')
-          }, demoTransitionDelay)
+          }, demoTransitionDelay) as unknown as NodeJS.Timeout
           break
           
         case 'transition':
@@ -361,7 +361,6 @@ export const AutoPlayingDemoLoop = ({
                   <CodeBlock
                     code={currentDemo.code}
                     language="typescript"
-                    filename="App.tsx"
                     showLineNumbers={true}
                     animated={true}
                   />
@@ -375,10 +374,10 @@ export const AutoPlayingDemoLoop = ({
             <DeploymentProgress
               projectName={currentDemo.title}
               stages={[
-                { id: 'build', label: 'Building application', status: 'completed' },
-                { id: 'optimize', label: 'Optimizing for edge', status: 'completed' },
-                { id: 'deploy', label: 'Deploying to 320+ locations', status: 'in-progress' },
-                { id: 'dns', label: 'Configuring DNS', status: 'pending' }
+                { id: 'build', name: 'Building application', status: 'complete' },
+                { id: 'optimize', name: 'Optimizing for edge', status: 'complete' },
+                { id: 'deploy', name: 'Deploying to 320+ locations', status: 'running' },
+                { id: 'dns', name: 'Configuring DNS', status: 'pending' }
               ]}
               currentStage={2}
               estimatedTime={currentDemo.deployTime}
@@ -390,7 +389,6 @@ export const AutoPlayingDemoLoop = ({
             <DeploymentSuccess
               projectName={currentDemo.title}
               deploymentUrl={`https://${currentDemo.deploymentUrl}`}
-              deploymentTime={currentDemo.deployTime}
               showNextSteps={false}
             />
           )}

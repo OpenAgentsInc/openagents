@@ -88,7 +88,7 @@ const getDefaultFallbacks = (errorType: string): ErrorRecoveryOption[] => {
 
 // Encouraging messages based on error type
 const getEncouragingMessage = (errorType: string): string => {
-  const messages = {
+  const messages: Record<string, string> = {
     generation: "Don't worry! The AI sometimes needs a clearer prompt. Let's try a different approach.",
     deployment: "Deployment hiccups happen to the best of us. We've got backup options!",
     network: "Looks like a connection issue. These usually resolve quickly.",

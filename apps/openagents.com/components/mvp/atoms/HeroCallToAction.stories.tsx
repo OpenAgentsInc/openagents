@@ -290,7 +290,7 @@ const meta = {
       description: 'Text before countdown timer'
     },
     benefitBullets: {
-      control: 'array',
+      control: 'object',
       description: 'List of benefits shown below CTA'
     },
     showCountdown: {

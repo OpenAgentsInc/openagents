@@ -309,7 +309,7 @@ export const FirstDeploymentCelebration = ({
               <div>
                 <Text as="p" className="text-gray-400 text-sm mb-1">Live URL</Text>
                 <div className="flex items-center gap-2">
-                  <DeploymentUrl url={deploymentUrl} showIcon={true} />
+                  <DeploymentUrl url={deploymentUrl} />
                   <CopyButton text={deploymentUrl} size="small" />
                 </div>
               </div>
