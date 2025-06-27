@@ -519,6 +519,9 @@ const apiEndpoint = "https://api.openagents.com/v1/deployments/create?project=bi
 }
 
 export const MultipleCodeBlocks: Story = {
+  args: {
+    code: 'console.log("hello");'
+  },
   render: () => (
     <div className="space-y-4">
       <p className="text-cyan-300 mb-4">Here's how to create a Bitcoin puns website:</p>
@@ -558,6 +561,9 @@ export const MultipleCodeBlocks: Story = {
 }
 
 export const InteractiveCopy: Story = {
+  args: {
+    code: 'console.log("hello");'
+  },
   render: () => {
     const [message, setMessage] = useState('')
     

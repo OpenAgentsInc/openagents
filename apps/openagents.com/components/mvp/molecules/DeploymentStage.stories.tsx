@@ -363,6 +363,11 @@ export const Default: Story = {
 }
 
 export const AllStatuses: Story = {
+  args: {
+    id: 'example',
+    title: 'Example Stage',
+    status: 'pending'
+  },
   render: () => (
     <div className="space-y-4">
       <DeploymentStage
@@ -427,6 +432,11 @@ export const WithLogs: Story = {
 }
 
 export const ErrorWithRetry: Story = {
+  args: {
+    id: 'example',
+    title: 'Example Stage',
+    status: 'pending'
+  },
   render: () => {
     const [status, setStatus] = useState<'error' | 'running' | 'complete'>('error')
     const [retryCount, setRetryCount] = useState(0)
@@ -462,6 +472,11 @@ export const ErrorWithRetry: Story = {
 }
 
 export const DeploymentPipeline: Story = {
+  args: {
+    id: 'example',
+    title: 'Example Stage',
+    status: 'pending'
+  },
   render: () => {
     const stages = [
       {
@@ -525,6 +540,11 @@ export const WithTimestamps: Story = {
 }
 
 export const InteractiveLogs: Story = {
+  args: {
+    id: 'example',
+    title: 'Example Stage',
+    status: 'pending'
+  },
   render: () => {
     const [expanded, setExpanded] = useState(false)
     
