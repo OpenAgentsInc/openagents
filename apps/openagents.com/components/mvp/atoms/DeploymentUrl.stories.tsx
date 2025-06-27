@@ -281,6 +281,9 @@ export const Default: Story = {
 }
 
 export const StatusVariants: Story = {
+  args: {
+    url: 'https://example.com'
+  },
   render: () => (
     <div className="space-y-4">
       <div>
@@ -309,6 +312,9 @@ export const StatusVariants: Story = {
 }
 
 export const SizeVariants: Story = {
+  args: {
+    url: 'https://example.com'
+  },
   render: () => (
     <div className="space-y-4">
       <DeploymentUrl 
@@ -373,6 +379,9 @@ export const CopyDemo: Story = {
 }
 
 export const MultipleUrls: Story = {
+  args: {
+    url: 'https://example.com'
+  },
   render: () => (
     <div className="space-y-3">
       <div className="p-4 bg-gray-900/50 rounded">

@@ -362,6 +362,9 @@ export const DisabledState: Story = {
 }
 
 export const InContext: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => (
     <div className="space-y-6">
       <div className="p-4 bg-gray-900/50 rounded border border-gray-700">
@@ -396,6 +399,9 @@ export const InContext: Story = {
 }
 
 export const InteractiveDemo: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => {
     const [copyCount, setCopyCount] = useState(0)
     const [lastCopied, setLastCopied] = useState('')
@@ -424,6 +430,9 @@ export const InteractiveDemo: Story = {
 }
 
 export const ErrorHandling: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => {
     // Simulate clipboard API not available
     const [error, setError] = useState('')
