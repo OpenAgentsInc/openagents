@@ -30,7 +30,7 @@ export const AuthGateOverlay = ({
     onSignIn?.()
   }
 
-  const handleDemoComplete = (demo: string) => {
+  const handleDemoComplete = (demo: any) => {
     setDemoInteracted(true)
     onDemoComplete?.(demo)
   }
