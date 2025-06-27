@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/nextjs'
 import React, { useState, useEffect } from 'react'
-import { Animator, AnimatorGeneralProvider, Animated, Text, FrameBox, cx } from '@arwes/react'
+import { Animator, AnimatorGeneralProvider, Animated, Text, cx } from '@arwes/react'
 import { ModelBadge } from '../atoms/ModelBadge.stories'
 import { CopyButton } from '../atoms/CopyButton.stories'
 import { StatusBadge } from '../atoms/StatusBadge.stories'
@@ -479,6 +479,7 @@ Let me generate the code for you now...`,
 }
 
 export const ConversationThread: Story = {
+  args: {},
   render: () => {
     const messages = [
       {
@@ -532,6 +533,7 @@ export const ConversationThread: Story = {
 }
 
 export const InteractiveActions: Story = {
+  args: {},
   render: () => {
     const [message, setMessage] = useState('Click the menu to see available actions')
     
@@ -553,6 +555,7 @@ export const InteractiveActions: Story = {
 }
 
 export const NoAvatar: Story = {
+  args: {},
   render: () => (
     <div className="space-y-4 max-w-3xl">
       <ChatMessage

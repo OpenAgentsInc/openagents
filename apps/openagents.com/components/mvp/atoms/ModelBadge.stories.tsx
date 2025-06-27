@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/nextjs'
 import React, { useState, useEffect } from 'react'
 import { Animator, AnimatorGeneralProvider, Animated, Text, cx } from '@arwes/react'
 

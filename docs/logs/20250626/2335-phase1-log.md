@@ -217,3 +217,9 @@ Next up:
 - Updated all code references (handleCopy, CopyButton) to use safeCode
 - CodeBlock component now gracefully handles missing/undefined code prop
 - All component docs pages now load without errors
+
+### 00:40 - Fixed TypeScript Build Errors for Push
+- Fixed all @storybook/react imports to @storybook/nextjs across all component files
+- Removed FrameBox imports from StreamingMessage and ChatMessage (not available)
+- Fixed TypeScript errors preventing git push to phase1 branch
+- Addressing remaining Story type errors with render functions missing args

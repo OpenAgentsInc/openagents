@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Meta, StoryObj } from '@storybook/nextjs'
 import React, { useState, useEffect } from 'react'
-import { Animator, AnimatorGeneralProvider, Animated, Text, FrameBox, cx } from '@arwes/react'
+import { Animator, AnimatorGeneralProvider, Animated, Text, cx } from '@arwes/react'
 import { StreamingCursor } from '../atoms/StreamingCursor.stories'
 import { ModelBadge } from '../atoms/ModelBadge.stories'
 
@@ -310,6 +310,7 @@ export const SystemMessage: Story = {
 }
 
 export const ConversationFlow: Story = {
+  args: {},
   render: () => {
     const messages = [
       {
@@ -369,6 +370,7 @@ Let me generate the code now...`,
 }
 
 export const NoAvatar: Story = {
+  args: {},
   render: () => (
     <div className="space-y-4 max-w-3xl">
       <StreamingMessage
@@ -387,6 +389,7 @@ export const NoAvatar: Story = {
 }
 
 export const SpeedComparison: Story = {
+  args: {},
   render: () => {
     const [key, setKey] = useState(0)
     const message = "This is a demonstration of different streaming speeds for the typewriter effect."
@@ -432,6 +435,7 @@ export const SpeedComparison: Story = {
 }
 
 export const StreamingWithCallback: Story = {
+  args: {},
   render: () => {
     const [status, setStatus] = useState('Streaming...')
     
