@@ -271,6 +271,9 @@ export const Default: Story = {
 }
 
 export const VariantShowcase: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -290,6 +293,9 @@ export const VariantShowcase: Story = {
 }
 
 export const SizeComparison: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -309,6 +315,9 @@ export const SizeComparison: Story = {
 }
 
 export const ColorVariants: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => (
     <div className="space-y-2">
       <CopyButton text="Cyan theme" color="cyan" />
@@ -321,6 +330,9 @@ export const ColorVariants: Story = {
 }
 
 export const IconPosition: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => (
     <div className="space-y-4">
       <CopyButton text="Icon on left" position="left" />
@@ -330,6 +342,9 @@ export const IconPosition: Story = {
 }
 
 export const CustomLabels: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => (
     <div className="space-y-4">
       <CopyButton 
@@ -352,6 +367,9 @@ export const CustomLabels: Story = {
 }
 
 export const DisabledState: Story = {
+  args: {
+    text: 'example text'
+  },
   render: () => (
     <div className="space-y-4">
       <CopyButton text="Enabled button" disabled={false} />
