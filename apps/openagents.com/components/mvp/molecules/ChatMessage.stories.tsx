@@ -171,7 +171,7 @@ export const ChatMessage = ({
         
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cx('font-medium', config.textColor)}>
+            <span className={cx('font-medium font-sans', config.textColor)}>
               {config.name}
             </span>
             {role === 'assistant' && model && (
@@ -191,7 +191,7 @@ export const ChatMessage = ({
               />
             )}
             {showTimestamp && (
-              <span className="text-gray-500 text-xs ml-auto">
+              <span className="text-gray-500 text-xs ml-auto font-sans">
                 {formatTime(timestamp)}
               </span>
             )}
@@ -217,7 +217,7 @@ export const ChatMessage = ({
                         onCopy()
                         setShowMenu(false)
                       }}
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 w-full text-left cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 w-full text-left cursor-pointer font-sans"
                     >
                       <CopyButton
                         text={content}
@@ -234,7 +234,7 @@ export const ChatMessage = ({
                         onEdit()
                         setShowMenu(false)
                       }}
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 w-full text-left cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 w-full text-left cursor-pointer font-sans"
                     >
                       <EditIcon className="w-4 h-4" />
                       <span>Edit</span>
@@ -246,7 +246,7 @@ export const ChatMessage = ({
                         onRetry()
                         setShowMenu(false)
                       }}
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 w-full text-left cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 w-full text-left cursor-pointer font-sans"
                     >
                       <span>Retry</span>
                     </button>
@@ -276,7 +276,7 @@ export const ChatMessage = ({
         showAvatar && 'ml-13'
       )}>
         {status === 'error' && error ? (
-          <div className="text-red-400">
+          <div className="text-red-400 font-sans">
             <p className="font-medium mb-2">Error occurred:</p>
             <p className="text-sm">{error}</p>
           </div>
@@ -284,7 +284,7 @@ export const ChatMessage = ({
           <Text
             as="div"
             manager={animated && role === 'assistant' ? 'decipher' : undefined}
-            className="text-gray-200 whitespace-pre-wrap"
+            className="text-gray-200 whitespace-pre-wrap font-sans"
           >
             {content}
           </Text>
@@ -554,7 +554,7 @@ export const InteractiveActions: Story = {
           onDelete={() => setMessage('Delete action triggered!')}
           onCopy={() => setMessage('Content copied to clipboard!')}
         />
-        <p className="text-cyan-300 text-sm text-center">{message}</p>
+        <p className="text-cyan-300 text-sm text-center font-sans">{message}</p>
       </div>
     )
   }

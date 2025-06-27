@@ -177,7 +177,7 @@ export const CopyButton = ({
       )}
       
       {variant !== 'icon' && (
-        <span className={cx(sizes.text, 'font-medium')}>
+        <span className={cx(sizes.text, 'font-medium font-sans')}>
           {currentLabel}
         </span>
       )}

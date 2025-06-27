@@ -138,7 +138,7 @@ export const CodeBlock = ({
       <div className="flex items-center justify-between px-4 py-2 border-b border-cyan-500/20 bg-black/30">
         <div className="flex items-center gap-2">
           <Icon className={cx('text-sm', config.color)} />
-          <span className="text-sm text-gray-400">
+          <span className="text-sm text-gray-400 font-sans">
             {title || config.name}
           </span>
         </div>
@@ -524,7 +524,7 @@ export const MultipleCodeBlocks: Story = {
   },
   render: () => (
     <div className="space-y-4">
-      <p className="text-cyan-300 mb-4">Here's how to create a Bitcoin puns website:</p>
+      <p className="text-cyan-300 mb-4 font-sans">Here's how to create a Bitcoin puns website:</p>
       
       <CodeBlock
         code={`<!DOCTYPE html>
@@ -580,7 +580,7 @@ console.log('To the moon!');`}
           }}
         />
         {message && (
-          <p className="text-green-400 text-center animate-pulse">{message}</p>
+          <p className="text-green-400 text-center animate-pulse font-sans">{message}</p>
         )}
       </div>
     )

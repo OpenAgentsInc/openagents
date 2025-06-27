@@ -53,9 +53,9 @@
   font-family: var(--font-berkeley-mono), monospace;
 }
 
-/* Default body font */
+/* Default body font - UI text should use Titillium Web */
 body {
-  font-family: var(--font-berkeley-mono), monospace;
+  font-family: var(--font-titillium), sans-serif;
 }
 
 /* Make sure Arwes Text component uses the fonts */

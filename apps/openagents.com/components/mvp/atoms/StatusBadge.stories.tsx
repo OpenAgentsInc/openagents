@@ -150,7 +150,7 @@ export const StatusBadge = ({
       )}
     >
       <Icon className={iconSizes[size]} />
-      <Text as="span" manager={animated ? 'decipher' : undefined}>
+      <Text as="span" manager={animated ? 'decipher' : undefined} className="font-sans">
         {config.text}
       </Text>
     </div>
@@ -224,27 +224,27 @@ export const AllStatuses: Story = {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <StatusBadge status="idle" />
-        <span className="text-gray-400 text-sm">Waiting for input</span>
+        <span className="text-gray-400 text-sm font-sans">Waiting for input</span>
       </div>
       <div className="flex items-center gap-2">
         <StatusBadge status="generating" />
-        <span className="text-gray-400 text-sm">AI is generating code</span>
+        <span className="text-gray-400 text-sm font-sans">AI is generating code</span>
       </div>
       <div className="flex items-center gap-2">
         <StatusBadge status="deploying" />
-        <span className="text-gray-400 text-sm">Deploying to Cloudflare</span>
+        <span className="text-gray-400 text-sm font-sans">Deploying to Cloudflare</span>
       </div>
       <div className="flex items-center gap-2">
         <StatusBadge status="deployed" />
-        <span className="text-gray-400 text-sm">Successfully deployed</span>
+        <span className="text-gray-400 text-sm font-sans">Successfully deployed</span>
       </div>
       <div className="flex items-center gap-2">
         <StatusBadge status="error" />
-        <span className="text-gray-400 text-sm">Deployment failed</span>
+        <span className="text-gray-400 text-sm font-sans">Deployment failed</span>
       </div>
       <div className="flex items-center gap-2">
         <StatusBadge status="paused" />
-        <span className="text-gray-400 text-sm">Operation paused</span>
+        <span className="text-gray-400 text-sm font-sans">Operation paused</span>
       </div>
     </div>
   )
@@ -317,7 +317,7 @@ export const StatusTransition: Story = {
     return (
       <div className="space-y-4">
         <StatusBadge status={statuses[currentIndex]} />
-        <p className="text-gray-400 text-sm">Simulating deployment flow...</p>
+        <p className="text-gray-400 text-sm font-sans">Simulating deployment flow...</p>
         <button
           onClick={() => setCurrentIndex(0)}
           className="px-4 py-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-500/30 transition-colors"
