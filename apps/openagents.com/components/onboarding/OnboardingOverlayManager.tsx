@@ -5,7 +5,7 @@ import { AuthGateOverlay } from './AuthGateOverlay'
 
 export interface OnboardingOverlayManagerProps {
   /** Whether the user is authenticated */
-  isAuthenticated: boolean
+  isAuthenticated?: boolean
   /** Minimum screen width to allow access (default: 1024px) */
   minDesktopWidth?: number
   /** Show demo in auth gate */
@@ -17,7 +17,7 @@ export interface OnboardingOverlayManagerProps {
   /** Callback when user initiates sign-in */
   onSignIn?: () => void
   /** Callback when demo completes */
-  onDemoComplete?: (demo: string) => void
+  onDemoComplete?: (demo: any) => void
   /** Children to render (the main app content) */
   children: ReactNode
   /** Additional CSS classes */
@@ -25,7 +25,7 @@ export interface OnboardingOverlayManagerProps {
 }
 
 export const OnboardingOverlayManager = ({
-  isAuthenticated,
+  isAuthenticated = false,
   minDesktopWidth = 1024,
   showDemo = true,
   showSocialProof = true,

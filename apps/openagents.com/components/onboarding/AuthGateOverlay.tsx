@@ -8,7 +8,7 @@ import { Text, cx } from '@arwes/react'
 
 export interface AuthGateOverlayProps {
   onSignIn?: () => void
-  onDemoComplete?: (demo: string) => void
+  onDemoComplete?: (demo: any) => void
   showDemo?: boolean
   showSocialProof?: boolean
   animated?: boolean
