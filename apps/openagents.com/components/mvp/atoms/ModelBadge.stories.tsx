@@ -141,7 +141,7 @@ export const ModelBadge = ({
 
   const config = providerConfig[provider]
   const Icon = config.icon
-  const colorStyle = colorStyles[config.color][variant]
+  const colorStyle = colorStyles[config.color as keyof typeof colorStyles]?.[variant] || colorStyles.cyan[variant]
   const sizes = sizeClasses[size]
 
   const displayModel = truncate && model && model.length > maxLength
@@ -252,6 +252,9 @@ export const Default: Story = {
 }
 
 export const AllProviders: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => (
     <div className="space-y-3">
       <div className="flex items-center gap-4">
@@ -279,6 +282,9 @@ export const AllProviders: Story = {
 }
 
 export const SizeVariants: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -291,6 +297,9 @@ export const SizeVariants: Story = {
 }
 
 export const VariantStyles: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -333,6 +342,9 @@ export const NoTruncation: Story = {
 }
 
 export const NoIcon: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => (
     <div className="space-y-3">
       <ModelBadge model="llama-3-8b" showIcon={false} />

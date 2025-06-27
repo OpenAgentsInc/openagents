@@ -349,6 +349,9 @@ export const MinimalMode: Story = {
 }
 
 export const CopyDemo: Story = {
+  args: {
+    url: 'https://example.com'
+  },
   render: () => {
     const [message, setMessage] = useState('')
     
@@ -387,6 +390,9 @@ export const MultipleUrls: Story = {
 }
 
 export const AnimationSequence: Story = {
+  args: {
+    url: 'https://example.com'
+  },
   render: () => {
     const [key, setKey] = useState(0)
     
