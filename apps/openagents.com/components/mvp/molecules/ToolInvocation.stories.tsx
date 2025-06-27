@@ -365,6 +365,7 @@ export const Default: Story = {
 }
 
 export const AllStatuses: Story = {
+  args: {},
   render: () => (
     <div className="space-y-4">
       <ToolInvocation
@@ -414,6 +415,7 @@ export const AllStatuses: Story = {
 }
 
 export const FileOperations: Story = {
+  args: {},
   render: () => (
     <div className="space-y-4">
       <ToolInvocation
@@ -463,6 +465,7 @@ export const FileOperations: Story = {
 }
 
 export const DatabaseOperations: Story = {
+  args: {},
   render: () => (
     <div className="space-y-4">
       <ToolInvocation
@@ -487,6 +490,7 @@ export const DatabaseOperations: Story = {
 }
 
 export const LongRunningTool: Story = {
+  args: {},
   render: () => {
     const [status, setStatus] = useState<'pending' | 'running' | 'complete'>('pending')
     const [startTime, setStartTime] = useState<Date>()
@@ -592,6 +596,7 @@ export const ComplexParameters: Story = {
 }
 
 export const ToolSequence: Story = {
+  args: {},
   render: () => {
     const tools = [
       {

@@ -310,7 +310,7 @@ export const SystemMessage: Story = {
 }
 
 export const ConversationFlow: Story = {
-  args: {},
+  args: { role: 'user', content: 'Sample message' },
   render: () => {
     const messages = [
       {
@@ -370,7 +370,7 @@ Let me generate the code now...`,
 }
 
 export const NoAvatar: Story = {
-  args: {},
+  args: { role: 'user', content: 'Sample message' },
   render: () => (
     <div className="space-y-4 max-w-3xl">
       <StreamingMessage
@@ -389,7 +389,7 @@ export const NoAvatar: Story = {
 }
 
 export const SpeedComparison: Story = {
-  args: {},
+  args: { role: 'assistant', content: 'Sample message' },
   render: () => {
     const [key, setKey] = useState(0)
     const message = "This is a demonstration of different streaming speeds for the typewriter effect."
@@ -435,7 +435,7 @@ export const SpeedComparison: Story = {
 }
 
 export const StreamingWithCallback: Story = {
-  args: {},
+  args: { role: 'assistant', content: 'Sample message' },
   render: () => {
     const [status, setStatus] = useState('Streaming...')
     
