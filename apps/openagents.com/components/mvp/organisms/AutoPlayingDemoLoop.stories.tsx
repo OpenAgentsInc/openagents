@@ -180,8 +180,8 @@ export const AutoPlayingDemoLoop = ({
   const [phase, setPhase] = useState<DemoPhase>('prompt')
   const [isPaused, setIsPaused] = useState(false)
   const [hasInteracted, setHasInteracted] = useState(false)
-  const phaseTimeoutRef = useRef<NodeJS.Timeout>()
-  const demoTimeoutRef = useRef<NodeJS.Timeout>()
+  const phaseTimeoutRef = useRef<NodeJS.Timeout | undefined>()
+  const demoTimeoutRef = useRef<NodeJS.Timeout | undefined>()
   const currentDemo = demos[currentDemoIndex]
 
   // Clear timeouts on unmount
@@ -357,7 +357,6 @@ export const AutoPlayingDemoLoop = ({
                 
                 <Animated 
                   animated={[['opacity', 0, 1], ['y', 20, 0]]}
-                  style={{ animationDelay: '0.2s' }}
                 >
                   <CodeBlock
                     code={currentDemo.code}

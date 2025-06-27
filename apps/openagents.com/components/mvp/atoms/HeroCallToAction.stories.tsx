@@ -197,7 +197,7 @@ export const HeroCallToAction = ({
           className="absolute inset-0 pointer-events-none"
           style={{
             '--arwes-frames-line-color': 'hsla(300, 75%, 50%, 0.5)'
-          }}
+          } as React.CSSProperties}
         />
       )}
 

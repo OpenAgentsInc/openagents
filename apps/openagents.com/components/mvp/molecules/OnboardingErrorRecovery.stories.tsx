@@ -172,7 +172,7 @@ export const OnboardingErrorRecovery = ({
               style={{
                 '--arwes-frames-bg-color': 'hsla(0, 50%, 20%, 0.3)',
                 '--arwes-frames-line-color': 'hsla(0, 50%, 50%, 0.5)'
-              }}
+              } as React.CSSProperties}
             />
             <div className="relative p-4">
               <div className="flex items-start gap-3">

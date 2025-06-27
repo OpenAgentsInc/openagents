@@ -141,7 +141,7 @@ const PathCard = ({
                   : 'hsla(180, 75%, 50%, 0.5)',
                 '--arwes-frames-glow': isHovered ? 'true' : 'false',
                 '--arwes-frames-glow-size': '20px'
-              }}
+              } as React.CSSProperties}
             />
             <div className="relative p-6 h-full">
             {/* Recommended badge */}
@@ -313,7 +313,6 @@ export const OnboardingPathSelector = ({
         <Animated 
           animated={[['opacity', 0, 0.8]]}
           className="text-center"
-          style={{ animationDelay: '0.5s' }}
         >
           <Text as="p" className="text-gray-500 text-sm">
             🎯 You have 1000 free operations • No credit card required • Cancel anytime

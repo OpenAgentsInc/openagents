@@ -120,7 +120,7 @@ export const RecentBuildsStream = ({
   const [displayBuilds, setDisplayBuilds] = useState<Build[]>(builds.slice(0, maxItems))
   const [active, setActive] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const intervalRef = useRef<NodeJS.Timeout>()
+  const intervalRef = useRef<NodeJS.Timeout | undefined>()
 
   useEffect(() => {
     if (animated) {
