@@ -38,6 +38,8 @@ export function useAuth(): AuthState & {
       const user = localStorage.getItem('openagents_user')
       const isAuthenticated = !!user
 
+      console.log('Auth check:', { user, isAuthenticated }) // Debug log
+
       setAuthState({
         isAuthenticated,
         user: user ? JSON.parse(user) : null,

@@ -43,6 +43,15 @@ export const OnboardingOverlayManager = ({
   // Priority 2: Authentication requirement (desktop users only)
   const shouldShowAuthGate = isDesktop && !isAuthenticated
 
+  // Debug logging
+  console.log('Overlay Manager:', { 
+    screenWidth, 
+    isDesktop, 
+    isAuthenticated, 
+    shouldShowDesktopRequired, 
+    shouldShowAuthGate 
+  })
+
   return (
     <div className={className}>
       {/* Main app content - always renders */}

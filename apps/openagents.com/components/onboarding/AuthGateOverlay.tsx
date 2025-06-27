@@ -22,17 +22,13 @@ export const AuthGateOverlay = ({
 
   return (
     <div className={cx(
-      'fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4',
+      'fixed inset-0 z-50 bg-black/50 backdrop-blur-sm',
+      'flex items-center justify-center p-4',
       className
     )}>
-      <div className="relative max-w-md w-full">
-        <FrameKranox 
-          className="w-full" 
-          style={{
-            '--arwes-frames-bg-color': 'hsla(180, 75%, 10%, 0.95)',
-            '--arwes-frames-line-color': 'hsla(180, 75%, 50%, 0.8)'
-          } as React.CSSProperties}
-        >
+      <div className="relative max-w-md w-full mx-auto">
+        {/* Simple modal without FrameKranox for now */}
+        <div className="bg-gray-900 border border-cyan-500/30 rounded-lg shadow-xl">
           <div className="p-8 text-center space-y-6">
             {/* Simple headline */}
             <div className="space-y-2">
@@ -49,10 +45,10 @@ export const AuthGateOverlay = ({
               onClick={handleSignIn}
               className={cx(
                 'w-full flex items-center justify-center gap-3 px-6 py-3',
-                'bg-gray-900 hover:bg-gray-800',
-                'border border-gray-600 hover:border-gray-500',
-                'text-white hover:text-gray-100',
-                'transition-all duration-200',
+                'bg-black hover:bg-gray-800',
+                'border border-gray-600 hover:border-cyan-500',
+                'text-white hover:text-cyan-200',
+                'rounded transition-all duration-200',
                 'group'
               )}
             >
@@ -65,7 +61,7 @@ export const AuthGateOverlay = ({
               Free to start • No credit card required
             </Text>
           </div>
-        </FrameKranox>
+        </div>
       </div>
     </div>
   )
