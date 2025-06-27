@@ -121,7 +121,11 @@ export const ChatInputWithStatus = ({
 
   useEffect(() => {
     if (autoFocus && textareaRef.current) {
-      textareaRef.current.focus()
+      // Small delay to avoid focus fighting in Storybook
+      const timer = setTimeout(() => {
+        textareaRef.current?.focus()
+      }, 100)
+      return () => clearTimeout(timer)
     }
   }, [autoFocus])
 
@@ -570,7 +574,7 @@ export const InteractiveDemo: Story = {
           onStop={handleStop}
           onVoice={handleVoice}
           onAttach={handleAttach}
-          autoFocus={true}
+          autoFocus={false}
         />
         
         {message && (

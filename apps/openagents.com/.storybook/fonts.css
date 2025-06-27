@@ -116,6 +116,22 @@ html, body {
   height: 100vh !important;
 }
 
+/* Prevent auto-scrolling behaviors in Storybook */
+* {
+  scroll-behavior: auto !important;
+}
+
+/* Override smooth scrolling that causes jumps */
+html {
+  scroll-behavior: auto !important;
+}
+
+/* Prevent focus from causing scroll */
+*:focus {
+  scroll-margin: 0 !important;
+  scroll-padding: 0 !important;
+}
+
 /* Style docs headings */
 .sbdocs h1, .sbdocs h2, .sbdocs h3, .sbdocs h4, .sbdocs h5, .sbdocs h6 {
   color: #00ffff !important;

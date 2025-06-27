@@ -104,6 +104,7 @@ export const ProjectWorkspace = ({
             placeholder={`Ask me to build ${currentProject}...`}
             maxHeight={600}
             animated={false}
+            autoScroll={false}
           />
         )
       case 'generation':

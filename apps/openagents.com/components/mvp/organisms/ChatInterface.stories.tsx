@@ -61,6 +61,7 @@ export interface ChatInterfaceProps {
   showStatus?: boolean
   showModelBadge?: boolean
   animated?: boolean
+  autoScroll?: boolean
   className?: string
   onSendMessage?: (message: string) => void
   onClearChat?: () => void
@@ -79,6 +80,7 @@ export const ChatInterface = ({
   showStatus = true,
   showModelBadge = true,
   animated = true,
+  autoScroll = true,
   className = '',
   onSendMessage,
   onClearChat,
@@ -99,8 +101,10 @@ export const ChatInterface = ({
   }, [animated])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (autoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, autoScroll])
 
   const handleSend = () => {
     if (inputValue.trim() && !isLoading && !isStreaming) {
