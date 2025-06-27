@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Text, Animator, Animated, AnimatorGeneralProvider, cx } from '@arwes/react'
 import { FrameAlert } from '@/components/FrameAlert'
+import { ButtonSimple } from '@/components/ButtonSimple'
 import { Github } from 'lucide-react'
 
 export interface AuthGateOverlayProps {
@@ -30,7 +31,7 @@ export const AuthGateOverlay = ({
 
   return (
     <div className={cx(
-      'fixed inset-0 z-50 bg-black/80 backdrop-blur-sm',
+      'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm',
       'flex items-center justify-center p-4',
       className
     )}>
@@ -41,13 +42,15 @@ export const AuthGateOverlay = ({
               variant="info" 
               showIlluminator={false}
               style={{
-                // @ts-expect-error CSS variables for much darker colors
-                '--arwes-frames-bg-color': 'hsla(180, 75%, 10%, 0.1)',
-                '--arwes-frames-line-color': 'hsla(180, 75%, 40%, 0.3)', 
-                '--arwes-frames-deco-color': 'hsla(180, 75%, 40%, 0.3)',
+                // @ts-expect-error CSS variables to make card background much darker
+                '--arwes-frames-bg-color': 'hsla(180, 30%, 8%, 0.95)',
+                '--arwes-frames-line-color': 'hsla(180, 50%, 35%, 0.6)', 
+                '--arwes-frames-deco-color': 'hsla(180, 50%, 35%, 0.6)',
                 filter: 'none'
               } as React.CSSProperties}
             />
+            {/* Dark overlay on top of FrameAlert to make it even darker */}
+            <div className="absolute inset-0 bg-gray-900/80"></div>
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
               
               {/* Simple headline */}
@@ -72,20 +75,13 @@ export const AuthGateOverlay = ({
                 <Animated
                   animated={['fade', ['y', -20, 0]]}
                 >
-                  <button
+                  <ButtonSimple 
                     onClick={handleSignIn}
-                    className={cx(
-                      'flex items-center justify-center gap-3 px-6 py-3',
-                      'bg-gray-900/80 hover:bg-gray-800/90',
-                      'border border-gray-600/50 hover:border-gray-500',
-                      'text-gray-200 hover:text-white',
-                      'transition-all duration-200',
-                      'group'
-                    )}
+                    className="px-6 h-10"
                   >
-                    <Github size={20} className="group-hover:scale-110 transition-transform" />
-                    <span className="font-medium">Continue with GitHub</span>
-                  </button>
+                    <Github size={14} />
+                    <span>Continue with GitHub</span>
+                  </ButtonSimple>
                 </Animated>
               </Animator>
 
