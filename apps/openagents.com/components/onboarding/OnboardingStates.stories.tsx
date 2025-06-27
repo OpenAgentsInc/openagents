@@ -112,6 +112,7 @@ type Story = StoryObj<typeof meta>
 // Main onboarding states
 export const MobileDesktopRequired: Story = {
   name: '📱 Mobile - Desktop Required',
+  args: {} as any,
   render: () => (
     <ScreenSizeSimulator simulatedWidth={375} simulatedHeight={667}>
       <AnimatorGeneralProvider>
@@ -130,6 +131,7 @@ export const MobileDesktopRequired: Story = {
 
 export const TabletDesktopRequired: Story = {
   name: '📱 Tablet - Desktop Required',
+  args: {} as any,
   render: () => (
     <ScreenSizeSimulator simulatedWidth={768} simulatedHeight={1024}>
       <AnimatorGeneralProvider>
@@ -148,6 +150,7 @@ export const TabletDesktopRequired: Story = {
 
 export const DesktopAuthGate: Story = {
   name: '🖥️ Desktop - Auth Gate',
+  args: {} as any,
   render: () => (
     <ScreenSizeSimulator simulatedWidth={1280} simulatedHeight={800}>
       <AnimatorGeneralProvider>
@@ -168,6 +171,7 @@ export const DesktopAuthGate: Story = {
 
 export const DesktopAuthenticated: Story = {
   name: '✅ Desktop - Authenticated',
+  args: {} as any,
   render: () => (
     <ScreenSizeSimulator simulatedWidth={1280} simulatedHeight={800}>
       <AnimatorGeneralProvider>
@@ -181,6 +185,7 @@ export const DesktopAuthenticated: Story = {
 
 export const InteractiveDemo: Story = {
   name: '🎮 Interactive Demo',
+  args: {} as any,
   render: () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [simulatedWidth, setSimulatedWidth] = useState(1280)
@@ -271,6 +276,7 @@ export const InteractiveDemo: Story = {
 
 export const ResizeBehavior: Story = {
   name: '📏 Resize Behavior',
+  args: {} as any,
   render: () => {
     const [screenWidth, setScreenWidth] = useState(1280)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -398,6 +404,7 @@ export const ResizeBehavior: Story = {
 // Individual component stories
 export const AuthGateOnly: Story = {
   name: '🔐 Auth Gate Component',
+  args: {} as any,
   render: () => (
     <div className="relative w-full h-screen bg-black">
       <AnimatorGeneralProvider>
@@ -415,6 +422,7 @@ export const AuthGateOnly: Story = {
 
 export const DesktopRequiredOnly: Story = {
   name: '🚫 Desktop Required Component',
+  args: {} as any,
   render: () => (
     <AnimatorGeneralProvider>
       <DesktopRequiredOverlay
@@ -431,7 +439,8 @@ export const Playground: Story = {
     isAuthenticated: false,
     minDesktopWidth: 1024,
     showDemo: true,
-    showSocialProof: true
+    showSocialProof: true,
+    children: null as any
   },
   render: (args) => (
     <ScreenSizeSimulator simulatedWidth={1280} simulatedHeight={800}>

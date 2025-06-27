@@ -25,7 +25,7 @@ export function useScreenSize(desktopBreakpoint: number = 1024): ScreenSizeInfo 
     updateScreenSize()
 
     // Throttled resize handler for performance
-    let timeoutId: NodeJS.Timeout
+    let timeoutId: ReturnType<typeof setTimeout>
     const throttledResize = () => {
       clearTimeout(timeoutId)
       timeoutId = setTimeout(updateScreenSize, 100)
