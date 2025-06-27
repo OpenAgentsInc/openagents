@@ -133,7 +133,7 @@ export const ChatInterface = ({
       {showHeader && (
         <div className="flex items-center justify-between px-4 py-3 border-b border-cyan-500/20 bg-black/50">
           <div className="flex items-center gap-3">
-            <Text as="h3" className="text-cyan-300 font-medium">
+            <Text as="h3" className="text-cyan-300 font-medium font-sans">
               OpenAgents Chat
             </Text>
             {showModelBadge && (
@@ -172,8 +172,8 @@ export const ChatInterface = ({
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-gray-500">
-              <Text className="text-lg mb-2">Welcome to OpenAgents</Text>
-              <Text className="text-sm">
+              <Text className="text-lg mb-2 font-sans">Welcome to OpenAgents</Text>
+              <Text className="text-sm font-sans">
                 Tell me what you want to build and I'll deploy it to Cloudflare Workers
               </Text>
             </div>
@@ -222,7 +222,7 @@ export const ChatInterface = ({
             disabled={isLoading || isStreaming}
             className={cx(
               'w-full bg-black/50 border border-gray-600 rounded-lg px-4 py-3 pr-24',
-              'text-gray-200 placeholder-gray-500 resize-none',
+              'text-gray-200 placeholder-gray-500 resize-none font-sans',
               'focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500',
               (isLoading || isStreaming) && 'opacity-50 cursor-not-allowed'
             )}
@@ -262,10 +262,10 @@ export const ChatInterface = ({
         </div>
         
         <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-          <span>
+          <span className="font-sans">
             Press Enter to send, Shift+Enter for new line
           </span>
-          <span>
+          <span className="font-sans">
             {inputValue.length}/4000
           </span>
         </div>

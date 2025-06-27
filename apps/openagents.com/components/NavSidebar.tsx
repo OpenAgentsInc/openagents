@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cx, Text } from '@arwes/react';
-import { Home, MessageSquare, Settings, FileText, Users, Zap, Plus } from 'lucide-react';
+import { Home, MessageSquare, Settings, FileText, Users, Zap, Plus, FolderOpen } from 'lucide-react';
 
 interface NavItem {
   href: string;
@@ -16,6 +16,7 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Home', icon: <Home size={16} /> },
   { href: '/chat', label: 'Chat', icon: <MessageSquare size={16} /> },
   { href: '/agents', label: 'Agents', icon: <Users size={16} /> },
+  { href: '/projects', label: 'Projects', icon: <FolderOpen size={16} /> },
   { href: '/playground', label: 'Playground', icon: <Zap size={16} /> },
   { href: '/docs', label: 'Documentation', icon: <FileText size={16} /> },
   { href: '/settings', label: 'Settings', icon: <Settings size={16} /> },
