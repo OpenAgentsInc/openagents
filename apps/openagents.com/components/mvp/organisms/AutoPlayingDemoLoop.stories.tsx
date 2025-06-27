@@ -272,8 +272,14 @@ export const AutoPlayingDemoLoop = ({
         onMouseLeave={() => !hasInteracted && setIsPaused(false)}
       >
         {/* Demo Container */}
-        <div className="relative min-h-[600px]">
-          <FrameKranox className="absolute inset-0" />
+        <div className="relative min-h-[600px] bg-black">
+          <FrameKranox 
+            className="absolute inset-0" 
+            style={{
+              '--arwes-frames-bg-color': 'hsla(180, 75%, 10%, 0.8)',
+              '--arwes-frames-line-color': 'hsla(180, 75%, 50%, 0.6)'
+            } as React.CSSProperties}
+          />
           <div className="relative p-8 h-full">
           {/* Status Badge */}
           <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -461,6 +467,12 @@ const meta = {
   component: AutoPlayingDemoLoop,
   parameters: {
     layout: 'padded',
+    backgrounds: {
+      default: 'dark',
+      values: [
+        { name: 'dark', value: '#000000' }
+      ]
+    },
     docs: {
       description: {
         component: 'Auto-playing demo carousel that cycles through live demonstrations of the platform capabilities. Shows the complete flow from chat prompt to deployed application. Critical for homepage conversion.'
