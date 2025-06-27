@@ -67,10 +67,6 @@ export const DesktopRequired = ({
         <div className="relative">
           <FrameCorners 
             strokeWidth={2}
-            cornerWidth={16}
-            cornerLength={16}
-            showContentLines={false}
-            color="currentColor"
             className="text-yellow-500"
           />
           
