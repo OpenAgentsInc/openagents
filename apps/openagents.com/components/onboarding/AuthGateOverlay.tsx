@@ -42,15 +42,15 @@ export const AuthGateOverlay = ({
               variant="info" 
               showIlluminator={false}
               style={{
-                // @ts-expect-error CSS variables to make card background much darker
-                '--arwes-frames-bg-color': 'hsla(180, 30%, 8%, 0.95)',
-                '--arwes-frames-line-color': 'hsla(180, 50%, 35%, 0.6)', 
-                '--arwes-frames-deco-color': 'hsla(180, 50%, 35%, 0.6)',
+                // @ts-expect-error CSS variables for bright frame lines but dark bg
+                '--arwes-frames-bg-color': 'hsla(180, 80%, 20%, 0.3)',
+                '--arwes-frames-line-color': 'hsla(180, 80%, 60%, 0.9)', 
+                '--arwes-frames-deco-color': 'hsla(180, 80%, 60%, 0.9)',
                 filter: 'none'
               } as React.CSSProperties}
             />
-            {/* Dark overlay on top of FrameAlert to make it even darker */}
-            <div className="absolute inset-0 bg-gray-900/80"></div>
+            {/* Dark content area overlay - only covers center, not frame lines */}
+            <div className="absolute inset-4 bg-black/90 rounded-sm"></div>
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
               
               {/* Simple headline */}
