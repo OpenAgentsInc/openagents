@@ -30,19 +30,29 @@ export const AuthGateOverlay = ({
 
   return (
     <div className={cx(
-      'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm',
+      'fixed inset-0 z-50 bg-black/80 backdrop-blur-sm',
       'flex items-center justify-center p-4',
       className
     )}>
       <div className="relative max-w-md w-full h-64">
         <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
           <Animator active={active}>
-            <FrameAlert variant="info" showIlluminator={true} />
+            <FrameAlert 
+              variant="info" 
+              showIlluminator={false}
+              style={{
+                // @ts-expect-error CSS variables for much darker colors
+                '--arwes-frames-bg-color': 'hsla(180, 75%, 10%, 0.1)',
+                '--arwes-frames-line-color': 'hsla(180, 75%, 40%, 0.3)', 
+                '--arwes-frames-deco-color': 'hsla(180, 75%, 40%, 0.3)',
+                filter: 'none'
+              } as React.CSSProperties}
+            />
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
               
               {/* Simple headline */}
               <Animator>
-                <Text as="h2" className="text-2xl font-bold text-cyan-300 mb-2">
+                <Text as="h2" className="text-xl font-bold text-gray-200 mb-2">
                   Sign in to continue
                 </Text>
               </Animator>
@@ -50,7 +60,7 @@ export const AuthGateOverlay = ({
               <Animator duration={{ delay: 0.1 }}>
                 <Animated
                   as="p"
-                  className="text-cyan-400/80 mb-6"
+                  className="text-gray-400 mb-6 text-sm"
                   animated={['flicker', ['y', -16, 0]]}
                 >
                   Chat your apps into existence. Deploy in 60 seconds.
@@ -66,9 +76,9 @@ export const AuthGateOverlay = ({
                     onClick={handleSignIn}
                     className={cx(
                       'flex items-center justify-center gap-3 px-6 py-3',
-                      'bg-black/50 hover:bg-cyan-500/10',
-                      'border border-cyan-500/30 hover:border-cyan-500/60',
-                      'text-cyan-300 hover:text-cyan-200',
+                      'bg-gray-900/80 hover:bg-gray-800/90',
+                      'border border-gray-600/50 hover:border-gray-500',
+                      'text-gray-200 hover:text-white',
                       'transition-all duration-200',
                       'group'
                     )}
