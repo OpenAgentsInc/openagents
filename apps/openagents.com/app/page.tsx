@@ -16,7 +16,7 @@ import { Rocket, FolderOpen } from 'lucide-react';
 
 const HomePage = (): React.ReactElement => {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
-  const { isAuthenticated, isLoading: authLoading, signIn } = useAuth();
+  const { isAuthenticated } = useAuth(); // Keep for potential feature limiting
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Convert messages to UIMessage format for compatibility
@@ -41,46 +41,29 @@ const HomePage = (): React.ReactElement => {
     handleInputChange(e);
   };
 
-  const handleSignIn = async () => {
-    try {
-      await signIn();
-    } catch (error) {
-      console.error('Sign-in failed:', error);
-    }
-  };
-
-  // Show loading state while auth is initializing
-  if (authLoading) {
-    return (
-      <AppLayout>
-        <div className="flex items-center justify-center h-full">
-          <Text className="text-cyan-300 font-mono">Initializing...</Text>
+  return (
+    <AppLayout>
+      <OnboardingOverlayManager
+        minDesktopWidth={1024}
+        desktopMessage="OpenAgents requires a desktop browser for the full development experience. Please use a device with a screen width of at least 1024px."
+      >
+        {/* Background effects */}
+        <div className="fixed inset-0 pointer-events-none">
+          <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
+          <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
         </div>
-      </AppLayout>
-    );
-  }
 
-  // Chat interface content (shown behind overlays when unauthenticated)
-  const chatContent = (
-    <>
-      {/* Background effects */}
-      <div className="fixed inset-0 pointer-events-none">
-        <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
-        <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
-      </div>
-
-      <div className="relative z-10 flex flex-col h-full px-8">
-        {/* Messages container */}
-        <div className="flex-1 overflow-y-auto pt-6">
-          <div className="space-y-4">
-            {uiMessages.length === 0 ? (
-              <div className="text-center py-16 space-y-8">
-                <div>
-                  <Text className="text-lg font-mono text-cyan-500/40">Awaiting user input</Text>
-                </div>
-                
-                {/* Quick Actions - only show if authenticated */}
-                {isAuthenticated && (
+        <div className="relative z-10 flex flex-col h-full px-8">
+          {/* Messages container */}
+          <div className="flex-1 overflow-y-auto pt-6">
+            <div className="space-y-4">
+              {uiMessages.length === 0 ? (
+                <div className="text-center py-16 space-y-8">
+                  <div>
+                    <Text className="text-lg font-mono text-cyan-500/40">Awaiting user input</Text>
+                  </div>
+                  
+                  {/* Quick Actions - always show now */}
                   <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
                     <Link
                       href="/projects"
@@ -112,33 +95,33 @@ const HomePage = (): React.ReactElement => {
                       <span className="font-mono uppercase tracking-wider" style={{ fontFamily: 'var(--font-berkeley-mono), monospace' }}>Try Demo Project</span>
                     </Link>
                   </div>
-                )}
-                
-                <div className="max-w-md mx-auto">
-                  <Text className="text-xs text-gray-500 text-center">
-                    {isAuthenticated 
-                      ? "Explore the project workspace with our demo projects or create your own AI-powered application"
-                      : "Chat your apps into existence. Deploy to the edge in 60 seconds."
-                    }
-                  </Text>
+                  
+                  <div className="max-w-md mx-auto">
+                    <Text className="text-xs text-gray-500 text-center">
+                      Chat your apps into existence. Deploy to the edge in 60 seconds.
+                      {!isAuthenticated && (
+                        <span className="block mt-2 text-cyan-400/60">
+                          Sign in to save your projects and access advanced features.
+                        </span>
+                      )}
+                    </Text>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <>
-                {uiMessages.map((message) => (
-                  <ChatMessage 
-                    key={message.id} 
-                    message={message}
-                  />
-                ))}
-                {isLoading && <TypingIndicator />}
-              </>
-            )}
+              ) : (
+                <>
+                  {uiMessages.map((message) => (
+                    <ChatMessage 
+                      key={message.id} 
+                      message={message}
+                    />
+                  ))}
+                  {isLoading && <TypingIndicator />}
+                </>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Input area - disable if not authenticated */}
-        <div className={isAuthenticated ? '' : 'pointer-events-none opacity-50'}>
+          {/* Input area - now always enabled */}
           <ChatInput
             ref={inputRef}
             input={input}
@@ -147,19 +130,6 @@ const HomePage = (): React.ReactElement => {
             status={status}
           />
         </div>
-      </div>
-    </>
-  );
-
-  return (
-    <AppLayout>
-      <OnboardingOverlayManager
-        isAuthenticated={isAuthenticated}
-        minDesktopWidth={1024}
-        onSignIn={handleSignIn}
-        desktopMessage="OpenAgents requires a desktop browser for the full development experience. Please use a device with a screen width of at least 1024px."
-      >
-        {chatContent}
       </OnboardingOverlayManager>
     </AppLayout>
   );

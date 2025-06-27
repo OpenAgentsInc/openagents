@@ -37,19 +37,16 @@ export const OnboardingOverlayManager = ({
 }: OnboardingOverlayManagerProps): React.ReactElement => {
   const { screenWidth, isDesktop } = useScreenSize(minDesktopWidth)
 
-  // Priority 1: Screen size requirement (blocks everything)
+  // Only show desktop requirement for mobile users
+  // Desktop users get full access immediately
   const shouldShowDesktopRequired = !isDesktop
-  
-  // Priority 2: Authentication requirement (desktop users only)
-  const shouldShowAuthGate = isDesktop && !isAuthenticated
 
   // Debug logging
-  console.log('Overlay Manager:', { 
+  console.log('Overlay Manager (Mobile-only gating):', { 
     screenWidth, 
     isDesktop, 
-    isAuthenticated, 
-    shouldShowDesktopRequired, 
-    shouldShowAuthGate 
+    shouldShowDesktopRequired,
+    strategy: 'Mobile gating only - desktop users get immediate access'
   })
 
   return (
@@ -57,19 +54,13 @@ export const OnboardingOverlayManager = ({
       {/* Main app content - always renders */}
       {children}
       
-      {/* Conditional overlays based on state */}
+      {/* Only show desktop requirement overlay for mobile users */}
       {shouldShowDesktopRequired && (
         <DesktopRequiredOverlay
           screenWidth={screenWidth}
           minWidth={minDesktopWidth}
           customMessage={desktopMessage}
           animated={true}
-        />
-      )}
-      
-      {shouldShowAuthGate && (
-        <AuthGateOverlay
-          onSignIn={onSignIn}
         />
       )}
     </div>

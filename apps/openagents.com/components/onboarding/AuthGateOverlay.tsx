@@ -38,17 +38,19 @@ export const AuthGateOverlay = ({
       <div className="relative max-w-md w-full h-64">
         <AnimatorGeneralProvider duration={{ enter: 0.6, exit: 0.3 }}>
           <Animator active={active}>
-            <FrameAlert 
-              variant="info" 
-              showIlluminator={false}
+            <div
               style={{
                 // @ts-expect-error CSS variables for bright frame lines but dark bg
                 '--arwes-frames-bg-color': 'hsla(180, 80%, 20%, 0.3)',
                 '--arwes-frames-line-color': 'hsla(180, 80%, 60%, 0.9)', 
                 '--arwes-frames-deco-color': 'hsla(180, 80%, 60%, 0.9)',
-                filter: 'none'
               } as React.CSSProperties}
-            />
+            >
+              <FrameAlert 
+                variant="info" 
+                showIlluminator={false}
+              />
+            </div>
             {/* Dark content area overlay - only covers center, not frame lines */}
             <div className="absolute inset-4 bg-black/90 rounded-sm"></div>
             <div className="relative h-full flex flex-col items-center justify-center p-8 text-center">
