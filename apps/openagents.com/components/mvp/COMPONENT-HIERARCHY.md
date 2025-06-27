@@ -15,6 +15,11 @@
 │  │   └── Uses: StatusBadge           │                      │
 │  │             DeploymentUrl         │                      │
 │  │                                   │                      │
+│  ├── FirstDeploymentCelebration 🆕   │                      │
+│  │   ├── Uses: DeploymentUrl         │                      │
+│  │   ├── Uses: CopyButton            │                      │
+│  │   └── Uses: Confetti animations   │                      │
+│  │                                   │                      │
 │  └── DesktopRequired                 │                      │
 │      └── Uses: FrameCorners (Arwes)  │                      │
 │                                      │                      │
@@ -24,6 +29,15 @@
 │  │   ├── Uses: GenerationProgress                           │
 │  │   └── Uses: DeploymentProgress                           │
 │  │                                                          │
+│  ├── AutoPlayingDemoLoop 🆕                                 │
+│  │   ├── Uses: StreamingMessage                             │
+│  │   ├── Uses: DeploymentProgress                           │
+│  │   ├── Uses: DeploymentSuccess                            │
+│  │   └── Uses: CodeBlock                                    │
+│  │                                                          │
+│  ├── OnboardingPathSelector 🆕                              │
+│  │   └── Uses: FrameBox (Arwes)                             │
+│  │                                                          │
 │  ├── ChatInterface                                          │
 │  │   ├── Uses: ChatMessage (multiple)                       │
 │  │   ├── Uses: StreamingMessage                             │
@@ -32,10 +46,24 @@
 │  ├── DeploymentProgress                                     │
 │  │   └── Uses: DeploymentStage (multiple)                   │
 │  │                                                          │
+│  ├── DeploymentTracker (Real-time WebSocket)                │
+│  │   ├── Uses: StatusBadge                                  │
+│  │   ├── Uses: LoadingSpinner                               │
+│  │   └── Uses: Toast notifications                          │
+│  │                                                          │
 │  └── GenerationProgress                                     │
 │      └── Uses: GenerationStep (multiple)                    │
 │                                                             │
 │  MOLECULES (Composite Components)                           │
+│  ├── RecentBuildsStream 🆕                                  │
+│  │   └── Uses: FrameworkIcon                                │
+│  │                                                          │
+│  ├── GuidedPromptInput 🆕                                   │
+│  │   └── Uses: ContextHint                                  │
+│  │                                                          │
+│  ├── OnboardingErrorRecovery 🆕                             │
+│  │   └── Uses: FrameBox (Arwes)                             │
+│  │                                                          │
 │  ├── ChatMessage                                            │
 │  │   ├── Uses: StatusBadge                                  │
 │  │   ├── Uses: ModelBadge                                   │
@@ -68,6 +96,8 @@
 │      └── Uses: ModelBadge                                   │
 │                                                             │
 │  ATOMS (Basic Building Blocks)                              │
+│  ├── HeroCallToAction 🆕 (Homepage CTA)                     │
+│  ├── LiveUsageStats 🆕 (Platform metrics)                   │
 │  ├── StatusBadge (Used by 8+ components)                    │
 │  ├── LoadingSpinner (Standalone)                            │
 │  ├── StreamingCursor (Used by chat components)              │
@@ -168,19 +198,58 @@ User Input ──► ChatInputWithStatus ──► ChatInterface ──► ChatM
 - **Medium Reusability** (domain-specific): ModelBadge, StreamingCursor, LoadingSpinner
 - **Low Reusability** (purpose-built): BitcoinPunsDemo, DesktopRequired, DeploymentSuccess
 
-### Future Component Opportunities
+### New Onboarding Components (Phase 4)
+
+1. **Onboarding Atoms Added**:
+   - **HeroCallToAction** - High-impact CTA with countdown timer and benefits
+   - **LiveUsageStats** - Real-time platform metrics with animated counters
+
+2. **Onboarding Molecules Added**:
+   - **RecentBuildsStream** - Live feed of platform activity for social proof
+   - **GuidedPromptInput** - Enhanced chat input with suggestions and hints
+   - **OnboardingErrorRecovery** - Graceful error handling during onboarding
+
+3. **Onboarding Organisms Added**:
+   - **AutoPlayingDemoLoop** - Homepage demo carousel showing platform capabilities
+   - **OnboardingPathSelector** - Post-auth choice architecture (template vs chat)
+
+4. **Enhanced Templates Added**:
+   - **FirstDeploymentCelebration** - Maximizes psychological impact of first success
+
+### Remaining Component Opportunities
 
 1. **Missing Atoms**:
    - ProgressBar (linear progress)
    - IconButton (standardized icon actions)
    - Tooltip (hover information)
+   - AnimatedCounter (number animations)
 
 2. **Missing Molecules**:
-   - ErrorBoundary (error handling)
    - FileUpload (drag-drop interface)
    - ModelSelector (dropdown/modal)
+   - TemplateSelectionOnboarding (enhanced template cards)
+   - AIStreamingTheater (enhanced streaming visualization)
 
 3. **Missing Organisms**:
    - SettingsPanel (configuration)
    - HistoryBrowser (past sessions)
-   - MetricsDisplay (usage stats)
+   - PostSuccessExploration (next steps after deployment)
+   - OnboardingProgressTracker (analytics component)
+
+### Phase 3 Enhancements (Implemented)
+
+1. **Real-time WebSocket Integration**:
+   - DeploymentTracker with live deployment updates
+   - WebSocket connection management with auto-reconnect
+   - Mock fallback for development environments
+
+2. **Enhanced Error Handling**:
+   - ErrorBoundary components with specialized fallbacks
+   - Toast notification system with Arwes styling
+   - Retry mechanisms with exponential backoff
+
+3. **Performance Optimization**:
+   - Lazy loading with React.Suspense
+   - Web Vitals monitoring
+   - Memory usage tracking
+   - Performance recommendations

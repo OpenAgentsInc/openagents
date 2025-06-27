@@ -34,28 +34,33 @@ const bleepsSettings = {
   bleeps: {
     click: {
       sources: [
-        { src: 'https://arwes.dev/assets/sounds/click.mp3', type: 'audio/mpeg' }
+        { src: '/sounds/click.mp3', type: 'audio/mpeg' },
+        { src: '/sounds/click.webm', type: 'audio/webm' }
       ]
     },
     hover: {
       sources: [
-        { src: 'https://arwes.dev/assets/sounds/hover.mp3', type: 'audio/mpeg' }
+        { src: '/sounds/hover.mp3', type: 'audio/mpeg' },
+        { src: '/sounds/hover.webm', type: 'audio/webm' }
       ],
       volume: 0.4
     },
     enter: {
       sources: [
-        { src: 'https://arwes.dev/assets/sounds/enter.mp3', type: 'audio/mpeg' }
+        { src: '/sounds/info.mp3', type: 'audio/mpeg' },
+        { src: '/sounds/info.webm', type: 'audio/webm' }
       ]
     },
     error: {
       sources: [
-        { src: 'https://arwes.dev/assets/sounds/error.mp3', type: 'audio/mpeg' }
+        { src: '/sounds/error.mp3', type: 'audio/mpeg' },
+        { src: '/sounds/error.webm', type: 'audio/webm' }
       ]
     },
     success: {
       sources: [
-        { src: 'https://arwes.dev/assets/sounds/success.mp3', type: 'audio/mpeg' }
+        { src: '/sounds/type.mp3', type: 'audio/mpeg' },
+        { src: '/sounds/type.webm', type: 'audio/webm' }
       ]
     }
   }
@@ -314,7 +319,7 @@ export const NotificationSounds: Story = {
       setNotifications(prev => [...prev, { id, type, message }])
       
       // Play sound
-      const audio = new Audio(`https://arwes.dev/assets/sounds/${sound}.mp3`)
+      const audio = new Audio(`/sounds/${sound}.mp3`)
       audio.volume = 0.7
       audio.play()
       
