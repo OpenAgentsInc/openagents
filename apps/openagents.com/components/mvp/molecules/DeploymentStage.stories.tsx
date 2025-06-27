@@ -559,6 +559,11 @@ export const InteractiveLogs: Story = {
 }
 
 export const VariousDurations: Story = {
+  args: {
+    id: 'example',
+    title: 'Example Stage',
+    status: 'pending'
+  },
   render: () => (
     <div className="space-y-4">
       <DeploymentStage

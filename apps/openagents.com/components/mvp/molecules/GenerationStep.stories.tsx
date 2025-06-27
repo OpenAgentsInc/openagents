@@ -362,6 +362,14 @@ export const Default: Story = {
 }
 
 export const AllFileTypes: Story = {
+  args: {
+    id: 'example',
+    fileName: 'example.js',
+    filePath: '/src/example.js',
+    fileType: 'javascript',
+    action: 'creating',
+    status: 'pending'
+  },
   render: () => (
     <div className="space-y-4">
       <GenerationStep
@@ -418,6 +426,14 @@ export const AllFileTypes: Story = {
 }
 
 export const WithProgress: Story = {
+  args: {
+    id: 'progress',
+    fileName: 'example.js',
+    filePath: '/src/example.js',
+    fileType: 'javascript',
+    action: 'creating',
+    status: 'pending'
+  },
   render: () => {
     const [progress, setProgress] = useState(0)
     const [lines, setLines] = useState(0)
@@ -497,6 +513,14 @@ export const WithPreview: Story = {
 }
 
 export const GenerationSequence: Story = {
+  args: {
+    id: 'sequence',
+    fileName: 'example.js',
+    filePath: '/src/example.js',
+    fileType: 'javascript',
+    action: 'creating',
+    status: 'pending'
+  },
   render: () => {
     const files = [
       {
@@ -564,6 +588,14 @@ export const ErrorState: Story = {
 }
 
 export const DifferentActions: Story = {
+  args: {
+    id: 'actions',
+    fileName: 'example.js',
+    filePath: '/src/example.js',
+    fileType: 'javascript',
+    action: 'creating',
+    status: 'pending'
+  },
   render: () => (
     <div className="space-y-4">
       <GenerationStep
@@ -601,6 +633,14 @@ export const DifferentActions: Story = {
 }
 
 export const InteractivePreview: Story = {
+  args: {
+    id: 'preview',
+    fileName: 'example.js',
+    filePath: '/src/example.js',
+    fileType: 'javascript',
+    action: 'creating',
+    status: 'pending'
+  },
   render: () => {
     const [showPreview, setShowPreview] = useState(false)
     

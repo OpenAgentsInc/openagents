@@ -176,9 +176,6 @@ export const StreamingMessage = ({
             <Text
               as="div"
               manager="sequence"
-              managerSettings={{
-                interval: streamingSpeed
-              }}
               className="text-gray-200"
             >
               {content}

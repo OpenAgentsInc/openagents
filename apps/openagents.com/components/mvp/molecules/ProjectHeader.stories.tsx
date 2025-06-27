@@ -164,7 +164,7 @@ export const ProjectHeader = ({
             {showModelInfo && (
               <ModelBadge
                 model={currentModel}
-                provider={currentProvider}
+                provider={currentProvider as any}
                 variant="outline"
                 size="small"
                 animated={false}
@@ -187,7 +187,7 @@ export const ProjectHeader = ({
             url={deploymentUrl}
             status="active"
             animated={false}
-            onVisit={() => window.open(deploymentUrl, '_blank')}
+            onClick={() => window.open(deploymentUrl, '_blank')}
           />
         </div>
       )}
