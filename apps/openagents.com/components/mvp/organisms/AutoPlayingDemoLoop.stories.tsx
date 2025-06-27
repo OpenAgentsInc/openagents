@@ -379,7 +379,6 @@ export const AutoPlayingDemoLoop = ({
                 { id: 'deploy', title: 'Deploying to 320+ locations', status: 'running' },
                 { id: 'dns', title: 'Configuring DNS', status: 'pending' }
               ]}
-              currentStage={2}
               estimatedTime={currentDemo.deployTime}
             />
           )}
