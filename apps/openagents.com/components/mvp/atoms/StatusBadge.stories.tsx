@@ -271,6 +271,9 @@ export const SizeVariants: Story = {
 }
 
 export const AnimationDemo: Story = {
+  args: {
+    status: 'idle'
+  },
   render: () => {
     const [key, setKey] = useState(0)
     

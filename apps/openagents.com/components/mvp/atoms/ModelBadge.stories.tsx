@@ -303,6 +303,9 @@ export const VariantStyles: Story = {
 }
 
 export const LongModelNames: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => (
     <div className="space-y-3">
       <ModelBadge 
@@ -340,6 +343,9 @@ export const NoIcon: Story = {
 }
 
 export const Interactive: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => {
     const [selected, setSelected] = useState('llama-3-8b-instruct')
     const models = [
@@ -372,6 +378,9 @@ export const Interactive: Story = {
 }
 
 export const InContext: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => (
     <div className="space-y-4">
       <div className="p-4 bg-gray-900/50 rounded border border-gray-700">
@@ -400,6 +409,9 @@ export const InContext: Story = {
 }
 
 export const ModelGrid: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => (
     <div className="grid grid-cols-2 gap-3 p-6 bg-black/50 rounded">
       <ModelBadge model="llama-3-8b" provider="cloudflare" variant="outline" />
@@ -413,6 +425,9 @@ export const ModelGrid: Story = {
 }
 
 export const AnimationDemo: Story = {
+  args: {
+    model: 'example-model'
+  },
   render: () => {
     const [key, setKey] = useState(0)
     

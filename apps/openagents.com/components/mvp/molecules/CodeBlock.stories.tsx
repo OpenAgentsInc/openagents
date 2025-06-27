@@ -157,7 +157,7 @@ export const CodeBlock = ({
       <div
         className={cx(
           'overflow-auto',
-          maxHeight && maxHeight > 0 && `max-h-[${maxHeight}px]`
+          maxHeight && maxHeight > 0 ? `max-h-[${maxHeight}px]` : ''
         )}
         style={maxHeight ? { maxHeight: `${maxHeight}px` } : undefined}
       >
