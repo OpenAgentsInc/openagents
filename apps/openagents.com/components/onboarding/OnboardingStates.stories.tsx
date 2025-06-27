@@ -4,8 +4,7 @@ import { AnimatorGeneralProvider, Text, GridLines, Dots } from '@arwes/react'
 import { OnboardingOverlayManager } from './OnboardingOverlayManager'
 import { DesktopRequiredOverlay } from './DesktopRequiredOverlay'
 import { AuthGateOverlay } from './AuthGateOverlay'
-import { AppLayout } from '@/components/AppLayout'
-import { ChatInterface } from '@/components/ChatInterface.stories'
+import { StorybookAppLayout } from './StorybookAppLayout'
 
 // Mock chat interface for demo
 const MockChatInterface = () => (
@@ -116,14 +115,14 @@ export const MobileDesktopRequired: Story = {
   render: () => (
     <ScreenSizeSimulator simulatedWidth={375} simulatedHeight={667}>
       <AnimatorGeneralProvider>
-        <AppLayout>
+        <StorybookAppLayout>
           <DesktopRequiredOverlay
             screenWidth={375}
             minWidth={1024}
             animated={true}
           />
           <MockChatInterface />
-        </AppLayout>
+        </StorybookAppLayout>
       </AnimatorGeneralProvider>
     </ScreenSizeSimulator>
   )
@@ -135,14 +134,14 @@ export const TabletDesktopRequired: Story = {
   render: () => (
     <ScreenSizeSimulator simulatedWidth={768} simulatedHeight={1024}>
       <AnimatorGeneralProvider>
-        <AppLayout>
+        <StorybookAppLayout>
           <DesktopRequiredOverlay
             screenWidth={768}
             minWidth={1024}
             animated={true}
           />
           <MockChatInterface />
-        </AppLayout>
+        </StorybookAppLayout>
       </AnimatorGeneralProvider>
     </ScreenSizeSimulator>
   )
@@ -154,7 +153,7 @@ export const DesktopAuthGate: Story = {
   render: () => (
     <ScreenSizeSimulator simulatedWidth={1280} simulatedHeight={800}>
       <AnimatorGeneralProvider>
-        <AppLayout>
+        <StorybookAppLayout>
           <AuthGateOverlay
             onSignIn={() => alert('GitHub sign-in initiated!')}
             onDemoComplete={(demo) => console.log('Demo completed:', demo)}
@@ -163,7 +162,7 @@ export const DesktopAuthGate: Story = {
             animated={true}
           />
           <MockChatInterface />
-        </AppLayout>
+        </StorybookAppLayout>
       </AnimatorGeneralProvider>
     </ScreenSizeSimulator>
   )
@@ -175,9 +174,9 @@ export const DesktopAuthenticated: Story = {
   render: () => (
     <ScreenSizeSimulator simulatedWidth={1280} simulatedHeight={800}>
       <AnimatorGeneralProvider>
-        <AppLayout>
+        <StorybookAppLayout>
           <MockChatInterface />
-        </AppLayout>
+        </StorybookAppLayout>
       </AnimatorGeneralProvider>
     </ScreenSizeSimulator>
   )
@@ -255,7 +254,7 @@ export const InteractiveDemo: Story = {
         {/* Simulated screen */}
         <ScreenSizeSimulator simulatedWidth={simulatedWidth} simulatedHeight={800}>
           <AnimatorGeneralProvider>
-            <AppLayout>
+            <StorybookAppLayout>
               <OnboardingOverlayManager
                 isAuthenticated={isAuthenticated}
                 minDesktopWidth={1024}
@@ -266,7 +265,7 @@ export const InteractiveDemo: Story = {
               >
                 <MockChatInterface />
               </OnboardingOverlayManager>
-            </AppLayout>
+            </StorybookAppLayout>
           </AnimatorGeneralProvider>
         </ScreenSizeSimulator>
       </div>
@@ -382,7 +381,7 @@ export const ResizeBehavior: Story = {
         {/* Simulated screen */}
         <ScreenSizeSimulator simulatedWidth={screenWidth} simulatedHeight={600}>
           <AnimatorGeneralProvider>
-            <AppLayout>
+            <StorybookAppLayout>
               <OnboardingOverlayManager
                 isAuthenticated={isAuthenticated}
                 minDesktopWidth={1024}
@@ -393,7 +392,7 @@ export const ResizeBehavior: Story = {
               >
                 <MockChatInterface />
               </OnboardingOverlayManager>
-            </AppLayout>
+            </StorybookAppLayout>
           </AnimatorGeneralProvider>
         </ScreenSizeSimulator>
       </div>
@@ -445,7 +444,7 @@ export const Playground: Story = {
   render: (args) => (
     <ScreenSizeSimulator simulatedWidth={1280} simulatedHeight={800}>
       <AnimatorGeneralProvider>
-        <AppLayout>
+        <StorybookAppLayout>
           <OnboardingOverlayManager
             {...args}
             onSignIn={() => console.log('Sign in clicked')}
@@ -453,7 +452,7 @@ export const Playground: Story = {
           >
             <MockChatInterface />
           </OnboardingOverlayManager>
-        </AppLayout>
+        </StorybookAppLayout>
       </AnimatorGeneralProvider>
     </ScreenSizeSimulator>
   )
