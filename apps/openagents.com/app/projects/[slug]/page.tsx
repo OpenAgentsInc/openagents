@@ -9,6 +9,7 @@ import { DesktopRequired } from '@/components/mvp/templates/DesktopRequired.stor
 import { ChatInterface } from '@/components/mvp/organisms/ChatInterface.stories'
 import { FlexibleProjectWorkspace } from '@/components/workspace/FlexibleProjectWorkspace'
 import { CodeEditorPanel } from '@/components/workspace/CodeEditorPanel'
+import { WorkspaceChat } from '@/components/workspace/WorkspaceChat'
 import { AnimatorGeneralProvider, cx } from '@arwes/react'
 
 // Check if device is mobile or viewport is too small
@@ -136,20 +137,50 @@ export default function ProjectWorkspacePage() {
     return 'complete'
   }
 
-  // Placeholder preview component
-  const PreviewPanel = () => (
-    <div className="h-full bg-black/50 border border-cyan-900/30 flex items-center justify-center">
-      <div className="text-center">
-        <div className="text-cyan-500 text-xl mb-2 font-sans">Preview</div>
-        <div className="text-cyan-300/60 text-sm font-sans">
-          Preview will appear here
+  // Preview component with live iframe
+  const PreviewPanel = () => {
+    if (project.deploymentUrl) {
+      return (
+        <div className="h-full bg-black border border-cyan-900/30 flex flex-col">
+          <div className="h-12 bg-offblack border-b border-cyan-900/30 flex items-center px-4">
+            <span className="text-cyan-500 text-sm font-mono uppercase tracking-wider">Live Preview</span>
+            <div className="ml-auto">
+              <a 
+                href={project.deploymentUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-cyan-400 hover:text-cyan-300 text-xs font-mono"
+              >
+                Open in new tab ↗
+              </a>
+            </div>
+          </div>
+          <div className="flex-1">
+            <iframe
+              src={project.deploymentUrl}
+              className="w-full h-full border-0"
+              title={`Preview of ${project.name}`}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            />
+          </div>
         </div>
-        <div className="text-cyan-300/40 text-xs mt-4 font-sans">
-          Live preview iframe coming soon
+      )
+    }
+
+    return (
+      <div className="h-full bg-black/50 border border-cyan-900/30 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-cyan-500 text-xl mb-2" style={{ fontFamily: 'var(--font-titillium), sans-serif' }}>Preview</div>
+          <div className="text-cyan-300/60 text-sm" style={{ fontFamily: 'var(--font-titillium), sans-serif' }}>
+            No deployment URL available
+          </div>
+          <div className="text-cyan-300/40 text-xs mt-4" style={{ fontFamily: 'var(--font-titillium), sans-serif' }}>
+            Deploy project to see live preview
+          </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <AnimatorGeneralProvider>
@@ -202,7 +233,7 @@ export default function ProjectWorkspacePage() {
         {/* Workspace */}
         <div className="flex-1 overflow-hidden">
           <FlexibleProjectWorkspace
-            leftPanel={<ChatInterface messages={[]} />}
+            leftPanel={<WorkspaceChat projectName={project.name} />}
             centerPanel={null}
             rightPanel={
               state.rightPanelView === 'code' 
