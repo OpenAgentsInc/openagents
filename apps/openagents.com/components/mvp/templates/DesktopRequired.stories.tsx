@@ -61,22 +61,35 @@ export const DesktopRequired = ({
       {/* Simple centered alert */}
       <div className="relative max-w-md mx-auto px-6">
         <FrameCorners strokeWidth={1} />
-        <div className="p-8 text-center">
+        {/* Background with diagonal stripes pattern */}
+        <div 
+          className="absolute inset-0 bg-yellow-600/80"
+          style={{
+            backgroundImage: `repeating-linear-gradient(
+              45deg,
+              transparent,
+              transparent 10px,
+              rgba(0, 0, 0, 0.1) 10px,
+              rgba(0, 0, 0, 0.1) 20px
+            )`
+          }}
+        />
+        <div className="relative p-8 text-center">
           {/* Icon */}
-          <MonitorIcon className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
+          <MonitorIcon className="w-12 h-12 text-yellow-900 mx-auto mb-4" />
           
           {/* Title */}
-          <Text as="h2" className="text-xl font-medium text-yellow-400 mb-3">
+          <Text as="h2" className="text-xl font-medium text-yellow-900 mb-3">
             Desktop Required
           </Text>
           
           {/* Message */}
-          <Text className="text-sm text-gray-300 mb-6">
+          <Text className="text-sm text-yellow-900/80 mb-6">
             {customMessage || `Please use a desktop computer with a screen width of at least ${minWidth}px`}
           </Text>
           
           {/* Current width info */}
-          <Text className="text-xs text-gray-500 mb-6">
+          <Text className="text-xs text-yellow-900/60 mb-6">
             Current width: {screenWidth}px
           </Text>
           
@@ -84,7 +97,7 @@ export const DesktopRequired = ({
           <div className="flex gap-3 justify-center">
             <button
               onClick={() => window.location.reload()}
-              className="px-4 py-2 text-sm bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 rounded hover:bg-yellow-500/30 transition-colors cursor-pointer"
+              className="px-4 py-2 text-sm bg-yellow-900/20 text-yellow-900 border border-yellow-900/50 rounded hover:bg-yellow-900/30 transition-colors cursor-pointer"
             >
               Check Again
             </button>
@@ -92,7 +105,7 @@ export const DesktopRequired = ({
             {onContinueAnyway && (
               <button
                 onClick={onContinueAnyway}
-                className="px-4 py-2 text-sm text-gray-400 border border-gray-600 rounded hover:bg-gray-800 transition-colors cursor-pointer"
+                className="px-4 py-2 text-sm text-yellow-900/60 border border-yellow-900/30 rounded hover:bg-yellow-900/10 transition-colors cursor-pointer"
               >
                 Continue
               </button>
