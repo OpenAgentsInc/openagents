@@ -128,7 +128,7 @@ export const ProjectWorkspace = ({
           <div className="flex items-center justify-center h-full text-gray-500">
             <div className="text-center">
               <LayoutIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <Text>No content selected</Text>
+              <Text className="font-sans">No content selected</Text>
             </div>
           </div>
         )
@@ -152,7 +152,7 @@ export const ProjectWorkspace = ({
         <div className="flex items-center justify-between px-4 py-2 border-b border-cyan-500/20 bg-black/30">
           <div className="flex items-center gap-2">
             {!panel.isCollapsed && (
-              <Text className="text-sm font-medium text-cyan-300">
+              <Text className="text-sm font-medium text-cyan-300 font-sans">
                 {panel.title}
               </Text>
             )}
@@ -235,7 +235,7 @@ export const ProjectWorkspace = ({
       {showToolbar && (
         <div className="flex items-center justify-between px-6 py-3 border-b border-cyan-500/20 bg-black/30">
           <div className="flex items-center gap-4">
-            <Text as="h1" className="text-xl font-medium text-white">
+            <Text as="h1" className="text-xl font-medium text-white font-sans">
               {currentProject}
             </Text>
             <StatusBadge
@@ -497,7 +497,7 @@ export const InteractiveDemo: Story = {
           <button
             onClick={simulateWorkflow}
             disabled={status !== 'idle'}
-            className="px-4 py-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-500/30 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-500/30 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
           >
             {status === 'idle' ? 'Simulate Workflow' : `Status: ${status}`}
           </button>

@@ -70,7 +70,6 @@ const preview: Preview = {
         <AnimatorGeneralProvider {...animatorGeneralSettings}>
           <BleepsProvider {...bleepsSettings}>
             <div 
-              className="font-mono"
               style={{
                 backgroundColor: '#000000',
                 color: '#ffffff',

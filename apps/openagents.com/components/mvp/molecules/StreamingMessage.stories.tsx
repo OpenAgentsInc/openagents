@@ -145,7 +145,7 @@ export const StreamingMessage = ({
         
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cx('font-medium', config.textColor)}>
+            <span className={cx('font-medium font-sans', config.textColor)}>
               {config.name}
             </span>
             {role === 'assistant' && model && (
@@ -158,7 +158,7 @@ export const StreamingMessage = ({
               />
             )}
             {showTimestamp && (
-              <span className="text-gray-500 text-xs ml-auto">
+              <span className="text-gray-500 text-xs ml-auto font-sans">
                 {formatTime(timestamp)}
               </span>
             )}
@@ -176,7 +176,7 @@ export const StreamingMessage = ({
             <Text
               as="div"
               manager="sequence"
-              className="text-gray-200"
+              className="text-gray-200 font-sans"
             >
               {content}
             </Text>

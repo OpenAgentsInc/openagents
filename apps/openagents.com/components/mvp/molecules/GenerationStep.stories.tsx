@@ -171,7 +171,7 @@ export const GenerationStep = ({
             <Text
               as="span"
               manager={animated ? 'decipher' : undefined}
-              className={cx('text-sm font-medium', statusConf.textColor)}
+              className={cx('text-sm font-medium font-sans', statusConf.textColor)}
             >
               {actionConf.verb}
             </Text>
@@ -200,11 +200,11 @@ export const GenerationStep = ({
           {status === 'generating' && (
             <div className="mt-3">
               <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-                <span>
+                <span className="font-sans">
                   {totalLines ? `${linesGenerated}/${totalLines} lines` : `${linesGenerated} lines generated`}
                 </span>
                 {totalLines && (
-                  <span>{Math.round((linesGenerated / totalLines) * 100)}%</span>
+                  <span className="font-sans">{Math.round((linesGenerated / totalLines) * 100)}%</span>
                 )}
               </div>
               
@@ -224,12 +224,12 @@ export const GenerationStep = ({
             {status === 'complete' && (
               <div className="flex items-center gap-1 text-xs text-green-400">
                 <CheckIcon className="w-3 h-3" />
-                <span>Generated {linesGenerated} lines</span>
+                <span className="font-sans">Generated {linesGenerated} lines</span>
               </div>
             )}
 
             {status === 'error' && error && (
-              <div className="text-xs text-red-400">
+              <div className="text-xs text-red-400 font-sans">
                 <span className="font-medium">Error:</span> {error}
               </div>
             )}
@@ -240,7 +240,7 @@ export const GenerationStep = ({
                   setExpanded(!expanded)
                   onViewPreview(id)
                 }}
-                className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer font-sans"
               >
                 {expanded ? 'Hide' : 'Show'} Preview
               </button>

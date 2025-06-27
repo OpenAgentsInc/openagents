@@ -289,6 +289,9 @@ importers:
       '@convex-dev/auth':
         specifier: ^0.0.81
         version: 0.0.81(@auth/core@0.37.4)(convex@1.23.0)(react@19.1.0)
+      '@monaco-editor/react':
+        specifier: ^4.7.0
+        version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.1.0)(react@19.1.0)
       '@openrouter/ai-sdk-provider':
         specifier: ^0.7.2
         version: 0.7.2(ai@4.3.16)(zod@3.25.67)
@@ -5777,6 +5780,25 @@ packages:
       '@types/react': 19.0.0
       react: 19.1.0
     dev: true
+
+  /@monaco-editor/loader@1.5.0:
+    resolution: {integrity: sha512-hKoGSM+7aAc7eRTRjpqAZucPmoNOC4UUbknb/VNoTkEIkCPhqV8LfbsgM1webRM7S/z21eHEx9Fkwx8Z/C/+Xw==}
+    dependencies:
+      state-local: 1.0.7
+    dev: false
+
+  /@monaco-editor/react@4.7.0(monaco-editor@0.52.2)(react-dom@19.1.0)(react@19.1.0):
+    resolution: {integrity: sha512-cyzXQCtO47ydzxpQtCGSQGOC8Gk3ZUeBXFAxD+CWXYFo5OqZyZUonFl0DwUlTyAfRHntBfw2p3w4s9R6oe1eCA==}
+    peerDependencies:
+      monaco-editor: '>= 0.25.0 < 1'
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    dependencies:
+      '@monaco-editor/loader': 1.5.0
+      monaco-editor: 0.52.2
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+    dev: false
 
   /@motionone/animation@10.18.0:
     resolution: {integrity: sha512-9z2p5GFGCm0gBsZbi8rVMOAJCtw1WqBTIPw3ozk06gDvZInBPIsQcHgYogEJ4yuHJ+akuW8g1SEIOpTOvYs8hw==}
@@ -14336,6 +14358,10 @@ packages:
     hasBin: true
     dev: true
 
+  /monaco-editor@0.52.2:
+    resolution: {integrity: sha512-GEQWEZmfkOGLdd3XK8ryrfWz3AIP8YymVXiPHEdewrUq7mh0qrKrfHLNCXcbB6sTnMLnOZ3ztSiKcciFUkIJwQ==}
+    dev: false
+
   /motion@10.18.0:
     resolution: {integrity: sha512-MVAZZmwM/cp77BrNe1TxTMldxRPjwBNHheU5aPToqT4rJdZxLiADk58H+a0al5jKLxkB0OdgNq6DiVn11cjvIQ==}
     dependencies:
@@ -16655,6 +16681,10 @@ packages:
       as-table: 1.0.55
       get-source: 2.0.12
     dev: true
+
+  /state-local@1.0.7:
+    resolution: {integrity: sha512-HTEHMNieakEnoe33shBYcZ7NX83ACUjCu8c40iOGEZsngj9zRnkqS9j1pqQPXwobB0ZcVTk27REb7COQ0UR59w==}
+    dev: false
 
   /statuses@1.5.0:
     resolution: {integrity: sha512-OpZ3zP+jT1PI7I8nemJX4AKmAX070ZkYPVWV/AaKTJl+tXCTGyVdC1a4SL8RUQYEwk/f34ZX8UTykN68FwrqAA==}

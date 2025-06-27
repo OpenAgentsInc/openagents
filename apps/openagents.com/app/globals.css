@@ -18,6 +18,7 @@ html, body {
 body {
   color: var(--foreground);
   background: var(--background);
+  font-family: var(--font-titillium), 'Titillium Web', sans-serif;
 }
 
 .font-sans {
@@ -39,4 +40,9 @@ body {
 
 .animate-spin-slow {
   animation: spin-slow 30s linear infinite;
+}
+
+/* Ensure Arwes components use the correct fonts */
+[data-arwes-text] {
+  font-family: var(--font-berkeley-mono), monospace;
 }

@@ -20,9 +20,9 @@ export const theme = {
   },
   
   fontFamilies: {
-    title: '"Titillium Web", sans-serif',
-    body: '"Source Code Pro", monospace',
-    code: '"Source Code Pro", monospace'
+    title: 'var(--font-titillium), "Titillium Web", sans-serif',
+    body: 'var(--font-berkeley-mono), "Berkeley Mono", monospace',
+    code: 'var(--font-berkeley-mono), "Berkeley Mono", monospace'
   },
   
   fontWeights: {
