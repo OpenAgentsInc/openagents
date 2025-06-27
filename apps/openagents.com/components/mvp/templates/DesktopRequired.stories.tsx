@@ -60,56 +60,72 @@ export const DesktopRequired = ({
     >
       {/* Simple centered alert */}
       <div className="relative max-w-md mx-auto px-6">
-        <FrameCorners strokeWidth={1} />
-        {/* Background with diagonal stripes pattern */}
-        <div 
-          className="absolute inset-0 bg-yellow-600/80"
-          style={{
-            backgroundImage: `repeating-linear-gradient(
-              45deg,
-              transparent,
-              transparent 10px,
-              rgba(0, 0, 0, 0.1) 10px,
-              rgba(0, 0, 0, 0.1) 20px
-            )`
-          }}
-        />
-        <div className="relative p-8 text-center">
-          {/* Icon */}
-          <MonitorIcon className="w-12 h-12 text-yellow-900 mx-auto mb-4" />
+        {/* Glow effect */}
+        <div className="absolute inset-0 blur-xl bg-yellow-500/30" />
+        
+        {/* Main container with FrameCorners */}
+        <div className="relative">
+          <FrameCorners 
+            strokeWidth={2}
+            cornerWidth={16}
+            cornerLength={16}
+            showContentLines={false}
+            color="currentColor"
+            className="text-yellow-500"
+          />
           
-          {/* Title */}
-          <Text as="h2" className="text-xl font-medium text-yellow-900 mb-3">
-            Desktop Required
-          </Text>
+          {/* Background with diagonal stripes pattern */}
+          <div 
+            className="absolute inset-0 bg-yellow-600/90 shadow-2xl"
+            style={{
+              backgroundImage: `repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 20px,
+                rgba(0, 0, 0, 0.1) 20px,
+                rgba(0, 0, 0, 0.1) 40px
+              )`
+            }}
+          />
+          <div className="relative p-8 text-center">
+            {/* Icon with warning triangle style */}
+            <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+              <MonitorIcon className="w-12 h-12 text-yellow-900" />
+            </div>
           
-          {/* Message */}
-          <Text className="text-sm text-yellow-900/80 mb-6">
-            {customMessage || `Please use a desktop computer with a screen width of at least ${minWidth}px`}
-          </Text>
+            {/* Title */}
+            <Text as="h2" className="text-2xl font-bold text-yellow-900 mb-3">
+              Desktop Required
+            </Text>
           
-          {/* Current width info */}
-          <Text className="text-xs text-yellow-900/60 mb-6">
-            Current width: {screenWidth}px
-          </Text>
+            {/* Message */}
+            <Text className="text-base text-yellow-900/80 mb-4 leading-relaxed">
+              {customMessage || `Please use a desktop computer with a screen width of at least ${minWidth}px`}
+            </Text>
           
-          {/* Actions */}
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 text-sm bg-yellow-900/20 text-yellow-900 border border-yellow-900/50 rounded hover:bg-yellow-900/30 transition-colors cursor-pointer"
-            >
-              Check Again
-            </button>
-            
-            {onContinueAnyway && (
+            {/* Current width info */}
+            <Text className="text-sm text-yellow-900/60 mb-6">
+              Current width: {screenWidth}px
+            </Text>
+          
+            {/* Actions */}
+            <div className="flex gap-3 justify-center">
               <button
-                onClick={onContinueAnyway}
-                className="px-4 py-2 text-sm text-yellow-900/60 border border-yellow-900/30 rounded hover:bg-yellow-900/10 transition-colors cursor-pointer"
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 text-sm font-medium bg-yellow-900/30 text-yellow-900 border-2 border-yellow-900/50 hover:bg-yellow-900/40 transition-all cursor-pointer"
               >
-                Continue
+                Check Again
               </button>
-            )}
+              
+              {onContinueAnyway && (
+                <button
+                  onClick={onContinueAnyway}
+                  className="px-4 py-2 text-sm font-medium text-yellow-900/70 border-2 border-yellow-900/30 hover:bg-yellow-900/20 transition-all cursor-pointer"
+                >
+                  Continue
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
