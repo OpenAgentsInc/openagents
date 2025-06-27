@@ -453,3 +453,101 @@ Deployment Service (Updates via Internal API)
 - Lazy loading with Arwes-styled skeletons for performance optimization
 - Adding error reporting to understand failure patterns
 - Creating fallback UI components that maintain user workflow
+
+---
+
+## ✅ STRATEGIC PIVOT: ONBOARDING STRATEGY CHANGE
+
+### Date: December 27, 2025 (Late Session)
+
+#### 🎯 Major Strategy Change: Mobile-Only Gating
+
+**Previous Strategy:** Dual overlay system with auth gate for all unauthenticated desktop users  
+**New Strategy:** Remove desktop auth gating entirely - let desktop users chat immediately
+
+#### Reason for Change:
+After user testing the dual overlay onboarding system from GitHub issue #1116, feedback indicated the auth gate was too aggressive for desktop users. The new approach prioritizes immediate value delivery over forced authentication.
+
+#### Implementation Summary:
+
+##### ✅ Completed Changes:
+
+1. **OnboardingOverlayManager Updated**
+   - Location: `/components/onboarding/OnboardingOverlayManager.tsx`
+   - Change: Modified to only show desktop requirement overlay for mobile users (< 1024px)
+   - Result: Desktop users get immediate access to chat interface
+
+2. **Header Authentication Added**
+   - Location: `/components/LayoutWithFrames.tsx`
+   - Change: Added login/signup buttons to header top-right corner
+   - Integration: Uses ButtonSimple component with Arwes styling
+   - User experience: Non-intrusive auth access
+
+3. **Homepage Authentication Removed**
+   - Location: `/app/page.tsx`
+   - Change: Removed auth gate overlay from desktop experience
+   - Added: Feature limitation hints for unauthenticated users
+   - Result: Immediate chat access for all desktop users
+
+4. **useAuth Hook Created**
+   - Location: `/hooks/useAuth.ts`
+   - Implementation: Mock GitHub OAuth for demonstration
+   - Features: localStorage-based session persistence
+   - Ready for: Real GitHub OAuth integration
+
+5. **TypeScript Issues Fixed**
+   - Location: `/components/onboarding/AuthGateOverlay.tsx`
+   - Issue: CSS variable style prop compatibility
+   - Fix: Wrapped FrameAlert in div with CSS variables
+   - Status: Component working (though not used in new strategy)
+
+##### 📋 Updated User Flow:
+
+```
+User hits openagents.com homepage
+    ↓
+Chat interface renders immediately
+    ↓
+Check screen width
+    ↓
+If width < 1024px
+    └─> Show DesktopRequired overlay (blocks everything)
+    
+If width >= 1024px
+    └─> Show full chat interface immediately
+        ↓
+        Header shows login button (optional)
+        ↓
+        Some features hinted as "premium":
+            - Save chat history
+            - Deploy projects  
+            - Access advanced templates
+```
+
+##### 🎯 Conversion Benefits:
+- **Reduced Friction**: No forced authentication barriers
+- **Immediate Value**: Users can test the product instantly
+- **Progressive Disclosure**: Premium features revealed organically  
+- **Higher Intent Auth**: Users who choose to sign in have higher conversion intent
+
+##### 📊 Files Modified:
+- `components/onboarding/OnboardingOverlayManager.tsx` - Mobile-only overlay logic
+- `components/LayoutWithFrames.tsx` - Header auth buttons added
+- `app/page.tsx` - Removed auth gate, added feature hints
+- `hooks/useAuth.ts` - Created mock authentication system
+- `components/onboarding/AuthGateOverlay.tsx` - Fixed TypeScript error
+
+##### 🔄 GitHub Issue Updated:
+- Issue #1116 updated with complete strategic pivot documentation
+- Original dual overlay approach documented as "STRATEGIC PIVOT"
+- New mobile-only gating strategy outlined
+- Implementation status marked as ✅ COMPLETED
+
+##### 🚀 Next Steps (Future):
+- Implement feature limitations for unauthenticated users
+- Add real GitHub OAuth integration
+- Monitor voluntary auth conversion rates
+- Optimize header button placement and messaging
+
+##### ✅ Strategic Change Status: COMPLETE
+All code changes implemented and tested. Desktop users now have immediate access to chat interface while mobile users still see desktop requirement. Authentication moved to optional header buttons with feature upgrade hints.
