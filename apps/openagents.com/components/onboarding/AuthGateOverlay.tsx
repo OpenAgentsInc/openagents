@@ -40,7 +40,6 @@ export const AuthGateOverlay = ({
           <Animator active={active}>
             <div
               style={{
-                // @ts-expect-error CSS variables for bright frame lines but dark bg
                 '--arwes-frames-bg-color': 'hsla(180, 80%, 20%, 0.3)',
                 '--arwes-frames-line-color': 'hsla(180, 80%, 60%, 0.9)', 
                 '--arwes-frames-deco-color': 'hsla(180, 80%, 60%, 0.9)',
