@@ -6,6 +6,7 @@ import { DeploymentProgress } from './DeploymentProgress.stories'
 import { GenerationProgress } from './GenerationProgress.stories'
 import { StatusBadge } from '../atoms/StatusBadge.stories'
 import { DeploymentTracker } from '../../DeploymentTracker'
+import { ToastProvider } from '../../Toast'
 
 // Icon components
 const SidebarIcon = ({ className }: { className?: string }) => (
@@ -549,7 +550,14 @@ export const WebSocketDeployment: Story = {
     overallStatus: 'deploying',
     deploymentId: 'deploy-websocket-demo-12345',
     layout: 'three-column'
-  }
+  },
+  decorators: [
+    (Story) => (
+      <ToastProvider>
+        <Story />
+      </ToastProvider>
+    )
+  ]
 }
 
 export const Playground: Story = {

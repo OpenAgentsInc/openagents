@@ -27,7 +27,7 @@ type FilterType = 'all' | keyof typeof TEMPLATE_CATEGORIES
 type FrameworkFilter = 'all' | keyof typeof TEMPLATE_FRAMEWORKS
 type DifficultyFilter = 'all' | 'beginner' | 'intermediate' | 'advanced'
 
-export default function TemplatesPage() {
+function TemplatesPageContent() {
   const toast = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<FilterType>('all')
@@ -117,8 +117,7 @@ export default function TemplatesPage() {
   }
 
   return (
-    <AppLayout>
-      <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-black">
         {/* Header */}
         <div className="border-b border-cyan-900/30 bg-offblack">
           <div className="container mx-auto px-6 py-8">
@@ -421,6 +420,13 @@ export default function TemplatesPage() {
           </div>
         </div>
       </div>
+  )
+}
+
+export default function TemplatesPage() {
+  return (
+    <AppLayout>
+      <TemplatesPageContent />
     </AppLayout>
   )
 }
