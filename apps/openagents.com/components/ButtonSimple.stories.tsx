@@ -5,7 +5,7 @@ import { AnimatorGeneralProvider, Animator, Animated } from '@arwes/react'
 import React, { useState, useEffect } from 'react'
 
 const meta = {
-  title: 'Components/ButtonSimple',
+  title: 'Components/Basic/ButtonSimple',
   component: ButtonSimple,
   parameters: {
     layout: 'centered',

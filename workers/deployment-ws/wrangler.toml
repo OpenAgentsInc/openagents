@@ -1,0 +1,25 @@
+name = "openagents-deployment-ws"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Durable Objects binding
+[[durable_objects.bindings]]
+name = "DEPLOYMENT_SESSIONS"
+class_name = "DeploymentSession"
+
+# Durable Objects migration
+[[migrations]]
+tag = "v1"
+new_classes = ["DeploymentSession"]
+
+# Development environment
+[env.development]
+vars = { ENVIRONMENT = "development" }
+
+# Production environment
+[env.production]
+routes = [
+  # This will be configured when we have the domain set up
+  # { pattern = "api.openagents.com/deployment-ws/*", custom_domain = true }
+]
+vars = { ENVIRONMENT = "production" }

@@ -9,8 +9,15 @@ import { DesktopRequired } from '@/components/mvp/templates/DesktopRequired.stor
 import { ChatInterface } from '@/components/mvp/organisms/ChatInterface.stories'
 import { FlexibleProjectWorkspace } from '@/components/workspace/FlexibleProjectWorkspace'
 import { CodeEditorPanel } from '@/components/workspace/CodeEditorPanel'
-import { WorkspaceChat } from '@/components/workspace/WorkspaceChat'
+import { LazyChat } from '@/components/LazyComponents'
 import { AnimatorGeneralProvider, cx } from '@arwes/react'
+import { 
+  WorkspaceErrorBoundary,
+  ChatErrorBoundary,
+  CodeEditorErrorBoundary,
+  PreviewErrorBoundary 
+} from '@/components/workspace/WorkspaceErrorBoundaries'
+import { ToastProvider } from '@/components/Toast'
 
 // Check if device is mobile or viewport is too small
 function isMobileDevice() {
@@ -184,67 +191,82 @@ export default function ProjectWorkspacePage() {
 
   return (
     <AnimatorGeneralProvider>
-      <div className="h-screen bg-black flex flex-col">
-        {/* Header */}
-        <div className="h-16 bg-offblack border-b border-cyan-900/30 flex items-center px-4">
-          <h1 className="text-cyan-500 font-mono text-lg">{project.name}</h1>
-          
-          {/* Toggle buttons */}
-          <div className="ml-8 flex items-center">
-            <button
-              onClick={() => setState(prev => ({ ...prev, rightPanelView: 'code' }))}
-              className={cx(
-                'px-4 py-1.5 text-sm font-mono uppercase tracking-wider transition-all',
-                state.rightPanelView === 'code' 
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50' 
-                  : 'text-cyan-500/60 hover:text-cyan-400 border border-transparent'
-              )}
-            >
-              Code
-            </button>
-            <button
-              onClick={() => setState(prev => ({ ...prev, rightPanelView: 'preview' }))}
-              className={cx(
-                'px-4 py-1.5 text-sm font-mono uppercase tracking-wider transition-all ml-2',
-                state.rightPanelView === 'preview' 
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50' 
-                  : 'text-cyan-500/60 hover:text-cyan-400 border border-transparent'
-              )}
-            >
-              Preview
-            </button>
+      <ToastProvider>
+        <WorkspaceErrorBoundary>
+          <div className="h-screen bg-black flex flex-col">
+            {/* Header */}
+            <div className="h-16 bg-offblack border-b border-cyan-900/30 flex items-center px-4">
+              <h1 className="text-cyan-500 font-mono text-lg">{project.name}</h1>
+              
+              {/* Toggle buttons */}
+              <div className="ml-8 flex items-center">
+                <button
+                  onClick={() => setState(prev => ({ ...prev, rightPanelView: 'code' }))}
+                  className={cx(
+                    'px-4 py-1.5 text-sm font-mono uppercase tracking-wider transition-all',
+                    state.rightPanelView === 'code' 
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50' 
+                      : 'text-cyan-500/60 hover:text-cyan-400 border border-transparent'
+                  )}
+                >
+                  Code
+                </button>
+                <button
+                  onClick={() => setState(prev => ({ ...prev, rightPanelView: 'preview' }))}
+                  className={cx(
+                    'px-4 py-1.5 text-sm font-mono uppercase tracking-wider transition-all ml-2',
+                    state.rightPanelView === 'preview' 
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50' 
+                      : 'text-cyan-500/60 hover:text-cyan-400 border border-transparent'
+                  )}
+                >
+                  Preview
+                </button>
+              </div>
+              
+              <div className="ml-auto flex items-center gap-4">
+                <span className="text-cyan-300/60 text-sm font-sans">Status: {project.status}</span>
+                {project.deploymentUrl && (
+                  <a 
+                    href={project.deploymentUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-cyan-500 hover:text-cyan-300 text-sm font-mono"
+                  >
+                    View Deploy →
+                  </a>
+                )}
+              </div>
+            </div>
+            
+            {/* Workspace */}
+            <div className="flex-1 overflow-hidden">
+              <FlexibleProjectWorkspace
+                leftPanel={
+                  <ChatErrorBoundary>
+                    <LazyChat projectName={project.name} />
+                  </ChatErrorBoundary>
+                }
+                centerPanel={null}
+                rightPanel={
+                  state.rightPanelView === 'code' 
+                    ? (
+                      <CodeEditorErrorBoundary>
+                        <CodeEditorPanel projectId={project._id} className="h-full" />
+                      </CodeEditorErrorBoundary>
+                    ) : (
+                      <PreviewErrorBoundary>
+                        <PreviewPanel />
+                      </PreviewErrorBoundary>
+                    )
+                }
+                layout="two-column-right"
+                className="h-full"
+              />
+            </div>
           </div>
-          
-          <div className="ml-auto flex items-center gap-4">
-            <span className="text-cyan-300/60 text-sm font-sans">Status: {project.status}</span>
-            {project.deploymentUrl && (
-              <a 
-                href={project.deploymentUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-cyan-500 hover:text-cyan-300 text-sm font-mono"
-              >
-                View Deploy →
-              </a>
-            )}
-          </div>
-        </div>
-        
-        {/* Workspace */}
-        <div className="flex-1 overflow-hidden">
-          <FlexibleProjectWorkspace
-            leftPanel={<WorkspaceChat projectName={project.name} />}
-            centerPanel={null}
-            rightPanel={
-              state.rightPanelView === 'code' 
-                ? <CodeEditorPanel projectId={project._id} className="h-full" />
-                : <PreviewPanel />
-            }
-            layout="two-column-right"
-            className="h-full"
-          />
-        </div>
-      </div>
+        </WorkspaceErrorBoundary>
+      </ToastProvider>
     </AnimatorGeneralProvider>
   )
 }

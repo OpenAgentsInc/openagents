@@ -27,7 +27,7 @@ const simpleBleep = createBleep({
 })
 
 const meta = {
-  title: 'Examples/Chat Interface',
+  title: 'Features/Chat & AI/ChatInterface',
   parameters: {
     layout: 'fullscreen',
     docs: {

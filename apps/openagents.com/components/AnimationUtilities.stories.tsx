@@ -12,7 +12,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Move, RotateCw, Maximize2, Eye } from 'lucide-react'
 
 const meta = {
-  title: 'Utilities/Animation',
+  title: 'Foundation/Utilities/Animation',
   parameters: {
     layout: 'centered',
     docs: {

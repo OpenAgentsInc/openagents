@@ -12,7 +12,7 @@ import React, { useState, useCallback, ReactNode } from 'react'
 import { Send, User, Bot, CheckCircle, Clock, AlertCircle, Play, Pause, FileText } from 'lucide-react'
 
 const meta = {
-  title: 'AI Chat/Vercel AI SDK v4',
+  title: 'Features/Chat & AI/Vercel AI SDK v4',
   parameters: {
     layout: 'fullscreen',
     docs: {

@@ -3,7 +3,7 @@ import React from 'react'
 import { MonacoEditor } from './MonacoEditor'
 
 const meta = {
-  title: 'Workspace/MonacoEditor',
+  title: 'Features/Workspace/MonacoEditor',
   component: MonacoEditor,
   parameters: {
     layout: 'fullscreen',

@@ -137,7 +137,7 @@ const sampleFiles: FileNode[] = [
 ]
 
 const meta = {
-  title: 'Workspace/FileTree',
+  title: 'Features/Workspace/FileTree',
   component: FileTree,
   parameters: {
     layout: 'padded',

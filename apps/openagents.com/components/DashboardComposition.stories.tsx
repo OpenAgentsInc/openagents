@@ -18,7 +18,7 @@ import React, { useState, useEffect } from 'react'
 import { Activity, Cpu, Database, Network, Shield, Zap } from 'lucide-react'
 
 const meta = {
-  title: 'Compositions/Dashboard',
+  title: 'Patterns & Examples/Full Page Examples/Dashboard',
   parameters: {
     layout: 'fullscreen',
     docs: {

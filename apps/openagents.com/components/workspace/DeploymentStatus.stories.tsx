@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs'
 import { DeploymentStatus } from './DeploymentStatus'
 
 const meta = {
-  title: 'Workspace/DeploymentStatus',
+  title: 'Features/Workspace/DeploymentStatus',
   component: DeploymentStatus,
   parameters: {
     layout: 'padded',

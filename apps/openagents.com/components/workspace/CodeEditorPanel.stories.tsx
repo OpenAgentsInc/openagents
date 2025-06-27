@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs'
 import { CodeEditorPanel } from './CodeEditorPanel'
 
 const meta = {
-  title: 'Workspace/CodeEditorPanel',
+  title: 'Features/Workspace/CodeEditorPanel',
   component: CodeEditorPanel,
   parameters: {
     layout: 'fullscreen',

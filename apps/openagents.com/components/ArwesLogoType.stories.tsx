@@ -4,7 +4,7 @@ import { Animator, cx } from '@arwes/react'
 import { useState, useEffect } from 'react'
 
 const meta = {
-  title: 'Components/ArwesLogoType',
+  title: 'Foundation/Icons & Assets/ArwesLogoType',
   component: ArwesLogoType,
   parameters: {
     layout: 'centered',

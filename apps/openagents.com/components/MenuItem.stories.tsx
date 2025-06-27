@@ -5,7 +5,7 @@ import { AnimatorGeneralProvider, Animator, Animated } from '@arwes/react'
 import React, { useState, useEffect } from 'react'
 
 const meta = {
-  title: 'Components/MenuItem',
+  title: 'Components/Navigation/MenuItem',
   component: MenuItem,
   parameters: {
     layout: 'centered',

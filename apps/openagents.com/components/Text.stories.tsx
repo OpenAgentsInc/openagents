@@ -3,7 +3,7 @@ import { Text, Animator, Animated, AnimatorGeneralProvider, cx } from '@arwes/re
 import React, { useState, useEffect } from 'react'
 
 const meta = {
-  title: 'Arwes/Text',
+  title: 'Foundation/Arwes Core/Text',
   component: Text,
   parameters: {
     layout: 'centered',

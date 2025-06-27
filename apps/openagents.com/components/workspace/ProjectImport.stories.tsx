@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs'
 import { ProjectImport } from './ProjectImport'
 
 const meta = {
-  title: 'Workspace/ProjectImport',
+  title: 'Features/Workspace/ProjectImport',
   component: ProjectImport,
   parameters: {
     layout: 'padded',

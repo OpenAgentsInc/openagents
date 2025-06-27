@@ -12,7 +12,7 @@ const BackgroundEffectsDemo = ({ children }: { children: React.ReactNode }) => {
 }
 
 const meta = {
-  title: 'Arwes/Background Effects',
+  title: 'Foundation/Arwes Core/Background Effects',
   component: BackgroundEffectsDemo,
   parameters: {
     layout: 'fullscreen',

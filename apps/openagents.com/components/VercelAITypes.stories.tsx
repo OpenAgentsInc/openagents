@@ -10,7 +10,7 @@ import React, { useState } from 'react'
 import { Code, FileText, Settings, Zap } from 'lucide-react'
 
 const meta = {
-  title: 'AI Chat/SDK Types & Utilities',
+  title: 'Features/Chat & AI/SDK Types & Utilities',
   parameters: {
     layout: 'fullscreen',
     docs: {

@@ -3,7 +3,7 @@ import { NavSidebar } from './NavSidebar'
 import { FrameOctagon, styleFrameClipOctagon } from '@arwes/react'
 
 const meta = {
-  title: 'Components/NavSidebar',
+  title: 'Components/Navigation/NavSidebar',
   component: NavSidebar,
   parameters: {
     layout: 'padded',
