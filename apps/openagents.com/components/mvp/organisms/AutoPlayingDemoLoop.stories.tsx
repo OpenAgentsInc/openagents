@@ -374,10 +374,10 @@ export const AutoPlayingDemoLoop = ({
             <DeploymentProgress
               projectName={currentDemo.title}
               stages={[
-                { id: 'build', name: 'Building application', status: 'complete' },
-                { id: 'optimize', name: 'Optimizing for edge', status: 'complete' },
-                { id: 'deploy', name: 'Deploying to 320+ locations', status: 'running' },
-                { id: 'dns', name: 'Configuring DNS', status: 'pending' }
+                { id: 'build', title: 'Building application', status: 'complete' },
+                { id: 'optimize', title: 'Optimizing for edge', status: 'complete' },
+                { id: 'deploy', title: 'Deploying to 320+ locations', status: 'running' },
+                { id: 'dns', title: 'Configuring DNS', status: 'pending' }
               ]}
               currentStage={2}
               estimatedTime={currentDemo.deployTime}

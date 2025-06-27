@@ -143,7 +143,7 @@ export const RecentBuildsStream = ({
         const updated = [newBuild, ...prev.slice(0, maxItems - 1)]
         return updated
       })
-    }, updateInterval)
+    }, updateInterval) as unknown as NodeJS.Timeout
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
