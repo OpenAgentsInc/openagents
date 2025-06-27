@@ -479,7 +479,10 @@ Let me generate the code for you now...`,
 }
 
 export const ConversationThread: Story = {
-  args: {},
+  args: {
+    role: 'user',
+    content: 'Example message'
+  },
   render: () => {
     const messages = [
       {
@@ -533,7 +536,10 @@ export const ConversationThread: Story = {
 }
 
 export const InteractiveActions: Story = {
-  args: {},
+  args: {
+    role: 'assistant',
+    content: 'Example message'
+  },
   render: () => {
     const [message, setMessage] = useState('Click the menu to see available actions')
     
@@ -555,7 +561,10 @@ export const InteractiveActions: Story = {
 }
 
 export const NoAvatar: Story = {
-  args: {},
+  args: {
+    role: 'user',
+    content: 'Example message'
+  },
   render: () => (
     <div className="space-y-4 max-w-3xl">
       <ChatMessage

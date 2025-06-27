@@ -157,7 +157,7 @@ export const CodeBlock = ({
       <div
         className={cx(
           'overflow-auto',
-          maxHeight && `max-h-[${maxHeight}px]`
+          maxHeight && maxHeight > 0 && `max-h-[${maxHeight}px]`
         )}
         style={maxHeight ? { maxHeight: `${maxHeight}px` } : undefined}
       >
@@ -257,7 +257,7 @@ const meta = {
       description: 'Show copy button'
     },
     highlightLines: {
-      control: 'array',
+      control: 'object',
       description: 'Array of line numbers to highlight'
     },
     maxHeight: {

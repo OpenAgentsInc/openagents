@@ -219,7 +219,7 @@ export const ChatInputWithStatus = ({
           {showModelInfo && (
             <ModelBadge
               model={currentModel}
-              provider={currentProvider}
+              provider={currentProvider as any}
               variant="outline"
               size="small"
               animated={false}

@@ -217,6 +217,9 @@ export const Default: Story = {
 }
 
 export const AllStatuses: Story = {
+  args: {
+    status: 'idle'
+  },
   render: () => (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -248,6 +251,9 @@ export const AllStatuses: Story = {
 }
 
 export const SizeVariants: Story = {
+  args: {
+    status: 'idle'
+  },
   render: () => (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -289,6 +295,9 @@ export const AnimationDemo: Story = {
 }
 
 export const StatusTransition: Story = {
+  args: {
+    status: 'idle'
+  },
   render: () => {
     const statuses: StatusBadgeProps['status'][] = ['idle', 'generating', 'deploying', 'deployed']
     const [currentIndex, setCurrentIndex] = useState(0)
