@@ -61,10 +61,6 @@ export const OnboardingOverlayManager = ({
       {shouldShowAuthGate && (
         <AuthGateOverlay
           onSignIn={onSignIn}
-          onDemoComplete={onDemoComplete}
-          showDemo={showDemo}
-          showSocialProof={showSocialProof}
-          animated={true}
         />
       )}
     </div>

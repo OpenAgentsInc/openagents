@@ -49,10 +49,6 @@ const HomePage = (): React.ReactElement => {
     }
   };
 
-  const handleDemoComplete = (demo: any) => {
-    console.log('Demo completed:', demo);
-  };
-
   // Show loading state while auth is initializing
   if (authLoading) {
     return (
@@ -160,10 +156,7 @@ const HomePage = (): React.ReactElement => {
       <OnboardingOverlayManager
         isAuthenticated={isAuthenticated}
         minDesktopWidth={1024}
-        showDemo={true}
-        showSocialProof={true}
         onSignIn={handleSignIn}
-        onDemoComplete={handleDemoComplete}
         desktopMessage="OpenAgents requires a desktop browser for the full development experience. Please use a device with a screen width of at least 1024px."
       >
         {chatContent}

@@ -156,10 +156,6 @@ export const DesktopAuthGate: Story = {
         <StorybookAppLayout>
           <AuthGateOverlay
             onSignIn={() => alert('GitHub sign-in initiated!')}
-            onDemoComplete={(demo) => console.log('Demo completed:', demo)}
-            showDemo={true}
-            showSocialProof={true}
-            animated={true}
           />
           <MockChatInterface />
         </StorybookAppLayout>
@@ -258,10 +254,7 @@ export const InteractiveDemo: Story = {
               <OnboardingOverlayManager
                 isAuthenticated={isAuthenticated}
                 minDesktopWidth={1024}
-                showDemo={true}
-                showSocialProof={true}
                 onSignIn={handleSignIn}
-                onDemoComplete={handleDemoComplete}
               >
                 <MockChatInterface />
               </OnboardingOverlayManager>
@@ -385,10 +378,7 @@ export const ResizeBehavior: Story = {
               <OnboardingOverlayManager
                 isAuthenticated={isAuthenticated}
                 minDesktopWidth={1024}
-                showDemo={true}
-                showSocialProof={true}
                 onSignIn={() => setIsAuthenticated(true)}
-                onDemoComplete={(demo) => console.log('Demo completed:', demo)}
               >
                 <MockChatInterface />
               </OnboardingOverlayManager>
@@ -409,10 +399,6 @@ export const AuthGateOnly: Story = {
       <AnimatorGeneralProvider>
         <AuthGateOverlay
           onSignIn={() => alert('GitHub OAuth initiated!')}
-          onDemoComplete={(demo) => console.log('Demo:', demo)}
-          showDemo={true}
-          showSocialProof={true}
-          animated={true}
         />
       </AnimatorGeneralProvider>
     </div>
@@ -437,8 +423,6 @@ export const Playground: Story = {
   args: {
     isAuthenticated: false,
     minDesktopWidth: 1024,
-    showDemo: true,
-    showSocialProof: true,
     children: null as any
   },
   render: (args) => (
@@ -448,7 +432,6 @@ export const Playground: Story = {
           <OnboardingOverlayManager
             {...args}
             onSignIn={() => console.log('Sign in clicked')}
-            onDemoComplete={(demo) => console.log('Demo completed:', demo)}
           >
             <MockChatInterface />
           </OnboardingOverlayManager>
