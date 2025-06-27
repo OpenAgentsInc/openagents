@@ -74,12 +74,11 @@ export const AuthGateOverlay = ({
                 </Text>
               </div>
               <AutoPlayingDemoLoop
-                autoStart={true}
-                loopDemo={true}
-                speed="normal"
-                showProgress={false}
-                animated={animated}
+                autoPlayDelay={2000}
+                demoTransitionDelay={4000}
+                showControls={true}
                 onDemoComplete={handleDemoComplete}
+                onInteraction={() => console.log('Demo interacted')}
               />
             </div>
           )}
