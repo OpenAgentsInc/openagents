@@ -73,6 +73,9 @@ export const InDarkContainer: Story = {
 }
 
 export const AllStates: Story = {
+  args: {
+    status: 'complete'
+  },
   render: () => (
     <div className="bg-black p-8 space-y-6">
       <div>

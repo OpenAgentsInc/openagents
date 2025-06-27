@@ -19,25 +19,29 @@ interface DeploymentStatusProps {
 
 export function DeploymentStatus({ status, deploymentUrl, className }: DeploymentStatusProps) {
   const getSteps = (): DeploymentStep[] => {
-    const baseSteps = [
-      { id: 'generate', label: 'Generating code', status: 'pending' as const },
-      { id: 'build', label: 'Building project', status: 'pending' as const },
-      { id: 'deploy', label: 'Deploying to cloud', status: 'pending' as const },
-      { id: 'verify', label: 'Verifying deployment', status: 'pending' as const }
+    const baseSteps: DeploymentStep[] = [
+      { id: 'generate', label: 'Generating code', status: 'pending' },
+      { id: 'build', label: 'Building project', status: 'pending' },
+      { id: 'deploy', label: 'Deploying to cloud', status: 'pending' },
+      { id: 'verify', label: 'Verifying deployment', status: 'pending' }
     ]
 
     switch (status) {
       case 'generating':
-        baseSteps[0].status = 'in-progress'
-        return baseSteps
+        return [
+          { ...baseSteps[0], status: 'in-progress' },
+          baseSteps[1],
+          baseSteps[2],
+          baseSteps[3]
+        ]
 
       case 'deploying':
-        baseSteps[0].status = 'completed'
-        baseSteps[0].duration = '1.2s'
-        baseSteps[1].status = 'completed'
-        baseSteps[1].duration = '3.4s'
-        baseSteps[2].status = 'in-progress'
-        return baseSteps
+        return [
+          { ...baseSteps[0], status: 'completed', duration: '1.2s' },
+          { ...baseSteps[1], status: 'completed', duration: '3.4s' },
+          { ...baseSteps[2], status: 'in-progress' },
+          baseSteps[3]
+        ]
 
       case 'complete':
         return baseSteps.map((step, index) => ({
@@ -47,10 +51,12 @@ export function DeploymentStatus({ status, deploymentUrl, className }: Deploymen
         }))
 
       case 'error':
-        baseSteps[0].status = 'completed'
-        baseSteps[0].duration = '1.2s'
-        baseSteps[1].status = 'error'
-        return baseSteps
+        return [
+          { ...baseSteps[0], status: 'completed', duration: '1.2s' },
+          { ...baseSteps[1], status: 'error' },
+          baseSteps[2],
+          baseSteps[3]
+        ]
 
       default:
         return baseSteps
