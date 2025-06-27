@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 
 const meta = {
-  title: 'Examples/User Profile',
+  title: 'Components/Data Display/UserProfile',
   parameters: {
     layout: 'fullscreen',
     docs: {

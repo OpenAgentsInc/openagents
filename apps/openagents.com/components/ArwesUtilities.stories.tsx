@@ -25,7 +25,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Volume2, Palette, Frame, Zap } from 'lucide-react'
 
 const meta = {
-  title: 'Utilities/Arwes Advanced',
+  title: 'Foundation/Utilities/Arwes Advanced',
   parameters: {
     layout: 'centered',
     docs: {
@@ -90,7 +90,22 @@ const SoundDemo = () => {
   const [active, setActive] = useState(false)
   
   return (
-    <BleepsProvider bleeps={{}}>
+    <BleepsProvider bleeps={{
+      assemble: {
+        sources: [
+          { src: '/sounds/info.mp3', type: 'audio/mpeg' },
+          { src: '/sounds/info.webm', type: 'audio/webm' }
+        ],
+        volume: 0.3
+      },
+      disassemble: {
+        sources: [
+          { src: '/sounds/click.mp3', type: 'audio/mpeg' },
+          { src: '/sounds/click.webm', type: 'audio/webm' }
+        ],
+        volume: 0.3
+      }
+    }}>
       <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
         <Animator active={active}>
           <BleepsOnAnimator transitions={{ entering: 'assemble', exiting: 'disassemble' }} />

@@ -15,7 +15,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { ChevronRight, Home, Settings, User, Mail, Bell, Search } from 'lucide-react'
 
 const meta = {
-  title: 'Patterns/Advanced',
+  title: 'Patterns & Examples/Advanced Techniques',
   parameters: {
     layout: 'fullscreen',
     docs: {

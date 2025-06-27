@@ -14,7 +14,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Activity, Cpu, Database, Network } from 'lucide-react'
 
 const meta = {
-  title: 'Arwes/Frames Advanced',
+  title: 'Foundation/Arwes Core/Frames Advanced',
   parameters: {
     layout: 'centered',
     docs: {

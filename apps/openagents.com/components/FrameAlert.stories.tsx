@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react'
 import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react'
 
 const meta = {
-  title: 'Arwes/Frame Alert',
+  title: 'Foundation/Arwes Core/Frame Alert',
   component: FrameAlert,
   parameters: {
     layout: 'centered',

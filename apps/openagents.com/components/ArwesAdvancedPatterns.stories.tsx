@@ -25,7 +25,7 @@ import React, { useState, useEffect, useRef, useCallback, ReactNode, MouseEvent 
 import { Layout, MousePointer, Eye, Zap, Settings } from 'lucide-react'
 
 const meta = {
-  title: 'Advanced/Playground Patterns',
+  title: 'Patterns & Examples/Advanced Techniques/Playground Patterns',
   parameters: {
     layout: 'fullscreen',
     docs: {
@@ -314,7 +314,36 @@ export const LayoutSwitching: Story = {
     }, [path])
     
     return (
-      <BleepsProvider bleeps={{}}>
+      <BleepsProvider bleeps={{
+        assemble: {
+          sources: [
+            { src: '/sounds/info.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/info.webm', type: 'audio/webm' }
+          ],
+          volume: 0.3
+        },
+        disassemble: {
+          sources: [
+            { src: '/sounds/click.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/click.webm', type: 'audio/webm' }
+          ],
+          volume: 0.3
+        },
+        click: {
+          sources: [
+            { src: '/sounds/click.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/click.webm', type: 'audio/webm' }
+          ],
+          volume: 0.4
+        },
+        hover: {
+          sources: [
+            { src: '/sounds/hover.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/hover.webm', type: 'audio/webm' }
+          ],
+          volume: 0.2
+        }
+      }}>
         <AnimatorGeneralProvider duration={{ enter: 0.8, exit: 0.4 }}>
           <Animator active={active} manager="stagger" duration={{ stagger: 0.1 }}>
             <div className="h-screen flex flex-col p-4">
@@ -430,7 +459,36 @@ export const AdvancedButtonShowcase: Story = {
     }, [])
     
     return (
-      <BleepsProvider bleeps={{}}>
+      <BleepsProvider bleeps={{
+        assemble: {
+          sources: [
+            { src: '/sounds/info.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/info.webm', type: 'audio/webm' }
+          ],
+          volume: 0.3
+        },
+        disassemble: {
+          sources: [
+            { src: '/sounds/click.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/click.webm', type: 'audio/webm' }
+          ],
+          volume: 0.3
+        },
+        click: {
+          sources: [
+            { src: '/sounds/click.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/click.webm', type: 'audio/webm' }
+          ],
+          volume: 0.4
+        },
+        hover: {
+          sources: [
+            { src: '/sounds/hover.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/hover.webm', type: 'audio/webm' }
+          ],
+          volume: 0.2
+        }
+      }}>
         <AnimatorGeneralProvider duration={{ enter: 0.8, exit: 0.4 }}>
           <Animator active={active}>
             <div className="space-y-8 p-8">
@@ -542,7 +600,36 @@ export const CombinedAdvancedDemo: Story = {
     }, [])
     
     return (
-      <BleepsProvider bleeps={{}}>
+      <BleepsProvider bleeps={{
+        assemble: {
+          sources: [
+            { src: '/sounds/info.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/info.webm', type: 'audio/webm' }
+          ],
+          volume: 0.3
+        },
+        disassemble: {
+          sources: [
+            { src: '/sounds/click.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/click.webm', type: 'audio/webm' }
+          ],
+          volume: 0.3
+        },
+        click: {
+          sources: [
+            { src: '/sounds/click.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/click.webm', type: 'audio/webm' }
+          ],
+          volume: 0.4
+        },
+        hover: {
+          sources: [
+            { src: '/sounds/hover.mp3', type: 'audio/mpeg' },
+            { src: '/sounds/hover.webm', type: 'audio/webm' }
+          ],
+          volume: 0.2
+        }
+      }}>
         <AnimatorGeneralProvider duration={{ enter: 1, exit: 0.5 }}>
           <Animator active={active}>
             <div className="min-h-screen bg-black relative overflow-hidden">
