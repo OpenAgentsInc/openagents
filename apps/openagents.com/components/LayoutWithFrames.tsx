@@ -14,6 +14,8 @@ import {
 import { ArwesLogoIcon } from './ArwesLogoIcon';
 import { ArwesLogoType } from './ArwesLogoType';
 import { NavSidebar } from './NavSidebar';
+import { ButtonSimple } from './ButtonSimple';
+import { useAuth } from '@/hooks/useAuth';
 import { Menu as MenuIcon } from 'lucide-react';
 import { Github, X, SoundHigh, SoundOff } from 'iconoir-react';
 
@@ -28,6 +30,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const { isAuthenticated, user, signIn, signOut } = useAuth();
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -162,6 +165,32 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
 
               {/* Right side icons */}
               <div className="flex items-center gap-3">
+                {/* Auth buttons */}
+                <div className="hidden md:flex items-center gap-2">
+                  {isAuthenticated ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-cyan-300/80 text-xs font-mono">
+                        {user?.login || user?.name || 'User'}
+                      </span>
+                      <ButtonSimple 
+                        onClick={signOut}
+                        className="px-3 h-8 text-[10px]"
+                      >
+                        Sign Out
+                      </ButtonSimple>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <ButtonSimple 
+                        onClick={signIn}
+                        className="px-3 h-8 text-[10px]"
+                      >
+                        Sign In
+                      </ButtonSimple>
+                    </div>
+                  )}
+                </div>
+                
                 {/* Desktop icons */}
                 <div className="hidden md:flex items-center gap-2">
                   <a

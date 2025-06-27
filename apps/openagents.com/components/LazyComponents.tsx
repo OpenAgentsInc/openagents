@@ -238,17 +238,26 @@ export function addResourceHints() {
     document.head.appendChild(link)
   })
 
-  // Prefetch non-critical chunks
+  // Prefetch non-critical chunks (only existing resources)
   const nonCriticalChunks = [
-    '/monaco-editor/',
-    '/_next/static/chunks/pages/templates/'
+    '/_next/static/chunks/pages/projects.js',
+    '/_next/static/chunks/framework.js'
   ]
 
   nonCriticalChunks.forEach(chunk => {
-    const link = document.createElement('link')
-    link.rel = 'prefetch'
-    link.href = chunk
-    document.head.appendChild(link)
+    // Only prefetch if the chunk actually exists
+    fetch(chunk, { method: 'HEAD' })
+      .then(response => {
+        if (response.ok) {
+          const link = document.createElement('link')
+          link.rel = 'prefetch'
+          link.href = chunk
+          document.head.appendChild(link)
+        }
+      })
+      .catch(() => {
+        // Silently ignore 404s for prefetch hints
+      })
   })
 }
 
