@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Animated, AnimatorGeneralProvider, Animator, Text, cx, FrameCorners } from '@arwes/react'
+import { useAuthActions } from '@convex-dev/auth/react'
 
 export interface HeroCallToActionProps {
   primaryText?: string
@@ -244,20 +245,47 @@ export const GitHubSignInCTA = ({
   onClick?: () => void
   className?: string
 }) => {
+  const { signIn } = useAuthActions()
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  const handleGitHubSignIn = async () => {
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      await signIn("github")
+      // Call the onClick callback if provided (for tracking, etc)
+      onClick?.()
+    } catch (error) {
+      console.error('GitHub sign-in error:', error)
+      setError(error instanceof Error ? error.message : "Failed to sign in")
+      setIsLoading(false)
+    }
+  }
+  
   return (
-    <HeroCallToAction
-      primaryText="Log in with GitHub to Start"
-      benefitBullets={[
-        'No email/password needed',
-        'Your code stays private',
-        'Cancel anytime'
-      ]}
-      showCountdown={false}
-      variant="default"
-      size="large"
-      onClick={onClick}
-      className={className}
-      glowIntensity="high"
-    />
+    <>
+      <HeroCallToAction
+        primaryText={isLoading ? "Connecting to GitHub..." : "Log in with GitHub to Start"}
+        benefitBullets={[
+          'No email/password needed',
+          'Your code stays private',
+          'Cancel anytime'
+        ]}
+        showCountdown={false}
+        variant="default"
+        size="large"
+        onClick={handleGitHubSignIn}
+        className={className}
+        glowIntensity="high"
+        pulseAnimation={!isLoading}
+      />
+      {error && (
+        <div className="mt-2 text-red-400 text-sm text-center">
+          {error}
+        </div>
+      )}
+    </>
   )
 }

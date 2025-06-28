@@ -3,69 +3,57 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Github } from "lucide-react";
 
 export default function SignIn() {
   const { signIn } = useAuthActions();
-  const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  const handleGitHubSignIn = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      await signIn("github");
+      // Redirect will happen automatically after successful OAuth
+    } catch (error) {
+      console.error("GitHub sign-in error:", error);
+      setError(error instanceof Error ? error.message : "Failed to sign in with GitHub");
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8 w-96 mx-auto h-screen justify-center items-center">
-      <p>Log in to see the numbers</p>
-      <form
-        className="flex flex-col gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target as HTMLFormElement);
-          formData.set("flow", flow);
-          void signIn("password", formData)
-            .catch((error) => {
-              setError(error.message);
-            })
-            .then(() => {
-              router.push("/");
-            });
-        }}
-      >
-        <input
-          className="bg-background text-foreground rounded-md p-2 border-2 border-slate-200 dark:border-slate-800"
-          type="email"
-          name="email"
-          placeholder="Email"
-        />
-        <input
-          className="bg-background text-foreground rounded-md p-2 border-2 border-slate-200 dark:border-slate-800"
-          type="password"
-          name="password"
-          placeholder="Password"
-        />
+      <div className="text-center">
+        <h1 className="text-2xl font-bold mb-2">Sign in to OpenAgents</h1>
+        <p className="text-gray-600">Chat your apps into existence. Deploy in 60 seconds.</p>
+      </div>
+      
+      <div className="flex flex-col gap-4 w-full">
         <button
-          className="bg-foreground text-background rounded-md"
-          type="submit"
+          onClick={handleGitHubSignIn}
+          disabled={isLoading}
+          className="flex items-center justify-center gap-3 w-full bg-foreground text-background rounded-md px-4 py-3 font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {flow === "signIn" ? "Sign in" : "Sign up"}
+          <Github size={20} />
+          <span>{isLoading ? "Connecting..." : "Continue with GitHub"}</span>
         </button>
-        <div className="flex flex-row gap-2">
-          <span>
-            {flow === "signIn"
-              ? "Don't have an account?"
-              : "Already have an account?"}
-          </span>
-          <span
-            className="text-foreground underline hover:no-underline cursor-pointer"
-            onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}
-          >
-            {flow === "signIn" ? "Sign up instead" : "Sign in instead"}
-          </span>
-        </div>
+        
         {error && (
-          <div className="bg-red-500/20 border-2 border-red-500/50 rounded-md p-2">
-            <p className="text-foreground font-mono text-xs">
-              Error signing in: {error}
+          <div className="bg-red-500/20 border-2 border-red-500/50 rounded-md p-3">
+            <p className="text-foreground font-mono text-sm">
+              Error: {error}
             </p>
           </div>
         )}
-      </form>
+      </div>
+      
+      <p className="text-sm text-gray-500 text-center max-w-sm">
+        By signing in, you agree to our Terms of Service and Privacy Policy.
+      </p>
     </div>
   );
 }
