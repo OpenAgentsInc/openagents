@@ -13,10 +13,11 @@ import type { UIMessage, Message } from '@/components/ChatMessage';
 import type { ChatStatus } from '@/components/ChatInput';
 import Link from 'next/link';
 import { Rocket, FolderOpen } from 'lucide-react';
+import { GitHubSignInCTA } from '@/components/mvp/atoms/HeroCallToAction';
 
 const HomePage = (): React.ReactElement => {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
-  const { isAuthenticated } = useAuth(); // Keep for potential feature limiting
+  const { isAuthenticated, signIn } = useAuth(); // Get signIn function
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Convert messages to UIMessage format for compatibility
@@ -53,18 +54,24 @@ const HomePage = (): React.ReactElement => {
           <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
         </div>
 
-        <div className="relative z-10 flex flex-col h-full px-8">
+        <div className="relative z-10 flex flex-col h-full">
           {/* Messages container */}
-          <div className="flex-1 overflow-y-auto pt-6">
+          <div className="flex-1 overflow-y-auto px-8 pb-32">
             <div className="space-y-4">
               {uiMessages.length === 0 ? (
                 <div className="text-center py-16 space-y-8">
-                  <div>
-                    <Text className="text-lg font-mono text-cyan-500/40">Awaiting user input</Text>
+                  {/* Hero Section */}
+                  <div className="space-y-4">
+                    <Text className="text-3xl md:text-4xl font-bold text-cyan-300" as="h1">
+                      Chat your apps into existence
+                    </Text>
+                    <Text className="text-lg md:text-xl text-cyan-400/80">
+                      Deploy to the edge in 60 seconds. No credit card required.
+                    </Text>
                   </div>
                   
                   {/* Quick Actions - always show now */}
-                  <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8">
                     <Link
                       href="/projects"
                       className={cx(
@@ -96,14 +103,17 @@ const HomePage = (): React.ReactElement => {
                     </Link>
                   </div>
                   
+                  {/* Sign in CTA */}
+                  {!isAuthenticated && (
+                    <div className="flex justify-center">
+                      <GitHubSignInCTA onClick={signIn} />
+                    </div>
+                  )}
+                  
+                  {/* Helper text */}
                   <div className="max-w-md mx-auto">
-                    <Text className="text-xs text-gray-500 text-center">
-                      Chat your apps into existence. Deploy to the edge in 60 seconds.
-                      {!isAuthenticated && (
-                        <span className="block mt-2 text-cyan-400/60">
-                          Sign in to save your projects and access advanced features.
-                        </span>
-                      )}
+                    <Text className="text-sm text-cyan-500/60 text-center font-mono">
+                      Or start chatting below to explore
                     </Text>
                   </div>
                 </div>
@@ -121,14 +131,18 @@ const HomePage = (): React.ReactElement => {
             </div>
           </div>
 
-          {/* Input area - now always enabled */}
-          <ChatInput
-            ref={inputRef}
-            input={input}
-            onInputChange={handleTextareaChange}
-            onSubmit={onSubmit}
-            status={status}
-          />
+          {/* Input area - fixed to bottom */}
+          <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-sm border-t border-cyan-500/20 p-4 z-50">
+            <div className="max-w-4xl mx-auto">
+              <ChatInput
+                ref={inputRef}
+                input={input}
+                onInputChange={handleTextareaChange}
+                onSubmit={onSubmit}
+                status={status}
+              />
+            </div>
+          </div>
         </div>
       </OnboardingOverlayManager>
     </AppLayout>

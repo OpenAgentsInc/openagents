@@ -13,7 +13,6 @@ import {
 } from '@arwes/react';
 import { ArwesLogoIcon } from './ArwesLogoIcon';
 import { ArwesLogoType } from './ArwesLogoType';
-import { NavSidebar } from './NavSidebar';
 import { ButtonSimple } from './ButtonSimple';
 import { useAuth } from '@/hooks/useAuth';
 import { Menu as MenuIcon } from 'lucide-react';
@@ -77,38 +76,6 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
                   >
                     <Text>Home</Text>
                     {pathname === '/' && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
-                    )}
-                  </Link>
-                  <Link 
-                    href="/chat" 
-                    className={cx(
-                      'relative px-4 py-2',
-                      'text-cyan-500 hover:text-cyan-300',
-                      'font-mono text-xs uppercase tracking-wider',
-                      'transition-all duration-200',
-                      'hover:bg-cyan-500/10',
-                      pathname === '/chat' && 'text-cyan-300 bg-cyan-500/10'
-                    )}
-                  >
-                    <Text>Chat</Text>
-                    {pathname === '/chat' && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
-                    )}
-                  </Link>
-                  <Link 
-                    href="/agents" 
-                    className={cx(
-                      'relative px-4 py-2',
-                      'text-cyan-500 hover:text-cyan-300',
-                      'font-mono text-xs uppercase tracking-wider',
-                      'transition-all duration-200',
-                      'hover:bg-cyan-500/10',
-                      pathname === '/agents' && 'text-cyan-300 bg-cyan-500/10'
-                    )}
-                  >
-                    <Text>Agents</Text>
-                    {pathname === '/agents' && (
                       <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
                     )}
                   </Link>
@@ -248,31 +215,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <aside className="hidden lg:block w-64 p-4">
-          <div className="relative h-full">
-            <div 
-              className="absolute inset-0"
-              style={{
-                clipPath: styleFrameClipOctagon({ squareSize: 8 })
-              }}
-            >
-              <FrameOctagon
-                style={{
-                  // @ts-expect-error CSS variables
-                  '--arwes-frames-bg-color': 'hsla(180, 69%, 15%, 0.1)',
-                  '--arwes-frames-line-color': 'hsla(180, 69%, 15%, 0.5)'
-                }}
-                squareSize={8}
-              />
-            </div>
-            <div className="relative p-4 h-full overflow-y-auto">
-              <NavSidebar />
-            </div>
-          </div>
-        </aside>
-
-        {/* Main Content */}
+        {/* Main Content - removed sidebar */}
         <main className="flex-1 p-4">
           <div className="relative h-full">
             {/* Main Background Frame */}
@@ -313,7 +256,13 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
               </button>
             </div>
             <div className="flex-1 p-4 overflow-y-auto">
-              <NavSidebar />
+              {/* Navigation links for mobile */}
+              <nav className="space-y-2">
+                <Link href="/" className="block px-4 py-2 text-cyan-500 hover:text-cyan-300">Home</Link>
+                <Link href="/projects" className="block px-4 py-2 text-cyan-500 hover:text-cyan-300">Projects</Link>
+                <Link href="/templates" className="block px-4 py-2 text-cyan-500 hover:text-cyan-300">Templates</Link>
+                <Link href="/gallery" className="block px-4 py-2 text-cyan-500 hover:text-cyan-300">Gallery</Link>
+              </nav>
             </div>
           </div>
         </div>
