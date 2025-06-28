@@ -156,7 +156,7 @@ describe('createArtifactTool', () => {
         operation: 'create'
       }
 
-      const result = await createArtifactTool.execute(validParams)
+      const result = await createArtifactTool.execute(validParams, {} as any) as any
       
       expect(result.success).toBe(true)
       expect(result.artifactId).toBe('test-counter')
@@ -173,7 +173,7 @@ describe('createArtifactTool', () => {
         operation: 'create'
       }
 
-      const result = await createArtifactTool.execute(invalidParams)
+      const result = await createArtifactTool.execute(invalidParams, {} as any) as any
       
       expect(result.success).toBe(false)
       expect(result.error).toContain('does not meet artifact criteria')
@@ -188,7 +188,7 @@ describe('createArtifactTool', () => {
         operation: 'update'
       }
 
-      const result = await createArtifactTool.execute(updateParams)
+      const result = await createArtifactTool.execute(updateParams, {} as any) as any
       
       expect(result.success).toBe(true)
       expect(result.artifactId).toBe('existing-component')
@@ -206,7 +206,7 @@ describe('createArtifactTool', () => {
         operation: 'create'
       }
 
-      const result = await createArtifactTool.execute(paramsWithExtras)
+      const result = await createArtifactTool.execute(paramsWithExtras, {} as any) as any
       
       expect(result.success).toBe(true)
       expect(result.artifactId).toBe('documented-component')

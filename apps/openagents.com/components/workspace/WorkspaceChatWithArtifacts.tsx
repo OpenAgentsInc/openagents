@@ -62,15 +62,23 @@ Try asking me to:
     // The tool-based system creates artifacts during streaming, not at completion
   }, [])
 
-  // Handle streaming data for artifacts
-  const onChunk = React.useCallback((chunk: any) => {
-    // Process any artifact data in the stream
-    const artifactId = handleStreamData(chunk)
-    if (artifactId) {
-      toast.success('Artifact Created', 'Your code is ready in the artifacts panel')
-      onArtifactCreated?.(artifactId)
+  // Process artifact data from messages  
+  React.useEffect(() => {
+    // Check the data stream for artifact information
+    if (data && Array.isArray(data)) {
+      for (const item of data) {
+        if (item && typeof item === 'object' && item.type === 'artifact' && !item.processed) {
+          const artifactId = handleStreamData(item)
+          if (artifactId) {
+            toast.success('Artifact Created', 'Your code is ready in the artifacts panel')
+            onArtifactCreated?.(artifactId)
+            // Mark as processed to avoid duplicates
+            item.processed = true
+          }
+        }
+      }
     }
-  }, [handleStreamData, toast, onArtifactCreated])
+  }, [data, handleStreamData, toast, onArtifactCreated])
 
   // Handle retry with exponential backoff
   const handleRetryMessage = React.useCallback(async () => {
@@ -120,7 +128,8 @@ Try asking me to:
     isLoading,
     error,
     reload,
-    setMessages
+    setMessages,
+    data
   } = useChat({
     api: '/api/chat',
     body: {
@@ -133,7 +142,6 @@ Try asking me to:
     },
     onError,
     onFinish,
-    onChunk,
     initialMessages,
     streamProtocol: 'data' // Enable data stream for tool calls
   })

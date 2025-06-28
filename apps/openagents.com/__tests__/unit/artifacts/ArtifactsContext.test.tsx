@@ -41,7 +41,7 @@ describe('ArtifactsContext', () => {
         {
           id: 'saved-1',
           title: 'Saved Component',
-          type: 'code',
+          type: 'javascript',
           content: 'export default function Saved() {}',
           createdAt: '2025-06-28T10:00:00Z',
           updatedAt: '2025-06-28T10:00:00Z'
@@ -83,7 +83,7 @@ describe('ArtifactsContext', () => {
 
       const artifactData = {
         title: 'Test Component',
-        type: 'code' as const,
+        type: 'javascript' as const,
         content: 'export default function Test() {}'
       }
 
@@ -104,7 +104,7 @@ describe('ArtifactsContext', () => {
       act(() => {
         result.current.addArtifact({
           title: 'Test',
-          type: 'code',
+          type: 'javascript',
           content: 'test content'
         })
       })
@@ -123,8 +123,8 @@ describe('ArtifactsContext', () => {
 
       let id1: string = '', id2: string = ''
       act(() => {
-        id1 = result.current.addArtifact({ title: 'First', type: 'code', content: 'content1' })
-        id2 = result.current.addArtifact({ title: 'Second', type: 'code', content: 'content2' })
+        id1 = result.current.addArtifact({ title: 'First', type: 'javascript', content: 'content1' })
+        id2 = result.current.addArtifact({ title: 'Second', type: 'javascript', content: 'content2' })
       })
 
       expect(id1).not.toBe(id2)
@@ -144,7 +144,7 @@ describe('ArtifactsContext', () => {
       act(() => {
         artifactId = result.current.ops.addArtifact({
           title: 'Original',
-          type: 'code',
+          type: 'javascript',
           content: 'original content'
         })
       })
@@ -188,9 +188,9 @@ describe('ArtifactsContext', () => {
 
       let id1: string = '', id2: string = '', id3: string = ''
       act(() => {
-        id1 = result.current.ops.addArtifact({ title: 'First', type: 'code', content: 'c1' })
-        id2 = result.current.ops.addArtifact({ title: 'Second', type: 'code', content: 'c2' })
-        id3 = result.current.ops.addArtifact({ title: 'Third', type: 'code', content: 'c3' })
+        id1 = result.current.ops.addArtifact({ title: 'First', type: 'javascript', content: 'c1' })
+        id2 = result.current.ops.addArtifact({ title: 'Second', type: 'javascript', content: 'c2' })
+        id3 = result.current.ops.addArtifact({ title: 'Third', type: 'javascript', content: 'c3' })
       })
 
       // Current should be id3 (last added)
@@ -210,7 +210,7 @@ describe('ArtifactsContext', () => {
 
       let artifactId: string = ''
       act(() => {
-        artifactId = result.current.addArtifact({ title: 'Solo', type: 'code', content: 'content' })
+        artifactId = result.current.addArtifact({ title: 'Solo', type: 'javascript', content: 'content' })
       })
 
       act(() => {
@@ -232,9 +232,9 @@ describe('ArtifactsContext', () => {
 
       let id1: string = '', id2: string = '', id3: string = ''
       act(() => {
-        id1 = result.current.ops.addArtifact({ title: 'First', type: 'code', content: 'c1' })
-        id2 = result.current.ops.addArtifact({ title: 'Second', type: 'code', content: 'c2' })
-        id3 = result.current.ops.addArtifact({ title: 'Third', type: 'code', content: 'c3' })
+        id1 = result.current.ops.addArtifact({ title: 'First', type: 'javascript', content: 'c1' })
+        id2 = result.current.ops.addArtifact({ title: 'Second', type: 'javascript', content: 'c2' })
+        id3 = result.current.ops.addArtifact({ title: 'Third', type: 'javascript', content: 'c3' })
         result.current.nav.setCurrentArtifact(id1)
       })
 
@@ -268,9 +268,9 @@ describe('ArtifactsContext', () => {
 
       let id1: string = '', id2: string = '', id3: string = ''
       act(() => {
-        id1 = result.current.ops.addArtifact({ title: 'First', type: 'code', content: 'c1' })
-        id2 = result.current.ops.addArtifact({ title: 'Second', type: 'code', content: 'c2' })
-        id3 = result.current.ops.addArtifact({ title: 'Third', type: 'code', content: 'c3' })
+        id1 = result.current.ops.addArtifact({ title: 'First', type: 'javascript', content: 'c1' })
+        id2 = result.current.ops.addArtifact({ title: 'Second', type: 'javascript', content: 'c2' })
+        id3 = result.current.ops.addArtifact({ title: 'Third', type: 'javascript', content: 'c3' })
       })
 
       expect(result.current.nav.artifact?.id).toBe(id3)
@@ -309,7 +309,7 @@ describe('ArtifactsContext', () => {
       act(() => {
         artifactId = result.current.ops.addArtifact({
           title: 'Deploy Test',
-          type: 'code',
+          type: 'javascript',
           content: 'export default function DeployTest() {}'
         })
       })
@@ -356,7 +356,7 @@ describe('ArtifactsContext', () => {
       act(() => {
         artifactId = result.current.ops.addArtifact({
           title: 'Test',
-          type: 'code',
+          type: 'javascript',
           content: 'content'
         })
       })
@@ -379,9 +379,9 @@ describe('ArtifactsContext', () => {
       }), { wrapper })
 
       act(() => {
-        result.current.ops.addArtifact({ title: '1', type: 'code', content: 'c1' })
-        result.current.ops.addArtifact({ title: '2', type: 'code', content: 'c2' })
-        result.current.ops.addArtifact({ title: '3', type: 'code', content: 'c3' })
+        result.current.ops.addArtifact({ title: '1', type: 'javascript', content: 'c1' })
+        result.current.ops.addArtifact({ title: '2', type: 'javascript', content: 'c2' })
+        result.current.ops.addArtifact({ title: '3', type: 'javascript', content: 'c3' })
       })
 
       expect(result.current.state.state.artifacts).toHaveLength(3)
@@ -407,7 +407,7 @@ describe('ArtifactsContext', () => {
       act(() => {
         artifactId = result.current.ops.addArtifact({
           title: 'Current Test',
-          type: 'code',
+          type: 'javascript',
           content: 'current content'
         })
       })

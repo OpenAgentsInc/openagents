@@ -37,7 +37,18 @@ vi.mock('ai/react', () => ({
       reload: mockReload,
       setMessages: mockSetMessages,
       onFinish: config?.onFinish,
-      onError: config?.onError
+      onError: config?.onError,
+      // Additional required properties
+      append: vi.fn(),
+      stop: vi.fn(),
+      experimental_resume: vi.fn(),
+      setInput: vi.fn(),
+      data: [],
+      metadata: null,
+      addToolResult: vi.fn(),
+      status: 'idle' as const,
+      setData: vi.fn(),
+      id: 'test-chat-id'
     }
   })
 }))
@@ -179,7 +190,18 @@ describe('WorkspaceChatWithArtifacts', () => {
         isLoading: mockChatState.isLoading,
         error: mockChatState.error,
         reload: mockReload,
-        setMessages: mockSetMessages
+        setMessages: mockSetMessages,
+        // Additional required properties
+        append: vi.fn(),
+        stop: vi.fn(),
+        experimental_resume: vi.fn(),
+        setInput: vi.fn(),
+        data: [],
+        metadata: null,
+        addToolResult: vi.fn(),
+        status: 'idle' as const,
+        setData: vi.fn(),
+        id: 'test-chat-id'
       }
     })
     
@@ -202,10 +224,10 @@ describe('WorkspaceChatWithArtifacts', () => {
       timestamp: new Date().toISOString()
     }
     
-    // Call the onChunk callback if it exists
+    // Call the experimental_onDataStreaming callback if it exists
     act(() => {
-      if (chatConfig?.onChunk) {
-        chatConfig.onChunk(artifactData)
+      if (chatConfig?.experimental_onDataStreaming) {
+        chatConfig.experimental_onDataStreaming(artifactData)
       }
     })
 
@@ -306,7 +328,18 @@ describe('WorkspaceChatWithArtifacts', () => {
         isLoading: mockChatState.isLoading,
         error: mockChatState.error,
         reload: mockReload,
-        setMessages: mockSetMessages
+        setMessages: mockSetMessages,
+        // Additional required properties
+        append: vi.fn(),
+        stop: vi.fn(),
+        experimental_resume: vi.fn(),
+        setInput: vi.fn(),
+        data: [],
+        metadata: null,
+        addToolResult: vi.fn(),
+        status: 'idle' as const,
+        setData: vi.fn(),
+        id: 'test-chat-id'
       }
     })
     
@@ -335,10 +368,10 @@ describe('WorkspaceChatWithArtifacts', () => {
       timestamp: new Date().toISOString()
     }
     
-    // Call the onChunk callback to simulate artifact creation during streaming
+    // Call the experimental_onDataStreaming callback to simulate artifact creation during streaming
     act(() => {
-      if (chatConfig?.onChunk) {
-        chatConfig.onChunk(artifactData)
+      if (chatConfig?.experimental_onDataStreaming) {
+        chatConfig.experimental_onDataStreaming(artifactData)
       }
     })
 

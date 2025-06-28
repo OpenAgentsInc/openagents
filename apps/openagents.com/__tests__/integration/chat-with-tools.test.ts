@@ -4,7 +4,9 @@ import { NextRequest } from 'next/server'
 // Mock the AI SDK first
 vi.mock('ai', () => ({
   streamText: vi.fn(),
-  openrouter: vi.fn((model: string) => ({ name: model }))
+  StreamData: class StreamData {
+    append(data: any) {}
+  }
 }))
 
 // Mock the openrouter provider
@@ -46,11 +48,9 @@ describe('Chat API with Tools Integration', () => {
   })
 
   it('should configure streamText with correct parameters', async () => {
-    // Import and get the mocked function
-    const { streamText } = await import('ai')
-    const mockStreamText = vi.mocked(streamText)
-    
-    // Import the route handler
+    // Import mocked modules
+    const aiModule = await import('ai')
+    const mockStreamText = vi.mocked(aiModule.streamText)
     const { POST } = await import('@/app/api/chat/route')
     
     const mockRequest = new NextRequest('http://localhost:3000/api/chat', {
@@ -67,7 +67,7 @@ describe('Chat API with Tools Integration', () => {
     // Mock streamText to return a mock response
     const mockDataStream = {
       pipeDataStreamToResponse: vi.fn()
-    }
+    } as any as any
     mockStreamText.mockReturnValue(mockDataStream)
 
     await POST(mockRequest)
@@ -89,6 +89,9 @@ describe('Chat API with Tools Integration', () => {
   })
 
   it('should handle tool calls in onStepFinish callback', async () => {
+    const aiModule = await import('ai')
+    const mockStreamText = vi.mocked(aiModule.streamText)
+    const { POST } = await import('@/app/api/chat/route')
     const mockRequest = new NextRequest('http://localhost:3000/api/chat', {
       method: 'POST',
       body: JSON.stringify({
@@ -101,7 +104,7 @@ describe('Chat API with Tools Integration', () => {
     let onStepFinishCallback: any
     const mockDataStream = {
       pipeDataStreamToResponse: vi.fn()
-    }
+    } as any
     
     mockStreamText.mockImplementation((config) => {
       onStepFinishCallback = config.onStepFinish
@@ -156,6 +159,9 @@ describe('Chat API with Tools Integration', () => {
   })
 
   it('should handle XML fallback when tool calls fail', async () => {
+    const aiModule = await import('ai')
+    const mockStreamText = vi.mocked(aiModule.streamText)
+    const { POST } = await import('@/app/api/chat/route')
     const { parseArtifactTags } = await import('@/lib/tools/xmlArtifactParser')
     
     // Mock XML parser to return parsed artifacts
@@ -181,7 +187,7 @@ describe('Chat API with Tools Integration', () => {
     let onStepFinishCallback: any
     const mockDataStream = {
       pipeDataStreamToResponse: vi.fn()
-    }
+    } as any
     
     mockStreamText.mockImplementation((config) => {
       onStepFinishCallback = config.onStepFinish
@@ -212,6 +218,9 @@ export default function XMLComponent() {
   })
 
   it('should include project context in request body', async () => {
+    const aiModule = await import('ai')
+    const mockStreamText = vi.mocked(aiModule.streamText)
+    const { POST } = await import('@/app/api/chat/route')
     const mockRequest = new NextRequest('http://localhost:3000/api/chat', {
       method: 'POST',
       body: JSON.stringify({
@@ -229,7 +238,7 @@ export default function XMLComponent() {
 
     const mockDataStream = {
       pipeDataStreamToResponse: vi.fn()
-    }
+    } as any
     mockStreamText.mockReturnValue(mockDataStream)
 
     await POST(mockRequest)
@@ -247,6 +256,9 @@ export default function XMLComponent() {
   })
 
   it('should handle errors gracefully', async () => {
+    const aiModule = await import('ai')
+    const mockStreamText = vi.mocked(aiModule.streamText)
+    const { POST } = await import('@/app/api/chat/route')
     const mockRequest = new NextRequest('http://localhost:3000/api/chat', {
       method: 'POST',
       body: JSON.stringify({
@@ -270,6 +282,7 @@ export default function XMLComponent() {
   })
 
   it('should validate request body', async () => {
+    const { POST } = await import('@/app/api/chat/route')
     const mockRequest = new NextRequest('http://localhost:3000/api/chat', {
       method: 'POST',
       body: JSON.stringify({
@@ -287,6 +300,7 @@ export default function XMLComponent() {
   })
 
   it('should handle POST requests only', async () => {
+    const { POST } = await import('@/app/api/chat/route')
     const mockRequest = new NextRequest('http://localhost:3000/api/chat', {
       method: 'GET'
     })

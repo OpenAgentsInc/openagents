@@ -131,9 +131,9 @@ DO NOT use for:
 - Simple one-off demonstrations
 - Content dependent on conversation context`,
 
-  parameters: artifactParametersSchema,
+  parameters: artifactParametersSchema as any,
 
-  execute: async (params: ArtifactParameters): Promise<ArtifactToolResult> => {
+  execute: async (params, options): Promise<ArtifactToolResult> => {
     try {
       // Validate content meets artifact criteria
       if (!shouldCreateArtifact(params.content, params.type)) {
