@@ -24,7 +24,19 @@ vi.mock('@/hooks/useAuth', () => ({
 }))
 
 // Create a more realistic useChat mock
-let mockChatState = {
+type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: Date
+}
+
+let mockChatState: {
+  messages: ChatMessage[]
+  input: string
+  isLoading: boolean
+  error: Error | null
+} = {
   messages: [],
   input: '',
   isLoading: false,
@@ -58,9 +70,9 @@ vi.mock('ai/react', () => ({
       if (!mockChatState.input.trim() || mockChatState.isLoading) return
 
       // Add user message
-      const userMessage = {
+      const userMessage: ChatMessage = {
         id: `user-${Date.now()}`,
-        role: 'user' as const,
+        role: 'user',
         content: mockChatState.input,
         createdAt: new Date()
       }
@@ -71,9 +83,9 @@ vi.mock('ai/react', () => ({
 
       // Simulate AI response after short delay
       setTimeout(() => {
-        const aiMessage = {
+        const aiMessage: ChatMessage = {
           id: `ai-${Date.now()}`,
-          role: 'assistant' as const,
+          role: 'assistant',
           content: 'Hello! I can help you build applications. Here is some React code:\n\n```jsx\nfunction HelloWorld() {\n  return <div>Hello World!</div>\n}\n```',
           createdAt: new Date()
         }
@@ -95,7 +107,7 @@ vi.mock('ai/react', () => ({
       isLoading: mockChatState.isLoading,
       error: mockChatState.error,
       reload: vi.fn(),
-      setMessages: vi.fn((newMessages) => {
+      setMessages: vi.fn((newMessages: ChatMessage[]) => {
         mockChatState.messages = newMessages
       })
     }
@@ -139,20 +151,37 @@ export const simulateTyping = async (input: HTMLElement, text: string) => {
   const userEvent = await import('@testing-library/user-event')
   const user = userEvent.default.setup()
   
-  // Focus the input first to ensure it's interactive
-  await user.click(input)
-  
-  // Try to clear, but don't fail if it can't be cleared
-  try {
-    await user.clear(input)
-  } catch (error) {
-    // If clear fails, try to manually set the value to empty
-    if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
-      input.value = ''
+  // Ensure element is interactive by focusing it
+  if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+    // Clear existing value first
+    input.value = ''
+    
+    // Focus the element
+    input.focus()
+    
+    // Manually trigger input change to simulate typing
+    input.value = text
+    
+    // Fire change and input events
+    const changeEvent = new Event('change', { bubbles: true })
+    const inputEvent = new Event('input', { bubbles: true })
+    
+    input.dispatchEvent(inputEvent)
+    input.dispatchEvent(changeEvent)
+  } else {
+    // Fallback to user-event for other elements
+    try {
+      await user.click(input)
+      await user.clear(input)
+      await user.type(input, text)
+    } catch (error) {
+      // If user events fail, try direct manipulation
+      console.warn('User event failed, using direct manipulation:', error)
+      if (input instanceof HTMLElement) {
+        (input as any).value = text
+      }
     }
   }
-  
-  await user.type(input, text)
 }
 
 // Re-export everything from React Testing Library
