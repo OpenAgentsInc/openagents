@@ -156,22 +156,24 @@ const HomePage = (): React.ReactElement => {
             </div>
           </div>
 
-          {/* Input area - fixed to bottom, ChatGPT style */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-8 pb-4">
-            <div className="max-w-3xl mx-auto px-8">
-              <div className="relative">
-                <ChatInput
-                  ref={inputRef}
-                  input={input}
-                  onInputChange={handleTextareaChange}
-                  onSubmit={onSubmit}
-                  status={status}
-                  placeholder="Ask me to build something amazing..."
-                />
-                <div className="text-center mt-2">
-                  <Text className="text-xs text-cyan-500/40">
-                    OpenAgents can make mistakes. Check important info.
-                  </Text>
+          {/* Input area - fixed to bottom */}
+          <div className="fixed bottom-0 left-0 right-0 z-50">
+            <div className="bg-gradient-to-t from-black via-black/95 to-transparent pt-8 pb-4">
+              <div className="max-w-3xl mx-auto px-8">
+                <div className="relative">
+                  <ChatInput
+                    ref={inputRef}
+                    input={input}
+                    onInputChange={handleTextareaChange}
+                    onSubmit={onSubmit}
+                    status={status}
+                    placeholder="Ask me to build something amazing..."
+                  />
+                  <div className="text-center mt-2">
+                    <Text className="text-xs text-cyan-500/40">
+                      OpenAgents can make mistakes. Check important info.
+                    </Text>
+                  </div>
                 </div>
               </div>
             </div>
