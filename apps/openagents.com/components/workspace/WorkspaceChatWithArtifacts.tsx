@@ -5,7 +5,7 @@ import { Send, Paperclip, Mic, AlertCircleIcon, RefreshCwIcon, UserIcon, BotIcon
 import { cx } from '@arwes/react'
 import { useChat } from 'ai/react'
 import { useToast } from '@/components/Toast'
-import { useArtifactCreation } from '@/hooks/useArtifactCreation'
+import { useToolBasedArtifacts } from '@/hooks/useToolBasedArtifacts'
 
 interface WorkspaceChatWithArtifactsProps {
   projectName: string
@@ -34,7 +34,7 @@ export function WorkspaceChatWithArtifacts({
   const [isRetrying, setIsRetrying] = useState(false)
   const [lastUserMessage, setLastUserMessage] = useState<string>('')
   
-  const { createArtifactFromMessage } = useArtifactCreation()
+  const { handleStreamData } = useToolBasedArtifacts()
 
   // Memoize the initial messages to prevent re-creation on every render
   const initialMessages = React.useMemo(() => [
@@ -58,13 +58,19 @@ Try asking me to:
     setRetryCount(0) // Reset retry count on successful completion
     inputRef.current?.focus()
     
-    // Check if the message contains code and create artifact
-    const artifactId = createArtifactFromMessage(message, lastUserMessage)
+    // Artifact creation is now handled by the stream data processing
+    // The tool-based system creates artifacts during streaming, not at completion
+  }, [])
+
+  // Handle streaming data for artifacts
+  const onChunk = React.useCallback((chunk: any) => {
+    // Process any artifact data in the stream
+    const artifactId = handleStreamData(chunk)
     if (artifactId) {
       toast.success('Artifact Created', 'Your code is ready in the artifacts panel')
       onArtifactCreated?.(artifactId)
     }
-  }, [createArtifactFromMessage, lastUserMessage, toast, onArtifactCreated])
+  }, [handleStreamData, toast, onArtifactCreated])
 
   // Handle retry with exponential backoff
   const handleRetryMessage = React.useCallback(async () => {
@@ -127,22 +133,13 @@ Try asking me to:
     },
     onError,
     onFinish,
-    initialMessages
+    onChunk,
+    initialMessages,
+    streamProtocol: 'data' // Enable data stream for tool calls
   })
 
-  // Check messages for code artifacts whenever they update
-  useEffect(() => {
-    const lastMessage = messages[messages.length - 1]
-    if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.id.startsWith('welcome')) {
-      // Small delay to ensure the message is fully rendered
-      setTimeout(() => {
-        const artifactId = createArtifactFromMessage(lastMessage, lastUserMessage)
-        if (artifactId && onArtifactCreated) {
-          onArtifactCreated(artifactId)
-        }
-      }, 100)
-    }
-  }, [messages, createArtifactFromMessage, lastUserMessage, onArtifactCreated])
+  // Artifacts are now created during streaming via tool calls
+  // No need to check messages after completion
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

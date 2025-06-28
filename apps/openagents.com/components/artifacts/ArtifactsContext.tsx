@@ -341,6 +341,10 @@ export function useArtifactOperations() {
     updateArtifact: actions.updateArtifact,
     deleteArtifact: actions.deleteArtifact,
     deployArtifact: actions.deployArtifact,
-    clearArtifacts: actions.clearArtifacts
+    clearArtifacts: actions.clearArtifacts,
+    // New tool-based methods
+    createArtifactFromTool: actions.createArtifactFromTool,
+    updateArtifactFromTool: actions.updateArtifactFromTool,
+    getArtifactByIdentifier: actions.getArtifactByIdentifier
   }
 }

@@ -134,7 +134,7 @@ describe('ArtifactsContext', () => {
   })
 
   describe('updateArtifact', () => {
-    it('should update existing artifact', () => {
+    it('should update existing artifact', async () => {
       const { result } = renderHook(() => ({
         ops: useArtifactOperations(),
         state: useArtifacts()
@@ -148,6 +148,9 @@ describe('ArtifactsContext', () => {
           content: 'original content'
         })
       })
+
+      // Small delay to ensure different timestamps
+      await new Promise(resolve => setTimeout(resolve, 1))
 
       act(() => {
         result.current.ops.updateArtifact(artifactId, {

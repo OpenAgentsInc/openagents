@@ -42,11 +42,11 @@ vi.mock('ai/react', () => ({
   })
 }))
 
-// Mock the artifact creation hook
-const mockCreateArtifactFromMessage = vi.fn()
-vi.mock('@/hooks/useArtifactCreation', () => ({
-  useArtifactCreation: () => ({
-    createArtifactFromMessage: mockCreateArtifactFromMessage
+// Mock the tool-based artifacts hook
+const mockHandleStreamData = vi.fn()
+vi.mock('@/hooks/useToolBasedArtifacts', () => ({
+  useToolBasedArtifacts: () => ({
+    handleStreamData: mockHandleStreamData
   })
 }))
 
@@ -160,9 +160,9 @@ describe('WorkspaceChatWithArtifacts', () => {
     expect(dots.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('should create artifact when AI responds with code', async () => {
+  it('should create artifact when receiving stream data with artifact', async () => {
     const onArtifactCreated = vi.fn()
-    mockCreateArtifactFromMessage.mockReturnValue('artifact-123')
+    mockHandleStreamData.mockReturnValue('artifact-123')
     
     // Store the config passed to useChat
     let chatConfig: any
@@ -183,32 +183,34 @@ describe('WorkspaceChatWithArtifacts', () => {
       }
     })
     
-    ;(useChat as any).mockImplementation(originalMock)
+    vi.mocked(useChat).mockImplementation(originalMock)
     
     render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
-    // Simulate AI response with code
-    const aiMessage: Message = {
-      id: 'ai-msg-1',
-      role: 'assistant',
-      content: '```tsx\nexport default function App() { return <div>Hello</div> }\n```',
-      createdAt: new Date()
+    // Simulate streaming artifact data
+    const artifactData = {
+      type: 'artifact',
+      operation: 'tool-call',
+      artifact: {
+        identifier: 'test-app',
+        title: 'Test App',
+        type: 'react',
+        content: 'export default function TestApp() { return <div>Hello</div> }'
+      },
+      timestamp: new Date().toISOString()
     }
     
-    // Call the onFinish callback if it exists
+    // Call the onChunk callback if it exists
     act(() => {
-      if (chatConfig?.onFinish) {
-        chatConfig.onFinish(aiMessage)
+      if (chatConfig?.onChunk) {
+        chatConfig.onChunk(artifactData)
       }
     })
 
     await waitFor(() => {
-      expect(mockCreateArtifactFromMessage).toHaveBeenCalledWith(
-        aiMessage,
-        ''
-      )
+      expect(mockHandleStreamData).toHaveBeenCalledWith(artifactData)
       expect(onArtifactCreated).toHaveBeenCalledWith('artifact-123')
     })
   })
@@ -227,13 +229,13 @@ describe('WorkspaceChatWithArtifacts', () => {
 
   it('should handle empty code responses', async () => {
     const onArtifactCreated = vi.fn()
-    mockCreateArtifactFromMessage.mockReturnValue(null)
+    mockHandleStreamData.mockReturnValue(null) // No artifact created
     
     const { rerender } = render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
-    // AI message without code
+    // AI message without code - should not trigger artifact creation
     const aiMessage: Message = {
       id: 'ai-msg-2',
       role: 'assistant',
@@ -246,8 +248,8 @@ describe('WorkspaceChatWithArtifacts', () => {
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
+    // Since no artifact stream data is present, onArtifactCreated should not be called
     await waitFor(() => {
-      expect(mockCreateArtifactFromMessage).toHaveBeenCalledWith(aiMessage, '')
       expect(onArtifactCreated).not.toHaveBeenCalled()
     })
   })
@@ -281,7 +283,7 @@ describe('WorkspaceChatWithArtifacts', () => {
   it('should track last user message for artifact context', async () => {
     const user = userEvent.setup()
     const onArtifactCreated = vi.fn()
-    mockCreateArtifactFromMessage.mockReturnValue('artifact-456')
+    mockHandleStreamData.mockReturnValue('artifact-456')
     
     // Mock the input value
     let inputValue = ''
@@ -289,37 +291,60 @@ describe('WorkspaceChatWithArtifacts', () => {
       inputValue = e.target.value
     })
 
+    // Store the config passed to useChat
+    let chatConfig: any
+    const originalMock = vi.fn((config?: any) => {
+      chatConfig = config
+      if (config?.initialMessages && mockChatState.messages.length === 0) {
+        mockChatState.messages = config.initialMessages
+      }
+      return {
+        messages: mockChatState.messages,
+        input: mockChatState.input,
+        handleInputChange: mockHandleInputChange,
+        handleSubmit: mockHandleSubmit,
+        isLoading: mockChatState.isLoading,
+        error: mockChatState.error,
+        reload: mockReload,
+        setMessages: mockSetMessages
+      }
+    })
+    
+    vi.mocked(useChat).mockImplementation(originalMock)
+
     const { rerender } = render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
-    // Simulate typing
+    // Simulate typing and submission
     const input = screen.getByPlaceholderText('Ask me to build something...')
     await user.type(input, 'Create a Bitcoin tracker')
-
-    // Simulate form submission
     const form = input.closest('form')!
     fireEvent.submit(form)
 
-    // Add AI response
-    const aiMessage: Message = {
-      id: 'ai-response',
-      role: 'assistant',
-      content: '```tsx\nexport default function BitcoinTracker() {}\n```',
-      createdAt: new Date()
+    // Simulate streaming artifact data in response to the user message
+    const artifactData = {
+      type: 'artifact',
+      operation: 'tool-call',
+      artifact: {
+        identifier: 'bitcoin-tracker',
+        title: 'Bitcoin Tracker',
+        type: 'react',
+        content: 'export default function BitcoinTracker() { return <div>Bitcoin Price</div> }'
+      },
+      timestamp: new Date().toISOString()
     }
-    mockChatState.messages.push(aiMessage)
     
-    rerender(
-      <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
-    )
+    // Call the onChunk callback to simulate artifact creation during streaming
+    act(() => {
+      if (chatConfig?.onChunk) {
+        chatConfig.onChunk(artifactData)
+      }
+    })
 
-    // The artifact should be created with the user message context
     await waitFor(() => {
-      expect(mockCreateArtifactFromMessage).toHaveBeenCalledWith(
-        aiMessage,
-        expect.stringContaining('Bitcoin tracker')
-      )
+      expect(mockHandleStreamData).toHaveBeenCalledWith(artifactData)
+      expect(onArtifactCreated).toHaveBeenCalledWith('artifact-456')
     })
   })
 })
