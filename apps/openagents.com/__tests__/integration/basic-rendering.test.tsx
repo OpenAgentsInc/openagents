@@ -50,7 +50,7 @@ describe('Basic Chat Rendering', () => {
       />
     )
 
-    // Should contain the project name somewhere
-    expect(container).toHaveTextContent(projectName)
+    // The project name appears in the welcome message with "Welcome to" prefix
+    expect(container).toHaveTextContent(`Welcome to ${projectName}!`)
   })
 })
