@@ -18,8 +18,6 @@ const withMDX = createMDX({
   options: {
     // @ts-ignore
     jsx: true,
-    // @ts-ignore
-    providerImportSource: '@mdx-js/react',
   }
 })
 
