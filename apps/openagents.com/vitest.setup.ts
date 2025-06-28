@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom'
+import { vi, beforeEach } from 'vitest'
 
 // Mock DOM methods not implemented in jsdom
 Object.defineProperty(Element.prototype, 'scrollIntoView', {

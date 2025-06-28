@@ -1,5 +1,6 @@
 import React from 'react'
 import { render, RenderOptions } from '@testing-library/react'
+import { vi } from 'vitest'
 import { AnimatorGeneralProvider } from '@arwes/react'
 import { ToastProvider } from '@/components/Toast'
 import { ArtifactsProvider } from '@/components/artifacts/ArtifactsContext'

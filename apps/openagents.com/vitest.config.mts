@@ -12,6 +12,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './')
     }
   },
+  define: {
+    global: 'globalThis',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './')
