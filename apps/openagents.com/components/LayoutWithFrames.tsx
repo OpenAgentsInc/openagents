@@ -17,15 +17,17 @@ import { ButtonSimple } from './ButtonSimple';
 import { useAuth } from '@/hooks/useAuth';
 import { Menu as MenuIcon } from 'lucide-react';
 import { Github, X, SoundHigh, SoundOff } from 'iconoir-react';
+import { ChatSidebar } from './ChatSidebar';
 
 interface LayoutWithFramesProps {
   children: ReactNode;
+  showSidebar?: boolean;
 }
 
 const HEIGHT_CLASS = 'h-10 md:h-12';
 
 export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactElement => {
-  const { children } = props;
+  const { children, showSidebar = false } = props;
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
@@ -62,72 +64,74 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
                   <ArwesLogoType className="h-4" />
                 </Link>
                 
-                <nav className="hidden md:flex items-center gap-2">
-                  <Link 
-                    href="/" 
-                    className={cx(
-                      'relative px-4 py-2',
-                      'text-cyan-500 hover:text-cyan-300',
-                      'font-mono text-xs uppercase tracking-wider',
-                      'transition-all duration-200',
-                      'hover:bg-cyan-500/10',
-                      pathname === '/' && 'text-cyan-300 bg-cyan-500/10'
-                    )}
-                  >
-                    <Text>Home</Text>
-                    {pathname === '/' && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
-                    )}
-                  </Link>
-                  <Link 
-                    href="/projects" 
-                    className={cx(
-                      'relative px-4 py-2',
-                      'text-cyan-500 hover:text-cyan-300',
-                      'font-mono text-xs uppercase tracking-wider',
-                      'transition-all duration-200',
-                      'hover:bg-cyan-500/10',
-                      pathname.startsWith('/projects') && 'text-cyan-300 bg-cyan-500/10'
-                    )}
-                  >
-                    <Text>Projects</Text>
-                    {pathname.startsWith('/projects') && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
-                    )}
-                  </Link>
-                  <Link 
-                    href="/templates" 
-                    className={cx(
-                      'relative px-4 py-2',
-                      'text-cyan-500 hover:text-cyan-300',
-                      'font-mono text-xs uppercase tracking-wider',
-                      'transition-all duration-200',
-                      'hover:bg-cyan-500/10',
-                      pathname.startsWith('/templates') && 'text-cyan-300 bg-cyan-500/10'
-                    )}
-                  >
-                    <Text>Templates</Text>
-                    {pathname.startsWith('/templates') && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
-                    )}
-                  </Link>
-                  <Link 
-                    href="/gallery" 
-                    className={cx(
-                      'relative px-4 py-2',
-                      'text-cyan-500 hover:text-cyan-300',
-                      'font-mono text-xs uppercase tracking-wider',
-                      'transition-all duration-200',
-                      'hover:bg-cyan-500/10',
-                      pathname.startsWith('/gallery') && 'text-cyan-300 bg-cyan-500/10'
-                    )}
-                  >
-                    <Text>Gallery</Text>
-                    {pathname.startsWith('/gallery') && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
-                    )}
-                  </Link>
-                </nav>
+                {!showSidebar && (
+                  <nav className="hidden md:flex items-center gap-2">
+                    <Link 
+                      href="/" 
+                      className={cx(
+                        'relative px-4 py-2',
+                        'text-cyan-500 hover:text-cyan-300',
+                        'font-mono text-xs uppercase tracking-wider',
+                        'transition-all duration-200',
+                        'hover:bg-cyan-500/10',
+                        pathname === '/' && 'text-cyan-300 bg-cyan-500/10'
+                      )}
+                    >
+                      <Text>Home</Text>
+                      {pathname === '/' && (
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
+                      )}
+                    </Link>
+                    <Link 
+                      href="/projects" 
+                      className={cx(
+                        'relative px-4 py-2',
+                        'text-cyan-500 hover:text-cyan-300',
+                        'font-mono text-xs uppercase tracking-wider',
+                        'transition-all duration-200',
+                        'hover:bg-cyan-500/10',
+                        pathname.startsWith('/projects') && 'text-cyan-300 bg-cyan-500/10'
+                      )}
+                    >
+                      <Text>Projects</Text>
+                      {pathname.startsWith('/projects') && (
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
+                      )}
+                    </Link>
+                    <Link 
+                      href="/templates" 
+                      className={cx(
+                        'relative px-4 py-2',
+                        'text-cyan-500 hover:text-cyan-300',
+                        'font-mono text-xs uppercase tracking-wider',
+                        'transition-all duration-200',
+                        'hover:bg-cyan-500/10',
+                        pathname.startsWith('/templates') && 'text-cyan-300 bg-cyan-500/10'
+                      )}
+                    >
+                      <Text>Templates</Text>
+                      {pathname.startsWith('/templates') && (
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
+                      )}
+                    </Link>
+                    <Link 
+                      href="/gallery" 
+                      className={cx(
+                        'relative px-4 py-2',
+                        'text-cyan-500 hover:text-cyan-300',
+                        'font-mono text-xs uppercase tracking-wider',
+                        'transition-all duration-200',
+                        'hover:bg-cyan-500/10',
+                        pathname.startsWith('/gallery') && 'text-cyan-300 bg-cyan-500/10'
+                      )}
+                    >
+                      <Text>Gallery</Text>
+                      {pathname.startsWith('/gallery') && (
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-300" />
+                      )}
+                    </Link>
+                  </nav>
+                )}
               </div>
 
               {/* Right side icons */}
@@ -215,7 +219,10 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Main Content - removed sidebar */}
+        {/* Sidebar */}
+        {showSidebar && <ChatSidebar />}
+        
+        {/* Main Content */}
         <main className="flex-1 p-4">
           <div className="relative h-full">
             {/* Main Background Frame */}

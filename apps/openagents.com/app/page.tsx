@@ -13,7 +13,6 @@ import type { UIMessage, Message } from '@/components/ChatMessage';
 import type { ChatStatus } from '@/components/ChatInput';
 import Link from 'next/link';
 import { Rocket, FolderOpen } from 'lucide-react';
-import { GitHubSignInCTA } from '@/components/mvp/atoms/HeroCallToAction';
 
 const HomePage = (): React.ReactElement => {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
@@ -43,7 +42,7 @@ const HomePage = (): React.ReactElement => {
   };
 
   return (
-    <AppLayout>
+    <AppLayout showSidebar>
       <OnboardingOverlayManager
         minDesktopWidth={1024}
         desktopMessage="OpenAgents requires a desktop browser for the full development experience. Please use a device with a screen width of at least 1024px."
@@ -56,69 +55,95 @@ const HomePage = (): React.ReactElement => {
 
         <div className="relative z-10 flex flex-col h-full">
           {/* Messages container */}
-          <div className="flex-1 overflow-y-auto px-8 pb-32">
-            <div className="space-y-4">
+          <div className="flex-1 flex items-center justify-center overflow-y-auto pb-32">
+            <div className="w-full max-w-3xl px-8">
               {uiMessages.length === 0 ? (
-                <div className="text-center py-16 space-y-8">
-                  {/* Hero Section */}
-                  <div className="space-y-4">
-                    <Text className="text-3xl md:text-4xl font-bold text-cyan-300" as="h1">
-                      Chat your apps into existence
+                <div className="text-center space-y-8">
+                  {/* Hero Section - ChatGPT style */}
+                  <div className="space-y-2">
+                    <Text className="text-3xl md:text-4xl font-semibold text-cyan-100/90" as="h1">
+                      What's on your mind today?
                     </Text>
-                    <Text className="text-lg md:text-xl text-cyan-400/80">
-                      Deploy to the edge in 60 seconds. No credit card required.
+                    <Text className="text-base text-cyan-300/60">
+                      Build and deploy apps instantly with AI
                     </Text>
                   </div>
                   
-                  {/* Quick Actions - always show now */}
-                  <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8">
-                    <Link
-                      href="/projects"
+                  {/* Example prompts - ChatGPT style */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-12">
+                    <button
+                      onClick={() => handleInputChange({ target: { value: 'Build a Bitcoin Lightning payment app' } } as any)}
                       className={cx(
-                        'flex items-center gap-3 px-6 py-3',
-                        'bg-cyan-500/10 hover:bg-cyan-500/20',
-                        'border border-cyan-500/30 hover:border-cyan-500/50',
-                        'text-cyan-300 hover:text-cyan-200',
-                        'transition-all duration-200',
-                        'group'
+                        'text-left p-4 rounded-lg',
+                        'bg-black/30 hover:bg-cyan-500/10',
+                        'border border-cyan-500/20 hover:border-cyan-500/30',
+                        'transition-all duration-200'
                       )}
                     >
-                      <FolderOpen size={20} className="group-hover:scale-110 transition-transform" />
-                      <span className="font-mono uppercase tracking-wider" style={{ fontFamily: 'var(--font-berkeley-mono), monospace' }}>View Projects</span>
-                    </Link>
+                      <Text className="text-sm font-medium text-cyan-300">Bitcoin Lightning App</Text>
+                      <Text className="text-xs text-cyan-500/60 mt-1">Create a payment app with invoices</Text>
+                    </button>
                     
-                    <Link
-                      href="/projects/bitcoin-puns-website"
+                    <button
+                      onClick={() => handleInputChange({ target: { value: 'Create a modern dashboard with charts' } } as any)}
                       className={cx(
-                        'flex items-center gap-3 px-6 py-3',
-                        'bg-purple-500/10 hover:bg-purple-500/20',
-                        'border border-purple-500/30 hover:border-purple-500/50',
-                        'text-purple-300 hover:text-purple-200',
-                        'transition-all duration-200',
-                        'group'
+                        'text-left p-4 rounded-lg',
+                        'bg-black/30 hover:bg-cyan-500/10',
+                        'border border-cyan-500/20 hover:border-cyan-500/30',
+                        'transition-all duration-200'
                       )}
                     >
-                      <Rocket size={20} className="group-hover:scale-110 transition-transform" />
-                      <span className="font-mono uppercase tracking-wider" style={{ fontFamily: 'var(--font-berkeley-mono), monospace' }}>Try Demo Project</span>
-                    </Link>
+                      <Text className="text-sm font-medium text-cyan-300">Analytics Dashboard</Text>
+                      <Text className="text-xs text-cyan-500/60 mt-1">Build a dashboard with real-time data</Text>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleInputChange({ target: { value: 'Build a blog with markdown support' } } as any)}
+                      className={cx(
+                        'text-left p-4 rounded-lg',
+                        'bg-black/30 hover:bg-cyan-500/10',
+                        'border border-cyan-500/20 hover:border-cyan-500/30',
+                        'transition-all duration-200'
+                      )}
+                    >
+                      <Text className="text-sm font-medium text-cyan-300">Blog Platform</Text>
+                      <Text className="text-xs text-cyan-500/60 mt-1">Create a blog with markdown editor</Text>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleInputChange({ target: { value: 'Make an e-commerce product page' } } as any)}
+                      className={cx(
+                        'text-left p-4 rounded-lg',
+                        'bg-black/30 hover:bg-cyan-500/10',
+                        'border border-cyan-500/20 hover:border-cyan-500/30',
+                        'transition-all duration-200'
+                      )}
+                    >
+                      <Text className="text-sm font-medium text-cyan-300">E-commerce Site</Text>
+                      <Text className="text-xs text-cyan-500/60 mt-1">Build a product showcase page</Text>
+                    </button>
                   </div>
                   
-                  {/* Sign in CTA */}
+                  {/* Sign in CTA - smaller, more subtle */}
                   {!isAuthenticated && (
-                    <div className="flex justify-center">
-                      <GitHubSignInCTA onClick={signIn} />
+                    <div className="flex justify-center mt-8">
+                      <button
+                        onClick={signIn}
+                        className={cx(
+                          'px-6 py-2.5 rounded-lg',
+                          'bg-cyan-500/10 hover:bg-cyan-500/20',
+                          'border border-cyan-500/30 hover:border-cyan-500/50',
+                          'text-sm text-cyan-300 hover:text-cyan-200',
+                          'transition-all duration-200'
+                        )}
+                      >
+                        Sign in with GitHub for more features
+                      </button>
                     </div>
                   )}
-                  
-                  {/* Helper text */}
-                  <div className="max-w-md mx-auto">
-                    <Text className="text-sm text-cyan-500/60 text-center font-mono">
-                      Or start chatting below to explore
-                    </Text>
-                  </div>
                 </div>
               ) : (
-                <>
+                <div className="space-y-4">
                   {uiMessages.map((message) => (
                     <ChatMessage 
                       key={message.id} 
@@ -126,21 +151,29 @@ const HomePage = (): React.ReactElement => {
                     />
                   ))}
                   {isLoading && <TypingIndicator />}
-                </>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Input area - fixed to bottom */}
-          <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-sm border-t border-cyan-500/20 p-4 z-50">
-            <div className="max-w-4xl mx-auto">
-              <ChatInput
-                ref={inputRef}
-                input={input}
-                onInputChange={handleTextareaChange}
-                onSubmit={onSubmit}
-                status={status}
-              />
+          {/* Input area - fixed to bottom, ChatGPT style */}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent pt-8 pb-4">
+            <div className="max-w-3xl mx-auto px-8">
+              <div className="relative">
+                <ChatInput
+                  ref={inputRef}
+                  input={input}
+                  onInputChange={handleTextareaChange}
+                  onSubmit={onSubmit}
+                  status={status}
+                  placeholder="Ask me to build something amazing..."
+                />
+                <div className="text-center mt-2">
+                  <Text className="text-xs text-cyan-500/40">
+                    OpenAgents can make mistakes. Check important info.
+                  </Text>
+                </div>
+              </div>
             </div>
           </div>
         </div>
