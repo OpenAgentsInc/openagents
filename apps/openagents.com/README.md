@@ -1,14 +1,14 @@
-# Welcome to your Convex + Next.js + Convex Auth app
+# OpenAgents.com - Chat Your Apps Into Existence
 
-This is a [Convex](https://convex.dev/) project created with [`npm create convex`](https://www.npmjs.com/package/create-convex).
+This is the main OpenAgents web application powered by [Convex](https://convex.dev/), [Next.js](https://nextjs.org/), and GitHub OAuth authentication.
 
-After the initial setup (<2 minutes) you'll have a working full-stack app using:
+## Tech Stack
 
-- Convex as your backend (database, server logic)
-- [React](https://react.dev/) as your frontend (web page interactivity)
-- [Next.js](https://nextjs.org/) for optimized web hosting and page routing
-- [Tailwind](https://tailwindcss.com/) for building great looking accessible UI
-- [Convex Auth](https://labs.convex.dev/auth) for authentication
+- **Backend**: Convex (database, server logic, real-time sync)
+- **Frontend**: React 19 + Next.js 15 (App Router)
+- **UI**: Arwes cyberpunk theme + Tailwind CSS
+- **Authentication**: GitHub OAuth via [Convex Auth](https://labs.convex.dev/auth)
+- **AI Integration**: AI SDK with OpenRouter provider
 
 ## Get started
 
@@ -34,9 +34,53 @@ To learn more about developing your project with Convex, check out:
 - [Stack](https://stack.convex.dev/) for in-depth articles on advanced topics.
 - [Convex Auth docs](https://labs.convex.dev/auth) for documentation on the Convex Auth library.
 
+## GitHub OAuth Setup
+
+The app uses GitHub OAuth for authentication. To set it up:
+
+### 1. Create GitHub OAuth Apps
+
+You'll need separate OAuth apps for development and production:
+
+#### Development OAuth App
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
+2. Click "New OAuth App"
+3. Fill in:
+   - **Application name**: `OpenAgents Dev`
+   - **Homepage URL**: `http://localhost:3000`
+   - **Authorization callback URL**: `https://[your-dev-convex-url].convex.cloud/api/auth/callback/github`
+4. Save the Client ID and Client Secret
+
+#### Production OAuth App
+1. Create another OAuth app with:
+   - **Application name**: `OpenAgents`
+   - **Homepage URL**: `https://openagents.com` (or your production URL)
+   - **Authorization callback URL**: `https://[your-prod-convex-url].convex.cloud/api/auth/callback/github`
+
+### 2. Set Environment Variables
+
+```bash
+# Development
+npx convex env set AUTH_GITHUB_ID <dev-client-id>
+npx convex env set AUTH_GITHUB_SECRET <dev-client-secret>
+
+# Production
+npx convex env set AUTH_GITHUB_ID <prod-client-id> --prod
+npx convex env set AUTH_GITHUB_SECRET <prod-client-secret> --prod
+```
+
+### 3. Find Your Convex URL
+
+To get your Convex deployment URL for the callback:
+```bash
+npx convex dashboard
+```
+
+The URL will be in the format: `https://[deployment-name].convex.cloud`
+
 ## Configuring other authentication methods
 
-To configure different authentication methods, see [Configuration](https://labs.convex.dev/auth/config) in the Convex Auth docs.
+To add additional authentication methods, see [Configuration](https://labs.convex.dev/auth/config) in the Convex Auth docs.
 
 ## Join the community
 

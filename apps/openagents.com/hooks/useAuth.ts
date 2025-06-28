@@ -3,13 +3,15 @@
 import { useConvexAuth } from 'convex/react'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { useRouter } from 'next/navigation'
+import { useQuery } from 'convex/react'
+import { api } from '@/convex/_generated/api'
 
 export interface User {
   id: string
   login: string
   name: string
   avatar_url: string
-  email?: string
+  email?: string | null
 }
 
 export interface AuthState {
@@ -22,19 +24,18 @@ export function useAuth(): AuthState & {
   signIn: () => Promise<void>
   signOut: () => void
 } {
-  const { isAuthenticated, isLoading } = useConvexAuth()
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
   const { signIn: convexSignIn, signOut: convexSignOut } = useAuthActions()
   const router = useRouter()
-
-  // Create a mock user object for now since Convex auth doesn't provide GitHub-style user data
-  // In a real implementation, you'd fetch this from a users table
-  const user: User | null = isAuthenticated ? {
-    id: 'convex-user',
-    login: 'user',
-    name: 'OpenAgents User',
-    avatar_url: 'https://github.com/identicons/user.png',
-    email: 'user@openagents.com'
-  } : null
+  
+  // Fetch real user data from Convex
+  const userData = useQuery(
+    api.users.getCurrentUser,
+    isAuthenticated ? {} : "skip"
+  )
+  
+  const user = userData || null
+  const isLoading = authLoading || (isAuthenticated && userData === undefined)
 
   const signIn = async () => {
     // Redirect to the sign-in page
