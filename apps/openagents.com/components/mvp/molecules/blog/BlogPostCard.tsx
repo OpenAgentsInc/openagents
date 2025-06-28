@@ -8,15 +8,13 @@ export interface BlogPostCardProps {
   title: string;
   date: string;
   summary?: string;
-  image?: string;
 }
 
 export const BlogPostCard: React.FC<BlogPostCardProps> = ({
   slug,
   title,
   date,
-  summary,
-  image
+  summary
 }) => {
   return (
     <Link href={`/blog/${slug}`} className="block group">
@@ -36,17 +34,6 @@ export const BlogPostCard: React.FC<BlogPostCardProps> = ({
         
         {/* Card content */}
         <div className="relative bg-black/30 border border-cyan-500/20 p-6 h-full">
-          {/* Featured image */}
-          {image && (
-            <div className="mb-4 -mx-6 -mt-6">
-              <img 
-                src={image} 
-                alt={title}
-                className="w-full h-48 object-cover"
-              />
-            </div>
-          )}
-          
           <Text as="h3" className="text-xl font-semibold text-cyan-100 mb-2 group-hover:text-cyan-300 transition-colors">
             {title}
           </Text>

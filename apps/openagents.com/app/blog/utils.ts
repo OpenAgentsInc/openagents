@@ -5,7 +5,6 @@ export interface BlogPost {
   title: string;
   date: string;
   summary?: string;
-  image?: string;
   content: string;
   readingTime: string;
 }
@@ -19,7 +18,6 @@ export function getAllPosts(): BlogPost[] {
       title: 'Introducing the Agent Payments API',
       date: '2025-05-05',
       summary: 'We built the easiest way for AI agents to send and receive money. Open beta is now available globally for all developers.',
-      image: '/images/blog02.png',
       content: '',
       readingTime: '5 min read'
     },
@@ -28,7 +26,6 @@ export function getAllPosts(): BlogPost[] {
       title: 'AI Agents @ OFF 2025',
       date: '2025-06-02',
       summary: 'We gave an introductory talk about AI agents at the Oslo Freedom Forum.',
-      image: '/images/blog06.png',
       content: '',
       readingTime: '10 min read'
     },
@@ -37,7 +34,6 @@ export function getAllPosts(): BlogPost[] {
       title: 'Intro to AI Coding Agents',
       date: '2025-04-30',
       summary: 'Our PlebLab workshop has equal parts education and shit talking.',
-      image: '/images/blog01.png',
       content: '',
       readingTime: '8 min read'
     },
@@ -46,7 +42,6 @@ export function getAllPosts(): BlogPost[] {
       title: "We're on Discord",
       date: '2025-05-10',
       summary: 'OpenAgents now has a Discord. You should join.',
-      image: '/images/blog03.png',
       content: '',
       readingTime: '2 min read'
     },
@@ -55,7 +50,6 @@ export function getAllPosts(): BlogPost[] {
       title: 'GPUtopia 2.0',
       date: '2025-05-14',
       summary: "We're rebooting our swarm compute network as OpenAgents Compute.",
-      image: '/images/blog05.png',
       content: '',
       readingTime: '4 min read'
     },
@@ -64,7 +58,6 @@ export function getAllPosts(): BlogPost[] {
       title: 'Introducing the OpenAgents Wallet',
       date: '2025-05-13',
       summary: 'Earning and spending bitcoin with AI agents should be easy and fun. Now it is!',
-      image: '/images/blog04.png',
       content: '',
       readingTime: '3 min read'
     },
@@ -73,7 +66,6 @@ export function getAllPosts(): BlogPost[] {
       title: 'Analyzing the June 12 Internet Outage',
       date: '2025-06-13',
       summary: 'Claude\'s after-action report from yesterday\'s "seven-hour digital nightmare"',
-      image: '/images/blog07.png',
       content: '',
       readingTime: '12 min read'
     }
