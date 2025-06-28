@@ -222,51 +222,18 @@ export const CodeSplitBoundary: React.FC<{ children: React.ReactNode }> = ({ chi
 // Resource hints for better loading performance
 export function addResourceHints() {
   if (typeof window === 'undefined') return
-
-  // Preload critical chunks
-  const criticalChunks = [
-    '/_next/static/chunks/webpack.js',
-    '/_next/static/chunks/main.js',
-    '/_next/static/chunks/pages/_app.js'
-  ]
-
-  criticalChunks.forEach(chunk => {
-    const link = document.createElement('link')
-    link.rel = 'preload'
-    link.as = 'script'
-    link.href = chunk
-    document.head.appendChild(link)
-  })
-
-  // Prefetch non-critical chunks (only existing resources)
-  const nonCriticalChunks = [
-    '/_next/static/chunks/pages/projects.js',
-    '/_next/static/chunks/framework.js'
-  ]
-
-  nonCriticalChunks.forEach(chunk => {
-    // Only prefetch if the chunk actually exists
-    fetch(chunk, { method: 'HEAD' })
-      .then(response => {
-        if (response.ok) {
-          const link = document.createElement('link')
-          link.rel = 'prefetch'
-          link.href = chunk
-          document.head.appendChild(link)
-        }
-      })
-      .catch(() => {
-        // Silently ignore 404s for prefetch hints
-      })
-  })
+  
+  // Disabled: These hardcoded chunk paths cause 404s in Next.js 13+
+  // Next.js handles its own chunk loading and optimization
+  // Keeping function empty to avoid breaking existing code that calls it
 }
 
 // Initialize performance optimizations
 export function initializePerformanceOptimizations() {
   if (typeof window === 'undefined') return
 
-  // Add resource hints
-  addResourceHints()
+  // Resource hints disabled - Next.js handles chunk loading automatically
+  // addResourceHints()
 
   // Service Worker registration for caching
   if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
