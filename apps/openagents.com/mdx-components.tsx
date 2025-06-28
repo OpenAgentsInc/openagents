@@ -1,18 +1,22 @@
 import type { MDXComponents } from 'mdx/types';
-import { Text } from '@arwes/react';
-import { MDXTwitterEmbed } from './components/blog/MDXTwitterEmbed';
+import dynamic from 'next/dynamic';
+
+const MDXTwitterEmbed = dynamic(() => import('./components/blog/MDXTwitterEmbed').then(mod => mod.MDXTwitterEmbed), {
+  ssr: false,
+  loading: () => <div className="w-full h-[400px] bg-black/50 animate-pulse rounded-lg my-8" />
+});
 
 // @ts-ignore
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
     // @ts-ignore
-    h1: (props: any) => <Text as="h1" className="text-3xl font-bold text-cyan-100 mt-8 mb-4" {...props} />,
+    h1: (props: any) => <h1 className="text-3xl font-bold text-cyan-100 mt-8 mb-4" {...props} />,
     // @ts-ignore
-    h2: (props: any) => <Text as="h2" className="text-2xl font-semibold text-cyan-100 mt-6 mb-3" {...props} />,
+    h2: (props: any) => <h2 className="text-2xl font-semibold text-cyan-100 mt-6 mb-3" {...props} />,
     // @ts-ignore
-    h3: (props: any) => <Text as="h3" className="text-xl font-semibold text-cyan-200 mt-4 mb-2" {...props} />,
+    h3: (props: any) => <h3 className="text-xl font-semibold text-cyan-200 mt-4 mb-2" {...props} />,
     // @ts-ignore
-    p: (props: any) => <Text className="text-cyan-300/80 mb-4 leading-relaxed" {...props} />,
+    p: (props: any) => <p className="text-cyan-300/80 mb-4 leading-relaxed" {...props} />,
     // @ts-ignore
     a: (props: any) => <a className="text-cyan-400 hover:text-cyan-300 underline transition-colors" {...props} />,
     // @ts-ignore
