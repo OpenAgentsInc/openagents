@@ -50,7 +50,7 @@ export const OnboardingOverlayManager = ({
   })
 
   return (
-    <div className={className}>
+    <div className={`h-full flex flex-col ${className}`}>
       {/* Main app content - always renders */}
       {children}
       
