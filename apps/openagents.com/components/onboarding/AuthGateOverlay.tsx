@@ -3,6 +3,7 @@ import { Text, Animator, Animated, AnimatorGeneralProvider, cx } from '@arwes/re
 import { FrameAlert } from '@/components/FrameAlert'
 import { ButtonSimple } from '@/components/ButtonSimple'
 import { Github } from 'lucide-react'
+import { useAuthActions } from '@convex-dev/auth/react'
 
 export interface AuthGateOverlayProps {
   onSignIn?: () => void
@@ -18,15 +19,28 @@ export const AuthGateOverlay = ({
   className = ''
 }: AuthGateOverlayProps): React.ReactElement => {
   const [active, setActive] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { signIn } = useAuthActions()
 
   useEffect(() => {
     const timer = setTimeout(() => setActive(true), 100)
     return () => clearTimeout(timer)
   }, [])
 
-  const handleSignIn = () => {
-    console.log('GitHub sign-in initiated from auth gate')
-    onSignIn?.()
+  const handleSignIn = async () => {
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      await signIn("github")
+      // The onSignIn callback is optional - OAuth will handle redirect
+      onSignIn?.()
+    } catch (error) {
+      console.error('GitHub sign-in error:', error)
+      setError(error instanceof Error ? error.message : "Failed to sign in")
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -78,13 +92,27 @@ export const AuthGateOverlay = ({
                 >
                   <ButtonSimple 
                     onClick={handleSignIn}
+                    disabled={isLoading}
                     className="px-6 h-10"
                   >
                     <Github size={14} />
-                    <span>Continue with GitHub</span>
+                    <span>{isLoading ? 'Connecting...' : 'Continue with GitHub'}</span>
                   </ButtonSimple>
                 </Animated>
               </Animator>
+              
+              {/* Error message */}
+              {error && (
+                <Animator duration={{ delay: 0.3 }}>
+                  <Animated
+                    as="p"
+                    className="text-red-400 text-xs mt-2"
+                    animated={['fade']}
+                  >
+                    {error}
+                  </Animated>
+                </Animator>
+              )}
 
             </div>
           </Animator>
