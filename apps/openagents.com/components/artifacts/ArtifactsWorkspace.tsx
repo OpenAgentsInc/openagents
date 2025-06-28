@@ -4,16 +4,16 @@ import React from 'react'
 import { cx } from '@arwes/react'
 import { useMutation } from 'convex/react'
 import { api } from '@/convex/_generated/api'
-import { ChatInterface } from '@/components/mvp/organisms/ChatInterface.stories'
+import { WorkspaceChat } from '@/components/workspace/WorkspaceChat'
 import { ArtifactsPanel } from './ArtifactsPanel'
 import { ArtifactsProvider, useArtifactOperations } from './ArtifactsContext'
 import { useToast } from '@/components/Toast'
 
-interface ClaudeWorkspaceProps {
+interface ArtifactsWorkspaceProps {
   className?: string
 }
 
-function ClaudeWorkspaceInner({ className = '' }: ClaudeWorkspaceProps) {
+function ArtifactsWorkspaceInner({ className = '' }: ArtifactsWorkspaceProps) {
   const toast = useToast()
   const { addArtifact, clearArtifacts } = useArtifactOperations()
 
@@ -53,21 +53,13 @@ function ClaudeWorkspaceInner({ className = '' }: ClaudeWorkspaceProps) {
   }
 
   return (
-    <div className={cx('h-screen bg-black flex', className)}>
+    <div className={cx('h-full bg-black flex', className)}>
       {/* Chat Panel - Left Side */}
       <div className="w-1/2 border-r border-cyan-900/30 flex flex-col">
         <div className="flex-1">
-          <ChatInterface
-            messages={[]}
-            isLoading={false}
-            placeholder="Describe what you want to build..."
-            onSendMessage={handleSendMessage}
-            onClearChat={handleClearChat}
-            showHeader={true}
-            showStatus={true}
-            showModelBadge={true}
-            animated={false}
-            maxHeight={0} // Use full height
+          <WorkspaceChat
+            projectName="OpenAgents Workspace"
+            projectId="workspace"
             className="h-full"
           />
         </div>
@@ -82,10 +74,10 @@ function ClaudeWorkspaceInner({ className = '' }: ClaudeWorkspaceProps) {
 }
 
 // Main component with provider
-export function ClaudeWorkspace(props: ClaudeWorkspaceProps) {
+export function ArtifactsWorkspace(props: ArtifactsWorkspaceProps) {
   return (
     <ArtifactsProvider>
-      <ClaudeWorkspaceInner {...props} />
+      <ArtifactsWorkspaceInner {...props} />
     </ArtifactsProvider>
   )
 }
