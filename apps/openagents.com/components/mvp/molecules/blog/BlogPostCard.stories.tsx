@@ -28,10 +28,6 @@ const meta = {
       control: 'text',
       description: 'Short description of the blog post',
     },
-    image: {
-      control: 'text',
-      description: 'Featured image URL',
-    },
   },
 } satisfies Meta<typeof BlogPostCard>;
 
@@ -44,7 +40,6 @@ export const Default: Story = {
     title: 'Intro to AI Coding Agents',
     date: '2025-04-30',
     summary: 'Our PlebLab workshop has equal parts education and shit talking.',
-    image: '/images/blog01.png',
   },
 };
 
@@ -63,7 +58,6 @@ export const LongTitle: Story = {
     title: 'A Comprehensive Guide to Building AI Agents with Bitcoin Lightning Network Integration',
     date: '2025-06-01',
     summary: 'Everything you need to know about creating autonomous agents that can send and receive Bitcoin payments.',
-    image: '/images/blog02.png',
   },
 };
 
