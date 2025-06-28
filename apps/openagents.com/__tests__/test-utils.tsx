@@ -54,15 +54,15 @@ const createMockResponse = (content: string) => {
 }
 
 // Mock global fetch for AI API
-global.fetch = vi.fn((url: string | URL, options?: RequestInit) => {
-  const urlString = url.toString()
+global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+  const urlString = input.toString()
   
   if (urlString.includes('/api/chat')) {
     // Parse the request body to get the message
     let messages = []
-    if (options?.body) {
+    if (init?.body) {
       try {
-        const body = JSON.parse(options.body as string)
+        const body = JSON.parse(init.body as string)
         messages = body.messages || []
       } catch (e) {
         // Ignore parsing errors
