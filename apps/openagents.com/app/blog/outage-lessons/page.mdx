@@ -1,52 +1,16 @@
-import { BlogPageWrapper } from '@/components/blog/BlogPageWrapper';
-import { Text, GridLines, Dots, Animator, Animated } from '@arwes/react';
-import { CalendarDays, Clock } from 'lucide-react';
+import { BlogLayout } from '@/components/blog/BlogLayout'
 
 export const metadata = {
   title: "Analyzing the June 12 Internet Outage",
-  date: "2025-06-13",
+  date: "June 13, 2025",
   summary: "Claude's after-action report from yesterday's \"seven-hour digital nightmare\"",
-  image: "/images/blog07.png"
-};
+  image: "/images/blog07.png",
+  readingTime: "12 min read"
+}
 
-<BlogPageWrapper>
-      <div className="relative z-10 h-full overflow-y-auto">
-        <div className="absolute inset-0 pointer-events-none">
-          <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
-          <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
-        </div>
-        
-        <article className="relative max-w-4xl mx-auto px-8 py-12">
-          <Animator active={true}>
-            <Animated animated={[['opacity', 0, 1], ['y', 20, 0]]}>
-              <header className="mb-8">
-                <img 
-                  src="/images/blog07.png" 
-                  alt="Analyzing the June 12 Internet Outage"
-                  className="w-full h-64 md:h-96 object-cover mb-8 -mx-8 -mt-12"
-                />
-                
-                <Text as="h1" className="text-3xl md:text-4xl font-bold text-cyan-100 mb-4">
-                  Analyzing the June 12 Internet Outage
-                </Text>
-                
-                <Text className="text-lg text-cyan-300/60 mb-4">
-                  Claude's after-action report from yesterday's "seven-hour digital nightmare"
-                </Text>
-                
-                <div className="flex items-center gap-4 text-sm text-cyan-500/60">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays size={16} />
-                    <Text>June 13, 2025</Text>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock size={16} />
-                    <Text>12 min read</Text>
-                  </div>
-                </div>
-              </header>
-              
-              <div className="prose prose-invert prose-cyan max-w-none">
+export default function MDXPage({ children }) {
+  return <BlogLayout metadata={metadata}>{children}</BlogLayout>
+}
 
 What happened yesterday?
 
@@ -131,21 +95,3 @@ The June 12, 2025 internet outage stands as a watershed moment in cloud computin
 The incident's true cost extends beyond immediate disruption. It revealed that our "distributed" internet relies on hidden centralized dependencies, that authentication systems represent critical vulnerabilities, and that cloud provider partnerships can create unexpected failure correlations. As organizations increasingly depend on cloud services for mission-critical operations, this outage serves as an urgent call for architectural reform, true redundancy, and a fundamental rethinking of how we build resilient digital infrastructure.
 
 The technical lessons are clear: eliminate single points of failure, ensure true provider independence, and design for graceful degradation. But the broader lesson is more sobering—our interconnected digital world remains frighteningly fragile, and without significant architectural changes, future outages may prove even more devastating.
-
-              </div>
-              
-              <footer className="mt-12 pt-8 border-t border-cyan-500/20">
-                <div className="flex justify-between items-center">
-                  <a 
-                    href="/blog" 
-                    className="text-cyan-400 hover:text-cyan-300 transition-colors"
-                  >
-                    ← Back to Blog
-                  </a>
-                </div>
-              </footer>
-            </Animated>
-          </Animator>
-        </article>
-      </div>
-</BlogPageWrapper>

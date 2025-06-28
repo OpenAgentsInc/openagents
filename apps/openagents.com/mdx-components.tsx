@@ -1,19 +1,31 @@
 import type { MDXComponents } from 'mdx/types';
 import { Text } from '@arwes/react';
+import { MDXTwitterEmbed } from './components/blog/MDXTwitterEmbed';
 
+// @ts-ignore
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
+    // @ts-ignore
     h1: (props: any) => <Text as="h1" className="text-3xl font-bold text-cyan-100 mt-8 mb-4" {...props} />,
+    // @ts-ignore
     h2: (props: any) => <Text as="h2" className="text-2xl font-semibold text-cyan-100 mt-6 mb-3" {...props} />,
+    // @ts-ignore
     h3: (props: any) => <Text as="h3" className="text-xl font-semibold text-cyan-200 mt-4 mb-2" {...props} />,
+    // @ts-ignore
     p: (props: any) => <Text className="text-cyan-300/80 mb-4 leading-relaxed" {...props} />,
+    // @ts-ignore
     a: (props: any) => <a className="text-cyan-400 hover:text-cyan-300 underline transition-colors" {...props} />,
+    // @ts-ignore
     ul: (props: any) => <ul className="list-disc list-inside text-cyan-300/80 mb-4 space-y-1" {...props} />,
+    // @ts-ignore
     ol: (props: any) => <ol className="list-decimal list-inside text-cyan-300/80 mb-4 space-y-1" {...props} />,
+    // @ts-ignore
     li: (props: any) => <li className="text-cyan-300/80" {...props} />,
+    // @ts-ignore
     blockquote: (props: any) => (
       <blockquote className="border-l-4 border-cyan-500 pl-4 my-4 italic text-cyan-300/60" {...props} />
     ),
+    // @ts-ignore
     code: ({ className, ...props }: any) => {
       const match = /language-(\w+)/.exec(className || '');
       
@@ -27,10 +39,14 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
         </pre>
       );
     },
+    // @ts-ignore
     img: (props: any) => (
       <img className="w-full rounded-lg my-4 border border-cyan-500/20" {...props} />
     ),
+    // @ts-ignore
     hr: () => <hr className="border-cyan-500/20 my-8" />,
+    // @ts-ignore
+    TwitterEmbed: MDXTwitterEmbed,
     ...components,
   };
 }

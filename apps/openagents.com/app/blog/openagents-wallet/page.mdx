@@ -1,0 +1,50 @@
+import { BlogLayout } from '@/components/blog/BlogLayout'
+
+export const metadata = {
+  title: "Introducing the OpenAgents Wallet",
+  date: "May 13, 2025",
+  summary: "Earning and spending bitcoin with AI agents should be easy and fun. Now it is!",
+  image: "/images/blog04.png",
+  readingTime: "3 min read"
+}
+
+export default function MDXPage({ children }) {
+  return <BlogLayout metadata={metadata}>{children}</BlogLayout>
+}
+
+<TwitterEmbed html={`<blockquote class="twitter-tweet" data-media-max-width="560"><p lang="en" dir="ltr">Episode 173: OpenAgents Bitcoin Wallet<br><br>&quot;Earning and spending bitcoin with AI agents should be easy and fun. Now it is!&quot;<br><br>We demo our new open-source, self-custodial bitcoin wallet for humans and agents at <a href="https://t.co/5mTCQhypgT">https://t.co/5mTCQhypgT</a>.<br><br>It uses the <a href="https://twitter.com/buildonspark?ref_src=twsrc%5Etfw">@buildonspark</a> SDK for first-class… <a href="https://t.co/hFTzRpxTm9">pic.twitter.com/hFTzRpxTm9</a></p>&mdash; OpenAgents ⚡ (@OpenAgentsInc) <a href="https://twitter.com/OpenAgentsInc/status/1922303008617984363?ref_src=twsrc%5Etfw">May 13, 2025</a></blockquote>`} />
+
+### tl;dr
+
+We just launched a web wallet at [wallet.openagents.com](https://wallet.openagents.com) with support for Bitcoin and Lightning through the new [Spark SDK](https://spark.money).
+
+### Why
+
+We needed an easy way for any person or AI agent to earn and spend bitcoin.
+
+Here's what we wanted from our wallet:
+
+- 100% open-source - both the [wallet](https://github.com/OpenAgentsInc/openagents/tree/main/apps/wallet) and [payments infrastructure](https://github.com/buildonspark/spark)
+- Self-custodial - no one holds your funds but you
+- No login required - only a seed phrase
+- Never asks you for sensitive personal information
+- No blockchains other than bitcoin
+- First-class support for Bitcoin Lightning
+- First-class support for bitcoin-native stablecoins
+- No fees for payments between OpenAgents wallets
+
+### Help test it
+
+We'll be throwing a few satoshis at a few folks in [our Discord](https://openagents.test/blog/discord) who help test it out and report any bugs.
+
+### How not to use it
+
+As a web wallet connected to various OpenAgents products, this is **not** for long-term storage of your bitcoin stack. This is an experimental hot wallet you should assume is not secure.
+
+Don't load more than a handful of satoshis at a time. When you earn bitcoin to your wallet, please withdraw it regularly to a more established self-custodial wallet. (Try [Zeus](https://zeusln.com/)!)
+
+### Coming soon
+
+- Integration with our [Agent Payments API](/blog/agent-payments-api)
+- Integration with our [Commander](https://x.com/OpenAgentsInc/status/1919797578452869267) product
+- And [more](https://x.com/OpenAgentsInc/status/1919428581358227525)

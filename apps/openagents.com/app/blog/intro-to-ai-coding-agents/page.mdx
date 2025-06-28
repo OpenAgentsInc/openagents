@@ -1,52 +1,16 @@
-import { BlogPageWrapper } from '@/components/blog/BlogPageWrapper';
-import { Text, GridLines, Dots, Animator, Animated } from '@arwes/react';
-import { CalendarDays, Clock } from 'lucide-react';
+import { BlogLayout } from '@/components/blog/BlogLayout'
 
 export const metadata = {
   title: "Intro to AI Coding Agents",
-  date: "2025-04-30",
+  date: "April 30, 2025",
   summary: "Our PlebLab workshop has equal parts education and shit talking.",
-  image: "/images/blog01.png"
-};
+  image: "/images/blog01.png",
+  readingTime: "8 min read"
+}
 
-<BlogPageWrapper>
-      <div className="relative z-10 h-full overflow-y-auto">
-        <div className="absolute inset-0 pointer-events-none">
-          <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
-          <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
-        </div>
-        
-        <article className="relative max-w-4xl mx-auto px-8 py-12">
-          <Animator active={true}>
-            <Animated animated={[['opacity', 0, 1], ['y', 20, 0]]}>
-              <header className="mb-8">
-                <img 
-                  src="/images/blog01.png" 
-                  alt="Intro to AI Coding Agents"
-                  className="w-full h-64 md:h-96 object-cover mb-8 -mx-8 -mt-12"
-                />
-                
-                <Text as="h1" className="text-3xl md:text-4xl font-bold text-cyan-100 mb-4">
-                  Intro to AI Coding Agents
-                </Text>
-                
-                <Text className="text-lg text-cyan-300/60 mb-4">
-                  Our PlebLab workshop has equal parts education and shit talking.
-                </Text>
-                
-                <div className="flex items-center gap-4 text-sm text-cyan-500/60">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays size={16} />
-                    <Text>April 30, 2025</Text>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock size={16} />
-                    <Text>8 min read</Text>
-                  </div>
-                </div>
-              </header>
-              
-              <div className="prose prose-invert prose-cyan max-w-none">
+export default function MDXPage({ children }) {
+  return <BlogLayout metadata={metadata}>{children}</BlogLayout>
+}
 
 <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
   <iframe
@@ -104,21 +68,3 @@ This video presentation, delivered by the founder of OpenAgents, traces the evol
 > **[30:19]** [Current agents are] like an accelerant, it speeds you forward but then you [run] into a brick wall... we all know as developers like it's still multiplying our productivity by 3x, 5x whatever it is, it's just like obviously so much more can be done.
 
 > **[39:34]** How many agents are working on my behalf right now? Right now, zero. Anyone have any agents running right now? We should all have like a hundred agents running.
-
-              </div>
-              
-              <footer className="mt-12 pt-8 border-t border-cyan-500/20">
-                <div className="flex justify-between items-center">
-                  <a 
-                    href="/blog" 
-                    className="text-cyan-400 hover:text-cyan-300 transition-colors"
-                  >
-                    ← Back to Blog
-                  </a>
-                </div>
-              </footer>
-            </Animated>
-          </Animator>
-        </article>
-      </div>
-</BlogPageWrapper>

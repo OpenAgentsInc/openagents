@@ -1,52 +1,16 @@
-import { BlogPageWrapper } from '@/components/blog/BlogPageWrapper';
-import { Text, GridLines, Dots, Animator, Animated } from '@arwes/react';
-import { CalendarDays, Clock } from 'lucide-react';
+import { BlogLayout } from '@/components/blog/BlogLayout'
 
 export const metadata = {
   title: "AI Agents @ OFF 2025",
-  date: "2025-06-02",
+  date: "June 2, 2025",
   summary: "We gave an introductory talk about AI agents at the Oslo Freedom Forum.",
-  image: "/images/blog06.png"
-};
+  image: "/images/blog06.png",
+  readingTime: "10 min read"
+}
 
-<BlogPageWrapper>
-      <div className="relative z-10 h-full overflow-y-auto">
-        <div className="absolute inset-0 pointer-events-none">
-          <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
-          <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
-        </div>
-        
-        <article className="relative max-w-4xl mx-auto px-8 py-12">
-          <Animator active={true}>
-            <Animated animated={[['opacity', 0, 1], ['y', 20, 0]]}>
-              <header className="mb-8">
-                <img 
-                  src="/images/blog06.png" 
-                  alt="AI Agents @ OFF 2025"
-                  className="w-full h-64 md:h-96 object-cover mb-8 -mx-8 -mt-12"
-                />
-                
-                <Text as="h1" className="text-3xl md:text-4xl font-bold text-cyan-100 mb-4">
-                  AI Agents @ OFF 2025
-                </Text>
-                
-                <Text className="text-lg text-cyan-300/60 mb-4">
-                  We gave an introductory talk about AI agents at the Oslo Freedom Forum.
-                </Text>
-                
-                <div className="flex items-center gap-4 text-sm text-cyan-500/60">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays size={16} />
-                    <Text>June 2, 2025</Text>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock size={16} />
-                    <Text>10 min read</Text>
-                  </div>
-                </div>
-              </header>
-              
-              <div className="prose prose-invert prose-cyan max-w-none">
+export default function MDXPage({ children }) {
+  return <BlogLayout metadata={metadata}>{children}</BlogLayout>
+}
 
 <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
   <iframe
@@ -193,21 +157,3 @@ We've got a few hundred or a few thousand doing really good work: sorting our do
 What's that? Fighting dictators, absolutely.
 
 That's all. See ya.
-
-              </div>
-              
-              <footer className="mt-12 pt-8 border-t border-cyan-500/20">
-                <div className="flex justify-between items-center">
-                  <a 
-                    href="/blog" 
-                    className="text-cyan-400 hover:text-cyan-300 transition-colors"
-                  >
-                    ← Back to Blog
-                  </a>
-                </div>
-              </footer>
-            </Animated>
-          </Animator>
-        </article>
-      </div>
-</BlogPageWrapper>
