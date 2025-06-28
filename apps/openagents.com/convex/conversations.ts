@@ -184,16 +184,15 @@ export const getRecent = query({
       .query("conversations")
       .withIndex("by_user_last_message", (q) => q.eq("userId", userId))
       .order("desc")
-      .take(20)
-      .collect();
+      .take(20);
 
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
     const twoDaysAgo = now - 2 * 24 * 60 * 60 * 1000;
 
-    const today = conversations.filter(c => c.lastMessageAt && c.lastMessageAt > oneDayAgo);
-    const yesterday = conversations.filter(c => c.lastMessageAt && c.lastMessageAt > twoDaysAgo && c.lastMessageAt <= oneDayAgo);
-    const previous = conversations.filter(c => c.lastMessageAt && c.lastMessageAt <= twoDaysAgo);
+    const today = conversations.filter((c: any) => c.lastMessageAt && c.lastMessageAt > oneDayAgo);
+    const yesterday = conversations.filter((c: any) => c.lastMessageAt && c.lastMessageAt > twoDaysAgo && c.lastMessageAt <= oneDayAgo);
+    const previous = conversations.filter((c: any) => c.lastMessageAt && c.lastMessageAt <= twoDaysAgo);
 
     return {
       today,

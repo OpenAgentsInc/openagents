@@ -159,7 +159,7 @@ export const ChatSidebar = (): React.ReactElement => {
                         Today
                       </Text>
                       <div className="space-y-1">
-                        {conversationData.today.map((session) => (
+                        {conversationData.today.map((session: any) => (
                           <ChatItem 
                             key={session._id} 
                             session={session}
@@ -182,7 +182,7 @@ export const ChatSidebar = (): React.ReactElement => {
                         Yesterday
                       </Text>
                       <div className="space-y-1">
-                        {conversationData.yesterday.map((session) => (
+                        {conversationData.yesterday.map((session: any) => (
                           <ChatItem 
                             key={session._id} 
                             session={session}
@@ -205,7 +205,7 @@ export const ChatSidebar = (): React.ReactElement => {
                         Previous 7 Days
                       </Text>
                       <div className="space-y-1">
-                        {conversationData.previous.map((session) => (
+                        {conversationData.previous.map((session: any) => (
                           <ChatItem 
                             key={session._id} 
                             session={session}
