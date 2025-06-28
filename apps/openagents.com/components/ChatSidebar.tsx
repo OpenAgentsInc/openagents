@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { cx, Text } from '@arwes/react';
 import { Plus, Search, Clock, Settings, User, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { ButtonSimple } from './ButtonSimple';
 
 interface ChatSession {
   id: string;
@@ -46,18 +47,11 @@ export const ChatSidebar = (): React.ReactElement => {
     <div className="w-64 h-full bg-black/40 border-r border-cyan-500/20 flex flex-col">
       {/* New Chat Button */}
       <div className="p-3">
-        <Link
-          href="/"
-          className={cx(
-            'w-full flex items-center gap-2 px-4 py-3',
-            'bg-cyan-500/10 hover:bg-cyan-500/20',
-            'border border-cyan-500/30 hover:border-cyan-500/50',
-            'rounded-lg transition-all duration-200',
-            'group'
-          )}
-        >
-          <Plus size={20} className="text-cyan-400 group-hover:scale-110 transition-transform" />
-          <Text className="text-cyan-300 font-medium">New chat</Text>
+        <Link href="/" className="block">
+          <ButtonSimple className="w-full justify-center">
+            <Plus size={14} />
+            <span>New chat</span>
+          </ButtonSimple>
         </Link>
       </div>
 

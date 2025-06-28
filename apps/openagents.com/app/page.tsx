@@ -53,12 +53,13 @@ const HomePage = (): React.ReactElement => {
           <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
         </div>
 
-        <div className="relative z-10 flex flex-col h-full">
-          {/* Messages container */}
-          <div className="flex-1 flex overflow-y-auto">
+        {/* Main chat container - fills available space */}
+        <div className="relative z-10 h-full flex flex-col">
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto">
             {uiMessages.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="w-full max-w-3xl px-8 text-center space-y-8">
+              <div className="h-full flex items-center justify-center px-8">
+                <div className="w-full max-w-3xl text-center space-y-8">
                   {/* Hero Section - ChatGPT style */}
                   <div className="space-y-2">
                     <Text className="text-3xl md:text-4xl font-semibold text-cyan-100/90" as="h1">
@@ -77,7 +78,8 @@ const HomePage = (): React.ReactElement => {
                         'text-left p-4 rounded-lg',
                         'bg-black/30 hover:bg-cyan-500/10',
                         'border border-cyan-500/20 hover:border-cyan-500/30',
-                        'transition-all duration-200'
+                        'transition-all duration-200',
+                        'cursor-pointer'
                       )}
                     >
                       <Text className="text-sm font-medium text-cyan-300">Bitcoin Lightning App</Text>
@@ -90,7 +92,8 @@ const HomePage = (): React.ReactElement => {
                         'text-left p-4 rounded-lg',
                         'bg-black/30 hover:bg-cyan-500/10',
                         'border border-cyan-500/20 hover:border-cyan-500/30',
-                        'transition-all duration-200'
+                        'transition-all duration-200',
+                        'cursor-pointer'
                       )}
                     >
                       <Text className="text-sm font-medium text-cyan-300">Analytics Dashboard</Text>
@@ -103,7 +106,8 @@ const HomePage = (): React.ReactElement => {
                         'text-left p-4 rounded-lg',
                         'bg-black/30 hover:bg-cyan-500/10',
                         'border border-cyan-500/20 hover:border-cyan-500/30',
-                        'transition-all duration-200'
+                        'transition-all duration-200',
+                        'cursor-pointer'
                       )}
                     >
                       <Text className="text-sm font-medium text-cyan-300">Blog Platform</Text>
@@ -116,7 +120,8 @@ const HomePage = (): React.ReactElement => {
                         'text-left p-4 rounded-lg',
                         'bg-black/30 hover:bg-cyan-500/10',
                         'border border-cyan-500/20 hover:border-cyan-500/30',
-                        'transition-all duration-200'
+                        'transition-all duration-200',
+                        'cursor-pointer'
                       )}
                     >
                       <Text className="text-sm font-medium text-cyan-300">E-commerce Site</Text>
@@ -141,43 +146,34 @@ const HomePage = (): React.ReactElement => {
                       </button>
                     </div>
                   )}
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full">
-                  <div className="max-w-3xl mx-auto px-8 space-y-4 py-8">
-                    {uiMessages.map((message) => (
-                      <ChatMessage 
-                        key={message.id} 
-                        message={message}
-                      />
-                    ))}
-                    {isLoading && <TypingIndicator />}
-                  </div>
-                </div>
-              )}
-          </div>
-
-          {/* Input area - fixed to bottom of main content area */}
-          <div className="relative mt-auto">
-            <div className="bg-gradient-to-t from-black via-black/95 to-transparent pt-8 pb-4">
-              <div className="max-w-3xl mx-auto px-8">
-                <div className="relative">
-                  <ChatInput
-                    ref={inputRef}
-                    input={input}
-                    onInputChange={handleTextareaChange}
-                    onSubmit={onSubmit}
-                    status={status}
-                    placeholder="Ask me to build something amazing..."
-                  />
-                  <div className="text-center mt-2">
-                    <Text className="text-xs text-cyan-500/40">
-                      OpenAgents can make mistakes. Check important info.
-                    </Text>
-                  </div>
                 </div>
               </div>
+            ) : (
+              <div className="max-w-3xl mx-auto px-8 py-8">
+                <div className="space-y-4">
+                  {uiMessages.map((message) => (
+                    <ChatMessage 
+                      key={message.id} 
+                      message={message}
+                    />
+                  ))}
+                  {isLoading && <TypingIndicator />}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Input area - at bottom of flex container */}
+          <div className="border-t border-cyan-500/20 bg-black/90">
+            <div className="max-w-3xl mx-auto px-4 py-3">
+              <ChatInput
+                ref={inputRef}
+                input={input}
+                onInputChange={handleTextareaChange}
+                onSubmit={onSubmit}
+                status={status}
+                placeholder="Message OpenAgents..."
+              />
             </div>
           </div>
         </div>

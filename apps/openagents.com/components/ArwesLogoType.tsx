@@ -12,10 +12,11 @@ const ArwesLogoType = memo((props: ArwesLogoTypeProps): ReactElement => {
   return (
     <Animated
       as="div"
-      className={cx('select-none font-bold tracking-wider', className)}
+      className={cx('select-none font-bold tracking-wider flex items-center', className)}
       style={{
         filter: 'drop-shadow(0 0 8px hsla(180, 100%, 70%, 0.5))',
-        fontFamily: 'var(--font-berkeley-mono), monospace'
+        fontFamily: 'var(--font-berkeley-mono), monospace',
+        lineHeight: 1
       }}
       animated={animated}
     >

@@ -58,10 +58,10 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
 
             {/* Header Content */}
             <div className="relative flex items-center justify-between px-6 h-14">
-              <div className="flex items-center gap-6">
-                <Link href="/" className="flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+              <div className="flex items-center gap-6 h-full">
+                <Link href="/" className="flex items-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
                   <ArwesLogoIcon className="w-6 h-6" />
-                  <ArwesLogoType className="h-4" />
+                  <ArwesLogoType className="text-base" />
                 </Link>
                 
                 {!showSidebar && (
@@ -242,7 +242,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
               />
             </div>
             
-            <div className="relative flex-1 flex flex-col">
+            <div className="relative flex-1 flex flex-col overflow-hidden">
               {children}
             </div>
           </div>
