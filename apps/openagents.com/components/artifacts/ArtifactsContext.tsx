@@ -133,6 +133,7 @@ const ArtifactsContext = createContext<ArtifactsContextType | undefined>(undefin
 
 export function ArtifactsProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(artifactsReducer, initialState)
+  const isInitialLoad = React.useRef(true)
 
   // Load artifacts from localStorage on mount
   useEffect(() => {
@@ -149,12 +150,17 @@ export function ArtifactsProvider({ children }: { children: React.ReactNode }) {
         console.error('Failed to load artifacts from localStorage:', error)
       }
     }
+    isInitialLoad.current = false
   }, [])
 
-  // Save artifacts to localStorage whenever they change
+  // Save artifacts to localStorage whenever they change (but not on initial load)
   useEffect(() => {
-    if (state.artifacts.length > 0) {
-      localStorage.setItem('openagents-artifacts', JSON.stringify(state.artifacts))
+    if (!isInitialLoad.current) {
+      if (state.artifacts.length > 0) {
+        localStorage.setItem('openagents-artifacts', JSON.stringify(state.artifacts))
+      } else {
+        localStorage.removeItem('openagents-artifacts')
+      }
     }
   }, [state.artifacts])
 

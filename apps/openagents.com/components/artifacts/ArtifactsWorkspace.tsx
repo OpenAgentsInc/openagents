@@ -21,36 +21,7 @@ function ArtifactsWorkspaceInner({ className = '' }: ArtifactsWorkspaceProps) {
   const createConversation = useMutation(api.conversations.create)
   const addMessage = useMutation(api.conversations.addMessage)
 
-  // Handle new messages and artifact generation
-  const handleSendMessage = async (message: string) => {
-    try {
-      // Create conversation if this is the first message
-      let conversationId = 'demo-conversation' // TODO: Implement proper conversation management
-      
-      // Check if message is asking for code generation
-      const isCodeRequest = /\b(create|build|make|generate|code|app|component|website|page)\b/i.test(message)
-      
-      if (isCodeRequest) {
-        // Simulate AI generating an artifact
-        const artifactId = addArtifact({
-          title: extractTitleFromMessage(message),
-          description: `Generated from: "${message.slice(0, 50)}..."`,
-          type: 'code' as const,
-          content: generateMockCode(message)
-        })
-        
-        toast.success('Artifact Created!', `Generated new artifact`)
-      }
-    } catch (error) {
-      console.error('Error handling message:', error)
-      toast.error('Error', 'Failed to process message')
-    }
-  }
-
-  // Handle clearing chat and artifacts
-  const handleClearChat = () => {
-    clearArtifacts()
-  }
+  // WorkspaceChat will handle its own message management
 
   return (
     <div className={cx('h-full bg-black flex', className)}>
