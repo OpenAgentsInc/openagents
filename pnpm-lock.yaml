@@ -356,6 +356,9 @@ importers:
       '@storybook/nextjs':
         specifier: ^9.0.13
         version: 9.0.13(esbuild@0.25.5)(next@15.2.3)(react-dom@19.1.0)(react@19.1.0)(storybook@9.0.13)(typescript@5.8.3)(webpack@5.99.9)
+      '@storybook/react':
+        specifier: ^9.0.14
+        version: 9.0.14(react-dom@19.1.0)(react@19.1.0)(storybook@9.0.13)(typescript@5.8.3)
       '@tailwindcss/postcss':
         specifier: ^4.1.10
         version: 4.1.10
@@ -7466,6 +7469,18 @@ packages:
       storybook: 9.0.13(@testing-library/dom@10.4.0)(prettier@3.5.3)
     dev: true
 
+  /@storybook/react-dom-shim@9.0.14(react-dom@19.1.0)(react@19.1.0)(storybook@9.0.13):
+    resolution: {integrity: sha512-fXMzhgFMnGZUhWm9zWiR8qOB90OykPhkB/qiebFbD/wUedPyp3H1+NAzX1/UWV2SYqr+aFK9vH1PokAYbpTRsw==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0-beta
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0-beta
+      storybook: ^9.0.14
+    dependencies:
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+      storybook: 9.0.13(@testing-library/dom@10.4.0)(prettier@3.5.3)
+    dev: true
+
   /@storybook/react@9.0.13(react-dom@19.1.0)(react@19.1.0)(storybook@9.0.13)(typescript@5.8.3):
     resolution: {integrity: sha512-kijh4vK7fSQCxs41SPCjN42gwD8I9vqgDYJV7XnQsIOJiwtWrsX+lMV4qVyN5SjTZF+HBV5oxD23XgQNlpZ31A==}
     engines: {node: '>=20.0.0'}
@@ -7480,6 +7495,26 @@ packages:
     dependencies:
       '@storybook/global': 5.0.0
       '@storybook/react-dom-shim': 9.0.13(react-dom@19.1.0)(react@19.1.0)(storybook@9.0.13)
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+      storybook: 9.0.13(@testing-library/dom@10.4.0)(prettier@3.5.3)
+      typescript: 5.8.3
+    dev: true
+
+  /@storybook/react@9.0.14(react-dom@19.1.0)(react@19.1.0)(storybook@9.0.13)(typescript@5.8.3):
+    resolution: {integrity: sha512-Ig4Y1xUOMcOWtQ/H73JZa4MeE0GJvYOcK16AhbfvPZMotdXCFyPbb1/pWhS209HuGwfNTVvWGz9rk7KrHmKsNw==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0-beta
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0-beta
+      storybook: ^9.0.14
+      typescript: '>= 4.9.x'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      '@storybook/global': 5.0.0
+      '@storybook/react-dom-shim': 9.0.14(react-dom@19.1.0)(react@19.1.0)(storybook@9.0.13)
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       storybook: 9.0.13(@testing-library/dom@10.4.0)(prettier@3.5.3)
