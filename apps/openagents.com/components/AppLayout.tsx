@@ -13,10 +13,11 @@ import { ToastProvider } from './Toast';
 interface AppLayoutProps {
   children: ReactNode;
   className?: string;
+  showSidebar?: boolean;
 }
 
 export const AppLayout = (props: AppLayoutProps): React.ReactElement => {
-  const { children } = props;
+  const { children, showSidebar = false } = props;
 
   // Initialize performance optimizations
   React.useEffect(() => {
@@ -37,7 +38,7 @@ export const AppLayout = (props: AppLayoutProps): React.ReactElement => {
             }}
           >
             <Background />
-            <LayoutWithFrames>
+            <LayoutWithFrames showSidebar={showSidebar}>
               {children}
             </LayoutWithFrames>
             <PerformanceDashboard />

@@ -16,7 +16,7 @@ import { Rocket, FolderOpen } from 'lucide-react';
 
 const HomePage = (): React.ReactElement => {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
-  const { isAuthenticated } = useAuth(); // Keep for potential feature limiting
+  const { isAuthenticated, signIn } = useAuth(); // Get signIn function
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Convert messages to UIMessage format for compatibility
@@ -42,7 +42,7 @@ const HomePage = (): React.ReactElement => {
   };
 
   return (
-    <AppLayout>
+    <AppLayout showSidebar>
       <OnboardingOverlayManager
         minDesktopWidth={1024}
         desktopMessage="OpenAgents requires a desktop browser for the full development experience. Please use a device with a screen width of at least 1024px."
@@ -53,62 +53,104 @@ const HomePage = (): React.ReactElement => {
           <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
         </div>
 
-        <div className="relative z-10 flex flex-col h-full px-8">
-          {/* Messages container */}
-          <div className="flex-1 overflow-y-auto pt-6">
-            <div className="space-y-4">
-              {uiMessages.length === 0 ? (
-                <div className="text-center py-16 space-y-8">
-                  <div>
-                    <Text className="text-lg font-mono text-cyan-500/40">Awaiting user input</Text>
-                  </div>
-                  
-                  {/* Quick Actions - always show now */}
-                  <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                    <Link
-                      href="/projects"
-                      className={cx(
-                        'flex items-center gap-3 px-6 py-3',
-                        'bg-cyan-500/10 hover:bg-cyan-500/20',
-                        'border border-cyan-500/30 hover:border-cyan-500/50',
-                        'text-cyan-300 hover:text-cyan-200',
-                        'transition-all duration-200',
-                        'group'
-                      )}
-                    >
-                      <FolderOpen size={20} className="group-hover:scale-110 transition-transform" />
-                      <span className="font-mono uppercase tracking-wider" style={{ fontFamily: 'var(--font-berkeley-mono), monospace' }}>View Projects</span>
-                    </Link>
-                    
-                    <Link
-                      href="/projects/bitcoin-puns-website"
-                      className={cx(
-                        'flex items-center gap-3 px-6 py-3',
-                        'bg-purple-500/10 hover:bg-purple-500/20',
-                        'border border-purple-500/30 hover:border-purple-500/50',
-                        'text-purple-300 hover:text-purple-200',
-                        'transition-all duration-200',
-                        'group'
-                      )}
-                    >
-                      <Rocket size={20} className="group-hover:scale-110 transition-transform" />
-                      <span className="font-mono uppercase tracking-wider" style={{ fontFamily: 'var(--font-berkeley-mono), monospace' }}>Try Demo Project</span>
-                    </Link>
-                  </div>
-                  
-                  <div className="max-w-md mx-auto">
-                    <Text className="text-xs text-gray-500 text-center">
-                      Chat your apps into existence. Deploy to the edge in 60 seconds.
-                      {!isAuthenticated && (
-                        <span className="block mt-2 text-cyan-400/60">
-                          Sign in to save your projects and access advanced features.
-                        </span>
-                      )}
+        {/* Main chat container - fills available space */}
+        <div className="relative z-10 h-full flex flex-col">
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto">
+            {uiMessages.length === 0 ? (
+              <div className="h-full flex items-center justify-center px-8">
+                <div className="w-full max-w-3xl text-center space-y-8">
+                  {/* Hero Section - ChatGPT style */}
+                  <div className="space-y-2">
+                    <Text className="text-3xl md:text-4xl font-semibold text-cyan-100/90" as="h1">
+                      What's on your mind today?
+                    </Text>
+                    <Text className="text-base text-cyan-300/60">
+                      Build and deploy apps instantly with AI
                     </Text>
                   </div>
+                  
+                  {/* Example prompts - ChatGPT style */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-12">
+                    <button
+                      onClick={() => handleInputChange({ target: { value: 'Build a Bitcoin Lightning payment app' } } as any)}
+                      className={cx(
+                        'text-left p-4 rounded-lg',
+                        'bg-black/30 hover:bg-cyan-500/10',
+                        'border border-cyan-500/20 hover:border-cyan-500/30',
+                        'transition-all duration-200',
+                        'cursor-pointer'
+                      )}
+                    >
+                      <Text className="text-sm font-medium text-cyan-300">Bitcoin Lightning App</Text>
+                      <Text className="text-xs text-cyan-500/60 mt-1">Create a payment app with invoices</Text>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleInputChange({ target: { value: 'Create a modern dashboard with charts' } } as any)}
+                      className={cx(
+                        'text-left p-4 rounded-lg',
+                        'bg-black/30 hover:bg-cyan-500/10',
+                        'border border-cyan-500/20 hover:border-cyan-500/30',
+                        'transition-all duration-200',
+                        'cursor-pointer'
+                      )}
+                    >
+                      <Text className="text-sm font-medium text-cyan-300">Analytics Dashboard</Text>
+                      <Text className="text-xs text-cyan-500/60 mt-1">Build a dashboard with real-time data</Text>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleInputChange({ target: { value: 'Build a blog with markdown support' } } as any)}
+                      className={cx(
+                        'text-left p-4 rounded-lg',
+                        'bg-black/30 hover:bg-cyan-500/10',
+                        'border border-cyan-500/20 hover:border-cyan-500/30',
+                        'transition-all duration-200',
+                        'cursor-pointer'
+                      )}
+                    >
+                      <Text className="text-sm font-medium text-cyan-300">Blog Platform</Text>
+                      <Text className="text-xs text-cyan-500/60 mt-1">Create a blog with markdown editor</Text>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleInputChange({ target: { value: 'Make an e-commerce product page' } } as any)}
+                      className={cx(
+                        'text-left p-4 rounded-lg',
+                        'bg-black/30 hover:bg-cyan-500/10',
+                        'border border-cyan-500/20 hover:border-cyan-500/30',
+                        'transition-all duration-200',
+                        'cursor-pointer'
+                      )}
+                    >
+                      <Text className="text-sm font-medium text-cyan-300">E-commerce Site</Text>
+                      <Text className="text-xs text-cyan-500/60 mt-1">Build a product showcase page</Text>
+                    </button>
+                  </div>
+                  
+                  {/* Sign in CTA - smaller, more subtle */}
+                  {!isAuthenticated && (
+                    <div className="flex justify-center mt-8">
+                      <button
+                        onClick={signIn}
+                        className={cx(
+                          'px-6 py-2.5 rounded-lg',
+                          'bg-cyan-500/10 hover:bg-cyan-500/20',
+                          'border border-cyan-500/30 hover:border-cyan-500/50',
+                          'text-sm text-cyan-300 hover:text-cyan-200',
+                          'transition-all duration-200'
+                        )}
+                      >
+                        Sign in with GitHub for more features
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <>
+              </div>
+            ) : (
+              <div className="max-w-3xl mx-auto px-8 py-8">
+                <div className="space-y-4">
                   {uiMessages.map((message) => (
                     <ChatMessage 
                       key={message.id} 
@@ -116,19 +158,24 @@ const HomePage = (): React.ReactElement => {
                     />
                   ))}
                   {isLoading && <TypingIndicator />}
-                </>
-              )}
-            </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Input area - now always enabled */}
-          <ChatInput
-            ref={inputRef}
-            input={input}
-            onInputChange={handleTextareaChange}
-            onSubmit={onSubmit}
-            status={status}
-          />
+          {/* Input area - at bottom of flex container */}
+          <div className="border-t border-cyan-500/20 bg-black/90">
+            <div className="max-w-3xl mx-auto px-4 py-3">
+              <ChatInput
+                ref={inputRef}
+                input={input}
+                onInputChange={handleTextareaChange}
+                onSubmit={onSubmit}
+                status={status}
+                placeholder="Message OpenAgents..."
+              />
+            </div>
+          </div>
         </div>
       </OnboardingOverlayManager>
     </AppLayout>
