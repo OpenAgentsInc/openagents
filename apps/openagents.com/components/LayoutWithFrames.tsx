@@ -223,8 +223,8 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
         {showSidebar && <ChatSidebar />}
         
         {/* Main Content */}
-        <main className="flex-1 p-4">
-          <div className="relative h-full">
+        <main className="flex-1 flex flex-col p-4">
+          <div className="relative flex-1 flex flex-col">
             {/* Main Background Frame */}
             <div 
               className="absolute inset-0"
@@ -242,7 +242,7 @@ export const LayoutWithFrames = (props: LayoutWithFramesProps): React.ReactEleme
               />
             </div>
             
-            <div className="relative h-full overflow-y-auto">
+            <div className="relative flex-1 flex flex-col">
               {children}
             </div>
           </div>

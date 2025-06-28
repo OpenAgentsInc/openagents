@@ -56,10 +56,9 @@ const HomePage = (): React.ReactElement => {
         <div className="relative z-10 flex flex-col h-full">
           {/* Messages container */}
           <div className="flex-1 flex overflow-y-auto">
-            <div className="w-full flex flex-col">
-              {uiMessages.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center px-8">
-                  <div className="w-full max-w-3xl text-center space-y-8">
+            {uiMessages.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="w-full max-w-3xl px-8 text-center space-y-8">
                   {/* Hero Section - ChatGPT style */}
                   <div className="space-y-2">
                     <Text className="text-3xl md:text-4xl font-semibold text-cyan-100/90" as="h1">
@@ -145,8 +144,8 @@ const HomePage = (): React.ReactElement => {
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 px-8">
-                  <div className="max-w-3xl mx-auto space-y-4 py-8">
+                <div className="w-full">
+                  <div className="max-w-3xl mx-auto px-8 space-y-4 py-8">
                     {uiMessages.map((message) => (
                       <ChatMessage 
                         key={message.id} 
@@ -157,7 +156,6 @@ const HomePage = (): React.ReactElement => {
                   </div>
                 </div>
               )}
-            </div>
           </div>
 
           {/* Input area - fixed to bottom of main content area */}
