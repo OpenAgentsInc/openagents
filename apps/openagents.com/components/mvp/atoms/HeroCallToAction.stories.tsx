@@ -248,7 +248,7 @@ export const GitHubSignInCTA = ({
 }) => {
   return (
     <HeroCallToAction
-      primaryText="Sign in with GitHub to Start"
+      primaryText="Log in with GitHub to Start"
       benefitBullets={[
         'No email/password needed',
         'Your code stays private',

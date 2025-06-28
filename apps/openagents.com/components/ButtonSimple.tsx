@@ -29,8 +29,8 @@ const ButtonSimple = memo((props: ButtonSimpleProps): React.ReactElement => {
         'group',
         'uppercase font-mono text-[11px] tracking-wider',
         'select-none cursor-pointer transition-all ease-out duration-200',
-        'text-yellow-300/80',
-        'hover:text-yellow-200',
+        'text-[#FFB000]/80',
+        'hover:text-[#FFB000]',
         'overflow-hidden',
         className
       )}
@@ -47,11 +47,11 @@ const ButtonSimple = memo((props: ButtonSimpleProps): React.ReactElement => {
         <FrameCorners
           className="w-full h-full"
           style={{
-            filter: `drop-shadow(0 0 8px hsla(60, 100%, 50%, 0.5))`,
+            filter: `drop-shadow(0 0 8px #FFB00080)`,
             // @ts-expect-error css variables
             '--arwes-frames-bg-color': 'transparent',
-            '--arwes-frames-line-color': 'hsla(60, 100%, 50%, 0.5)',
-            '--arwes-frames-deco-color': 'hsla(60, 100%, 50%, 0.6)'
+            '--arwes-frames-line-color': '#FFB000',
+            '--arwes-frames-deco-color': '#FFB000'
           }}
           animated={false}
           cornerLength={8}
@@ -68,7 +68,7 @@ const ButtonSimple = memo((props: ButtonSimpleProps): React.ReactElement => {
           height: 'calc(100% - 8px)'
         }}
         size={120}
-        color="hsla(60, 100%, 50%, 0.3)"
+        color="#FFB0004D"
       />
       
       <div

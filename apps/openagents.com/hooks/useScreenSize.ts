@@ -10,8 +10,21 @@ export interface ScreenSizeInfo {
 }
 
 export function useScreenSize(desktopBreakpoint: number = 1024): ScreenSizeInfo {
-  const [screenWidth, setScreenWidth] = useState(0)
-  const [screenHeight, setScreenHeight] = useState(0)
+  // Initialize with actual window size if available (client-side)
+  const [screenWidth, setScreenWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth
+    }
+    // Default to desktop size to prevent flicker
+    return desktopBreakpoint
+  })
+  
+  const [screenHeight, setScreenHeight] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerHeight
+    }
+    return 768 // Reasonable default
+  })
 
   useEffect(() => {
     const updateScreenSize = () => {
@@ -21,7 +34,7 @@ export function useScreenSize(desktopBreakpoint: number = 1024): ScreenSizeInfo 
       setScreenHeight(height)
     }
 
-    // Set initial size
+    // Update in case SSR provided defaults
     updateScreenSize()
 
     // Throttled resize handler for performance

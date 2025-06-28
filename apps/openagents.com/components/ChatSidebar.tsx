@@ -3,12 +3,11 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { cx, Text, FrameCorners, FrameKranox, Animator, AnimatorGeneralProvider, Animated } from '@arwes/react';
-import { Plus, MessageSquare, Settings, User, LogOut, ChevronRight, Sparkles } from 'lucide-react';
+import { cx, Text, FrameCorners, FrameKranox, FrameLines, Animator, AnimatorGeneralProvider, Animated } from '@arwes/react';
+import { Plus, MessageSquare, Settings, User, LogOut, ChevronRight } from 'lucide-react';
 import { Github, X, SoundHigh, SoundOff } from 'iconoir-react';
 import { useAuth } from '@/hooks/useAuth';
 import { ButtonSimple } from './ButtonSimple';
-import { ArwesLogoIcon } from './ArwesLogoIcon';
 import { ArwesLogoType } from './ArwesLogoType';
 
 interface ChatSession {
@@ -54,15 +53,10 @@ const ChatItem = ({
         
         {/* Content */}
         <div className={cx(
-          'relative px-3 py-2.5 flex items-center gap-2',
+          'relative px-3 py-2.5',
           'transition-all duration-200',
           isHovered ? 'text-cyan-100' : 'text-cyan-300/70'
         )}>
-          <MessageSquare size={16} className={cx(
-            'flex-shrink-0 transition-all duration-200',
-            isHovered ? 'text-cyan-400' : 'text-cyan-500/40'
-          )} />
-          
           <div className="flex-1 min-w-0">
             <Text className={cx(
               'text-sm font-medium truncate block transition-all duration-200',
@@ -73,7 +67,7 @@ const ChatItem = ({
           </div>
           
           {isHovered && (
-            <ChevronRight size={14} className="text-cyan-400/60 flex-shrink-0 animate-pulse" />
+            <ChevronRight size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-cyan-400/60 flex-shrink-0 animate-pulse" />
           )}
         </div>
       </div>
@@ -108,44 +102,55 @@ export const ChatSidebar = (): React.ReactElement => {
 
   return (
     <AnimatorGeneralProvider duration={{ enter: 0.5, exit: 0.3 }}>
-      <div className="w-72 h-full bg-black/80 backdrop-blur-sm flex flex-col relative border-r border-cyan-500/20">
-        {/* Background Frame */}
-        <div className="absolute inset-0 pointer-events-none">
-          <FrameCorners
-            style={{
-              '--arwes-frames-bg-color': 'transparent',
-              '--arwes-frames-line-color': 'hsla(180, 75%, 50%, 0.1)',
-              '--arwes-frames-deco-color': 'hsla(180, 75%, 70%, 0.2)'
-            } as React.CSSProperties}
-          />
-        </div>
+      <div className="w-72 h-full p-3 flex flex-col">
+        <div className="relative flex-1 flex flex-col">
+          {/* Frame Background */}
+          <div className="absolute inset-0">
+            <FrameCorners
+              style={{
+                '--arwes-frames-bg-color': 'hsla(180, 69%, 15%, 0.15)',
+                '--arwes-frames-line-color': 'hsla(180, 69%, 15%, 0.5)',
+                '--arwes-frames-deco-color': 'hsla(180, 69%, 15%, 0.7)'
+              } as React.CSSProperties}
+            />
+          </div>
 
-        {/* Subtle glow effect */}
-        <div className="absolute inset-y-0 -right-px w-px bg-gradient-to-b from-transparent via-cyan-500/20 to-transparent pointer-events-none" />
-
-        {/* Content */}
-        <div className="relative flex flex-col h-full">
-          {/* Logo Header */}
-          <div className="p-4 border-b border-cyan-500/10">
+          {/* Content */}
+          <div className="relative flex flex-col h-full">
+            {/* Logo Header */}
+            <div className="p-4">
             <Animator active={true}>
-              <Animated animated={[['opacity', 0, 1], ['x', -20, 0]]}>
-                <Link href="/" className="flex items-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
-                  <ArwesLogoIcon className="w-7 h-7" />
-                  <ArwesLogoType className="text-lg" />
+              <Animated animated={[['opacity', 0, 1], ['y', -10, 0]]}>
+                <Link href="/" className="flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity">
+                  <ArwesLogoType className="text-xl" />
                 </Link>
               </Animated>
             </Animator>
           </div>
 
           {/* New Chat Button */}
-          <div className="px-4 pb-4 pt-3 border-b border-cyan-500/10">
+          <div className="px-4 pb-4">
             <Animator active={true} duration={{ delay: 0.1 }}>
               <Animated animated={[['opacity', 0, 1], ['y', -10, 0]]}>
-                <Link href="/" className="block">
-                  <ButtonSimple className="w-full justify-center h-10">
-                    <Sparkles size={16} className="animate-pulse" />
-                    <span className="text-sm">New chat</span>
-                  </ButtonSimple>
+                <Link href="/" className="block relative">
+                  <div className="relative">
+                    {/* Frame for button */}
+                    <div className="absolute inset-0">
+                      <FrameCorners
+                        style={{
+                          '--arwes-frames-bg-color': '#FFB00010',
+                          '--arwes-frames-line-color': '#FFB00080',
+                          '--arwes-frames-deco-color': '#FFB00080'
+                        } as React.CSSProperties}
+                        cornerLength={12}
+                        strokeWidth={1}
+                      />
+                    </div>
+                    <button className="relative w-full flex items-center justify-center gap-2 h-10 px-4 text-xs font-mono uppercase tracking-wider text-[#FFB000]/80 hover:text-[#FFB000] hover:bg-[#FFB000]/10 transition-all duration-200 cursor-pointer">
+                      <MessageSquare size={16} />
+                      <span>New chat</span>
+                    </button>
+                  </div>
                 </Link>
               </Animated>
             </Animator>
@@ -226,7 +231,7 @@ export const ChatSidebar = (): React.ReactElement => {
           </div>
 
           {/* User Section */}
-          <div className="border-t border-cyan-500/10">
+          <div>
             {isAuthenticated ? (
               <Animator active={true} duration={{ delay: 0.4 }}>
                 <Animated animated={[['opacity', 0, 1], ['y', 10, 0]]}>
@@ -264,17 +269,7 @@ export const ChatSidebar = (): React.ReactElement => {
                   </div>
                 </Animated>
               </Animator>
-            ) : (
-              <div className="p-4">
-                <ButtonSimple 
-                  onClick={signIn}
-                  className="w-full justify-center text-xs"
-                >
-                  <User size={14} />
-                  <span>Sign in</span>
-                </ButtonSimple>
-              </div>
-            )}
+            ) : null}
 
             {/* Bottom section with settings and social icons */}
             <div className="p-3 space-y-3">
@@ -332,6 +327,7 @@ export const ChatSidebar = (): React.ReactElement => {
                   {isAudioEnabled ? <SoundHigh width={19} height={19} /> : <SoundOff width={19} height={19} />}
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>

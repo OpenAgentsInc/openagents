@@ -9,10 +9,12 @@ import { ChatMessage } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
 import { TypingIndicator } from '@/components/TypingIndicator';
 import { useAuth } from '@/hooks/useAuth';
+import { ButtonSimple } from '@/components/ButtonSimple';
 import type { UIMessage, Message } from '@/components/ChatMessage';
 import type { ChatStatus } from '@/components/ChatInput';
 import Link from 'next/link';
 import { Rocket, FolderOpen } from 'lucide-react';
+import { Github } from 'iconoir-react';
 
 const HomePage = (): React.ReactElement => {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
@@ -47,14 +49,26 @@ const HomePage = (): React.ReactElement => {
         minDesktopWidth={1024}
         desktopMessage="OpenAgents requires a desktop browser for the full development experience. Please use a device with a screen width of at least 1024px."
       >
-        {/* Background effects */}
-        <div className="fixed inset-0 pointer-events-none">
-          <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
-          <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
-        </div>
-
         {/* Main chat container - fills available space */}
         <div className="relative z-10 h-full flex flex-col">
+          {/* Background effects - only in main content area */}
+          <div className="absolute inset-0 pointer-events-none">
+            <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
+            <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
+          </div>
+          
+          {/* Floating GitHub login button */}
+          {!isAuthenticated && (
+            <div className="absolute top-4 right-4 z-20">
+              <ButtonSimple 
+                onClick={signIn}
+                className="text-xs"
+              >
+                <Github width={14} height={14} />
+                <span>Log in with GitHub</span>
+              </ButtonSimple>
+            </div>
+          )}
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto">
             {uiMessages.length === 0 ? (
@@ -63,7 +77,7 @@ const HomePage = (): React.ReactElement => {
                   {/* Hero Section - ChatGPT style */}
                   <div className="space-y-2">
                     <Text className="text-3xl md:text-4xl font-semibold text-cyan-100/90" as="h1">
-                      What's on your mind today?
+                      What will you create today?
                     </Text>
                     <Text className="text-base text-cyan-300/60">
                       Build and deploy apps instantly with AI
@@ -129,23 +143,6 @@ const HomePage = (): React.ReactElement => {
                     </button>
                   </div>
                   
-                  {/* Sign in CTA - smaller, more subtle */}
-                  {!isAuthenticated && (
-                    <div className="flex justify-center mt-8">
-                      <button
-                        onClick={signIn}
-                        className={cx(
-                          'px-6 py-2.5 rounded-lg',
-                          'bg-cyan-500/10 hover:bg-cyan-500/20',
-                          'border border-cyan-500/30 hover:border-cyan-500/50',
-                          'text-sm text-cyan-300 hover:text-cyan-200',
-                          'transition-all duration-200'
-                        )}
-                      >
-                        Sign in with GitHub for more features
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (
@@ -164,8 +161,8 @@ const HomePage = (): React.ReactElement => {
           </div>
 
           {/* Input area - at bottom of flex container */}
-          <div className="border-t border-cyan-500/20 bg-black/90">
-            <div className="max-w-3xl mx-auto px-4 py-3">
+          <div className="bg-black/80">
+            <div className="max-w-3xl mx-auto px-4 py-2">
               <ChatInput
                 ref={inputRef}
                 input={input}
