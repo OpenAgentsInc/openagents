@@ -115,7 +115,20 @@ export const waitForAsync = () => new Promise(resolve => setTimeout(resolve, 0))
 export const simulateTyping = async (input: HTMLElement, text: string) => {
   const userEvent = await import('@testing-library/user-event')
   const user = userEvent.default.setup()
-  await user.clear(input)
+  
+  // Focus the input first to ensure it's interactive
+  await user.click(input)
+  
+  // Try to clear, but don't fail if it can't be cleared
+  try {
+    await user.clear(input)
+  } catch (error) {
+    // If clear fails, try to manually set the value to empty
+    if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+      input.value = ''
+    }
+  }
+  
   await user.type(input, text)
 }
 

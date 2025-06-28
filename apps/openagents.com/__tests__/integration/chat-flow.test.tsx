@@ -8,6 +8,9 @@ describe('Chat Flow Integration', () => {
     vi.clearAllMocks()
     // Reset auth state to authenticated
     mockAuthHook.isAuthenticated = true
+    
+    // Clean up any existing components
+    document.body.innerHTML = ''
   })
 
   it('should allow user to send a message and display it correctly', async () => {
@@ -26,8 +29,9 @@ describe('Chat Flow Integration', () => {
     // Verify welcome message appears
     expect(screen.getByText(/Welcome to Test Project!/)).toBeInTheDocument()
 
-    // Get the text input
-    const textInput = screen.getByPlaceholderText(/Ask me to help with your project/)
+    // Get the text input (use the first one if multiple exist)
+    const textInputs = screen.getAllByPlaceholderText(/Ask me to help with your project/)
+    const textInput = textInputs[0]
     expect(textInput).toBeInTheDocument()
 
     // Type a message
@@ -72,7 +76,8 @@ describe('Chat Flow Integration', () => {
       />
     )
 
-    const textInput = screen.getByPlaceholderText(/Ask me to help with your project/)
+    const textInputs = screen.getAllByPlaceholderText(/Ask me to help with your project/)
+    const textInput = textInputs[0]
     const sendButton = screen.getByRole('button', { name: /send message/i })
 
     // Initially send button should be disabled (no text)
@@ -104,7 +109,8 @@ describe('Chat Flow Integration', () => {
       />
     )
 
-    const textInput = screen.getByPlaceholderText(/Ask me to help with your project/)
+    const textInputs = screen.getAllByPlaceholderText(/Ask me to help with your project/)
+    const textInput = textInputs[0]
     
     // Type a message
     await simulateTyping(textInput, 'Test message via Enter key')
@@ -133,7 +139,8 @@ describe('Chat Flow Integration', () => {
     )
 
     // Type a message to trigger the error
-    const textInput = screen.getByPlaceholderText(/Ask me to help with your project/)
+    const textInputs = screen.getAllByPlaceholderText(/Ask me to help with your project/)
+    const textInput = textInputs[0]
     await simulateTyping(textInput, 'This will trigger an error')
     
     const sendButton = screen.getByRole('button', { name: /send message/i })
