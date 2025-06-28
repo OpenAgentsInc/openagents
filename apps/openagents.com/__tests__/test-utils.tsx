@@ -23,61 +23,84 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => mockAuthHook
 }))
 
-// Mock fetch API for AI chat responses
-const createMockResponse = (content: string) => {
-  // Create a streaming response that mimics the AI SDK format
-  const encoder = new TextEncoder()
-  const stream = new ReadableStream({
-    start(controller) {
-      // Send the response in the correct AI SDK format
-      const response = "Hello! I can help you build applications. Here is some React code:\n\n```jsx\nfunction HelloWorld() {\n  return <div>Hello World!</div>\n}\n```"
-      
-      // Split response into chunks and stream them
-      const words = response.split(' ')
-      words.forEach((word, i) => {
-        setTimeout(() => {
-          controller.enqueue(encoder.encode(`0:"${word}${i < words.length - 1 ? ' ' : ''}"\n`))
-          if (i === words.length - 1) {
-            controller.enqueue(encoder.encode('d:{"finishReason":"stop"}\n'))
-            controller.close()
-          }
-        }, i * 20)
-      })
-    }
-  })
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
-    },
-  })
+// Create a more realistic useChat mock
+let mockChatState = {
+  messages: [],
+  input: '',
+  isLoading: false,
+  error: null
 }
 
-// Mock global fetch for AI API
-global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-  const urlString = input.toString()
-  
-  if (urlString.includes('/api/chat')) {
-    // Parse the request body to get the message
-    let messages = []
-    if (init?.body) {
-      try {
-        const body = JSON.parse(init.body as string)
-        messages = body.messages || []
-      } catch (e) {
-        // Ignore parsing errors
-      }
-    }
-    
-    const lastMessage = messages[messages.length - 1]
-    const userMessage = lastMessage?.content || 'default'
-    
-    return Promise.resolve(createMockResponse(userMessage))
+// Reset function for test isolation
+export const resetMockChatState = () => {
+  mockChatState = {
+    messages: [],
+    input: '',
+    isLoading: false,
+    error: null
   }
-  
-  // For other requests, return a basic 404
-  return Promise.resolve(new Response('Not Found', { status: 404 }))
-})
+}
+
+// Mock useChat from ai/react
+vi.mock('ai/react', () => ({
+  useChat: (config: any) => {
+    // Start with initial messages if provided
+    if (config?.initialMessages && mockChatState.messages.length === 0) {
+      mockChatState.messages = [...config.initialMessages]
+    }
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      mockChatState.input = e.target.value
+    }
+
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault()
+      if (!mockChatState.input.trim() || mockChatState.isLoading) return
+
+      // Add user message
+      const userMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user' as const,
+        content: mockChatState.input,
+        createdAt: new Date()
+      }
+      
+      mockChatState.messages = [...mockChatState.messages, userMessage]
+      mockChatState.input = ''
+      mockChatState.isLoading = true
+
+      // Simulate AI response after short delay
+      setTimeout(() => {
+        const aiMessage = {
+          id: `ai-${Date.now()}`,
+          role: 'assistant' as const,
+          content: 'Hello! I can help you build applications. Here is some React code:\n\n```jsx\nfunction HelloWorld() {\n  return <div>Hello World!</div>\n}\n```',
+          createdAt: new Date()
+        }
+        mockChatState.messages = [...mockChatState.messages, aiMessage]
+        mockChatState.isLoading = false
+        
+        // Trigger onFinish callback if provided
+        if (config?.onFinish) {
+          config.onFinish(aiMessage)
+        }
+      }, 100)
+    }
+
+    return {
+      messages: mockChatState.messages,
+      input: mockChatState.input,
+      handleInputChange,
+      handleSubmit,
+      isLoading: mockChatState.isLoading,
+      error: mockChatState.error,
+      reload: vi.fn(),
+      setMessages: vi.fn((newMessages) => {
+        mockChatState.messages = newMessages
+      })
+    }
+  }
+}))
 
 // All providers needed for integration testing
 function AllTheProviders({ children }: { children: React.ReactNode }) {
