@@ -1,0 +1,132 @@
+import { AppLayout } from '@/components/AppLayout';
+import { OnboardingOverlayManager } from '@/components/onboarding/OnboardingOverlayManager';
+import { Text, GridLines, Dots, AnimatorGeneralProvider, Animator, Animated } from '@arwes/react';
+import { CalendarDays, Clock } from 'lucide-react';
+
+export const metadata = {
+  title: "Intro to AI Coding Agents",
+  date: "2025-04-30",
+  summary: "Our PlebLab workshop has equal parts education and shit talking.",
+  image: "/images/blog01.png"
+};
+
+<AppLayout showSidebar>
+  <OnboardingOverlayManager
+    minDesktopWidth={1024}
+    desktopMessage="OpenAgents requires a desktop browser for the full development experience. Please use a device with a screen width of at least 1024px."
+  >
+    <AnimatorGeneralProvider duration={{ enter: 0.5, exit: 0.3 }}>
+      <div className="relative z-10 h-full overflow-y-auto">
+        <div className="absolute inset-0 pointer-events-none">
+          <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
+          <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
+        </div>
+        
+        <article className="relative max-w-4xl mx-auto px-8 py-12">
+          <Animator active={true}>
+            <Animated animated={[['opacity', 0, 1], ['y', 20, 0]]}>
+              <header className="mb-8">
+                <img 
+                  src="/images/blog01.png" 
+                  alt="Intro to AI Coding Agents"
+                  className="w-full h-64 md:h-96 object-cover mb-8 -mx-8 -mt-12"
+                />
+                
+                <Text as="h1" className="text-3xl md:text-4xl font-bold text-cyan-100 mb-4">
+                  Intro to AI Coding Agents
+                </Text>
+                
+                <Text className="text-lg text-cyan-300/60 mb-4">
+                  Our PlebLab workshop has equal parts education and shit talking.
+                </Text>
+                
+                <div className="flex items-center gap-4 text-sm text-cyan-500/60">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays size={16} />
+                    <Text>April 30, 2025</Text>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock size={16} />
+                    <Text>8 min read</Text>
+                  </div>
+                </div>
+              </header>
+              
+              <div className="prose prose-invert prose-cyan max-w-none">
+
+<div className="relative w-full" style={{ paddingTop: '56.25%' }}>
+  <iframe
+    className="absolute top-0 left-0 w-full h-full"
+    src="https://www.youtube.com/embed/EADTYuk3pnc?si=GI8ZuhHNXONVhKsM"
+    title="YouTube video player"
+    frameBorder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerPolicy="strict-origin-when-cross-origin"
+    allowFullScreen
+  />
+</div>
+
+Here is video and highlights from our April 26th workshop at [PlebLab](https://www.pleblab.dev/) in Austin, Texas.
+
+AI summary, timestamps & relevant quotes courtesy of Gemini 2.5 Pro.
+
+Enjoy!
+
+## Summary
+
+This video presentation, delivered by the founder of OpenAgents, traces the evolution of AI coding agents from simple autocomplete (like GitHub Copilot) to more autonomous systems (like Devin), highlighting the role of improved LLMs and tool integration (such as the Model Context Protocol - MCP). The speaker critiques the current trend of increasingly complex, IDE-centric agents (e.g., Cursor, Claude Code), arguing the future lies in simpler, asynchronous dashboards where users delegate tasks rather than coding directly. He introduces OpenAgents' vision: an open, web-based platform fostering a collaborative, incentivized (via Bitcoin payments) ecosystem where developers contribute reusable agent components (tools, prompts) through a registry, aiming to build truly reliable, autonomous coding capabilities that abstract away low-level complexity for the end-user.
+
+## Key Points & Timeline
+
+*   **[0:10]** Introduction: From Autocomplete to Autonomy; speaker runs "OpenAgents" and will offer opinionated commentary.
+*   **[1:04]** Definition: AI coding agent assists with code via natural language, acting as pair programmer or autonomous coder.
+*   **[1:28]** History: Basic IDE autocomplete -> GitHub Copilot -> GPT-3/4 & ChatGPT (watershed moment) -> Early "agents" like AutoGPT (experimental loops).
+*   **[3:04]** Rise of "Autonomous" Coders: Cognition Labs unveils "Devin", branded as first AI software engineer (met with hype and skepticism).
+*   **[3:48]** Key Technical Drivers: Massive LLM improvements (GPT-4, Claude 3.5 Sonnet, Gemini 1.5 Pro), extended thinking/planning capabilities, and crucially, **Tool Use**.
+*   **[4:51]** Speaker's Current Workflow: Using Gemini for planning/debugging, Claude Code (or similar) for execution with tools, involving manual copy-pasting.
+*   **[6:22]** Tool Use & Integration: Agents calling compilers, running tests, using shell commands; speaker's own tool experiments; rise of **Model Context Protocol (MCP)** for standardizing tool access [10:57].
+*   **[12:40]** Multifile Context & Memory: Agents understanding larger projects (Kodium/Windsurf, OpenCode using LSP).
+*   **[13:23]** Review of Notable Agents: Cursor, Windsurf, Claude Code, Devin, with speaker's commentary on limitations (e.g., model lock-in, context pruning).
+*   **[15:50] Critical Argument:** The future isn't complex, IDE-centric agents; interfaces should *simplify* over time, not add cognitive overhead to existing human-focused tools like VS Code.
+*   **[18:07] Vision for Future Interface:** Not an IDE, but likely an asynchronous dashboard to manage multiple agents working on tasks ("Say a thing and it happens").
+*   **[20:07] OpenAgents Demo:** Showcase of a web-based asynchronous agent dashboard: define goal, grant access (GitHub, API keys), agent creates/executes plan, view status, steps, logs, costs.
+*   **[24:47] Economic Vision:** Agents capable of economically relevant activity (e.g., earning Bitcoin), with platforms like OpenAgents facilitating this via incentivized contributions.
+*   **[27:32] Core Strategy:** Competing with large labs (like Cognition/Devin) via a properly incentivized, open-source community contributing modules (tools, prompts) to a registry (e.g., MCP + Payments + Discoverability), sharing revenue via Bitcoin.
+*   **[30:12] Goal:** Move beyond agents as mere "accelerants that run into brick walls" towards truly reliable, autonomous coding partners.
+*   **[33:04] User Experience Dilemma:** Balancing power-user controls (model selection, tool tweaking) vs. abstracting complexity for a simpler, goal-oriented experience.
+*   **[39:34] The Gap:** Highlighting that despite the hype, most people have zero agents actively working for them today, whereas the potential is for hundreds.
+*   **[41:43] Platform Focus:** OpenAgents prioritizing a web-based UI for broader accessibility and collaboration over a desktop application.
+
+## Quotes
+
+> **[0:40]** I run a company called OpenAgents... I'm competing with pretty much every company that you're going to see here... I'm going to try to be like neutral but also entertaining and truthfully accurate about how awesome [mine] is.
+
+> **[16:34]** I think people are not going to be sitting in their editors generally. I think code generation is going to replace the editor largely... What tells me that something is going the wrong direction is when complexity is added onto interfaces that are clearly designed for humans like VS Code... Fundamentally the interfaces should be simplifying over time.
+
+> **[19:37]** I definitely think that that idea of you're saying something, you're basically going AFK, you can have 10 different agents working on 10 different things... you're not sitting in an editor wrestling with like linting errors and stuff that like agents really should be figuring out for you.
+
+> **[27:32]** I think the way we beat the big labs is by uniting everyone else. [...] In my mind it is a properly incentivized open-source community -- where if you know that you have the best knowledge at one particular thing... You should be able to create the module for that and expose that into some MCP registry along with your bitcoin address, so whenever your module is included in some workflow with revenue flowing through it, you should get a tiny piece of that. Actual market forces.
+
+> **[30:19]** [Current agents are] like an accelerant, it speeds you forward but then you [run] into a brick wall... we all know as developers like it's still multiplying our productivity by 3x, 5x whatever it is, it's just like obviously so much more can be done.
+
+> **[39:34]** How many agents are working on my behalf right now? Right now, zero. Anyone have any agents running right now? We should all have like a hundred agents running.
+
+              </div>
+              
+              <footer className="mt-12 pt-8 border-t border-cyan-500/20">
+                <div className="flex justify-between items-center">
+                  <a 
+                    href="/blog" 
+                    className="text-cyan-400 hover:text-cyan-300 transition-colors"
+                  >
+                    ← Back to Blog
+                  </a>
+                </div>
+              </footer>
+            </Animated>
+          </Animator>
+        </article>
+      </div>
+    </AnimatorGeneralProvider>
+  </OnboardingOverlayManager>
+</AppLayout>
