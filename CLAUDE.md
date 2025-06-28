@@ -6,16 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agents. The repository follows a clean architecture with packages and apps:
 
-### Packages (Libraries)
-- **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
-- **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
-- **`@openagentsinc/cli`** - Command-line interface demo (placeholder for future development)
-- **`@openagentsinc/ui`** - Custom Tailwind theme with Basecoat CSS design system
-- **`@openagentsinc/ai`** - AI provider abstraction
-- **`@openagentsinc/psionic`** - Hypermedia web framework with built-in component explorer
+### Packages (Libraries) - FOR FUTURE USE, NOT MVP
+**⚠️ IMPORTANT FOR MVP**: Ignore all packages except @openagentsinc/ui. The MVP uses Convex for backend, not these packages.
+- **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK (FUTURE)
+- **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation (FUTURE)
+- **`@openagentsinc/cli`** - Command-line interface demo (FUTURE)
+- **`@openagentsinc/ui`** - Custom Tailwind theme with Basecoat CSS design system (USED IN MVP)
+- **`@openagentsinc/ai`** - AI provider abstraction (FUTURE)
+- **`@openagentsinc/psionic`** - Hypermedia web framework (FUTURE)
+- **`@openagentsinc/relay`** - Database relay (NOT USED - MVP uses Convex)
 
 ### Apps (User-facing applications)
-- **`@openagentsinc/openagents.com`** - Main website built with Psionic
+- **`@openagentsinc/openagents.com`** - Main website MVP with Next.js, Convex backend, and Arwes UI
+
+## 🚨 MVP ARCHITECTURE 🚨
+
+**The MVP is built entirely in apps/openagents.com with:**
+- **Frontend**: Next.js 14 with App Router, TypeScript, Arwes UI components
+- **Backend**: Convex (NOT the relay package, NOT Drizzle/PlanetScale)
+- **Database**: Convex's built-in database (schema defined in convex/ folder)
+- **Authentication**: GitHub OAuth via Convex Auth
+- **Styling**: Tailwind CSS + custom Arwes cyberpunk theme from @openagentsinc/ui
+
+**DO NOT** use or modify anything in packages/ except @openagentsinc/ui for the MVP.
+**ALL** database operations should use Convex functions, not SQL.
 
 ## 🚨 CRITICAL: MANDATORY DOCUMENTATION BEFORE CODING 🚨
 

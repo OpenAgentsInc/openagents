@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
-import { useChat } from '@ai-sdk/react';
+import React, { useRef, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useMutation } from 'convex/react';
+import { api } from '@/convex/_generated/api';
 import { Text, GridLines, Dots, FrameCorners, cx } from '@arwes/react';
 import { AppLayout } from '@/components/AppLayout';
 import { OnboardingOverlayManager } from '@/components/onboarding/OnboardingOverlayManager';
@@ -17,30 +19,49 @@ import { Rocket, FolderOpen } from 'lucide-react';
 import { Github } from 'iconoir-react';
 
 const HomePage = (): React.ReactElement => {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
-  const { isAuthenticated, signIn } = useAuth(); // Get signIn function
+  const router = useRouter();
+  const { isAuthenticated, signIn } = useAuth();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  // Convert messages to UIMessage format for compatibility
-  const uiMessages: UIMessage[] = messages.map((message) => ({
-    ...message,
-    parts: message.parts || [{ type: 'text' as const, text: message.content }]
-  }));
+  
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const createConversation = useMutation(api.conversations.create);
+  const addMessage = useMutation(api.conversations.addMessage);
 
   const status: ChatStatus = isLoading ? 'streaming' : 'ready';
 
-  const onSubmit = () => {
-    if (input.trim()) {
-      handleSubmit();
-      // Refocus input after sending message
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+  const onSubmit = async () => {
+    if (!input.trim()) return;
+    
+    const userMessage = input.trim();
+    setInput('');
+    setIsLoading(true);
+    
+    try {
+      // Create a new conversation with the first message as title
+      const conversationId = await createConversation({
+        title: userMessage.slice(0, 100) // Use first 100 chars as title
+      });
+      
+      // Add the user message
+      await addMessage({
+        conversationId,
+        role: 'user',
+        content: userMessage,
+      });
+      
+      // Redirect to the conversation page
+      router.push(`/chat/${conversationId}`);
+      
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      setIsLoading(false);
     }
   };
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    handleInputChange(e);
+    setInput(e.target.value);
   };
 
   return (
@@ -71,93 +92,79 @@ const HomePage = (): React.ReactElement => {
           )}
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto">
-            {uiMessages.length === 0 ? (
-              <div className="h-full flex items-center justify-center px-8">
-                <div className="w-full max-w-3xl text-center space-y-8">
-                  {/* Hero Section - ChatGPT style */}
-                  <div className="space-y-2">
-                    <Text className="text-3xl md:text-4xl font-semibold text-cyan-100/90" as="h1">
-                      What will you create today?
-                    </Text>
-                    <Text className="text-base text-cyan-300/60">
-                      Build and deploy apps instantly with AI
-                    </Text>
-                  </div>
-                  
-                  {/* Example prompts - ChatGPT style */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-12">
-                    <button
-                      onClick={() => handleInputChange({ target: { value: 'Build a Bitcoin Lightning payment app' } } as any)}
-                      className={cx(
-                        'text-left p-4 rounded-lg',
-                        'bg-black/30 hover:bg-cyan-500/10',
-                        'border border-cyan-500/20 hover:border-cyan-500/30',
-                        'transition-all duration-200',
-                        'cursor-pointer'
-                      )}
-                    >
-                      <Text className="text-sm font-medium text-cyan-300">Bitcoin Lightning App</Text>
-                      <Text className="text-xs text-cyan-500/60 mt-1">Create a payment app with invoices</Text>
-                    </button>
-                    
-                    <button
-                      onClick={() => handleInputChange({ target: { value: 'Create a modern dashboard with charts' } } as any)}
-                      className={cx(
-                        'text-left p-4 rounded-lg',
-                        'bg-black/30 hover:bg-cyan-500/10',
-                        'border border-cyan-500/20 hover:border-cyan-500/30',
-                        'transition-all duration-200',
-                        'cursor-pointer'
-                      )}
-                    >
-                      <Text className="text-sm font-medium text-cyan-300">Analytics Dashboard</Text>
-                      <Text className="text-xs text-cyan-500/60 mt-1">Build a dashboard with real-time data</Text>
-                    </button>
-                    
-                    <button
-                      onClick={() => handleInputChange({ target: { value: 'Build a blog with markdown support' } } as any)}
-                      className={cx(
-                        'text-left p-4 rounded-lg',
-                        'bg-black/30 hover:bg-cyan-500/10',
-                        'border border-cyan-500/20 hover:border-cyan-500/30',
-                        'transition-all duration-200',
-                        'cursor-pointer'
-                      )}
-                    >
-                      <Text className="text-sm font-medium text-cyan-300">Blog Platform</Text>
-                      <Text className="text-xs text-cyan-500/60 mt-1">Create a blog with markdown editor</Text>
-                    </button>
-                    
-                    <button
-                      onClick={() => handleInputChange({ target: { value: 'Make an e-commerce product page' } } as any)}
-                      className={cx(
-                        'text-left p-4 rounded-lg',
-                        'bg-black/30 hover:bg-cyan-500/10',
-                        'border border-cyan-500/20 hover:border-cyan-500/30',
-                        'transition-all duration-200',
-                        'cursor-pointer'
-                      )}
-                    >
-                      <Text className="text-sm font-medium text-cyan-300">E-commerce Site</Text>
-                      <Text className="text-xs text-cyan-500/60 mt-1">Build a product showcase page</Text>
-                    </button>
-                  </div>
-                  
+            <div className="h-full flex items-center justify-center px-8">
+              <div className="w-full max-w-3xl text-center space-y-8">
+                {/* Hero Section - ChatGPT style */}
+                <div className="space-y-2">
+                  <Text className="text-3xl md:text-4xl font-semibold text-cyan-100/90" as="h1">
+                    What will you create today?
+                  </Text>
+                  <Text className="text-base text-cyan-300/60">
+                    Build and deploy apps instantly with AI
+                  </Text>
                 </div>
-              </div>
-            ) : (
-              <div className="max-w-3xl mx-auto px-8 py-8">
-                <div className="space-y-4">
-                  {uiMessages.map((message) => (
-                    <ChatMessage 
-                      key={message.id} 
-                      message={message}
-                    />
-                  ))}
-                  {isLoading && <TypingIndicator />}
+                
+                {/* Example prompts - ChatGPT style */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-12">
+                  <button
+                    onClick={() => setInput('Build a Bitcoin Lightning payment app')}
+                    className={cx(
+                      'text-left p-4 rounded-lg',
+                      'bg-black/30 hover:bg-cyan-500/10',
+                      'border border-cyan-500/20 hover:border-cyan-500/30',
+                      'transition-all duration-200',
+                      'cursor-pointer'
+                    )}
+                  >
+                    <Text className="text-sm font-medium text-cyan-300">Bitcoin Lightning App</Text>
+                    <Text className="text-xs text-cyan-500/60 mt-1">Create a payment app with invoices</Text>
+                  </button>
+                  
+                  <button
+                    onClick={() => setInput('Create a modern dashboard with charts')}
+                    className={cx(
+                      'text-left p-4 rounded-lg',
+                      'bg-black/30 hover:bg-cyan-500/10',
+                      'border border-cyan-500/20 hover:border-cyan-500/30',
+                      'transition-all duration-200',
+                      'cursor-pointer'
+                    )}
+                  >
+                    <Text className="text-sm font-medium text-cyan-300">Analytics Dashboard</Text>
+                    <Text className="text-xs text-cyan-500/60 mt-1">Build a dashboard with real-time data</Text>
+                  </button>
+                  
+                  <button
+                    onClick={() => setInput('Build a blog with markdown support')}
+                    className={cx(
+                      'text-left p-4 rounded-lg',
+                      'bg-black/30 hover:bg-cyan-500/10',
+                      'border border-cyan-500/20 hover:border-cyan-500/30',
+                      'transition-all duration-200',
+                      'cursor-pointer'
+                    )}
+                  >
+                    <Text className="text-sm font-medium text-cyan-300">Blog Platform</Text>
+                    <Text className="text-xs text-cyan-500/60 mt-1">Create a blog with markdown editor</Text>
+                  </button>
+                  
+                  <button
+                    onClick={() => setInput('Make an e-commerce product page')}
+                    className={cx(
+                      'text-left p-4 rounded-lg',
+                      'bg-black/30 hover:bg-cyan-500/10',
+                      'border border-cyan-500/20 hover:border-cyan-500/30',
+                      'transition-all duration-200',
+                      'cursor-pointer'
+                    )}
+                  >
+                    <Text className="text-sm font-medium text-cyan-300">E-commerce Site</Text>
+                    <Text className="text-xs text-cyan-500/60 mt-1">Build a product showcase page</Text>
+                  </button>
                 </div>
+                
               </div>
-            )}
+            </div>
           </div>
 
           {/* Input area - at bottom of flex container */}

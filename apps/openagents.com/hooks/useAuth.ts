@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useConvexAuth } from 'convex/react'
+import { useAuthActions } from '@convex-dev/auth/react'
+import { useRouter } from 'next/navigation'
 
 export interface User {
   id: string
@@ -20,82 +22,34 @@ export function useAuth(): AuthState & {
   signIn: () => Promise<void>
   signOut: () => void
 } {
-  const [authState, setAuthState] = useState<AuthState>({
-    isAuthenticated: false,
-    user: null,
-    isLoading: true
-  })
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const { signIn: convexSignIn, signOut: convexSignOut } = useAuthActions()
+  const router = useRouter()
 
-  useEffect(() => {
-    // Check for existing auth on mount
-    checkAuthStatus()
-  }, [])
-
-  const checkAuthStatus = async () => {
-    try {
-      // For now, check localStorage for demo purposes
-      // Later this will check actual OAuth tokens
-      const user = localStorage.getItem('openagents_user')
-      const isAuthenticated = !!user
-
-      console.log('Auth check:', { user, isAuthenticated }) // Debug log
-
-      setAuthState({
-        isAuthenticated,
-        user: user ? JSON.parse(user) : null,
-        isLoading: false
-      })
-    } catch (error) {
-      console.error('Auth check failed:', error)
-      setAuthState({
-        isAuthenticated: false,
-        user: null,
-        isLoading: false
-      })
-    }
-  }
+  // Create a mock user object for now since Convex auth doesn't provide GitHub-style user data
+  // In a real implementation, you'd fetch this from a users table
+  const user: User | null = isAuthenticated ? {
+    id: 'convex-user',
+    login: 'user',
+    name: 'OpenAgents User',
+    avatar_url: 'https://github.com/identicons/user.png',
+    email: 'user@openagents.com'
+  } : null
 
   const signIn = async () => {
-    try {
-      // For demo purposes, simulate OAuth flow
-      // Later this will redirect to GitHub OAuth
-      console.log('Initiating GitHub OAuth flow...')
-      
-      // Simulate OAuth success with mock user
-      const mockUser: User = {
-        id: 'demo-user-123',
-        login: 'demo-user',
-        name: 'Demo User',
-        avatar_url: 'https://github.com/identicons/demo-user.png'
-      }
-
-      // Store auth state
-      localStorage.setItem('openagents_user', JSON.stringify(mockUser))
-      
-      setAuthState({
-        isAuthenticated: true,
-        user: mockUser,
-        isLoading: false
-      })
-
-      console.log('Authentication successful!')
-    } catch (error) {
-      console.error('Authentication failed:', error)
-    }
+    // Redirect to the sign-in page
+    // The actual Convex auth is handled on that page
+    router.push('/signin')
   }
 
   const signOut = () => {
-    localStorage.removeItem('openagents_user')
-    setAuthState({
-      isAuthenticated: false,
-      user: null,
-      isLoading: false
-    })
-    console.log('Signed out successfully')
+    convexSignOut()
   }
 
   return {
-    ...authState,
+    isAuthenticated,
+    user,
+    isLoading,
     signIn,
     signOut
   }

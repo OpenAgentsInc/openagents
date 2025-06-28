@@ -9,12 +9,15 @@ import { Github, X, SoundHigh, SoundOff } from 'iconoir-react';
 import { useAuth } from '@/hooks/useAuth';
 import { ButtonSimple } from './ButtonSimple';
 import { ArwesLogoType } from './ArwesLogoType';
+import { useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import { Id } from '@/convex/_generated/dataModel';
 
 interface ChatSession {
-  id: string;
+  _id: Id<"conversations">;
   title: string;
-  timestamp: Date;
-  preview?: string;
+  lastMessageAt?: number;
+  messageCount: number;
 }
 
 // Chat item component
@@ -29,8 +32,8 @@ const ChatItem = ({
 }) => {
   return (
     <Link
-      href={`/chat/${session.id}`}
-      onMouseEnter={() => onHover(session.id)}
+      href={`/chat/${session._id}`}
+      onMouseEnter={() => onHover(session._id)}
       onMouseLeave={() => onHover(null)}
       className={cx(
         'block relative group transition-all duration-200',
@@ -81,24 +84,12 @@ export const ChatSidebar = (): React.ReactElement => {
   const [hoveredSession, setHoveredSession] = useState<string | null>(null);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   
-  // Mock chat sessions organized by time
-  const [sessions] = useState<{
-    today: ChatSession[];
-    yesterday: ChatSession[];
-    previous: ChatSession[];
-  }>({
-    today: [
-      { id: '1', title: 'Bitcoin Lightning App', timestamp: new Date(Date.now() - 3600000), preview: 'Create a Bitcoin Lightning payment app...' },
-      { id: '2', title: 'React Dashboard', timestamp: new Date(Date.now() - 7200000), preview: 'Build a React dashboard with charts...' },
-    ],
-    yesterday: [
-      { id: '3', title: 'API Integration', timestamp: new Date(Date.now() - 86400000), preview: 'How to integrate with OpenRouter API...' },
-    ],
-    previous: [
-      { id: '4', title: 'E-commerce Site', timestamp: new Date(Date.now() - 172800000), preview: 'Build a modern e-commerce platform...' },
-      { id: '5', title: 'Blog Platform', timestamp: new Date(Date.now() - 259200000), preview: 'Create a blog with markdown support...' },
-    ]
-  });
+  // Fetch real conversations from Convex
+  const conversationData = useQuery(api.conversations.getRecent) || {
+    today: [],
+    yesterday: [],
+    previous: []
+  };
 
   return (
     <AnimatorGeneralProvider duration={{ enter: 0.5, exit: 0.3 }}>
@@ -160,7 +151,7 @@ export const ChatSidebar = (): React.ReactElement => {
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             <div className="p-3 space-y-4">
               {/* Today's chats */}
-              {sessions.today.length > 0 && (
+              {conversationData.today.length > 0 && (
                 <Animator active={true} duration={{ delay: 0.1 }}>
                   <Animated animated={[['opacity', 0, 1], ['x', -20, 0]]}>
                     <div>
@@ -168,11 +159,11 @@ export const ChatSidebar = (): React.ReactElement => {
                         Today
                       </Text>
                       <div className="space-y-1">
-                        {sessions.today.map((session) => (
+                        {conversationData.today.map((session: any) => (
                           <ChatItem 
-                            key={session.id} 
+                            key={session._id} 
                             session={session}
-                            isHovered={hoveredSession === session.id}
+                            isHovered={hoveredSession === session._id}
                             onHover={setHoveredSession}
                           />
                         ))}
@@ -183,7 +174,7 @@ export const ChatSidebar = (): React.ReactElement => {
               )}
 
               {/* Yesterday's chats */}
-              {sessions.yesterday.length > 0 && (
+              {conversationData.yesterday.length > 0 && (
                 <Animator active={true} duration={{ delay: 0.2 }}>
                   <Animated animated={[['opacity', 0, 1], ['x', -20, 0]]}>
                     <div>
@@ -191,11 +182,11 @@ export const ChatSidebar = (): React.ReactElement => {
                         Yesterday
                       </Text>
                       <div className="space-y-1">
-                        {sessions.yesterday.map((session) => (
+                        {conversationData.yesterday.map((session: any) => (
                           <ChatItem 
-                            key={session.id} 
+                            key={session._id} 
                             session={session}
-                            isHovered={hoveredSession === session.id}
+                            isHovered={hoveredSession === session._id}
                             onHover={setHoveredSession}
                           />
                         ))}
@@ -206,7 +197,7 @@ export const ChatSidebar = (): React.ReactElement => {
               )}
 
               {/* Previous chats */}
-              {sessions.previous.length > 0 && (
+              {conversationData.previous.length > 0 && (
                 <Animator active={true} duration={{ delay: 0.3 }}>
                   <Animated animated={[['opacity', 0, 1], ['x', -20, 0]]}>
                     <div>
@@ -214,11 +205,11 @@ export const ChatSidebar = (): React.ReactElement => {
                         Previous 7 Days
                       </Text>
                       <div className="space-y-1">
-                        {sessions.previous.map((session) => (
+                        {conversationData.previous.map((session: any) => (
                           <ChatItem 
-                            key={session.id} 
+                            key={session._id} 
                             session={session}
-                            isHovered={hoveredSession === session.id}
+                            isHovered={hoveredSession === session._id}
                             onHover={setHoveredSession}
                           />
                         ))}
