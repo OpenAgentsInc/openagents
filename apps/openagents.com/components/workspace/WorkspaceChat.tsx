@@ -26,6 +26,69 @@ export function WorkspaceChat({ projectName, projectId = 'demo', className }: Wo
   const [retryCount, setRetryCount] = useState(0)
   const [isRetrying, setIsRetrying] = useState(false)
 
+  // Memoize the initial messages to prevent re-creation on every render
+  const initialMessages = React.useMemo(() => [
+    {
+      id: 'welcome',
+      role: 'assistant' as const,
+      content: `Welcome to ${projectName}! I'm here to help you build, debug, and deploy your project. Ask me anything about your code, request new features, or let me know what you'd like to work on.
+
+Try asking me to:
+• "Add a new React component"
+• "Fix any TypeScript errors"  
+• "Deploy this project"
+• "Add styling with Tailwind CSS"
+• "Create an API endpoint"`,
+      createdAt: new Date(Date.now() - 5 * 60 * 1000)
+    }
+  ], [projectName])
+
+  // Memoize onFinish callback
+  const onFinish = React.useCallback(() => {
+    setRetryCount(0) // Reset retry count on successful completion
+    inputRef.current?.focus()
+  }, [])
+
+  // Handle retry with exponential backoff
+  const handleRetryMessage = React.useCallback(async () => {
+    if (retryCount >= RETRY_CONFIG.maxRetries) {
+      toast.error('Max Retries Reached', 'Please check your connection and try again later.')
+      return
+    }
+
+    setIsRetrying(true)
+    const delay = Math.min(
+      RETRY_CONFIG.baseDelay * Math.pow(2, retryCount),
+      RETRY_CONFIG.maxDelay
+    )
+
+    toast.info('Retrying...', `Attempt ${retryCount + 1} of ${RETRY_CONFIG.maxRetries}`)
+
+    setTimeout(async () => {
+      try {
+        setRetryCount(prev => prev + 1)
+        // Don't use reload here to avoid circular dependency
+        setIsRetrying(false)
+        toast.success('Reconnected', 'Chat is working again!')
+      } catch (error) {
+        setIsRetrying(false)
+        console.error('Retry failed:', error)
+      }
+    }, delay)
+  }, [retryCount, toast])
+
+  // Memoize onError callback to prevent re-creation
+  const onError = React.useCallback((error: Error) => {
+    console.error('Chat error:', error)
+    toast.error('Chat Error', 'Failed to get AI response. Please try again.', {
+      action: {
+        label: 'Retry',
+        onClick: handleRetryMessage
+      },
+      persistent: true
+    })
+  }, [toast, handleRetryMessage])
+
   // Use Vercel AI SDK for streaming chat
   const {
     messages,
@@ -46,78 +109,22 @@ export function WorkspaceChat({ projectName, projectId = 'demo', className }: Wo
         deploymentUrl: undefined // TODO: Get from project data
       }
     },
-    onError: (error) => {
-      console.error('Chat error:', error)
-      toast.error('Chat Error', 'Failed to get AI response. Please try again.', {
-        action: {
-          label: 'Retry',
-          onClick: handleRetryMessage
-        },
-        persistent: true
-      })
-    },
-    onFinish: () => {
-      setRetryCount(0) // Reset retry count on successful completion
-      inputRef.current?.focus()
-    },
-    initialMessages: [
-      {
-        id: 'welcome',
-        role: 'assistant',
-        content: `Welcome to ${projectName}! I'm here to help you build, debug, and deploy your project. Ask me anything about your code, request new features, or let me know what you'd like to work on.
-
-Try asking me to:
-• "Add a new React component"
-• "Fix any TypeScript errors"  
-• "Deploy this project"
-• "Add styling with Tailwind CSS"
-• "Create an API endpoint"`,
-        createdAt: new Date(Date.now() - 5 * 60 * 1000)
-      }
-    ]
+    onError,
+    onFinish,
+    initialMessages
   })
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages.length])
 
   // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
-
-  // Handle retry with exponential backoff
-  const handleRetryMessage = async () => {
-    if (retryCount >= RETRY_CONFIG.maxRetries) {
-      toast.error('Max Retries Reached', 'Please check your connection and try again later.')
-      return
-    }
-
-    setIsRetrying(true)
-    const delay = Math.min(
-      RETRY_CONFIG.baseDelay * Math.pow(2, retryCount),
-      RETRY_CONFIG.maxDelay
-    )
-
-    toast.info('Retrying...', `Attempt ${retryCount + 1} of ${RETRY_CONFIG.maxRetries}`)
-
-    setTimeout(async () => {
-      try {
-        setRetryCount(prev => prev + 1)
-        await reload()
-        setIsRetrying(false)
-        toast.success('Reconnected', 'Chat is working again!')
-      } catch (error) {
-        setIsRetrying(false)
-        console.error('Retry failed:', error)
-        // Will trigger another retry if under limit
-        if (retryCount + 1 < RETRY_CONFIG.maxRetries) {
-          setTimeout(handleRetryMessage, 2000)
-        }
-      }
-    }, delay)
-  }
 
   // Enhanced submit handler with error handling
   const handleSubmit = async (e: React.FormEvent) => {
