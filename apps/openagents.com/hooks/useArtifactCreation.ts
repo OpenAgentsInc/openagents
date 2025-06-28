@@ -12,9 +12,15 @@ const CODE_BLOCK_PATTERNS = [
 
 // Extract title from code or message
 function extractTitle(code: string, message: string): string {
+  // Try to extract from export default function ComponentName
+  const exportFunctionMatch = code.match(/export\s+default\s+function\s+(\w+)/);
+  if (exportFunctionMatch && exportFunctionMatch[1] !== 'App') {
+    return exportFunctionMatch[1];
+  }
+  
   // Try to extract from export default ComponentName
   const componentMatch = code.match(/export\s+default\s+(\w+)/);
-  if (componentMatch) {
+  if (componentMatch && componentMatch[1] !== 'function' && componentMatch[1] !== 'App') {
     return componentMatch[1];
   }
   
@@ -34,11 +40,24 @@ function extractTitle(code: string, message: string): string {
   for (const pattern of requestPatterns) {
     const match = message.match(pattern);
     if (match) {
-      return match[1].trim()
+      const extracted = match[1].trim()
         .split(' ')
         .slice(0, 3)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
+      return extracted;
     }
+  }
+  
+  // If we found "App" but no user message, use it
+  if (exportFunctionMatch && exportFunctionMatch[1] === 'App') {
+    return 'App';
+  }
+  if (componentMatch && componentMatch[1] === 'App') {
+    return 'App';
+  }
+  if (functionMatch && functionMatch[1] === 'App') {
+    return 'App';
   }
   
   return 'Generated Component';
