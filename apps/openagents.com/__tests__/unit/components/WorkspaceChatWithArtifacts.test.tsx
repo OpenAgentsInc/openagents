@@ -49,7 +49,7 @@ vi.mock('ai/react', () => ({
       status: 'idle' as const,
       setData: vi.fn(),
       id: 'test-chat-id'
-    }
+    } as any // Type assertion to bypass strict type checking in tests
   })
 }))
 
@@ -202,10 +202,10 @@ describe('WorkspaceChatWithArtifacts', () => {
         status: 'idle' as const,
         setData: vi.fn(),
         id: 'test-chat-id'
-      }
+      } as any
     })
     
-    vi.mocked(useChat).mockImplementation(originalMock)
+    ;(useChat as any).mockImplementation(originalMock)
     
     render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
@@ -340,10 +340,10 @@ describe('WorkspaceChatWithArtifacts', () => {
         status: 'idle' as const,
         setData: vi.fn(),
         id: 'test-chat-id'
-      }
+      } as any
     })
     
-    vi.mocked(useChat).mockImplementation(originalMock)
+    ;(useChat as any).mockImplementation(originalMock)
 
     const { rerender } = render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
