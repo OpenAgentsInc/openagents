@@ -16,7 +16,6 @@ const nextConfig: NextConfig = {
 const withMDX = createMDX({
   // Add markdown plugins here, as desired
   options: {
-    development: process.env.NODE_ENV === 'development',
     // @ts-ignore
     jsx: true,
     // @ts-ignore
