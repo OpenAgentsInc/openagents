@@ -1,0 +1,145 @@
+<div className="relative w-full" style={{ paddingTop: '56.25%' }}>
+  <iframe
+    className="absolute top-0 left-0 w-full h-full"
+    src="https://www.youtube.com/embed/NVPhJ0aCKOw?si=U06pGu8a4nCI4-vD&amp;start=3607"
+    title="YouTube video player"
+    frameBorder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerPolicy="strict-origin-when-cross-origin"
+    allowFullScreen
+  />
+</div>
+
+We were honored to participate in the new 'AI for Human Rights' track at this year's [Oslo Freedom Forum](https://oslofreedomforum.com/).
+
+For those unfamiliar, it is hard to convey the importance and impact of the Forum and the [Human Rights Foundation](https://hrf.org/) more broadly. Please read the [recap from Zac Guignard](https://x.com/zacguignard/status/1928263233678496141). We agree with every word.
+
+Here is video and transcript from our talk "Agents: What Are They, and How Can We Use Them Safely?"
+
+We recommend also watching the other talks, especially [Isaac Stone Fish's talk on authoritarian regimes](https://youtu.be/NVPhJ0aCKOw?t=1645) corrupting AI labs and academic institutions with the support of large US corporations.
+
+For AI and agents, openness matters now more than ever.
+
+---
+
+Welcome to the year of agents.
+
+This is one of the cofounders of OpenAI:
+
+<img src="/images/slides/oslo1.png" alt="Oslo Freedom Forum 2025" className="border border-cyan-500/20" />
+
+OpenAI, if you didn't know, used to be a nonprofit.
+
+It's now a for-profit lab valued most recently at $300 billion.
+
+I'll leave it as an exercise for all of you to see what percentage of the $60 billion of funding they've raised has come from non-democratic regimes. It is not a small number.
+
+But I agree with Greg.
+
+Maybe it's a little self-serving for a company selling you agents to declare this to be the year of agents. But I think this is accurate -- that this is the year that agents are becoming mainstream.
+
+What is an agent?
+
+Lots of people talking about agents, agents, agents.
+
+For the million people talking about it, sorry to tell you that there's a million and one definitions of what an agent actually is.
+
+And there's no real authority here, so I'm going to give you my very simple definition that I like.
+
+<img src="/images/slides/oslo2.jpg" alt="Oslo Freedom Forum 2025" className="border border-cyan-500/20" />
+
+What is an agent? It's just a piece of software. It uses AI to act on your behalf.
+
+Some people will get fanciful with this and claim that it's some alternate lifeform, but we prefer to focus on the practical: it's a piece of software, it's a tool that we humans can use, and we can delegate our human agency to this piece of software that can act powerfully on our behalf.
+
+<img src="/images/slides/oslo3.jpg" alt="Oslo Freedom Forum 2025" className="border border-cyan-500/20" />
+
+Some of the basics of what makes it special: you may be familiar with the base AI LLM models, GPT-4 and that kind of thing, but you add onto it a few other special things.
+
+It can perceive, it can sense its digital environment. So even the models or products now like Gemini from Google, can feed it an image and it knows exactly what's in the image. So you can do interesting things like you can take a picture, maybe it's from a CCTV camera and you could say, hey identify the XYZ in this image.
+
+Plans. It's pretty good if you give it kind of a general goal, breaking it down into subtasks that it can go act um on your behalf in the world.
+
+We in the AI space call these tools. Basically if you're familiar with APIs or any of the kind of like internet enabled services, APIs are how you control them so you can connect basically any API to an LLM.
+
+So hey AI do my accounting for me, you would give it access to your QuickBooks API and then the agent can then have access to that and kind of move hopefully smartly to do your taxes better or whatever.
+
+And autonomous. We're not fully to full autonomy in part because the agents just haven't yet been good enough to really let loose.
+
+But the rationale behind declaring 2025 to be the year of agents is that agents and the kind of infrastructure around them have evolved to the point where they are now good enough to be autonomous or semi-autonomous.
+
+<img src="/images/slides/oslo4.jpg" alt="Oslo Freedom Forum 2025" className="border border-cyan-500/20" />
+
+Agents will soon outnumber humans.
+
+I had an agent help me with this analysis. I said, hey OpenAI deep research, which happens to be one of the best research agents right now. Given current trends, just give me a conservative estimate of what number of agents will be.
+
+So this is the year that we're going to hit 1 billion of these agents.
+
+By the end of the decade, they'll outnumber humans.
+
+And yeah, we're getting into a lot. I think this is actually kind of a conservative estimate.
+
+<img src="/images/slides/oslo5.jpg" alt="Oslo Freedom Forum 2025" className="border border-cyan-500/20" />
+
+Leading to the question of who's controlling them?
+
+These 1 billion, these 10 billion.
+
+What percentage of them are going to be run, operated, controlled by authoritarian regimes?
+
+What percentage of them are going to be owned, controlled, shaped by closed labs that take funding from authoritarian regimes?
+
+What percentage of these are going to be run by people in this community?
+
+Let's see a show of hands. Who in the last 24 hours has had an AI agent work for them?
+
+Raise your hand. All right, we've got maybe 20% of the audience, very good.
+
+I'm going to come back here next year and I'm going to ask this again, hopefully. And I hope everyone in the room raises their hand because we need to have as big a percentage of this work on behalf of human rights and not against it.
+
+Beyond just the human element of who's going to control these, are we even going to know what these agents are doing? Some of these agents are developing their own language.
+
+<img src="/images/slides/oslo6.jpg" alt="Oslo Freedom Forum 2025" className="border border-cyan-500/20" />
+
+Do we want to know what these agents are doing? I think we do.
+
+This gets to the question of openness. How are we going to know what these agents are doing?
+
+Those of us who are building, those of us who are voting with our wallet and choosing which services to spend our productivity budgets on, I think we need to get increasingly aware of the kinds of funding and the kind of incentives of some of these labs and make sure that we are building in the open.
+
+We need to know what these agents are doing. We need to expose with the disinfecting light of sun what is being done.
+
+<img src="/images/slides/oslo7.jpg" alt="Oslo Freedom Forum 2025" className="border border-cyan-500/20" />
+
+My mission for the last 18 months has been to basically build open-protocol versions of as much as I can of OpenAI's product suite.
+
+They have about 100,000 times my budget, so it's a little David and Goliath, but we've got a bunch of support here.
+
+I began this 18 months ago, a video series in which we're building an open platform for agents on open protocols that's all open source, using open models and data, open compute, open money (Bitcoin), intending to build an open agent marketplace with revenue share payouts.
+
+You can see a list of the videos on our website. I'll show the link in a second, openagents.com. And you don't have to watch all 178 videos. But just so you know that people like myself are trying to build infrastructure that is open, that can provide for people's needs truly open.
+
+Our focus as a company for the last year has been on coding agents. Coding agents I think have been the first really truly breakout use case that developers like myself are happily paying for because we're able to spin up websites, web applications way, way, way, way faster than before.
+
+Agents have now gotten to the point where. as the cost to produce software has fallen and the time to produce software has fallen, the question next is: what actually should we build?
+
+<img src="/images/slides/oslo8.jpg" alt="Oslo Freedom Forum 2025" className="border border-cyan-500/20" />
+
+And so this is my question to you. On our website here, if you scroll down a little bit, there's going to be a form.
+
+I've got a group of developers who are accustomed with working with these tools and are looking for people who are wanting agents.
+
+So there's a form that just says what agent would you like?
+
+And this is my question that I hope that you all think about.
+
+Wave your magic wands: in one month, two months, three months, six months, 12 months from now, what agents do you want working for you?
+
+So when I'm up here and I ask you, how many agents are working for you right now?
+
+We've got a few hundred or a few thousand doing really good work: sorting our donor list, doing outreach, building websites, doing research, having those agents work with each other maybe. No one's really thought through that part.
+
+What's that? Fighting dictators, absolutely.
+
+That's all. See ya.
