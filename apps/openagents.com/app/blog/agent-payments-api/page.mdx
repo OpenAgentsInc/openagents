@@ -1,44 +1,8 @@
-import { Text, GridLines, Dots, AnimatorGeneralProvider, Animator, Animated } from '@arwes/react'
-import { CalendarDays, Clock } from 'lucide-react'
+'use client'
 
-<AnimatorGeneralProvider duration={{ enter: 0.5, exit: 0.3 }}>
-  <div className="relative z-10 h-full overflow-y-auto">
-    <div className="absolute inset-0 pointer-events-none">
-      <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
-      <Dots color="hsla(180, 50%, 50%, 0.02)" size={1} distance={30} />
-    </div>
-    
-    <article className="relative max-w-4xl mx-auto px-8 py-12">
-      <Animator active={true}>
-        <Animated animated={[['opacity', 0, 1], ['y', 20, 0]]}>
-          <header className="mb-8">
-            <img 
-              src="/images/blog02.png" 
-              alt="Introducing the Agent Payments API"
-              className="w-full h-64 md:h-96 object-cover mb-8 -mx-8 -mt-12"
-            />
-            
-            <Text as="h1" className="text-3xl md:text-4xl font-bold text-cyan-100 mb-4">
-              Introducing the Agent Payments API
-            </Text>
-            
-            <Text className="text-lg text-cyan-300/60 mb-4">
-              We built the easiest way for AI agents to send and receive money. Open beta is now available globally for all developers.
-            </Text>
-            
-            <div className="flex items-center gap-4 text-sm text-cyan-500/60">
-              <div className="flex items-center gap-2">
-                <CalendarDays size={16} />
-                <Text>May 5, 2025</Text>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock size={16} />
-                <Text>5 min read</Text>
-              </div>
-            </div>
-          </header>
-          
-          <div className="prose prose-invert prose-cyan max-w-none">
+# Introducing the Agent Payments API
+
+We built the easiest way for AI agents to send and receive money. Open beta is now available globally for all developers.
 
 > "The AIs are coming. The AIs don't get bank accounts, they don't get credit cards. The AIs, the artificial intelligence economy, will be built on digital capital, digital property. It will be a hundred trillion dollar economy. It will be built on bitcoin." --[Michael Saylor](https://x.com/OpenAgentsInc/status/1899634726920503629)
 
@@ -140,20 +104,3 @@ This presentation introduces the **OpenAgents API** at the Rusty Vibe Coding AI 
 
 > **[25:38]** Basically any kind of Bitcoin based protocol agent should be able to speak it... we would just want to make it easy for developers to be able to like have one API call and then just have all this accessible to them.
 
-          </div>
-          
-          <footer className="mt-12 pt-8 border-t border-cyan-500/20">
-            <div className="flex justify-between items-center">
-              <a 
-                href="/blog" 
-                className="text-cyan-400 hover:text-cyan-300 transition-colors"
-              >
-                ← Back to Blog
-              </a>
-            </div>
-          </footer>
-        </Animated>
-      </Animator>
-    </article>
-  </div>
-</AnimatorGeneralProvider>
