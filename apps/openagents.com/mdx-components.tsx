@@ -1,10 +1,13 @@
 import type { MDXComponents } from 'mdx/types';
-import dynamic from 'next/dynamic';
 
-const MDXTwitterEmbed = dynamic(() => import('./components/blog/MDXTwitterEmbed').then(mod => mod.MDXTwitterEmbed), {
-  ssr: false,
-  loading: () => <div className="w-full h-[400px] bg-black/50 animate-pulse rounded-lg my-8" />
-});
+// Simple placeholder for Twitter embeds - will be enhanced with client-side loading
+function TwitterEmbed({ html }: { html?: string }) {
+  return (
+    <div className="w-full h-[400px] bg-black/50 border border-cyan-500/20 rounded-lg my-8 flex items-center justify-center">
+      <p className="text-cyan-300/60">Twitter embed will load here</p>
+    </div>
+  );
+}
 
 // @ts-ignore
 export function useMDXComponents(components: MDXComponents): MDXComponents {
@@ -50,7 +53,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     // @ts-ignore
     hr: () => <hr className="border-cyan-500/20 my-8" />,
     // @ts-ignore
-    TwitterEmbed: MDXTwitterEmbed,
+    TwitterEmbed: TwitterEmbed,
     ...components,
   };
 }
