@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { cx, Text } from '@arwes/react'
 import { Copy, Download, ExternalLink, Code, Monitor, ChevronLeft, ChevronRight } from 'lucide-react'
-import { CodeEditorPanel } from '@/components/workspace/CodeEditorPanel'
+import { CodeEditorPanelWithArtifacts } from '@/components/workspace/CodeEditorPanelWithArtifacts'
 import { useToast } from '@/components/Toast'
 import { useArtifacts, useCurrentArtifact, useArtifactOperations } from './ArtifactsContext'
 
@@ -261,7 +261,7 @@ export function ArtifactsPanel({ className = '' }: ArtifactsPanelProps) {
       {/* Content Area */}
       <div className="flex-1 overflow-hidden">
         {viewMode === 'code' ? (
-          <CodeEditorPanel 
+          <CodeEditorPanelWithArtifacts 
             projectId={currentArtifact.id} 
             className="h-full"
           />
