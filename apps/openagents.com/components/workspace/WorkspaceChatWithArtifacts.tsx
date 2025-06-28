@@ -62,23 +62,10 @@ Try asking me to:
     // The tool-based system creates artifacts during streaming, not at completion
   }, [])
 
-  // Process artifact data from messages  
-  React.useEffect(() => {
-    // Check the data stream for artifact information
-    if (data && Array.isArray(data)) {
-      for (const item of data) {
-        if (item && typeof item === 'object' && item.type === 'artifact' && !item.processed) {
-          const artifactId = handleStreamData(item)
-          if (artifactId) {
-            toast.success('Artifact Created', 'Your code is ready in the artifacts panel')
-            onArtifactCreated?.(artifactId)
-            // Mark as processed to avoid duplicates
-            item.processed = true
-          }
-        }
-      }
-    }
-  }, [data, handleStreamData, toast, onArtifactCreated])
+  // Artifact creation is handled server-side through tool calls
+  // The API route processes tool calls and appends artifact data to the stream
+  // For now, artifacts are created directly in the context when the AI invokes the tool
+  // TODO: Implement client-side stream processing when we have the correct data stream API
 
   // Handle retry with exponential backoff
   const handleRetryMessage = React.useCallback(async () => {
@@ -128,8 +115,7 @@ Try asking me to:
     isLoading,
     error,
     reload,
-    setMessages,
-    data
+    setMessages
   } = useChat({
     api: '/api/chat',
     body: {
