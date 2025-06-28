@@ -1,21 +1,12 @@
-import { AppLayout } from '@/components/AppLayout';
-import { OnboardingOverlayManager } from '@/components/onboarding/OnboardingOverlayManager';
-import { Text, GridLines, Dots, AnimatorGeneralProvider, Animator, Animated } from '@arwes/react';
+'use client'
+
+import { BlogPageWrapper } from '@/components/blog/BlogPageWrapper';
+import { Text, GridLines, Dots, Animator, Animated } from '@arwes/react';
 import { CalendarDays, Clock } from 'lucide-react';
 
-export const metadata = {
-  title: "We're on Discord",
-  date: "2025-05-10",
-  summary: "OpenAgents now has a Discord. You should join.",
-  image: "/images/blog03.png"
-};
-
-<AppLayout showSidebar>
-  <OnboardingOverlayManager
-    minDesktopWidth={1024}
-    desktopMessage="OpenAgents requires a desktop browser for the full development experience. Please use a device with a screen width of at least 1024px."
-  >
-    <AnimatorGeneralProvider duration={{ enter: 0.5, exit: 0.3 }}>
+export default function Page() {
+  return (
+    <BlogPageWrapper>
       <div className="relative z-10 h-full overflow-y-auto">
         <div className="absolute inset-0 pointer-events-none">
           <GridLines lineColor="hsla(180, 100%, 75%, 0.02)" distance={40} />
@@ -53,17 +44,15 @@ export const metadata = {
               </header>
               
               <div className="prose prose-invert prose-cyan max-w-none">
+                <p>It's barebones for now but you can ask us anything or throw any ideas at us.</p>
 
-It's barebones for now but you can ask us anything or throw any ideas at us.
+                <p>Join here: <a href="https://discord.gg/ShuRwwAZAM">https://discord.gg/ShuRwwAZAM</a></p>
 
-Join here: [https://discord.gg/ShuRwwAZAM](https://discord.gg/ShuRwwAZAM)
+                <p>We'll soon organize playtests there for our upcoming <a href="https://x.com/OpenAgentsInc/status/1919797578452869267">Commander product</a>.</p>
 
-We'll soon organize playtests there for our upcoming [Commander product](https://x.com/OpenAgentsInc/status/1919797578452869267).
+                <p>Commander will look and feel a lot like a video game-- so we think Discord is the right place to grow its community.</p>
 
-Commander will look and feel a lot like a video game-- so we think Discord is the right place to grow its community.
-
-See you there!
-
+                <p>See you there!</p>
               </div>
               
               <footer className="mt-12 pt-8 border-t border-cyan-500/20">
@@ -80,6 +69,6 @@ See you there!
           </Animator>
         </article>
       </div>
-    </AnimatorGeneralProvider>
-  </OnboardingOverlayManager>
-</AppLayout>
+    </BlogPageWrapper>
+  );
+}

@@ -1,7 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-import matter from 'gray-matter';
-import readingTime from 'reading-time';
+// Note: Since we're using hardcoded posts, we don't need fs imports
 
 export interface BlogPost {
   slug: string;
@@ -88,24 +85,6 @@ export function getAllPosts(): BlogPost[] {
 
 // Get a single post by slug
 export function getPostBySlug(slug: string): BlogPost | null {
-  const postsDirectory = path.join(process.cwd(), 'app', 'blog', 'posts');
-  const fullPath = path.join(postsDirectory, `${slug}.mdx`);
-  
-  if (!fs.existsSync(fullPath)) {
-    return null;
-  }
-  
-  const fileContents = fs.readFileSync(fullPath, 'utf8');
-  const { data, content } = matter(fileContents);
-  const stats = readingTime(content);
-  
-  return {
-    slug,
-    title: data.title || slug,
-    date: data.date || new Date().toISOString(),
-    summary: data.summary,
-    image: data.image,
-    content,
-    readingTime: stats.text
-  };
+  const posts = getAllPosts();
+  return posts.find(post => post.slug === slug) || null;
 }
