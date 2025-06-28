@@ -1,14 +1,15 @@
 'use client'
 
 import React, { createContext, useContext, useReducer, useEffect } from 'react'
+import { ArtifactParameters } from '@/lib/tools/createArtifactTool'
 
 export interface Artifact {
   id: string
   title: string
   description?: string
-  type: 'code' | 'app' | 'document'
+  type: 'react' | 'html' | 'javascript' | 'typescript' | 'python' | 'css' | 'json' | 'markdown'
   content: string
-  files?: Record<string, string>
+  language?: string
   deploymentUrl?: string
   createdAt: Date
   updatedAt: Date
@@ -33,6 +34,8 @@ type ArtifactsAction =
   | { type: 'FINISH_DEPLOYMENT'; payload: string }
   | { type: 'LOAD_ARTIFACTS'; payload: Artifact[] }
   | { type: 'CLEAR_ARTIFACTS' }
+  | { type: 'CREATE_FROM_TOOL'; payload: { params: ArtifactParameters; messageId?: string } }
+  | { type: 'UPDATE_FROM_TOOL'; payload: { params: ArtifactParameters; messageId?: string } }
 
 const initialState: ArtifactsState = {
   artifacts: [],
@@ -108,6 +111,47 @@ function artifactsReducer(state: ArtifactsState, action: ArtifactsAction): Artif
         currentArtifactId: undefined
       }
     
+    case 'CREATE_FROM_TOOL': {
+      const { params, messageId } = action.payload
+      const id = params.identifier // Use tool identifier directly
+      const artifact: Artifact = {
+        id,
+        title: params.title,
+        description: params.description,
+        type: params.type,
+        content: params.content,
+        language: params.language,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messageId
+      }
+      return {
+        ...state,
+        artifacts: [...state.artifacts, artifact],
+        currentArtifactId: id
+      }
+    }
+    
+    case 'UPDATE_FROM_TOOL': {
+      const { params, messageId } = action.payload
+      return {
+        ...state,
+        artifacts: state.artifacts.map(artifact =>
+          artifact.id === params.identifier
+            ? {
+                ...artifact,
+                title: params.title,
+                description: params.description || artifact.description,
+                content: params.content,
+                language: params.language || artifact.language,
+                updatedAt: new Date(),
+                messageId: messageId || artifact.messageId
+              }
+            : artifact
+        )
+      }
+    }
+    
     default:
       return state
   }
@@ -126,6 +170,10 @@ interface ArtifactsContextType {
     navigateToPrevious: () => void
     getCurrentArtifact: () => Artifact | undefined
     isDeployingArtifact: (id: string) => boolean
+    // New tool-based methods
+    createArtifactFromTool: (params: ArtifactParameters, messageId?: string) => string
+    updateArtifactFromTool: (params: ArtifactParameters, messageId?: string) => void
+    getArtifactByIdentifier: (identifier: string) => Artifact | undefined
   }
 }
 
@@ -242,6 +290,20 @@ export function ArtifactsProvider({ children }: { children: React.ReactNode }) {
 
     isDeployingArtifact: (id: string) => {
       return state.isDeploying.includes(id)
+    },
+
+    // New tool-based methods
+    createArtifactFromTool: (params: ArtifactParameters, messageId?: string) => {
+      dispatch({ type: 'CREATE_FROM_TOOL', payload: { params, messageId } })
+      return params.identifier
+    },
+
+    updateArtifactFromTool: (params: ArtifactParameters, messageId?: string) => {
+      dispatch({ type: 'UPDATE_FROM_TOOL', payload: { params, messageId } })
+    },
+
+    getArtifactByIdentifier: (identifier: string) => {
+      return state.artifacts.find(a => a.id === identifier)
     }
   }
 
