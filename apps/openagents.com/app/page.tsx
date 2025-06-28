@@ -55,10 +55,11 @@ const HomePage = (): React.ReactElement => {
 
         <div className="relative z-10 flex flex-col h-full">
           {/* Messages container */}
-          <div className="flex-1 flex items-center justify-center overflow-y-auto pb-32">
-            <div className="w-full max-w-3xl px-8">
+          <div className="flex-1 flex overflow-y-auto">
+            <div className="w-full flex flex-col">
               {uiMessages.length === 0 ? (
-                <div className="text-center space-y-8">
+                <div className="flex-1 flex items-center justify-center px-8">
+                  <div className="w-full max-w-3xl text-center space-y-8">
                   {/* Hero Section - ChatGPT style */}
                   <div className="space-y-2">
                     <Text className="text-3xl md:text-4xl font-semibold text-cyan-100/90" as="h1">
@@ -141,23 +142,26 @@ const HomePage = (): React.ReactElement => {
                       </button>
                     </div>
                   )}
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {uiMessages.map((message) => (
-                    <ChatMessage 
-                      key={message.id} 
-                      message={message}
-                    />
-                  ))}
-                  {isLoading && <TypingIndicator />}
+                <div className="flex-1 px-8">
+                  <div className="max-w-3xl mx-auto space-y-4 py-8">
+                    {uiMessages.map((message) => (
+                      <ChatMessage 
+                        key={message.id} 
+                        message={message}
+                      />
+                    ))}
+                    {isLoading && <TypingIndicator />}
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Input area - fixed to bottom */}
-          <div className="fixed bottom-0 left-0 right-0 z-50">
+          {/* Input area - fixed to bottom of main content area */}
+          <div className="relative mt-auto">
             <div className="bg-gradient-to-t from-black via-black/95 to-transparent pt-8 pb-4">
               <div className="max-w-3xl mx-auto px-8">
                 <div className="relative">
