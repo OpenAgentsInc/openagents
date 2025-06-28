@@ -12,43 +12,81 @@ function TwitterEmbed({ html }: { html?: string }) {
 // @ts-ignore
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
+    // Wrapper div for all MDX content
+    wrapper: ({ children }: any) => (
+      <div className="relative z-10 h-full overflow-y-auto">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `
+              linear-gradient(90deg, hsla(180, 100%, 75%, 0.02) 1px, transparent 1px),
+              linear-gradient(180deg, hsla(180, 100%, 75%, 0.02) 1px, transparent 1px)
+            `,
+            backgroundSize: '40px 40px'
+          }} />
+          <div className="absolute inset-0" style={{
+            backgroundImage: `radial-gradient(circle, hsla(180, 50%, 50%, 0.02) 1px, transparent 1px)`,
+            backgroundSize: '30px 30px'
+          }} />
+        </div>
+        
+        <article className="relative max-w-4xl mx-auto px-8 py-12">
+          <div className="prose prose-lg prose-invert prose-cyan max-w-none">
+            {children}
+          </div>
+        </article>
+      </div>
+    ),
     // @ts-ignore
-    h1: (props: any) => <h1 className="text-3xl font-bold text-cyan-100 mt-8 mb-4" {...props} />,
+    h1: (props: any) => <h1 className="text-4xl font-bold text-cyan-100 mt-12 mb-6 first:mt-0" {...props} />,
     // @ts-ignore
-    h2: (props: any) => <h2 className="text-2xl font-semibold text-cyan-100 mt-6 mb-3" {...props} />,
+    h2: (props: any) => <h2 className="text-3xl font-semibold text-cyan-100 mt-10 mb-5 border-b border-cyan-500/20 pb-2" {...props} />,
     // @ts-ignore
-    h3: (props: any) => <h3 className="text-xl font-semibold text-cyan-200 mt-4 mb-2" {...props} />,
+    h3: (props: any) => <h3 className="text-2xl font-semibold text-cyan-200 mt-8 mb-4" {...props} />,
     // @ts-ignore
-    p: (props: any) => <p className="text-cyan-300/80 mb-4 leading-relaxed" {...props} />,
+    p: (props: any) => <p className="text-cyan-300/80 mb-6 leading-relaxed text-lg" {...props} />,
     // @ts-ignore
-    a: (props: any) => <a className="text-cyan-400 hover:text-cyan-300 underline transition-colors" {...props} />,
+    a: (props: any) => <a className="text-cyan-400 hover:text-cyan-300 underline decoration-2 underline-offset-2 transition-colors" {...props} />,
     // @ts-ignore
-    ul: (props: any) => <ul className="list-disc list-inside text-cyan-300/80 mb-4 space-y-1" {...props} />,
+    ul: (props: any) => <ul className="list-disc list-outside text-cyan-300/80 mb-6 space-y-2 ml-6" {...props} />,
     // @ts-ignore
-    ol: (props: any) => <ol className="list-decimal list-inside text-cyan-300/80 mb-4 space-y-1" {...props} />,
+    ol: (props: any) => <ol className="list-decimal list-outside text-cyan-300/80 mb-6 space-y-2 ml-6" {...props} />,
     // @ts-ignore
-    li: (props: any) => <li className="text-cyan-300/80" {...props} />,
+    li: (props: any) => <li className="text-cyan-300/80 leading-relaxed" {...props} />,
     // @ts-ignore
     blockquote: (props: any) => (
-      <blockquote className="border-l-4 border-cyan-500 pl-4 my-4 italic text-cyan-300/60" {...props} />
+      <blockquote className="border-l-4 border-cyan-500 pl-6 my-8 italic text-cyan-300/70 bg-cyan-950/20 py-4 rounded-r-lg" {...props} />
+    ),
+    // @ts-ignore
+    pre: ({ children, ...props }: any) => (
+      <pre className="bg-black/70 border border-cyan-500/30 rounded-lg p-6 overflow-x-auto my-6 text-sm leading-relaxed" {...props}>
+        {children}
+      </pre>
     ),
     // @ts-ignore
     code: ({ className, ...props }: any) => {
-      const match = /language-(\w+)/.exec(className || '');
-      
       if (!className) {
-        return <code className="bg-black/50 px-1 py-0.5 rounded text-cyan-400 text-sm font-mono" {...props} />;
+        return <code className="bg-black/60 px-2 py-1 rounded text-cyan-400 text-sm font-mono border border-cyan-500/20" {...props} />;
       }
       
-      return (
-        <pre className="bg-black/50 border border-cyan-500/20 rounded-lg p-4 overflow-x-auto mb-4">
-          <code className={`hljs ${className} text-sm`} {...props} />
-        </pre>
-      );
+      return <code className={`text-cyan-100 font-mono ${className || ''}`} {...props} />;
     },
     // @ts-ignore
     img: (props: any) => (
-      <img className="w-full rounded-lg my-4 border border-cyan-500/20" {...props} />
+      <img className="w-full max-w-3xl mx-auto rounded-lg my-8 border border-cyan-500/20 shadow-lg shadow-cyan-500/10" {...props} />
+    ),
+    // @ts-ignore
+    table: (props: any) => (
+      <div className="overflow-x-auto my-6">
+        <table className="w-full border-collapse border border-cyan-500/20 rounded-lg" {...props} />
+      </div>
+    ),
+    // @ts-ignore
+    th: (props: any) => (
+      <th className="border border-cyan-500/20 bg-cyan-950/30 px-4 py-2 text-left text-cyan-100 font-semibold" {...props} />
+    ),
+    // @ts-ignore
+    td: (props: any) => (
+      <td className="border border-cyan-500/20 px-4 py-2 text-cyan-300/80" {...props} />
     ),
     // @ts-ignore
     hr: () => <hr className="border-cyan-500/20 my-8" />,
