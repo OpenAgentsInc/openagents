@@ -262,61 +262,65 @@ export const ChatSidebar = (): React.ReactElement => {
               </Animator>
             ) : null}
 
-            {/* Bottom section with settings and social icons */}
-            <div className="p-3 space-y-3">
-              {/* Settings link */}
-              <Link
-                href="/settings"
-                className={cx(
-                  'flex items-center gap-2 px-3 py-2 rounded',
-                  'hover:bg-cyan-500/10 transition-all duration-200',
-                  'text-sm text-cyan-300/60 hover:text-cyan-300'
-                )}
-              >
-                <Settings size={16} />
-                <Text>Settings</Text>
-              </Link>
-
-              {/* Social icons */}
-              <div className="flex items-center justify-center gap-2 px-3 py-2">
-                <a
-                  href="https://github.com/OpenAgentsInc/openagents"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cx(
-                    'p-2 rounded',
-                    'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
-                    'transition-all duration-200'
-                  )}
-                  title="View on GitHub"
-                >
-                  <Github width={19} height={19} />
-                </a>
-                <a
-                  href="https://x.com/OpenAgentsInc"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cx(
-                    'p-2 rounded',
-                    'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
-                    'transition-all duration-200'
-                  )}
-                  title="Follow on X"
-                >
-                  <X width={19} height={19} />
-                </a>
-                <button
-                  onClick={() => setIsAudioEnabled(!isAudioEnabled)}
-                  className={cx(
-                    'p-2 rounded',
-                    'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
-                    'transition-all duration-200',
-                    'cursor-pointer'
-                  )}
-                  title={isAudioEnabled ? 'Mute sounds' : 'Enable sounds'}
-                >
-                  {isAudioEnabled ? <SoundHigh width={19} height={19} /> : <SoundOff width={19} height={19} />}
-                </button>
+            {/* Bottom section with icons */}
+            <div className="p-3">
+              <div className="flex items-center justify-between px-3 py-2">
+                {/* Left side: Settings and Mute */}
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/settings"
+                    className={cx(
+                      'p-2 rounded',
+                      'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
+                      'transition-all duration-200'
+                    )}
+                    title="Settings"
+                  >
+                    <Settings size={15} />
+                  </Link>
+                  <button
+                    onClick={() => setIsAudioEnabled(!isAudioEnabled)}
+                    className={cx(
+                      'p-2 rounded',
+                      'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
+                      'transition-all duration-200',
+                      'cursor-pointer'
+                    )}
+                    title={isAudioEnabled ? 'Mute sounds' : 'Enable sounds'}
+                  >
+                    {isAudioEnabled ? <SoundHigh width={18} height={18} /> : <SoundOff width={18} height={18} />}
+                  </button>
+                </div>
+                
+                {/* Right side: GitHub and X */}
+                <div className="flex items-center gap-2">
+                  <a
+                    href="https://github.com/OpenAgentsInc/openagents"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cx(
+                      'p-2 rounded',
+                      'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
+                      'transition-all duration-200'
+                    )}
+                    title="View on GitHub"
+                  >
+                    <Github width={18} height={18} />
+                  </a>
+                  <a
+                    href="https://x.com/OpenAgentsInc"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cx(
+                      'p-2 rounded',
+                      'text-cyan-500/60 hover:text-cyan-300 hover:bg-cyan-500/10',
+                      'transition-all duration-200'
+                    )}
+                    title="Follow on X"
+                  >
+                    <X width={18} height={18} />
+                  </a>
+                </div>
               </div>
             </div>
             </div>
