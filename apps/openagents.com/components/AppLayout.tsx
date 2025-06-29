@@ -41,7 +41,7 @@ export const AppLayout = (props: AppLayoutProps): React.ReactElement => {
             <LayoutWithFrames showSidebar={showSidebar}>
               {children}
             </LayoutWithFrames>
-            <PerformanceDashboard />
+            {/* <PerformanceDashboard /> */}
           </div>
         </ToastProvider>
       </BleepsProvider>
