@@ -183,6 +183,7 @@ describe('Chat API with Tools Integration', () => {
     // Mock XML detection and parsing
     vi.mocked(hasArtifactTags).mockReturnValue(true)
     vi.mocked(processArtifactsFromResponse).mockReturnValue({
+      xmlArtifacts: [],
       validParameters: [
       {
         identifier: 'xml-component',
