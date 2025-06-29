@@ -27,32 +27,31 @@ OpenAgents is built as a monorepo using pnpm workspaces, with a clean separation
 │                         Applications                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                     openagents.com                               │
-│            (Chat App with AI & Bitcoin Agents)                   │
-├─────────────────────────────────────────────────────────────────┤
-│                      Web Framework                               │
-├─────────────────────────────────────────────────────────────────┤
-│                        psionic                                   │
-│          (Effect-based HTTP server & routing)                    │
+│    (Next.js Chat App with AI & Bitcoin - Convex Backend)        │
 ├─────────────────────────────────────────────────────────────────┤
 │                         Core Packages                            │
 ├─────────────────┬───────────────┬───────────────────────────────┤
 │      sdk        │     nostr     │            relay              │
 │ (Agent Runtime) │  (Protocol)   │    (Database & Events)        │
 ├─────────────────┴───────────────┴───────────────────────────────┤
-│                      AI & Interface Packages                     │
-├─────────────┬──────────────┬────────────┬──────────────────────┤
-│     ai      │      ui      │    cli     │     autotest         │
-│ (Providers) │   (Styling)  │  (Demo)    │    (Testing)         │
-└─────────────┴──────────────┴────────────┴──────────────────────┘
+│                      AI & Testing Packages                       │
+├────────────────────────────┬────────────────────────────────────┤
+│            ai              │           autotest                  │
+│    (Provider Abstraction)  │     (Browser Automation)            │
+├────────────────────────────┴────────────────────────────────────┤
+│                         Demo Packages                            │
+├─────────────────────────────────────────────────────────────────┤
+│                           cli                                    │
+│                    (Demo Interface)                              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Dependencies
 
-- **Psionic → Effect HTTP**: Full Effect-based HTTP server with streaming support
 - **SDK → Nostr**: NIP-06 deterministic key derivation for agent identities
 - **AI → Effect Streams**: Streaming AI responses with proper layer management
-- **OpenAgents.com → All Packages**: Integrates full stack for chat application
-- **Relay → PlanetScale**: MySQL database with Drizzle ORM for persistence
+- **OpenAgents.com → Convex**: Main app uses Convex for backend, not packages
+- **Relay → PlanetScale**: MySQL database with Drizzle ORM (future use)
 
 ### Development Workflow
 
@@ -86,8 +85,6 @@ pnpm --filter=@openagentsinc/sdk codegen
 - **[`@openagentsinc/nostr`](packages/nostr/)** - Effect-based Nostr protocol with NIP support
 - **[`@openagentsinc/relay`](packages/relay/)** - Database layer with PlanetScale MySQL integration
 
-### Web Framework
-- **[`@openagentsinc/psionic`](packages/psionic/)** - Effect-based HTTP framework with streaming support
 
 ### AI & Providers
 - **[`@openagentsinc/ai`](packages/ai/)** - Multi-provider AI abstraction (Cloudflare, OpenRouter, Ollama)
@@ -95,18 +92,18 @@ pnpm --filter=@openagentsinc/sdk codegen
   - OpenRouter: 100+ premium models (GPT-4, Claude, etc.)
   - Ollama: Local inference for privacy
 
-### UI & Testing
-- **[`@openagentsinc/ui`](packages/ui/)** - Custom Tailwind theme with Basecoat CSS
+### Testing & Demo
 - **[`@openagentsinc/autotest`](packages/autotest/)** - Browser automation and visual testing
 - **[`@openagentsinc/cli`](packages/cli/)** - Command-line interface (demo)
 
 ## Apps
 
-- **[`openagents.com`](apps/openagents.com/)** - Production chat application
-  - Real-time AI streaming with multiple providers
-  - Model selection UI with 20+ models
-  - Conversation persistence with MySQL
-  - Full Effect integration (no Promises!)
+- **[`openagents.com`](apps/openagents.com/)** - Production chat application (MVP)
+  - Next.js 14 with App Router and TypeScript
+  - Convex backend for real-time data sync
+  - Arwes UI components for cyberpunk theme
+  - GitHub OAuth authentication
+  - Tool-based artifact creation system
 
 ## Documentation
 
@@ -124,7 +121,7 @@ Before working on this codebase, you **MUST** read the relevant guides:
 ### Additional Documentation
 
 - **[CLAUDE.md](CLAUDE.md)** - Coding agent instructions and forbidden patterns
-- **[Database Migration Guide](DATABASE_MIGRATION_GUIDE.md)** - PlanetScale schema management
+- **[Database Migration Guide](packages/relay/DATABASE_MIGRATION_GUIDE.md)** - PlanetScale schema management
 - **[Autotest Documentation](docs/autotest.md)** - Browser testing framework
 
 ## Key Features
@@ -172,8 +169,7 @@ pnpm build
 # Run tests
 pnpm test
 
-# Start development (in separate terminals)
-cd packages/relay && pnpm dev  # Database server on :3003
+# Start development
 cd apps/openagents.com && pnpm dev  # Main app on :3000
 ```
 

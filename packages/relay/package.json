@@ -61,7 +61,6 @@
     "@noble/curves": "^1.8.1",
     "@noble/hashes": "^1.3.3",
     "@openagentsinc/nostr": "workspace:*",
-    "@openagentsinc/psionic": "workspace:*",
     "@types/node": "^22.15.29",
     "@types/ws": "^8.5.14",
     "babel-plugin-annotate-pure-calls": "^0.4.0",

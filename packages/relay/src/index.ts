@@ -25,12 +25,6 @@ export {
 // Schema exports
 export * from "./schema.js"
 
-// Psionic integration exports
-export {
-  createRelayPlugin,
-  // mountRelay, // TODO: Update to work with Effect-based Psionic
-  type RelayPluginConfig
-} from "./psionic-plugin.js"
 
 // Claude Code WebSocket server exports
 export {
@@ -47,11 +41,6 @@ export {
   type ServerMessage
 } from "./claude-code-server.js"
 
-// Claude Code plugin exports
-export {
-  createClaudeCodePlugin,
-  type ClaudeCodePluginConfig
-} from "./claude-code-plugin.js"
 
 // Re-export some common types from nostr package
 import type { Schema } from "@openagentsinc/nostr"
