@@ -41,14 +41,6 @@ export const OnboardingOverlayManager = ({
   // Desktop users get full access immediately
   const shouldShowDesktopRequired = !isDesktop
 
-  // Debug logging
-  console.log('Overlay Manager (Mobile-only gating):', { 
-    screenWidth, 
-    isDesktop, 
-    shouldShowDesktopRequired,
-    strategy: 'Mobile gating only - desktop users get immediate access'
-  })
-
   return (
     <div className={`h-full flex flex-col ${className}`}>
       {/* Main app content - always renders */}
