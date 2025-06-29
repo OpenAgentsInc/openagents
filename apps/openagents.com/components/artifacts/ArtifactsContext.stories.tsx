@@ -19,7 +19,7 @@ function ArtifactsStateDemo() {
     addArtifact({
       title: `${randomType} ${Date.now()}`,
       description: `A sample ${randomType.toLowerCase()} generated for demo purposes`,
-      type: 'code',
+      type: 'javascript',
       content: `// ${randomType} component\nimport React from 'react'\n\nfunction ${randomType.replace(' ', '')}() {\n  return (\n    <div className="min-h-screen bg-gray-900 text-white p-8">\n      <h1 className="text-3xl font-bold">${randomType}</h1>\n      <p>This is a sample ${randomType.toLowerCase()} component.</p>\n    </div>\n  )\n}\n\nexport default ${randomType.replace(' ', '')}`
     })
   }
@@ -300,7 +300,7 @@ export const PreLoadedState: Story = {
           id: 'artifact-context-1',
           title: 'React Counter App',
           description: 'Simple counter with increment/decrement',
-          type: 'code' as const,
+          type: 'javascript' as const,
           content: `import React, { useState } from 'react'
 
 function Counter() {
@@ -339,7 +339,7 @@ export default Counter`,
           id: 'artifact-context-2',
           title: 'Todo List Manager',
           description: 'Task management with add/remove/complete',
-          type: 'code' as const,
+          type: 'javascript' as const,
           content: `import React, { useState } from 'react'
 
 function TodoList() {
@@ -424,7 +424,7 @@ export default TodoList`,
           id: 'artifact-context-3',
           title: 'Weather Dashboard',
           description: 'Weather app with location search',
-          type: 'code' as const,
+          type: 'javascript' as const,
           content: `import React, { useState, useEffect } from 'react'
 
 function WeatherDashboard() {
@@ -519,7 +519,7 @@ export const PerformanceTest: Story = {
         id: `artifact-perf-${i}`,
         title: `Performance Test ${i + 1}`,
         description: `Artifact ${i + 1} for performance testing`,
-        type: 'code' as const,
+        type: 'javascript' as const,
         content: `// Performance test artifact ${i + 1}\nimport React from 'react'\n\nfunction PerfTest${i + 1}() {\n  return (\n    <div className="min-h-screen bg-gray-900 text-white p-8">\n      <h1 className="text-3xl font-bold">Performance Test ${i + 1}</h1>\n      <p>This is artifact number ${i + 1} for performance testing.</p>\n    </div>\n  )\n}\n\nexport default PerfTest${i + 1}`,
         createdAt: new Date(Date.now() - (i * 60000)),
         updatedAt: new Date(Date.now() - (i * 60000)),
