@@ -1,5 +1,8 @@
 import { streamText, StreamData } from 'ai'
 import { openrouter } from '@openrouter/ai-sdk-provider'
+import { createArtifactTool } from '@/lib/tools/createArtifactTool'
+import { processArtifactsFromResponse, hasArtifactTags } from '@/lib/tools/xmlArtifactParser'
+import { COMPLETE_SYSTEM_PROMPT } from '@/lib/prompts/artifactSystemPrompt'
 
 interface ChatRequest {
   messages: Array<{
@@ -15,41 +18,27 @@ interface ChatRequest {
   }
 }
 
-// Enhanced system prompt for code generation and project assistance
+// Enhanced system prompt for code generation and project assistance with artifact support
 const getSystemPrompt = (projectName?: string, framework?: string) => `
-You are an expert AI developer assistant for OpenAgents, helping users build and deploy web applications.
+${COMPLETE_SYSTEM_PROMPT}
 
+# Project Context
 ${projectName ? `You are currently working on a project called "${projectName}".` : ''}
 ${framework ? `The project uses ${framework} framework.` : ''}
 
-Your role:
-- Help users build, debug, and enhance their web applications
-- Provide clear, actionable code suggestions and solutions
-- Generate complete, functional code when requested
-- Explain technical concepts in a helpful way
-- Guide users through deployment and project management
+# OpenAgents Capabilities
+- Create artifacts for substantial code using the createArtifact tool
+- Deploy artifacts to live URLs with one click
+- Generate complete, production-ready applications
+- Support for React, HTML, JavaScript, TypeScript, Python, and more
 
-Guidelines:
-- Always provide working, production-ready code
-- Use modern best practices and patterns
-- Include proper error handling
-- Make code readable with clear comments when helpful
-- Consider performance and security
-- Be concise but thorough
-- Format code properly with syntax highlighting
-
-When generating code:
-- Provide complete files or clear code blocks
+# Project-Specific Guidelines
+- Follow existing project structure and conventions
+- Use TypeScript when applicable for this project
 - Include necessary imports and dependencies
-- Use TypeScript when applicable
-- Follow the existing project structure and conventions
+- Provide working, deployable code
 
-Current capabilities:
-- Code generation and editing
-- Project structure guidance
-- Debugging assistance
-- Deployment help
-- Framework-specific advice
+When users request applications or substantial code, use the createArtifact tool to create deployable artifacts.
 `
 
 export async function POST(req: Request) {
@@ -85,11 +74,47 @@ export async function POST(req: Request) {
     })
     
     const result = streamText({
-      model: openrouter('openai/gpt-4o-mini'),
+      model: openrouter('anthropic/claude-3.5-sonnet'),
       system: systemPrompt,
       messages: enhancedMessages,
-      maxTokens: 2000,
-      temperature: 0.7
+      maxTokens: 4000,
+      temperature: 0.7,
+      tools: {
+        createArtifact: createArtifactTool
+      },
+      maxSteps: 3, // Allow for tool calling and follow-up
+      onStepFinish: async (stepResult) => {
+        // Handle tool calls
+        if (stepResult.toolCalls && stepResult.toolCalls.length > 0) {
+          for (const toolCall of stepResult.toolCalls) {
+            if (toolCall.toolName === 'createArtifact') {
+              data.append({
+                type: 'artifact',
+                operation: 'tool-call',
+                artifact: {
+                  ...toolCall.args,
+                  toolCallId: toolCall.toolCallId
+                },
+                timestamp: new Date().toISOString()
+              })
+            }
+          }
+        }
+
+        // Check for XML artifacts in text content as fallback
+        if (stepResult.text && hasArtifactTags(stepResult.text)) {
+          const { validParameters } = processArtifactsFromResponse(stepResult.text)
+          
+          for (const params of validParameters) {
+            data.append({
+              type: 'artifact',
+              operation: 'xml-fallback',
+              artifact: params,
+              timestamp: new Date().toISOString()
+            })
+          }
+        }
+      }
     })
 
     // Add metadata for client consumption
