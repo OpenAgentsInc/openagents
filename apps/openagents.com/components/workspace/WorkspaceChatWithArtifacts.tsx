@@ -217,15 +217,6 @@ Try asking me to:
 
   return (
     <div className={cx('h-full flex flex-col bg-black', className)}>
-      {/* Header */}
-      <div className="h-12 bg-offblack border-b border-cyan-900/30 flex items-center px-4">
-        <span className="text-cyan-500 text-sm font-mono uppercase tracking-wider">OpenAgents Chat</span>
-        <div className="ml-auto">
-          <span className="text-cyan-300/60 text-xs" style={{ fontFamily: 'var(--font-titillium), sans-serif' }}>
-            AI Assistant
-          </span>
-        </div>
-      </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
