@@ -7,13 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agents. The repository follows a clean architecture with packages and apps:
 
 ### Packages (Libraries) - FOR FUTURE USE, NOT MVP
-**⚠️ IMPORTANT FOR MVP**: Ignore all packages except @openagentsinc/ui. The MVP uses Convex for backend, not these packages.
+**⚠️ IMPORTANT FOR MVP**: The MVP uses Convex for backend, not these packages.
 - **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK (FUTURE)
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation (FUTURE)
 - **`@openagentsinc/cli`** - Command-line interface demo (FUTURE)
-- **`@openagentsinc/ui`** - Custom Tailwind theme with Basecoat CSS design system (USED IN MVP)
 - **`@openagentsinc/ai`** - AI provider abstraction (FUTURE)
-- **`@openagentsinc/psionic`** - Hypermedia web framework (FUTURE)
 - **`@openagentsinc/relay`** - Database relay (NOT USED - MVP uses Convex)
 
 ### Apps (User-facing applications)
@@ -26,9 +24,9 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - **Backend**: Convex (NOT the relay package, NOT Drizzle/PlanetScale)
 - **Database**: Convex's built-in database (schema defined in convex/ folder)
 - **Authentication**: GitHub OAuth via Convex Auth
-- **Styling**: Tailwind CSS + custom Arwes cyberpunk theme from @openagentsinc/ui
+- **Styling**: Tailwind CSS + custom Arwes cyberpunk theme
 
-**DO NOT** use or modify anything in packages/ except @openagentsinc/ui for the MVP.
+**DO NOT** use or modify anything in packages/ for the MVP.
 **ALL** database operations should use Convex functions, not SQL.
 
 ## 🚨 CRITICAL: MANDATORY DOCUMENTATION BEFORE CODING 🚨
@@ -112,13 +110,11 @@ pnpm clean
 ### Package-specific Commands
 ```bash
 # Generate Effect package exports (run after adding new files)
-# IMPORTANT: Do NOT run codegen on @openagentsinc/ui package!
 pnpm --filter=@openagentsinc/nostr codegen
 pnpm --filter=@openagentsinc/cli codegen
 
 # Build individual packages
 pnpm --filter=@openagentsinc/sdk build
-pnpm --filter=@openagentsinc/ui build
 ```
 
 ### Testing
@@ -153,9 +149,7 @@ pnpm --filter=@openagentsinc/sdk test
 ```
 sdk → nostr (NIP-06 key derivation)
 cli → ai (AI features)
-ui → (standalone, Tailwind + Basecoat CSS)
-psionic → (standalone, web framework)
-openagents.com → psionic, sdk, nostr (main website)
+openagents.com → (main website, uses Convex backend)
 ```
 
 ## Build System
@@ -209,18 +203,6 @@ Each package builds in this order:
 - **Development Servers**: Never start development servers with `pnpm dev` or similar commands - the user will handle this
 - **Git Hooks**: NEVER use `--no-verify` when pushing. Always fix all linting and test errors before pushing
 
-### Critical: UI Package Codegen
-The UI package (`@openagentsinc/ui`) does NOT use Effect codegen because:
-- It contains both `.ts` and `.tsx` files (React components)
-- React components (`.tsx`) should NOT be processed by Effect codegen
-- Exports are manually managed in `packages/ui/src/web/index.ts`
-- **DO NOT** add any `effect` configuration to the UI package.json
-- The package.json should have NO `effect` field at all
-
-If you see CI errors about Effect build-utils failing on UI package:
-1. Remove any `effect` field from packages/ui/package.json
-2. Delete any generated `packages/ui/src/index.ts` file if it exists
-3. The UI package codegen script is overridden to just echo a message
 
 ## Common Development Tasks
 
@@ -241,52 +223,6 @@ If you see CI errors about Effect build-utils failing on UI package:
 - Automated build validation before publishing
 - Packages build independently but share common configuration
 
-## Component Explorer
-
-Psionic includes a built-in component library explorer for systematic UI development.
-
-### Configuration
-```typescript
-const app = createPsionicApp({
-  name: 'MyApp',
-  // Component explorer configuration
-  componentsDir: 'stories',          // Default: "stories"
-  componentsPath: '/components',     // Default: "/components"
-  enableComponents: true,            // Default: true
-  componentExplorerOptions: {
-    styles: customStyles,            // CSS to include
-    navigation: navComponent,        // Navigation HTML
-    baseClass: 'my-theme'           // Root CSS class
-  }
-})
-```
-
-### Creating Stories
-Create `.story.ts` files in your stories directory:
-
-```typescript
-// Button.story.ts
-export const title = "Button"
-export const component = "Button"
-
-export const Default = {
-  name: "Default Button",
-  html: `<button class="btn">Click me</button>`,
-  description: "Basic button component"
-}
-
-export const Primary = {
-  name: "Primary Button", 
-  html: `<button class="btn btn-primary">Primary</button>`
-}
-```
-
-### Features
-- **Zero Dependencies**: Built into Psionic, no external packages
-- **Theme Integration**: Inherits your app's styling and theme system
-- **Simple Format**: HTML-based stories without complex abstractions
-- **Auto-discovery**: Automatically finds all `.story.ts` files
-- **Hot Navigation**: Accessible at `/components` by default
 
 ## Browser Automation & Testing (Autotest Package)
 
@@ -335,46 +271,25 @@ For detailed usage, configuration options, and troubleshooting, see [docs/autote
 
 ## UI and Styling
 
-### UI Package
-The `@openagentsinc/ui` package provides:
+### OpenAgents.com Styling
+The main app uses:
 - **Custom Tailwind theme** with OpenAgents color palette (black, offblack, darkgray, etc.)
-- **Basecoat CSS** integration for modern component styling
+- **Arwes UI components** for cyberpunk theme
 - **Multiple themes**: Zinc (default), Catppuccin, Gruvbox, Nord
 - **Berkeley Mono** font as the primary monospace font
 
 ### Component Patterns
 Components in `apps/openagents.com/src/components/` use:
-- **Template literals** with Psionic's `html` tag
-- **CSS-in-JS** with Psionic's `css` tag for scoped styles
+- **React components** with TypeScript
+- **Arwes UI components** for consistent theming
 - **CSS variables** for theming (--text, --offblack, --darkgray, etc.)
-- **Tailwind classes** where appropriate
-
-Example component pattern:
-```typescript
-import { html, css } from "@openagentsinc/psionic"
-
-export function myComponent({ title }: { title: string }) {
-  return html`
-    <div class="my-component">
-      <h2>${title}</h2>
-    </div>
-    
-    <style>
-      .my-component {
-        background: var(--offblack);
-        color: var(--text);
-        padding: 1rem;
-      }
-    </style>
-  `
-}
-```
+- **Tailwind classes** for utility styling
 
 ## Database Migrations
 
-**CRITICAL**: This project uses PlanetScale MySQL with Drizzle ORM. Database schema issues can block development.
+**NOTE**: The relay package is for future use. The MVP uses Convex database.
 
-### Schema Management
+### Relay Package (Future Use)
 
 - **Single Source of Truth**: `packages/relay/src/schema.ts` defines all database tables
 - **Migration Scripts**: Use `packages/relay/scripts/run-migration.ts` for schema changes  
@@ -435,7 +350,7 @@ If database queries fail:
 
 **NEVER** modify production database manually - always use migration scripts.
 
-See [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) for complete documentation.
+See [DATABASE_MIGRATION_GUIDE.md](packages/relay/DATABASE_MIGRATION_GUIDE.md) for complete documentation.
 
 ## FORBIDDEN DEVELOPMENT PATTERNS
 

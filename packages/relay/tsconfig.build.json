@@ -1,8 +1,7 @@
 {
   "extends": "./tsconfig.src.json",
   "references": [
-    { "path": "../nostr/tsconfig.build.json" },
-    { "path": "../psionic/tsconfig.json" }
+    { "path": "../nostr/tsconfig.build.json" }
   ],
   "compilerOptions": {
     "types": ["node"],

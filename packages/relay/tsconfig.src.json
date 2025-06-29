@@ -3,8 +3,7 @@
   "include": ["src/**/*"],
   "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"],
   "references": [
-    { "path": "../nostr/tsconfig.src.json" },
-    { "path": "../psionic" }
+    { "path": "../nostr/tsconfig.src.json" }
   ],
   "compilerOptions": {
     "types": ["node"],
