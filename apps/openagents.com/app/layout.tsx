@@ -41,8 +41,7 @@ export const metadata: Metadata = {
   title: "OpenAgents",
   description: "Your agent dealer",
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
+    icon: "/favicon.png",
   },
 };
 
