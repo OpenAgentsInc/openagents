@@ -274,12 +274,23 @@ describe('WorkspaceChatWithArtifacts', () => {
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
-    // Simulate typing and check that input is tracked
+    // Wait for and find the input
+    await waitFor(() => {
+      const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+      expect(input).toBeTruthy()
+    })
+    
     const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
-    expect(input).toBeTruthy()
+    
+    // Focus the input first
+    await user.click(input)
+    
+    // Type in the input
     await user.type(input, 'Create a Bitcoin tracker')
     
-    // Verify input change handler was called
-    expect(mockHandleInputChange).toHaveBeenCalled()
+    // Verify input change handler was called with proper wait
+    await waitFor(() => {
+      expect(mockHandleInputChange).toHaveBeenCalled()
+    })
   })
 })
