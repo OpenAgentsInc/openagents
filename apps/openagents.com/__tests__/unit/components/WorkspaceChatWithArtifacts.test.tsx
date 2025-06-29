@@ -264,33 +264,34 @@ describe('WorkspaceChatWithArtifacts', () => {
     const user = userEvent.setup()
     const onArtifactCreated = vi.fn()
     
-    // Mock the input value
-    let inputValue = ''
+    // Mock the input value tracking
     mockHandleInputChange.mockImplementation((e) => {
-      inputValue = e.target.value
+      // Just track that it was called
     })
 
     const { container } = render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
-    // Wait for and find the input
+    // Wait for the component to render and find the input
+    let input: HTMLTextAreaElement | null = null
     await waitFor(() => {
-      const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+      input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
       expect(input).toBeTruthy()
+      expect(input).not.toBeNull()
     })
     
-    const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+    // Ensure input is not null before interacting
+    if (!input) {
+      throw new Error('Input element not found')
+    }
     
-    // Focus the input first
-    await user.click(input)
-    
-    // Type in the input
+    // Type in the input directly without clicking first
     await user.type(input, 'Create a Bitcoin tracker')
     
-    // Verify input change handler was called with proper wait
+    // Verify input change handler was called
     await waitFor(() => {
-      expect(mockHandleInputChange).toHaveBeenCalled()
-    })
+      expect(mockHandleInputChange).toHaveBeenCalledTimes(24) // One call per character typed
+    }, { timeout: 2000 })
   })
 })
