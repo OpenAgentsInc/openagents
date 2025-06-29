@@ -82,7 +82,7 @@ describe('Chat API with Tools Integration', () => {
           headers: { 'Content-Type': 'text/event-stream' } 
         })
       )
-    })
+    } as any)
 
     const response = await POST(mockRequest)
     expect(response).toBeDefined()
@@ -126,7 +126,7 @@ describe('Chat API with Tools Integration', () => {
             headers: { 'Content-Type': 'text/event-stream' } 
           })
         )
-      }
+      } as any
     })
 
     mockToolExecute.mockResolvedValue({
@@ -192,8 +192,7 @@ describe('Chat API with Tools Integration', () => {
         operation: 'create',
         language: 'tsx'
       }
-    ],
-      invalidCount: 0
+    ]
     })
 
     const mockRequest = new NextRequest('http://localhost:3000/api/chat', {
@@ -215,7 +214,7 @@ describe('Chat API with Tools Integration', () => {
             headers: { 'Content-Type': 'text/event-stream' } 
           })
         )
-      }
+      } as any
     })
 
     await POST(mockRequest)
@@ -266,7 +265,7 @@ export default function XMLComponent() {
           headers: { 'Content-Type': 'text/event-stream' } 
         })
       )
-    })
+    } as any)
 
     await POST(mockRequest)
 
