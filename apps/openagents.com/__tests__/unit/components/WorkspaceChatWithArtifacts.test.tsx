@@ -268,16 +268,22 @@ describe('WorkspaceChatWithArtifacts', () => {
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
-    // Find the textarea directly using container query
-    const textArea = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+    // Wait for the component to fully render and find the textarea
+    let textArea: HTMLTextAreaElement | null = null
     
-    // Verify textarea exists
-    expect(textArea).toBeTruthy()
-    expect(textArea).toBeInTheDocument()
+    await waitFor(() => {
+      textArea = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+      expect(textArea).not.toBeNull()
+    }, { timeout: 3000 })
+    
+    // Ensure we have a valid element
+    if (!textArea) {
+      throw new Error('Textarea not found after waiting')
+    }
     
     // Verify the input is interactive by typing
     await user.click(textArea)
-    await user.type(textArea, 'Test input')
+    await user.type(textArea, 'Test')
     
     // Just verify that the component renders and accepts input
     // The actual input handling logic is tested through integration tests
