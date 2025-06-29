@@ -40,16 +40,23 @@ vi.mock('@/lib/prompts/artifactSystemPrompt', () => ({
 }))
 
 // Mock XML parser
+const mockParseArtifactTags = vi.fn()
+const mockProcessArtifactsFromResponse = vi.fn()
+const mockHasArtifactTags = vi.fn()
 vi.mock('@/lib/tools/xmlArtifactParser', () => ({
-  parseArtifactTags: vi.fn().mockReturnValue([]),
-  processArtifactsFromResponse: vi.fn(),
-  hasArtifactTags: vi.fn().mockReturnValue(false)
+  parseArtifactTags: mockParseArtifactTags,
+  processArtifactsFromResponse: mockProcessArtifactsFromResponse,
+  hasArtifactTags: mockHasArtifactTags
 }))
 
 describe('Chat API with Tools Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockStreamDataAppend.mockClear()
+    mockStreamText.mockClear()
+    mockParseArtifactTags.mockReturnValue([])
+    mockProcessArtifactsFromResponse.mockReturnValue({ xmlArtifacts: [], validParameters: [] })
+    mockHasArtifactTags.mockReturnValue(false)
     // Set environment variable for tests
     process.env.OPENROUTER_API_KEY = 'test-api-key'
   })
@@ -75,7 +82,7 @@ describe('Chat API with Tools Integration', () => {
     })
 
     // Mock streamText to return a proper result object
-    mockStreamText.mockReturnValue({
+    mockStreamText.mockReturnValueOnce({
       toDataStreamResponse: vi.fn().mockReturnValue(
         new Response('stream', { 
           headers: { 'Content-Type': 'text/event-stream' } 
@@ -113,9 +120,9 @@ describe('Chat API with Tools Integration', () => {
       })
     })
 
-    let onStepFinishCallback: any
+    let onStepFinishCallback: any = null
     
-    mockStreamText.mockImplementation((config) => {
+    mockStreamText.mockImplementationOnce((config) => {
       onStepFinishCallback = config.onStepFinish
       return {
         toDataStreamResponse: vi.fn().mockReturnValue(
@@ -134,6 +141,9 @@ describe('Chat API with Tools Integration', () => {
 
     await POST(mockRequest)
 
+    // Verify that onStepFinish callback was captured
+    expect(onStepFinishCallback).toBeDefined()
+    
     // Simulate a tool call step
     const mockStepResult = {
       stepType: 'tool-call',
@@ -164,20 +174,21 @@ describe('Chat API with Tools Integration', () => {
       await onStepFinishCallback(mockStepResult)
     }
 
-    // Tool execution is not called directly in tests
-    // The artifact tool is integrated in the route handler
-    expect(onStepFinishCallback).toBeDefined()
+    // Verify stream data was appended with artifact info
+    expect(mockStreamDataAppend).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'artifact',
+      operation: 'tool-call'
+    }))
   })
 
   it('should handle XML fallback when tool calls fail', async () => {
     // Reset mocks to ensure clean state
     vi.clearAllMocks()
     const { POST } = await import('@/app/api/chat/route')
-    const { processArtifactsFromResponse, hasArtifactTags } = await import('@/lib/tools/xmlArtifactParser')
     
     // Mock XML detection and parsing
-    vi.mocked(hasArtifactTags).mockReturnValue(true)
-    vi.mocked(processArtifactsFromResponse).mockReturnValue({
+    mockHasArtifactTags.mockReturnValueOnce(true)
+    mockProcessArtifactsFromResponse.mockReturnValueOnce({
       xmlArtifacts: [],
       validParameters: [
       {
@@ -200,9 +211,9 @@ describe('Chat API with Tools Integration', () => {
       })
     })
 
-    let onStepFinishCallback: any
+    let onStepFinishCallback: any = null
     
-    mockStreamText.mockImplementation((config) => {
+    mockStreamText.mockImplementationOnce((config) => {
       onStepFinishCallback = config.onStepFinish
       return {
         toDataStreamResponse: vi.fn().mockReturnValue(
@@ -233,7 +244,7 @@ export default function XMLComponent() {
       await onStepFinishCallback(mockTextStepResult)
     }
 
-    expect(processArtifactsFromResponse).toHaveBeenCalledWith(mockTextStepResult.text)
+    expect(mockProcessArtifactsFromResponse).toHaveBeenCalledWith(mockTextStepResult.text)
   })
 
   it('should include project context in request body', async () => {
@@ -253,7 +264,7 @@ export default function XMLComponent() {
       })
     })
 
-    mockStreamText.mockReturnValue({
+    mockStreamText.mockReturnValueOnce({
       toDataStreamResponse: vi.fn().mockReturnValue(
         new Response('stream', { 
           headers: { 'Content-Type': 'text/event-stream' } 
@@ -287,7 +298,7 @@ export default function XMLComponent() {
     })
 
     // Mock streamText to throw an error
-    mockStreamText.mockImplementation(() => {
+    mockStreamText.mockImplementationOnce(() => {
       throw new Error('AI service unavailable')
     })
 
@@ -295,8 +306,8 @@ export default function XMLComponent() {
     
     expect(response.status).toBe(500)
     
-    const responseText = await response.text()
-    expect(responseText).toBeDefined()
+    const responseData = await response.json()
+    expect(responseData.error).toContain('AI service unavailable')
   })
 
   it('should validate request body', async () => {
@@ -309,9 +320,19 @@ export default function XMLComponent() {
       })
     })
 
-    // API does not explicitly validate request body, it will fail internally
-    // Skipping this test as it doesn't match implementation
-    expect(true).toBe(true)
+    // Mock streamText implementation that won't be called
+    mockStreamText.mockReturnValueOnce({
+      toDataStreamResponse: vi.fn().mockReturnValue(
+        new Response('stream', { 
+          headers: { 'Content-Type': 'text/event-stream' } 
+        })
+      )
+    } as any)
+
+    const response = await POST(mockRequest)
+    
+    // The API should return 500 when messages array is missing
+    expect(response.status).toBe(500)
   })
 
   it('should handle POST requests only', async () => {
