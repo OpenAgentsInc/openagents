@@ -264,31 +264,23 @@ describe('WorkspaceChatWithArtifacts', () => {
     const user = userEvent.setup()
     const onArtifactCreated = vi.fn()
     
-    render(
+    const { container } = render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
-    // Find the input using a more robust query
-    const input = await screen.findByRole('textbox', {
-      name: /ask me to build something/i
-    }).catch(() => null)
-
-    // If role-based query fails, try direct query
-    let textArea = input
-    if (!textArea) {
-      const containers = screen.getAllByText(/OpenAgents Chat/i)
-      const container = containers[0].closest('div.h-full')
-      textArea = container?.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
-    }
+    // Find the textarea directly using container query
+    const textArea = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
     
+    // Verify textarea exists
+    expect(textArea).toBeTruthy()
     expect(textArea).toBeInTheDocument()
     
-    // Verify the input is interactive
-    await user.click(textArea!)
-    await user.type(textArea!, 'Test input')
+    // Verify the input is interactive by typing
+    await user.click(textArea)
+    await user.type(textArea, 'Test input')
     
-    // Just verify that we could interact with the input without errors
-    // The actual input handling is tested through integration tests
+    // Just verify that the component renders and accepts input
+    // The actual input handling logic is tested through integration tests
     expect(textArea).toBeInTheDocument()
   })
 })
