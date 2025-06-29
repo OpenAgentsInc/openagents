@@ -1,12 +1,12 @@
 import React from 'react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceChatWithArtifacts } from '@/components/workspace/WorkspaceChatWithArtifacts'
 import { render } from '@/__tests__/test-utils'
-import { Message, useChat } from 'ai/react'
+import { Message } from 'ai/react'
 
-// Mock state for useChat
+// Mock state for useChat - declare outside describe block for proper module scoping
 let mockChatState = {
   messages: [] as Message[],
   input: '',
@@ -19,7 +19,15 @@ const mockHandleInputChange = vi.fn()
 const mockReload = vi.fn()
 const mockSetMessages = vi.fn()
 
-// Override the test-utils mock to have more control
+// Mock the tool-based artifacts hook
+const mockHandleStreamData = vi.fn()
+vi.mock('@/hooks/useToolBasedArtifacts', () => ({
+  useToolBasedArtifacts: () => ({
+    handleStreamData: mockHandleStreamData
+  })
+}))
+
+// Mock useChat at module level to ensure consistent behavior
 vi.mock('ai/react', () => ({
   useChat: vi.fn((config?: any) => {
     // Initialize with initial messages if provided
@@ -49,15 +57,7 @@ vi.mock('ai/react', () => ({
       status: 'idle' as const,
       setData: vi.fn(),
       id: 'test-chat-id'
-    } as any // Type assertion to bypass strict type checking in tests
-  })
-}))
-
-// Mock the tool-based artifacts hook
-const mockHandleStreamData = vi.fn()
-vi.mock('@/hooks/useToolBasedArtifacts', () => ({
-  useToolBasedArtifacts: () => ({
-    handleStreamData: mockHandleStreamData
+    } as any
   })
 }))
 
@@ -79,6 +79,11 @@ describe('WorkspaceChatWithArtifacts', () => {
     }
   })
 
+  afterEach(() => {
+    // Clean up DOM after each test
+    cleanup()
+  })
+
   it('should render with welcome message', () => {
     render(<WorkspaceChatWithArtifacts {...defaultProps} />)
     
@@ -88,9 +93,12 @@ describe('WorkspaceChatWithArtifacts', () => {
 
   it('should handle user input', async () => {
     const user = userEvent.setup()
-    render(<WorkspaceChatWithArtifacts {...defaultProps} />)
+    const { container } = render(<WorkspaceChatWithArtifacts {...defaultProps} />)
     
-    const input = screen.getByPlaceholderText('Ask me to build something...')
+    // Use more specific query to avoid multiple element issues
+    const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+    expect(input).toBeTruthy()
+    
     await user.type(input, 'Create a todo app')
     
     expect(mockHandleInputChange).toHaveBeenCalled()
@@ -107,9 +115,11 @@ describe('WorkspaceChatWithArtifacts', () => {
     // Update mock state to have input value
     mockChatState.input = 'test message'
     
-    render(<WorkspaceChatWithArtifacts {...defaultProps} />)
+    const { container } = render(<WorkspaceChatWithArtifacts {...defaultProps} />)
     
-    const input = screen.getByPlaceholderText('Ask me to build something...')
+    // Use more specific query
+    const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+    expect(input).toBeTruthy()
     
     // Simulate Enter key press
     await user.type(input, '{Enter}')
@@ -121,9 +131,10 @@ describe('WorkspaceChatWithArtifacts', () => {
   })
 
   it('should not submit on Shift+Enter', async () => {
-    render(<WorkspaceChatWithArtifacts {...defaultProps} />)
+    const { container } = render(<WorkspaceChatWithArtifacts {...defaultProps} />)
     
-    const input = screen.getByPlaceholderText('Ask me to build something...')
+    const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+    expect(input).toBeTruthy()
     
     fireEvent.keyPress(input, { 
       key: 'Enter', 
@@ -173,13 +184,14 @@ describe('WorkspaceChatWithArtifacts', () => {
     // The component only displays chat messages and handles input
     const onArtifactCreated = vi.fn()
     
-    render(
+    const { container } = render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
     // Should render chat interface components
     expect(screen.getByText('OpenAgents Chat')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Ask me to build something...')).toBeInTheDocument()
+    const input = container.querySelector('textarea[placeholder="Ask me to build something..."]')
+    expect(input).toBeInTheDocument()
   })
 
   it('should show error state when chat fails', () => {
@@ -224,9 +236,10 @@ describe('WorkspaceChatWithArtifacts', () => {
   it('should disable input when loading', () => {
     mockChatState.isLoading = true
     
-    render(<WorkspaceChatWithArtifacts {...defaultProps} />)
+    const { container } = render(<WorkspaceChatWithArtifacts {...defaultProps} />)
     
-    const input = screen.getByPlaceholderText('Ask me to build something...')
+    const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+    expect(input).toBeTruthy()
     expect(input).toBeDisabled()
   })
 
@@ -257,12 +270,13 @@ describe('WorkspaceChatWithArtifacts', () => {
       inputValue = e.target.value
     })
 
-    render(
+    const { container } = render(
       <WorkspaceChatWithArtifacts {...defaultProps} onArtifactCreated={onArtifactCreated} />
     )
 
     // Simulate typing and check that input is tracked
-    const input = screen.getByPlaceholderText('Ask me to build something...')
+    const input = container.querySelector('textarea[placeholder="Ask me to build something..."]') as HTMLTextAreaElement
+    expect(input).toBeTruthy()
     await user.type(input, 'Create a Bitcoin tracker')
     
     // Verify input change handler was called
