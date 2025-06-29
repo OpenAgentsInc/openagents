@@ -53,7 +53,7 @@ export function useToolBasedArtifacts() {
     if (data.type === 'artifact' && data.artifact) {
       const artifactData = data.artifact as ArtifactParameters & { toolCallId?: string }
       const operation = data.operation as 'tool-call' | 'xml-fallback'
-      const messageId = data.toolCallId || undefined
+      const messageId = artifactData.toolCallId || undefined
 
       return processArtifactFromStream(artifactData, operation, messageId)
     }

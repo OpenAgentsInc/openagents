@@ -87,18 +87,37 @@ export interface ArtifactToolResult {
  * Based on Claude Artifacts guidelines
  */
 export function shouldCreateArtifact(content: string, type: string): boolean {
-  // Must be substantial content (>15 lines for code)
-  const lineCount = content.split('\n').length
-  if (lineCount < 15 && ['react', 'javascript', 'typescript', 'python'].includes(type)) {
-    return false
+  // Special handling for different content types
+  switch (type) {
+    case 'react':
+    case 'javascript':
+    case 'typescript':
+    case 'python':
+      // Code files should have at least 15 lines
+      const lineCount = content.split('\n').length
+      if (lineCount < 15) {
+        return false
+      }
+      break
+      
+    case 'css':
+    case 'json':
+    case 'markdown':
+      // Non-code files can be shorter but still need substance
+      if (content.length < 50) {
+        return false
+      }
+      break
+      
+    case 'html':
+      // HTML should have some structure
+      if (content.length < 100) {
+        return false
+      }
+      break
   }
 
-  // Must be substantial for other types too
-  if (content.length < 100) {
-    return false
-  }
-
-  // Check for complete component patterns
+  // Additional validation for React components
   if (type === 'react') {
     const hasExport = content.includes('export default') || content.includes('export {')
     const hasFunction = content.includes('function ') || content.includes('=>') 
@@ -108,7 +127,7 @@ export function shouldCreateArtifact(content: string, type: string): boolean {
     return hasExport && hasFunction && hasJSX
   }
 
-  // For other types, basic length and structure checks
+  // For other types, passed initial checks
   return true
 }
 

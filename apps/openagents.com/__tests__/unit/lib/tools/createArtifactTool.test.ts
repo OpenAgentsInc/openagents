@@ -138,10 +138,10 @@ describe('createArtifactTool', () => {
 
     it('should allow shorter content for certain artifact types', () => {
       // CSS and JSON can be shorter
-      const shortCSS = '.btn {\n  color: blue;\n  padding: 10px;\n}'
+      const shortCSS = '.btn {\n  color: blue;\n  padding: 10px;\n  margin: 5px;\n  border: none;\n}'
       expect(shouldCreateArtifact(shortCSS, 'css')).toBe(true)
 
-      const shortJSON = '{\n  "name": "test",\n  "version": "1.0.0"\n}'
+      const shortJSON = '{\n  "name": "test-package",\n  "version": "1.0.0",\n  "description": "Test"\n}'
       expect(shouldCreateArtifact(shortJSON, 'json')).toBe(true)
     })
   })
@@ -152,7 +152,7 @@ describe('createArtifactTool', () => {
         identifier: 'test-counter',
         title: 'Counter Component',
         type: 'react',
-        content: 'export default function Counter() {\n  const [count, setCount] = useState(0)\n  return (\n    <div>\n      <h1>{count}</h1>\n      <button onClick={() => setCount(c => c + 1)}>+</button>\n      <button onClick={() => setCount(c => c - 1)}>-</button>\n    </div>\n  )\n}',
+        content: 'import { useState } from "react"\n\nexport default function Counter() {\n  const [count, setCount] = useState(0)\n  \n  const increment = () => {\n    setCount(c => c + 1)\n  }\n  \n  const decrement = () => {\n    setCount(c => c - 1)\n  }\n  \n  return (\n    <div className="counter">\n      <h1>Count: {count}</h1>\n      <button onClick={increment}>+</button>\n      <button onClick={decrement}>-</button>\n    </div>\n  )\n}',
         operation: 'create'
       }
 
@@ -184,7 +184,7 @@ describe('createArtifactTool', () => {
         identifier: 'existing-component',
         title: 'Updated Component',
         type: 'react',
-        content: 'export default function UpdatedComponent() {\n  const [state, setState] = useState(false)\n  return (\n    <div>\n      <h1>Updated!</h1>\n      <button onClick={() => setState(!state)}>Toggle</button>\n      {state && <p>State is true</p>}\n    </div>\n  )\n}',
+        content: 'import { useState } from "react"\n\nexport default function UpdatedComponent() {\n  const [state, setState] = useState(false)\n  \n  const handleToggle = () => {\n    setState(!state)\n  }\n  \n  return (\n    <div className="updated-component">\n      <h1>Updated Component!</h1>\n      <button onClick={handleToggle}>Toggle State</button>\n      {state && <p className="state-message">State is currently true</p>}\n      {!state && <p className="state-message">State is currently false</p>}\n      <div>This component has been updated</div>\n    </div>\n  )\n}',
         operation: 'update'
       }
 
@@ -201,7 +201,7 @@ describe('createArtifactTool', () => {
         title: 'Documented Component',
         description: 'A well-documented test component',
         type: 'react',
-        content: 'export default function DocumentedComponent() {\n  // This is a test component\n  const [value, setValue] = useState("")\n  \n  return (\n    <div>\n      <input value={value} onChange={e => setValue(e.target.value)} />\n      <p>You typed: {value}</p>\n    </div>\n  )\n}',
+        content: 'import { useState } from "react"\n\n/**\n * A well-documented component for testing\n */\nexport default function DocumentedComponent() {\n  // State for input value\n  const [value, setValue] = useState("")\n  \n  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {\n    setValue(e.target.value)\n  }\n  \n  return (\n    <div className="documented-component">\n      <h2>Input Demo</h2>\n      <input \n        type="text"\n        value={value} \n        onChange={handleChange}\n        placeholder="Type something..."\n      />\n      <p>You typed: {value || "nothing yet"}</p>\n    </div>\n  )\n}',
         language: 'tsx',
         operation: 'create'
       }
