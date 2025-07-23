@@ -71,6 +71,9 @@ impl ClaudeManager {
         // Process any pending output lines
         session_lock.process_pending_output().await;
         
+        let message_count = session_lock.messages.len();
+        info!("get_messages for session {}: returning {} messages", session_id, message_count);
+        
         Ok(session_lock.messages.clone())
     }
 
@@ -474,7 +477,9 @@ impl ClaudeSession {
     }
 
     async fn add_message(&mut self, message: Message) {
+        info!("Adding message to session {}: {} - {}", self.id, message.message_type, message.content.len());
         self.messages.push(message.clone());
+        info!("Session {} now has {} messages", self.id, self.messages.len());
 
         // Notify all subscribers
         self.message_subscribers.retain(|tx| {
