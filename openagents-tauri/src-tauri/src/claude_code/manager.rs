@@ -477,7 +477,7 @@ impl ClaudeSession {
     }
 
     async fn add_message(&mut self, message: Message) {
-        info!("Adding message to session {}: {} - {}", self.id, message.message_type, message.content.len());
+        info!("Adding message to session {}: {:?} - {}", self.id, message.message_type, message.content.len());
         self.messages.push(message.clone());
         info!("Session {} now has {} messages", self.id, self.messages.len());
 
