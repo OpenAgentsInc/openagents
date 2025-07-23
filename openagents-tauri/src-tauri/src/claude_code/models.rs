@@ -50,9 +50,6 @@ pub enum ClaudeError {
     #[error("Claude Code binary not found")]
     BinaryNotFound,
     
-    #[error("Failed to start process: {0}")]
-    ProcessStartError(String),
-    
     #[error("I/O error: {0}")]
     IoError(#[from] std::io::Error),
     
