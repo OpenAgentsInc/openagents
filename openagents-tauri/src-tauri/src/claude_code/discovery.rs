@@ -2,7 +2,6 @@ use crate::claude_code::models::{ClaudeConversation, ClaudeError};
 use chrono::{DateTime, Utc};
 use dirs_next;
 use log::info;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::fs as async_fs;
@@ -54,36 +53,10 @@ impl ClaudeDiscovery {
             }
         }
 
-        // Strategy 3: Check fnm installations
-        if let Some(home_dir) = dirs_next::home_dir() {
-            let fnm_path = home_dir.join(".local/state/fnm_multishells");
-            if fnm_path.exists() {
-                if let Ok(entries) = fs::read_dir(&fnm_path) {
-                    for entry in entries {
-                        if let Ok(entry) = entry {
-                            let claude_path = entry.path().join("bin/claude");
-                            if claude_path.exists() {
-                                info!("Found Claude in fnm: {:?}", claude_path);
-                                self.binary_path = Some(claude_path.clone());
-                                return Ok(claude_path);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Strategy 4: Check current user's PATH directories
-        if let Ok(path_var) = std::env::var("PATH") {
-            for path_dir in path_var.split(':') {
-                let claude_path = PathBuf::from(path_dir).join("claude");
-                if claude_path.exists() {
-                    info!("Found Claude in current PATH: {:?}", claude_path);
-                    self.binary_path = Some(claude_path.clone());
-                    return Ok(claude_path);
-                }
-            }
-        }
+        // If we get here, claude wasn't found
+        info!("Claude Code binary not found via standard methods");
+        info!("Please ensure 'claude' is installed and available in your PATH");
+        info!("You can install it with: npm install -g @anthropic-ai/claude-code");
 
         Err(ClaudeError::BinaryNotFound)
     }
@@ -97,13 +70,13 @@ impl ClaudeDiscovery {
 
         if output.status.success() {
             let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            info!("which claude returned: {}", path_str);
             if !path_str.is_empty() && !path_str.contains("not found") {
                 let path = PathBuf::from(path_str);
                 if path.exists() {
-                    // Resolve symlinks
-                    let resolved = path.canonicalize()
-                        .unwrap_or_else(|_| path.clone());
-                    return Ok(Some(resolved));
+                    // Don't resolve symlinks - use the path as returned by which
+                    info!("Using claude binary from PATH: {}", path.display());
+                    return Ok(Some(path));
                 }
             }
         }

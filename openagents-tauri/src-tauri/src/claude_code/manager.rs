@@ -138,8 +138,22 @@ impl ClaudeSession {
     async fn start(&mut self) -> Result<(), ClaudeError> {
         info!("Starting Claude Code session for: {}", self.project_path);
         
-        // Claude Code CLI is designed for single-shot usage, not interactive sessions
-        // We'll simulate a session by running individual commands
+        // Check Claude version first
+        let version_command = format!("\"{}\" --version", self.binary_path.display());
+        if let Ok(output) = Command::new("/bin/bash")
+            .args(&["-l", "-c", &version_command])
+            .output()
+            .await
+        {
+            let version_str = String::from_utf8_lossy(&output.stdout);
+            info!("Claude Code version: {}", version_str.trim());
+            
+            // Check for old version
+            if version_str.contains("0.2.109") || version_str.contains("0.2.") {
+                warn!("You are using an old version of Claude Code. Please update with: claude update");
+            }
+        }
+        
         info!("Session initialized - will run Claude Code commands on demand");
         
         Ok(())
@@ -163,46 +177,23 @@ impl ClaudeSession {
             self.first_message = Some(message.clone());
         }
 
-        // Build the command - use --continue if we have an existing session
-        let is_js = self.binary_path.extension().and_then(|s| s.to_str()) == Some("js");
-        
-        let claude_command = match (is_js, self.claude_session_id.is_some()) {
-            (true, true) => {
-                // JS file, continue existing conversation
-                format!(
-                    "cd \"{}\" && MAX_THINKING_TOKENS=31999 node \"{}\" -p --continue \"{}\" --output-format stream-json",
-                    self.project_path, 
-                    self.binary_path.display(), 
-                    message.replace("\"", "\\\"")
-                )
-            },
-            (true, false) => {
-                // JS file, start new conversation
-                format!(
-                    "cd \"{}\" && MAX_THINKING_TOKENS=31999 node \"{}\" -p \"{}\" --output-format stream-json",
-                    self.project_path,
-                    self.binary_path.display(), 
-                    message.replace("\"", "\\\"")
-                )
-            },
-            (false, true) => {
-                // Binary, continue existing conversation
-                format!(
-                    "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json",
-                    self.project_path, 
-                    self.binary_path.display(), 
-                    message.replace("\"", "\\\"")
-                )
-            },
-            (false, false) => {
-                // Binary, start new conversation
-                format!(
-                    "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json",
-                    self.project_path,
-                    self.binary_path.display(), 
-                    message.replace("\"", "\\\"")
-                )
-            }
+        // Build the command - always use the binary as-is (shell will handle shebang)
+        let claude_command = if self.claude_session_id.is_some() {
+            // Continue existing conversation
+            format!(
+                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json",
+                self.project_path, 
+                self.binary_path.display(), 
+                message.replace("\"", "\\\"")
+            )
+        } else {
+            // Start new conversation
+            format!(
+                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json",
+                self.project_path,
+                self.binary_path.display(), 
+                message.replace("\"", "\\\"")
+            )
         };
 
         info!("Running command: {}", claude_command);
