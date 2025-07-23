@@ -31,6 +31,7 @@ function App() {
 
   // Initialize Claude on mount
   useEffect(() => {
+    console.log("App mounted, starting Claude discovery...");
     discoverClaude();
   }, []);
 
@@ -46,16 +47,21 @@ function App() {
   }, [sessionId]);
 
   const discoverClaude = async () => {
+    console.log("Starting Claude discovery...");
     setIsLoading(true);
     try {
       const result = await invoke<CommandResult<string>>("discover_claude");
+      console.log("Discovery result:", result);
       if (result.success && result.data) {
         setClaudeStatus(`Claude found at: ${result.data}`);
+        console.log("Claude binary found at:", result.data);
       } else {
         setClaudeStatus(`Error: ${result.error || "Unknown error"}`);
+        console.error("Discovery failed:", result.error);
       }
     } catch (error) {
       setClaudeStatus(`Error: ${error}`);
+      console.error("Discovery error:", error);
     }
     setIsLoading(false);
   };
@@ -66,39 +72,52 @@ function App() {
       return;
     }
 
+    console.log("Creating session for project:", projectPath);
     setIsLoading(true);
     try {
       const result = await invoke<CommandResult<string>>("create_session", {
         projectPath,
       });
+      console.log("Create session result:", result);
       if (result.success && result.data) {
         setSessionId(result.data);
         setMessages([]);
+        console.log("Session created with ID:", result.data);
       } else {
         alert(`Error creating session: ${result.error}`);
+        console.error("Session creation failed:", result.error);
       }
     } catch (error) {
       alert(`Error: ${error}`);
+      console.error("Session creation error:", error);
     }
     setIsLoading(false);
   };
 
   const sendMessage = async () => {
-    if (!sessionId || !inputMessage.trim()) return;
+    if (!sessionId || !inputMessage.trim()) {
+      console.log("Cannot send message - sessionId:", sessionId, "message:", inputMessage);
+      return;
+    }
 
+    console.log("Sending message:", inputMessage, "to session:", sessionId);
     setIsLoading(true);
     try {
       const result = await invoke<CommandResult<void>>("send_message", {
         sessionId,
         message: inputMessage,
       });
+      console.log("Send message result:", result);
       if (result.success) {
+        console.log("Message sent successfully");
         setInputMessage("");
       } else {
         alert(`Error sending message: ${result.error}`);
+        console.error("Send message failed:", result.error);
       }
     } catch (error) {
       alert(`Error: ${error}`);
+      console.error("Send message error:", error);
     }
     setIsLoading(false);
   };
@@ -111,6 +130,10 @@ function App() {
         sessionId,
       });
       if (result.success && result.data) {
+        if (result.data.length !== messages.length) {
+          console.log("Messages updated:", result.data.length, "messages");
+          console.log("Latest messages:", result.data);
+        }
         setMessages(result.data);
       }
     } catch (error) {
@@ -174,6 +197,9 @@ function App() {
       <div className="status-section">
         <h2>Status</h2>
         <p>{claudeStatus}</p>
+        <p style={{ fontSize: "12px", opacity: 0.7 }}>
+          Session: {sessionId || "none"} | Messages: {messages.length} | Loading: {isLoading ? "yes" : "no"}
+        </p>
         <button onClick={discoverClaude} disabled={isLoading}>
           Rediscover Claude
         </button>
@@ -219,7 +245,13 @@ function App() {
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+              onKeyPress={(e) => {
+                console.log("Key pressed:", e.key);
+                if (e.key === "Enter") {
+                  console.log("Enter key detected, sending message...");
+                  sendMessage();
+                }
+              }}
               placeholder="Type your message..."
               disabled={isLoading}
               style={{ flex: 1 }}

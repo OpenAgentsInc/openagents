@@ -339,12 +339,20 @@ impl ClaudeSession {
 
     async fn process_output_line(&mut self, line: &str) {
         let trimmed = line.trim();
-        if trimmed.is_empty() || !trimmed.starts_with('{') {
+        if trimmed.is_empty() {
+            return;
+        }
+        
+        debug!("Processing line from Claude: {}", trimmed);
+        
+        if !trimmed.starts_with('{') {
+            info!("Non-JSON line from Claude: {}", trimmed);
             return;
         }
 
         match serde_json::from_str::<IncomingMessage>(trimmed) {
             Ok(msg) => {
+                info!("Parsed message type: {}", msg.msg_type);
                 self.handle_message(msg).await;
             }
             Err(e) => {

@@ -73,14 +73,23 @@ async fn create_session(
     project_path: String,
     state: State<'_, AppState>,
 ) -> Result<CommandResult<String>, String> {
+    info!("create_session called - project_path: {}", project_path);
     let manager_lock = state.manager.lock().await;
     
     if let Some(ref manager) = *manager_lock {
+        info!("Manager found, creating session...");
         match manager.create_session(project_path).await {
-            Ok(session_id) => Ok(CommandResult::success(session_id)),
-            Err(e) => Ok(CommandResult::error(e.to_string())),
+            Ok(session_id) => {
+                info!("Session created successfully with ID: {}", session_id);
+                Ok(CommandResult::success(session_id))
+            },
+            Err(e) => {
+                info!("Error creating session: {}", e);
+                Ok(CommandResult::error(e.to_string()))
+            },
         }
     } else {
+        info!("Manager not initialized");
         Ok(CommandResult::error("Claude Code not initialized. Please discover Claude first.".to_string()))
     }
 }
@@ -91,14 +100,23 @@ async fn send_message(
     message: String,
     state: State<'_, AppState>,
 ) -> Result<CommandResult<()>, String> {
+    info!("send_message called - session_id: {}, message: {}", session_id, message);
     let manager_lock = state.manager.lock().await;
     
     if let Some(ref manager) = *manager_lock {
+        info!("Manager found, sending message...");
         match manager.send_message(&session_id, message).await {
-            Ok(_) => Ok(CommandResult::success(())),
-            Err(e) => Ok(CommandResult::error(e.to_string())),
+            Ok(_) => {
+                info!("Message sent successfully");
+                Ok(CommandResult::success(()))
+            },
+            Err(e) => {
+                info!("Error sending message: {}", e);
+                Ok(CommandResult::error(e.to_string()))
+            },
         }
     } else {
+        info!("Manager not initialized");
         Ok(CommandResult::error("Claude Code not initialized".to_string()))
     }
 }
@@ -166,8 +184,9 @@ async fn get_history(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize logging
-    env_logger::init();
+    // Initialize logging with debug level
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+    info!("OpenAgents starting up...");
     
     let app_state = AppState {
         discovery: Arc::new(Mutex::new(ClaudeDiscovery::new())),
