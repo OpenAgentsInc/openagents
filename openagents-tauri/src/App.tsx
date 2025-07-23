@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 interface Message {
   id: string;
@@ -163,26 +167,32 @@ function App() {
 
   const renderMessage = (msg: Message) => {
     const messageTypeStyles: Record<string, string> = {
-      user: "user-message",
-      assistant: "assistant-message",
-      tool_use: "tool-message",
-      error: "error-message",
-      summary: "summary-message",
-      thinking: "thinking-message",
-      system: "system-message",
+      user: "bg-primary/10 border-primary/20",
+      assistant: "bg-secondary/10 border-secondary/20",
+      tool_use: "bg-accent/10 border-accent/20",
+      error: "bg-destructive/10 border-destructive/20 text-destructive",
+      summary: "bg-muted/50 border-muted",
+      thinking: "bg-muted/30 border-muted italic",
+      system: "bg-muted/20 border-muted",
     };
 
-    const style = messageTypeStyles[msg.message_type] || "";
+    const style = messageTypeStyles[msg.message_type] || "bg-muted/10 border-muted";
 
     return (
-      <div key={msg.id} className={`message ${style}`}>
-        <div className="message-type">{msg.message_type}</div>
-        <div className="message-content">
-          <pre>{msg.content}</pre>
+      <div key={msg.id} className={`rounded-lg border p-4 ${style}`}>
+        <div className="text-xs font-semibold uppercase opacity-70 mb-1">
+          {msg.message_type}
+        </div>
+        <div className="text-sm">
+          <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
           {msg.tool_info && msg.tool_info.output && (
-            <details className="tool-output">
-              <summary>Tool Output</summary>
-              <pre>{msg.tool_info.output}</pre>
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-medium hover:underline">
+                Tool Output
+              </summary>
+              <pre className="mt-2 text-xs opacity-80 whitespace-pre-wrap">
+                {msg.tool_info.output}
+              </pre>
             </details>
           )}
         </div>
@@ -190,78 +200,109 @@ function App() {
     );
   };
 
+  // Set dark mode on mount
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+  }, []);
+
   return (
-    <div className="container">
-      <h1>OpenAgents - Claude Code Integration Test</h1>
+    <div className="min-h-screen bg-background p-8">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold">OpenAgents</h1>
+          <p className="text-muted-foreground">Claude Code Integration</p>
+        </div>
 
-      <div className="status-section">
-        <h2>Status</h2>
-        <p>{claudeStatus}</p>
-        <p style={{ fontSize: "12px", opacity: 0.7 }}>
-          Session: {sessionId || "none"} | Messages: {messages.length} | Loading: {isLoading ? "yes" : "no"}
-        </p>
-        <Button onClick={discoverClaude} disabled={isLoading}>
-          Rediscover Claude
-        </Button>
-      </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Status</CardTitle>
+            <CardDescription>
+              Session: {sessionId || "none"} • Messages: {messages.length} • {isLoading ? "Loading..." : "Ready"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm">{claudeStatus}</p>
+            <Button onClick={discoverClaude} disabled={isLoading} variant="outline">
+              Rediscover Claude
+            </Button>
+          </CardContent>
+        </Card>
 
-      <div className="session-section">
-        <h2>Session Management</h2>
-        {!sessionId ? (
-          <div>
-            <input
-              type="text"
-              value={projectPath}
-              onChange={(e) => setProjectPath(e.target.value)}
-              placeholder="Project path"
-              style={{ width: "400px" }}
-            />
-            <Button onClick={createSession} disabled={isLoading}>
-              Create Session
-            </Button>
-          </div>
-        ) : (
-          <div>
-            <p>Active Session: {sessionId}</p>
-            <Button onClick={stopSession} disabled={isLoading} variant="destructive">
-              Stop Session
-            </Button>
-          </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Session Management</CardTitle>
+            <CardDescription>
+              {!sessionId ? "Start a new Claude Code session" : "Manage your active session"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!sessionId ? (
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  value={projectPath}
+                  onChange={(e) => setProjectPath(e.target.value)}
+                  placeholder="Project path"
+                  className="flex-1"
+                />
+                <Button onClick={createSession} disabled={isLoading}>
+                  Create Session
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">Active Session: {sessionId}</p>
+                <Button onClick={stopSession} disabled={isLoading} variant="destructive">
+                  Stop Session
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {sessionId && (
+          <Card className="h-[600px] flex flex-col">
+            <CardHeader>
+              <CardTitle>Conversation</CardTitle>
+              <CardDescription>
+                Chat with Claude Code about your project
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col">
+              <ScrollArea className="flex-1 rounded-md border p-4">
+                {messages.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No messages yet. Send a message to start the conversation.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {messages.map(renderMessage)}
+                  </div>
+                )}
+              </ScrollArea>
+              <Separator className="my-4" />
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={(e) => {
+                    console.log("Key pressed:", e.key);
+                    if (e.key === "Enter") {
+                      console.log("Enter key detected, sending message...");
+                      sendMessage();
+                    }
+                  }}
+                  placeholder="Type your message..."
+                  disabled={isLoading}
+                  className="flex-1"
+                />
+                <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
+                  Send
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
-
-      {sessionId && (
-        <div className="chat-section">
-          <h2>Conversation</h2>
-          <div className="messages-container">
-            {messages.length === 0 ? (
-              <p>No messages yet. Send a message to start the conversation.</p>
-            ) : (
-              messages.map(renderMessage)
-            )}
-          </div>
-          <div className="input-section">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={(e) => {
-                console.log("Key pressed:", e.key);
-                if (e.key === "Enter") {
-                  console.log("Enter key detected, sending message...");
-                  sendMessage();
-                }
-              }}
-              placeholder="Type your message..."
-              disabled={isLoading}
-              style={{ flex: 1 }}
-            />
-            <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
-              Send
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
