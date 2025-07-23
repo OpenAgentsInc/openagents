@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { Button } from "@/components/ui/button";
 
 interface Message {
   id: string;
@@ -200,9 +200,9 @@ function App() {
         <p style={{ fontSize: "12px", opacity: 0.7 }}>
           Session: {sessionId || "none"} | Messages: {messages.length} | Loading: {isLoading ? "yes" : "no"}
         </p>
-        <button onClick={discoverClaude} disabled={isLoading}>
+        <Button onClick={discoverClaude} disabled={isLoading}>
           Rediscover Claude
-        </button>
+        </Button>
       </div>
 
       <div className="session-section">
@@ -216,16 +216,16 @@ function App() {
               placeholder="Project path"
               style={{ width: "400px" }}
             />
-            <button onClick={createSession} disabled={isLoading}>
+            <Button onClick={createSession} disabled={isLoading}>
               Create Session
-            </button>
+            </Button>
           </div>
         ) : (
           <div>
             <p>Active Session: {sessionId}</p>
-            <button onClick={stopSession} disabled={isLoading}>
+            <Button onClick={stopSession} disabled={isLoading} variant="destructive">
               Stop Session
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -256,9 +256,9 @@ function App() {
               disabled={isLoading}
               style={{ flex: 1 }}
             />
-            <button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
+            <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
               Send
-            </button>
+            </Button>
           </div>
         </div>
       )}
