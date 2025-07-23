@@ -198,48 +198,105 @@ impl ClaudeSession {
 
         info!("Running command: {}", claude_command);
 
-        // Execute the command
-        let output = Command::new("/bin/bash")
+        // Execute the command with streaming output
+        let mut child = Command::new("/bin/bash")
             .args(&["-l", "-c", &claude_command])
-            .output()
-            .await
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|e| ClaudeError::Other(format!("Failed to execute Claude Code: {}", e)))?;
 
-        // Process stdout
-        if !output.stdout.is_empty() {
-            let stdout_str = String::from_utf8_lossy(&output.stdout);
-            info!("Claude Code stdout: {}", stdout_str);
-            
-            // Parse streaming JSON output
-            for line in stdout_str.lines() {
-                if !line.trim().is_empty() {
-                    self.process_output_line(line).await;
+        // Get stdout and stderr handles
+        let stdout = child.stdout.take()
+            .ok_or_else(|| ClaudeError::Other("Failed to capture stdout".to_string()))?;
+        let stderr = child.stderr.take()
+            .ok_or_else(|| ClaudeError::Other("Failed to capture stderr".to_string()))?;
+
+        // Create readers for streaming
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        let stdout_reader = BufReader::new(stdout);
+        let stderr_reader = BufReader::new(stderr);
+
+        // Spawn the child process and read output in separate tasks
+        let mut stdout_lines = stdout_reader.lines();
+        let mut stderr_lines = stderr_reader.lines();
+        
+        // Create a channel for the child process status
+        let (status_tx, mut status_rx) = mpsc::channel::<std::process::ExitStatus>(1);
+        
+        // Spawn task to wait for child process
+        tokio::spawn(async move {
+            if let Ok(status) = child.wait().await {
+                let _ = status_tx.send(status).await;
+            }
+        });
+
+        let mut error_buffer = String::new();
+        let mut process_done = false;
+
+        // Process stdout and stderr as they come in
+        loop {
+            tokio::select! {
+                // Read from stdout
+                Ok(Some(line)) = stdout_lines.next_line() => {
+                    if !line.trim().is_empty() {
+                        self.process_output_line(&line).await;
+                    }
+                }
+                // Read from stderr
+                Ok(Some(line)) = stderr_lines.next_line() => {
+                    warn!("Claude Code stderr: {}", line);
+                    error_buffer.push_str(&line);
+                    error_buffer.push('\n');
+                }
+                // Check if process has exited
+                Some(status) = status_rx.recv() => {
+                    process_done = true;
+                    // Continue reading any remaining output
+                    
+                    // Read any remaining stdout
+                    while let Ok(Some(line)) = stdout_lines.next_line().await {
+                        if !line.trim().is_empty() {
+                            self.process_output_line(&line).await;
+                        }
+                    }
+                    
+                    // Read any remaining stderr
+                    while let Ok(Some(line)) = stderr_lines.next_line().await {
+                        warn!("Claude Code stderr: {}", line);
+                        error_buffer.push_str(&line);
+                        error_buffer.push('\n');
+                    }
+                    
+                    // Check exit status
+                    if !status.success() {
+                        return Err(ClaudeError::Other(format!(
+                            "Claude Code exited with status: {}",
+                            status
+                        )));
+                    }
+                    
+                    break;
+                }
+                // If all channels are closed, we're done
+                else => {
+                    if process_done {
+                        break;
+                    }
                 }
             }
         }
 
-        // Process stderr
-        if !output.stderr.is_empty() {
-            let stderr_str = String::from_utf8_lossy(&output.stderr);
-            warn!("Claude Code stderr: {}", stderr_str);
-            
-            // Add error message
+        // If there were errors, add an error message
+        if !error_buffer.trim().is_empty() {
             let error_msg = Message {
                 id: Uuid::new_v4(),
                 message_type: MessageType::Error,
-                content: format!("Error: {}", stderr_str),
+                content: format!("Error: {}", error_buffer.trim()),
                 timestamp: Utc::now(),
                 tool_info: None,
             };
             self.add_message(error_msg).await;
-        }
-
-        // Check exit status
-        if !output.status.success() {
-            return Err(ClaudeError::Other(format!(
-                "Claude Code exited with status: {}",
-                output.status
-            )));
         }
 
         Ok(())
