@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Frame } from "@/components/ui/frame";
 
 interface Message {
   id: string;
@@ -25,13 +25,19 @@ interface CommandResult<T> {
   error?: string;
 }
 
+interface Session {
+  id: string;
+  projectPath: string;
+  messages: Message[];
+  inputMessage: string;
+  isLoading: boolean;
+}
+
 function App() {
   const [claudeStatus, setClaudeStatus] = useState<string>("Not initialized");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputMessage, setInputMessage] = useState("");
-  const [projectPath, setProjectPath] = useState("/Users/christopherdavid/Desktop/openagents");
-  const [isLoading, setIsLoading] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/Desktop/openagents");
+  const [isDiscoveryLoading, setIsDiscoveryLoading] = useState(false);
 
   // Initialize Claude on mount
   useEffect(() => {
@@ -39,20 +45,22 @@ function App() {
     discoverClaude();
   }, []);
 
-  // Poll for messages when session is active
+  // Poll for messages for all active sessions
   useEffect(() => {
-    if (!sessionId) return;
+    if (sessions.length === 0) return;
 
     const interval = setInterval(async () => {
-      await fetchMessages();
+      for (const session of sessions) {
+        await fetchMessages(session.id);
+      }
     }, 50); // Poll every 50ms for real-time updates
 
     return () => clearInterval(interval);
-  }, [sessionId]);
+  }, [sessions]);
 
   const discoverClaude = async () => {
     console.log("Starting Claude discovery...");
-    setIsLoading(true);
+    setIsDiscoveryLoading(true);
     try {
       const result = await invoke<CommandResult<string>>("discover_claude");
       console.log("Discovery result:", result);
@@ -67,25 +75,31 @@ function App() {
       setClaudeStatus(`Error: ${error}`);
       console.error("Discovery error:", error);
     }
-    setIsLoading(false);
+    setIsDiscoveryLoading(false);
   };
 
   const createSession = async () => {
-    if (!projectPath) {
+    if (!newProjectPath) {
       alert("Please enter a project path");
       return;
     }
 
-    console.log("Creating session for project:", projectPath);
-    setIsLoading(true);
+    console.log("Creating session for project:", newProjectPath);
+    setIsDiscoveryLoading(true);
     try {
       const result = await invoke<CommandResult<string>>("create_session", {
-        projectPath,
+        projectPath: newProjectPath,
       });
       console.log("Create session result:", result);
       if (result.success && result.data) {
-        setSessionId(result.data);
-        setMessages([]);
+        const newSession: Session = {
+          id: result.data,
+          projectPath: newProjectPath,
+          messages: [],
+          inputMessage: "",
+          isLoading: false,
+        };
+        setSessions(prev => [...prev, newSession]);
         console.log("Session created with ID:", result.data);
       } else {
         alert(`Error creating session: ${result.error}`);
@@ -95,12 +109,13 @@ function App() {
       alert(`Error: ${error}`);
       console.error("Session creation error:", error);
     }
-    setIsLoading(false);
+    setIsDiscoveryLoading(false);
   };
 
-  const sendMessage = async () => {
-    if (!sessionId || !inputMessage.trim()) {
-      console.log("Cannot send message - sessionId:", sessionId, "message:", inputMessage);
+  const sendMessage = async (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session || !session.inputMessage.trim()) {
+      console.log("Cannot send message - session:", session, "message:", session?.inputMessage);
       return;
     }
 
@@ -108,15 +123,18 @@ function App() {
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       message_type: "user",
-      content: inputMessage,
+      content: session.inputMessage,
       timestamp: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, userMessage]);
+    
+    setSessions(prev => prev.map(s => 
+      s.id === sessionId 
+        ? { ...s, messages: [...s.messages, userMessage], inputMessage: "", isLoading: true }
+        : s
+    ));
 
-    console.log("Sending message:", inputMessage, "to session:", sessionId);
-    const messageToSend = inputMessage;
-    setInputMessage(""); // Clear input immediately
-    setIsLoading(true);
+    console.log("Sending message:", session.inputMessage, "to session:", sessionId);
+    const messageToSend = session.inputMessage;
     
     try {
       const result = await invoke<CommandResult<void>>("send_message", {
@@ -128,29 +146,42 @@ function App() {
         alert(`Error sending message: ${result.error}`);
         console.error("Send message failed:", result.error);
         // Remove the user message we optimistically added
-        setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
+        setSessions(prev => prev.map(s => 
+          s.id === sessionId 
+            ? { ...s, messages: s.messages.filter(msg => msg.id !== userMessage.id), isLoading: false }
+            : s
+        ));
+      } else {
+        setSessions(prev => prev.map(s => 
+          s.id === sessionId 
+            ? { ...s, isLoading: false }
+            : s
+        ));
       }
     } catch (error) {
       alert(`Error: ${error}`);
       console.error("Send message error:", error);
       // Remove the user message we optimistically added
-      setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
+      setSessions(prev => prev.map(s => 
+        s.id === sessionId 
+          ? { ...s, messages: s.messages.filter(msg => msg.id !== userMessage.id), isLoading: false }
+          : s
+      ));
     }
-    setIsLoading(false);
   };
 
-  const fetchMessages = async () => {
-    if (!sessionId) return;
-
+  const fetchMessages = async (sessionId: string) => {
     try {
       const result = await invoke<CommandResult<Message[]>>("get_messages", {
         sessionId,
       });
       if (result.success && result.data) {
         // Merge backend messages with local optimistic messages
-        setMessages(prev => {
+        setSessions(prev => prev.map(session => {
+          if (session.id !== sessionId) return session;
+          
           const backendMessages = result.data || [];
-          const optimisticUserMessages = prev.filter(msg => 
+          const optimisticUserMessages = session.messages.filter(msg => 
             msg.id.startsWith('user-') && msg.message_type === 'user'
           );
           
@@ -166,32 +197,37 @@ function App() {
           const combined = [...backendMessages, ...filteredOptimistic];
           combined.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
           
-          return combined;
-        });
+          return { ...session, messages: combined };
+        }));
       }
     } catch (error) {
       console.error("Error fetching messages:", error);
     }
   };
 
-  const stopSession = async () => {
-    if (!sessionId) return;
-
-    setIsLoading(true);
+  const stopSession = async (sessionId: string) => {
+    setSessions(prev => prev.map(s => 
+      s.id === sessionId ? { ...s, isLoading: true } : s
+    ));
+    
     try {
       const result = await invoke<CommandResult<void>>("stop_session", {
         sessionId,
       });
       if (result.success) {
-        setSessionId(null);
-        setMessages([]);
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
       } else {
         alert(`Error stopping session: ${result.error}`);
+        setSessions(prev => prev.map(s => 
+          s.id === sessionId ? { ...s, isLoading: false } : s
+        ));
       }
     } catch (error) {
       alert(`Error: ${error}`);
+      setSessions(prev => prev.map(s => 
+        s.id === sessionId ? { ...s, isLoading: false } : s
+      ));
     }
-    setIsLoading(false);
   };
 
   const renderMessage = (msg: Message) => {
@@ -236,102 +272,169 @@ function App() {
     document.documentElement.classList.add("dark");
   }, []);
 
+  const updateSessionInput = (sessionId: string, value: string) => {
+    setSessions(prev => prev.map(s => 
+      s.id === sessionId ? { ...s, inputMessage: value } : s
+    ));
+  };
+
   return (
-    <div className="min-h-screen bg-background p-8 font-mono overflow-x-hidden">
-      <div className="mx-auto max-w-5xl space-y-6 w-full">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold">OpenAgents</h1>
-          <p className="text-muted-foreground">Claude Code Integration</p>
-        </div>
+    <div className="min-h-screen bg-background p-8 font-mono overflow-hidden">
+      <div className="h-[calc(100vh-4rem)] flex gap-6">
+        {/* Metadata Panel */}
+        <div className="w-80 flex flex-col gap-4">
+          {/* Header */}
+          <Frame className="p-6">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold mb-2">OpenAgents</h1>
+              <p className="text-muted-foreground text-sm">Claude Code Integration</p>
+            </div>
+          </Frame>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Status</CardTitle>
-            <CardDescription>
-              Session: {sessionId || "none"} • Messages: {messages.length} • {isLoading ? "Loading..." : "Ready"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm">{claudeStatus}</p>
-          </CardContent>
-        </Card>
+          {/* Status */}
+          <Frame className="p-4">
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Status</h3>
+              <p className="text-xs text-muted-foreground">
+                Sessions: {sessions.length} • {isDiscoveryLoading ? "Loading..." : "Ready"}
+              </p>
+              <p className="text-xs">{claudeStatus}</p>
+            </div>
+          </Frame>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Session Management</CardTitle>
-            <CardDescription>
-              {!sessionId ? "Start a new Claude Code session" : "Manage your active session"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!sessionId ? (
-              <div className="flex gap-2">
+          {/* Session Management */}
+          <Frame className="p-4 flex-1">
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Sessions</h3>
+              
+              {/* Create New Session */}
+              <div className="space-y-2">
                 <Input
                   type="text"
-                  value={projectPath}
-                  onChange={(e) => setProjectPath(e.target.value)}
+                  value={newProjectPath}
+                  onChange={(e) => setNewProjectPath(e.target.value)}
                   placeholder="Project path"
-                  className="flex-1"
+                  className="text-xs"
                 />
-                <Button onClick={createSession} disabled={isLoading}>
+                <Button 
+                  onClick={createSession} 
+                  disabled={isDiscoveryLoading}
+                  size="sm"
+                  className="w-full"
+                >
                   Create Session
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">Active Session: {sessionId}</p>
-                <Button onClick={stopSession} disabled={isLoading} variant="destructive">
-                  Stop Session
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {sessionId && (
-          <Card className="h-[600px] flex flex-col overflow-hidden">
-            <CardHeader>
-              <CardTitle>Conversation</CardTitle>
-              <CardDescription>
-                Chat with Claude Code about your project
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col overflow-hidden">
-              <ScrollArea className="flex-1 border px-4 overflow-hidden max-w-full">
-                <div className="pr-4 max-w-full overflow-hidden">
-                  {messages.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No messages yet. Send a message to start the conversation.</p>
-                  ) : (
-                    <div className="space-y-4 max-w-full">
-                      {messages.map(renderMessage)}
+              <Separator />
+
+              {/* Active Sessions List */}
+              <div className="space-y-2 flex-1 overflow-y-auto">
+                {sessions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No active sessions</p>
+                ) : (
+                  sessions.map((session) => (
+                    <div key={session.id} className="p-2 border border-border/20 bg-muted/10">
+                      <div className="flex justify-between items-start mb-1">
+                        <p className="text-xs font-mono truncate flex-1">
+                          {session.projectPath.split('/').pop()}
+                        </p>
+                        <Button
+                          onClick={() => stopSession(session.id)}
+                          disabled={session.isLoading}
+                          variant="destructive"
+                          size="sm"
+                          className="h-5 px-2 text-xs ml-2"
+                        >
+                          ×
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {session.messages.length} messages
+                      </p>
                     </div>
-                  )}
-                </div>
-              </ScrollArea>
-              <Separator className="my-4" />
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyPress={(e) => {
-                    console.log("Key pressed:", e.key);
-                    if (e.key === "Enter") {
-                      console.log("Enter key detected, sending message...");
-                      sendMessage();
-                    }
-                  }}
-                  placeholder="Type your message..."
-                  disabled={isLoading}
-                  className="flex-1"
-                />
-                <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
-                  Send
-                </Button>
+                  ))
+                )}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </Frame>
+        </div>
+
+        {/* Chat Sessions Grid */}
+        <div className="flex-1 grid grid-cols-1 gap-4" style={{
+          gridTemplateColumns: sessions.length === 1 ? '1fr' : 
+                              sessions.length === 2 ? '1fr 1fr' :
+                              sessions.length === 3 ? '1fr 1fr 1fr' :
+                              sessions.length >= 4 ? '1fr 1fr' : '1fr'
+        }}>
+          {sessions.length === 0 ? (
+            <Frame className="p-8 flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-muted-foreground mb-4">No active sessions</p>
+                <p className="text-sm text-muted-foreground">
+                  Create a session to start chatting with Claude Code
+                </p>
+              </div>
+            </Frame>
+          ) : (
+            sessions.map((session) => (
+              <Frame key={session.id} className="flex flex-col overflow-hidden">
+                {/* Chat Header */}
+                <div className="p-4 border-b border-border/20">
+                  <h3 className="text-sm font-semibold truncate">
+                    {session.projectPath.split('/').pop()}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {session.messages.length} messages
+                  </p>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <ScrollArea className="flex-1 px-4 overflow-hidden">
+                    <div className="py-4">
+                      {session.messages.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          No messages yet. Send a message to start the conversation.
+                        </p>
+                      ) : (
+                        <div className="space-y-4">
+                          {session.messages.map(renderMessage)}
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                  
+                  {/* Input */}
+                  <div className="p-4 border-t border-border/20">
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        value={session.inputMessage}
+                        onChange={(e) => updateSessionInput(session.id, e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === "Enter") {
+                            sendMessage(session.id);
+                          }
+                        }}
+                        placeholder="Type your message..."
+                        disabled={session.isLoading}
+                        className="flex-1 text-sm"
+                      />
+                      <Button 
+                        onClick={() => sendMessage(session.id)} 
+                        disabled={session.isLoading || !session.inputMessage.trim()}
+                        size="sm"
+                      >
+                        Send
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Frame>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
