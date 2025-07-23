@@ -97,14 +97,6 @@ impl ClaudeManager {
         result
     }
 
-    pub async fn subscribe_to_session(&self, session_id: &str) -> Result<mpsc::Receiver<Message>, ClaudeError> {
-        let sessions = self.sessions.read().await;
-        let session = sessions.get(session_id)
-            .ok_or_else(|| ClaudeError::SessionNotFound(session_id.to_string()))?;
-
-        let mut session_lock = session.lock().await;
-        Ok(session_lock.subscribe())
-    }
 }
 
 pub struct ClaudeSession {
@@ -221,7 +213,6 @@ impl ClaudeSession {
         });
 
         let mut error_buffer = String::new();
-        let mut process_done = false;
 
         // Process stdout and stderr as they come in
         loop {
@@ -241,7 +232,6 @@ impl ClaudeSession {
                 }
                 // Check if process has exited
                 Some(status) = status_rx.recv() => {
-                    process_done = true;
                     // Continue reading any remaining output
                     
                     // Read any remaining stdout
@@ -271,9 +261,7 @@ impl ClaudeSession {
                 }
                 // If all channels are closed, we're done
                 else => {
-                    if process_done {
-                        break;
-                    }
+                    break;
                 }
             }
         }
@@ -318,148 +306,6 @@ impl ClaudeSession {
         Ok(())
     }
 
-    async fn send_message(&mut self, message: String) -> Result<(), ClaudeError> {
-        info!("Sending message to Claude Code: {}", message);
-
-        // Add user message to our history
-        let user_msg = Message {
-            id: Uuid::new_v4(),
-            message_type: MessageType::User,
-            content: message.clone(),
-            timestamp: Utc::now(),
-            tool_info: None,
-        };
-        self.add_message(user_msg).await;
-
-        // Store first message for preview
-        if self.first_message.is_none() {
-            self.first_message = Some(message.clone());
-        }
-
-        // Build the command - always use the binary as-is (shell will handle shebang)
-        let claude_command = if self.claude_session_id.is_some() {
-            // Continue existing conversation
-            format!(
-                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json --verbose",
-                self.project_path, 
-                self.binary_path.display(), 
-                message.replace("\"", "\\\"")
-            )
-        } else {
-            // Start new conversation
-            format!(
-                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json --verbose",
-                self.project_path,
-                self.binary_path.display(), 
-                message.replace("\"", "\\\"")
-            )
-        };
-
-        info!("Running command: {}", claude_command);
-
-        // Execute the command with streaming output
-        let mut child = Command::new("/bin/bash")
-            .args(&["-l", "-c", &claude_command])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| ClaudeError::Other(format!("Failed to execute Claude Code: {}", e)))?;
-
-        // Get stdout and stderr handles
-        let stdout = child.stdout.take()
-            .ok_or_else(|| ClaudeError::Other("Failed to capture stdout".to_string()))?;
-        let stderr = child.stderr.take()
-            .ok_or_else(|| ClaudeError::Other("Failed to capture stderr".to_string()))?;
-
-        // Create readers for streaming
-        use tokio::io::{AsyncBufReadExt, BufReader};
-        let stdout_reader = BufReader::new(stdout);
-        let stderr_reader = BufReader::new(stderr);
-
-        // Spawn the child process and read output in separate tasks
-        let mut stdout_lines = stdout_reader.lines();
-        let mut stderr_lines = stderr_reader.lines();
-        
-        // Create a channel for the child process status
-        let (status_tx, mut status_rx) = mpsc::channel::<std::process::ExitStatus>(1);
-        
-        // Spawn task to wait for child process
-        tokio::spawn(async move {
-            if let Ok(status) = child.wait().await {
-                let _ = status_tx.send(status).await;
-            }
-        });
-
-        let mut error_buffer = String::new();
-        let mut process_done = false;
-
-        // Process stdout and stderr as they come in
-        loop {
-            tokio::select! {
-                // Read from stdout
-                Ok(Some(line)) = stdout_lines.next_line() => {
-                    if !line.trim().is_empty() {
-                        self.process_output_line(&line).await;
-                    }
-                }
-                // Read from stderr
-                Ok(Some(line)) = stderr_lines.next_line() => {
-                    warn!("Claude Code stderr: {}", line);
-                    error_buffer.push_str(&line);
-                    error_buffer.push('\n');
-                }
-                // Check if process has exited
-                Some(status) = status_rx.recv() => {
-                    process_done = true;
-                    // Continue reading any remaining output
-                    
-                    // Read any remaining stdout
-                    while let Ok(Some(line)) = stdout_lines.next_line().await {
-                        if !line.trim().is_empty() {
-                            self.process_output_line(&line).await;
-                        }
-                    }
-                    
-                    // Read any remaining stderr
-                    while let Ok(Some(line)) = stderr_lines.next_line().await {
-                        warn!("Claude Code stderr: {}", line);
-                        error_buffer.push_str(&line);
-                        error_buffer.push('\n');
-                    }
-                    
-                    // Check exit status
-                    if !status.success() {
-                        return Err(ClaudeError::Other(format!(
-                            "Claude Code exited with status: {}",
-                            status
-                        )));
-                    }
-                    
-                    break;
-                }
-                // If all channels are closed, we're done
-                else => {
-                    if process_done {
-                        break;
-                    }
-                }
-            }
-        }
-
-        // If there were errors, add an error message
-        if !error_buffer.trim().is_empty() {
-            let error_msg = Message {
-                id: Uuid::new_v4(),
-                message_type: MessageType::Error,
-                content: format!("Error: {}", error_buffer.trim()),
-                timestamp: Utc::now(),
-                tool_info: None,
-            };
-            self.add_message(error_msg).await;
-        }
-
-        Ok(())
-    }
 
     async fn stop(&mut self) -> Result<(), ClaudeError> {
         info!("Stopping Claude Code session: {}", self.id);
@@ -467,11 +313,6 @@ impl ClaudeSession {
         Ok(())
     }
 
-    fn subscribe(&mut self) -> mpsc::Receiver<Message> {
-        let (tx, rx) = mpsc::channel(100);
-        self.message_subscribers.push(tx);
-        rx
-    }
 
     async fn add_message(&mut self, message: Message) {
         self.messages.push(message.clone());
@@ -780,20 +621,3 @@ impl ClaudeSession {
     }
 }
 
-// Global manager instance
-lazy_static::lazy_static! {
-    static ref CLAUDE_MANAGER: Arc<Mutex<Option<ClaudeManager>>> = Arc::new(Mutex::new(None));
-}
-
-pub async fn get_claude_manager() -> Option<ClaudeManager> {
-    let manager = CLAUDE_MANAGER.lock().await;
-    manager.as_ref().map(|m| ClaudeManager {
-        sessions: m.sessions.clone(),
-        binary_path: m.binary_path.clone(),
-    })
-}
-
-pub async fn set_claude_manager(manager: ClaudeManager) {
-    let mut global_manager = CLAUDE_MANAGER.lock().await;
-    *global_manager = Some(manager);
-}

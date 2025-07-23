@@ -4,4 +4,4 @@ pub mod models;
 
 pub use discovery::ClaudeDiscovery;
 pub use manager::ClaudeManager;
-pub use models::{Message, ClaudeError, ClaudeConversation};
+pub use models::{Message, ClaudeConversation};
