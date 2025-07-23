@@ -1,6 +1,29 @@
-# Tauri + React + Typescript
+# OpenAgents Tauri
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+Cross-platform desktop app for OpenAgents with Claude Code integration.
+
+## Development
+
+```bash
+# Install dependencies
+bun install
+
+# Run in development mode
+bun run tauri dev
+
+# Run with debug logging
+./run-debug.sh
+```
+
+## Claude Code Integration
+
+This app integrates with Claude Code CLI for AI-powered development. Make sure you have Claude Code installed:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+The app will automatically discover Claude Code on startup.
 
 ## Recommended IDE Setup
 
