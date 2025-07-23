@@ -147,7 +147,6 @@ function App() {
         sessionId,
       });
       if (result.success && result.data) {
-        console.log("Fetched messages from backend:", result.data.length);
         // Merge backend messages with local optimistic messages
         setMessages(prev => {
           const backendMessages = result.data || [];
