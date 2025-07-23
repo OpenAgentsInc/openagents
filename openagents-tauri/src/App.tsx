@@ -179,20 +179,22 @@ function App() {
     const style = messageTypeStyles[msg.message_type] || "bg-muted/10 border-muted";
 
     return (
-      <div key={msg.id} className={`rounded-lg border p-4 ${style}`}>
+      <div key={msg.id} className={`border p-4 overflow-hidden ${style}`}>
         <div className="text-xs font-semibold uppercase opacity-70 mb-1">
           {msg.message_type}
         </div>
-        <div className="text-sm">
-          <pre className="whitespace-pre-wrap break-words font-mono overflow-hidden">{msg.content}</pre>
+        <div className="text-sm overflow-hidden">
+          <div className="whitespace-pre-wrap break-all font-mono overflow-x-auto overflow-y-hidden">
+            {msg.content}
+          </div>
           {msg.tool_info && msg.tool_info.output && (
             <details className="mt-2">
               <summary className="cursor-pointer text-xs font-medium hover:underline">
                 Tool Output
               </summary>
-              <pre className="mt-2 text-xs opacity-80 whitespace-pre-wrap break-words font-mono overflow-hidden">
+              <div className="mt-2 text-xs opacity-80 whitespace-pre-wrap break-all font-mono overflow-x-auto overflow-y-hidden">
                 {msg.tool_info.output}
-              </pre>
+              </div>
             </details>
           )}
         </div>
@@ -206,8 +208,8 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background p-8 font-mono">
-      <div className="mx-auto max-w-5xl space-y-6">
+    <div className="min-h-screen bg-background p-8 font-mono overflow-x-hidden">
+      <div className="mx-auto max-w-5xl space-y-6 w-full">
         <div className="text-center">
           <h1 className="text-3xl font-bold">OpenAgents</h1>
           <p className="text-muted-foreground">Claude Code Integration</p>
@@ -258,20 +260,20 @@ function App() {
         </Card>
 
         {sessionId && (
-          <Card className="h-[600px] flex flex-col">
+          <Card className="h-[600px] flex flex-col overflow-hidden">
             <CardHeader>
               <CardTitle>Conversation</CardTitle>
               <CardDescription>
                 Chat with Claude Code about your project
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col">
-              <ScrollArea className="flex-1 rounded-md border p-4 overflow-hidden">
-                <div className="pr-4">
+            <CardContent className="flex-1 flex flex-col overflow-hidden">
+              <ScrollArea className="flex-1 border px-4 overflow-hidden max-w-full">
+                <div className="pr-4 max-w-full overflow-hidden">
                   {messages.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No messages yet. Send a message to start the conversation.</p>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-4 max-w-full">
                       {messages.map(renderMessage)}
                     </div>
                   )}
