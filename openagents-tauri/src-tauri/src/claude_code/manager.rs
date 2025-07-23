@@ -1,12 +1,10 @@
 use crate::claude_code::models::*;
 use chrono::Utc;
-use log::{debug, error, info, warn};
-use serde_json::json;
+use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use uuid::Uuid;
 
@@ -116,12 +114,9 @@ pub struct ClaudeSession {
     pub is_active: bool,
     pub first_message: Option<String>,
     pub summary: Option<String>,
-    process: Option<Child>,
-    stdin: Option<tokio::process::ChildStdin>,
+    claude_session_id: Option<String>, // Claude's internal session ID
     pending_tool_uses: HashMap<String, (String, HashMap<String, serde_json::Value>)>,
     message_subscribers: Vec<mpsc::Sender<Message>>,
-    partial_buffer: String,
-    output_receiver: Option<mpsc::Receiver<String>>,
 }
 
 impl ClaudeSession {
@@ -134,103 +129,19 @@ impl ClaudeSession {
             is_active: true,
             first_message: None,
             summary: None,
-            process: None,
-            stdin: None,
+            claude_session_id: None,
             pending_tool_uses: HashMap::new(),
             message_subscribers: Vec::new(),
-            partial_buffer: String::new(),
-            output_receiver: None,
         }
     }
 
     async fn start(&mut self) -> Result<(), ClaudeError> {
         info!("Starting Claude Code session for: {}", self.project_path);
-
-        // Build the command
-        let claude_command = format!(
-            "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --output-format stream-json --input-format stream-json --verbose --dangerously-skip-permissions",
-            self.project_path, self.binary_path.display()
-        );
-
-        let mut cmd = Command::new("/bin/bash");
-        cmd.args(&["-l", "-c", &claude_command]);
-        cmd.stdin(std::process::Stdio::piped());
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
-
-        let mut child = cmd.spawn()
-            .map_err(|e| ClaudeError::ProcessStartError(e.to_string()))?;
-
-        let stdin = child.stdin.take()
-            .ok_or_else(|| ClaudeError::ProcessStartError("Failed to capture stdin".to_string()))?;
-
-        let stdout = child.stdout.take()
-            .ok_or_else(|| ClaudeError::ProcessStartError("Failed to capture stdout".to_string()))?;
-
-        let stderr = child.stderr.take()
-            .ok_or_else(|| ClaudeError::ProcessStartError("Failed to capture stderr".to_string()))?;
-
-        self.stdin = Some(stdin);
-        self.process = Some(child);
-
-        // Start reading stdout
-        let session_id = self.id.clone();
-        let mut stdout_reader = BufReader::new(stdout);
         
-        // Create a channel for sending lines back to this session
-        let (tx, rx) = mpsc::channel::<String>(100);
-        self.output_receiver = Some(rx);
-
-        // Spawn task to read stdout
-        tokio::spawn(async move {
-            let mut line = String::new();
-            loop {
-                match stdout_reader.read_line(&mut line).await {
-                    Ok(0) => {
-                        info!("Claude Code stdout closed for session {}", session_id);
-                        break;
-                    }
-                    Ok(_) => {
-                        if !line.trim().is_empty() {
-                            let _ = tx.send(line.clone()).await;
-                        }
-                        line.clear();
-                    }
-                    Err(e) => {
-                        error!("Error reading stdout for session {}: {}", session_id, e);
-                        break;
-                    }
-                }
-            }
-        });
-
-        // Start reading stderr
-        let session_id = self.id.clone();
-        let mut stderr_reader = BufReader::new(stderr);
-        let _stderr_sender = self.create_internal_sender();
-
-        tokio::spawn(async move {
-            let mut line = String::new();
-            loop {
-                match stderr_reader.read_line(&mut line).await {
-                    Ok(0) => {
-                        info!("Claude Code stderr closed for session {}", session_id);
-                        break;
-                    }
-                    Ok(_) => {
-                        if !line.trim().is_empty() {
-                            warn!("STDERR for session {}: {}", session_id, line.trim());
-                        }
-                        line.clear();
-                    }
-                    Err(e) => {
-                        error!("Error reading stderr for session {}: {}", session_id, e);
-                        break;
-                    }
-                }
-            }
-        });
-
+        // Claude Code CLI is designed for single-shot usage, not interactive sessions
+        // We'll simulate a session by running individual commands
+        info!("Session initialized - will run Claude Code commands on demand");
+        
         Ok(())
     }
 
@@ -252,26 +163,92 @@ impl ClaudeSession {
             self.first_message = Some(message.clone());
         }
 
-        // Create the JSON message
-        let msg_json = json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": [{
-                    "type": "text",
-                    "text": message
-                }]
+        // Build the command - use --continue if we have an existing session
+        let is_js = self.binary_path.extension().and_then(|s| s.to_str()) == Some("js");
+        
+        let claude_command = match (is_js, self.claude_session_id.is_some()) {
+            (true, true) => {
+                // JS file, continue existing conversation
+                format!(
+                    "cd \"{}\" && MAX_THINKING_TOKENS=31999 node \"{}\" -p --continue \"{}\" --output-format stream-json",
+                    self.project_path, 
+                    self.binary_path.display(), 
+                    message.replace("\"", "\\\"")
+                )
+            },
+            (true, false) => {
+                // JS file, start new conversation
+                format!(
+                    "cd \"{}\" && MAX_THINKING_TOKENS=31999 node \"{}\" -p \"{}\" --output-format stream-json",
+                    self.project_path,
+                    self.binary_path.display(), 
+                    message.replace("\"", "\\\"")
+                )
+            },
+            (false, true) => {
+                // Binary, continue existing conversation
+                format!(
+                    "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json",
+                    self.project_path, 
+                    self.binary_path.display(), 
+                    message.replace("\"", "\\\"")
+                )
+            },
+            (false, false) => {
+                // Binary, start new conversation
+                format!(
+                    "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json",
+                    self.project_path,
+                    self.binary_path.display(), 
+                    message.replace("\"", "\\\"")
+                )
             }
-        });
+        };
 
-        // Send to Claude Code
-        if let Some(ref mut stdin) = self.stdin {
-            let json_str = serde_json::to_string(&msg_json)?;
-            stdin.write_all(json_str.as_bytes()).await?;
-            stdin.write_all(b"\n").await?;
-            stdin.flush().await?;
-        } else {
-            return Err(ClaudeError::Other("No stdin available".to_string()));
+        info!("Running command: {}", claude_command);
+
+        // Execute the command
+        let output = Command::new("/bin/bash")
+            .args(&["-l", "-c", &claude_command])
+            .output()
+            .await
+            .map_err(|e| ClaudeError::Other(format!("Failed to execute Claude Code: {}", e)))?;
+
+        // Process stdout
+        if !output.stdout.is_empty() {
+            let stdout_str = String::from_utf8_lossy(&output.stdout);
+            info!("Claude Code stdout: {}", stdout_str);
+            
+            // Parse streaming JSON output
+            for line in stdout_str.lines() {
+                if !line.trim().is_empty() {
+                    self.process_output_line(line).await;
+                }
+            }
+        }
+
+        // Process stderr
+        if !output.stderr.is_empty() {
+            let stderr_str = String::from_utf8_lossy(&output.stderr);
+            warn!("Claude Code stderr: {}", stderr_str);
+            
+            // Add error message
+            let error_msg = Message {
+                id: Uuid::new_v4(),
+                message_type: MessageType::Error,
+                content: format!("Error: {}", stderr_str),
+                timestamp: Utc::now(),
+                tool_info: None,
+            };
+            self.add_message(error_msg).await;
+        }
+
+        // Check exit status
+        if !output.status.success() {
+            return Err(ClaudeError::Other(format!(
+                "Claude Code exited with status: {}",
+                output.status
+            )));
         }
 
         Ok(())
@@ -280,11 +257,6 @@ impl ClaudeSession {
     async fn stop(&mut self) -> Result<(), ClaudeError> {
         info!("Stopping Claude Code session: {}", self.id);
         self.is_active = false;
-
-        if let Some(mut process) = self.process.take() {
-            let _ = process.kill().await;
-        }
-
         Ok(())
     }
 
@@ -303,38 +275,9 @@ impl ClaudeSession {
         });
     }
 
-    fn create_internal_sender(&self) -> mpsc::Sender<(String, String)> {
-        let (tx, mut rx) = mpsc::channel::<(String, String)>(100);
-
-        tokio::spawn(async move {
-            while let Some((_session_id, line)) = rx.recv().await {
-                // This would be connected to the actual session processing
-                // For now, we'll just log it
-                debug!("Received line: {}", line);
-            }
-        });
-
-        tx
-    }
 
     async fn process_pending_output(&mut self) {
-        // Take the receiver temporarily to avoid borrow issues
-        if let Some(mut receiver) = self.output_receiver.take() {
-            let mut lines = Vec::new();
-            
-            // Collect all available messages without blocking
-            while let Ok(line) = receiver.try_recv() {
-                lines.push(line);
-            }
-            
-            // Put the receiver back
-            self.output_receiver = Some(receiver);
-            
-            // Now process all the lines
-            for line in lines {
-                self.process_output_line(&line).await;
-            }
-        }
+        // No longer needed since we're using synchronous command execution
     }
 
     async fn process_output_line(&mut self, line: &str) {
@@ -366,7 +309,13 @@ impl ClaudeSession {
             "system" => {
                 if let Some(subtype) = msg.data.get("subtype").and_then(|v| v.as_str()) {
                     if subtype == "init" {
-                        info!("Claude Code initialized for session {}", self.id);
+                        // Capture the Claude session ID
+                        if let Some(session_id) = msg.data.get("session_id").and_then(|v| v.as_str()) {
+                            self.claude_session_id = Some(session_id.to_string());
+                            info!("Claude Code initialized with session ID: {}", session_id);
+                        } else {
+                            info!("Claude Code initialized for session {}", self.id);
+                        }
                     }
                 }
             }
