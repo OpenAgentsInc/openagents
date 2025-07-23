@@ -1,0 +1,64 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+This is an OpenAgents Tauri desktop application built with:
+- **Frontend**: React + TypeScript + Vite
+- **Backend**: Rust with Tauri framework
+- **Package Manager**: Bun (not npm/yarn)
+- **Main Project Directory**: `/openagents-tauri/`
+
+## Commands
+
+### Development
+```bash
+cd openagents-tauri
+bun install          # Install dependencies
+bun run dev          # Start Vite dev server
+bun run tauri dev    # Run Tauri app in development mode
+```
+
+### Building
+```bash
+cd openagents-tauri
+bun run build        # Build frontend (runs tsc && vite build)
+bun run tauri build  # Build the complete Tauri app
+```
+
+### Other Commands
+```bash
+bun run preview      # Preview production build
+```
+
+## Architecture
+
+### Frontend Structure
+- Entry point: `src/main.tsx`
+- Main component: `src/App.tsx`
+- Uses Tauri API for IPC: `@tauri-apps/api/core`
+- TypeScript configuration: `tsconfig.json`
+
+### Backend Structure
+- Rust entry point: `src-tauri/src/main.rs`
+- Application logic: `src-tauri/src/lib.rs`
+- Tauri commands are defined with `#[tauri::command]` macro
+- Current commands:
+  - `greet(name: &str)`: Example command that returns a greeting
+
+### Frontend-Backend Communication
+- Frontend calls Rust commands using `invoke()` from `@tauri-apps/api/core`
+- Example: `await invoke("greet", { name: "World" })`
+- Commands must be registered in `tauri::generate_handler![]` in `lib.rs`
+
+### Configuration Files
+- `src-tauri/tauri.conf.json`: Main Tauri configuration
+- `src-tauri/Cargo.toml`: Rust dependencies
+- `package.json`: Frontend dependencies and scripts
+- App identifier: `com.openagents.OpenAgents`
+
+### Key Dependencies
+- Tauri plugins: `tauri-plugin-opener`
+- Frontend: React 18, Vite, TypeScript
+- Backend: Tauri 2, Serde for serialization
