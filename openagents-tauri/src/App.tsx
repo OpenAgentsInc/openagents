@@ -184,13 +184,13 @@ function App() {
           {msg.message_type}
         </div>
         <div className="text-sm">
-          <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+          <pre className="whitespace-pre-wrap break-words font-mono overflow-hidden">{msg.content}</pre>
           {msg.tool_info && msg.tool_info.output && (
             <details className="mt-2">
               <summary className="cursor-pointer text-xs font-medium hover:underline">
                 Tool Output
               </summary>
-              <pre className="mt-2 text-xs opacity-80 whitespace-pre-wrap">
+              <pre className="mt-2 text-xs opacity-80 whitespace-pre-wrap break-words font-mono overflow-hidden">
                 {msg.tool_info.output}
               </pre>
             </details>
@@ -206,7 +206,7 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background p-8">
+    <div className="min-h-screen bg-background p-8 font-mono">
       <div className="mx-auto max-w-5xl space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold">OpenAgents</h1>
@@ -220,11 +220,8 @@ function App() {
               Session: {sessionId || "none"} • Messages: {messages.length} • {isLoading ? "Loading..." : "Ready"}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <p className="text-sm">{claudeStatus}</p>
-            <Button onClick={discoverClaude} disabled={isLoading} variant="outline">
-              Rediscover Claude
-            </Button>
           </CardContent>
         </Card>
 
@@ -269,14 +266,16 @@ function App() {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
-              <ScrollArea className="flex-1 rounded-md border p-4">
-                {messages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No messages yet. Send a message to start the conversation.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map(renderMessage)}
-                  </div>
-                )}
+              <ScrollArea className="flex-1 rounded-md border p-4 overflow-hidden">
+                <div className="pr-4">
+                  {messages.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No messages yet. Send a message to start the conversation.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {messages.map(renderMessage)}
+                    </div>
+                  )}
+                </div>
               </ScrollArea>
               <Separator className="my-4" />
               <div className="flex gap-2">

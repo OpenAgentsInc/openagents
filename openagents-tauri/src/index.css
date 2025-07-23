@@ -1,9 +1,80 @@
+/* Berkeley Mono Font */
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("./assets/fonts/berkeley-mono/BerkeleyMono-Regular.woff2") format("woff2"),
+       url("./assets/fonts/berkeley-mono/BerkeleyMono-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("./assets/fonts/berkeley-mono/BerkeleyMono-Italic.woff2") format("woff2"),
+       url("./assets/fonts/berkeley-mono/BerkeleyMono-Italic.woff") format("woff");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("./assets/fonts/berkeley-mono/BerkeleyMono-Bold.woff2") format("woff2"),
+       url("./assets/fonts/berkeley-mono/BerkeleyMono-Bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("./assets/fonts/berkeley-mono/BerkeleyMono-BoldItalic.woff2") format("woff2"),
+       url("./assets/fonts/berkeley-mono/BerkeleyMono-BoldItalic.woff") format("woff");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Tomorrow Font */
+@font-face {
+  font-family: "Tomorrow";
+  src: url("./assets/fonts/tomorrow/tomorrow-regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Tomorrow";
+  src: url("./assets/fonts/tomorrow/tomorrow-italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Tomorrow";
+  src: url("./assets/fonts/tomorrow/tomorrow-bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Tomorrow";
+  src: url("./assets/fonts/tomorrow/tomorrow-bold-italic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-mono: "Berkeley Mono", ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -42,7 +113,7 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0;
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
