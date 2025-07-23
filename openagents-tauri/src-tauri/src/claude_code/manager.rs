@@ -181,7 +181,7 @@ impl ClaudeSession {
         let claude_command = if self.claude_session_id.is_some() {
             // Continue existing conversation
             format!(
-                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json",
+                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json --verbose",
                 self.project_path, 
                 self.binary_path.display(), 
                 message.replace("\"", "\\\"")
@@ -189,7 +189,7 @@ impl ClaudeSession {
         } else {
             // Start new conversation
             format!(
-                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json",
+                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json --verbose",
                 self.project_path,
                 self.binary_path.display(), 
                 message.replace("\"", "\\\"")

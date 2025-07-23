@@ -38,6 +38,8 @@ This ensures you get the latest compatible versions and proper lockfile updates.
 bun run preview      # Preview production build
 ```
 
+**IMPORTANT**: Never run `bun run tauri dev` or similar development server commands automatically. The user will run these commands themselves. You should only compile/build to check for errors using commands like `cargo build` or `cargo check`.
+
 ## Architecture
 
 ### Frontend Structure

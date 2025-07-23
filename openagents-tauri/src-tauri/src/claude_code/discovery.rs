@@ -30,14 +30,43 @@ impl ClaudeDiscovery {
             }
         }
 
-        // Strategy 1: Check PATH using login shell
+        // Strategy 1: Check for claude in fnm paths first (most common with modern setup)
+        if let Some(home) = dirs_next::home_dir() {
+            let fnm_base = home.join(".local/state/fnm_multishells");
+            if fnm_base.exists() {
+                // Find any fnm shell directory
+                if let Ok(entries) = async_fs::read_dir(&fnm_base).await {
+                    let mut entries = entries;
+                    while let Ok(Some(entry)) = entries.next_entry().await {
+                        let claude_path = entry.path().join("bin/claude");
+                        if claude_path.exists() {
+                            // Verify it's not the old version
+                            if let Ok(output) = Command::new(&claude_path)
+                                .arg("--version")
+                                .output()
+                            {
+                                let version_str = String::from_utf8_lossy(&output.stdout);
+                                if !version_str.contains("0.2.") {
+                                    info!("Found modern claude in fnm: {} (version: {})", 
+                                          claude_path.display(), version_str.trim());
+                                    self.binary_path = Some(claude_path.clone());
+                                    return Ok(claude_path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy 2: Check PATH using login shell
         if let Some(path) = self.check_path_with_shell().await? {
             info!("Found Claude in PATH: {:?}", path);
             self.binary_path = Some(path.clone());
             return Ok(path);
         }
 
-        // Strategy 2: Check common installation locations
+        // Strategy 3: Check common installation locations
         let common_paths = vec![
             "/usr/local/bin/claude",
             "/opt/homebrew/bin/claude",
@@ -63,18 +92,68 @@ impl ClaudeDiscovery {
 
     /// Check PATH using login shell
     async fn check_path_with_shell(&self) -> Result<Option<PathBuf>, ClaudeError> {
-        let output = Command::new("/bin/bash")
-            .args(&["-l", "-c", "which claude"])
+        // First try to get the PATH from the current shell environment
+        let shell_cmd = if std::env::var("SHELL").unwrap_or_default().contains("zsh") {
+            "/bin/zsh"
+        } else {
+            "/bin/bash"
+        };
+        
+        // Run which claude with full environment
+        let output = Command::new(shell_cmd)
+            .args(&["-l", "-i", "-c", "which claude"])
             .output()
             .map_err(|e| ClaudeError::Other(format!("Failed to run which command: {}", e)))?;
 
         if output.status.success() {
             let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
             info!("which claude returned: {}", path_str);
+            
             if !path_str.is_empty() && !path_str.contains("not found") {
-                let path = PathBuf::from(path_str);
-                if path.exists() {
-                    // Don't resolve symlinks - use the path as returned by which
+                let path = PathBuf::from(&path_str);
+                
+                // Skip if it's the old node_modules version
+                if path_str.contains("node_modules/.bin/claude") {
+                    info!("Skipping old node_modules claude binary");
+                    
+                    // Try to find the correct one - first get the full PATH
+                    let path_output = Command::new(shell_cmd)
+                        .args(&["-l", "-i", "-c", "echo $PATH"])
+                        .output()
+                        .map_err(|e| ClaudeError::Other(format!("Failed to get PATH: {}", e)))?;
+                    
+                    if path_output.status.success() {
+                        let full_path = String::from_utf8_lossy(&path_output.stdout);
+                        
+                        // Check each directory in PATH for claude
+                        for dir in full_path.trim().split(':') {
+                            let claude_path = PathBuf::from(dir).join("claude");
+                            if claude_path.exists() && !dir.contains("node_modules") {
+                                // Check version to make sure it's not old
+                                if let Ok(version_output) = Command::new(&claude_path)
+                                    .arg("--version")
+                                    .output()
+                                {
+                                    let version_str = String::from_utf8_lossy(&version_output.stdout);
+                                    if !version_str.contains("0.2.") {
+                                        info!("Found modern claude in PATH: {} (version: {})", 
+                                              claude_path.display(), version_str.trim());
+                                        return Ok(Some(claude_path));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Also try ~/.local/bin/claude (common location)
+                    if let Some(home) = dirs_next::home_dir() {
+                        let local_claude = home.join(".local/bin/claude");
+                        if local_claude.exists() {
+                            info!("Found claude in ~/.local/bin: {}", local_claude.display());
+                            return Ok(Some(local_claude));
+                        }
+                    }
+                } else if path.exists() {
                     info!("Using claude binary from PATH: {}", path.display());
                     return Ok(Some(path));
                 }
