@@ -27,6 +27,12 @@ bun run build        # Build frontend (runs tsc && vite build)
 bun run tauri build  # Build the complete Tauri app
 ```
 
+### Package Management
+**IMPORTANT**: Never manually edit `Cargo.toml` or `package.json` to add dependencies. Always use the proper package managers:
+- **Rust dependencies**: Use `cargo add <package>` in the `src-tauri` directory
+- **Frontend dependencies**: Use `bun add <package>` for runtime deps or `bun add -d <package>` for dev deps
+This ensures you get the latest compatible versions and proper lockfile updates.
+
 ### Other Commands
 ```bash
 bun run preview      # Preview production build
