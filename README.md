@@ -1,10 +1,10 @@
 # OpenAgents
 
-Voice-first AI development platform that lets you orchestrate multiple coding agents from anywhere. Built with Tauri for true cross-platform support on desktop and mobile.
+Cross-platform AI coding assistant built with Tauri. Access the best coding agents through a clean, modern desktop application paired with a mobile app for control on the go.
 
-## Voice-Driven Development
+## True Cross-Platform Development
 
-Control AI coding agents through natural conversation. Start a task on your phone during your commute, have your desktop execute it, and review results from anywhere. No more being tethered to your IDE.
+OpenAgents brings professional AI-powered development to every device. The desktop app provides a powerful, native coding environment while the mobile companion lets you manage tasks, review code, and control your agents from anywhere—with first-class support for voice commands.
 
 ## Multi-Agent Architecture
 
@@ -20,20 +20,23 @@ Control AI coding agents through natural conversation. Start a task on your phon
 - **Optional Sync**: End-to-end encrypted sync between devices
 - **Open Protocols**: Built on MCP (Model Context Protocol) and open standards
 
-## Cross-Platform Experience
+## Native Apps for Desktop and Mobile
 
-Built with Tauri + React + Rust for native performance everywhere:
+Built with Tauri + React + Rust for native performance and modern UI:
 
-### Mobile
-- Push-to-talk voice interface
-- Real-time task monitoring
-- Background execution status
-
-### Desktop  
+### Desktop Application
+- Clean, modern interface for AI coding agents
 - Multi-window agent management
-- Local model support
-- File system integration
+- Local model support with full hardware acceleration
+- Direct file system integration
 - Full code execution environment
+
+### Mobile Companion
+- Control your desktop agents from anywhere
+- Voice commands with push-to-talk interface
+- Real-time task monitoring and notifications
+- Code review and approval on the go
+- Seamless handoff between devices
 
 ## Getting Started
 
@@ -49,6 +52,6 @@ bun run tauri dev
 bun run tauri build
 ```
 
-## Beyond Traditional IDEs
+## A New Kind of Development Environment
 
-While others build better VS Code forks, OpenAgents reimagines development as conversation. Focus on what you want to build, not how to navigate complex UIs.
+OpenAgents isn't another VS Code fork or IDE plugin. It's a purpose-built platform for AI-assisted development, designed from the ground up for how developers actually work with AI coding agents. Clean native UI, powerful agent orchestration, and the freedom to code from anywhere.
