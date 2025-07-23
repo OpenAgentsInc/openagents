@@ -1,10 +1,3 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
@@ -22,77 +15,151 @@
 }
 
 .container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  text-align: left;
 }
 
 h1 {
   text-align: center;
+  color: #333;
 }
 
-input,
-button {
+.status-section,
+.session-section,
+.chat-section {
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid #ddd;
   border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
+  background-color: #f9f9f9;
+}
+
+.messages-container {
+  height: 400px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: white;
+  margin-bottom: 10px;
+}
+
+.message {
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 4px;
+  word-wrap: break-word;
+}
+
+.message-type {
+  font-weight: bold;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.message-content pre {
+  margin: 0;
+  white-space: pre-wrap;
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
 }
 
-button {
+.user-message {
+  background-color: #e3f2fd;
+  border-left: 4px solid #2196f3;
+}
+
+.assistant-message {
+  background-color: #f3e5f5;
+  border-left: 4px solid #9c27b0;
+}
+
+.tool-message {
+  background-color: #fff3e0;
+  border-left: 4px solid #ff9800;
+}
+
+.error-message {
+  background-color: #ffebee;
+  border-left: 4px solid #f44336;
+}
+
+.summary-message {
+  background-color: #e8f5e9;
+  border-left: 4px solid #4caf50;
+}
+
+.thinking-message {
+  background-color: #f5f5f5;
+  border-left: 4px solid #9e9e9e;
+  font-style: italic;
+}
+
+.system-message {
+  background-color: #fafafa;
+  border-left: 4px solid #607d8b;
+}
+
+.tool-output {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.tool-output summary {
   cursor: pointer;
+  font-weight: bold;
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+.tool-output pre {
+  margin: 10px 0 0 0;
+  font-size: 0.9em;
 }
 
-input,
+.input-section {
+  display: flex;
+  gap: 10px;
+}
+
+.input-section input {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
 button {
-  outline: none;
+  padding: 10px 20px;
+  background-color: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.25s;
 }
 
-#greet-input {
-  margin-right: 5px;
+button:hover:not(:disabled) {
+  background-color: #1976d2;
+}
+
+button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+input[type="text"] {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-right: 10px;
+  font-size: 14px;
+  background-color: white;
+  color: #0f0f0f;
 }
 
 @media (prefers-color-scheme: dark) {
