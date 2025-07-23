@@ -305,11 +305,4 @@ impl ClaudeDiscovery {
         })
     }
 
-    pub fn get_binary_path(&self) -> Option<&PathBuf> {
-        self.binary_path.as_ref()
-    }
-
-    pub fn get_data_path(&self) -> Option<&PathBuf> {
-        self.data_path.as_ref()
-    }
 }

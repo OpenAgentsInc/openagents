@@ -45,7 +45,7 @@ function App() {
 
     const interval = setInterval(async () => {
       await fetchMessages();
-    }, 1000);
+    }, 50); // Poll every 50ms for real-time updates
 
     return () => clearInterval(interval);
   }, [sessionId]);
@@ -104,24 +104,37 @@ function App() {
       return;
     }
 
+    // Immediately add user message to UI
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      message_type: "user",
+      content: inputMessage,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMessage]);
+
     console.log("Sending message:", inputMessage, "to session:", sessionId);
+    const messageToSend = inputMessage;
+    setInputMessage(""); // Clear input immediately
     setIsLoading(true);
+    
     try {
       const result = await invoke<CommandResult<void>>("send_message", {
         sessionId,
-        message: inputMessage,
+        message: messageToSend,
       });
       console.log("Send message result:", result);
-      if (result.success) {
-        console.log("Message sent successfully");
-        setInputMessage("");
-      } else {
+      if (!result.success) {
         alert(`Error sending message: ${result.error}`);
         console.error("Send message failed:", result.error);
+        // Remove the user message we optimistically added
+        setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
       }
     } catch (error) {
       alert(`Error: ${error}`);
       console.error("Send message error:", error);
+      // Remove the user message we optimistically added
+      setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
     }
     setIsLoading(false);
   };
@@ -134,11 +147,27 @@ function App() {
         sessionId,
       });
       if (result.success && result.data) {
-        if (result.data.length !== messages.length) {
-          console.log("Messages updated:", result.data.length, "messages");
-          console.log("Latest messages:", result.data);
-        }
-        setMessages(result.data);
+        // Merge backend messages with local optimistic messages
+        setMessages(prev => {
+          const backendMessages = result.data || [];
+          const optimisticUserMessages = prev.filter(msg => 
+            msg.id.startsWith('user-') && msg.message_type === 'user'
+          );
+          
+          // Remove optimistic messages that now exist in backend
+          const filteredOptimistic = optimisticUserMessages.filter(optimistic => 
+            !backendMessages.some(backend => 
+              backend.message_type === 'user' && 
+              backend.content === optimistic.content
+            )
+          );
+          
+          // Combine and sort by timestamp
+          const combined = [...backendMessages, ...filteredOptimistic];
+          combined.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          
+          return combined;
+        });
       }
     } catch (error) {
       console.error("Error fetching messages:", error);
