@@ -45,7 +45,7 @@ function App() {
 
     const interval = setInterval(async () => {
       await fetchMessages();
-    }, 1000);
+    }, 100); // Poll every 100ms for near real-time updates
 
     return () => clearInterval(interval);
   }, [sessionId]);
@@ -134,10 +134,6 @@ function App() {
         sessionId,
       });
       if (result.success && result.data) {
-        if (result.data.length !== messages.length) {
-          console.log("Messages updated:", result.data.length, "messages");
-          console.log("Latest messages:", result.data);
-        }
         setMessages(result.data);
       }
     } catch (error) {

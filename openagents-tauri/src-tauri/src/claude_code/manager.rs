@@ -334,7 +334,7 @@ impl ClaudeSession {
             return;
         }
         
-        debug!("Processing line from Claude: {}", trimmed);
+        info!("Processing line from Claude: {}", trimmed);
         
         if !trimmed.starts_with('{') {
             info!("Non-JSON line from Claude: {}", trimmed);
