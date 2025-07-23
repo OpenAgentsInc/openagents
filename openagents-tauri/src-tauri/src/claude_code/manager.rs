@@ -54,10 +54,11 @@ impl ClaudeManager {
     pub async fn send_message(&self, session_id: &str, message: String) -> Result<(), ClaudeError> {
         let sessions = self.sessions.read().await;
         let session = sessions.get(session_id)
-            .ok_or_else(|| ClaudeError::SessionNotFound(session_id.to_string()))?;
+            .ok_or_else(|| ClaudeError::SessionNotFound(session_id.to_string()))?
+            .clone();
 
-        let mut session_lock = session.lock().await;
-        session_lock.send_message(message).await
+        // Send message without holding the session lock for the entire duration
+        ClaudeSession::send_message_static(session, message).await
     }
 
     pub async fn get_messages(&self, session_id: &str) -> Result<Vec<Message>, ClaudeError> {
@@ -133,6 +134,164 @@ impl ClaudeSession {
             pending_tool_uses: HashMap::new(),
             message_subscribers: Vec::new(),
         }
+    }
+
+    async fn send_message_static(
+        session: Arc<Mutex<ClaudeSession>>, 
+        message: String
+    ) -> Result<(), ClaudeError> {
+        // Get session info we need
+        let (project_path, binary_path, claude_session_id) = {
+            let session_lock = session.lock().await;
+            (
+                session_lock.project_path.clone(),
+                session_lock.binary_path.clone(),
+                session_lock.claude_session_id.clone(),
+            )
+        };
+
+        // Add user message
+        {
+            let mut session_lock = session.lock().await;
+            let user_msg = Message {
+                id: Uuid::new_v4(),
+                message_type: MessageType::User,
+                content: message.clone(),
+                timestamp: Utc::now(),
+                tool_info: None,
+            };
+            session_lock.add_message(user_msg).await;
+
+            // Store first message for preview
+            if session_lock.first_message.is_none() {
+                session_lock.first_message = Some(message.clone());
+            }
+        }
+
+        // Build the command
+        let claude_command = if claude_session_id.is_some() {
+            format!(
+                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json --verbose",
+                project_path, 
+                binary_path.display(), 
+                message.replace("\"", "\\\"")
+            )
+        } else {
+            format!(
+                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json --verbose",
+                project_path,
+                binary_path.display(), 
+                message.replace("\"", "\\\"")
+            )
+        };
+
+        info!("Running command: {}", claude_command);
+
+        // Execute the command with streaming output
+        let mut child = Command::new("/bin/bash")
+            .args(&["-l", "-c", &claude_command])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| ClaudeError::Other(format!("Failed to execute Claude Code: {}", e)))?;
+
+        // Get stdout and stderr handles
+        let stdout = child.stdout.take()
+            .ok_or_else(|| ClaudeError::Other("Failed to capture stdout".to_string()))?;
+        let stderr = child.stderr.take()
+            .ok_or_else(|| ClaudeError::Other("Failed to capture stderr".to_string()))?;
+
+        // Create readers for streaming
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        let stdout_reader = BufReader::new(stdout);
+        let stderr_reader = BufReader::new(stderr);
+
+        // Spawn the child process and read output in separate tasks
+        let mut stdout_lines = stdout_reader.lines();
+        let mut stderr_lines = stderr_reader.lines();
+        
+        // Create a channel for the child process status
+        let (status_tx, mut status_rx) = mpsc::channel::<std::process::ExitStatus>(1);
+        
+        // Spawn task to wait for child process
+        tokio::spawn(async move {
+            if let Ok(status) = child.wait().await {
+                let _ = status_tx.send(status).await;
+            }
+        });
+
+        let mut error_buffer = String::new();
+        let mut process_done = false;
+
+        // Process stdout and stderr as they come in
+        loop {
+            tokio::select! {
+                // Read from stdout
+                Ok(Some(line)) = stdout_lines.next_line() => {
+                    if !line.trim().is_empty() {
+                        let mut session_lock = session.lock().await;
+                        session_lock.process_output_line(&line).await;
+                    }
+                }
+                // Read from stderr
+                Ok(Some(line)) = stderr_lines.next_line() => {
+                    warn!("Claude Code stderr: {}", line);
+                    error_buffer.push_str(&line);
+                    error_buffer.push('\n');
+                }
+                // Check if process has exited
+                Some(status) = status_rx.recv() => {
+                    process_done = true;
+                    // Continue reading any remaining output
+                    
+                    // Read any remaining stdout
+                    while let Ok(Some(line)) = stdout_lines.next_line().await {
+                        if !line.trim().is_empty() {
+                            let mut session_lock = session.lock().await;
+                            session_lock.process_output_line(&line).await;
+                        }
+                    }
+                    
+                    // Read any remaining stderr
+                    while let Ok(Some(line)) = stderr_lines.next_line().await {
+                        warn!("Claude Code stderr: {}", line);
+                        error_buffer.push_str(&line);
+                        error_buffer.push('\n');
+                    }
+                    
+                    // Check exit status
+                    if !status.success() {
+                        return Err(ClaudeError::Other(format!(
+                            "Claude Code exited with status: {}",
+                            status
+                        )));
+                    }
+                    
+                    break;
+                }
+                // If all channels are closed, we're done
+                else => {
+                    if process_done {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If there were errors, add an error message
+        if !error_buffer.trim().is_empty() {
+            let mut session_lock = session.lock().await;
+            let error_msg = Message {
+                id: Uuid::new_v4(),
+                message_type: MessageType::Error,
+                content: format!("Error: {}", error_buffer.trim()),
+                timestamp: Utc::now(),
+                tool_info: None,
+            };
+            session_lock.add_message(error_msg).await;
+        }
+
+        Ok(())
     }
 
     async fn start(&mut self) -> Result<(), ClaudeError> {
