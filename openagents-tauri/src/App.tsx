@@ -106,27 +106,81 @@ function App() {
       // Find all chat panes and restore their sessions
       const chatPanes = panes.filter(p => p.type === "chat" && p.content?.sessionId);
       
-      chatPanes.forEach(pane => {
+      chatPanes.forEach(async pane => {
         if (!pane.content?.sessionId) return;
         
-        const sessionId = pane.content.sessionId;
+        const oldSessionId = pane.content.sessionId;
         const projectPath = pane.content.projectPath || newProjectPath;
         
         // Check if session already exists
-        const sessionExists = sessions.some(s => s.id === sessionId);
+        const sessionExists = sessions.some(s => s.id === oldSessionId);
         if (!sessionExists) {
-          // Restore session with persisted messages
-          const persistedMessages = getSessionMessages(sessionId);
-          const restoredSession: Session = {
-            id: sessionId,
+          // Get persisted messages
+          const persistedMessages = getSessionMessages(oldSessionId);
+          
+          // Create a temporary frontend session while we create the backend session
+          const tempSession: Session = {
+            id: oldSessionId,
             projectPath: projectPath,
             messages: persistedMessages,
             inputMessage: "",
             isLoading: false,
-            isInitializing: false,
+            isInitializing: true,
           };
           
-          setSessions(prev => [...prev, restoredSession]);
+          setSessions(prev => [...prev, tempSession]);
+          
+          try {
+            // Create a new backend session
+            const result = await invoke<CommandResult<string>>("create_session", {
+              projectPath: projectPath,
+            });
+            
+            if (result.success && result.data) {
+              const newSessionId = result.data;
+              console.log("Restored session with new ID:", newSessionId, "old ID:", oldSessionId);
+              
+              // Update the frontend session with the new ID
+              setSessions(prev => prev.map(s => 
+                s.id === oldSessionId 
+                  ? { ...s, id: newSessionId, isInitializing: false }
+                  : s
+              ));
+              
+              // Update the pane and transfer messages
+              setTimeout(() => {
+                usePaneStore.setState(state => {
+                  const updatedPanes = state.panes.map(p => 
+                    p.id === `chat-${oldSessionId}`
+                      ? { ...p, id: `chat-${newSessionId}`, content: { ...p.content, sessionId: newSessionId } }
+                      : p
+                  );
+                  
+                  // Transfer persisted messages to new session ID
+                  const updatedSessionMessages = { ...state.sessionMessages };
+                  if (persistedMessages.length > 0) {
+                    updatedSessionMessages[newSessionId] = persistedMessages;
+                    delete updatedSessionMessages[oldSessionId];
+                  }
+                  
+                  return {
+                    panes: updatedPanes,
+                    activePaneId: state.activePaneId === `chat-${oldSessionId}` 
+                      ? `chat-${newSessionId}` 
+                      : state.activePaneId,
+                    sessionMessages: updatedSessionMessages
+                  };
+                });
+              }, 0);
+            } else {
+              // Remove the session if we couldn't create it in the backend
+              setSessions(prev => prev.filter(s => s.id !== oldSessionId));
+              console.error("Failed to restore session:", result.error);
+            }
+          } catch (error) {
+            console.error("Error restoring session:", error);
+            setSessions(prev => prev.filter(s => s.id !== oldSessionId));
+          }
         }
       });
     }
