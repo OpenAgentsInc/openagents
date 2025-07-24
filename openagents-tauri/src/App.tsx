@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Frame } from "@/components/ui/frame";
+import { KeyboardControls } from "@react-three/drei";
+import { PaneManager } from "@/panes/PaneManager";
+import { Hotbar } from "@/components/hud/Hotbar";
+import { usePaneStore } from "@/stores/pane";
+import { AppControls, appControlsMap } from "@/controls";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 interface Message {
   id: string;
@@ -38,6 +39,8 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [newProjectPath, setNewProjectPath] = useState("");
   const [isDiscoveryLoading, setIsDiscoveryLoading] = useState(false);
+  
+  const { openChatPane, toggleMetadataPane } = usePaneStore();
 
   // Get current directory on mount
   useEffect(() => {
@@ -113,6 +116,9 @@ function App() {
         };
         setSessions(prev => [...prev, newSession]);
         console.log("Session created with ID:", result.data);
+        
+        // Open a pane for the new session
+        openChatPane(result.data, newProjectPath);
       } else {
         alert(`Error creating session: ${result.error}`);
         console.error("Session creation failed:", result.error);
@@ -231,212 +237,79 @@ function App() {
     }
   };
 
-  const renderMessage = (msg: Message) => {
-    const messageTypeStyles: Record<string, string> = {
-      user: "bg-primary/10 border-primary/20",
-      assistant: "bg-secondary/10 border-secondary/20",
-      tool_use: "bg-accent/10 border-accent/20",
-      error: "bg-destructive/10 border-destructive/20 text-destructive",
-      summary: "bg-muted/50 border-muted",
-      thinking: "bg-muted/30 border-muted italic",
-      system: "bg-muted/20 border-muted",
-    };
-
-    const style = messageTypeStyles[msg.message_type] || "bg-muted/10 border-muted";
-
-    return (
-      <div key={msg.id} className={`border p-4 overflow-hidden ${style}`}>
-        <div className="text-xs font-semibold uppercase opacity-70 mb-1">
-          {msg.message_type}
-        </div>
-        <div className="text-sm overflow-hidden">
-          <div className="whitespace-pre-wrap break-all font-mono overflow-x-auto overflow-y-hidden">
-            {msg.content}
-          </div>
-          {msg.tool_info && msg.tool_info.output && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs font-medium hover:underline">
-                Tool Output
-              </summary>
-              <div className="mt-2 text-xs opacity-80 whitespace-pre-wrap break-all font-mono overflow-x-auto overflow-y-hidden">
-                {msg.tool_info.output}
-              </div>
-            </details>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // Set dark mode on mount
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
   const updateSessionInput = (sessionId: string, value: string) => {
     setSessions(prev => prev.map(s => 
       s.id === sessionId ? { ...s, inputMessage: value } : s
     ));
   };
 
+  // Handle keyboard shortcuts
+  const handleKeyboardShortcuts = useCallback((name: string, pressed: boolean) => {
+    if (!pressed) return;
+
+    switch (name) {
+      case AppControls.HOTBAR_1:
+        toggleMetadataPane();
+        break;
+      case AppControls.HOTBAR_2:
+        if (newProjectPath) {
+          createSession();
+        }
+        break;
+      case AppControls.HOTBAR_8:
+        console.log("Settings");
+        break;
+      case AppControls.HOTBAR_9:
+        console.log("Help");
+        break;
+    }
+  }, [toggleMetadataPane, newProjectPath, createSession]);
+
+  // Set dark mode on mount
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+  }, []);
+
+  // Provide session data to child components through a context or prop drilling
+  // For now, we'll use a global object (this should be replaced with proper state management)
+  useEffect(() => {
+    (window as any).__openagents_data = {
+      claudeStatus,
+      sessions,
+      newProjectPath,
+      isDiscoveryLoading,
+      setNewProjectPath,
+      createSession,
+      sendMessage,
+      updateSessionInput,
+      stopSession,
+    };
+  }, [claudeStatus, sessions, newProjectPath, isDiscoveryLoading]);
+
   return (
-    <div className="fixed inset-0 p-8 font-mono overflow-hidden">
-      <div className="h-full flex gap-6 overflow-hidden">
-        {/* Metadata Panel */}
-        <div className="w-80 flex flex-col gap-4 min-h-0">
-          {/* Header */}
-          <div className="text-center select-none p-4">
-            <h1 className="text-xl font-bold mb-1">OpenAgents</h1>
-            <p className="text-muted-foreground text-xs">Claude Code Commander</p>
-          </div>
-
-          {/* Status & Sessions */}
-          <Frame className="p-4 flex-1 flex flex-col min-h-0">
-            {/* Status Section */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Status</h3>
-              <p className="text-xs text-muted-foreground">
-                Sessions: {sessions.length} • {isDiscoveryLoading ? "Loading..." : "Ready"}
-              </p>
-              <p className="text-xs break-all">{claudeStatus}</p>
-            </div>
-
-            <Separator className="my-4" />
-
-            {/* Sessions Section */}
-            <div className="flex-1 flex flex-col space-y-4 min-h-0">
-              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Sessions</h3>
-              
-              {/* Create New Session */}
-              <div className="space-y-2">
-                <Input
-                  type="text"
-                  value={newProjectPath}
-                  onChange={(e) => setNewProjectPath(e.target.value)}
-                  placeholder="Project path"
-                  className="text-xs"
-                />
-                <Button 
-                  onClick={createSession} 
-                  disabled={isDiscoveryLoading}
-                  size="sm"
-                  className="w-full"
-                >
-                  Create Session
-                </Button>
-              </div>
-
-              <Separator />
-
-              {/* Active Sessions List */}
-              <div className="space-y-2 flex-1 overflow-y-auto">
-                {sessions.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No active sessions</p>
-                ) : (
-                  sessions.map((session) => (
-                    <div key={session.id} className="p-2 border border-border/20 bg-muted/10">
-                      <div className="flex justify-between items-start mb-1">
-                        <p className="text-xs font-mono break-all flex-1">
-                          {session.projectPath.split('/').pop()}
-                        </p>
-                        <Button
-                          onClick={() => stopSession(session.id)}
-                          disabled={session.isLoading}
-                          variant="destructive"
-                          size="sm"
-                          className="h-5 px-2 text-xs ml-2"
-                        >
-                          ×
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {session.messages.length} messages
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </Frame>
+    <TooltipProvider>
+      <KeyboardControls map={appControlsMap} onChange={handleKeyboardShortcuts}>
+        <div className="fixed inset-0 font-mono overflow-hidden">
+          {/* Background with grid pattern */}
+          <div 
+            className="absolute inset-0 opacity-5"
+            style={{
+              backgroundImage: `
+                linear-gradient(to right, #10b981 1px, transparent 1px),
+                linear-gradient(to bottom, #10b981 1px, transparent 1px)
+              `,
+              backgroundSize: '50px 50px'
+            }}
+          />
+          
+          {/* Pane Manager */}
+          <PaneManager />
+          
+          {/* Hotbar */}
+          <Hotbar />
         </div>
-
-        {/* Chat Sessions Grid */}
-        <div className="flex-1 grid grid-cols-1 gap-4 min-h-0 overflow-hidden" style={{
-          gridTemplateColumns: sessions.length === 1 ? '1fr' : 
-                              sessions.length === 2 ? '1fr 1fr' :
-                              sessions.length === 3 ? '1fr 1fr 1fr' :
-                              sessions.length >= 4 ? '1fr 1fr' : '1fr',
-          gridAutoRows: 'minmax(0, 1fr)'
-        }}>
-          {sessions.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <p className="text-muted-foreground mb-4">No active sessions</p>
-                <p className="text-sm text-muted-foreground">
-                  Create a session to start chatting with Claude Code
-                </p>
-              </div>
-            </div>
-          ) : (
-            sessions.map((session) => (
-              <Frame key={session.id} className="flex flex-col h-full">
-                {/* Chat Header */}
-                <div className="p-4 border-b border-border flex-shrink-0">
-                  <h3 className="text-sm font-semibold truncate">
-                    {session.projectPath.split('/').pop()}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    {session.messages.length} messages
-                  </p>
-                </div>
-
-                {/* Messages */}
-                <ScrollArea className="flex-1">
-                  <div className="px-4 py-4">
-                    {session.messages.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No messages yet. Send a message to start the conversation.
-                      </p>
-                    ) : (
-                      <div className="space-y-4">
-                        {session.messages.map(renderMessage)}
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-                
-                {/* Input */}
-                <div className="p-4 border-t border-border flex-shrink-0">
-                    <div className="flex gap-2">
-                      <Input
-                        type="text"
-                        value={session.inputMessage}
-                        onChange={(e) => updateSessionInput(session.id, e.target.value)}
-                        onKeyPress={(e) => {
-                          if (e.key === "Enter") {
-                            sendMessage(session.id);
-                          }
-                        }}
-                        placeholder="Type your message..."
-                        disabled={session.isLoading}
-                        className="flex-1 text-sm"
-                        autoFocus
-                      />
-                      <Button 
-                        onClick={() => sendMessage(session.id)} 
-                        disabled={session.isLoading || !session.inputMessage.trim()}
-                        size="sm"
-                      >
-                        Send
-                      </Button>
-                    </div>
-                  </div>
-              </Frame>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+      </KeyboardControls>
+    </TooltipProvider>
   );
 }
 
