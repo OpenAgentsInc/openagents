@@ -1,4 +1,4 @@
-import { Effect, Stream, Queue, Ref, Schedule, pipe, Context, Layer, Fiber } from 'effect';
+import { Effect, Stream, Queue, pipe, Context, Layer, Schedule } from 'effect';
 import { 
   TauriEventService, 
   TauriEventError, 
@@ -22,10 +22,8 @@ export interface Message {
 
 export interface StreamingSession {
   sessionId: string;
-  messageQueue: Queue.Queue<Message>;
-  isActive: Ref.Ref<boolean>;
+  messageQueue: Queue.Queue<unknown>; // Holds the event payload directly
   cleanup: () => void;
-  processor: Fiber.RuntimeFiber<void, TauriEventError>;
 }
 
 // Service interface
@@ -83,52 +81,19 @@ export const ClaudeStreamingServiceLive = Layer.effect(
     return ClaudeStreamingService.of({
       startStreaming: (sessionId: string) =>
         Effect.gen(function* () {
+          console.log(`Starting streaming for session: ${sessionId}`);
+          
           // Create event stream for this session
-          const { queue: eventQueue, cleanup } = yield* eventService.createEventStream(
-            `claude:${sessionId}:message`
-          );
+          const eventName = `claude:${sessionId}:message`;
+          const { queue: eventQueue, cleanup } = yield* eventService.createEventStream(eventName);
           
-          // Create message queue for processed messages
-          const messageQueue = yield* Queue.bounded<Message>(1000);
-          const isActive = yield* Ref.make(true);
-          
-          // Process events into messages
-          const processor = yield* pipe(
-            Stream.fromQueue(eventQueue),
-            Stream.mapEffect((event) =>
-              parseClaudeMessage(event.payload).pipe(
-                Effect.retry(
-                  Schedule.exponential('10 millis', 2).pipe(
-                    Schedule.compose(Schedule.recurs(3))
-                  )
-                ),
-                Effect.catchAll((error) =>
-                  Effect.gen(function* () {
-                    yield* Effect.logError(`Failed to parse message: ${error}`);
-                    return null;
-                  })
-                )
-              )
-            ),
-            Stream.filter((msg): msg is Message => msg !== null),
-            Stream.tap((msg) => Queue.offer(messageQueue, msg)),
-            Stream.runDrain
-          ).pipe(
-            Effect.fork,
-            Effect.interruptible
-          );
-          
+          // Create a simple streaming session
           const session: StreamingSession = {
             sessionId,
-            messageQueue,
-            isActive,
-            processor,
+            messageQueue: eventQueue,
             cleanup: () => {
+              console.log(`Cleaning up streaming for session: ${sessionId}`);
               cleanup();
-              Ref.set(isActive, false).pipe(Effect.runSync);
-              Fiber.interrupt(processor).pipe(Effect.runPromise).catch(error => {
-                console.error(`Failed to interrupt processor for session ${sessionId}:`, error);
-              });
             }
           };
           
@@ -138,46 +103,46 @@ export const ClaudeStreamingServiceLive = Layer.effect(
       getMessageStream: (session: StreamingSession) =>
         pipe(
           Stream.fromQueue(session.messageQueue),
-          Stream.takeWhile(() => 
-            Ref.get(session.isActive).pipe(Effect.runSync)
+          Stream.tap((payload) => Effect.sync(() => console.log('Processing queue payload:', payload))),
+          Stream.mapEffect((payload: unknown) => {
+            // Parse the payload directly as it's already extracted
+            console.log('Parsing payload:', payload);
+            return parseClaudeMessage(payload).pipe(
+              Effect.tap((msg) => Effect.sync(() => console.log('Parsed message:', msg))),
+              Effect.catchAll((error) => {
+                console.error('Failed to parse message:', error);
+                return Effect.succeed(null);
+              })
+            );
+          }),
+          Stream.filter((msg): msg is Message => msg !== null)
+        ),
+
+      sendMessage: (sessionId: string, message: string): Effect.Effect<void, TauriEventError, never> =>
+        pipe(
+          eventService.emit('claude:send_message', { sessionId, message }),
+          Effect.retry(
+            Schedule.exponential('100 millis').pipe(
+              Schedule.compose(Schedule.recurs(3))
+            )
+          ),
+          Effect.catchTag('StreamingError', (error) =>
+            Effect.fail(
+              new ConnectionError(
+                sessionId,
+                `Failed to send message: ${error.message}`
+              )
+            )
           )
         ),
 
-      sendMessage: (sessionId: string, message: string) =>
-        Effect.gen(function* () {
-          yield* eventService.emit('claude:send_message', {
-            sessionId,
-            message
-          }).pipe(
-            Effect.retry(
-              Schedule.exponential('100 millis').pipe(
-                Schedule.compose(Schedule.recurs(3))
-              )
-            ),
-            Effect.catchTag('StreamingError', (error) =>
-              Effect.fail(
-                new ConnectionError(
-                  sessionId,
-                  `Failed to send message: ${error.message}`
-                )
-              )
-            )
-          );
-        }),
-
       stopStreaming: (session: StreamingSession) =>
         Effect.gen(function* () {
-          // Set active to false
-          yield* Ref.set(session.isActive, false);
-          
-          // Interrupt the processor fiber
-          yield* Fiber.interrupt(session.processor);
+          // Call cleanup to unlisten from events
+          yield* Effect.sync(() => session.cleanup());
           
           // Shutdown the message queue
           yield* Queue.shutdown(session.messageQueue);
-          
-          // Call cleanup to unlisten from events
-          yield* Effect.sync(() => session.cleanup());
         })
     });
   })
