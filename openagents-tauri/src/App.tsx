@@ -125,10 +125,18 @@ function App() {
     console.log("Sending message:", session.inputMessage, "to session:", sessionId);
     const messageToSend = session.inputMessage;
     
-    // Clear input and set loading state
+    // Immediately add user message to UI
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      message_type: "user",
+      content: messageToSend,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Clear input, add message, and set loading state
     setSessions(prev => prev.map(s => 
       s.id === sessionId 
-        ? { ...s, inputMessage: "", isLoading: true }
+        ? { ...s, messages: [...s.messages, userMessage], inputMessage: "", isLoading: true }
         : s
     ));
     
@@ -163,9 +171,25 @@ function App() {
         setSessions(prev => prev.map(session => {
           if (session.id !== sessionId) return session;
           
-          // Simply replace with backend messages for real-time streaming
-          // The backend already includes all messages including user messages
-          return { ...session, messages: result.data || [] };
+          const backendMessages = result.data || [];
+          const currentMessages = session.messages;
+          
+          // Keep optimistic user messages that haven't appeared in backend yet
+          const optimisticMessages = currentMessages.filter(msg => 
+            msg.id.startsWith('user-') && 
+            !backendMessages.some(backend => 
+              backend.message_type === 'user' && 
+              backend.content === msg.content
+            )
+          );
+          
+          // Combine optimistic messages with backend messages
+          const allMessages = [...optimisticMessages, ...backendMessages];
+          
+          // Sort by timestamp to maintain order
+          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          
+          return { ...session, messages: allMessages };
         }));
       }
     } catch (error) {
