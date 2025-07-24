@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { KeyboardControls } from "@react-three/drei";
 import { PaneManager } from "@/panes/PaneManager";
 import { Hotbar } from "@/components/hud/Hotbar";
 import { usePaneStore } from "@/stores/pane";
-import { AppControls, appControlsMap } from "@/controls";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 interface Message {
   id: string;
@@ -243,27 +242,37 @@ function App() {
     ));
   };
 
-  // Handle keyboard shortcuts
-  const handleKeyboardShortcuts = useCallback((name: string, pressed: boolean) => {
-    if (!pressed) return;
-
-    switch (name) {
-      case AppControls.HOTBAR_1:
-        toggleMetadataPane();
-        break;
-      case AppControls.HOTBAR_2:
+  // Set up keyboard shortcuts
+  useKeyboardShortcuts([
+    {
+      key: '1',
+      ctrlKey: true,
+      metaKey: true,
+      handler: () => toggleMetadataPane(),
+    },
+    {
+      key: '2',
+      ctrlKey: true,
+      metaKey: true,
+      handler: () => {
         if (newProjectPath) {
           createSession();
         }
-        break;
-      case AppControls.HOTBAR_8:
-        console.log("Settings");
-        break;
-      case AppControls.HOTBAR_9:
-        console.log("Help");
-        break;
-    }
-  }, [toggleMetadataPane, newProjectPath, createSession]);
+      },
+    },
+    {
+      key: '8',
+      ctrlKey: true,
+      metaKey: true,
+      handler: () => console.log('Settings'),
+    },
+    {
+      key: '9',
+      ctrlKey: true,
+      metaKey: true,
+      handler: () => console.log('Help'),
+    },
+  ]);
 
   // Set dark mode on mount
   useEffect(() => {
@@ -288,27 +297,25 @@ function App() {
 
   return (
     <TooltipProvider>
-      <KeyboardControls map={appControlsMap} onChange={handleKeyboardShortcuts}>
-        <div className="fixed inset-0 font-mono overflow-hidden">
-          {/* Background with grid pattern */}
-          <div 
-            className="absolute inset-0 opacity-5"
-            style={{
-              backgroundImage: `
-                linear-gradient(to right, #10b981 1px, transparent 1px),
-                linear-gradient(to bottom, #10b981 1px, transparent 1px)
-              `,
-              backgroundSize: '50px 50px'
-            }}
-          />
-          
-          {/* Pane Manager */}
-          <PaneManager />
-          
-          {/* Hotbar */}
-          <Hotbar />
-        </div>
-      </KeyboardControls>
+      <div className="fixed inset-0 font-mono overflow-hidden">
+        {/* Background with grid pattern */}
+        <div 
+          className="absolute inset-0 opacity-5"
+          style={{
+            backgroundImage: `
+              linear-gradient(to right, #10b981 1px, transparent 1px),
+              linear-gradient(to bottom, #10b981 1px, transparent 1px)
+            `,
+            backgroundSize: '50px 50px'
+          }}
+        />
+        
+        {/* Pane Manager */}
+        <PaneManager />
+        
+        {/* Hotbar */}
+        <Hotbar />
+      </div>
     </TooltipProvider>
   );
 }
