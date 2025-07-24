@@ -372,7 +372,7 @@ function App() {
             sessions.map((session) => (
               <Frame key={session.id} className="flex flex-col min-h-0 overflow-hidden">
                 {/* Chat Header */}
-                <div className="p-4 border-b border-border/20 flex-shrink-0">
+                <div className="p-4 border-b border-border flex-shrink-0">
                   <h3 className="text-sm font-semibold truncate">
                     {session.projectPath.split('/').pop()}
                   </h3>
@@ -398,7 +398,7 @@ function App() {
                   </ScrollArea>
                   
                   {/* Input */}
-                  <div className="p-4 border-t border-border/20 flex-shrink-0">
+                  <div className="p-4 border-t border-border flex-shrink-0">
                     <div className="flex gap-2">
                       <Input
                         type="text"
