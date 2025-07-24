@@ -59,8 +59,8 @@ export function useClaudeStreaming({
       const session = yield* service.startStreaming(sessionId);
       sessionRef.current = session;
       
-      // Process message stream
-      const processor = yield* pipe(
+      // Process message stream directly (don't fork, let it be the main program)
+      yield* pipe(
         service.getMessageStream(session),
         Stream.tap((message) =>
           Effect.sync(() => {
@@ -81,23 +81,22 @@ export function useClaudeStreaming({
           })
         ),
         Stream.runDrain
-      ).pipe(
-        Effect.catchAll((error) => 
-          Effect.sync(() => {
-            const err = new Error(String(error));
-            setError(err);
-            onError?.(err);
-          })
-        ),
-        Effect.fork
       );
-      
-      processorFiberRef.current = processor;
-      return processor;
-    });
+    }).pipe(
+      Effect.catchAll((error) => 
+        Effect.sync(() => {
+          const err = new Error(String(error));
+          setError(err);
+          onError?.(err);
+          setIsStreaming(false);
+        })
+      )
+    );
     
+    // Fork the entire program so it runs in background
     try {
-      await runtimeRef.current.runPromise(program);
+      const fiber = await runtimeRef.current.runPromise(Effect.fork(program));
+      processorFiberRef.current = fiber;
     } catch (err) {
       console.error('Failed to start streaming:', err);
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -129,22 +128,36 @@ export function useClaudeStreaming({
 
   // Stop streaming
   const stopStreaming = useCallback(async () => {
-    if (!runtimeRef.current || !sessionRef.current) return;
+    if (!runtimeRef.current) return;
     
-    const program = Effect.gen(function* () {
-      const service = yield* ClaudeStreamingService;
-      yield* service.stopStreaming(sessionRef.current!);
-    });
-    
-    try {
-      await runtimeRef.current.runPromise(program);
-    } catch (err) {
-      console.error('Failed to stop streaming:', err);
-    } finally {
-      sessionRef.current = null;
-      processorFiberRef.current = null;
-      setIsStreaming(false);
+    // Interrupt the processor fiber if it exists
+    if (processorFiberRef.current) {
+      try {
+        await runtimeRef.current.runPromise(
+          Fiber.interrupt(processorFiberRef.current)
+        );
+      } catch (err) {
+        console.error('Failed to interrupt processor fiber:', err);
+      }
     }
+    
+    // Stop the streaming session if it exists
+    if (sessionRef.current) {
+      const program = Effect.gen(function* () {
+        const service = yield* ClaudeStreamingService;
+        yield* service.stopStreaming(sessionRef.current!);
+      });
+      
+      try {
+        await runtimeRef.current.runPromise(program);
+      } catch (err) {
+        console.error('Failed to stop streaming:', err);
+      }
+    }
+    
+    sessionRef.current = null;
+    processorFiberRef.current = null;
+    setIsStreaming(false);
   }, []);
 
   // Cleanup on unmount
