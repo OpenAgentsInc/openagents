@@ -32,6 +32,7 @@ interface Session {
   messages: Message[];
   inputMessage: string;
   isLoading: boolean;
+  isInitializing?: boolean;
 }
 
 interface HandDataContext {
@@ -142,40 +143,79 @@ function App() {
     }
 
     console.log("Creating session for project:", newProjectPath);
-    setIsDiscoveryLoading(true);
+    
+    // Create a temporary session ID
+    const tempSessionId = `temp-${Date.now()}`;
+    
+    // Create session with initializing state
+    const newSession: Session = {
+      id: tempSessionId,
+      projectPath: newProjectPath,
+      messages: [],
+      inputMessage: "",
+      isLoading: false,
+      isInitializing: true,
+    };
+    
+    // Add session and open pane immediately
+    setSessions(prev => [...prev, newSession]);
+    openChatPane(tempSessionId, newProjectPath);
+    
+    // Initialize Claude in the background
     try {
       const result = await invoke<CommandResult<string>>("create_session", {
         projectPath: newProjectPath,
       });
       console.log("Create session result:", result);
+      
       if (result.success && result.data) {
-        const newSession: Session = {
-          id: result.data,
-          projectPath: newProjectPath,
-          messages: [],
-          inputMessage: "",
-          isLoading: false,
-        };
-        setSessions(prev => [...prev, newSession]);
-        console.log("Session created with ID:", result.data);
+        const realSessionId = result.data;
+        console.log("Session created with ID:", realSessionId);
         
-        // Open a pane for the new session
-        openChatPane(result.data, newProjectPath);
+        // Update the session with the real ID and remove initializing state
+        setSessions(prev => prev.map(s => 
+          s.id === tempSessionId 
+            ? { ...s, id: realSessionId, isInitializing: false }
+            : s
+        ));
+        
+        // Update the pane ID to match the real session ID
+        usePaneStore.setState(state => ({
+          panes: state.panes.map(p => 
+            p.id === `chat-${tempSessionId}`
+              ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
+              : p
+          ),
+          activePaneId: state.activePaneId === `chat-${tempSessionId}` 
+            ? `chat-${realSessionId}` 
+            : state.activePaneId
+        }));
       } else {
+        // Remove the session and close the pane on error
+        setSessions(prev => prev.filter(s => s.id !== tempSessionId));
+        usePaneStore.getState().removePane(`chat-${tempSessionId}`);
         alert(`Error creating session: ${result.error}`);
         console.error("Session creation failed:", result.error);
       }
     } catch (error) {
+      // Remove the session and close the pane on error
+      setSessions(prev => prev.filter(s => s.id !== tempSessionId));
+      usePaneStore.getState().removePane(`chat-${tempSessionId}`);
       alert(`Error: ${error}`);
       console.error("Session creation error:", error);
     }
-    setIsDiscoveryLoading(false);
   };
 
   const sendMessage = async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
     if (!session || !session.inputMessage.trim()) {
       console.log("Cannot send message - session:", session, "message:", session?.inputMessage);
+      return;
+    }
+    
+    // Don't send messages while initializing
+    if (session.isInitializing) {
+      console.log("Cannot send message - session is still initializing");
       return;
     }
 
