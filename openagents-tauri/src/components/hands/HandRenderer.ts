@@ -17,9 +17,9 @@ const DEFAULT_OPTIONS: RenderOptions = {
   jointRadius: 4,
   lineColor: "#3f3f46",
   lineWidth: 2,
-  pinchColor: "#10b981",
+  pinchColor: "#00ffff",
   pinchRadius: 12,
-  showPinchCoords: true,
+  showPinchCoords: false,
   minVisibility: 0.5,
 };
 
@@ -113,11 +113,11 @@ export class HandRenderer {
       this.ctx.lineWidth = 1;
       this.ctx.stroke();
 
-      // Highlight thumb and index tips (for pinch detection)
+      // Highlight thumb and index tips (for pinch detection) with electric blue
       if (index === 4 || index === 8) {
         this.ctx.beginPath();
         this.ctx.arc(x, y, radius + 2, 0, 2 * Math.PI);
-        this.ctx.strokeStyle = this.options.pinchColor!;
+        this.ctx.strokeStyle = "#00ffff";
         this.ctx.lineWidth = 2;
         this.ctx.stroke();
       }
@@ -161,14 +161,14 @@ export class HandRenderer {
     // Main pinch circle
     this.ctx.beginPath();
     this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
-    this.ctx.strokeStyle = isPinching ? this.options.pinchColor! : "#ffffff";
+    this.ctx.strokeStyle = isPinching ? this.options.pinchColor! : "#00ffff88";
     this.ctx.lineWidth = 3;
     this.ctx.stroke();
     
     // Inner dot
     this.ctx.beginPath();
     this.ctx.arc(x, y, 3, 0, 2 * Math.PI);
-    this.ctx.fillStyle = isPinching ? this.options.pinchColor! : "#ffffff";
+    this.ctx.fillStyle = isPinching ? this.options.pinchColor! : "#00ffff";
     this.ctx.fill();
     
     // Coordinate text with better styling
