@@ -10,29 +10,6 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- Prevent focus stealing during development -->
-    <script>
-      if (import.meta.env.DEV && window.__TAURI__) {
-        // Store initial focus state
-        const wasInitiallyFocused = document.hasFocus();
-        
-        // If window wasn't initially focused, blur it after a short delay
-        if (!wasInitiallyFocused) {
-          setTimeout(() => {
-            if (document.hasFocus() && !wasInitiallyFocused) {
-              window.blur();
-            }
-          }, 100);
-        }
-        
-        // Handle visibility changes during hot reload
-        document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible' && !wasInitiallyFocused) {
-            // Window became visible but wasn't initially focused
-            setTimeout(() => window.blur(), 50);
-          }
-        });
-      }
-    </script>
+    <!-- Focus stealing prevention is handled in main.tsx to avoid import.meta issues -->
   </body>
 </html>

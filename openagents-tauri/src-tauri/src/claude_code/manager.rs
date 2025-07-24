@@ -4,6 +4,7 @@ use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::{AppHandle, Emitter};
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use uuid::Uuid;
@@ -11,6 +12,7 @@ use uuid::Uuid;
 pub struct ClaudeManager {
     sessions: Arc<RwLock<HashMap<String, Arc<Mutex<ClaudeSession>>>>>,
     binary_path: Option<PathBuf>,
+    app_handle: Option<AppHandle>,
 }
 
 impl ClaudeManager {
@@ -18,11 +20,16 @@ impl ClaudeManager {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             binary_path: None,
+            app_handle: None,
         }
     }
 
     pub fn set_binary_path(&mut self, path: PathBuf) {
         self.binary_path = Some(path);
+    }
+
+    pub fn set_app_handle(&mut self, handle: AppHandle) {
+        self.app_handle = Some(handle);
     }
 
     pub async fn create_session(&self, project_path: String) -> Result<String, ClaudeError> {
@@ -34,6 +41,7 @@ impl ClaudeManager {
             session_id.clone(),
             project_path,
             binary_path.clone(),
+            self.app_handle.clone(),
         )));
 
         // Start the session
@@ -112,10 +120,11 @@ pub struct ClaudeSession {
     pending_tool_uses: HashMap<String, (String, HashMap<String, serde_json::Value>)>,
     message_subscribers: Vec<mpsc::Sender<Message>>,
     message_id_map: HashMap<String, Uuid>, // Maps Claude message IDs to our internal UUIDs
+    app_handle: Option<AppHandle>, // For emitting events
 }
 
 impl ClaudeSession {
-    fn new(id: String, project_path: String, binary_path: PathBuf) -> Self {
+    fn new(id: String, project_path: String, binary_path: PathBuf, app_handle: Option<AppHandle>) -> Self {
         Self {
             id,
             project_path,
@@ -129,6 +138,7 @@ impl ClaudeSession {
             pending_tool_uses: HashMap::new(),
             message_subscribers: Vec::new(),
             message_id_map: HashMap::new(),
+            app_handle,
         }
     }
 
@@ -342,6 +352,14 @@ impl ClaudeSession {
         self.message_subscribers.retain(|tx| {
             tx.try_send(message.clone()).is_ok()
         });
+
+        // Emit event to frontend
+        if let Some(ref app_handle) = self.app_handle {
+            let event_name = format!("claude:{}:message", self.id);
+            if let Err(e) = app_handle.emit(&event_name, &message) {
+                warn!("Failed to emit message event: {}", e);
+            }
+        }
     }
 
 
@@ -545,6 +563,14 @@ impl ClaudeSession {
                             self.message_subscribers.retain(|tx| {
                                 tx.try_send(updated_msg.clone()).is_ok()
                             });
+                            
+                            // Emit event to frontend
+                            if let Some(ref app_handle) = self.app_handle {
+                                let event_name = format!("claude:{}:message", self.id);
+                                if let Err(e) = app_handle.emit(&event_name, &updated_msg) {
+                                    warn!("Failed to emit message update event: {}", e);
+                                }
+                            }
                         }
                     } else {
                         // Create new message
