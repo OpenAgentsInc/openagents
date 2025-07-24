@@ -36,8 +36,17 @@ interface Session {
 function App() {
   const [claudeStatus, setClaudeStatus] = useState<string>("Not initialized");
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/Desktop/openagents");
+  const [newProjectPath, setNewProjectPath] = useState("");
   const [isDiscoveryLoading, setIsDiscoveryLoading] = useState(false);
+
+  // Get current directory on mount
+  useEffect(() => {
+    invoke("get_current_directory").then((result: any) => {
+      if (result.success && result.data) {
+        setNewProjectPath(result.data);
+      }
+    }).catch(console.error);
+  }, []);
 
   // Initialize Claude on mount
   useEffect(() => {
