@@ -79,14 +79,19 @@ server: {
 ```
 
 ### Package.json Scripts
-Add new script for development without hot reload:
+Changed default development mode to disable HMR to prevent focus stealing:
 ```json
-"dev:no-hmr": "DISABLE_HMR=true vite"
+"scripts": {
+    "dev": "DISABLE_HMR=true vite",           // Default: no HMR
+    "dev:hmr": "vite",                         // Opt-in: with HMR
+    "tauri:dev": "DISABLE_HMR=true tauri dev", // Default: no HMR
+    "tauri:dev:hmr": "tauri dev"               // Opt-in: with HMR
+}
 ```
 
 ## Testing
-1. Run `bun run tauri dev` and verify window doesn't steal focus on changes
-2. Run `bun run tauri dev:no-hmr` to develop without hot reload entirely
+1. Run `bun run tauri:dev` - Default mode without HMR, no focus stealing
+2. Run `bun run tauri:dev:hmr` - Development with hot reload (may steal focus)
 
 ## Future Improvements
 - Monitor Tauri updates for native focus control support

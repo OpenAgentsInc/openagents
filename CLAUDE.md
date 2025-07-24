@@ -15,9 +15,11 @@ This is an OpenAgents Tauri desktop application built with:
 ### Development
 ```bash
 cd openagents-tauri
-bun install          # Install dependencies
-bun run dev          # Start Vite dev server
-bun run tauri dev    # Run Tauri app in development mode
+bun install            # Install dependencies
+bun run dev            # Start Vite dev server (no HMR by default)
+bun run dev:hmr        # Start Vite dev server with HMR
+bun run tauri:dev      # Run Tauri app in development mode (no HMR by default)
+bun run tauri:dev:hmr  # Run Tauri app with HMR (may steal focus)
 ```
 
 ### Building
@@ -38,7 +40,7 @@ This ensures you get the latest compatible versions and proper lockfile updates.
 bun run preview      # Preview production build
 ```
 
-**IMPORTANT**: Never run `bun run tauri dev` or similar development server commands automatically. The user will run these commands themselves. You should only compile/build to check for errors using commands like `cargo build` or `cargo check`.
+**IMPORTANT**: Never run `bun run tauri:dev`, `bun run tauri:dev:hmr`, or similar development server commands automatically. The user will run these commands themselves. You should only compile/build to check for errors using commands like `cargo build` or `cargo check`.
 
 ## Architecture
 

@@ -4,12 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:no-hmr": "DISABLE_HMR=true vite",
+    "dev": "DISABLE_HMR=true vite",
+    "dev:hmr": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev:no-hmr": "DISABLE_HMR=true tauri dev"
+    "tauri:dev": "DISABLE_HMR=true tauri dev",
+    "tauri:dev:hmr": "tauri dev"
   },
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1675466862",
