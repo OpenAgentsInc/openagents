@@ -102,11 +102,9 @@ function App() {
 
   const fetchMessages = useCallback(async (sessionId: string) => {
     try {
-      console.log('Fetching messages for session:', sessionId);
       const result = await invoke<CommandResult<Message[]>>("get_messages", {
         sessionId,
       });
-      console.log('Fetch result:', result);
       if (result.success && result.data) {
         setSessions(prev => prev.map(session => {
           if (session.id !== sessionId) return session;
@@ -274,18 +272,13 @@ function App() {
       if (result.success && result.data) {
         const realSessionId = result.data;
         console.log("Session created with ID:", realSessionId);
-        console.log("Updating from temp ID:", tempSessionId, "to real ID:", realSessionId);
         
         // Update the session with the real ID and remove initializing state
-        setSessions(prev => {
-          const updated = prev.map(s => 
-            s.id === tempSessionId 
-              ? { ...s, id: realSessionId, isInitializing: false }
-              : s
-          );
-          console.log("Sessions after update:", updated.map(s => ({ id: s.id, isInitializing: s.isInitializing })));
-          return updated;
-        });
+        setSessions(prev => prev.map(s => 
+          s.id === tempSessionId 
+            ? { ...s, id: realSessionId, isInitializing: false }
+            : s
+        ));
         
         // Update the pane ID to match the real session ID
         usePaneStore.setState(state => {
@@ -294,7 +287,6 @@ function App() {
               ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
               : p
           );
-          console.log("Panes after update:", updatedPanes.map(p => ({ id: p.id, sessionId: p.content?.sessionId })));
           return {
             panes: updatedPanes,
             activePaneId: state.activePaneId === `chat-${tempSessionId}` 

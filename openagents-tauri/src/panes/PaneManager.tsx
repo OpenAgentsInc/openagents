@@ -16,7 +16,6 @@ export const PaneManager: React.FC = () => {
       case "chat":
         const sessionId = pane.content?.sessionId as string;
         const session = data.sessions?.find((s: any) => s.id === sessionId);
-        console.log('PaneManager - Looking for session:', sessionId, 'Found:', session?.id, 'Available sessions:', data.sessions?.map((s: any) => s.id));
         return <ChatPane 
           pane={pane} 
           session={session}
