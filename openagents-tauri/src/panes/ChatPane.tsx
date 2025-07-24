@@ -35,6 +35,7 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
   const messages = session.messages || [];
   const inputMessage = session.inputMessage || "";
   const isLoading = session.isLoading || false;
+  const isInitializing = session.isInitializing || false;
 
   const renderMessage = (msg: Message) => {
     const messageTypeStyles: Record<string, string> = {
@@ -75,45 +76,66 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
-      <ScrollArea className="flex-1 -mx-4 px-4">
-        {messages.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No messages yet. Send a message to start the conversation.
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {messages.map(renderMessage)}
+      {isInitializing ? (
+        // Loading state while initializing Claude
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="animate-pulse">
+              <div className="w-16 h-16 mx-auto bg-primary/20 rounded-full flex items-center justify-center">
+                <div className="w-12 h-12 bg-primary/30 rounded-full flex items-center justify-center">
+                  <div className="w-8 h-8 bg-primary/40 rounded-full"></div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Initializing Claude Code...</p>
+              <p className="text-xs text-muted-foreground mt-1">This may take a moment</p>
+            </div>
           </div>
-        )}
-      </ScrollArea>
-
-      {/* Input */}
-      <div className="mt-4 -mx-4 px-4 pt-4 border-t border-border">
-        <div className="flex gap-2">
-          <Input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => updateSessionInput?.(sessionId, e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === "Enter") {
-                sendMessage?.(sessionId);
-              }
-            }}
-            placeholder="Type your message..."
-            disabled={isLoading}
-            className="flex-1 text-sm"
-            autoFocus
-          />
-          <Button
-            onClick={() => sendMessage?.(sessionId)}
-            disabled={isLoading || !inputMessage.trim()}
-            size="sm"
-          >
-            Send
-          </Button>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Messages */}
+          <ScrollArea className="flex-1 -mx-4 px-4">
+            {messages.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No messages yet. Send a message to start the conversation.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {messages.map(renderMessage)}
+              </div>
+            )}
+          </ScrollArea>
+
+          {/* Input */}
+          <div className="mt-4 -mx-4 px-4 pt-4 border-t border-border">
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => updateSessionInput?.(sessionId, e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") {
+                    sendMessage?.(sessionId);
+                  }
+                }}
+                placeholder="Type your message..."
+                disabled={isLoading || isInitializing}
+                className="flex-1 text-sm"
+                autoFocus
+              />
+              <Button
+                onClick={() => sendMessage?.(sessionId)}
+                disabled={isLoading || isInitializing || !inputMessage.trim()}
+                size="sm"
+              >
+                Send
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -1,37 +1,12 @@
 # OpenAgents
 
-AI coding assistant built with Tauri. Native desktop app with mobile companion for on-the-go control.
+Claude Code wrapper in a desktop app, soon with a companion mobile app
 
-## Features
+Being built in public. See [intro video](https://x.com/OpenAgentsInc/status/1948214004268064771)
 
-### Claude Code Integration
-- Run Claude Code and local models
-- Shared context between sessions
-- Intelligent task routing
-- Extensible agent interface
 
-### Privacy-First
-- Local execution
-- Your data stays on device
-- Optional E2E encrypted sync
-- Built on open standards (MCP)
+## Running locally
+See [Tauri README](openagents-tauri/README.md)
 
-### Native Apps
-Built with Tauri + React + Rust:
-
-**Desktop**: Modern UI, multi-window support, hardware acceleration, direct file access
-
-**Mobile**: Remote control, voice commands, task monitoring, code review
-
-## Getting Started
-
-```bash
-cd openagents-tauri
-bun install
-bun run tauri dev      # Development
-bun run tauri build    # Production
-```
-
-## Purpose-Built for AI Development
-
-Not another IDE plugin—a dedicated platform for AI-assisted coding with clean native UI and powerful orchestration.
+## Status
+WIP: Not yet usable

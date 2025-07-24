@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
-import { Settings, Plus, HelpCircle, PanelLeft, Hand } from "lucide-react";
+import { Plus, PanelLeft, Hand } from "lucide-react";
 import { usePaneStore } from "@/stores/pane";
 
 interface HotbarProps {
@@ -25,18 +25,10 @@ export const Hotbar: React.FC<HotbarProps> = ({
     }
   };
 
-  const handleSettings = () => {
-    console.log("Settings");
-  };
-
-  const handleHelp = () => {
-    console.log("Help");
-  };
-
   return (
     <div
       className={cn(
-        "bg-background/90 border-border/30 fixed bottom-4 left-1/2 z-[10000] flex -translate-x-1/2 transform space-x-1 rounded-md border p-1 shadow-lg backdrop-blur-sm",
+        "bg-background/90 border-border/60 fixed bottom-4 left-1/2 z-[10000] flex -translate-x-1/2 transform space-x-1 rounded-md border p-1 shadow-lg backdrop-blur-sm",
         className,
       )}
     >
@@ -78,22 +70,28 @@ export const Hotbar: React.FC<HotbarProps> = ({
         <span className="h-5 w-5" />
       </HotbarItem>
 
-      {/* Slot 7: Settings */}
-      <HotbarItem
+      {/* Slot 7: Settings (disabled for now) */}
+      {/* <HotbarItem
         slotNumber={7}
         onClick={handleSettings}
         title="Settings"
       >
         <Settings className="text-muted-foreground h-5 w-5" />
+      </HotbarItem> */}
+      <HotbarItem slotNumber={7} isGhost>
+        <span className="h-5 w-5" />
       </HotbarItem>
 
-      {/* Slot 8: Help */}
-      <HotbarItem
+      {/* Slot 8: Help (disabled for now) */}
+      {/* <HotbarItem
         slotNumber={8}
         onClick={handleHelp}
         title="Help"
       >
         <HelpCircle className="text-muted-foreground h-5 w-5" />
+      </HotbarItem> */}
+      <HotbarItem slotNumber={8} isGhost>
+        <span className="h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 9: Hand Tracking */}
