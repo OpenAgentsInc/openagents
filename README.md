@@ -6,7 +6,7 @@ Being built in public. See [intro video](https://x.com/OpenAgentsInc/status/1948
 
 
 ## Running locally
-See [Tauri README](openagents-tauri/README.md)
+See [Tauri README](tauri/README.md)
 
 ## Status
 WIP: Not yet usable
