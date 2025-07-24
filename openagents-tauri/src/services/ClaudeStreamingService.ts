@@ -50,25 +50,30 @@ export const ClaudeStreamingService = Context.GenericTag<ClaudeStreamingService>
 const parseClaudeMessage = (payload: unknown): Effect.Effect<Message | null, MessageParsingError> =>
   Effect.try({
     try: () => {
+      console.log('[parseClaudeMessage] Parsing payload:', payload);
       // Handle string payloads that need JSON parsing
       if (typeof payload === 'string') {
         try {
           const parsed = JSON.parse(payload);
           // Validate the parsed message has required fields
           if (parsed && typeof parsed === 'object' && 'id' in parsed && 'message_type' in parsed) {
+            console.log('[parseClaudeMessage] Successfully parsed string payload:', parsed);
             return parsed as Message;
           }
         } catch {
           // If JSON parsing fails, return null
+          console.log('[parseClaudeMessage] Failed to parse string payload');
           return null;
         }
       }
       
       // Handle direct object payloads
       if (payload && typeof payload === 'object' && 'id' in payload && 'message_type' in payload) {
+        console.log('[parseClaudeMessage] Successfully parsed object payload:', payload);
         return payload as Message;
       }
       
+      console.log('[parseClaudeMessage] Payload does not match expected format, returning null');
       return null;
     },
     catch: (error) => new MessageParsingError(String(payload), error)
@@ -83,18 +88,21 @@ export const ClaudeStreamingServiceLive = Layer.effect(
     return ClaudeStreamingService.of({
       startStreaming: (sessionId: string) =>
         Effect.gen(function* () {
+          console.log(`[ClaudeStreamingService] Starting streaming for session: ${sessionId}`);
           // Create event stream for this session
-          const { queue: eventQueue, cleanup } = yield* eventService.createEventStream(
-            `claude:${sessionId}:message`
-          );
+          const eventName = `claude:${sessionId}:message`;
+          console.log(`[ClaudeStreamingService] Creating event stream for: ${eventName}`);
+          const { queue: eventQueue, cleanup } = yield* eventService.createEventStream(eventName);
           
           // Create message queue for processed messages
           const messageQueue = yield* Queue.bounded<Message>(1000);
           const isActive = yield* Ref.make(true);
           
           // Process events into messages
+          console.log(`[ClaudeStreamingService] Setting up message processor for session: ${sessionId}`);
           const processor = yield* pipe(
             Stream.fromQueue(eventQueue),
+            Stream.tap((event) => Effect.sync(() => console.log(`[ClaudeStreamingService] Processing event:`, event))),
             Stream.mapEffect((event) =>
               parseClaudeMessage(event.payload).pipe(
                 Effect.retry(
