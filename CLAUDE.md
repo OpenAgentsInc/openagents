@@ -8,13 +8,13 @@ This is an OpenAgents Tauri desktop application built with:
 - **Frontend**: React + TypeScript + Vite
 - **Backend**: Rust with Tauri framework
 - **Package Manager**: Bun (not npm/yarn)
-- **Main Project Directory**: `/openagents-tauri/`
+- **Main Project Directory**: `/tauri/`
 
 ## Commands
 
 ### Development
 ```bash
-cd openagents-tauri
+cd tauri
 bun install           # Install dependencies
 bun run dev           # Run Tauri app in development mode (no HMR by default)
 bun run dev:hmr       # Run Tauri app with HMR (may steal focus)
@@ -24,7 +24,7 @@ bun run dev:vite:hmr  # Start Vite dev server only with HMR
 
 ### Building
 ```bash
-cd openagents-tauri
+cd tauri
 bun run build        # Build frontend (runs tsc && vite build)
 bun run tauri build  # Build the complete Tauri app
 ```

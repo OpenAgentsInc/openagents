@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    openagents_tauri_lib::run()
+    tauri_lib::run()
 }
