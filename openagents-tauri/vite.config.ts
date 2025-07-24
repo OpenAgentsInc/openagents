@@ -19,13 +19,16 @@ export default defineConfig(async () => ({
     port: 1420,
     strictPort: true,
     host: host || false,
-    hmr: host
-      ? {
-          protocol: "ws",
-          host,
-          port: 1421,
-        }
-      : undefined,
+    // @ts-expect-error process is a nodejs global
+    hmr: process.env.DISABLE_HMR === 'true' 
+      ? false 
+      : (host
+          ? {
+              protocol: "ws",
+              host,
+              port: 1421,
+            }
+          : undefined),
     watch: {
       // 3. tell vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],

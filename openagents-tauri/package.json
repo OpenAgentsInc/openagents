@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:no-hmr": "DISABLE_HMR=true vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev:no-hmr": "DISABLE_HMR=true tauri dev"
   },
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1675466862",
