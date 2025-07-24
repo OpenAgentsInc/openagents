@@ -6,8 +6,7 @@ import { ProseMirrorInput, ProseMirrorInputRef } from "@/components/ProseMirrorI
 interface ChatPaneProps {
   pane: Pane;
   session?: any;
-  sendMessage?: (sessionId: string) => void;
-  updateSessionInput?: (sessionId: string, value: string) => void;
+  sendMessage?: (sessionId: string, messageContent?: string) => void;
 }
 
 // This will be replaced with actual session data from the parent component
@@ -24,7 +23,7 @@ interface Message {
   };
 }
 
-export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, updateSessionInput }) => {
+export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage }) => {
   const sessionId = pane.content?.sessionId as string;
   const inputRef = useRef<ProseMirrorInputRef>(null);
 
@@ -35,50 +34,113 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
 
   const handleSubmit = useCallback(
     async (content: string) => {
-      if (content.trim() && !isLoading && !isInitializing && session && sendMessage && updateSessionInput) {
-        console.log('Submitting content:', content);
-        
-        // First, update the session input
-        updateSessionInput(sessionId, content);
-        console.log('Updated session input');
-        
-        // Wait longer for state update to complete
-        setTimeout(async () => {
-          console.log('Calling sendMessage...');
-          try {
-            await sendMessage(sessionId);
-            console.log('Message sent successfully');
-            // Clear the input after successful send
-            inputRef.current?.clear();
-          } catch (error) {
-            console.error('Failed to send message:', error);
-          }
-        }, 50); // Increased delay to ensure state update
+      if (content.trim() && !isLoading && !isInitializing && session && sendMessage) {
+        try {
+          // Pass the message content directly to sendMessage
+          await sendMessage(sessionId, content);
+          // Clear the input after successful send
+          inputRef.current?.clear();
+        } catch (error) {
+          console.error('Failed to send message:', error);
+        }
       }
     },
-    [sessionId, sendMessage, updateSessionInput, isLoading, isInitializing, session]
+    [sessionId, sendMessage, isLoading, isInitializing, session]
   );
 
   if (!session) {
     return <div>Session not found</div>;
   }
 
+  const renderContentWithReasoning = (content: string) => {
+    // Handle <thinking> tags and similar reasoning content
+    const thinkingRegex = /<(?:thinking|antml:thinking)>([\s\S]*?)<\/(?:thinking|antml:thinking)>/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = thinkingRegex.exec(content)) !== null) {
+      // Add content before the thinking block
+      if (match.index > lastIndex) {
+        parts.push(
+          <span key={`content-${lastIndex}`}>
+            {content.slice(lastIndex, match.index)}
+          </span>
+        );
+      }
+      
+      // Add the thinking block with darker, italic styling
+      parts.push(
+        <span key={`thinking-${match.index}`} className="text-zinc-500 italic">
+          {match[1]}
+        </span>
+      );
+      
+      lastIndex = match.index + match[0].length;
+    }
+    
+    // Add remaining content after the last thinking block
+    if (lastIndex < content.length) {
+      parts.push(
+        <span key={`content-${lastIndex}`}>
+          {content.slice(lastIndex)}
+        </span>
+      );
+    }
+    
+    return parts.length > 0 ? parts : content;
+  };
+
   const renderMessage = (msg: Message) => {
+    const isUser = msg.message_type === 'user';
+    
     return (
-      <div key={msg.id} className="p-4 overflow-hidden font-mono text-sm text-foreground">
-        <div className="overflow-hidden">
-          <div className="whitespace-pre-wrap break-all overflow-x-auto overflow-y-hidden">
-            {msg.content}
-          </div>
-          {msg.tool_info && msg.tool_info.output && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs font-medium hover:underline">
-                Tool Output
-              </summary>
-              <div className="mt-2 text-xs opacity-80 whitespace-pre-wrap break-all overflow-x-auto overflow-y-hidden">
-                {msg.tool_info.output}
-              </div>
-            </details>
+      <div key={msg.id} className={`text-left font-mono ${isUser ? 'mb-4' : 'mb-2'}`}>
+        <div className="text-xs">
+          {isUser ? (
+            <div className="text-zinc-400">
+              <span>&gt; </span>
+              <span className="whitespace-pre-wrap">{msg.content}</span>
+            </div>
+          ) : (
+            <div className="pl-2 text-zinc-300">
+              <div className="whitespace-pre-wrap">{renderContentWithReasoning(msg.content)}</div>
+              
+              {/* Tool info rendering */}
+              {msg.tool_info && (
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-zinc-500">[TOOL: </span>
+                    <span className="text-cyan-400">{msg.tool_info.tool_name}</span>
+                    <span className="text-zinc-500">]</span>
+                    <span className="text-yellow-400">●</span>
+                  </div>
+                  
+                  {msg.tool_info.input && (
+                    <div className="ml-2">
+                      <div className="text-zinc-600">INPUT:</div>
+                      <div className="ml-2 text-zinc-400">
+                        <pre className="whitespace-pre-wrap text-xs">
+                          {typeof msg.tool_info.input === 'string' 
+                            ? msg.tool_info.input 
+                            : JSON.stringify(msg.tool_info.input, null, 2)
+                          }
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {msg.tool_info.output && (
+                    <div className="ml-2">
+                      <div className="text-zinc-600">OUTPUT:</div>
+                      <div className="ml-2 text-zinc-400">
+                        <pre className="whitespace-pre-wrap text-xs">{msg.tool_info.output}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

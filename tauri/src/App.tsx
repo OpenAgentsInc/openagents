@@ -135,13 +135,16 @@ function App() {
     console.error(`Streaming error for session ${sessionId}:`, error);
   }, []);
 
-  const sendMessage = async (sessionId: string) => {
+  const sendMessage = async (sessionId: string, messageContent?: string) => {
     const session = sessions.find(s => s.id === sessionId);
-    if (!session || !session.inputMessage.trim()) {
+    if (!session) {
       return;
     }
     
-    const messageToSend = session.inputMessage;
+    const messageToSend = messageContent || session.inputMessage;
+    if (!messageToSend.trim()) {
+      return;
+    }
     
     // Immediately add user message to UI
     const userMessage: Message = {

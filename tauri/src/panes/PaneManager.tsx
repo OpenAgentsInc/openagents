@@ -20,7 +20,6 @@ export const PaneManager: React.FC = () => {
           pane={pane} 
           session={session}
           sendMessage={data.sendMessage}
-          updateSessionInput={data.updateSessionInput}
         />;
       case "metadata":
         return <MetadataPane 
