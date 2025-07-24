@@ -182,6 +182,14 @@ async fn get_history(
     }
 }
 
+#[tauri::command]
+fn get_current_directory() -> Result<CommandResult<String>, String> {
+    match std::env::current_dir() {
+        Ok(path) => Ok(CommandResult::success(path.to_string_lossy().to_string())),
+        Err(e) => Ok(CommandResult::error(e.to_string())),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging with debug level
@@ -205,6 +213,7 @@ pub fn run() {
             stop_session,
             get_active_sessions,
             get_history,
+            get_current_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
