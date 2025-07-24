@@ -324,29 +324,32 @@ function App() {
         ));
         
         // Update the pane ID to match the real session ID
-        usePaneStore.setState(state => {
-          const updatedPanes = state.panes.map(p => 
-            p.id === `chat-${tempSessionId}`
-              ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
-              : p
-          );
-          
-          // Transfer persisted messages from temp to real session ID
-          const tempMessages = state.sessionMessages[tempSessionId];
-          const updatedSessionMessages = { ...state.sessionMessages };
-          if (tempMessages && tempMessages.length > 0) {
-            updatedSessionMessages[realSessionId] = tempMessages;
-            delete updatedSessionMessages[tempSessionId];
-          }
-          
-          return {
-            panes: updatedPanes,
-            activePaneId: state.activePaneId === `chat-${tempSessionId}` 
-              ? `chat-${realSessionId}` 
-              : state.activePaneId,
-            sessionMessages: updatedSessionMessages
-          };
-        });
+        // Defer state update to avoid updating during render
+        setTimeout(() => {
+          usePaneStore.setState(state => {
+            const updatedPanes = state.panes.map(p => 
+              p.id === `chat-${tempSessionId}`
+                ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
+                : p
+            );
+            
+            // Transfer persisted messages from temp to real session ID
+            const tempMessages = state.sessionMessages[tempSessionId];
+            const updatedSessionMessages = { ...state.sessionMessages };
+            if (tempMessages && tempMessages.length > 0) {
+              updatedSessionMessages[realSessionId] = tempMessages;
+              delete updatedSessionMessages[tempSessionId];
+            }
+            
+            return {
+              panes: updatedPanes,
+              activePaneId: state.activePaneId === `chat-${tempSessionId}` 
+                ? `chat-${realSessionId}` 
+                : state.activePaneId,
+              sessionMessages: updatedSessionMessages
+            };
+          });
+        }, 0);
         
         // Manually fetch messages for the new session ID
         setTimeout(() => {
