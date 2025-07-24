@@ -28,7 +28,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
   return (
     <div
       className={cn(
-        "bg-background/90 border-border/30 fixed bottom-4 left-1/2 z-[10000] flex -translate-x-1/2 transform space-x-1 rounded-md border p-1 shadow-lg backdrop-blur-sm",
+        "bg-background/90 border-border/60 fixed bottom-4 left-1/2 z-[10000] flex -translate-x-1/2 transform space-x-1 rounded-md border p-1 shadow-lg backdrop-blur-sm",
         className,
       )}
     >
