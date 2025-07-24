@@ -28,17 +28,14 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
   const sessionId = pane.content?.sessionId as string;
   const inputRef = useRef<ProseMirrorInputRef>(null);
 
-  if (!session) {
-    return <div>Session not found</div>;
-  }
-
-  const messages = session.messages || [];
-  const isLoading = session.isLoading || false;
-  const isInitializing = session.isInitializing || false;
+  // Get session data with defaults to avoid conditional hooks
+  const messages = session?.messages || [];
+  const isLoading = session?.isLoading || false;
+  const isInitializing = session?.isInitializing || false;
 
   const handleSubmit = useCallback(
     async (content: string) => {
-      if (content.trim() && !isLoading && !isInitializing) {
+      if (content.trim() && !isLoading && !isInitializing && session) {
         // Update session input with the content
         updateSessionInput?.(sessionId, content);
         
@@ -52,8 +49,12 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
         }
       }
     },
-    [sessionId, sendMessage, updateSessionInput, isLoading, isInitializing]
+    [sessionId, sendMessage, updateSessionInput, isLoading, isInitializing, session]
   );
+
+  if (!session) {
+    return <div>Session not found</div>;
+  }
 
   const renderMessage = (msg: Message) => {
     return (
