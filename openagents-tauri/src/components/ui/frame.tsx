@@ -28,7 +28,7 @@ const Frame = React.forwardRef<HTMLDivElement, FrameProps>(
               style={{ 
                 width: `${cornerLength}px`, 
                 height: `${cornerLength}px`,
-                filter: 'drop-shadow(0 0 6px oklch(0.7 0.15 180 / 0.3))',
+                filter: 'drop-shadow(0 0 6px rgb(255 255 255 / 0.1))',
                 transition: 'all 0.2s ease-out'
               }}
             />
@@ -39,7 +39,7 @@ const Frame = React.forwardRef<HTMLDivElement, FrameProps>(
               style={{ 
                 width: `${cornerLength}px`, 
                 height: `${cornerLength}px`,
-                filter: 'drop-shadow(0 0 6px oklch(0.7 0.15 180 / 0.3))',
+                filter: 'drop-shadow(0 0 6px rgb(255 255 255 / 0.1))',
                 transition: 'all 0.2s ease-out'
               }}
             />
@@ -50,7 +50,7 @@ const Frame = React.forwardRef<HTMLDivElement, FrameProps>(
               style={{ 
                 width: `${cornerLength}px`, 
                 height: `${cornerLength}px`,
-                filter: 'drop-shadow(0 0 6px oklch(0.7 0.15 180 / 0.3))',
+                filter: 'drop-shadow(0 0 6px rgb(255 255 255 / 0.1))',
                 transition: 'all 0.2s ease-out'
               }}
             />
@@ -61,7 +61,7 @@ const Frame = React.forwardRef<HTMLDivElement, FrameProps>(
               style={{ 
                 width: `${cornerLength}px`, 
                 height: `${cornerLength}px`,
-                filter: 'drop-shadow(0 0 6px oklch(0.7 0.15 180 / 0.3))',
+                filter: 'drop-shadow(0 0 6px rgb(255 255 255 / 0.1))',
                 transition: 'all 0.2s ease-out'
               }}
             />
