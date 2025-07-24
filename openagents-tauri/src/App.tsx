@@ -285,9 +285,9 @@ function App() {
         <div className="w-80 flex flex-col gap-4">
           {/* Header */}
           <Frame className="p-6">
-            <div className="text-center">
-              <h1 className="text-2xl font-bold mb-2">OpenAgents</h1>
-              <p className="text-muted-foreground text-sm">Claude Code Integration</p>
+            <div className="text-center select-none">
+              <h1 className="text-xl font-bold mb-2">OpenAgents</h1>
+              <p className="text-muted-foreground text-xs">Claude Code Commander</p>
             </div>
           </Frame>
 
