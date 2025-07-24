@@ -1,7 +1,7 @@
-import React, { useCallback } from "react"
+import React, { useCallback, useRef } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Pane } from "@/types/pane"
-import { ProseMirrorInput } from "@/components/ProseMirrorInput"
+import { ProseMirrorInput, ProseMirrorInputRef } from "@/components/ProseMirrorInput"
 
 interface ChatPaneProps {
   pane: Pane;
@@ -26,6 +26,7 @@ interface Message {
 
 export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, updateSessionInput }) => {
   const sessionId = pane.content?.sessionId as string;
+  const inputRef = useRef<ProseMirrorInputRef>(null);
 
   if (!session) {
     return <div>Session not found</div>;
@@ -36,14 +37,19 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
   const isInitializing = session.isInitializing || false;
 
   const handleSubmit = useCallback(
-    (content: string) => {
+    async (content: string) => {
       if (content.trim() && !isLoading && !isInitializing) {
-        // Update session input with the content, then send
+        // Update session input with the content
         updateSessionInput?.(sessionId, content);
-        // Use setTimeout to ensure the input is updated before sending
-        setTimeout(() => {
-          sendMessage?.(sessionId);
-        }, 0);
+        
+        // Call sendMessage which will handle the actual sending
+        try {
+          await sendMessage?.(sessionId);
+          // Clear the input after successful send
+          inputRef.current?.clear();
+        } catch (error) {
+          console.error('Failed to send message:', error);
+        }
       }
     },
     [sessionId, sendMessage, updateSessionInput, isLoading, isInitializing]
@@ -106,6 +112,7 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
       {/* Input - Always shown */}
       <div className="mt-4 -mx-4 px-4 pt-4">
         <ProseMirrorInput
+          ref={inputRef}
           placeholder={isInitializing ? "Start typing (initializing...)..." : "Type your message..."}
           onSubmit={handleSubmit}
           disabled={isLoading || isInitializing}

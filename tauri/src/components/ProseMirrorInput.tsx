@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { Schema } from 'prosemirror-model';
@@ -45,14 +45,33 @@ interface ProseMirrorInputProps {
   disabled?: boolean;
 }
 
-export function ProseMirrorInput({
+export interface ProseMirrorInputRef {
+  clear: () => void;
+  focus: () => void;
+}
+
+export const ProseMirrorInput = forwardRef<ProseMirrorInputRef, ProseMirrorInputProps>(function ProseMirrorInput({
   placeholder = 'Type a message...',
   onSubmit,
   className = '',
   disabled = false,
-}: ProseMirrorInputProps) {
+}, ref) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    clear: () => {
+      if (viewRef.current) {
+        const tr = viewRef.current.state.tr.delete(0, viewRef.current.state.doc.content.size);
+        viewRef.current.dispatch(tr);
+      }
+    },
+    focus: () => {
+      if (viewRef.current) {
+        viewRef.current.focus();
+      }
+    },
+  }));
 
   useEffect(() => {
     if (!editorRef.current || viewRef.current) return;
@@ -77,7 +96,7 @@ export function ProseMirrorInput({
           },
         }),
         keymap({
-          Enter: (state: EditorState, dispatch: any) => {
+          Enter: (state: EditorState) => {
             // Submit if we have content
             if (onSubmit && !disabled) {
               // Extract text content with line breaks preserved
@@ -105,11 +124,7 @@ export function ProseMirrorInput({
 
               if (content) {
                 onSubmit(content);
-                // Clear the editor
-                if (dispatch) {
-                  const tr = state.tr.delete(0, state.doc.content.size);
-                  dispatch(tr);
-                }
+                // Don't clear the editor here - let the parent component handle it
               }
               return true;
             }
@@ -150,4 +165,4 @@ export function ProseMirrorInput({
       ref={editorRef}
     />
   );
-}
+});
