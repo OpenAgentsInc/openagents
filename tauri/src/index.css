@@ -215,6 +215,7 @@
   background-color: rgba(20, 20, 20, 0.6);
   position: relative;
   z-index: 2;
+  touch-action: none;
 }
 
 .chat-pane > div:not([class*="corner-bracket"]) {
