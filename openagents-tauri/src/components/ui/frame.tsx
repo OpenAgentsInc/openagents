@@ -15,7 +15,7 @@ const Frame = React.forwardRef<HTMLDivElement, FrameProps>(
         className={cn(
           "relative bg-card border border-border backdrop-blur-sm",
           "transition-all duration-200 ease-out",
-          "hover:border-primary/40 hover:shadow-lg hover:shadow-primary/20",
+          "hover:border-primary/20 hover:shadow-md hover:shadow-primary/10",
           className
         )}
         {...props}
