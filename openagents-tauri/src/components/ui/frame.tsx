@@ -13,7 +13,7 @@ const Frame = React.forwardRef<HTMLDivElement, FrameProps>(
       <div 
         ref={ref}
         className={cn(
-          "relative bg-card/50 border border-border",
+          "relative bg-card/20 border border-border",
           "transition-all duration-200 ease-out",
           "hover:border-primary/20 hover:shadow-md hover:shadow-primary/10",
           className
