@@ -352,11 +352,12 @@ function App() {
         </div>
 
         {/* Chat Sessions Grid */}
-        <div className="flex-1 grid grid-cols-1 gap-4" style={{
+        <div className="flex-1 grid grid-cols-1 gap-4 min-h-0 overflow-hidden" style={{
           gridTemplateColumns: sessions.length === 1 ? '1fr' : 
                               sessions.length === 2 ? '1fr 1fr' :
                               sessions.length === 3 ? '1fr 1fr 1fr' :
-                              sessions.length >= 4 ? '1fr 1fr' : '1fr'
+                              sessions.length >= 4 ? '1fr 1fr' : '1fr',
+          gridAutoRows: 'minmax(0, 1fr)'
         }}>
           {sessions.length === 0 ? (
             <div className="flex items-center justify-center h-full">
@@ -369,9 +370,9 @@ function App() {
             </div>
           ) : (
             sessions.map((session) => (
-              <Frame key={session.id} className="flex flex-col">
+              <Frame key={session.id} className="flex flex-col h-full max-h-full">
                 {/* Chat Header */}
-                <div className="p-4 border-b border-border/20">
+                <div className="p-4 border-b border-border/20 flex-shrink-0">
                   <h3 className="text-sm font-semibold truncate">
                     {session.projectPath.split('/').pop()}
                   </h3>
@@ -381,8 +382,8 @@ function App() {
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <ScrollArea className="flex-1 px-4">
+                <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+                  <ScrollArea className="flex-1 px-4 h-full">
                     <div className="py-4">
                       {session.messages.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
@@ -397,7 +398,7 @@ function App() {
                   </ScrollArea>
                   
                   {/* Input */}
-                  <div className="p-4 border-t border-border/20">
+                  <div className="p-4 border-t border-border/20 flex-shrink-0">
                     <div className="flex gap-2">
                       <Input
                         type="text"
