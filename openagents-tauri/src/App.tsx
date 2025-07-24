@@ -49,14 +49,17 @@ function App() {
   useEffect(() => {
     if (sessions.length === 0) return;
 
-    const interval = setInterval(async () => {
-      for (const session of sessions) {
-        await fetchMessages(session.id);
-      }
-    }, 50); // Poll every 50ms for real-time updates
+    const fetchAllMessages = async () => {
+      await Promise.all(sessions.map(session => fetchMessages(session.id)));
+    };
+
+    // Initial fetch
+    fetchAllMessages();
+
+    const interval = setInterval(fetchAllMessages, 50); // Poll every 50ms for real-time updates
 
     return () => clearInterval(interval);
-  }, [sessions]);
+  }, [sessions.length]); // Only depend on length to avoid recreating interval
 
   const discoverClaude = async () => {
     console.log("Starting Claude discovery...");
@@ -119,22 +122,15 @@ function App() {
       return;
     }
 
-    // Immediately add user message to UI
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      message_type: "user",
-      content: session.inputMessage,
-      timestamp: new Date().toISOString(),
-    };
-    
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId 
-        ? { ...s, messages: [...s.messages, userMessage], inputMessage: "", isLoading: true }
-        : s
-    ));
-
     console.log("Sending message:", session.inputMessage, "to session:", sessionId);
     const messageToSend = session.inputMessage;
+    
+    // Clear input and set loading state
+    setSessions(prev => prev.map(s => 
+      s.id === sessionId 
+        ? { ...s, inputMessage: "", isLoading: true }
+        : s
+    ));
     
     try {
       const result = await invoke<CommandResult<void>>("send_message", {
@@ -145,26 +141,14 @@ function App() {
       if (!result.success) {
         alert(`Error sending message: ${result.error}`);
         console.error("Send message failed:", result.error);
-        // Remove the user message we optimistically added
-        setSessions(prev => prev.map(s => 
-          s.id === sessionId 
-            ? { ...s, messages: s.messages.filter(msg => msg.id !== userMessage.id), isLoading: false }
-            : s
-        ));
-      } else {
-        setSessions(prev => prev.map(s => 
-          s.id === sessionId 
-            ? { ...s, isLoading: false }
-            : s
-        ));
       }
     } catch (error) {
       alert(`Error: ${error}`);
       console.error("Send message error:", error);
-      // Remove the user message we optimistically added
+    } finally {
       setSessions(prev => prev.map(s => 
         s.id === sessionId 
-          ? { ...s, messages: s.messages.filter(msg => msg.id !== userMessage.id), isLoading: false }
+          ? { ...s, isLoading: false }
           : s
       ));
     }
@@ -176,28 +160,12 @@ function App() {
         sessionId,
       });
       if (result.success && result.data) {
-        // Merge backend messages with local optimistic messages
         setSessions(prev => prev.map(session => {
           if (session.id !== sessionId) return session;
           
-          const backendMessages = result.data || [];
-          const optimisticUserMessages = session.messages.filter(msg => 
-            msg.id.startsWith('user-') && msg.message_type === 'user'
-          );
-          
-          // Remove optimistic messages that now exist in backend
-          const filteredOptimistic = optimisticUserMessages.filter(optimistic => 
-            !backendMessages.some(backend => 
-              backend.message_type === 'user' && 
-              backend.content === optimistic.content
-            )
-          );
-          
-          // Combine and sort by timestamp
-          const combined = [...backendMessages, ...filteredOptimistic];
-          combined.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-          
-          return { ...session, messages: combined };
+          // Simply replace with backend messages for real-time streaming
+          // The backend already includes all messages including user messages
+          return { ...session, messages: result.data || [] };
         }));
       }
     } catch (error) {
@@ -282,7 +250,7 @@ function App() {
     <div className="fixed inset-0 p-8 font-mono overflow-hidden">
       <div className="h-full flex gap-6">
         {/* Metadata Panel */}
-        <div className="w-80 flex flex-col gap-4">
+        <div className="w-80 flex flex-col gap-4 min-h-0">
           {/* Header */}
           <div className="text-center select-none p-4">
             <h1 className="text-xl font-bold mb-1">OpenAgents</h1>
@@ -290,7 +258,7 @@ function App() {
           </div>
 
           {/* Status & Sessions */}
-          <Frame className="p-4 flex-1 flex flex-col">
+          <Frame className="p-4 flex-1 flex flex-col min-h-0">
             {/* Status Section */}
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Status</h3>
@@ -303,7 +271,7 @@ function App() {
             <Separator className="my-4" />
 
             {/* Sessions Section */}
-            <div className="flex-1 flex flex-col space-y-4">
+            <div className="flex-1 flex flex-col space-y-4 min-h-0">
               <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Sessions</h3>
               
               {/* Create New Session */}
