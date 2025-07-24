@@ -289,8 +289,9 @@ function App() {
             <p className="text-muted-foreground text-xs">Claude Code Commander</p>
           </div>
 
-          {/* Status */}
-          <Frame className="p-4">
+          {/* Status & Sessions */}
+          <Frame className="p-4 flex-1 flex flex-col">
+            {/* Status Section */}
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Status</h3>
               <p className="text-xs text-muted-foreground">
@@ -298,11 +299,11 @@ function App() {
               </p>
               <p className="text-xs break-all">{claudeStatus}</p>
             </div>
-          </Frame>
 
-          {/* Session Management */}
-          <Frame className="p-4 flex-1">
-            <div className="space-y-4">
+            <Separator className="my-4" />
+
+            {/* Sessions Section */}
+            <div className="flex-1 flex flex-col space-y-4">
               <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Sessions</h3>
               
               {/* Create New Session */}
