@@ -55,7 +55,7 @@ function App() {
   const initialPinchPositionRef = useRef<{ x: number; y: number } | null>(null);
   const paneStartPosRef = useRef<{ x: number; y: number } | null>(null);
   
-  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId } = usePaneStore();
+  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane } = usePaneStore();
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -334,6 +334,13 @@ function App() {
         return;
       }
 
+      // Handle Escape key to close active pane
+      if (event.key === 'Escape' && activePaneId) {
+        event.preventDefault();
+        removePane(activePaneId);
+        return;
+      }
+
       // Handle modifier + digit combinations
       const modifier = navigator.platform.toUpperCase().indexOf('MAC') >= 0
         ? event.metaKey // Mac uses Cmd key
@@ -356,12 +363,12 @@ function App() {
             createSession();
           }
           break;
-        case 7:
-          console.log('Settings');
-          break;
-        case 8:
-          console.log('Help');
-          break;
+        // case 7:
+        //   console.log('Settings');
+        //   break;
+        // case 8:
+        //   console.log('Help');
+        //   break;
         case 9:
           toggleHandTracking();
           break;
@@ -370,7 +377,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleMetadataPane, newProjectPath, createSession, toggleHandTracking]);
+  }, [toggleMetadataPane, newProjectPath, createSession, toggleHandTracking, activePaneId, removePane]);
 
   // Effect for pinch-to-drag logic
   useEffect(() => {
