@@ -382,9 +382,9 @@ function App() {
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-                  <ScrollArea className="flex-1 px-4 h-full">
-                    <div className="py-4">
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <ScrollArea className="h-full w-full">
+                    <div className="px-4 py-4">
                       {session.messages.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
                           No messages yet. Send a message to start the conversation.
