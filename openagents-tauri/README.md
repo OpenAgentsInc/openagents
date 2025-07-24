@@ -8,8 +8,14 @@ Cross-platform desktop app for OpenAgents with Claude Code integration.
 # Install dependencies
 bun install
 
-# Run in development mode
-bun run tauri dev
+# Run in development mode (no HMR by default, prevents focus stealing)
+bun run dev
+
+# Run with hot module replacement (may steal focus)
+bun run dev:hmr
+
+# Run Vite dev server only
+bun run dev:vite
 
 # Run with debug logging
 ./run-debug.sh
