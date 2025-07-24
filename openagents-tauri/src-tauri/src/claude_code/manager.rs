@@ -107,6 +107,7 @@ pub struct ClaudeSession {
     pub is_active: bool,
     pub first_message: Option<String>,
     pub summary: Option<String>,
+    pub version: Option<String>, // Claude Code version
     claude_session_id: Option<String>, // Claude's internal session ID
     pending_tool_uses: HashMap<String, (String, HashMap<String, serde_json::Value>)>,
     message_subscribers: Vec<mpsc::Sender<Message>>,
@@ -122,6 +123,7 @@ impl ClaudeSession {
             is_active: true,
             first_message: None,
             summary: None,
+            version: None,
             claude_session_id: None,
             pending_tool_uses: HashMap::new(),
             message_subscribers: Vec::new(),
@@ -163,14 +165,14 @@ impl ClaudeSession {
         // Build the command
         let claude_command = if claude_session_id.is_some() {
             format!(
-                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json --verbose",
+                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p --continue \"{}\" --output-format stream-json --verbose --dangerously-skip-permissions",
                 project_path, 
                 binary_path.display(), 
                 message.replace("\"", "\\\"")
             )
         } else {
             format!(
-                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json --verbose",
+                "cd \"{}\" && MAX_THINKING_TOKENS=31999 \"{}\" -p \"{}\" --output-format stream-json --verbose --dangerously-skip-permissions",
                 project_path,
                 binary_path.display(), 
                 message.replace("\"", "\\\"")
@@ -295,9 +297,26 @@ impl ClaudeSession {
             let version_str = String::from_utf8_lossy(&output.stdout);
             info!("Claude Code version: {}", version_str.trim());
             
+            // Store version for later reference
+            self.version = Some(version_str.trim().to_string());
+            
             // Check for old version
             if version_str.contains("0.2.109") || version_str.contains("0.2.") {
                 warn!("You are using an old version of Claude Code. Please update with: claude update");
+                
+                // Send a warning message to the UI
+                let warning_msg = Message {
+                    id: Uuid::new_v4(),
+                    message_type: MessageType::System,
+                    content: format!(
+                        "⚠️ Old Claude Code version detected: {}\n\
+                        Please update Claude Code by running: claude update",
+                        version_str.trim()
+                    ),
+                    timestamp: Utc::now(),
+                    tool_info: None,
+                };
+                self.add_message(warning_msg).await;
             }
         }
         
@@ -364,6 +383,20 @@ impl ClaudeSession {
                         } else {
                             info!("Claude Code initialized for session {}", self.id);
                         }
+                        
+                        // Send initialization message with version info
+                        let version_info = self.version.as_ref()
+                            .map(|v| format!(" (version: {})", v))
+                            .unwrap_or_default();
+                        
+                        let init_msg = Message {
+                            id: Uuid::new_v4(),
+                            message_type: MessageType::System,
+                            content: format!("Claude Code initialized{}", version_info),
+                            timestamp: Utc::now(),
+                            tool_info: None,
+                        };
+                        self.add_message(init_msg).await;
                     }
                 }
             }
@@ -381,7 +414,30 @@ impl ClaudeSession {
                             if let Some(item_type) = item.get("type").and_then(|v| v.as_str()) {
                                 match item_type {
                                     "tool_use" => self.handle_tool_use(item).await,
-                                    "tool_result" => self.handle_tool_result(item).await,
+                                    "tool_result" => {
+                                        // Check if this is a permission error
+                                        if let Some(content) = item.get("content").and_then(|v| v.as_str()) {
+                                            if content.contains("Claude requested permissions") {
+                                                let error_msg = Message {
+                                                    id: Uuid::new_v4(),
+                                                    message_type: MessageType::Error,
+                                                    content: format!(
+                                                        "⚠️ Permission Error: {}\n\n\
+                                                        This shouldn't happen with --dangerously-skip-permissions flag. \
+                                                        Try one of the following:\n\
+                                                        1. Restart Claude Code\n\
+                                                        2. Update Claude Code: claude update\n\
+                                                        3. Check if Claude Code is running with correct permissions",
+                                                        content
+                                                    ),
+                                                    timestamp: Utc::now(),
+                                                    tool_info: None,
+                                                };
+                                                self.add_message(error_msg).await;
+                                            }
+                                        }
+                                        self.handle_tool_result(item).await;
+                                    }
                                     _ => {}
                                 }
                             }
