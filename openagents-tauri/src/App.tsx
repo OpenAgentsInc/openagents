@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PaneManager } from "@/panes/PaneManager";
 import { Hotbar } from "@/components/hud/Hotbar";
 import { usePaneStore } from "@/stores/pane";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { HandTracking, HandPose } from "@/components/hands";
+import type { PinchCoordinates, HandLandmarks } from "@/components/hands";
 
 interface Message {
   id: string;
@@ -32,13 +34,27 @@ interface Session {
   isLoading: boolean;
 }
 
+interface HandDataContext {
+  activeHandPose: HandPose;
+  pinchMidpoint: PinchCoordinates | null;
+  primaryHandLandmarks: HandLandmarks | null;
+  trackedHandsCount: number;
+}
+
 function App() {
   const [claudeStatus, setClaudeStatus] = useState<string>("Not initialized");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [newProjectPath, setNewProjectPath] = useState("");
   const [isDiscoveryLoading, setIsDiscoveryLoading] = useState(false);
+  const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
+  const [handData, setHandData] = useState<HandDataContext | null>(null);
   
-  const { openChatPane, toggleMetadataPane } = usePaneStore();
+  // Pinch-to-drag state
+  const [draggingPaneId, setDraggingPaneId] = useState<string | null>(null);
+  const initialPinchPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const paneStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  
+  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId } = usePaneStore();
 
   // Get current directory on mount
   useEffect(() => {
@@ -47,6 +63,34 @@ function App() {
         setNewProjectPath(result.data);
       }
     }).catch(console.error);
+  }, []);
+
+  // Toggle hand tracking
+  const toggleHandTracking = useCallback(() => {
+    const newState = !isHandTrackingActive;
+    setIsHandTrackingActive(newState);
+    if (!newState && draggingPaneId) {
+      setDraggingPaneId(null);
+      initialPinchPositionRef.current = null;
+      paneStartPosRef.current = null;
+    }
+  }, [isHandTrackingActive, draggingPaneId]);
+
+  // Use a ref to compare previous and current data to avoid unnecessary state updates
+  const prevHandDataRef = useRef<HandDataContext | null>(null);
+
+  // Handle hand data updates
+  const handleHandDataUpdate = useCallback((data: HandDataContext) => {
+    if (
+      !prevHandDataRef.current ||
+      data.activeHandPose !== prevHandDataRef.current.activeHandPose ||
+      data.trackedHandsCount !== prevHandDataRef.current.trackedHandsCount ||
+      JSON.stringify(data.pinchMidpoint) !==
+      JSON.stringify(prevHandDataRef.current.pinchMidpoint)
+    ) {
+      prevHandDataRef.current = data;
+      setHandData(data);
+    }
   }, []);
 
   // Initialize Claude on mount
@@ -272,18 +316,104 @@ function App() {
             createSession();
           }
           break;
-        case 8:
+        case 7:
           console.log('Settings');
           break;
-        case 9:
+        case 8:
           console.log('Help');
+          break;
+        case 9:
+          toggleHandTracking();
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleMetadataPane, newProjectPath, createSession]);
+  }, [toggleMetadataPane, newProjectPath, createSession, toggleHandTracking]);
+
+  // Effect for pinch-to-drag logic
+  useEffect(() => {
+    const TITLE_BAR_HEIGHT = 32;
+    
+    if (
+      !isHandTrackingActive ||
+      !handData ||
+      !handData.pinchMidpoint ||
+      handData.trackedHandsCount === 0
+    ) {
+      if (draggingPaneId) {
+        setDraggingPaneId(null);
+        initialPinchPositionRef.current = null;
+        paneStartPosRef.current = null;
+      }
+      return;
+    }
+
+    const { activeHandPose, pinchMidpoint } = handData;
+
+    if (activeHandPose === HandPose.PINCH_CLOSED) {
+      if (!draggingPaneId) {
+        // Check from topmost pane (end of array) to find pinch target
+        for (let i = panes.length - 1; i >= 0; i--) {
+          const pane = panes[i];
+          // Check if pinch is in the title bar area
+          if (
+            pinchMidpoint.x >= pane.x &&
+            pinchMidpoint.x <= pane.x + pane.width &&
+            pinchMidpoint.y >= pane.y &&
+            pinchMidpoint.y <= pane.y + TITLE_BAR_HEIGHT
+          ) {
+            setDraggingPaneId(pane.id);
+            paneStartPosRef.current = { x: pane.x, y: pane.y };
+            initialPinchPositionRef.current = {
+              x: pinchMidpoint.x,
+              y: pinchMidpoint.y,
+            };
+            if (pane.id !== activePaneId) {
+              bringPaneToFront(pane.id);
+            }
+            break;
+          }
+        }
+      } else if (initialPinchPositionRef.current && paneStartPosRef.current) {
+        // Continue dragging
+        const deltaX = pinchMidpoint.x - initialPinchPositionRef.current.x;
+        const deltaY = pinchMidpoint.y - initialPinchPositionRef.current.y;
+
+        // Only update if the move is at least 1px in either direction
+        if (Math.abs(deltaX) >= 1 || Math.abs(deltaY) >= 1) {
+          const newX = paneStartPosRef.current.x + deltaX;
+          const newY = paneStartPosRef.current.y + deltaY;
+
+          // Update the refs to the new values to track relative movement
+          initialPinchPositionRef.current = {
+            x: pinchMidpoint.x,
+            y: pinchMidpoint.y,
+          };
+          paneStartPosRef.current = { x: newX, y: newY };
+
+          // Update the store
+          updatePanePosition(draggingPaneId, newX, newY);
+        }
+      }
+    } else {
+      // Pinch released or pose changed
+      if (draggingPaneId) {
+        setDraggingPaneId(null);
+        initialPinchPositionRef.current = null;
+        paneStartPosRef.current = null;
+      }
+    }
+  }, [
+    isHandTrackingActive,
+    handData,
+    draggingPaneId,
+    panes,
+    activePaneId,
+    bringPaneToFront,
+    updatePanePosition,
+  ]);
 
   // Set dark mode on mount
   useEffect(() => {
@@ -323,8 +453,19 @@ function App() {
         {/* Pane Manager */}
         <PaneManager />
         
+        {/* Hand Tracking */}
+        <HandTracking
+          showHandTracking={isHandTrackingActive}
+          setShowHandTracking={setIsHandTrackingActive}
+          onHandDataUpdate={handleHandDataUpdate}
+        />
+        
         {/* Hotbar */}
-        <Hotbar onNewChat={createSession} />
+        <Hotbar 
+          onNewChat={createSession}
+          isHandTrackingActive={isHandTrackingActive}
+          onToggleHandTracking={toggleHandTracking}
+        />
       </div>
     </TooltipProvider>
   );
