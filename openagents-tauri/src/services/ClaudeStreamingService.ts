@@ -22,7 +22,7 @@ export interface Message {
 
 export interface StreamingSession {
   sessionId: string;
-  messageQueue: Queue.Queue<unknown>; // Actually holds TauriEvent<unknown>
+  messageQueue: Queue.Queue<unknown>; // Holds the event payload directly
   cleanup: () => void;
 }
 
@@ -103,11 +103,11 @@ export const ClaudeStreamingServiceLive = Layer.effect(
       getMessageStream: (session: StreamingSession) =>
         pipe(
           Stream.fromQueue(session.messageQueue),
-          Stream.tap((event) => Effect.sync(() => console.log('Processing queue event:', event))),
-          Stream.mapEffect((event: any) => {
-            // Parse the event payload to get the message
-            console.log('Parsing event payload:', event.payload);
-            return parseClaudeMessage(event.payload).pipe(
+          Stream.tap((payload) => Effect.sync(() => console.log('Processing queue payload:', payload))),
+          Stream.mapEffect((payload: unknown) => {
+            // Parse the payload directly as it's already extracted
+            console.log('Parsing payload:', payload);
+            return parseClaudeMessage(payload).pipe(
               Effect.tap((msg) => Effect.sync(() => console.log('Parsed message:', msg))),
               Effect.catchAll((error) => {
                 console.error('Failed to parse message:', error);

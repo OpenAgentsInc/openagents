@@ -21,7 +21,7 @@ export type TauriEventError = StreamingError | ConnectionError | MessageParsingE
 
 // Event stream context
 export interface EventStreamContext {
-  queue: Queue.Queue<unknown>; // Will hold TauriEvent<unknown> but typed as unknown for compatibility
+  queue: Queue.Queue<unknown>; // Holds the event payload directly
   cleanup: () => void;
 }
 
@@ -77,8 +77,11 @@ export const TauriEventServiceLive = TauriEventService.of({
           console.log(`Setting up event listener for: ${eventName}`);
           return await listen(eventName, (event: TauriEvent<unknown>) => {
             console.log(`Received event on ${eventName}:`, event);
-            // Queue the event in a fire-and-forget manner
-            Effect.runPromise(Queue.offer(queue, event)).catch(error => {
+            // Extract the payload from the Tauri event
+            const payload = event.payload;
+            console.log(`Event payload:`, payload);
+            // Queue the payload in a fire-and-forget manner
+            Effect.runPromise(Queue.offer(queue, payload)).catch(error => {
               console.error(`Failed to enqueue event for ${eventName}:`, error);
             });
           });
