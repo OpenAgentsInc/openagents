@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "DISABLE_HMR=true tauri dev",
+    "dev:hmr": "tauri dev",
+    "dev:vite": "DISABLE_HMR=true vite",
+    "dev:vite:hmr": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"

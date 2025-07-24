@@ -1,8 +1,8 @@
-import React from "react";
-import { Pane } from "@/types/pane";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import React from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Pane } from "@/types/pane"
 
 interface ChatPaneProps {
   pane: Pane;
@@ -27,11 +27,11 @@ interface Message {
 
 export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, updateSessionInput }) => {
   const sessionId = pane.content?.sessionId as string;
-  
+
   if (!session) {
     return <div>Session not found</div>;
   }
-  
+
   const messages = session.messages || [];
   const inputMessage = session.inputMessage || "";
   const isLoading = session.isLoading || false;
@@ -87,7 +87,7 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
           </div>
         )}
       </ScrollArea>
-      
+
       {/* Input */}
       <div className="mt-4 -mx-4 px-4 pt-4 border-t border-border">
         <div className="flex gap-2">
@@ -105,7 +105,7 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
             className="flex-1 text-sm"
             autoFocus
           />
-          <Button 
+          <Button
             onClick={() => sendMessage?.(sessionId)}
             disabled={isLoading || !inputMessage.trim()}
             size="sm"
