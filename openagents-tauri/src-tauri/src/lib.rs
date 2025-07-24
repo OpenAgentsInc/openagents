@@ -215,6 +215,30 @@ pub fn run() {
             get_history,
             get_current_directory,
         ])
+        .setup(|app| {
+            // During development, try to prevent window from stealing focus on hot reload
+            #[cfg(debug_assertions)]
+            {
+                use tauri::Manager;
+                
+                // Store initial focus state
+                let window_focused = app.get_webview_window("main")
+                    .map(|w| w.is_focused().unwrap_or(false))
+                    .unwrap_or(false);
+                
+                // If window wasn't focused initially, try to minimize focus disruption
+                if !window_focused {
+                    if let Some(window) = app.get_webview_window("main") {
+                        // Set window to not be always on top
+                        let _ = window.set_always_on_top(false);
+                        
+                        // Set skip taskbar to false to ensure normal window behavior
+                        let _ = window.set_skip_taskbar(false);
+                    }
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

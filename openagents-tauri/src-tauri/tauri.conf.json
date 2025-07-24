@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.openagents.OpenAgents",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bun run dev:vite",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
