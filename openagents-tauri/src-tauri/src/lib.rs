@@ -181,7 +181,21 @@ async fn get_history(
 }
 
 #[tauri::command]
-fn get_current_directory() -> Result<CommandResult<String>, String> {
+fn get_project_directory() -> Result<CommandResult<String>, String> {
+    // Try to find git repository root first
+    if let Ok(output) = std::process::Command::new("git")
+        .args(&["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        if output.status.success() {
+            let git_root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !git_root.is_empty() {
+                return Ok(CommandResult::success(git_root));
+            }
+        }
+    }
+    
+    // Fall back to current directory if not in a git repo
     match std::env::current_dir() {
         Ok(path) => Ok(CommandResult::success(path.to_string_lossy().to_string())),
         Err(e) => Ok(CommandResult::error(e.to_string())),
@@ -211,7 +225,7 @@ pub fn run() {
             stop_session,
             get_active_sessions,
             get_history,
-            get_current_directory,
+            get_project_directory,
         ])
         .setup(|app| {
             // During development, try to prevent window from stealing focus on hot reload

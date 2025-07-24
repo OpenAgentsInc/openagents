@@ -57,9 +57,9 @@ function App() {
   
   const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId } = usePaneStore();
 
-  // Get current directory on mount
+  // Get project directory (git root or current directory) on mount
   useEffect(() => {
-    invoke("get_current_directory").then((result: any) => {
+    invoke("get_project_directory").then((result: any) => {
       if (result.success && result.data) {
         setNewProjectPath(result.data);
       }
