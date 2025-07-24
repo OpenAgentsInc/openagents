@@ -8,12 +8,30 @@ import { MetadataPane } from "./MetadataPane";
 export const PaneManager: React.FC = () => {
   const { panes, activePaneId } = usePaneStore();
 
+  // Get data from global object (temporary solution)
+  const data = (window as any).__openagents_data || {};
+
   const renderPaneContent = (pane: PaneType) => {
     switch (pane.type) {
       case "chat":
-        return <ChatPane pane={pane} />;
+        const sessionId = pane.content?.sessionId as string;
+        const session = data.sessions?.find((s: any) => s.id === sessionId);
+        return <ChatPane 
+          pane={pane} 
+          session={session}
+          sendMessage={data.sendMessage}
+          updateSessionInput={data.updateSessionInput}
+        />;
       case "metadata":
-        return <MetadataPane />;
+        return <MetadataPane 
+          claudeStatus={data.claudeStatus}
+          sessions={data.sessions}
+          newProjectPath={data.newProjectPath}
+          isDiscoveryLoading={data.isDiscoveryLoading}
+          setNewProjectPath={data.setNewProjectPath}
+          createSession={data.createSession}
+          stopSession={data.stopSession}
+        />;
       default:
         return <div>Unknown pane type: {pane.type}</div>;
     }

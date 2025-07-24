@@ -292,19 +292,18 @@ function App() {
 
   // Provide session data to child components through a context or prop drilling
   // For now, we'll use a global object (this should be replaced with proper state management)
-  useEffect(() => {
-    (window as any).__openagents_data = {
-      claudeStatus,
-      sessions,
-      newProjectPath,
-      isDiscoveryLoading,
-      setNewProjectPath,
-      createSession,
-      sendMessage,
-      updateSessionInput,
-      stopSession,
-    };
-  }, [claudeStatus, sessions, newProjectPath, isDiscoveryLoading]);
+  // Update immediately without useEffect to ensure real-time updates
+  (window as any).__openagents_data = {
+    claudeStatus,
+    sessions,
+    newProjectPath,
+    isDiscoveryLoading,
+    setNewProjectPath,
+    createSession,
+    sendMessage,
+    updateSessionInput,
+    stopSession,
+  };
 
   return (
     <TooltipProvider>
@@ -325,7 +324,7 @@ function App() {
         <PaneManager />
         
         {/* Hotbar */}
-        <Hotbar />
+        <Hotbar onNewChat={createSession} />
       </div>
     </TooltipProvider>
   );

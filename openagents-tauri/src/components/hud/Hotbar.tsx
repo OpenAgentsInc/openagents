@@ -6,16 +6,15 @@ import { usePaneStore } from "@/stores/pane";
 
 interface HotbarProps {
   className?: string;
+  onNewChat?: () => void;
 }
 
-export const Hotbar: React.FC<HotbarProps> = ({ className }) => {
+export const Hotbar: React.FC<HotbarProps> = ({ className, onNewChat }) => {
   const { toggleMetadataPane } = usePaneStore();
 
   const handleNewChat = () => {
-    // Get data from global object and create a new session
-    const data = (window as any).__openagents_data || {};
-    if (data.createSession) {
-      data.createSession();
+    if (onNewChat) {
+      onNewChat();
     }
   };
 

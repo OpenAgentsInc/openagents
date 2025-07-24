@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 
 interface ChatPaneProps {
   pane: Pane;
+  session?: any;
+  sendMessage?: (sessionId: string) => void;
+  updateSessionInput?: (sessionId: string, value: string) => void;
 }
 
 // This will be replaced with actual session data from the parent component
@@ -22,12 +25,8 @@ interface Message {
   };
 }
 
-export const ChatPane: React.FC<ChatPaneProps> = ({ pane }) => {
+export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, updateSessionInput }) => {
   const sessionId = pane.content?.sessionId as string;
-  
-  // Get data from global object (temporary solution)
-  const data = (window as any).__openagents_data || {};
-  const session = data.sessions?.find((s: any) => s.id === sessionId);
   
   if (!session) {
     return <div>Session not found</div>;
@@ -95,10 +94,10 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane }) => {
           <Input
             type="text"
             value={inputMessage}
-            onChange={(e) => data.updateSessionInput?.(sessionId, e.target.value)}
+            onChange={(e) => updateSessionInput?.(sessionId, e.target.value)}
             onKeyPress={(e) => {
               if (e.key === "Enter") {
-                data.sendMessage?.(sessionId);
+                sendMessage?.(sessionId);
               }
             }}
             placeholder="Type your message..."
@@ -107,7 +106,7 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane }) => {
             autoFocus
           />
           <Button 
-            onClick={() => data.sendMessage?.(sessionId)}
+            onClick={() => sendMessage?.(sessionId)}
             disabled={isLoading || !inputMessage.trim()}
             size="sm"
           >

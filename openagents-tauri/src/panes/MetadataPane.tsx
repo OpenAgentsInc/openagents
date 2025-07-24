@@ -11,13 +11,25 @@ interface Session {
   isLoading: boolean;
 }
 
-export const MetadataPane: React.FC = () => {
-  // Get data from global object (temporary solution)
-  const data = (window as any).__openagents_data || {};
-  const claudeStatus = data.claudeStatus || "Ready";
-  const sessions: Session[] = data.sessions || [];
-  const newProjectPath = data.newProjectPath || "";
-  const isDiscoveryLoading = data.isDiscoveryLoading || false;
+interface MetadataPaneProps {
+  claudeStatus?: string;
+  sessions?: Session[];
+  newProjectPath?: string;
+  isDiscoveryLoading?: boolean;
+  setNewProjectPath?: (value: string) => void;
+  createSession?: () => void;
+  stopSession?: (sessionId: string) => void;
+}
+
+export const MetadataPane: React.FC<MetadataPaneProps> = ({
+  claudeStatus = "Ready",
+  sessions = [],
+  newProjectPath = "",
+  isDiscoveryLoading = false,
+  setNewProjectPath,
+  createSession,
+  stopSession,
+}) => {
 
   return (
     <div className="flex flex-col h-full">
@@ -47,17 +59,17 @@ export const MetadataPane: React.FC = () => {
           <Input
             type="text"
             value={newProjectPath}
-            onChange={(e) => data.setNewProjectPath?.(e.target.value)}
+            onChange={(e) => setNewProjectPath?.(e.target.value)}
             onKeyPress={(e) => {
               if (e.key === "Enter") {
-                data.createSession?.();
+                createSession?.();
               }
             }}
             placeholder="Project path"
             className="text-xs"
           />
           <Button 
-            onClick={() => data.createSession?.()}
+            onClick={() => createSession?.()}
             disabled={isDiscoveryLoading}
             size="sm"
             className="w-full"
@@ -80,7 +92,7 @@ export const MetadataPane: React.FC = () => {
                     {session.projectPath.split('/').pop()}
                   </p>
                   <Button
-                    onClick={() => data.stopSession?.(session.id)}
+                    onClick={() => stopSession?.(session.id)}
                     disabled={session.isLoading}
                     variant="destructive"
                     size="sm"
