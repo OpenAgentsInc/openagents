@@ -1,6 +1,4 @@
 import React from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Pane } from "@/types/pane"
 
@@ -39,7 +37,7 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
 
   const renderMessage = (msg: Message) => {
     return (
-      <div key={msg.id} className="border p-4 overflow-hidden font-mono text-sm text-foreground" style={{ borderColor: "#444", backgroundColor: "rgba(20, 20, 20, 0.8)" }}>
+      <div key={msg.id} className="p-4 overflow-hidden font-mono text-sm text-foreground">
         <div className="overflow-hidden">
           <div className="whitespace-pre-wrap break-all overflow-x-auto overflow-y-hidden">
             {msg.content}
@@ -92,40 +90,27 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
       </ScrollArea>
 
       {/* Input - Always shown */}
-      <div className="mt-4 -mx-4 px-4 pt-4" style={{ borderTop: "1px solid #444" }}>
-        <div 
-          className="p-4 font-mono text-sm"
-          style={{ 
-            border: "1px solid #444", 
-            borderRadius: "0",
-            backgroundColor: "rgba(20, 20, 20, 0.8)",
-            minHeight: "5rem"
-          }}
-        >
-          <Input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => updateSessionInput?.(sessionId, e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === "Enter" && !isInitializing) {
+      <div className="mt-4 -mx-4 px-4 pt-4">
+        <div className="prosemirror-input-container">
+          <div 
+            className="prosemirror-input"
+            contentEditable={!isLoading && !isInitializing}
+            suppressContentEditableWarning={true}
+            data-placeholder={isInitializing ? "Start typing (initializing...)..." : "Type your message..."}
+            onInput={(e) => {
+              const text = e.currentTarget.textContent || "";
+              updateSessionInput?.(sessionId, text);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !isInitializing) {
+                e.preventDefault();
                 sendMessage?.(sessionId);
               }
             }}
-            placeholder={isInitializing ? "Start typing (initializing...)..." : "Type your message..."}
-            disabled={isLoading}
-            className="w-full bg-transparent border-none focus-visible:ring-0 focus-visible:outline-none p-0 text-sm font-mono text-foreground"
-            autoFocus
-          />
-        </div>
-        <div className="flex justify-end mt-2">
-          <Button
-            onClick={() => sendMessage?.(sessionId)}
-            disabled={isLoading || isInitializing || !inputMessage.trim()}
-            size="sm"
-            variant="outline"
+            style={{ color: "var(--foreground)" }}
           >
-            Send
-          </Button>
+            {inputMessage}
+          </div>
         </div>
       </div>
     </div>

@@ -278,12 +278,11 @@ export const Pane: React.FC<PaneProps> = ({
   return (
     <div
       className={cn(
-        "absolute bg-pane shadow-xl terminal-corners terminal-corners-bottom",
+        "absolute chat-pane shadow-xl",
         "transition-all duration-200 ease-out",
         isCurrentlyInteracting && "transition-none"
       )}
       style={{
-        border: "1px solid #444",
         left: `${isDragging ? dragPosition.x : position.x}px`,
         top: `${isDragging ? dragPosition.y : position.y}px`,
         width: `${isResizing ? size.width : width}px`,
@@ -292,11 +291,15 @@ export const Pane: React.FC<PaneProps> = ({
       }}
       onMouseDown={handleMouseDown}
     >
+      {/* Corner Brackets */}
+      <div className="corner-bracket-top-left" />
+      <div className="corner-bracket-top-right" />
+      <div className="corner-bracket-bottom-left" />
+      <div className="corner-bracket-bottom-right" />
       {/* Title Bar */}
       <div
         {...bindDrag()}
-        className="flex items-center justify-between px-4 py-2 cursor-move select-none bg-pane-header"
-        style={{ borderBottom: "1px solid #444" }}
+        className="pane-header flex items-center justify-between cursor-move select-none"
       >
         <h3 className="text-sm font-semibold truncate flex-1">{title}</h3>
         {dismissable && (
