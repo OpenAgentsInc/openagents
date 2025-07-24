@@ -21,8 +21,6 @@ impl ClaudeDiscovery {
 
     /// Discover Claude Code binary location
     pub async fn discover_binary(&mut self) -> Result<PathBuf, ClaudeError> {
-        info!("Starting Claude Code binary discovery...");
-
         // First, check if already discovered
         if let Some(ref path) = self.binary_path {
             if path.exists() {
@@ -47,8 +45,8 @@ impl ClaudeDiscovery {
                             {
                                 let version_str = String::from_utf8_lossy(&output.stdout);
                                 if !version_str.contains("0.2.") {
-                                    info!("Found modern claude in fnm: {} (version: {})", 
-                                          claude_path.display(), version_str.trim());
+                                    info!("Claude Code v{} ready at {}", 
+                                          version_str.trim(), claude_path.display());
                                     self.binary_path = Some(claude_path.clone());
                                     return Ok(claude_path);
                                 }
@@ -61,7 +59,7 @@ impl ClaudeDiscovery {
 
         // Strategy 2: Check PATH using login shell
         if let Some(path) = self.check_path_with_shell().await? {
-            info!("Found Claude in PATH: {:?}", path);
+            info!("Claude Code ready at {}", path.display());
             self.binary_path = Some(path.clone());
             return Ok(path);
         }
@@ -76,7 +74,7 @@ impl ClaudeDiscovery {
         for path_str in common_paths {
             let path = PathBuf::from(path_str);
             if path.exists() {
-                info!("Found Claude at: {:?}", path);
+                info!("Claude Code ready at {}", path.display());
                 self.binary_path = Some(path.clone());
                 return Ok(path);
             }
@@ -136,8 +134,6 @@ impl ClaudeDiscovery {
                                 {
                                     let version_str = String::from_utf8_lossy(&version_output.stdout);
                                     if !version_str.contains("0.2.") {
-                                        info!("Found modern claude in PATH: {} (version: {})", 
-                                              claude_path.display(), version_str.trim());
                                         return Ok(Some(claude_path));
                                     }
                                 }
@@ -149,12 +145,10 @@ impl ClaudeDiscovery {
                     if let Some(home) = dirs_next::home_dir() {
                         let local_claude = home.join(".local/bin/claude");
                         if local_claude.exists() {
-                            info!("Found claude in ~/.local/bin: {}", local_claude.display());
                             return Ok(Some(local_claude));
                         }
                     }
                 } else if path.exists() {
-                    info!("Using claude binary from PATH: {}", path.display());
                     return Ok(Some(path));
                 }
             }
@@ -165,8 +159,6 @@ impl ClaudeDiscovery {
 
     /// Discover Claude data directory
     pub async fn discover_data_directory(&mut self) -> Result<PathBuf, ClaudeError> {
-        info!("Searching for Claude data directory...");
-
         if let Some(ref path) = self.data_path {
             if path.exists() {
                 return Ok(path.clone());
@@ -176,7 +168,6 @@ impl ClaudeDiscovery {
         if let Some(home_dir) = dirs_next::home_dir() {
             let claude_dir = home_dir.join(".claude");
             if claude_dir.exists() && claude_dir.is_dir() {
-                info!("Found Claude data directory: {:?}", claude_dir);
                 self.data_path = Some(claude_dir.clone());
                 return Ok(claude_dir);
             }

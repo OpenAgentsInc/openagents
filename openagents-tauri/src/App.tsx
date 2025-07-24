@@ -32,6 +32,7 @@ interface Session {
   messages: Message[];
   inputMessage: string;
   isLoading: boolean;
+  isInitializing?: boolean;
 }
 
 interface HandDataContext {
@@ -54,11 +55,11 @@ function App() {
   const initialPinchPositionRef = useRef<{ x: number; y: number } | null>(null);
   const paneStartPosRef = useRef<{ x: number; y: number } | null>(null);
   
-  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId } = usePaneStore();
+  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane } = usePaneStore();
 
-  // Get current directory on mount
+  // Get project directory (git root or current directory) on mount
   useEffect(() => {
-    invoke("get_current_directory").then((result: any) => {
+    invoke("get_project_directory").then((result: any) => {
       if (result.success && result.data) {
         setNewProjectPath(result.data);
       }
@@ -99,83 +100,51 @@ function App() {
     discoverClaude();
   }, []);
 
-  // Poll for messages for all active sessions
-  useEffect(() => {
-    if (sessions.length === 0) return;
-
-    const fetchAllMessages = async () => {
-      await Promise.all(sessions.map(session => fetchMessages(session.id)));
-    };
-
-    // Initial fetch
-    fetchAllMessages();
-
-    const interval = setInterval(fetchAllMessages, 50); // Poll every 50ms for real-time updates
-
-    return () => clearInterval(interval);
-  }, [sessions.length]); // Only depend on length to avoid recreating interval
-
-  const discoverClaude = async () => {
-    console.log("Starting Claude discovery...");
-    setIsDiscoveryLoading(true);
+  const fetchMessages = useCallback(async (sessionId: string) => {
     try {
-      const result = await invoke<CommandResult<string>>("discover_claude");
-      console.log("Discovery result:", result);
-      if (result.success && result.data) {
-        setClaudeStatus(`Claude found at: ${result.data}`);
-        console.log("Claude binary found at:", result.data);
-      } else {
-        setClaudeStatus(`Error: ${result.error || "Unknown error"}`);
-        console.error("Discovery failed:", result.error);
-      }
-    } catch (error) {
-      setClaudeStatus(`Error: ${error}`);
-      console.error("Discovery error:", error);
-    }
-    setIsDiscoveryLoading(false);
-  };
-
-  const createSession = async () => {
-    if (!newProjectPath) {
-      alert("Please enter a project path");
-      return;
-    }
-
-    console.log("Creating session for project:", newProjectPath);
-    setIsDiscoveryLoading(true);
-    try {
-      const result = await invoke<CommandResult<string>>("create_session", {
-        projectPath: newProjectPath,
+      const result = await invoke<CommandResult<Message[]>>("get_messages", {
+        sessionId,
       });
-      console.log("Create session result:", result);
       if (result.success && result.data) {
-        const newSession: Session = {
-          id: result.data,
-          projectPath: newProjectPath,
-          messages: [],
-          inputMessage: "",
-          isLoading: false,
-        };
-        setSessions(prev => [...prev, newSession]);
-        console.log("Session created with ID:", result.data);
-        
-        // Open a pane for the new session
-        openChatPane(result.data, newProjectPath);
-      } else {
-        alert(`Error creating session: ${result.error}`);
-        console.error("Session creation failed:", result.error);
+        setSessions(prev => prev.map(session => {
+          if (session.id !== sessionId) return session;
+          
+          const backendMessages = result.data || [];
+          const currentMessages = session.messages;
+          
+          // Keep optimistic user messages that haven't appeared in backend yet
+          const optimisticMessages = currentMessages.filter(msg => 
+            msg.id.startsWith('user-') && 
+            !backendMessages.some(backend => 
+              backend.message_type === 'user' && 
+              backend.content === msg.content
+            )
+          );
+          
+          // Combine optimistic messages with backend messages
+          const allMessages = [...optimisticMessages, ...backendMessages];
+          
+          // Sort by timestamp to maintain order
+          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          
+          return { ...session, messages: allMessages };
+        }));
       }
     } catch (error) {
-      alert(`Error: ${error}`);
-      console.error("Session creation error:", error);
+      console.error("Error fetching messages:", error);
     }
-    setIsDiscoveryLoading(false);
-  };
+  }, []);
 
   const sendMessage = async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
     if (!session || !session.inputMessage.trim()) {
       console.log("Cannot send message - session:", session, "message:", session?.inputMessage);
+      return;
+    }
+    
+    // Don't send messages while initializing
+    if (session.isInitializing) {
+      console.log("Cannot send message - session is still initializing");
       return;
     }
 
@@ -219,38 +188,130 @@ function App() {
     }
   };
 
-  const fetchMessages = async (sessionId: string) => {
+  const updateSessionInput = (sessionId: string, value: string) => {
+    setSessions(prev => prev.map(s => 
+      s.id === sessionId ? { ...s, inputMessage: value } : s
+    ));
+  };
+
+  // Poll for messages for all active sessions
+  useEffect(() => {
+    if (sessions.length === 0) return;
+
+    const fetchAllMessages = async () => {
+      // console.log('Polling sessions:', sessions.map(s => ({ id: s.id, isInitializing: s.isInitializing })));
+      await Promise.all(sessions.map(session => {
+        // Only fetch messages for non-initializing sessions
+        if (!session.isInitializing) {
+          return fetchMessages(session.id);
+        }
+        return Promise.resolve();
+      }));
+    };
+
+    // Initial fetch
+    fetchAllMessages();
+
+    const interval = setInterval(fetchAllMessages, 50); // Poll every 50ms for real-time updates
+
+    return () => clearInterval(interval);
+  }, [sessions, fetchMessages]); // Depend on sessions array to recreate interval when IDs change
+
+  const discoverClaude = async () => {
+    console.log("Starting Claude discovery...");
+    setIsDiscoveryLoading(true);
     try {
-      const result = await invoke<CommandResult<Message[]>>("get_messages", {
-        sessionId,
-      });
+      const result = await invoke<CommandResult<string>>("discover_claude");
+      console.log("Discovery result:", result);
       if (result.success && result.data) {
-        setSessions(prev => prev.map(session => {
-          if (session.id !== sessionId) return session;
-          
-          const backendMessages = result.data || [];
-          const currentMessages = session.messages;
-          
-          // Keep optimistic user messages that haven't appeared in backend yet
-          const optimisticMessages = currentMessages.filter(msg => 
-            msg.id.startsWith('user-') && 
-            !backendMessages.some(backend => 
-              backend.message_type === 'user' && 
-              backend.content === msg.content
-            )
-          );
-          
-          // Combine optimistic messages with backend messages
-          const allMessages = [...optimisticMessages, ...backendMessages];
-          
-          // Sort by timestamp to maintain order
-          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-          
-          return { ...session, messages: allMessages };
-        }));
+        setClaudeStatus(`Claude found at: ${result.data}`);
+        console.log("Claude binary found at:", result.data);
+      } else {
+        setClaudeStatus(`Error: ${result.error || "Unknown error"}`);
+        console.error("Discovery failed:", result.error);
       }
     } catch (error) {
-      console.error("Error fetching messages:", error);
+      setClaudeStatus(`Error: ${error}`);
+      console.error("Discovery error:", error);
+    }
+    setIsDiscoveryLoading(false);
+  };
+
+  const createSession = async () => {
+    if (!newProjectPath) {
+      alert("Please enter a project path");
+      return;
+    }
+
+    console.log("Creating session for project:", newProjectPath);
+    
+    // Create a temporary session ID
+    const tempSessionId = `temp-${Date.now()}`;
+    
+    // Create session with initializing state
+    const newSession: Session = {
+      id: tempSessionId,
+      projectPath: newProjectPath,
+      messages: [],
+      inputMessage: "",
+      isLoading: false,
+      isInitializing: true,
+    };
+    
+    // Add session and open pane immediately
+    setSessions(prev => [...prev, newSession]);
+    openChatPane(tempSessionId, newProjectPath);
+    
+    // Initialize Claude in the background
+    try {
+      const result = await invoke<CommandResult<string>>("create_session", {
+        projectPath: newProjectPath,
+      });
+      console.log("Create session result:", result);
+      
+      if (result.success && result.data) {
+        const realSessionId = result.data;
+        console.log("Session created with ID:", realSessionId);
+        
+        // Update the session with the real ID and remove initializing state
+        setSessions(prev => prev.map(s => 
+          s.id === tempSessionId 
+            ? { ...s, id: realSessionId, isInitializing: false }
+            : s
+        ));
+        
+        // Update the pane ID to match the real session ID
+        usePaneStore.setState(state => {
+          const updatedPanes = state.panes.map(p => 
+            p.id === `chat-${tempSessionId}`
+              ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
+              : p
+          );
+          return {
+            panes: updatedPanes,
+            activePaneId: state.activePaneId === `chat-${tempSessionId}` 
+              ? `chat-${realSessionId}` 
+              : state.activePaneId
+          };
+        });
+        
+        // Manually fetch messages for the new session ID
+        setTimeout(() => {
+          fetchMessages(realSessionId);
+        }, 100);
+      } else {
+        // Remove the session and close the pane on error
+        setSessions(prev => prev.filter(s => s.id !== tempSessionId));
+        usePaneStore.getState().removePane(`chat-${tempSessionId}`);
+        alert(`Error creating session: ${result.error}`);
+        console.error("Session creation failed:", result.error);
+      }
+    } catch (error) {
+      // Remove the session and close the pane on error
+      setSessions(prev => prev.filter(s => s.id !== tempSessionId));
+      usePaneStore.getState().removePane(`chat-${tempSessionId}`);
+      alert(`Error: ${error}`);
+      console.error("Session creation error:", error);
     }
   };
 
@@ -279,18 +340,19 @@ function App() {
     }
   };
 
-  const updateSessionInput = (sessionId: string, value: string) => {
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId ? { ...s, inputMessage: value } : s
-    ));
-  };
-
   // Set up keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Check if the user is typing in an input field
       const target = event.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Handle Escape key to close active pane
+      if (event.key === 'Escape' && activePaneId) {
+        event.preventDefault();
+        removePane(activePaneId);
         return;
       }
 
@@ -316,12 +378,12 @@ function App() {
             createSession();
           }
           break;
-        case 7:
-          console.log('Settings');
-          break;
-        case 8:
-          console.log('Help');
-          break;
+        // case 7:
+        //   console.log('Settings');
+        //   break;
+        // case 8:
+        //   console.log('Help');
+        //   break;
         case 9:
           toggleHandTracking();
           break;
@@ -330,7 +392,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleMetadataPane, newProjectPath, createSession, toggleHandTracking]);
+  }, [toggleMetadataPane, newProjectPath, createSession, toggleHandTracking, activePaneId, removePane]);
 
   // Effect for pinch-to-drag logic
   useEffect(() => {

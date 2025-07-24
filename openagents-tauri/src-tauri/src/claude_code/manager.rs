@@ -111,6 +111,7 @@ pub struct ClaudeSession {
     claude_session_id: Option<String>, // Claude's internal session ID
     pending_tool_uses: HashMap<String, (String, HashMap<String, serde_json::Value>)>,
     message_subscribers: Vec<mpsc::Sender<Message>>,
+    message_id_map: HashMap<String, Uuid>, // Maps Claude message IDs to our internal UUIDs
 }
 
 impl ClaudeSession {
@@ -127,6 +128,7 @@ impl ClaudeSession {
             claude_session_id: None,
             pending_tool_uses: HashMap::new(),
             message_subscribers: Vec::new(),
+            message_id_map: HashMap::new(),
         }
     }
 
@@ -478,9 +480,15 @@ impl ClaudeSession {
 
     async fn handle_assistant_message(&mut self, data: &serde_json::Value) {
         if let Some(message) = data.get("message").and_then(|v| v.as_object()) {
+            // Extract the message ID from Claude's response
+            let message_id = message.get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            
             if let Some(content_array) = message.get("content").and_then(|v| v.as_array()) {
                 let mut text_content = String::new();
-                let mut _has_thinking = false;
+                let mut has_thinking = false;
+                let mut thinking_content = String::new();
 
                 // Process all content items
                 for item in content_array {
@@ -492,16 +500,9 @@ impl ClaudeSession {
                                 }
                             }
                             "thinking" => {
-                                _has_thinking = true;
+                                has_thinking = true;
                                 if let Some(thinking) = item.get("thinking").and_then(|v| v.as_str()) {
-                                    let thinking_msg = Message {
-                                        id: Uuid::new_v4(),
-                                        message_type: MessageType::Thinking,
-                                        content: thinking.to_string(),
-                                        timestamp: Utc::now(),
-                                        tool_info: None,
-                                    };
-                                    self.add_message(thinking_msg).await;
+                                    thinking_content = thinking.to_string();
                                 }
                             }
                             "tool_use" => {
@@ -512,16 +513,53 @@ impl ClaudeSession {
                     }
                 }
 
-                // Add text message if there's content
+                // Handle thinking message (only create once)
+                if has_thinking && !thinking_content.is_empty() {
+                    let thinking_key = format!("{}-thinking", message_id);
+                    
+                    if !self.message_id_map.contains_key(&thinking_key) {
+                        let thinking_uuid = Uuid::new_v4();
+                        self.message_id_map.insert(thinking_key, thinking_uuid);
+                        
+                        let thinking_msg = Message {
+                            id: thinking_uuid,
+                            message_type: MessageType::Thinking,
+                            content: thinking_content,
+                            timestamp: Utc::now(),
+                            tool_info: None,
+                        };
+                        self.add_message(thinking_msg).await;
+                    }
+                }
+
+                // Handle assistant message - update if exists, create if new
                 if !text_content.is_empty() {
-                    let assistant_msg = Message {
-                        id: Uuid::new_v4(),
-                        message_type: MessageType::Assistant,
-                        content: text_content,
-                        timestamp: Utc::now(),
-                        tool_info: None,
-                    };
-                    self.add_message(assistant_msg).await;
+                    // Check if we already have a UUID for this Claude message ID
+                    if let Some(&existing_uuid) = self.message_id_map.get(message_id) {
+                        // Update existing message
+                        if let Some(msg) = self.messages.iter_mut().find(|m| m.id == existing_uuid) {
+                            msg.content = text_content;
+                            
+                            // Notify subscribers of the update
+                            let updated_msg = msg.clone();
+                            self.message_subscribers.retain(|tx| {
+                                tx.try_send(updated_msg.clone()).is_ok()
+                            });
+                        }
+                    } else {
+                        // Create new message
+                        let new_uuid = Uuid::new_v4();
+                        self.message_id_map.insert(message_id.to_string(), new_uuid);
+                        
+                        let assistant_msg = Message {
+                            id: new_uuid,
+                            message_type: MessageType::Assistant,
+                            content: text_content,
+                            timestamp: Utc::now(),
+                            tool_info: None,
+                        };
+                        self.add_message(assistant_msg).await;
+                    }
                 }
             }
         }
