@@ -100,6 +100,9 @@ function App() {
     discoverClaude();
   }, []);
 
+  // Track which sessions we've already attempted to restore
+  const restoredSessionsRef = useRef<Set<string>>(new Set());
+
   // Restore sessions from persisted panes after Claude is discovered
   useEffect(() => {
     if (claudeStatus.includes("Claude found at:")) {
@@ -112,9 +115,16 @@ function App() {
         const oldSessionId = pane.content.sessionId;
         const projectPath = pane.content.projectPath || newProjectPath;
         
+        // Skip if we've already attempted to restore this session
+        if (restoredSessionsRef.current.has(oldSessionId)) {
+          return;
+        }
+        
         // Check if session already exists
         const sessionExists = sessions.some(s => s.id === oldSessionId);
         if (!sessionExists) {
+          // Mark as attempted
+          restoredSessionsRef.current.add(oldSessionId);
           // Get persisted messages
           const persistedMessages = getSessionMessages(oldSessionId);
           
