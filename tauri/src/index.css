@@ -148,37 +148,38 @@
 }
 
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.15 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.92 0.004 286.32);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
+  /* V5V Terminal/Cyberpunk Color Scheme */
+  --background: #0B0B0E;  /* Very dark blue-black */
+  --foreground: #d8dee9;  /* Light gray-blue */
+  --card: #090909;        /* Almost black */
+  --card-foreground: #d8dee9;
+  --popover: #121212;     /* Slightly lighter than card */
+  --popover-foreground: #d8dee9;
+  --primary: #22d3ee;     /* Cyan accent color */
+  --primary-foreground: #0B0B0E;
+  --secondary: #2a2a2a;   /* Dark gray */
+  --secondary-foreground: #d8dee9;
+  --muted: #1d1d1d;       /* Darker gray */
+  --muted-foreground: #9ca3af;
+  --accent: #333333;      /* Medium dark gray */
+  --accent-foreground: #d8dee9;
+  --destructive: #ef4444; /* Red for errors */
+  --border: #242424;      /* Medium dark gray borders */
+  --input: #333333;       /* Lighter dark gray for inputs */
+  --ring: #22d3ee;        /* Cyan focus ring */
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
+  --sidebar: #121212;     /* Sidebar background */
+  --sidebar-foreground: #d8dee9;
+  --sidebar-primary: #22d3ee;
+  --sidebar-primary-foreground: #0B0B0E;
+  --sidebar-accent: #333333;
+  --sidebar-accent-foreground: #d8dee9;
+  --sidebar-border: #333333;
+  --sidebar-ring: #22d3ee;
 }
 
 @layer base {
@@ -195,5 +196,98 @@
     overflow: hidden;
     margin: 0;
     height: 100vh;
+  }
+}
+
+/* V5V Terminal Aesthetic Utilities */
+@layer utilities {
+  .terminal-corners {
+    position: relative;
+  }
+  
+  .terminal-corners::before,
+  .terminal-corners::after {
+    content: '';
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    border: 2px solid #999;
+    pointer-events: none;
+    z-index: 10;
+  }
+  
+  .terminal-corners::before {
+    top: -1px;
+    left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+  
+  .terminal-corners::after {
+    top: -1px;
+    right: -1px;
+    border-left: none;
+    border-bottom: none;
+  }
+  
+  .terminal-corners-bottom::before,
+  .terminal-corners-bottom::after {
+    content: '';
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    border: 2px solid #999;
+    pointer-events: none;
+    z-index: 10;
+  }
+  
+  .terminal-corners-bottom::before {
+    bottom: -1px;
+    left: -1px;
+    border-right: none;
+    border-top: none;
+  }
+  
+  .terminal-corners-bottom::after {
+    bottom: -1px;
+    right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+  
+  .text-tool-name {
+    color: #22d3ee; /* Cyan for tool names */
+  }
+  
+  .text-model-claude {
+    color: #fb923c; /* Orange for Claude */
+  }
+  
+  .text-model-other {
+    color: #a855f7; /* Purple for other models */
+  }
+  
+  .text-terminal-error {
+    color: #ef4444; /* Red for errors */
+  }
+  
+  .text-terminal-success {
+    color: #22c55e; /* Green for success */
+  }
+  
+  .text-terminal-yellow {
+    color: #eab308; /* Yellow for status */
+  }
+  
+  .bg-pane {
+    background-color: rgba(9, 9, 9, 0.8);
+  }
+  
+  .bg-pane-header {
+    background-color: rgba(20, 20, 20, 0.6);
+  }
+  
+  .bg-input-terminal {
+    background-color: rgba(20, 20, 20, 0.8);
   }
 }

@@ -39,35 +39,64 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
 
   const renderMessage = (msg: Message) => {
     const messageTypeStyles: Record<string, string> = {
-      user: "bg-primary/10 border-primary/20",
-      assistant: "bg-secondary/10 border-secondary/20",
-      tool_use: "bg-accent/10 border-accent/20",
-      error: "bg-destructive/10 border-destructive/20 text-destructive",
-      summary: "bg-muted/50 border-muted",
-      thinking: "bg-muted/30 border-muted italic",
-      system: "bg-muted/20 border-muted",
+      user: "bg-input-terminal border-border",
+      assistant: "bg-input-terminal border-border",
+      tool_use: "bg-input-terminal border-border",
+      error: "bg-input-terminal border-border",
+      summary: "bg-input-terminal border-border",
+      thinking: "bg-input-terminal border-border italic",
+      system: "bg-input-terminal border-border",
     };
 
-    const style = messageTypeStyles[msg.message_type] || "bg-muted/10 border-muted";
+    const style = messageTypeStyles[msg.message_type] || "bg-input-terminal border-border";
+
+    // Terminal-style message formatting
+    const getMessagePrefix = () => {
+      switch (msg.message_type) {
+        case 'user':
+          return <span className="text-foreground">{'> '}</span>;
+        case 'assistant':
+          return <span className="text-model-claude">[Claude] </span>;
+        case 'tool_use':
+          return (
+            <span className="text-tool-name">
+              {msg.tool_info?.tool_name ? `[${msg.tool_info.tool_name}] ` : '[Tool] '}
+            </span>
+          );
+        case 'error':
+          return <span className="text-terminal-error">[ERROR] </span>;
+        case 'thinking':
+          return <span className="text-muted-foreground">[Thinking] </span>;
+        default:
+          return <span className="text-muted-foreground">{`[${msg.message_type.toUpperCase()}] `}</span>;
+      }
+    };
 
     return (
-      <div key={msg.id} className={`border p-4 overflow-hidden ${style}`}>
-        <div className="text-xs font-semibold uppercase opacity-70 mb-1">
-          {msg.message_type}
-        </div>
+      <div key={msg.id} className={`border p-4 overflow-hidden ${style} font-mono`}>
         <div className="text-sm overflow-hidden">
-          <div className="whitespace-pre-wrap break-all font-mono overflow-x-auto overflow-y-hidden">
-            {msg.content}
+          <div className="whitespace-pre-wrap break-all overflow-x-auto overflow-y-hidden">
+            {getMessagePrefix()}
+            <span className={msg.message_type === 'error' ? 'text-terminal-error' : 'text-foreground'}>
+              {msg.content}
+            </span>
           </div>
           {msg.tool_info && msg.tool_info.output && (
             <details className="mt-2">
-              <summary className="cursor-pointer text-xs font-medium hover:underline">
-                Tool Output
+              <summary className="cursor-pointer text-xs font-medium hover:underline text-tool-name">
+                ▶ Tool Output
               </summary>
-              <div className="mt-2 text-xs opacity-80 whitespace-pre-wrap break-all font-mono overflow-x-auto overflow-y-hidden">
-                {msg.tool_info.output}
+              <div className="mt-2 text-xs opacity-80 whitespace-pre-wrap break-all overflow-x-auto overflow-y-hidden">
+                <span className="text-terminal-success">OUTPUT: </span>
+                <span className="text-foreground">{msg.tool_info.output}</span>
               </div>
             </details>
+          )}
+          {msg.tool_info && msg.tool_info.input && (
+            <div className="mt-2 text-xs opacity-60">
+              <span className="text-muted-foreground">INPUT: </span>
+              <span className="text-muted-foreground">{JSON.stringify(msg.tool_info.input, null, 2)}</span>
+            </div>
           )}
         </div>
       </div>
@@ -107,8 +136,9 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
       </ScrollArea>
 
       {/* Input - Always shown */}
-      <div className="mt-4 -mx-4 px-4 pt-4 border-t border-border">
-        <div className="flex gap-2">
+      <div className="mt-4 -mx-4 px-4 pt-4 border-t border-border bg-input-terminal">
+        <div className="flex gap-2 items-center">
+          <span className="text-foreground font-mono text-sm">{'>'}</span>
           <Input
             type="text"
             value={inputMessage}
@@ -120,13 +150,14 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
             }}
             placeholder={isInitializing ? "Start typing (initializing...)..." : "Type your message..."}
             disabled={isLoading}
-            className="flex-1 text-sm"
+            className="flex-1 text-sm font-mono bg-transparent border-none focus-visible:ring-0 focus-visible:border-none px-2"
             autoFocus
           />
           <Button
             onClick={() => sendMessage?.(sessionId)}
             disabled={isLoading || isInitializing || !inputMessage.trim()}
             size="sm"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             Send
           </Button>
