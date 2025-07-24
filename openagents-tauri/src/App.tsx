@@ -370,7 +370,7 @@ function App() {
             </div>
           ) : (
             sessions.map((session) => (
-              <Frame key={session.id} className="flex flex-col min-h-0 overflow-hidden">
+              <Frame key={session.id} className="flex flex-col h-full">
                 {/* Chat Header */}
                 <div className="p-4 border-b border-border flex-shrink-0">
                   <h3 className="text-sm font-semibold truncate">
@@ -382,23 +382,22 @@ function App() {
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 min-h-0 relative">
-                  <ScrollArea className="absolute inset-0">
-                    <div className="px-4 py-4">
-                      {session.messages.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                          No messages yet. Send a message to start the conversation.
-                        </p>
-                      ) : (
-                        <div className="space-y-4">
-                          {session.messages.map(renderMessage)}
-                        </div>
-                      )}
-                    </div>
-                  </ScrollArea>
-                  
-                  {/* Input */}
-                  <div className="p-4 border-t border-border flex-shrink-0">
+                <ScrollArea className="flex-1">
+                  <div className="px-4 py-4">
+                    {session.messages.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No messages yet. Send a message to start the conversation.
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {session.messages.map(renderMessage)}
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+                
+                {/* Input */}
+                <div className="p-4 border-t border-border flex-shrink-0">
                     <div className="flex gap-2">
                       <Input
                         type="text"
@@ -423,7 +422,6 @@ function App() {
                       </Button>
                     </div>
                   </div>
-                </div>
               </Frame>
             ))
           )}
