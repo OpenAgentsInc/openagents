@@ -284,12 +284,10 @@ function App() {
         {/* Metadata Panel */}
         <div className="w-80 flex flex-col gap-4">
           {/* Header */}
-          <Frame className="p-6">
-            <div className="text-center select-none">
-              <h1 className="text-xl font-bold mb-2">OpenAgents</h1>
-              <p className="text-muted-foreground text-xs">Claude Code Commander</p>
-            </div>
-          </Frame>
+          <div className="text-center select-none p-4">
+            <h1 className="text-xl font-bold mb-1">OpenAgents</h1>
+            <p className="text-muted-foreground text-xs">Claude Code Commander</p>
+          </div>
 
           {/* Status */}
           <Frame className="p-4">
@@ -368,14 +366,14 @@ function App() {
                               sessions.length >= 4 ? '1fr 1fr' : '1fr'
         }}>
           {sessions.length === 0 ? (
-            <Frame className="p-8 flex items-center justify-center">
+            <div className="flex items-center justify-center h-full">
               <div className="text-center">
                 <p className="text-muted-foreground mb-4">No active sessions</p>
                 <p className="text-sm text-muted-foreground">
                   Create a session to start chatting with Claude Code
                 </p>
               </div>
-            </Frame>
+            </div>
           ) : (
             sessions.map((session) => (
               <Frame key={session.id} className="flex flex-col overflow-hidden">
