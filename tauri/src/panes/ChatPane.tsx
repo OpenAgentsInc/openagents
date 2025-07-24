@@ -1,6 +1,7 @@
-import React from "react"
+import React, { useCallback } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Pane } from "@/types/pane"
+import { ProseMirrorInput } from "@/components/ProseMirrorInput"
 
 interface ChatPaneProps {
   pane: Pane;
@@ -31,9 +32,22 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
   }
 
   const messages = session.messages || [];
-  const inputMessage = session.inputMessage || "";
   const isLoading = session.isLoading || false;
   const isInitializing = session.isInitializing || false;
+
+  const handleSubmit = useCallback(
+    (content: string) => {
+      if (content.trim() && !isLoading && !isInitializing) {
+        // Update session input with the content, then send
+        updateSessionInput?.(sessionId, content);
+        // Use setTimeout to ensure the input is updated before sending
+        setTimeout(() => {
+          sendMessage?.(sessionId);
+        }, 0);
+      }
+    },
+    [sessionId, sendMessage, updateSessionInput, isLoading, isInitializing]
+  );
 
   const renderMessage = (msg: Message) => {
     return (
@@ -91,27 +105,11 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
 
       {/* Input - Always shown */}
       <div className="mt-4 -mx-4 px-4 pt-4">
-        <div className="prosemirror-input-container">
-          <div 
-            className="prosemirror-input"
-            contentEditable={!isLoading && !isInitializing}
-            suppressContentEditableWarning={true}
-            data-placeholder={isInitializing ? "Start typing (initializing...)..." : "Type your message..."}
-            onInput={(e) => {
-              const text = e.currentTarget.textContent || "";
-              updateSessionInput?.(sessionId, text);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !isInitializing) {
-                e.preventDefault();
-                sendMessage?.(sessionId);
-              }
-            }}
-            style={{ color: "var(--foreground)" }}
-          >
-            {inputMessage}
-          </div>
-        </div>
+        <ProseMirrorInput
+          placeholder={isInitializing ? "Start typing (initializing...)..." : "Type your message..."}
+          onSubmit={handleSubmit}
+          disabled={isLoading || isInitializing}
+        />
       </div>
     </div>
   );
