@@ -100,12 +100,115 @@ function App() {
     discoverClaude();
   }, []);
 
+  const fetchMessages = useCallback(async (sessionId: string) => {
+    try {
+      console.log('Fetching messages for session:', sessionId);
+      const result = await invoke<CommandResult<Message[]>>("get_messages", {
+        sessionId,
+      });
+      console.log('Fetch result:', result);
+      if (result.success && result.data) {
+        setSessions(prev => prev.map(session => {
+          if (session.id !== sessionId) return session;
+          
+          const backendMessages = result.data || [];
+          const currentMessages = session.messages;
+          
+          // Keep optimistic user messages that haven't appeared in backend yet
+          const optimisticMessages = currentMessages.filter(msg => 
+            msg.id.startsWith('user-') && 
+            !backendMessages.some(backend => 
+              backend.message_type === 'user' && 
+              backend.content === msg.content
+            )
+          );
+          
+          // Combine optimistic messages with backend messages
+          const allMessages = [...optimisticMessages, ...backendMessages];
+          
+          // Sort by timestamp to maintain order
+          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          
+          return { ...session, messages: allMessages };
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    }
+  }, []);
+
+  const sendMessage = async (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session || !session.inputMessage.trim()) {
+      console.log("Cannot send message - session:", session, "message:", session?.inputMessage);
+      return;
+    }
+    
+    // Don't send messages while initializing
+    if (session.isInitializing) {
+      console.log("Cannot send message - session is still initializing");
+      return;
+    }
+
+    console.log("Sending message:", session.inputMessage, "to session:", sessionId);
+    const messageToSend = session.inputMessage;
+    
+    // Immediately add user message to UI
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      message_type: "user",
+      content: messageToSend,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Clear input, add message, and set loading state
+    setSessions(prev => prev.map(s => 
+      s.id === sessionId 
+        ? { ...s, messages: [...s.messages, userMessage], inputMessage: "", isLoading: true }
+        : s
+    ));
+    
+    try {
+      const result = await invoke<CommandResult<void>>("send_message", {
+        sessionId,
+        message: messageToSend,
+      });
+      console.log("Send message result:", result);
+      if (!result.success) {
+        alert(`Error sending message: ${result.error}`);
+        console.error("Send message failed:", result.error);
+      }
+    } catch (error) {
+      alert(`Error: ${error}`);
+      console.error("Send message error:", error);
+    } finally {
+      setSessions(prev => prev.map(s => 
+        s.id === sessionId 
+          ? { ...s, isLoading: false }
+          : s
+      ));
+    }
+  };
+
+  const updateSessionInput = (sessionId: string, value: string) => {
+    setSessions(prev => prev.map(s => 
+      s.id === sessionId ? { ...s, inputMessage: value } : s
+    ));
+  };
+
   // Poll for messages for all active sessions
   useEffect(() => {
     if (sessions.length === 0) return;
 
     const fetchAllMessages = async () => {
-      await Promise.all(sessions.map(session => fetchMessages(session.id)));
+      // console.log('Polling sessions:', sessions.map(s => ({ id: s.id, isInitializing: s.isInitializing })));
+      await Promise.all(sessions.map(session => {
+        // Only fetch messages for non-initializing sessions
+        if (!session.isInitializing) {
+          return fetchMessages(session.id);
+        }
+        return Promise.resolve();
+      }));
     };
 
     // Initial fetch
@@ -114,7 +217,7 @@ function App() {
     const interval = setInterval(fetchAllMessages, 50); // Poll every 50ms for real-time updates
 
     return () => clearInterval(interval);
-  }, [sessions.length]); // Only depend on length to avoid recreating interval
+  }, [sessions, fetchMessages]); // Depend on sessions array to recreate interval when IDs change
 
   const discoverClaude = async () => {
     console.log("Starting Claude discovery...");
@@ -171,25 +274,39 @@ function App() {
       if (result.success && result.data) {
         const realSessionId = result.data;
         console.log("Session created with ID:", realSessionId);
+        console.log("Updating from temp ID:", tempSessionId, "to real ID:", realSessionId);
         
         // Update the session with the real ID and remove initializing state
-        setSessions(prev => prev.map(s => 
-          s.id === tempSessionId 
-            ? { ...s, id: realSessionId, isInitializing: false }
-            : s
-        ));
+        setSessions(prev => {
+          const updated = prev.map(s => 
+            s.id === tempSessionId 
+              ? { ...s, id: realSessionId, isInitializing: false }
+              : s
+          );
+          console.log("Sessions after update:", updated.map(s => ({ id: s.id, isInitializing: s.isInitializing })));
+          return updated;
+        });
         
         // Update the pane ID to match the real session ID
-        usePaneStore.setState(state => ({
-          panes: state.panes.map(p => 
+        usePaneStore.setState(state => {
+          const updatedPanes = state.panes.map(p => 
             p.id === `chat-${tempSessionId}`
               ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
               : p
-          ),
-          activePaneId: state.activePaneId === `chat-${tempSessionId}` 
-            ? `chat-${realSessionId}` 
-            : state.activePaneId
-        }));
+          );
+          console.log("Panes after update:", updatedPanes.map(p => ({ id: p.id, sessionId: p.content?.sessionId })));
+          return {
+            panes: updatedPanes,
+            activePaneId: state.activePaneId === `chat-${tempSessionId}` 
+              ? `chat-${realSessionId}` 
+              : state.activePaneId
+          };
+        });
+        
+        // Manually fetch messages for the new session ID
+        setTimeout(() => {
+          fetchMessages(realSessionId);
+        }, 100);
       } else {
         // Remove the session and close the pane on error
         setSessions(prev => prev.filter(s => s.id !== tempSessionId));
@@ -203,94 +320,6 @@ function App() {
       usePaneStore.getState().removePane(`chat-${tempSessionId}`);
       alert(`Error: ${error}`);
       console.error("Session creation error:", error);
-    }
-  };
-
-  const sendMessage = async (sessionId: string) => {
-    const session = sessions.find(s => s.id === sessionId);
-    if (!session || !session.inputMessage.trim()) {
-      console.log("Cannot send message - session:", session, "message:", session?.inputMessage);
-      return;
-    }
-    
-    // Don't send messages while initializing
-    if (session.isInitializing) {
-      console.log("Cannot send message - session is still initializing");
-      return;
-    }
-
-    console.log("Sending message:", session.inputMessage, "to session:", sessionId);
-    const messageToSend = session.inputMessage;
-    
-    // Immediately add user message to UI
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      message_type: "user",
-      content: messageToSend,
-      timestamp: new Date().toISOString(),
-    };
-    
-    // Clear input, add message, and set loading state
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId 
-        ? { ...s, messages: [...s.messages, userMessage], inputMessage: "", isLoading: true }
-        : s
-    ));
-    
-    try {
-      const result = await invoke<CommandResult<void>>("send_message", {
-        sessionId,
-        message: messageToSend,
-      });
-      console.log("Send message result:", result);
-      if (!result.success) {
-        alert(`Error sending message: ${result.error}`);
-        console.error("Send message failed:", result.error);
-      }
-    } catch (error) {
-      alert(`Error: ${error}`);
-      console.error("Send message error:", error);
-    } finally {
-      setSessions(prev => prev.map(s => 
-        s.id === sessionId 
-          ? { ...s, isLoading: false }
-          : s
-      ));
-    }
-  };
-
-  const fetchMessages = async (sessionId: string) => {
-    try {
-      const result = await invoke<CommandResult<Message[]>>("get_messages", {
-        sessionId,
-      });
-      if (result.success && result.data) {
-        setSessions(prev => prev.map(session => {
-          if (session.id !== sessionId) return session;
-          
-          const backendMessages = result.data || [];
-          const currentMessages = session.messages;
-          
-          // Keep optimistic user messages that haven't appeared in backend yet
-          const optimisticMessages = currentMessages.filter(msg => 
-            msg.id.startsWith('user-') && 
-            !backendMessages.some(backend => 
-              backend.message_type === 'user' && 
-              backend.content === msg.content
-            )
-          );
-          
-          // Combine optimistic messages with backend messages
-          const allMessages = [...optimisticMessages, ...backendMessages];
-          
-          // Sort by timestamp to maintain order
-          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-          
-          return { ...session, messages: allMessages };
-        }));
-      }
-    } catch (error) {
-      console.error("Error fetching messages:", error);
     }
   };
 
@@ -317,12 +346,6 @@ function App() {
         s.id === sessionId ? { ...s, isLoading: false } : s
       ));
     }
-  };
-
-  const updateSessionInput = (sessionId: string, value: string) => {
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId ? { ...s, inputMessage: value } : s
-    ));
   };
 
   // Set up keyboard shortcuts
