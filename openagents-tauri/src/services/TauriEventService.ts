@@ -68,32 +68,21 @@ export const TauriEventServiceLive = TauriEventService.of({
 
   createEventStream: (eventName: string, bufferSize = 100) =>
     Effect.gen(function* () {
-      console.log(`Setting up event listener for: ${eventName}`);
       const queue = yield* Queue.bounded<TauriEvent<unknown>>(bufferSize);
       
       const unlisten = yield* Effect.tryPromise({
-        try: async () => {
-          console.log(`Attempting to listen to event: ${eventName}`);
-          return await listen(eventName, (event: TauriEvent<unknown>) => {
-            console.log(`Received event on ${eventName}:`, event);
+        try: () =>
+          listen(eventName, (event) => {
             // Use runPromise to handle the effect
             Queue.offer(queue, event).pipe(Effect.runPromise).catch(error => {
               console.error(`Failed to enqueue event for ${eventName}:`, error);
             });
-          });
-        },
+          }),
         catch: (error) => new StreamingError(`Failed to create event stream: ${eventName}`, error)
       });
 
-      console.log(`Successfully set up event listener for: ${eventName}`);
-
       const cleanup = () => {
-        console.log(`Cleaning up event listener for: ${eventName}`);
-        try {
-          unlisten();
-        } catch (e) {
-          console.error(`Error during unlisten for ${eventName}:`, e);
-        }
+        unlisten();
         Queue.shutdown(queue).pipe(Effect.runPromise).catch(error => {
           console.error(`Failed to shutdown queue for ${eventName}:`, error);
         });
