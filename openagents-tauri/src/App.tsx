@@ -272,7 +272,7 @@ function App() {
 
   return (
     <div className="fixed inset-0 p-8 font-mono overflow-hidden">
-      <div className="h-full flex gap-6">
+      <div className="h-full flex gap-6 overflow-hidden">
         {/* Metadata Panel */}
         <div className="w-80 flex flex-col gap-4 min-h-0">
           {/* Header */}
@@ -370,7 +370,7 @@ function App() {
             </div>
           ) : (
             sessions.map((session) => (
-              <Frame key={session.id} className="flex flex-col h-full max-h-full">
+              <Frame key={session.id} className="flex flex-col min-h-0 overflow-hidden">
                 {/* Chat Header */}
                 <div className="p-4 border-b border-border/20 flex-shrink-0">
                   <h3 className="text-sm font-semibold truncate">
