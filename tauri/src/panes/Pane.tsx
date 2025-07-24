@@ -175,7 +175,7 @@ export const Pane: React.FC<PaneProps> = ({
   width,
   height,
   type: _type,
-  isActive: _isActive,
+  isActive,
   dismissable = true,
   children,
   style,
@@ -280,9 +280,11 @@ export const Pane: React.FC<PaneProps> = ({
       className={cn(
         "absolute chat-pane shadow-xl",
         "transition-all duration-200 ease-out",
+        isActive && "ring-2 ring-primary/20",
         isCurrentlyInteracting && "transition-none"
       )}
       style={{
+        border: isActive ? "1px solid var(--primary)" : "1px solid #444",
         left: `${isDragging ? dragPosition.x : position.x}px`,
         top: `${isDragging ? dragPosition.y : position.y}px`,
         width: `${isResizing ? size.width : width}px`,
