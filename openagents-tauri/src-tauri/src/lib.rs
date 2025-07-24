@@ -45,7 +45,10 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn discover_claude(state: State<'_, AppState>) -> Result<CommandResult<String>, String> {
+async fn discover_claude(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<CommandResult<String>, String> {
     let mut discovery = state.discovery.lock().await;
     
     match discovery.discover_binary().await {
@@ -53,9 +56,10 @@ async fn discover_claude(state: State<'_, AppState>) -> Result<CommandResult<Str
             // Also try to discover data directory
             let _ = discovery.discover_data_directory().await;
             
-            // Initialize the manager with the binary path
+            // Initialize the manager with the binary path and app handle
             let mut manager = ClaudeManager::new();
             manager.set_binary_path(path.clone());
+            manager.set_app_handle(app_handle);
             
             let mut manager_lock = state.manager.lock().await;
             *manager_lock = Some(manager);

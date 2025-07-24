@@ -103,10 +103,16 @@ export const ClaudeStreamingServiceLive = Layer.effect(
       getMessageStream: (session: StreamingSession) =>
         pipe(
           Stream.fromQueue(session.messageQueue),
+          Stream.tap((event) => Effect.sync(() => console.log('Processing queue event:', event))),
           Stream.mapEffect((event: any) => {
             // Parse the event payload to get the message
+            console.log('Parsing event payload:', event.payload);
             return parseClaudeMessage(event.payload).pipe(
-              Effect.catchAll(() => Effect.succeed(null))
+              Effect.tap((msg) => Effect.sync(() => console.log('Parsed message:', msg))),
+              Effect.catchAll((error) => {
+                console.error('Failed to parse message:', error);
+                return Effect.succeed(null);
+              })
             );
           }),
           Stream.filter((msg): msg is Message => msg !== null)

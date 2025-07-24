@@ -356,9 +356,14 @@ impl ClaudeSession {
         // Emit event to frontend
         if let Some(ref app_handle) = self.app_handle {
             let event_name = format!("claude:{}:message", self.id);
+            info!("Emitting event: {} with message type: {:?}", event_name, message.message_type);
             if let Err(e) = app_handle.emit(&event_name, &message) {
                 warn!("Failed to emit message event: {}", e);
+            } else {
+                info!("Successfully emitted message event");
             }
+        } else {
+            warn!("No app_handle available to emit message");
         }
     }
 
@@ -567,9 +572,14 @@ impl ClaudeSession {
                             // Emit event to frontend
                             if let Some(ref app_handle) = self.app_handle {
                                 let event_name = format!("claude:{}:message", self.id);
+                                info!("Emitting update event: {} with message type: {:?}", event_name, updated_msg.message_type);
                                 if let Err(e) = app_handle.emit(&event_name, &updated_msg) {
                                     warn!("Failed to emit message update event: {}", e);
+                                } else {
+                                    info!("Successfully emitted message update event");
                                 }
+                            } else {
+                                warn!("No app_handle available to emit message update");
                             }
                         }
                     } else {

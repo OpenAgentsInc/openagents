@@ -76,6 +76,7 @@ export const TauriEventServiceLive = TauriEventService.of({
         try: async () => {
           console.log(`Setting up event listener for: ${eventName}`);
           return await listen(eventName, (event: TauriEvent<unknown>) => {
+            console.log(`Received event on ${eventName}:`, event);
             // Queue the event in a fire-and-forget manner
             Effect.runPromise(Queue.offer(queue, event)).catch(error => {
               console.error(`Failed to enqueue event for ${eventName}:`, error);
