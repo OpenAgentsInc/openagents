@@ -6,6 +6,7 @@ import { usePaneStore } from "@/stores/pane";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HandTracking, HandPose } from "@/components/hands";
 import type { PinchCoordinates, HandLandmarks } from "@/components/hands";
+import { SessionStreamManager } from "@/components/SessionStreamManager";
 
 interface Message {
   id: string;
@@ -100,40 +101,7 @@ function App() {
     discoverClaude();
   }, []);
 
-  const fetchMessages = useCallback(async (sessionId: string) => {
-    try {
-      const result = await invoke<CommandResult<Message[]>>("get_messages", {
-        sessionId,
-      });
-      if (result.success && result.data) {
-        setSessions(prev => prev.map(session => {
-          if (session.id !== sessionId) return session;
-          
-          const backendMessages = result.data || [];
-          const currentMessages = session.messages;
-          
-          // Keep optimistic user messages that haven't appeared in backend yet
-          const optimisticMessages = currentMessages.filter(msg => 
-            msg.id.startsWith('user-') && 
-            !backendMessages.some(backend => 
-              backend.message_type === 'user' && 
-              backend.content === msg.content
-            )
-          );
-          
-          // Combine optimistic messages with backend messages
-          const allMessages = [...optimisticMessages, ...backendMessages];
-          
-          // Sort by timestamp to maintain order
-          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-          
-          return { ...session, messages: allMessages };
-        }));
-      }
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-    }
-  }, []);
+  // Note: fetchMessages has been removed - we now use streaming instead
 
   const sendMessage = async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
@@ -194,28 +162,21 @@ function App() {
     ));
   };
 
-  // Poll for messages for all active sessions
-  useEffect(() => {
-    if (sessions.length === 0) return;
+  // Handle message updates from streaming
+  const handleMessagesUpdate = useCallback((sessionId: string, messages: Message[]) => {
+    setSessions(prev => prev.map(session => {
+      if (session.id !== sessionId) return session;
+      
+      // Replace all messages with the streamed messages
+      return { ...session, messages };
+    }));
+  }, []);
 
-    const fetchAllMessages = async () => {
-      // console.log('Polling sessions:', sessions.map(s => ({ id: s.id, isInitializing: s.isInitializing })));
-      await Promise.all(sessions.map(session => {
-        // Only fetch messages for non-initializing sessions
-        if (!session.isInitializing) {
-          return fetchMessages(session.id);
-        }
-        return Promise.resolve();
-      }));
-    };
-
-    // Initial fetch
-    fetchAllMessages();
-
-    const interval = setInterval(fetchAllMessages, 50); // Poll every 50ms for real-time updates
-
-    return () => clearInterval(interval);
-  }, [sessions, fetchMessages]); // Depend on sessions array to recreate interval when IDs change
+  // Handle streaming errors
+  const handleStreamError = useCallback((sessionId: string, error: Error) => {
+    console.error(`Streaming error for session ${sessionId}:`, error);
+    // You could show an error message to the user here
+  }, []);
 
   const discoverClaude = async () => {
     console.log("Starting Claude discovery...");
@@ -294,11 +255,6 @@ function App() {
               : state.activePaneId
           };
         });
-        
-        // Manually fetch messages for the new session ID
-        setTimeout(() => {
-          fetchMessages(realSessionId);
-        }, 100);
       } else {
         // Remove the session and close the pane on error
         setSessions(prev => prev.filter(s => s.id !== tempSessionId));
@@ -528,6 +484,17 @@ function App() {
           isHandTrackingActive={isHandTrackingActive}
           onToggleHandTracking={toggleHandTracking}
         />
+        
+        {/* Session Stream Managers - one for each active session */}
+        {sessions.map(session => (
+          <SessionStreamManager
+            key={session.id}
+            sessionId={session.id}
+            isInitializing={session.isInitializing || false}
+            onMessagesUpdate={handleMessagesUpdate}
+            onError={handleStreamError}
+          />
+        ))}
       </div>
     </TooltipProvider>
   );

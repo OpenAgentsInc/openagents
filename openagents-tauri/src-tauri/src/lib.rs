@@ -70,11 +70,15 @@ async fn discover_claude(state: State<'_, AppState>) -> Result<CommandResult<Str
 async fn create_session(
     project_path: String,
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<CommandResult<String>, String> {
     info!("create_session called - project_path: {}", project_path);
-    let manager_lock = state.manager.lock().await;
+    let mut manager_lock = state.manager.lock().await;
     
-    if let Some(ref manager) = *manager_lock {
+    if let Some(ref mut manager) = *manager_lock {
+        // Set the app handle if not already set
+        manager.set_app_handle(app_handle);
+        
         info!("Manager found, creating session...");
         match manager.create_session(project_path).await {
             Ok(session_id) => {
@@ -202,6 +206,23 @@ fn get_project_directory() -> Result<CommandResult<String>, String> {
     }
 }
 
+#[tauri::command]
+async fn handle_claude_event(
+    event_type: String,
+    _payload: serde_json::Value,
+    _state: State<'_, AppState>,
+) -> Result<CommandResult<()>, String> {
+    // This command is for future use when we need the frontend to send specific events
+    // For now, it's a placeholder that can be extended
+    match event_type.as_str() {
+        "claude:send_message" => {
+            // The existing send_message command already handles this
+            Ok(CommandResult::success(()))
+        }
+        _ => Ok(CommandResult::error(format!("Unknown event type: {}", event_type)))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging with info level
@@ -226,6 +247,7 @@ pub fn run() {
             get_active_sessions,
             get_history,
             get_project_directory,
+            handle_claude_event,
         ])
         .setup(|app| {
             // During development, try to prevent window from stealing focus on hot reload
