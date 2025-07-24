@@ -50,8 +50,6 @@ async fn discover_claude(state: State<'_, AppState>) -> Result<CommandResult<Str
     
     match discovery.discover_binary().await {
         Ok(path) => {
-            info!("Claude binary found at: {:?}", path);
-            
             // Also try to discover data directory
             let _ = discovery.discover_data_directory().await;
             
@@ -192,8 +190,8 @@ fn get_current_directory() -> Result<CommandResult<String>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize logging with debug level
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+    // Initialize logging with info level
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     info!("OpenAgents starting up...");
     
     let app_state = AppState {
