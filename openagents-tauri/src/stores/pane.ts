@@ -14,11 +14,25 @@ interface ClosedPanePosition {
   height: number;
 }
 
+interface Message {
+  id: string;
+  message_type: string;
+  content: string;
+  timestamp: string;
+  tool_info?: {
+    tool_name: string;
+    tool_use_id: string;
+    input: Record<string, any>;
+    output?: string;
+  };
+}
+
 interface PaneState {
   panes: Pane[];
   activePaneId: string | null;
   lastPanePosition: { x: number; y: number; width: number; height: number } | null;
   closedPanePositions: Record<string, ClosedPanePosition>;
+  sessionMessages: Record<string, Message[]>; // Store messages by sessionId
 }
 
 interface PaneStore extends PaneState {
@@ -32,6 +46,8 @@ interface PaneStore extends PaneState {
   toggleMetadataPane: () => void;
   resetPanes: () => void;
   getPaneById: (id: string) => Pane | undefined;
+  updateSessionMessages: (sessionId: string, messages: Message[]) => void;
+  getSessionMessages: (sessionId: string) => Message[];
 }
 
 const getInitialPanes = (): Pane[] => {
@@ -56,6 +72,7 @@ export const usePaneStore = create<PaneStore>()(
       activePaneId: "metadata",
       lastPanePosition: null,
       closedPanePositions: {},
+      sessionMessages: {},
 
       addPane: (paneInput: PaneInput) => {
         const screenWidth = window.innerWidth;
@@ -214,11 +231,25 @@ export const usePaneStore = create<PaneStore>()(
           activePaneId: "metadata",
           lastPanePosition: null,
           closedPanePositions: {},
+          sessionMessages: {},
         });
       },
 
       getPaneById: (id: string) => {
         return get().panes.find(p => p.id === id);
+      },
+
+      updateSessionMessages: (sessionId: string, messages: Message[]) => {
+        set((state) => ({
+          sessionMessages: {
+            ...state.sessionMessages,
+            [sessionId]: messages
+          }
+        }));
+      },
+
+      getSessionMessages: (sessionId: string) => {
+        return get().sessionMessages[sessionId] || [];
       },
     }),
     {
@@ -229,18 +260,8 @@ export const usePaneStore = create<PaneStore>()(
         lastPanePosition: state.lastPanePosition,
         activePaneId: state.activePaneId,
         closedPanePositions: state.closedPanePositions,
+        sessionMessages: state.sessionMessages,
       }),
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          // Filter out chat panes since their sessions won't exist after restart
-          state.panes = state.panes.filter(pane => pane.type !== "chat");
-          
-          // Reset active pane ID if it was pointing to a chat pane
-          if (state.activePaneId && !state.panes.find(p => p.id === state.activePaneId)) {
-            state.activePaneId = state.panes.length > 0 ? state.panes[0].id : null;
-          }
-        }
-      },
     }
   )
 );

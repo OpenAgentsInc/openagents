@@ -55,7 +55,7 @@ function App() {
   const initialPinchPositionRef = useRef<{ x: number; y: number } | null>(null);
   const paneStartPosRef = useRef<{ x: number; y: number } | null>(null);
   
-  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane } = usePaneStore();
+  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane, updateSessionMessages, getSessionMessages } = usePaneStore();
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -100,6 +100,38 @@ function App() {
     discoverClaude();
   }, []);
 
+  // Restore sessions from persisted panes after Claude is discovered
+  useEffect(() => {
+    if (claudeStatus.includes("Claude found at:")) {
+      // Find all chat panes and restore their sessions
+      const chatPanes = panes.filter(p => p.type === "chat" && p.content?.sessionId);
+      
+      chatPanes.forEach(pane => {
+        if (!pane.content?.sessionId) return;
+        
+        const sessionId = pane.content.sessionId;
+        const projectPath = pane.content.projectPath || newProjectPath;
+        
+        // Check if session already exists
+        const sessionExists = sessions.some(s => s.id === sessionId);
+        if (!sessionExists) {
+          // Restore session with persisted messages
+          const persistedMessages = getSessionMessages(sessionId);
+          const restoredSession: Session = {
+            id: sessionId,
+            projectPath: projectPath,
+            messages: persistedMessages,
+            inputMessage: "",
+            isLoading: false,
+            isInitializing: false,
+          };
+          
+          setSessions(prev => [...prev, restoredSession]);
+        }
+      });
+    }
+  }, [claudeStatus, panes, sessions.length, newProjectPath, getSessionMessages]);
+
   const fetchMessages = useCallback(async (sessionId: string) => {
     try {
       const result = await invoke<CommandResult<Message[]>>("get_messages", {
@@ -127,13 +159,16 @@ function App() {
           // Sort by timestamp to maintain order
           allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
           
+          // Persist messages to store
+          updateSessionMessages(sessionId, allMessages);
+          
           return { ...session, messages: allMessages };
         }));
       }
     } catch (error) {
       console.error("Error fetching messages:", error);
     }
-  }, []);
+  }, [updateSessionMessages]);
 
   const sendMessage = async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
@@ -165,6 +200,12 @@ function App() {
         ? { ...s, messages: [...s.messages, userMessage], inputMessage: "", isLoading: true }
         : s
     ));
+    
+    // Persist the updated messages including the new user message
+    const updatedSession = sessions.find(s => s.id === sessionId);
+    if (updatedSession) {
+      updateSessionMessages(sessionId, [...updatedSession.messages, userMessage]);
+    }
     
     try {
       const result = await invoke<CommandResult<void>>("send_message", {
@@ -249,10 +290,12 @@ function App() {
     const tempSessionId = `temp-${Date.now()}`;
     
     // Create session with initializing state
+    // Load any persisted messages for this session
+    const persistedMessages = getSessionMessages(tempSessionId);
     const newSession: Session = {
       id: tempSessionId,
       projectPath: newProjectPath,
-      messages: [],
+      messages: persistedMessages,
       inputMessage: "",
       isLoading: false,
       isInitializing: true,
@@ -287,11 +330,21 @@ function App() {
               ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
               : p
           );
+          
+          // Transfer persisted messages from temp to real session ID
+          const tempMessages = state.sessionMessages[tempSessionId];
+          const updatedSessionMessages = { ...state.sessionMessages };
+          if (tempMessages && tempMessages.length > 0) {
+            updatedSessionMessages[realSessionId] = tempMessages;
+            delete updatedSessionMessages[tempSessionId];
+          }
+          
           return {
             panes: updatedPanes,
             activePaneId: state.activePaneId === `chat-${tempSessionId}` 
               ? `chat-${realSessionId}` 
-              : state.activePaneId
+              : state.activePaneId,
+            sessionMessages: updatedSessionMessages
           };
         });
         
