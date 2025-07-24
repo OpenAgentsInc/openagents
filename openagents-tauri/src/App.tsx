@@ -279,8 +279,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen p-8 font-mono overflow-hidden">
-      <div className="h-[calc(100vh-4rem)] flex gap-6">
+    <div className="fixed inset-0 p-8 font-mono overflow-hidden">
+      <div className="h-full flex gap-6">
         {/* Metadata Panel */}
         <div className="w-80 flex flex-col gap-4">
           {/* Header */}
