@@ -298,7 +298,7 @@ function App() {
               <p className="text-xs text-muted-foreground">
                 Sessions: {sessions.length} • {isDiscoveryLoading ? "Loading..." : "Ready"}
               </p>
-              <p className="text-xs">{claudeStatus}</p>
+              <p className="text-xs break-all">{claudeStatus}</p>
             </div>
           </Frame>
 
@@ -336,7 +336,7 @@ function App() {
                   sessions.map((session) => (
                     <div key={session.id} className="p-2 border border-border/20 bg-muted/10">
                       <div className="flex justify-between items-start mb-1">
-                        <p className="text-xs font-mono truncate flex-1">
+                        <p className="text-xs font-mono break-all flex-1">
                           {session.projectPath.split('/').pop()}
                         </p>
                         <Button
