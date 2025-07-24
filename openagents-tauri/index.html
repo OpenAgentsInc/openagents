@@ -11,7 +11,7 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <!-- Prevent focus stealing during development -->
-    <script>
+    <script type="module">
       if (import.meta.env.DEV && window.__TAURI__) {
         // Store initial focus state
         const wasInitiallyFocused = document.hasFocus();
