@@ -1,15 +1,22 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
-import { Settings, Plus, HelpCircle, PanelLeft } from "lucide-react";
+import { Settings, Plus, HelpCircle, PanelLeft, Hand } from "lucide-react";
 import { usePaneStore } from "@/stores/pane";
 
 interface HotbarProps {
   className?: string;
   onNewChat?: () => void;
+  isHandTrackingActive?: boolean;
+  onToggleHandTracking?: () => void;
 }
 
-export const Hotbar: React.FC<HotbarProps> = ({ className, onNewChat }) => {
+export const Hotbar: React.FC<HotbarProps> = ({ 
+  className, 
+  onNewChat,
+  isHandTrackingActive,
+  onToggleHandTracking 
+}) => {
   const { toggleMetadataPane } = usePaneStore();
 
   const handleNewChat = () => {
@@ -71,27 +78,32 @@ export const Hotbar: React.FC<HotbarProps> = ({ className, onNewChat }) => {
         <span className="h-5 w-5" />
       </HotbarItem>
 
-      {/* Slot 7: Empty */}
-      <HotbarItem slotNumber={7} isGhost>
-        <span className="h-5 w-5" />
-      </HotbarItem>
-
-      {/* Slot 8: Settings */}
+      {/* Slot 7: Settings */}
       <HotbarItem
-        slotNumber={8}
+        slotNumber={7}
         onClick={handleSettings}
         title="Settings"
       >
         <Settings className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
-      {/* Slot 9: Help */}
+      {/* Slot 8: Help */}
       <HotbarItem
-        slotNumber={9}
+        slotNumber={8}
         onClick={handleHelp}
         title="Help"
       >
         <HelpCircle className="text-muted-foreground h-5 w-5" />
+      </HotbarItem>
+
+      {/* Slot 9: Hand Tracking */}
+      <HotbarItem
+        slotNumber={9}
+        onClick={onToggleHandTracking}
+        title="Hand Tracking"
+        isActive={isHandTrackingActive}
+      >
+        <Hand className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
     </div>
   );
