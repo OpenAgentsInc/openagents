@@ -377,7 +377,7 @@ function App() {
             </div>
           ) : (
             sessions.map((session) => (
-              <Frame key={session.id} className="flex flex-col overflow-hidden">
+              <Frame key={session.id} className="flex flex-col">
                 {/* Chat Header */}
                 <div className="p-4 border-b border-border/20">
                   <h3 className="text-sm font-semibold truncate">
@@ -390,7 +390,7 @@ function App() {
 
                 {/* Messages */}
                 <div className="flex-1 flex flex-col overflow-hidden">
-                  <ScrollArea className="flex-1 px-4 overflow-hidden">
+                  <ScrollArea className="flex-1 px-4">
                     <div className="py-4">
                       {session.messages.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
@@ -419,6 +419,7 @@ function App() {
                         placeholder="Type your message..."
                         disabled={session.isLoading}
                         className="flex-1 text-sm"
+                        autoFocus
                       />
                       <Button 
                         onClick={() => sendMessage(session.id)} 
