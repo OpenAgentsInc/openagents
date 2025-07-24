@@ -82,16 +82,16 @@ server: {
 Changed default development mode to disable HMR to prevent focus stealing:
 ```json
 "scripts": {
-    "dev": "DISABLE_HMR=true vite",           // Default: no HMR
-    "dev:hmr": "vite",                         // Opt-in: with HMR
-    "tauri:dev": "DISABLE_HMR=true tauri dev", // Default: no HMR
-    "tauri:dev:hmr": "tauri dev"               // Opt-in: with HMR
+    "dev": "DISABLE_HMR=true tauri dev",      // Default: Tauri without HMR
+    "dev:hmr": "tauri dev",                   // Tauri with HMR (may steal focus)
+    "dev:vite": "DISABLE_HMR=true vite",      // Vite only without HMR
+    "dev:vite:hmr": "vite",                   // Vite only with HMR
 }
 ```
 
 ## Testing
-1. Run `bun run tauri:dev` - Default mode without HMR, no focus stealing
-2. Run `bun run tauri:dev:hmr` - Development with hot reload (may steal focus)
+1. Run `bun run dev` - Default Tauri development without HMR, no focus stealing
+2. Run `bun run dev:hmr` - Tauri development with hot reload (may steal focus)
 
 ## Future Improvements
 - Monitor Tauri updates for native focus control support
