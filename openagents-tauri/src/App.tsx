@@ -6,6 +6,7 @@ import { usePaneStore } from "@/stores/pane";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HandTracking, HandPose } from "@/components/hands";
 import type { PinchCoordinates, HandLandmarks } from "@/components/hands";
+import { SessionStreamManager } from "@/components/SessionStreamManager";
 
 interface Message {
   id: string;
@@ -55,7 +56,7 @@ function App() {
   const initialPinchPositionRef = useRef<{ x: number; y: number } | null>(null);
   const paneStartPosRef = useRef<{ x: number; y: number } | null>(null);
   
-  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane } = usePaneStore();
+  const { openChatPane, toggleMetadataPane, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane, updateSessionMessages, getSessionMessages } = usePaneStore();
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -96,59 +97,50 @@ function App() {
 
   // Initialize Claude on mount
   useEffect(() => {
-    console.log("App mounted, starting Claude discovery...");
     discoverClaude();
   }, []);
 
-  const fetchMessages = useCallback(async (sessionId: string) => {
-    try {
-      const result = await invoke<CommandResult<Message[]>>("get_messages", {
-        sessionId,
-      });
-      if (result.success && result.data) {
-        setSessions(prev => prev.map(session => {
-          if (session.id !== sessionId) return session;
-          
-          const backendMessages = result.data || [];
-          const currentMessages = session.messages;
-          
-          // Keep optimistic user messages that haven't appeared in backend yet
-          const optimisticMessages = currentMessages.filter(msg => 
-            msg.id.startsWith('user-') && 
-            !backendMessages.some(backend => 
-              backend.message_type === 'user' && 
-              backend.content === msg.content
-            )
-          );
-          
-          // Combine optimistic messages with backend messages
-          const allMessages = [...optimisticMessages, ...backendMessages];
-          
-          // Sort by timestamp to maintain order
-          allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-          
-          return { ...session, messages: allMessages };
-        }));
-      }
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-    }
+
+  const handleMessagesUpdate = useCallback((sessionId: string, messages: Message[]) => {
+    setSessions(prev => prev.map(session => {
+      if (session.id !== sessionId) return session;
+      
+      const currentMessages = session.messages;
+      
+      // Keep optimistic user messages that haven't appeared in backend yet
+      const optimisticMessages = currentMessages.filter(msg => 
+        msg.id.startsWith('user-') && 
+        !messages.some(backend => 
+          backend.message_type === 'user' && 
+          backend.content === msg.content
+        )
+      );
+      
+      // Combine optimistic messages with backend messages
+      const allMessages = [...optimisticMessages, ...messages];
+      
+      // Sort by timestamp to maintain order
+      allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      
+      // Persist messages to store - defer to avoid updating during render
+      setTimeout(() => {
+        updateSessionMessages(sessionId, allMessages);
+      }, 0);
+      
+      return { ...session, messages: allMessages };
+    }));
+  }, [updateSessionMessages]);
+
+  const handleStreamError = useCallback((sessionId: string, error: Error) => {
+    console.error(`Streaming error for session ${sessionId}:`, error);
   }, []);
 
   const sendMessage = async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
     if (!session || !session.inputMessage.trim()) {
-      console.log("Cannot send message - session:", session, "message:", session?.inputMessage);
       return;
     }
     
-    // Don't send messages while initializing
-    if (session.isInitializing) {
-      console.log("Cannot send message - session is still initializing");
-      return;
-    }
-
-    console.log("Sending message:", session.inputMessage, "to session:", sessionId);
     const messageToSend = session.inputMessage;
     
     // Immediately add user message to UI
@@ -166,12 +158,20 @@ function App() {
         : s
     ));
     
+    // Persist the updated messages including the new user message
+    // Defer to avoid updating during render
+    setTimeout(() => {
+      const updatedSession = sessions.find(s => s.id === sessionId);
+      if (updatedSession) {
+        updateSessionMessages(sessionId, [...updatedSession.messages, userMessage]);
+      }
+    }, 0);
+    
     try {
       const result = await invoke<CommandResult<void>>("send_message", {
         sessionId,
         message: messageToSend,
       });
-      console.log("Send message result:", result);
       if (!result.success) {
         alert(`Error sending message: ${result.error}`);
         console.error("Send message failed:", result.error);
@@ -194,38 +194,13 @@ function App() {
     ));
   };
 
-  // Poll for messages for all active sessions
-  useEffect(() => {
-    if (sessions.length === 0) return;
-
-    const fetchAllMessages = async () => {
-      // console.log('Polling sessions:', sessions.map(s => ({ id: s.id, isInitializing: s.isInitializing })));
-      await Promise.all(sessions.map(session => {
-        // Only fetch messages for non-initializing sessions
-        if (!session.isInitializing) {
-          return fetchMessages(session.id);
-        }
-        return Promise.resolve();
-      }));
-    };
-
-    // Initial fetch
-    fetchAllMessages();
-
-    const interval = setInterval(fetchAllMessages, 50); // Poll every 50ms for real-time updates
-
-    return () => clearInterval(interval);
-  }, [sessions, fetchMessages]); // Depend on sessions array to recreate interval when IDs change
 
   const discoverClaude = async () => {
-    console.log("Starting Claude discovery...");
     setIsDiscoveryLoading(true);
     try {
       const result = await invoke<CommandResult<string>>("discover_claude");
-      console.log("Discovery result:", result);
       if (result.success && result.data) {
         setClaudeStatus(`Claude found at: ${result.data}`);
-        console.log("Claude binary found at:", result.data);
       } else {
         setClaudeStatus(`Error: ${result.error || "Unknown error"}`);
         console.error("Discovery failed:", result.error);
@@ -243,16 +218,17 @@ function App() {
       return;
     }
 
-    console.log("Creating session for project:", newProjectPath);
     
     // Create a temporary session ID
     const tempSessionId = `temp-${Date.now()}`;
     
     // Create session with initializing state
+    // Load any persisted messages for this session
+    const persistedMessages = getSessionMessages(tempSessionId);
     const newSession: Session = {
       id: tempSessionId,
       projectPath: newProjectPath,
-      messages: [],
+      messages: persistedMessages,
       inputMessage: "",
       isLoading: false,
       isInitializing: true,
@@ -267,11 +243,8 @@ function App() {
       const result = await invoke<CommandResult<string>>("create_session", {
         projectPath: newProjectPath,
       });
-      console.log("Create session result:", result);
-      
       if (result.success && result.data) {
         const realSessionId = result.data;
-        console.log("Session created with ID:", realSessionId);
         
         // Update the session with the real ID and remove initializing state
         setSessions(prev => prev.map(s => 
@@ -281,24 +254,34 @@ function App() {
         ));
         
         // Update the pane ID to match the real session ID
-        usePaneStore.setState(state => {
-          const updatedPanes = state.panes.map(p => 
-            p.id === `chat-${tempSessionId}`
-              ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
-              : p
-          );
-          return {
-            panes: updatedPanes,
-            activePaneId: state.activePaneId === `chat-${tempSessionId}` 
-              ? `chat-${realSessionId}` 
-              : state.activePaneId
-          };
-        });
-        
-        // Manually fetch messages for the new session ID
+        // Defer state update to avoid updating during render
         setTimeout(() => {
-          fetchMessages(realSessionId);
-        }, 100);
+          usePaneStore.setState(state => {
+            const updatedPanes = state.panes.map(p => 
+              p.id === `chat-${tempSessionId}`
+                ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
+                : p
+            );
+            
+            // Transfer persisted messages from temp to real session ID
+            const tempMessages = state.sessionMessages[tempSessionId];
+            const updatedSessionMessages = { ...state.sessionMessages };
+            if (tempMessages && tempMessages.length > 0) {
+              updatedSessionMessages[realSessionId] = tempMessages;
+              delete updatedSessionMessages[tempSessionId];
+            }
+            
+            return {
+              panes: updatedPanes,
+              activePaneId: state.activePaneId === `chat-${tempSessionId}` 
+                ? `chat-${realSessionId}` 
+                : state.activePaneId,
+              sessionMessages: updatedSessionMessages
+            };
+          });
+        }, 0);
+        
+        // No need to fetch messages - SessionStreamManager will handle it
       } else {
         // Remove the session and close the pane on error
         setSessions(prev => prev.filter(s => s.id !== tempSessionId));
@@ -514,6 +497,17 @@ function App() {
         
         {/* Pane Manager */}
         <PaneManager />
+        
+        {/* Session Stream Managers */}
+        {sessions.map(session => (
+          <SessionStreamManager
+            key={session.id}
+            sessionId={session.id}
+            isInitializing={session.isInitializing || false}
+            onMessagesUpdate={handleMessagesUpdate}
+            onError={handleStreamError}
+          />
+        ))}
         
         {/* Hand Tracking */}
         <HandTracking

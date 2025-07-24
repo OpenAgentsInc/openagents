@@ -76,66 +76,62 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
 
   return (
     <div className="flex flex-col h-full">
-      {isInitializing ? (
-        // Loading state while initializing Claude
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="animate-pulse">
-              <div className="w-16 h-16 mx-auto bg-primary/20 rounded-full flex items-center justify-center">
-                <div className="w-12 h-12 bg-primary/30 rounded-full flex items-center justify-center">
-                  <div className="w-8 h-8 bg-primary/40 rounded-full"></div>
+      {/* Messages */}
+      <ScrollArea className="flex-1 -mx-4 px-4">
+        {isInitializing ? (
+          // Loading state while initializing Claude
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <div className="animate-pulse">
+                <div className="w-16 h-16 mx-auto bg-primary/20 rounded-full flex items-center justify-center">
+                  <div className="w-12 h-12 bg-primary/30 rounded-full flex items-center justify-center">
+                    <div className="w-8 h-8 bg-primary/40 rounded-full"></div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Initializing Claude Code...</p>
-              <p className="text-xs text-muted-foreground mt-1">This may take a moment</p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Messages */}
-          <ScrollArea className="flex-1 -mx-4 px-4">
-            {messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No messages yet. Send a message to start the conversation.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {messages.map(renderMessage)}
+              <div>
+                <p className="text-sm font-medium">Initializing Claude Code...</p>
+                <p className="text-xs text-muted-foreground mt-1">You can start typing below</p>
               </div>
-            )}
-          </ScrollArea>
-
-          {/* Input */}
-          <div className="mt-4 -mx-4 px-4 pt-4 border-t border-border">
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => updateSessionInput?.(sessionId, e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    sendMessage?.(sessionId);
-                  }
-                }}
-                placeholder="Type your message..."
-                disabled={isLoading || isInitializing}
-                className="flex-1 text-sm"
-                autoFocus
-              />
-              <Button
-                onClick={() => sendMessage?.(sessionId)}
-                disabled={isLoading || isInitializing || !inputMessage.trim()}
-                size="sm"
-              >
-                Send
-              </Button>
             </div>
           </div>
-        </>
-      )}
+        ) : messages.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No messages yet. Send a message to start the conversation.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {messages.map(renderMessage)}
+          </div>
+        )}
+      </ScrollArea>
+
+      {/* Input - Always shown */}
+      <div className="mt-4 -mx-4 px-4 pt-4 border-t border-border">
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            value={inputMessage}
+            onChange={(e) => updateSessionInput?.(sessionId, e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === "Enter" && !isInitializing) {
+                sendMessage?.(sessionId);
+              }
+            }}
+            placeholder={isInitializing ? "Start typing (initializing...)..." : "Type your message..."}
+            disabled={isLoading}
+            className="flex-1 text-sm"
+            autoFocus
+          />
+          <Button
+            onClick={() => sendMessage?.(sessionId)}
+            disabled={isLoading || isInitializing || !inputMessage.trim()}
+            size="sm"
+          >
+            Send
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };
