@@ -97,7 +97,6 @@ function App() {
 
   // Initialize Claude on mount
   useEffect(() => {
-    console.log("App mounted, starting Claude discovery...");
     discoverClaude();
   }, []);
 
@@ -139,12 +138,9 @@ function App() {
   const sendMessage = async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
     if (!session || !session.inputMessage.trim()) {
-      console.log("Cannot send message - session:", session, "message:", session?.inputMessage);
       return;
     }
     
-
-    console.log("Sending message:", session.inputMessage, "to session:", sessionId);
     const messageToSend = session.inputMessage;
     
     // Immediately add user message to UI
@@ -176,7 +172,6 @@ function App() {
         sessionId,
         message: messageToSend,
       });
-      console.log("Send message result:", result);
       if (!result.success) {
         alert(`Error sending message: ${result.error}`);
         console.error("Send message failed:", result.error);
@@ -201,14 +196,11 @@ function App() {
 
 
   const discoverClaude = async () => {
-    console.log("Starting Claude discovery...");
     setIsDiscoveryLoading(true);
     try {
       const result = await invoke<CommandResult<string>>("discover_claude");
-      console.log("Discovery result:", result);
       if (result.success && result.data) {
         setClaudeStatus(`Claude found at: ${result.data}`);
-        console.log("Claude binary found at:", result.data);
       } else {
         setClaudeStatus(`Error: ${result.error || "Unknown error"}`);
         console.error("Discovery failed:", result.error);
@@ -226,7 +218,6 @@ function App() {
       return;
     }
 
-    console.log("Creating session for project:", newProjectPath);
     
     // Create a temporary session ID
     const tempSessionId = `temp-${Date.now()}`;
@@ -252,11 +243,8 @@ function App() {
       const result = await invoke<CommandResult<string>>("create_session", {
         projectPath: newProjectPath,
       });
-      console.log("Create session result:", result);
-      
       if (result.success && result.data) {
         const realSessionId = result.data;
-        console.log("Session created with ID:", realSessionId);
         
         // Update the session with the real ID and remove initializing state
         setSessions(prev => prev.map(s => 

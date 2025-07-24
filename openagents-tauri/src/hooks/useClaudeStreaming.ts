@@ -42,22 +42,17 @@ export function useClaudeStreaming({
     setError(null);
     
     try {
-      console.log('Starting streaming hook for session:', sessionId);
-      
       // Create the streaming program
       const program = Effect.gen(function* () {
         const service = yield* ClaudeStreamingService;
         const session = yield* service.startStreaming(sessionId);
         sessionRef.current = session;
         
-        console.log('Session started, setting up stream processing');
-        
         // Run the stream processing in the background
         yield* pipe(
           service.getMessageStream(session),
           Stream.tap((message) =>
             Effect.sync(() => {
-              console.log('Received message in hook:', message);
               setMessages(prev => {
                 // Check if message already exists (for updates)
                 const existingIndex = prev.findIndex(m => m.id === message.id);
@@ -77,7 +72,6 @@ export function useClaudeStreaming({
           Stream.runDrain,
           Effect.catchAll((error) => 
             Effect.sync(() => {
-              console.error('Stream processing error:', error);
               const err = new Error(String(error));
               setError(err);
               onError?.(err);

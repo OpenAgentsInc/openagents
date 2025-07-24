@@ -74,15 +74,12 @@ export const TauriEventServiceLive = TauriEventService.of({
       // Set up the event listener with proper error handling
       const unlisten = yield* Effect.tryPromise({
         try: async () => {
-          console.log(`Setting up event listener for: ${eventName}`);
           return await listen(eventName, (event: TauriEvent<unknown>) => {
-            console.log(`Received event on ${eventName}:`, event);
             // Extract the payload from the Tauri event
             const payload = event.payload;
-            console.log(`Event payload:`, payload);
             // Queue the payload in a fire-and-forget manner
-            Effect.runPromise(Queue.offer(queue, payload)).catch(error => {
-              console.error(`Failed to enqueue event for ${eventName}:`, error);
+            Effect.runPromise(Queue.offer(queue, payload)).catch(() => {
+              // Silently handle queue errors
             });
           });
         },
@@ -90,16 +87,15 @@ export const TauriEventServiceLive = TauriEventService.of({
       });
 
       const cleanup = () => {
-        console.log(`Cleaning up event listener for: ${eventName}`);
         try {
           unlisten();
-        } catch (e) {
-          console.error(`Error during unlisten for ${eventName}:`, e);
+        } catch {
+          // Silently handle unlisten errors
         }
         
         // Shutdown queue in background
-        Effect.runPromise(Queue.shutdown(queue)).catch(error => {
-          console.error(`Failed to shutdown queue for ${eventName}:`, error);
+        Effect.runPromise(Queue.shutdown(queue)).catch(() => {
+          // Silently handle shutdown errors
         });
       };
 

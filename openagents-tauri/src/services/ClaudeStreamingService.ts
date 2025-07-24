@@ -81,8 +81,6 @@ export const ClaudeStreamingServiceLive = Layer.effect(
     return ClaudeStreamingService.of({
       startStreaming: (sessionId: string) =>
         Effect.gen(function* () {
-          console.log(`Starting streaming for session: ${sessionId}`);
-          
           // Create event stream for this session
           const eventName = `claude:${sessionId}:message`;
           const { queue: eventQueue, cleanup } = yield* eventService.createEventStream(eventName);
@@ -92,7 +90,6 @@ export const ClaudeStreamingServiceLive = Layer.effect(
             sessionId,
             messageQueue: eventQueue,
             cleanup: () => {
-              console.log(`Cleaning up streaming for session: ${sessionId}`);
               cleanup();
             }
           };
@@ -103,16 +100,10 @@ export const ClaudeStreamingServiceLive = Layer.effect(
       getMessageStream: (session: StreamingSession) =>
         pipe(
           Stream.fromQueue(session.messageQueue),
-          Stream.tap((payload) => Effect.sync(() => console.log('Processing queue payload:', payload))),
           Stream.mapEffect((payload: unknown) => {
             // Parse the payload directly as it's already extracted
-            console.log('Parsing payload:', payload);
             return parseClaudeMessage(payload).pipe(
-              Effect.tap((msg) => Effect.sync(() => console.log('Parsed message:', msg))),
-              Effect.catchAll((error) => {
-                console.error('Failed to parse message:', error);
-                return Effect.succeed(null);
-              })
+              Effect.catchAll(() => Effect.succeed(null))
             );
           }),
           Stream.filter((msg): msg is Message => msg !== null)
