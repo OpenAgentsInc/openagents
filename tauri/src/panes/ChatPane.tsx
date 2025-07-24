@@ -35,18 +35,25 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
 
   const handleSubmit = useCallback(
     async (content: string) => {
-      if (content.trim() && !isLoading && !isInitializing && session) {
-        // Update session input with the content
-        updateSessionInput?.(sessionId, content);
+      if (content.trim() && !isLoading && !isInitializing && session && sendMessage && updateSessionInput) {
+        console.log('Submitting content:', content);
         
-        // Call sendMessage which will handle the actual sending
-        try {
-          await sendMessage?.(sessionId);
-          // Clear the input after successful send
-          inputRef.current?.clear();
-        } catch (error) {
-          console.error('Failed to send message:', error);
-        }
+        // First, update the session input
+        updateSessionInput(sessionId, content);
+        console.log('Updated session input');
+        
+        // Wait longer for state update to complete
+        setTimeout(async () => {
+          console.log('Calling sendMessage...');
+          try {
+            await sendMessage(sessionId);
+            console.log('Message sent successfully');
+            // Clear the input after successful send
+            inputRef.current?.clear();
+          } catch (error) {
+            console.error('Failed to send message:', error);
+          }
+        }, 50); // Increased delay to ensure state update
       }
     },
     [sessionId, sendMessage, updateSessionInput, isLoading, isInitializing, session]
