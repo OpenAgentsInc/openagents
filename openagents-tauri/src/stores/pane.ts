@@ -230,6 +230,17 @@ export const usePaneStore = create<PaneStore>()(
         activePaneId: state.activePaneId,
         closedPanePositions: state.closedPanePositions,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          // Filter out chat panes since their sessions won't exist after restart
+          state.panes = state.panes.filter(pane => pane.type !== "chat");
+          
+          // Reset active pane ID if it was pointing to a chat pane
+          if (state.activePaneId && !state.panes.find(p => p.id === state.activePaneId)) {
+            state.activePaneId = state.panes.length > 0 ? state.panes[0].id : null;
+          }
+        }
+      },
     }
   )
 );
