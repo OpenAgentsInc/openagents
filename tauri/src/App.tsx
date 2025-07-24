@@ -483,18 +483,6 @@ function App() {
   return (
     <TooltipProvider>
       <div className="fixed inset-0 font-mono overflow-hidden">
-        {/* Background with grid pattern */}
-        <div 
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: `
-              linear-gradient(to right, #10b981 1px, transparent 1px),
-              linear-gradient(to bottom, #10b981 1px, transparent 1px)
-            `,
-            backgroundSize: '50px 50px'
-          }}
-        />
-        
         {/* Pane Manager */}
         <PaneManager />
         
