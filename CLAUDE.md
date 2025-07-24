@@ -8,7 +8,19 @@ This is an OpenAgents Tauri desktop application built with:
 - **Frontend**: React + TypeScript + Vite
 - **Backend**: Rust with Tauri framework
 - **Package Manager**: Bun (not npm/yarn)
-- **Main Project Directory**: `/tauri/`
+
+### Project Structure
+**All application code is located in the `tauri/` directory.** The repository root contains documentation and configuration, but the actual Tauri application lives entirely within:
+```
+tauri/                    # Main project directory
+├── src/                  # Frontend React/TypeScript code
+├── src-tauri/            # Backend Rust code
+├── package.json          # Frontend dependencies
+├── bun.lock             # Bun lockfile
+└── ...                  # Other frontend config files
+```
+
+**Always work from the `tauri/` directory** when running commands or referencing files.
 
 ## Commands
 
@@ -44,15 +56,15 @@ bun run preview      # Preview production build
 
 ## Architecture
 
-### Frontend Structure
-- Entry point: `src/main.tsx`
-- Main component: `src/App.tsx`
+### Frontend Structure (within `tauri/` directory)
+- Entry point: `tauri/src/main.tsx`
+- Main component: `tauri/src/App.tsx`
 - Uses Tauri API for IPC: `@tauri-apps/api/core`
-- TypeScript configuration: `tsconfig.json`
+- TypeScript configuration: `tauri/tsconfig.json`
 
-### Backend Structure
-- Rust entry point: `src-tauri/src/main.rs`
-- Application logic: `src-tauri/src/lib.rs`
+### Backend Structure (within `tauri/` directory)
+- Rust entry point: `tauri/src-tauri/src/main.rs`
+- Application logic: `tauri/src-tauri/src/lib.rs`
 - Tauri commands are defined with `#[tauri::command]` macro
 - Current commands:
   - `greet(name: &str)`: Example command that returns a greeting
@@ -62,10 +74,10 @@ bun run preview      # Preview production build
 - Example: `await invoke("greet", { name: "World" })`
 - Commands must be registered in `tauri::generate_handler![]` in `lib.rs`
 
-### Configuration Files
-- `src-tauri/tauri.conf.json`: Main Tauri configuration
-- `src-tauri/Cargo.toml`: Rust dependencies
-- `package.json`: Frontend dependencies and scripts
+### Configuration Files (within `tauri/` directory)
+- `tauri/src-tauri/tauri.conf.json`: Main Tauri configuration
+- `tauri/src-tauri/Cargo.toml`: Rust dependencies
+- `tauri/package.json`: Frontend dependencies and scripts
 - App identifier: `com.openagents.OpenAgents`
 
 ### Key Dependencies
