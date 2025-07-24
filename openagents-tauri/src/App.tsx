@@ -223,8 +223,10 @@ function App() {
           // Sort by timestamp to maintain order
           allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
           
-          // Persist messages to store
-          updateSessionMessages(sessionId, allMessages);
+          // Persist messages to store - defer to avoid updating during render
+          setTimeout(() => {
+            updateSessionMessages(sessionId, allMessages);
+          }, 0);
           
           return { ...session, messages: allMessages };
         }));
@@ -241,11 +243,6 @@ function App() {
       return;
     }
     
-    // Don't send messages while initializing
-    if (session.isInitializing) {
-      console.log("Cannot send message - session is still initializing");
-      return;
-    }
 
     console.log("Sending message:", session.inputMessage, "to session:", sessionId);
     const messageToSend = session.inputMessage;
@@ -266,10 +263,13 @@ function App() {
     ));
     
     // Persist the updated messages including the new user message
-    const updatedSession = sessions.find(s => s.id === sessionId);
-    if (updatedSession) {
-      updateSessionMessages(sessionId, [...updatedSession.messages, userMessage]);
-    }
+    // Defer to avoid updating during render
+    setTimeout(() => {
+      const updatedSession = sessions.find(s => s.id === sessionId);
+      if (updatedSession) {
+        updateSessionMessages(sessionId, [...updatedSession.messages, userMessage]);
+      }
+    }, 0);
     
     try {
       const result = await invoke<CommandResult<void>>("send_message", {

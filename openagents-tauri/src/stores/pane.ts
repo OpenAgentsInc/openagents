@@ -4,7 +4,7 @@ import { Pane, PaneInput } from "@/types/pane";
 
 export const PANE_MARGIN = 20;
 export const DEFAULT_CHAT_WIDTH = 600;
-export const DEFAULT_CHAT_HEIGHT = 700;
+export const DEFAULT_CHAT_HEIGHT = Math.min(700, window.innerHeight - 120); // Leave space for hotbar and margins
 export const METADATA_PANEL_WIDTH = 320;
 
 interface ClosedPanePosition {

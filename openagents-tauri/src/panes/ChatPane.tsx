@@ -121,13 +121,13 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage, 
                   }
                 }}
                 placeholder="Type your message..."
-                disabled={isLoading || isInitializing}
+                disabled={isLoading}
                 className="flex-1 text-sm"
                 autoFocus
               />
               <Button
                 onClick={() => sendMessage?.(sessionId)}
-                disabled={isLoading || isInitializing || !inputMessage.trim()}
+                disabled={isLoading || !inputMessage.trim()}
                 size="sm"
               >
                 Send
