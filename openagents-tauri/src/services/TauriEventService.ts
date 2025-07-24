@@ -21,7 +21,7 @@ export type TauriEventError = StreamingError | ConnectionError | MessageParsingE
 
 // Event stream context
 export interface EventStreamContext {
-  queue: Queue.Queue<TauriEvent<unknown>>;
+  queue: Queue.Queue<unknown>; // Will hold TauriEvent<unknown> but typed as unknown for compatibility
   cleanup: () => void;
 }
 
@@ -68,22 +68,33 @@ export const TauriEventServiceLive = TauriEventService.of({
 
   createEventStream: (eventName: string, bufferSize = 100) =>
     Effect.gen(function* () {
-      const queue = yield* Queue.bounded<TauriEvent<unknown>>(bufferSize);
+      // Create the queue with type unknown to match interface
+      const queue = yield* Queue.bounded<unknown>(bufferSize);
       
+      // Set up the event listener with proper error handling
       const unlisten = yield* Effect.tryPromise({
-        try: () =>
-          listen(eventName, (event) => {
-            // Use runPromise to handle the effect
-            Queue.offer(queue, event).pipe(Effect.runPromise).catch(error => {
+        try: async () => {
+          console.log(`Setting up event listener for: ${eventName}`);
+          return await listen(eventName, (event: TauriEvent<unknown>) => {
+            // Queue the event in a fire-and-forget manner
+            Effect.runPromise(Queue.offer(queue, event)).catch(error => {
               console.error(`Failed to enqueue event for ${eventName}:`, error);
             });
-          }),
+          });
+        },
         catch: (error) => new StreamingError(`Failed to create event stream: ${eventName}`, error)
       });
 
       const cleanup = () => {
-        unlisten();
-        Queue.shutdown(queue).pipe(Effect.runPromise).catch(error => {
+        console.log(`Cleaning up event listener for: ${eventName}`);
+        try {
+          unlisten();
+        } catch (e) {
+          console.error(`Error during unlisten for ${eventName}:`, e);
+        }
+        
+        // Shutdown queue in background
+        Effect.runPromise(Queue.shutdown(queue)).catch(error => {
           console.error(`Failed to shutdown queue for ${eventName}:`, error);
         });
       };

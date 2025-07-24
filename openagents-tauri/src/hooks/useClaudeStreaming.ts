@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Effect, Stream, ManagedRuntime, pipe, Layer, Fiber } from 'effect';
+import { Effect, Stream, pipe, Layer, Scope, Exit } from 'effect';
 import { ClaudeStreamingService, ClaudeStreamingServiceLive, StreamingSession, Message } from '../services/ClaudeStreamingService';
 import { TauriEventService, TauriEventServiceLive } from '../services/TauriEventService';
 import { invoke } from '@tauri-apps/api/core';
@@ -19,7 +19,7 @@ interface UseClaudeStreamingResult {
   stopStreaming: () => Promise<void>;
 }
 
-// Create the service layer
+// Create the service layer once
 const TauriEventLayer = Layer.succeed(TauriEventService, TauriEventServiceLive);
 const ServiceLayer = Layer.provideMerge(ClaudeStreamingServiceLive, TauriEventLayer);
 
@@ -33,34 +33,27 @@ export function useClaudeStreaming({
   const [error, setError] = useState<Error | null>(null);
   
   const sessionRef = useRef<StreamingSession | null>(null);
-  const runtimeRef = useRef<ManagedRuntime.ManagedRuntime<ClaudeStreamingService | TauriEventService, never>>();
-  const processorFiberRef = useRef<Fiber.RuntimeFiber<void, never> | null>(null);
-
-  // Initialize runtime
-  useEffect(() => {
-    const runtime = ManagedRuntime.make(ServiceLayer);
-    runtimeRef.current = runtime;
-    
-    // Cleanup runtime on unmount
-    return () => {
-      runtime.dispose();
-    };
-  }, []);
+  const scopeRef = useRef<Scope.CloseableScope | null>(null);
 
   // Start streaming
   const startStreaming = useCallback(async () => {
-    if (!runtimeRef.current || isStreaming) return;
+    if (isStreaming || sessionRef.current) return;
     
     setIsStreaming(true);
     setError(null);
     
     const program = Effect.gen(function* () {
+      // Create a scope for this streaming session
+      const scope = yield* Scope.make();
+      scopeRef.current = scope;
+      
+      // Get the service and start streaming
       const service = yield* ClaudeStreamingService;
       const session = yield* service.startStreaming(sessionId);
       sessionRef.current = session;
       
-      // Process message stream
-      const processor = yield* pipe(
+      // Process message stream in the background
+      yield* pipe(
         service.getMessageStream(session),
         Stream.tap((message) =>
           Effect.sync(() => {
@@ -80,8 +73,7 @@ export function useClaudeStreaming({
             onMessage?.(message);
           })
         ),
-        Stream.runDrain
-      ).pipe(
+        Stream.runDrain,
         Effect.catchAll((error) => 
           Effect.sync(() => {
             const err = new Error(String(error));
@@ -89,19 +81,25 @@ export function useClaudeStreaming({
             onError?.(err);
           })
         ),
-        Effect.fork
+        Scope.extend(scope),
+        Effect.forkScoped
       );
-      
-      processorFiberRef.current = processor;
-      return processor;
     });
     
     try {
-      await runtimeRef.current.runPromise(program);
+      await Effect.runPromise(
+        pipe(
+          program,
+          Effect.provide(ServiceLayer),
+          Effect.scoped
+        )
+      );
     } catch (err) {
       console.error('Failed to start streaming:', err);
       setError(err instanceof Error ? err : new Error(String(err)));
       setIsStreaming(false);
+      sessionRef.current = null;
+      scopeRef.current = null;
     }
   }, [sessionId, isStreaming, onMessage, onError]);
 
@@ -129,20 +127,29 @@ export function useClaudeStreaming({
 
   // Stop streaming
   const stopStreaming = useCallback(async () => {
-    if (!runtimeRef.current || !sessionRef.current) return;
-    
-    const program = Effect.gen(function* () {
-      const service = yield* ClaudeStreamingService;
-      yield* service.stopStreaming(sessionRef.current!);
-    });
+    if (!sessionRef.current) return;
     
     try {
-      await runtimeRef.current.runPromise(program);
+      // Close the scope, which will clean up all resources
+      if (scopeRef.current) {
+        await Effect.runPromise(
+          pipe(
+            Scope.close(scopeRef.current, Exit.void),
+            Effect.provide(ServiceLayer),
+            Effect.scoped
+          )
+        );
+      }
+      
+      // Clean up the session
+      if (sessionRef.current) {
+        sessionRef.current.cleanup();
+      }
     } catch (err) {
       console.error('Failed to stop streaming:', err);
     } finally {
       sessionRef.current = null;
-      processorFiberRef.current = null;
+      scopeRef.current = null;
       setIsStreaming(false);
     }
   }, []);
@@ -150,9 +157,7 @@ export function useClaudeStreaming({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (sessionRef.current) {
-        stopStreaming();
-      }
+      stopStreaming();
     };
   }, [stopStreaming]);
 
