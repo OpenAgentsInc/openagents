@@ -175,7 +175,7 @@ export const Pane: React.FC<PaneProps> = ({
   width,
   height,
   type: _type,
-  isActive,
+  isActive: _isActive,
   dismissable = true,
   children,
   style,
@@ -278,12 +278,12 @@ export const Pane: React.FC<PaneProps> = ({
   return (
     <div
       className={cn(
-        "absolute bg-pane border shadow-xl terminal-corners terminal-corners-bottom",
+        "absolute bg-pane shadow-xl terminal-corners terminal-corners-bottom",
         "transition-all duration-200 ease-out",
-        isActive ? "border-primary ring-2 ring-primary/20" : "border-border",
         isCurrentlyInteracting && "transition-none"
       )}
       style={{
+        border: "1px solid #444",
         left: `${isDragging ? dragPosition.x : position.x}px`,
         top: `${isDragging ? dragPosition.y : position.y}px`,
         width: `${isResizing ? size.width : width}px`,
@@ -295,7 +295,8 @@ export const Pane: React.FC<PaneProps> = ({
       {/* Title Bar */}
       <div
         {...bindDrag()}
-        className="flex items-center justify-between px-4 py-2 border-b border-border cursor-move select-none bg-pane-header"
+        className="flex items-center justify-between px-4 py-2 cursor-move select-none bg-pane-header"
+        style={{ borderBottom: "1px solid #444" }}
       >
         <h3 className="text-sm font-semibold truncate flex-1">{title}</h3>
         {dismissable && (

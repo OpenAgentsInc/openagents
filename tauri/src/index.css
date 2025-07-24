@@ -148,38 +148,38 @@
 }
 
 .dark {
-  /* V5V Terminal/Cyberpunk Color Scheme */
-  --background: #0B0B0E;  /* Very dark blue-black */
-  --foreground: #d8dee9;  /* Light gray-blue */
-  --card: #090909;        /* Almost black */
-  --card-foreground: #d8dee9;
-  --popover: #121212;     /* Slightly lighter than card */
-  --popover-foreground: #d8dee9;
-  --primary: #22d3ee;     /* Cyan accent color */
-  --primary-foreground: #0B0B0E;
-  --secondary: #2a2a2a;   /* Dark gray */
+  /* Exact V5V Color Scheme */
+  --background: #0B0B0E;
+  --foreground: #d8dee9;
+  --card: #090909;
+  --card-foreground: #ffffff;
+  --popover: #121212;
+  --popover-foreground: #ffffff;
+  --primary: #d8dee9;
+  --primary-foreground: #0a0a0a;
+  --secondary: #2a2a2a;
   --secondary-foreground: #d8dee9;
-  --muted: #1d1d1d;       /* Darker gray */
-  --muted-foreground: #9ca3af;
-  --accent: #333333;      /* Medium dark gray */
-  --accent-foreground: #d8dee9;
-  --destructive: #ef4444; /* Red for errors */
-  --border: #242424;      /* Medium dark gray borders */
-  --input: #333333;       /* Lighter dark gray for inputs */
-  --ring: #22d3ee;        /* Cyan focus ring */
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #121212;     /* Sidebar background */
-  --sidebar-foreground: #d8dee9;
-  --sidebar-primary: #22d3ee;
-  --sidebar-primary-foreground: #0B0B0E;
+  --muted: #1d1d1d;
+  --muted-foreground: #a4a4a4;
+  --accent: #333333;
+  --accent-foreground: #ffffff;
+  --destructive: #ff5b5b;
+  --border: #242424;
+  --input: #333333;
+  --ring: #a4a4a4;
+  --chart-1: #ffae04;
+  --chart-2: #2671f4;
+  --chart-3: #747474;
+  --chart-4: #525252;
+  --chart-5: #e4e4e4;
+  --sidebar: #121212;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #000000;
   --sidebar-accent: #333333;
-  --sidebar-accent-foreground: #d8dee9;
+  --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #333333;
-  --sidebar-ring: #22d3ee;
+  --sidebar-ring: #a4a4a4;
 }
 
 @layer base {
@@ -255,32 +255,8 @@
     border-top: none;
   }
   
-  .text-tool-name {
-    color: #22d3ee; /* Cyan for tool names */
-  }
-  
-  .text-model-claude {
-    color: #fb923c; /* Orange for Claude */
-  }
-  
-  .text-model-other {
-    color: #a855f7; /* Purple for other models */
-  }
-  
-  .text-terminal-error {
-    color: #ef4444; /* Red for errors */
-  }
-  
-  .text-terminal-success {
-    color: #22c55e; /* Green for success */
-  }
-  
-  .text-terminal-yellow {
-    color: #eab308; /* Yellow for status */
-  }
-  
   .bg-pane {
-    background-color: rgba(9, 9, 9, 0.8);
+    background-color: rgba(10, 10, 10, 0.8);
   }
   
   .bg-pane-header {
