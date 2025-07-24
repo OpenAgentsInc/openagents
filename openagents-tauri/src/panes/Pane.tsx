@@ -190,7 +190,14 @@ export const Pane: React.FC<PaneProps> = ({
   
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  const dragStartRef = useRef({ x: 0, y: 0 });
+  const [dragPosition, setDragPosition] = useState({ x, y });
+
+  // Sync position from props when not interacting
+  useEffect(() => {
+    if (!isDragging && !isResizing) {
+      setDragPosition({ x, y });
+    }
+  }, [x, y, isDragging, isResizing]);
 
   const isCurrentlyInteracting = isDragging || isResizing;
 
@@ -210,24 +217,53 @@ export const Pane: React.FC<PaneProps> = ({
 
   const bindDrag = useDrag(
     (state: FullGestureState<"drag">) => {
-      const { first, movement: [mx, my] } = state;
+      const { first, active, last, memo, xy: [pointerX, pointerY] } = state;
 
+      // Use memo to store initial state across the entire drag
       if (first) {
-        dragStartRef.current = { x: position.x, y: position.y };
+        // Capture current position BEFORE activating the pane
+        const initialMemo = {
+          startX: pointerX,
+          startY: pointerY,
+          paneX: dragPosition.x,
+          paneY: dragPosition.y,
+        };
+
         setIsDragging(true);
         bringPaneToFront(id);
         setActivePane(id);
+        return initialMemo; // Return memo for use in subsequent callbacks
       }
 
-      const newX = Math.max(0, dragStartRef.current.x + mx);
-      const newY = Math.max(0, dragStartRef.current.y + my);
+      // Use memo for stable position calculations throughout drag
+      if (memo && (active || last)) {
+        const deltaX = pointerX - memo.startX;
+        const deltaY = pointerY - memo.startY;
 
-      if (state.last) {
-        updatePanePosition(id, newX, newY);
-        setIsDragging(false);
+        let newX = memo.paneX + deltaX;
+        let newY = memo.paneY + deltaY;
+
+        // Apply bounds constraints
+        newX = Math.max(0, newX);
+        newY = Math.max(0, newY);
+
+        // Update position during drag for real-time following
+        if (active) {
+          setDragPosition({ x: newX, y: newY });
+        }
+
+        if (last) {
+          updatePanePosition(id, newX, newY);
+          setIsDragging(false);
+        }
       }
+
+      // Keep returning memo to maintain continuity through the drag
+      return memo;
     },
-    { from: [position.x, position.y] },
+    {
+      filterTaps: true,
+    },
   );
 
   const handleClose = () => {
@@ -248,8 +284,8 @@ export const Pane: React.FC<PaneProps> = ({
         isCurrentlyInteracting && "transition-none"
       )}
       style={{
-        left: `${isDragging ? position.x : x}px`,
-        top: `${isDragging ? position.y : y}px`,
+        left: `${isDragging ? dragPosition.x : position.x}px`,
+        top: `${isDragging ? dragPosition.y : position.y}px`,
         width: `${isResizing ? size.width : width}px`,
         height: `${isResizing ? size.height : height}px`,
         ...style,

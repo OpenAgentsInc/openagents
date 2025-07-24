@@ -4,7 +4,6 @@ import { PaneManager } from "@/panes/PaneManager";
 import { Hotbar } from "@/components/hud/Hotbar";
 import { usePaneStore } from "@/stores/pane";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 interface Message {
   id: string;
@@ -243,36 +242,48 @@ function App() {
   };
 
   // Set up keyboard shortcuts
-  useKeyboardShortcuts([
-    {
-      key: '1',
-      ctrlKey: true,
-      metaKey: true,
-      handler: () => toggleMetadataPane(),
-    },
-    {
-      key: '2',
-      ctrlKey: true,
-      metaKey: true,
-      handler: () => {
-        if (newProjectPath) {
-          createSession();
-        }
-      },
-    },
-    {
-      key: '8',
-      ctrlKey: true,
-      metaKey: true,
-      handler: () => console.log('Settings'),
-    },
-    {
-      key: '9',
-      ctrlKey: true,
-      metaKey: true,
-      handler: () => console.log('Help'),
-    },
-  ]);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check if the user is typing in an input field
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Handle modifier + digit combinations
+      const modifier = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+        ? event.metaKey // Mac uses Cmd key
+        : event.ctrlKey; // Windows/Linux use Ctrl key
+
+      if (!modifier) return;
+
+      const digit = parseInt(event.key);
+      if (isNaN(digit) || digit < 1 || digit > 9) return;
+
+      event.preventDefault();
+
+      // Call the appropriate function based on the digit
+      switch (digit) {
+        case 1:
+          toggleMetadataPane();
+          break;
+        case 2:
+          if (newProjectPath) {
+            createSession();
+          }
+          break;
+        case 8:
+          console.log('Settings');
+          break;
+        case 9:
+          console.log('Help');
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleMetadataPane, newProjectPath, createSession]);
 
   // Set dark mode on mount
   useEffect(() => {
