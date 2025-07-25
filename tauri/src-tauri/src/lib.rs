@@ -73,8 +73,10 @@ struct ProductivityByTime {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct APMStats {
-    #[serde(rename = "overallAPM")]
-    overall_apm: f64,
+    #[serde(rename = "sessionBasedAPM")]
+    session_based_apm: f64,
+    #[serde(rename = "allTimeAPM")]
+    all_time_apm: f64,
     #[serde(rename = "currentSessionAPM")]
     current_session_apm: f64,
     #[serde(rename = "totalSessions")]
@@ -251,6 +253,8 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     let mut total_tools = 0u32;
     let mut total_duration = 0.0f64;
     let mut productivity_by_hour: [Vec<f64>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()]; // morning, afternoon, evening, night
+    let mut earliest_timestamp: Option<DateTime<Utc>> = None;
+    let mut latest_timestamp: Option<DateTime<Utc>> = None;
     
     for (session_id, (entries, project_name)) in all_sessions {
         if entries.len() < 2 {
@@ -316,6 +320,14 @@ async fn analyze_conversations() -> Result<APMStats, String> {
         
         productivity_by_hour[time_slot].push(session_apm);
         
+        // Track earliest and latest timestamps for all-time APM
+        if earliest_timestamp.is_none() || *start_time < earliest_timestamp.unwrap() {
+            earliest_timestamp = Some(*start_time);
+        }
+        if latest_timestamp.is_none() || *end_time > latest_timestamp.unwrap() {
+            latest_timestamp = Some(*end_time);
+        }
+        
         apm_sessions.push(APMSession {
             id: session_id,
             project: project_name,
@@ -333,8 +345,22 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     
     // Calculate overall metrics
     let total_sessions = apm_sessions.len() as u32;
-    let overall_apm = if total_duration > 0.0 {
+    
+    // Session-based APM: only counts time when actively in sessions
+    let session_based_apm = if total_duration > 0.0 {
         (total_messages as f64 + total_tools as f64) / total_duration
+    } else {
+        0.0
+    };
+    
+    // All-time APM: counts total calendar time from first to last conversation
+    let all_time_apm = if let (Some(earliest), Some(latest)) = (earliest_timestamp, latest_timestamp) {
+        let total_calendar_minutes = (latest - earliest).num_seconds() as f64 / 60.0;
+        if total_calendar_minutes > 0.0 {
+            (total_messages as f64 + total_tools as f64) / total_calendar_minutes
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
@@ -343,8 +369,8 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     apm_sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     let current_session_apm = apm_sessions.first().map(|s| s.apm).unwrap_or(0.0);
     
-    // Calculate skill tier
-    let (skill_tier, tier_color) = get_skill_tier(overall_apm);
+    // Calculate skill tier based on session-based APM
+    let (skill_tier, tier_color) = get_skill_tier(session_based_apm);
     
     // Process tool usage statistics
     let total_tool_uses_for_percentage = total_tools as f64;
@@ -373,7 +399,8 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     };
     
     Ok(APMStats {
-        overall_apm,
+        session_based_apm,
+        all_time_apm,
         current_session_apm,
         total_sessions,
         total_messages,
@@ -393,8 +420,8 @@ async fn analyze_claude_conversations() -> Result<CommandResult<APMStats>, Strin
     
     match analyze_conversations().await {
         Ok(stats) => {
-            info!("APM analysis completed successfully. Overall APM: {:.1}, Sessions: {}", 
-                  stats.overall_apm, stats.total_sessions);
+            info!("APM analysis completed successfully. Session APM: {:.1}, All-Time APM: {:.1}, Sessions: {}", 
+                  stats.session_based_apm, stats.all_time_apm, stats.total_sessions);
             Ok(CommandResult::success(stats))
         }
         Err(e) => {

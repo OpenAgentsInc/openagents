@@ -22,7 +22,8 @@ interface APMSession {
 }
 
 interface APMStats {
-  overallAPM: number;
+  sessionBasedAPM: number;
+  allTimeAPM: number;
   currentSessionAPM: number;
   totalSessions: number;
   totalMessages: number;
@@ -95,7 +96,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
     loadStats();
   }, []);
 
-  const skillTierInfo = stats ? getSkillTier(stats.overallAPM) : null;
+  const skillTierInfo = stats ? getSkillTier(stats.sessionBasedAPM) : null;
 
   if (loading) {
     return (
@@ -169,18 +170,30 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
               <Target className="h-4 w-4 text-blue-400" />
-              <span className="text-sm font-medium">Current APM</span>
+              <span className="text-sm font-medium">Session APM</span>
             </div>
-            <div className="text-2xl font-bold">{stats.currentSessionAPM.toFixed(1)}</div>
+            <div className="text-2xl font-bold">{stats.sessionBasedAPM.toFixed(1)}</div>
+            <div className="text-xs text-muted-foreground">Active coding time only</div>
           </div>
           
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-4 w-4 text-green-400" />
-              <span className="text-sm font-medium">Overall Avg</span>
+              <TrendingUp className="h-4 w-4 text-purple-400" />
+              <span className="text-sm font-medium">All-Time APM</span>
             </div>
-            <div className="text-2xl font-bold">{stats.overallAPM.toFixed(1)}</div>
+            <div className="text-2xl font-bold">{stats.allTimeAPM.toFixed(3)}</div>
+            <div className="text-xs text-muted-foreground">From first to last conversation</div>
           </div>
+        </div>
+
+        {/* Current Session Card */}
+        <div className="bg-card rounded-lg border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className="h-4 w-4 text-orange-400" />
+            <span className="text-sm font-medium">Current Session APM</span>
+          </div>
+          <div className="text-2xl font-bold">{stats.currentSessionAPM.toFixed(1)}</div>
+          <div className="text-xs text-muted-foreground">Most recent session</div>
         </div>
 
         {/* Skill Tier */}
@@ -196,7 +209,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
                 {skillTierInfo.tier}
               </span>
               <span className="text-sm text-muted-foreground">
-                ({stats.overallAPM.toFixed(1)} APM)
+                (Session APM: {stats.sessionBasedAPM.toFixed(1)})
               </span>
             </div>
           </div>
