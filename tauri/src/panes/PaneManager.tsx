@@ -8,14 +8,6 @@ import { SettingsPane } from "./SettingsPane";
 
 export const PaneManager: React.FC = () => {
   const { panes, activePaneId } = usePaneStore();
-  
-  console.log("🎪 PaneManager render - panes from store:", panes.map(p => ({ 
-    id: p.id, 
-    x: p.x, 
-    y: p.y, 
-    width: p.width, 
-    height: p.height 
-  })));
 
   // Get data from global object (temporary solution)
   const data = (window as any).__openagents_data || {};
