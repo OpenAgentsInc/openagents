@@ -49,6 +49,7 @@ const useResizeHandlers = (
       prevPositionRef.current = initialPosition;
     }
   }, [
+    id,
     initialPosition.x,
     initialPosition.y,
     isCurrentlyInteracting,
@@ -184,14 +185,13 @@ export const Pane: React.FC<PaneProps> = ({
     updatePanePosition, 
     updatePaneSize, 
     removePane, 
-    bringPaneToFront,
-    setActivePane 
+    bringPaneToFront
   } = usePaneStore();
   
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [dragPosition, setDragPosition] = useState({ x, y });
-
+  
   // Sync position from props when not interacting
   useEffect(() => {
     if (!isDragging && !isResizing) {
@@ -215,27 +215,37 @@ export const Pane: React.FC<PaneProps> = ({
     setIsResizing,
   );
 
+  // Commander's exact bounds calculation
+  const screenWidth = typeof window !== "undefined" ? window.innerWidth : 1920;
+  const screenHeight = typeof window !== "undefined" ? window.innerHeight : 1080;
+  const bounds = {
+    left: 20, // PANE_MARGIN
+    top: 20,  // PANE_MARGIN
+    right: screenWidth - width - 20,  // PANE_MARGIN
+    bottom: screenHeight - height - 20, // PANE_MARGIN
+  };
+
   const bindDrag = useDrag(
     (state: FullGestureState<"drag">) => {
       const { first, active, last, memo, xy: [pointerX, pointerY] } = state;
 
-      // Use memo to store initial state across the entire drag
       if (first) {
-        // Capture current position BEFORE activating the pane
         const initialMemo = {
           startX: pointerX,
           startY: pointerY,
-          paneX: dragPosition.x,
-          paneY: dragPosition.y,
+          paneX: position.x, // Use store position, not dragPosition
+          paneY: position.y,
         };
 
+        // Only activate if not already active (Commander pattern)
+        if (!isActive) {
+          bringPaneToFront(id);
+        }
+        
         setIsDragging(true);
-        bringPaneToFront(id);
-        setActivePane(id);
-        return initialMemo; // Return memo for use in subsequent callbacks
+        return initialMemo;
       }
 
-      // Use memo for stable position calculations throughout drag
       if (memo && (active || last)) {
         const deltaX = pointerX - memo.startX;
         const deltaY = pointerY - memo.startY;
@@ -243,11 +253,11 @@ export const Pane: React.FC<PaneProps> = ({
         let newX = memo.paneX + deltaX;
         let newY = memo.paneY + deltaY;
 
-        // Apply bounds constraints
-        newX = Math.max(0, newX);
-        newY = Math.max(0, newY);
+        // Commander's exact bounds constraints
+        newX = Math.max(bounds.left, Math.min(newX, bounds.right));
+        newY = Math.max(bounds.top, Math.min(newY, bounds.bottom));
 
-        // Update position during drag for real-time following
+        // Update local position during drag
         if (active) {
           setDragPosition({ x: newX, y: newY });
         }
@@ -258,12 +268,9 @@ export const Pane: React.FC<PaneProps> = ({
         }
       }
 
-      // Keep returning memo to maintain continuity through the drag
       return memo;
     },
-    {
-      filterTaps: true,
-    },
+    { filterTaps: true }
   );
 
   const handleClose = () => {
@@ -271,8 +278,10 @@ export const Pane: React.FC<PaneProps> = ({
   };
 
   const handleMouseDown = () => {
-    bringPaneToFront(id);
-    setActivePane(id);
+    // Only bring to front if not already active (Commander pattern)
+    if (!isActive) {
+      bringPaneToFront(id);
+    }
   };
 
   return (
@@ -293,11 +302,15 @@ export const Pane: React.FC<PaneProps> = ({
       }}
       onMouseDown={handleMouseDown}
     >
-      {/* Corner Brackets */}
-      <div className="corner-bracket-top-left" />
-      <div className="corner-bracket-top-right" />
-      <div className="corner-bracket-bottom-left" />
-      <div className="corner-bracket-bottom-right" />
+      {/* Corner Brackets - only show when not active */}
+      {!isActive && (
+        <>
+          <div className="corner-bracket-top-left" />
+          <div className="corner-bracket-top-right" />
+          <div className="corner-bracket-bottom-left" />
+          <div className="corner-bracket-bottom-right" />
+        </>
+      )}
       {/* Title Bar */}
       <div
         {...bindDrag()}
