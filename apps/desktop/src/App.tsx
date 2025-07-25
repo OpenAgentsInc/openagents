@@ -134,9 +134,7 @@ function App() {
       console.log('🚀 [MOBILE-SYNC] Starting debounced processing...');
       isProcessingRef.current = true;
 
-      const processMobileSessions = async () => {
-        try {
-    const createSessionFromMobile = async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
+      const createSessionFromMobile = async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
       const sessionId = mobileSession.sessionId;
       const now = Date.now();
       const lastProcessed = lastProcessedTimeRef.current[sessionId] || 0;
@@ -254,12 +252,13 @@ function App() {
 
     // Process pending mobile sessions sequentially to avoid race conditions
     const processMobileSessions = async () => {
-      console.log('🔄 [MOBILE-SYNC] Processing', pendingMobileSessions.length, 'mobile sessions');
-      console.log('🔄 [MOBILE-SYNC] Currently processing sessions:', Array.from(processingSessions));
-      console.log('🔄 [MOBILE-SYNC] Already processed sessions:', Array.from(processedMobileSessions));
-      console.log('🔄 [MOBILE-SYNC] Current local sessions:', sessions.map(s => ({ id: s.id, path: s.projectPath })));
-      
-      for (const mobileSession of pendingMobileSessions) {
+      try {
+        console.log('🔄 [MOBILE-SYNC] Processing', pendingMobileSessions.length, 'mobile sessions');
+        console.log('🔄 [MOBILE-SYNC] Currently processing sessions:', Array.from(processingSessions));
+        console.log('🔄 [MOBILE-SYNC] Already processed sessions:', Array.from(processedMobileSessions));
+        console.log('🔄 [MOBILE-SYNC] Current local sessions:', sessions.map(s => ({ id: s.id, path: s.projectPath })));
+        
+        for (const mobileSession of pendingMobileSessions) {
         console.log('🔍 [MOBILE-SYNC] Evaluating mobile session:', mobileSession.sessionId);
         
         // Skip if already processing this session
@@ -279,9 +278,9 @@ function App() {
         } else {
           console.log('⏭️ [MOBILE-SYNC] Skipping - already successfully processed:', mobileSession.sessionId);
         }
-      }
-          console.log('✅ [MOBILE-SYNC] Finished processing all mobile sessions');
-        } catch (error) {
+        }
+        console.log('✅ [MOBILE-SYNC] Finished processing all mobile sessions');
+      } catch (error) {
           console.error('💥 [MOBILE-SYNC] Error processing mobile sessions:', error);
         } finally {
           isProcessingRef.current = false;
