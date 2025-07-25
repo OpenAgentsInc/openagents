@@ -37,11 +37,13 @@ openagents/               # Root directory
 ### Workspace Commands (from root)
 ```bash
 bun install               # Install all workspace dependencies
-bun run dev:desktop       # Run desktop app in development mode
-bun run dev:mobile        # Run mobile app in development mode
+bun run desktop           # Run desktop app in development mode
+bun run mobile            # Run mobile app in development mode
+bun run ios               # Run mobile app on iOS simulator
+bun run android           # Run mobile app on Android emulator
 bun run build:desktop     # Build desktop app
 bun run build:mobile      # Build mobile app
-bun run clean            # Clean all node_modules and dist folders
+bun run clean             # Clean all node_modules and dist folders
 ```
 
 ### Desktop Development (from apps/desktop/)

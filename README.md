@@ -11,18 +11,20 @@ Being built in public. See [intro video](https://x.com/OpenAgentsInc/status/1948
 bun install
 
 # Run desktop app
-bun run dev:desktop
+bun run desktop
 
 # Run mobile app
-bun run dev:mobile
+bun run mobile
 ```
 
 ## Commands
 
 **Workspace (from root):**
 - `bun install` - Install all dependencies
-- `bun run dev:desktop` - Run desktop app in development
-- `bun run dev:mobile` - Run mobile app in development
+- `bun run desktop` - Run desktop app in development
+- `bun run mobile` - Run mobile app in development
+- `bun run ios` - Run mobile app on iOS simulator
+- `bun run android` - Run mobile app on Android emulator
 - `bun run build:desktop` - Build desktop app
 - `bun run build:mobile` - Build mobile app
 
