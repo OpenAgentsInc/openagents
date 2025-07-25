@@ -34,7 +34,8 @@
       }
     },
     "developmentClient": {
-      "silenceNativeLogging": true
+      "silenceNativeLogging": true,
+      "silentLaunch": true
     }
   }
 }

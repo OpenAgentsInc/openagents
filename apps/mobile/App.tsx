@@ -1,6 +1,6 @@
+import { useFonts } from "expo-font"
 import { StatusBar } from "expo-status-bar"
-import { StyleSheet, Text, View, LogBox } from "react-native"
-import { useFonts } from 'expo-font'
+import { LogBox, Platform, SafeAreaView, StyleSheet, Text } from "react-native"
 
 // Disable all development warnings
 LogBox.ignoreAllLogs(true)
@@ -15,10 +15,10 @@ export default function App() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Text style={styles.text}>OpenAgents</Text>
       <StatusBar style="light" />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -32,6 +32,10 @@ const styles = StyleSheet.create({
   text: {
     color: '#fff',
     fontSize: 22,
-    fontFamily: 'Berkeley Mono'
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace'
+    })
   }
 });
