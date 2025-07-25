@@ -1,0 +1,7 @@
+{
+  "functions": "convex/",
+  "generateCommonJSApi": false,
+  "node": {
+    "polyfill": true
+  }
+}
