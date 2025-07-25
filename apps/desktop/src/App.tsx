@@ -77,6 +77,8 @@ function App() {
   
   // State tracking for sessions currently being processed to prevent duplicates
   const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
+  // State tracking for mobile sessions that have been successfully processed
+  const [processedMobileSessions, setProcessedMobileSessions] = useState<Set<string>>(new Set());
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -154,6 +156,8 @@ function App() {
             },
           });
 
+          // Mark mobile session as successfully processed
+          setProcessedMobileSessions(prev => new Set(prev).add(mobileSession.sessionId));
           console.log('✅ [MOBILE-SYNC] Successfully created and synced local session from mobile request');
         } else {
           console.error('❌ [MOBILE-SYNC] Failed to create local Claude Code session:', result.error);
@@ -175,6 +179,7 @@ function App() {
     const processMobileSessions = async () => {
       console.log('🔄 [MOBILE-SYNC] Processing', pendingMobileSessions.length, 'mobile sessions');
       console.log('🔄 [MOBILE-SYNC] Currently processing sessions:', Array.from(processingSessions));
+      console.log('🔄 [MOBILE-SYNC] Already processed sessions:', Array.from(processedMobileSessions));
       console.log('🔄 [MOBILE-SYNC] Current local sessions:', sessions.map(s => ({ id: s.id, path: s.projectPath })));
       
       for (const mobileSession of pendingMobileSessions) {
@@ -186,19 +191,16 @@ function App() {
           continue;
         }
         
-        // Check if this mobile session needs a local Claude Code session
-        const hasLocalSession = sessions.some(s => 
-          s.projectPath === mobileSession.projectPath && 
-          (s.id === mobileSession.sessionId || s.id.includes(mobileSession.sessionId))
-        );
+        // Check if this mobile session has already been successfully processed
+        const alreadyProcessed = processedMobileSessions.has(mobileSession.sessionId);
         
-        console.log('🔍 [MOBILE-SYNC] Local session check for', mobileSession.sessionId, '- hasLocalSession:', hasLocalSession);
+        console.log('🔍 [MOBILE-SYNC] Already processed check for', mobileSession.sessionId, '- alreadyProcessed:', alreadyProcessed);
         
-        if (!hasLocalSession) {
+        if (!alreadyProcessed) {
           console.log('🎯 [MOBILE-SYNC] Creating session for:', mobileSession.sessionId);
           await createSessionFromMobile(mobileSession);
         } else {
-          console.log('⏭️ [MOBILE-SYNC] Skipping - local session already exists for:', mobileSession.sessionId);
+          console.log('⏭️ [MOBILE-SYNC] Skipping - already successfully processed:', mobileSession.sessionId);
         }
       }
       console.log('✅ [MOBILE-SYNC] Finished processing all mobile sessions');
@@ -210,7 +212,7 @@ function App() {
         console.error('💥 [MOBILE-SYNC] Error processing mobile sessions:', error);
       });
     }
-  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane, processingSessions]);
+  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane, processingSessions, processedMobileSessions]);
 
   // Toggle hand tracking
   const toggleHandTracking = useCallback(() => {
