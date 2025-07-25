@@ -40,7 +40,7 @@ function loadEnvFile() {
 loadEnvFile();
 
 // Configuration
-const CONVEX_DEPLOYMENT_URL = process.env.VITE_CONVEX_URL || process.env.CONVEX_URL;
+const CONVEX_DEPLOYMENT_URL = process.env.VITE_CONVEX_URL || process.env.CONVEX_URL || process.env.CONVEX_DEPLOYMENT;
 const DEBUG = process.env.CLAUDE_HOOK_DEBUG === 'true' || true; // Enable debug for troubleshooting
 
 function debug(message, data = null) {

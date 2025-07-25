@@ -64,6 +64,7 @@ function App() {
   // Convex hooks for Claude Code sync
   const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
   const createConvexSession = useMutation(api.claude.createClaudeSession);
+  const markMobileSessionProcessed = useMutation(api.claude.markMobileSessionProcessed);
   
   // Debug logging for mobile sessions
   useEffect(() => {
@@ -156,7 +157,14 @@ function App() {
             },
           });
 
-          // Mark mobile session as successfully processed
+          // Mark mobile session as processed in the database
+          console.log('🏁 [MOBILE-SYNC] Marking mobile session as processed in database...');
+          await markMobileSessionProcessed({
+            mobileSessionId: mobileSession.sessionId,
+          });
+          console.log('✅ [MOBILE-SYNC] Marked mobile session as processed in database');
+
+          // Mark mobile session as successfully processed locally
           setProcessedMobileSessions(prev => new Set(prev).add(mobileSession.sessionId));
           console.log('✅ [MOBILE-SYNC] Successfully created and synced local session from mobile request');
         } else {
