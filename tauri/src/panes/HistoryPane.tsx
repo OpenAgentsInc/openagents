@@ -11,7 +11,7 @@ interface Session {
   isLoading: boolean;
 }
 
-interface MetadataPaneProps {
+interface HistoryPaneProps {
   claudeStatus?: string;
   sessions?: Session[];
   newProjectPath?: string;
@@ -21,7 +21,7 @@ interface MetadataPaneProps {
   stopSession?: (sessionId: string) => void;
 }
 
-export const MetadataPane: React.FC<MetadataPaneProps> = ({
+export const HistoryPane: React.FC<HistoryPaneProps> = ({
   claudeStatus = "Ready",
   sessions = [],
   newProjectPath = "",
@@ -33,12 +33,6 @@ export const MetadataPane: React.FC<MetadataPaneProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="text-center select-none mb-4">
-        <h1 className="text-xl font-bold mb-1">OpenAgents</h1>
-        <p className="text-muted-foreground text-xs">Claude Code Commander</p>
-      </div>
-
       {/* Status Section */}
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Status</h3>

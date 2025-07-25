@@ -3,7 +3,8 @@ import { usePaneStore } from "@/stores/pane";
 import { Pane } from "./Pane";
 import { Pane as PaneType } from "@/types/pane";
 import { ChatPane } from "./ChatPane";
-import { MetadataPane } from "./MetadataPane";
+import { HistoryPane } from "./HistoryPane";
+import { SettingsPane } from "./SettingsPane";
 
 export const PaneManager: React.FC = () => {
   const { panes, activePaneId } = usePaneStore();
@@ -22,7 +23,7 @@ export const PaneManager: React.FC = () => {
           sendMessage={data.sendMessage}
         />;
       case "metadata":
-        return <MetadataPane 
+        return <HistoryPane 
           claudeStatus={data.claudeStatus}
           sessions={data.sessions}
           newProjectPath={data.newProjectPath}
@@ -31,6 +32,8 @@ export const PaneManager: React.FC = () => {
           createSession={data.createSession}
           stopSession={data.stopSession}
         />;
+      case "settings":
+        return <SettingsPane />;
       default:
         return <div>Unknown pane type: {pane.type}</div>;
     }
