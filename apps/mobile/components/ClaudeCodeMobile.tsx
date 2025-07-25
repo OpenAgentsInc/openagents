@@ -196,7 +196,7 @@ export function ClaudeCodeMobile() {
       );
     }
 
-    const session = sessions.find(s => s.sessionId === selectedSessionId);
+    const session = sessions.find((s: ClaudeSession) => s.sessionId === selectedSessionId);
     const [newMessage, setNewMessage] = useState("");
 
     return (
