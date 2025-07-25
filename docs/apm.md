@@ -1,6 +1,6 @@
 # APM (Actions Per Minute) System
 
-This document explains the comprehensive APM analysis system in OpenAgents, including the different types of APM measurements, their implications, and how to interpret the data.
+This document explains the comprehensive APM analysis system in OpenAgents, including the different time window measurements, their implications, and how to interpret the data.
 
 ## What is APM?
 
@@ -9,307 +9,183 @@ APM (Actions Per Minute) is a productivity metric borrowed from competitive gami
 - **Messages**: Both user queries and assistant responses
 - **Tool Uses**: When Claude uses tools like Edit, Read, Bash, etc.
 
-## Types of APM Measurements
+## Time Window Measurements
 
-The system provides **four distinct APM calculations** to give different perspectives on productivity:
+The system provides **six time-window APM calculations** showing your productivity across different time horizons:
 
-### 1. Session APM
-**Formula**: `(Total Messages + Total Tool Uses) / Total Session Duration`
+### 1. 1 Hour APM
+**Formula**: `(Actions in Last Hour) / 60 minutes`
 
-**What it measures**: Your average APM when you're actively coding
-
-**Example Calculation**:
-- 3 sessions: 10 min, 15 min, 5 min = 30 minutes total
-- 114 total actions across all sessions
-- **Session APM**: 114 ÷ 30 = **3.8 APM**
-
-**Use Case**: Understanding your productivity during focused work periods
-
-### 2. All-Time APM  
-**Formula**: `(Total Messages + Total Tool Uses) / Calendar Time from First to Last Conversation`
-
-**What it measures**: Your APM across your entire Claude Code usage history, including breaks
+**What it measures**: Your productivity burst in the immediate past hour
 
 **Example Calculation**:
-- Same 114 actions and 30 minutes of active time
-- Sessions spread over 2 days = 2,880 minutes calendar time
-- **All-Time APM**: 114 ÷ 2,880 = **0.04 APM**
+- 30 actions in the last hour
+- **1 Hour APM**: 30 ÷ 60 = **0.5 APM**
 
-**Use Case**: Understanding overall engagement and usage patterns
+**Use Case**: Detecting current productivity spikes or focused work sessions
 
-### 3. Last 24 Hours APM
+### 2. 6 Hours APM
+**Formula**: `(Actions in Last 6 Hours) / 360 minutes`
+
+**What it measures**: Your productivity over a typical work session or half-day
+
+**Example Calculation**:
+- 120 actions in the last 6 hours
+- **6 Hours APM**: 120 ÷ 360 = **0.33 APM**
+
+**Use Case**: Understanding sustained productivity over extended work periods
+
+### 3. 1 Day APM
 **Formula**: `(Actions in Last 24 Hours) / 1440 minutes`
 
-**What it measures**: Your APM over the past 24 hours of calendar time
+**What it measures**: Your daily coding productivity including breaks and off-hours
 
 **Example Calculation**:
-- 25 actions in the last 24 hours
-- **Last 24 Hours APM**: 25 ÷ 1440 = **0.017 APM**
+- 200 actions in the last 24 hours
+- **1 Day APM**: 200 ÷ 1440 = **0.14 APM**
 
-**Use Case**: Recent productivity regardless of active session time
+**Use Case**: Daily productivity tracking and routine analysis
 
-### 4. Current Session APM
-**Formula**: APM of your most recent active session
+### 4. 1 Week APM
+**Formula**: `(Actions in Last 7 Days) / 10080 minutes`
 
-**What it measures**: How productive your latest coding session was
+**What it measures**: Your weekly productivity pattern including weekends
 
-**Use Case**: Real-time feedback on current performance
+**Example Calculation**:
+- 800 actions in the last week
+- **1 Week APM**: 800 ÷ 10080 = **0.08 APM**
+
+**Use Case**: Understanding work-life balance and weekly coding habits
+
+### 5. 1 Month APM
+**Formula**: `(Actions in Last 30 Days) / 43200 minutes`
+
+**What it measures**: Your monthly productivity trend and project cycles
+
+**Example Calculation**:
+- 2000 actions in the last month
+- **1 Month APM**: 2000 ÷ 43200 = **0.046 APM**
+
+**Use Case**: Long-term productivity analysis and goal setting
+
+### 6. Lifetime APM
+**Formula**: `(Total Actions) / (Total Calendar Time Since First Use)`
+
+**What it measures**: Your overall productivity from first conversation to present
+
+**Example Calculation**:
+- 5000 total actions over 100 days of usage
+- **Lifetime APM**: 5000 ÷ 144000 = **0.035 APM**
+
+**Use Case**: Overall engagement and long-term usage patterns
 
 ## Understanding the Numbers
 
 ### Real-World Context
 
 Based on analysis of 279 real Claude Code conversations:
-- **Session APM Average**: 3.8 actions/minute during active coding
-- **Peak Session**: 1,215 APM recorded
+- **Typical Daily APM**: 0.05-0.2 APM during active development periods
+- **Peak Hour APM**: Can reach 2-10 APM during intensive coding sessions
 - **Tool Distribution**: Bash (34%), Read (23%), Edit (21%)
 
-### APM Comparison Examples
+### Time Window Comparison Examples
 
-**High Session APM (50+ APM)**:
-- Rapid iteration cycles, efficient workflows
-- Bug fixing sessions, rapid prototyping
-- Flow state coding
+**High Burst Activity (2+ APM in 1 hour)**:
+- Rapid debugging sessions
+- Live coding or pair programming
+- Intensive feature development sprints
 
-**Moderate Session APM (10-50 APM)**:
-- Balanced development work
-- Feature implementation with research
-- Normal debugging workflows
+**Sustained Activity (0.1-1 APM over 6+ hours)**:
+- Full-day development work
+- Project implementation phases
+- Comprehensive refactoring tasks
 
-**Low Session APM (0-10 APM)**:
+**Background Activity (0.01-0.1 APM over days/weeks)**:
 - Learning and exploration phases
-- Code reading and understanding
-- Research-heavy tasks
+- Maintenance and small fixes
+- Long-term project work with breaks
 
-### APM Comparison: Different Time Perspectives
+### Productivity Patterns
 
-The four APM metrics provide different views of productivity:
+The six time windows reveal different aspects of your coding behavior:
 
 ```
-Session APM = Actions / Active Coding Time Only
-All-Time APM = Actions / (Total Calendar Time Since First Use)
-Last 24 Hours APM = Actions in Last 24h / 1440 minutes
-Current Session APM = Actions / Most Recent Session Duration
+1 Hour: Shows immediate focus and productivity bursts
+6 Hours: Reveals sustained work session effectiveness  
+1 Day: Captures daily coding habits and routines
+1 Week: Shows work-life balance and weekly patterns
+1 Month: Indicates project cycles and long-term trends
+Lifetime: Provides overall engagement baseline
 ```
 
-**Example Comparison**:
-- Developer: 114 actions total, 30 minutes active coding, over 2 days, with 25 actions in last 24h
-- **Session APM**: 114 ÷ 30 = **3.8 APM** (active productivity)
-- **All-Time APM**: 114 ÷ 2,880 = **0.04 APM** (long-term engagement)
-- **Last 24 Hours APM**: 25 ÷ 1,440 = **0.017 APM** (recent activity)
-- **Current Session APM**: Varies by latest session
+**Example Analysis**:
+- Developer: 1h=2.0, 6h=0.8, 1d=0.2, 1w=0.1, 1m=0.05, lifetime=0.03
+- **Interpretation**: Currently in a high-productivity coding session (1h), sustained over several hours (6h), but lower overall daily activity (1d), indicating focused bursts rather than continuous coding
 
 ## What Actions Are Counted?
 
 ### Messages
-- **User Messages**: Questions, requests, code reviews
-- **Assistant Messages**: Explanations, responses, guidance
+- User prompts and questions
+- Claude's responses and explanations
+- Follow-up clarifications
 
-### Tool Uses (Assistant Only)
-Extracted from assistant message content arrays:
+### Tool Uses
+The system tracks usage of all Claude Code tools:
 
-```json
-{
-  "type": "tool_use",
-  "name": "Edit",
-  "input": {
-    "file_path": "src/app.js",
-    "old_string": "const port = 3000",
-    "new_string": "const port = process.env.PORT || 3000"
-  }
-}
-```
+| Category | Tools | % of Usage |
+|----------|-------|------------|
+| **System Operations** | Bash | ~34% |
+| **File Operations** | Read, LS, Glob | ~23% |
+| **Code Generation** | Edit, MultiEdit, Write | ~21% |
+| **Search** | Grep, WebSearch, WebFetch | ~12% |
+| **Planning** | TodoWrite, TodoRead | ~5% |
+| **Other** | Task, NotebookRead, etc. | ~5% |
 
-### Tool Categories
+## Interpreting Your APM Data
 
-| Category | Tools | Typical APM Impact |
-|----------|-------|-------------------|
-| **Code Generation** | Edit, MultiEdit, Write | High - direct productivity |
-| **File Operations** | Read, LS, Glob | Medium - exploration/understanding |
-| **System Operations** | Bash | High - automation and execution |
-| **Search** | Grep, WebSearch, WebFetch | Medium - research and discovery |
-| **Planning** | TodoWrite, TodoRead | Low - organization |
+### Productivity Phases
 
-## Session Boundaries and Duration
+**High APM Periods** indicate:
+- Active problem-solving
+- Rapid iteration and testing
+- Flow state coding sessions
+- Debugging and troubleshooting
 
-### How Sessions Are Defined
-- **Session ID**: Unique identifier from Claude Code
-- **Start Time**: Timestamp of first message in session
-- **End Time**: Timestamp of last message in session
-- **Duration**: `End Time - Start Time` (not cumulative thinking time)
+**Low APM Periods** indicate:
+- Research and learning phases
+- Code reading and understanding
+- Planning and architecture design
+- Breaks between coding sessions
 
-### What's NOT Counted
-- Time spent thinking between messages
-- Time reading without responding
-- Breaks within a session
-- Time spent outside Claude Code
+### Time Window Strategy
 
-### Minimum Session Requirements
-- At least 2 messages (user + assistant)
-- Duration > 0 minutes
-- Valid timestamps
+Use different windows for different insights:
+- **1h & 6h**: Optimize current work sessions
+- **1d & 1w**: Improve daily/weekly habits
+- **1m & lifetime**: Track long-term progress and goals
 
-## Interpreting Your APM
+### Performance Optimization
 
-### High Session APM (50+ APM)
-**Indicates**:
-- Rapid iteration cycles
-- Efficient tool usage
-- Flow state coding
-- Well-optimized workflows
-
-**Common Scenarios**:
-- Bug fixing sessions
-- Rapid prototyping
-- Automated refactoring
-- Emergency debugging
-
-### Low Session APM (0-10 APM)
-**Indicates**:
-- Learning and exploration
-- Complex problem analysis
-- Reading and understanding code
-- Research-heavy tasks
-
-**Common Scenarios**:
-- Onboarding to new codebase
-- Architecture planning
-- Learning new technologies
-- Code review and analysis
-
-### Moderate Session APM (10-50 APM)
-**Indicates**:
-- Balanced development work
-- Steady feature implementation
-- Normal debugging workflows
-- Mixed activities
-
-## Productivity Insights
-
-### Time-Based Analysis
-Sessions are categorized by start time:
-
-- **Morning (6-12)**: Often highest focus and APM
-- **Afternoon (12-18)**: Consistent productivity
-- **Evening (18-24)**: Variable, depends on energy
-- **Night (0-6)**: Usually debugging or urgent fixes
-
-### Tool Usage Patterns
-
-**Bash-Heavy Sessions** (High System APM):
-- Deployment and DevOps tasks
-- Build system debugging
-- Environment setup
-- Automation workflows
-
-**Read-Heavy Sessions** (High Exploration APM):
-- Code archaeology and understanding
-- Learning new codebases
-- Research and investigation
-- Documentation review
-
-**Edit-Heavy Sessions** (High Implementation APM):
-- Feature development
-- Bug fixing
-- Refactoring
-- Code generation
-
-## Performance Optimization Tips
-
-### To Increase Session APM:
-1. **Use keyboard shortcuts** for common operations
-2. **Batch similar operations** (multiple edits in sequence)
-3. **Leverage automation tools** (Bash scripts, bulk operations)
-4. **Minimize context switching** between different tasks
-5. **Use tool chains** (Read → Edit → Bash → Test cycles)
-
-### To Improve Code Quality (Balance APM):
-1. **Don't optimize APM at expense of quality**
-2. **Use Read commands** before making changes
-3. **Take time for architecture decisions**
-4. **Review and test changes**
-5. **Document complex solutions**
-
-## Data Sources and Accuracy
-
-### File Locations
-```
-~/.claude/projects/*/
-├── session-id-1.jsonl
-├── session-id-2.jsonl
-└── ...
-```
-
-### Parsing Methodology
-1. **Scan all project directories** under `~/.claude/projects/`
-2. **Parse JSONL files** line by line
-3. **Group by session ID** from conversation entries
-4. **Extract timestamps** and calculate durations
-5. **Count messages and tool uses** per session
-6. **Aggregate statistics** across all sessions
-
-### Limitations and Considerations
-
-**Network Delays**:
-- Tool execution time may vary based on connection
-- Doesn't affect action counting, only timing
-
-**Session Boundaries**:
-- Some logical work may span multiple sessions
-- Manual session management by user
-
-**Context Complexity**:
-- Simple edits vs complex architecture decisions
-- APM doesn't measure code quality or impact
-
-**Interruptions**:
-- Real-world workflow disruptions
-- Multitasking between projects
-
-## Using APM Data Effectively
-
-### For Personal Development
-- **Track improvement** over time
-- **Identify peak productivity hours**
-- **Optimize workflows** based on tool usage patterns
-- **Balance speed with quality**
-
-### For Team Insights
-- **Compare productivity patterns**
-- **Share effective tool combinations**
-- **Identify training opportunities**
-- **Optimize development processes**
-
-### For Project Management
-- **Estimate development velocity**
-- **Identify complex vs routine tasks**
-- **Plan resource allocation**
-- **Track team engagement**
+To improve your APM effectively:
+1. **Focus Time**: Schedule uninterrupted coding blocks
+2. **Tool Mastery**: Learn efficient Claude Code workflows
+3. **Batch Tasks**: Group similar activities together
+4. **Regular Analysis**: Review patterns weekly/monthly
 
 ## Technical Implementation
 
-### Backend Analysis (Rust)
-- **Async file processing** for performance
-- **Error-tolerant JSON parsing** (skips invalid lines)
-- **Memory-efficient streaming** for large datasets
-- **Comprehensive error handling** and logging
+### Data Sources
+- Conversation files: `~/.claude/projects/*/[session].jsonl`
+- Real-time analysis during active coding sessions
+- Historical data from all past conversations
 
-### Frontend Display (React)
-- **Real-time updates** via Tauri commands
-- **Multiple APM views** (session, all-time, current)
-- **Interactive session drilling** for detailed analysis
-- **Responsive charts and visualizations**
+### Calculation Method
+- Time windows calculated from current timestamp backwards
+- Actions counted by parsing JSONL conversation entries
+- APM = Total Actions ÷ Time Window Duration in Minutes
 
-### Performance Characteristics
-- **Sub-second analysis** for 1000+ conversations
-- **Minimal memory footprint** even for large histories
-- **Incremental loading** of conversation data
-- **Efficient caching** of computed statistics
-
-## Conclusion
-
-APM analysis provides data-driven insights into coding productivity patterns. The dual measurement system (Session APM vs All-Time APM) offers both focused and holistic views of development activity.
-
-**Session APM** shows your effectiveness during active work periods, while **All-Time APM** reflects overall engagement patterns. Both metrics together provide a comprehensive understanding of your development workflow and productivity trends.
-
-Remember: APM is a tool for insight, not optimization at the expense of code quality. The goal is sustainable, effective development practices informed by data.
+### Accuracy Notes
+- Actions only counted when conversations are active
+- Silent periods (no conversation files) don't contribute to APM
+- Time zones handled using UTC normalization
+- Partial sessions at window boundaries are included proportionally

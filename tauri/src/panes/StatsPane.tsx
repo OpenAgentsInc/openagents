@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { invoke } from "@tauri-apps/api/core";
-import { BarChart, Clock, Target, TrendingUp, Loader2, RefreshCw, Eye } from "lucide-react";
+import { BarChart, Clock, TrendingUp, Loader2, RefreshCw, Eye } from "lucide-react";
 
 interface ToolUsage {
   name: string;
@@ -22,10 +22,12 @@ interface APMSession {
 }
 
 interface APMStats {
-  sessionBasedAPM: number;
-  allTimeAPM: number;
-  last24HoursAPM: number;
-  currentSessionAPM: number;
+  apm1h: number;
+  apm6h: number;
+  apm1d: number;
+  apm1w: number;
+  apm1m: number;
+  apmLifetime: number;
   totalSessions: number;
   totalMessages: number;
   totalToolUses: number;
@@ -157,67 +159,90 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
       <Separator className="my-4" />
 
       <div className="flex-1 overflow-auto space-y-6">
-        {/* Overview Cards */}
-        <div className="grid grid-cols-2 gap-4">
+        {/* Time Window APM Cards */}
+        <div className="grid grid-cols-3 gap-3">
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Target className="h-4 w-4 text-blue-400" />
-              <span className="text-sm font-medium">Session APM</span>
+              <Clock className="h-4 w-4 text-red-400" />
+              <span className="text-sm font-medium">1 Hour</span>
             </div>
-            <div className="text-2xl font-bold">{stats.sessionBasedAPM.toFixed(1)}</div>
-            <div className="text-xs text-muted-foreground">Active coding time only</div>
-          </div>
-          
-          <div className="bg-card rounded-lg border p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-4 w-4 text-purple-400" />
-              <span className="text-sm font-medium">All-Time APM</span>
-            </div>
-            <div className="text-2xl font-bold">{stats.allTimeAPM.toFixed(3)}</div>
-            <div className="text-xs text-muted-foreground">From first to last conversation</div>
-          </div>
-        </div>
-
-        {/* Last 24 Hours and Current Session */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-card rounded-lg border p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Clock className="h-4 w-4 text-green-400" />
-              <span className="text-sm font-medium">Last 24 Hours</span>
-            </div>
-            <div className="text-2xl font-bold">{stats.last24HoursAPM.toFixed(3)}</div>
-            <div className="text-xs text-muted-foreground">Actions per minute over 24 hours</div>
+            <div className="text-xl font-bold">{stats.apm1h.toFixed(1)}</div>
+            <div className="text-xs text-muted-foreground">APM</div>
           </div>
           
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
               <Clock className="h-4 w-4 text-orange-400" />
-              <span className="text-sm font-medium">Current Session APM</span>
+              <span className="text-sm font-medium">6 Hours</span>
             </div>
-            <div className="text-2xl font-bold">{stats.currentSessionAPM.toFixed(1)}</div>
-            <div className="text-xs text-muted-foreground">Most recent session</div>
+            <div className="text-xl font-bold">{stats.apm6h.toFixed(2)}</div>
+            <div className="text-xs text-muted-foreground">APM</div>
+          </div>
+
+          <div className="bg-card rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="h-4 w-4 text-yellow-400" />
+              <span className="text-sm font-medium">1 Day</span>
+            </div>
+            <div className="text-xl font-bold">{stats.apm1d.toFixed(3)}</div>
+            <div className="text-xs text-muted-foreground">APM</div>
+          </div>
+
+          <div className="bg-card rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="h-4 w-4 text-green-400" />
+              <span className="text-sm font-medium">1 Week</span>
+            </div>
+            <div className="text-xl font-bold">{stats.apm1w.toFixed(3)}</div>
+            <div className="text-xs text-muted-foreground">APM</div>
+          </div>
+
+          <div className="bg-card rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="h-4 w-4 text-blue-400" />
+              <span className="text-sm font-medium">1 Month</span>
+            </div>
+            <div className="text-xl font-bold">{stats.apm1m.toFixed(3)}</div>
+            <div className="text-xs text-muted-foreground">APM</div>
+          </div>
+
+          <div className="bg-card rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-4 w-4 text-purple-400" />
+              <span className="text-sm font-medium">Lifetime</span>
+            </div>
+            <div className="text-xl font-bold">{stats.apmLifetime.toFixed(3)}</div>
+            <div className="text-xs text-muted-foreground">APM</div>
           </div>
         </div>
 
-        {/* APM Metrics Legend */}
+        {/* Time Window Explanations */}
         <div className="bg-card rounded-lg border p-4">
-          <h3 className="font-semibold mb-3 text-sm">Metric Explanations</h3>
+          <h3 className="font-semibold mb-3 text-sm">Time Window Explanations</h3>
           <div className="space-y-2 text-xs text-muted-foreground">
             <div className="flex items-start gap-2">
-              <span className="text-blue-400 font-medium min-w-0 flex-shrink-0">Session APM:</span>
-              <span>Average actions per minute across all your coding sessions combined</span>
+              <span className="text-red-400 font-medium min-w-0 flex-shrink-0">1 Hour:</span>
+              <span>Actions per minute over the last 60 minutes</span>
             </div>
             <div className="flex items-start gap-2">
-              <span className="text-purple-400 font-medium min-w-0 flex-shrink-0">All-Time APM:</span>
-              <span>Actions per minute from your very first conversation to your latest (includes breaks)</span>
+              <span className="text-orange-400 font-medium min-w-0 flex-shrink-0">6 Hours:</span>
+              <span>Actions per minute over the last 6 hours</span>
             </div>
             <div className="flex items-start gap-2">
-              <span className="text-green-400 font-medium min-w-0 flex-shrink-0">Last 24 Hours:</span>
-              <span>Actions per minute over the past 24 hours of calendar time (includes sleep/breaks)</span>
+              <span className="text-yellow-400 font-medium min-w-0 flex-shrink-0">1 Day:</span>
+              <span>Actions per minute over the last 24 hours</span>
             </div>
             <div className="flex items-start gap-2">
-              <span className="text-orange-400 font-medium min-w-0 flex-shrink-0">Current Session:</span>
-              <span>Actions per minute in your most recent coding session only</span>
+              <span className="text-green-400 font-medium min-w-0 flex-shrink-0">1 Week:</span>
+              <span>Actions per minute over the last 7 days</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-blue-400 font-medium min-w-0 flex-shrink-0">1 Month:</span>
+              <span>Actions per minute over the last 30 days</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-purple-400 font-medium min-w-0 flex-shrink-0">Lifetime:</span>
+              <span>Actions per minute from your first to most recent conversation</span>
             </div>
           </div>
         </div>

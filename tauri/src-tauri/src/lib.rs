@@ -73,14 +73,18 @@ struct ProductivityByTime {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct APMStats {
-    #[serde(rename = "sessionBasedAPM")]
-    session_based_apm: f64,
-    #[serde(rename = "allTimeAPM")]
-    all_time_apm: f64,
-    #[serde(rename = "last24HoursAPM")]
-    last_24_hours_apm: f64,
-    #[serde(rename = "currentSessionAPM")]
-    current_session_apm: f64,
+    #[serde(rename = "apm1h")]
+    apm_1h: f64,
+    #[serde(rename = "apm6h")]
+    apm_6h: f64,
+    #[serde(rename = "apm1d")]
+    apm_1d: f64,
+    #[serde(rename = "apm1w")]
+    apm_1w: f64,
+    #[serde(rename = "apm1m")]
+    apm_1m: f64,
+    #[serde(rename = "apmLifetime")]
+    apm_lifetime: f64,
     #[serde(rename = "totalSessions")]
     total_sessions: u32,
     #[serde(rename = "totalMessages")]
@@ -330,15 +334,37 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     // Calculate overall metrics
     let total_sessions = apm_sessions.len() as u32;
     
-    // Session-based APM: only counts time when actively in sessions
-    let session_based_apm = if total_duration > 0.0 {
-        (total_messages as f64 + total_tools as f64) / total_duration
-    } else {
-        0.0
+    // Calculate APM for different time windows
+    let now = Utc::now();
+    
+    // Helper function to calculate APM for a time window
+    let calculate_window_apm = |hours_back: i64, total_minutes: f64| -> f64 {
+        let cutoff_time = now - chrono::Duration::hours(hours_back);
+        let mut window_messages = 0u32;
+        let mut window_tools = 0u32;
+        
+        for session in &apm_sessions {
+            if let Ok(session_time) = DateTime::parse_from_rfc3339(&session.timestamp) {
+                let session_utc = session_time.with_timezone(&Utc);
+                if session_utc >= cutoff_time {
+                    window_messages += session.message_count;
+                    window_tools += session.tool_count;
+                }
+            }
+        }
+        
+        (window_messages as f64 + window_tools as f64) / total_minutes
     };
     
-    // All-time APM: counts total calendar time from first to last conversation
-    let all_time_apm = if let (Some(earliest), Some(latest)) = (earliest_timestamp, latest_timestamp) {
+    // Calculate APM for each time window
+    let apm_1h = calculate_window_apm(1, 60.0);      // 1 hour = 60 minutes
+    let apm_6h = calculate_window_apm(6, 360.0);     // 6 hours = 360 minutes  
+    let apm_1d = calculate_window_apm(24, 1440.0);   // 1 day = 1440 minutes
+    let apm_1w = calculate_window_apm(168, 10080.0); // 1 week = 10080 minutes
+    let apm_1m = calculate_window_apm(720, 43200.0); // 30 days = 43200 minutes
+    
+    // Lifetime APM: counts total calendar time from first to last conversation
+    let apm_lifetime = if let (Some(earliest), Some(latest)) = (earliest_timestamp, latest_timestamp) {
         let total_calendar_minutes = (latest - earliest).num_seconds() as f64 / 60.0;
         if total_calendar_minutes > 0.0 {
             (total_messages as f64 + total_tools as f64) / total_calendar_minutes
@@ -348,30 +374,6 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     } else {
         0.0
     };
-    
-    // Get current session APM (most recent session)
-    apm_sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-    let current_session_apm = apm_sessions.first().map(|s| s.apm).unwrap_or(0.0);
-    
-    // Calculate last 24 hours APM: actions in last 24 hours / 24 hours (1440 minutes)
-    let now = Utc::now();
-    let twenty_four_hours_ago = now - chrono::Duration::hours(24);
-    
-    let mut last_24h_messages = 0u32;
-    let mut last_24h_tools = 0u32;
-    
-    // Count actions from sessions that have any activity in the last 24 hours
-    for session in &apm_sessions {
-        if let Ok(session_time) = DateTime::parse_from_rfc3339(&session.timestamp) {
-            let session_utc = session_time.with_timezone(&Utc);
-            if session_utc >= twenty_four_hours_ago {
-                last_24h_messages += session.message_count;
-                last_24h_tools += session.tool_count;
-            }
-        }
-    }
-    
-    let last_24_hours_apm = (last_24h_messages as f64 + last_24h_tools as f64) / 1440.0; // 24 hours = 1440 minutes
     
     // Process tool usage statistics
     let total_tool_uses_for_percentage = total_tools as f64;
@@ -400,10 +402,12 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     };
     
     Ok(APMStats {
-        session_based_apm,
-        all_time_apm,
-        last_24_hours_apm,
-        current_session_apm,
+        apm_1h,
+        apm_6h,
+        apm_1d,
+        apm_1w,
+        apm_1m,
+        apm_lifetime,
         total_sessions,
         total_messages,
         total_tool_uses: total_tools,
@@ -420,8 +424,8 @@ async fn analyze_claude_conversations() -> Result<CommandResult<APMStats>, Strin
     
     match analyze_conversations().await {
         Ok(stats) => {
-            info!("APM analysis completed successfully. Session APM: {:.1}, All-Time APM: {:.1}, Sessions: {}", 
-                  stats.session_based_apm, stats.all_time_apm, stats.total_sessions);
+            info!("APM analysis completed successfully. 1h: {:.1}, 1d: {:.1}, Lifetime: {:.1}, Sessions: {}", 
+                  stats.apm_1h, stats.apm_1d, stats.apm_lifetime, stats.total_sessions);
             Ok(CommandResult::success(stats))
         }
         Err(e) => {
