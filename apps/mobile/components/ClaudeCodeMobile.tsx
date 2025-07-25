@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -48,6 +48,9 @@ export function ClaudeCodeMobile() {
   const [newSessionTitle, setNewSessionTitle] = useState("");
   const [initialMessage, setInitialMessage] = useState("");
   
+  // Message input state (moved from renderSessionDetail to fix hooks violation)
+  const [newMessage, setNewMessage] = useState("");
+  
   // Convex hooks
   const sessions = useQuery(api.claude.getSessions, { limit: 50 }) || [];
   const selectedSessionMessages = useQuery(
@@ -58,6 +61,11 @@ export function ClaudeCodeMobile() {
   const requestDesktopSession = useMutation(api.claude.requestDesktopSession);
   const addMessage = useMutation(api.claude.addClaudeMessage);
   const updateSyncStatus = useMutation(api.claude.updateSyncStatus);
+
+  // Clear message input when switching sessions
+  useEffect(() => {
+    setNewMessage("");
+  }, [selectedSessionId]);
 
   const handleCreateSession = async () => {
     if (!newProjectPath.trim()) {
@@ -197,7 +205,6 @@ export function ClaudeCodeMobile() {
     }
 
     const session = sessions.find((s: ClaudeSession) => s.sessionId === selectedSessionId);
-    const [newMessage, setNewMessage] = useState("");
 
     return (
       <View style={styles.sessionDetail}>
