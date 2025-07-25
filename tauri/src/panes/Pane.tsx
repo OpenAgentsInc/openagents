@@ -37,18 +37,31 @@ const useResizeHandlers = (
   const prevSizeRef = useRef(initialSize);
 
   useEffect(() => {
+    console.log(`🔄 [${id}] Position sync check:`, {
+      isCurrentlyInteracting,
+      initialPosition,
+      currentPosition: position,
+      prevPosition: prevPositionRef.current,
+      shouldUpdate: !isCurrentlyInteracting &&
+        (initialPosition.x !== prevPositionRef.current.x ||
+          initialPosition.y !== prevPositionRef.current.y) &&
+        (position.x !== initialPosition.x || position.y !== initialPosition.y)
+    });
+    
     if (
       !isCurrentlyInteracting &&
       (initialPosition.x !== prevPositionRef.current.x ||
         initialPosition.y !== prevPositionRef.current.y) &&
       (position.x !== initialPosition.x || position.y !== initialPosition.y)
     ) {
+      console.log(`✅ [${id}] Updating position from`, position, 'to', initialPosition);
       setPosition(initialPosition);
     }
     if (!isCurrentlyInteracting) {
       prevPositionRef.current = initialPosition;
     }
   }, [
+    id,
     initialPosition.x,
     initialPosition.y,
     isCurrentlyInteracting,
@@ -180,6 +193,8 @@ export const Pane: React.FC<PaneProps> = ({
   children,
   style,
 }) => {
+  console.log(`🎭 [${id}] Pane render with props:`, { x, y, width, height });
+  
   const { 
     updatePanePosition, 
     updatePaneSize, 
@@ -191,6 +206,11 @@ export const Pane: React.FC<PaneProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [dragPosition, setDragPosition] = useState({ x, y });
+  
+  // Debug prop changes
+  useEffect(() => {
+    console.log(`📍 [${id}] Props changed - x: ${x}, y: ${y}, width: ${width}, height: ${height}`);
+  }, [id, x, y, width, height]);
 
   // Sync position from props when not interacting
   useEffect(() => {
