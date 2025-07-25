@@ -9,6 +9,7 @@ export const DEFAULT_CHAT_WIDTH = 600; // Larger for better usability
 export const DEFAULT_CHAT_HEIGHT = 450; // Larger for better usability
 export const METADATA_PANEL_WIDTH = 320;
 export const SETTINGS_PANEL_WIDTH = 320;
+export const STATS_PANEL_WIDTH = 480; // Wider for charts and tables
 
 interface ClosedPanePosition {
   x: number;
@@ -53,6 +54,7 @@ interface PaneStore extends PaneState {
   openChatPane: (sessionId: string, projectPath: string) => void;
   toggleMetadataPane: () => void;
   toggleSettingsPane: () => void;
+  toggleStatsPane: () => void;
   organizePanes: () => void;
   
   // Utilities
@@ -398,6 +400,25 @@ export const usePaneStore = create<PaneStore>()(
               x: storedPosition?.x || defaultX,
               y: storedPosition?.y || PANE_MARGIN,
               width: storedPosition?.width || SETTINGS_PANEL_WIDTH,
+              height: storedPosition?.height || (screenHeight - (PANE_MARGIN * 2) - 60),
+            };
+          }
+        });
+      },
+
+      toggleStatsPane: () => {
+        togglePaneAction(set, get, {
+          paneId: "stats",
+          createPaneInput: (_screenWidth, screenHeight, storedPosition) => {
+            const defaultX = METADATA_PANEL_WIDTH + SETTINGS_PANEL_WIDTH + PANE_MARGIN * 3;
+            return {
+              id: "stats",
+              type: "stats",
+              title: "APM Statistics",
+              dismissable: true,
+              x: storedPosition?.x || defaultX,
+              y: storedPosition?.y || PANE_MARGIN,
+              width: storedPosition?.width || STATS_PANEL_WIDTH,
               height: storedPosition?.height || (screenHeight - (PANE_MARGIN * 2) - 60),
             };
           }

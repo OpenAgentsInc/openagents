@@ -5,6 +5,7 @@ import { Pane as PaneType } from "@/types/pane";
 import { ChatPane } from "./ChatPane";
 import { HistoryPane } from "./HistoryPane";
 import { SettingsPane } from "./SettingsPane";
+import { StatsPane } from "./StatsPane";
 
 export const PaneManager: React.FC = () => {
   const { panes, activePaneId } = usePaneStore();
@@ -37,6 +38,8 @@ export const PaneManager: React.FC = () => {
           sessions={data.sessions}
           isDiscoveryLoading={data.isDiscoveryLoading}
         />;
+      case "stats":
+        return <StatsPane />;
       default:
         return <div>Unknown pane type: {pane.type}</div>;
     }

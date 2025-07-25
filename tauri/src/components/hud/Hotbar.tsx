@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
-import { Plus, History, Hand, Settings, LayoutGrid } from "lucide-react";
+import { Plus, History, Hand, Settings, LayoutGrid, BarChart } from "lucide-react";
 import { usePaneStore } from "@/stores/pane";
 
 interface HotbarProps {
@@ -17,7 +17,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
   isHandTrackingActive,
   onToggleHandTracking 
 }) => {
-  const { toggleMetadataPane, toggleSettingsPane, organizePanes } = usePaneStore();
+  const { toggleMetadataPane, toggleSettingsPane, toggleStatsPane, organizePanes } = usePaneStore();
 
   const handleNewChat = () => {
     if (onNewChat) {
@@ -59,9 +59,13 @@ export const Hotbar: React.FC<HotbarProps> = ({
         <History className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
-      {/* Slot 4: Empty */}
-      <HotbarItem slotNumber={4} isGhost>
-        <span className="h-5 w-5" />
+      {/* Slot 4: Stats Panel */}
+      <HotbarItem
+        slotNumber={4}
+        onClick={toggleStatsPane}
+        title="APM Statistics"
+      >
+        <BarChart className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 5: Empty */}
