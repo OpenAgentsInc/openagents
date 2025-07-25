@@ -24,6 +24,17 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "assetBundlePatterns": [
+      "assets/fonts/*"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "openagents"
+      }
+    },
+    "developmentClient": {
+      "silenceNativeLogging": true
     }
   }
 }

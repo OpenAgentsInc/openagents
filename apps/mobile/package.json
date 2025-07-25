@@ -3,13 +3,15 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "start": "EXPO_NO_WELCOME_BANNER=1 expo start",
+    "android": "EXPO_NO_WELCOME_BANNER=1 expo start --android",
+    "ios": "EXPO_NO_WELCOME_BANNER=1 expo start --ios",
+    "web": "EXPO_NO_WELCOME_BANNER=1 expo start --web"
   },
   "dependencies": {
     "expo": "~53.0.20",
+    "expo-font": "^13.3.2",
+    "expo-splash-screen": "^0.30.10",
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
     "react-native": "0.79.5"
