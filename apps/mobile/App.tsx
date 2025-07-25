@@ -2,7 +2,7 @@ import { useFonts } from "expo-font"
 import { StatusBar } from "expo-status-bar"
 import { LogBox, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native"
 import { ConvexProvider, ConvexReactClient } from "convex/react"
-import { ConvexMobileDemo } from "./components/ConvexMobileDemo"
+import { ClaudeCodeMobile } from "./components/ClaudeCodeMobile"
 
 // Disable all development warnings
 LogBox.ignoreAllLogs(true)
@@ -24,9 +24,9 @@ function AppContent() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.text}>OpenAgents</Text>
+      <Text style={styles.text}>OpenAgents - Claude Code</Text>
       <View style={styles.demoContainer}>
-        <ConvexMobileDemo />
+        <ClaudeCodeMobile />
       </View>
       <StatusBar style="light" />
     </SafeAreaView>

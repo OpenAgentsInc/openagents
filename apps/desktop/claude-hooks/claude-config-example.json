@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/apps/desktop/claude-hooks/sync-to-convex.cjs",
+            "description": "Sync user prompts to Convex backend"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command", 
+            "command": "$CLAUDE_PROJECT_DIR/apps/desktop/claude-hooks/sync-to-convex.cjs",
+            "description": "Sync tool results to Convex backend"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/apps/desktop/claude-hooks/sync-to-convex.cjs", 
+            "description": "Sync final session state to Convex backend"
+          }
+        ]
+      }
+    ]
+  }
+}

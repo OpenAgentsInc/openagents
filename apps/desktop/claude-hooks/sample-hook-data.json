@@ -1,0 +1,45 @@
+{
+  "event": "UserPromptSubmit",
+  "timestamp": "2024-01-01T00:00:00Z",
+  "session": {
+    "id": "test-session-123",
+    "project_path": "/Users/test/project",
+    "model": "claude-3-5-sonnet",
+    "system_prompt": "You are Claude, an AI assistant."
+  },
+  "messages": [
+    {
+      "id": "msg-user-1",
+      "message_type": "user",
+      "content": "Hello Claude, can you help me write a function?",
+      "timestamp": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "msg-assistant-1", 
+      "message_type": "assistant",
+      "content": "Hello! I'd be happy to help you write a function. What kind of function are you looking to create?",
+      "timestamp": "2024-01-01T00:00:01Z"
+    },
+    {
+      "id": "msg-user-2",
+      "message_type": "user", 
+      "content": "I need a function to calculate fibonacci numbers",
+      "timestamp": "2024-01-01T00:00:02Z"
+    },
+    {
+      "id": "msg-tool-use-1",
+      "message_type": "tool_use",
+      "content": "I'll create a fibonacci function for you.",
+      "timestamp": "2024-01-01T00:00:03Z",
+      "tool_info": {
+        "tool_name": "Write",
+        "tool_use_id": "tool-123",
+        "input": {
+          "file_path": "/Users/test/project/fibonacci.py",
+          "content": "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)"
+        },
+        "output": "File written successfully"
+      }
+    }
+  ]
+}
