@@ -318,15 +318,20 @@ export const usePaneStore = create<PaneStore>()(
             };
           }
         } else if (otherPanes.length === 2) {
-          // Two panes: side by side, ~40% each with gap
-          const paneWidth = Math.floor((remainingWidth - PANE_MARGIN) / 2);
+          // Two panes: side by side, equal width with gap
+          const totalGap = PANE_MARGIN; // One gap between the two panes
+          const paneWidth = Math.floor((remainingWidth - totalGap) / 2);
           
           otherPanes.forEach((pane, index) => {
             const paneIndex = newPanes.findIndex(p => p.id === pane.id);
             if (paneIndex !== -1) {
+              const xPos = index === 0 
+                ? currentX 
+                : currentX + paneWidth + PANE_MARGIN;
+              
               newPanes[paneIndex] = {
                 ...newPanes[paneIndex],
-                x: currentX + index * (paneWidth + PANE_MARGIN),
+                x: xPos,
                 y: PANE_MARGIN,
                 width: paneWidth,
                 height: availableHeight,
