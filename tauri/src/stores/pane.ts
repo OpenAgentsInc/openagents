@@ -297,13 +297,22 @@ export const usePaneStore = create<PaneStore>()(
         
         if (panes.length === 0) return;
 
-        const screenWidth = window.innerWidth;
-        const screenHeight = window.innerHeight;
-        const hotbarHeight = 60;
-        const availableHeight = screenHeight - PANE_MARGIN * 2 - hotbarHeight;
-        const availableWidth = screenWidth - PANE_MARGIN * 2;
+        // Get the actual container dimensions (not viewport dimensions)
+        const containerElement = document.querySelector('.fixed.inset-0') as HTMLElement;
+        const containerRect = containerElement?.getBoundingClientRect();
+        
+        console.log("📦 Container info:", {
+          containerRect,
+          viewport: { width: window.innerWidth, height: window.innerHeight }
+        });
 
-        console.log("📐 Screen dimensions:", { screenWidth, screenHeight, availableWidth, availableHeight });
+        const containerWidth = containerRect?.width || window.innerWidth;
+        const containerHeight = containerRect?.height || window.innerHeight;
+        const hotbarHeight = 60;
+        const availableHeight = containerHeight - PANE_MARGIN * 2 - hotbarHeight;
+        const availableWidth = containerWidth - PANE_MARGIN * 2;
+
+        console.log("📐 Container dimensions:", { containerWidth, containerHeight, availableWidth, availableHeight });
 
         // Separate panes by type for smart organization
         const settingsPane = panes.find(p => p.type === "settings");
@@ -319,6 +328,12 @@ export const usePaneStore = create<PaneStore>()(
         let newPanes = [...panes];
         let currentX = PANE_MARGIN;
 
+        // Account for container offset (if container isn't at viewport top)
+        const containerTop = containerRect?.top || 0;
+        const adjustedY = Math.max(0, PANE_MARGIN - containerTop);
+        
+        console.log("🎯 Container offset adjustment:", { containerTop, originalY: PANE_MARGIN, adjustedY });
+
         // Settings pane: narrow sidebar on the left
         if (settingsPane) {
           const settingsIndex = newPanes.findIndex(p => p.id === settingsPane.id);
@@ -326,12 +341,12 @@ export const usePaneStore = create<PaneStore>()(
             newPanes[settingsIndex] = {
               ...newPanes[settingsIndex],
               x: currentX,
-              y: PANE_MARGIN,
+              y: adjustedY,
               width: SETTINGS_PANEL_WIDTH,
               height: availableHeight,
             };
             currentX += SETTINGS_PANEL_WIDTH + PANE_MARGIN;
-            console.log("⚙️ Positioned settings pane at", { x: PANE_MARGIN, y: PANE_MARGIN });
+            console.log("⚙️ Positioned settings pane at", { x: PANE_MARGIN, y: adjustedY });
           }
         }
 
@@ -358,7 +373,7 @@ export const usePaneStore = create<PaneStore>()(
           const paneIndex = newPanes.findIndex(p => p.id === pane.id);
           if (paneIndex !== -1) {
             const x = currentX + index * paneWidth;
-            const y = PANE_MARGIN;
+            const y = adjustedY;
             
             newPanes[paneIndex] = {
               ...newPanes[paneIndex],
