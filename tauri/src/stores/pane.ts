@@ -4,7 +4,7 @@ import { Pane, PaneInput } from "@/types/pane";
 
 export const PANE_MARGIN = 20;
 export const DEFAULT_CHAT_WIDTH = 600;
-export const DEFAULT_CHAT_HEIGHT = Math.min(700, window.innerHeight - 120); // Leave space for hotbar and margins
+export const DEFAULT_CHAT_HEIGHT = 600; // Fixed height to avoid positioning issues
 export const METADATA_PANEL_WIDTH = 320;
 
 interface ClosedPanePosition {
@@ -97,18 +97,22 @@ export const usePaneStore = create<PaneStore>()(
             x = METADATA_PANEL_WIDTH + PANE_MARGIN * 2;
             y = PANE_MARGIN;
             
-            // If there are other panes, cascade them
+            // If there are other panes, cascade them but limit the offset
             const existingPanes = get().panes.filter(p => p.type === "chat");
             if (existingPanes.length > 0) {
-              x += existingPanes.length * 30;
-              y += existingPanes.length * 30;
+              const cascadeOffset = Math.min(existingPanes.length * 30, 150); // Limit cascade offset
+              x += cascadeOffset;
+              y += cascadeOffset;
             }
           }
         }
 
-        // Ensure pane fits on screen
-        x = Math.max(PANE_MARGIN, Math.min(x, screenWidth - width - PANE_MARGIN));
-        y = Math.max(PANE_MARGIN, Math.min(y, screenHeight - height - PANE_MARGIN - 60));
+        // Ensure pane fits on screen with better bounds checking
+        const maxX = Math.max(screenWidth - width - PANE_MARGIN, PANE_MARGIN);
+        const maxY = Math.max(screenHeight - height - PANE_MARGIN - 100, PANE_MARGIN); // Leave more space at bottom
+        
+        x = Math.max(PANE_MARGIN, Math.min(x, maxX));
+        y = Math.max(PANE_MARGIN, Math.min(y, maxY));
 
         const newPane: Pane = {
           ...paneInput,

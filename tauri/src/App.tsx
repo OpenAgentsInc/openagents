@@ -135,13 +135,16 @@ function App() {
     console.error(`Streaming error for session ${sessionId}:`, error);
   }, []);
 
-  const sendMessage = async (sessionId: string) => {
+  const sendMessage = async (sessionId: string, messageContent?: string) => {
     const session = sessions.find(s => s.id === sessionId);
-    if (!session || !session.inputMessage.trim()) {
+    if (!session) {
       return;
     }
     
-    const messageToSend = session.inputMessage;
+    const messageToSend = messageContent || session.inputMessage;
+    if (!messageToSend.trim()) {
+      return;
+    }
     
     // Immediately add user message to UI
     const userMessage: Message = {
@@ -483,18 +486,6 @@ function App() {
   return (
     <TooltipProvider>
       <div className="fixed inset-0 font-mono overflow-hidden">
-        {/* Background with grid pattern */}
-        <div 
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: `
-              linear-gradient(to right, #10b981 1px, transparent 1px),
-              linear-gradient(to bottom, #10b981 1px, transparent 1px)
-            `,
-            backgroundSize: '50px 50px'
-          }}
-        />
-        
         {/* Pane Manager */}
         <PaneManager />
         
