@@ -302,11 +302,15 @@ export const Pane: React.FC<PaneProps> = ({
       }}
       onMouseDown={handleMouseDown}
     >
-      {/* Corner Brackets */}
-      <div className="corner-bracket-top-left" />
-      <div className="corner-bracket-top-right" />
-      <div className="corner-bracket-bottom-left" />
-      <div className="corner-bracket-bottom-right" />
+      {/* Corner Brackets - only show when not active */}
+      {!isActive && (
+        <>
+          <div className="corner-bracket-top-left" />
+          <div className="corner-bracket-top-right" />
+          <div className="corner-bracket-bottom-left" />
+          <div className="corner-bracket-bottom-right" />
+        </>
+      )}
       {/* Title Bar */}
       <div
         {...bindDrag()}
