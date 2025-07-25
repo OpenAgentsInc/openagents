@@ -34,6 +34,7 @@
     "update:preview": "eas update --branch preview"
   },
   "dependencies": {
+    "convex": "^1.25.4",
     "expo": "~53.0.20",
     "expo-font": "^13.3.2",
     "expo-splash-screen": "^0.30.10",
