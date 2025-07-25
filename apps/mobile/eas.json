@@ -45,7 +45,11 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "node": "20",
+      "cache": {
+        "disabled": true
+      }
     }
   },
   "submit": {
