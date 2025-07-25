@@ -46,7 +46,7 @@
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "node": "20",
+      "node": "20.17.0",
       "cache": {
         "disabled": true
       }
