@@ -488,7 +488,7 @@ function App() {
 
   return (
     <TooltipProvider>
-      <div className="fixed inset-0 font-mono overflow-hidden">
+      <div className="relative h-full w-full font-mono overflow-hidden">
         {/* Pane Manager */}
         <PaneManager />
         

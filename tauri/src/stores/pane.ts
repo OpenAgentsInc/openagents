@@ -2,9 +2,11 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { Pane, PaneInput } from "@/types/pane";
 
+// Constants matching commander project
 export const PANE_MARGIN = 20;
-export const DEFAULT_CHAT_WIDTH = 600;
-export const DEFAULT_CHAT_HEIGHT = 400; // Smaller height to allow proper positioning
+export const CASCADE_OFFSET = 45;
+export const DEFAULT_CHAT_WIDTH = 400; // Match commander
+export const DEFAULT_CHAT_HEIGHT = 300; // Match commander
 export const METADATA_PANEL_WIDTH = 320;
 export const SETTINGS_PANEL_WIDTH = 320;
 
@@ -13,6 +15,8 @@ interface ClosedPanePosition {
   y: number;
   width: number;
   height: number;
+  content?: any;
+  shouldRestore?: boolean;
 }
 
 interface Message {
@@ -33,25 +37,159 @@ interface PaneState {
   activePaneId: string | null;
   lastPanePosition: { x: number; y: number; width: number; height: number } | null;
   closedPanePositions: Record<string, ClosedPanePosition>;
-  sessionMessages: Record<string, Message[]>; // Store messages by sessionId
+  sessionMessages: Record<string, Message[]>;
 }
 
 interface PaneStore extends PaneState {
+  // Core actions
   addPane: (pane: PaneInput) => string;
   removePane: (id: string) => void;
   updatePanePosition: (id: string, x: number, y: number) => void;
   updatePaneSize: (id: string, width: number, height: number) => void;
   bringPaneToFront: (id: string) => void;
   setActivePane: (id: string | null) => void;
+  
+  // Specific pane toggles (commander-style)
   openChatPane: (sessionId: string, projectPath: string) => void;
   toggleMetadataPane: () => void;
   toggleSettingsPane: () => void;
   organizePanes: () => void;
+  
+  // Utilities
   resetPanes: () => void;
   getPaneById: (id: string) => Pane | undefined;
   updateSessionMessages: (sessionId: string, messages: Message[]) => void;
   getSessionMessages: (sessionId: string) => Message[];
 }
+
+// Position calculation utilities (exact commander implementation)
+const calculateNewPanePosition = (
+  _existingPanes: Pane[],
+  lastPanePosition: { x: number; y: number; width: number; height: number } | null,
+) => {
+  const screenWidth = typeof window !== "undefined" ? window.innerWidth : 1920;
+  const screenHeight = typeof window !== "undefined" ? window.innerHeight : 1080;
+
+  if (lastPanePosition) {
+    let newX = lastPanePosition.x + CASCADE_OFFSET;
+    let newY = lastPanePosition.y + CASCADE_OFFSET;
+
+    // Commander's exact wrapping logic - reset to PANE_MARGIN * 2
+    if (newX + DEFAULT_CHAT_WIDTH > screenWidth - PANE_MARGIN) {
+      newX = PANE_MARGIN * 2;
+    }
+    if (newY + DEFAULT_CHAT_HEIGHT > screenHeight - PANE_MARGIN) {
+      newY = PANE_MARGIN * 2;
+    }
+    
+    return {
+      x: newX,
+      y: newY,
+      width: DEFAULT_CHAT_WIDTH,
+      height: DEFAULT_CHAT_HEIGHT,
+    };
+  }
+
+  // Fallback to top-left margin
+  return {
+    x: PANE_MARGIN,
+    y: PANE_MARGIN,
+    width: DEFAULT_CHAT_WIDTH,
+    height: DEFAULT_CHAT_HEIGHT,
+  };
+};
+
+// Ensure pane is visible on screen (exact commander implementation)
+const ensurePaneIsVisible = (pane: Pane): Pane => {
+  const screenWidth = typeof window !== "undefined" ? window.innerWidth : 1920;
+  const screenHeight = typeof window !== "undefined" ? window.innerHeight : 1080;
+
+  let { x, y, width, height } = pane;
+
+  // Enforce minimum sizes
+  width = Math.max(width, 200);
+  height = Math.max(height, 100);
+
+  // Commander's exact boundary logic
+  if (x + width > screenWidth - PANE_MARGIN) {
+    x = screenWidth - width - PANE_MARGIN;
+  }
+  if (y + height > screenHeight - PANE_MARGIN) {
+    y = screenHeight - height - PANE_MARGIN;
+  }
+
+  x = Math.max(x, PANE_MARGIN);
+  y = Math.max(y, PANE_MARGIN);
+
+  // Commander also clamps width/height to screen bounds
+  width = Math.min(width, screenWidth - x - PANE_MARGIN);
+  height = Math.min(height, screenHeight - y - PANE_MARGIN);
+
+  return { ...pane, x, y, width, height };
+};
+
+// Toggle pattern action (like commander)
+const togglePaneAction = (
+  set: any,
+  get: any,
+  options: {
+    paneId: string;
+    createPaneInput: (screenWidth: number, screenHeight: number, storedPosition?: ClosedPanePosition) => PaneInput;
+  }
+) => {
+  const { panes, closedPanePositions } = get();
+  const existingPane = panes.find((p: Pane) => p.id === options.paneId);
+  
+  if (existingPane) {
+    // Close the pane and store its position
+    set((state: PaneState) => ({
+      panes: state.panes.filter(p => p.id !== options.paneId),
+      activePaneId: state.activePaneId === options.paneId ? null : state.activePaneId,
+      closedPanePositions: {
+        ...state.closedPanePositions,
+        [options.paneId]: {
+          x: existingPane.x,
+          y: existingPane.y,
+          width: existingPane.width,
+          height: existingPane.height,
+          content: existingPane.content,
+          shouldRestore: true
+        }
+      }
+    }));
+  } else {
+    // Open the pane, restoring position if available
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const storedPosition = closedPanePositions[options.paneId];
+    
+    let paneInput = options.createPaneInput(screenWidth, screenHeight, storedPosition);
+    
+    // If we have a stored position, restore it but ensure it's still visible
+    if (storedPosition && storedPosition.shouldRestore) {
+      paneInput = {
+        ...paneInput,
+        x: Math.max(PANE_MARGIN, Math.min(storedPosition.x, screenWidth - 100)),
+        y: Math.max(PANE_MARGIN, Math.min(storedPosition.y, screenHeight - 100)),
+        width: storedPosition.width,
+        height: storedPosition.height,
+        content: storedPosition.content || paneInput.content
+      };
+    }
+    
+    const newPane = ensurePaneIsVisible({
+      ...paneInput,
+      id: options.paneId,
+      isActive: true,
+    } as Pane);
+
+    set((state: PaneState) => ({
+      panes: [...state.panes, newPane],
+      activePaneId: options.paneId,
+      lastPanePosition: { x: newPane.x, y: newPane.y, width: newPane.width, height: newPane.height },
+    }));
+  }
+};
 
 const getInitialPanes = (): Pane[] => {
   // Start with metadata panel visible
@@ -62,7 +200,7 @@ const getInitialPanes = (): Pane[] => {
     x: PANE_MARGIN,
     y: PANE_MARGIN,
     width: METADATA_PANEL_WIDTH,
-    height: window.innerHeight - (PANE_MARGIN * 4) - 60, // Account for hotbar
+    height: window.innerHeight - (PANE_MARGIN * 2) - 60, // Account for hotbar
     dismissable: true,
     content: {}
   }];
@@ -78,94 +216,56 @@ export const usePaneStore = create<PaneStore>()(
       sessionMessages: {},
 
       addPane: (paneInput: PaneInput) => {
-        console.log("➕ addPane called with:", paneInput);
-        const screenWidth = window.innerWidth;
-        const screenHeight = window.innerHeight;
-        
-        // Generate ID if not provided
         const id = paneInput.id || `pane-${Date.now()}`;
         
-        // Calculate position if not provided
-        let x = paneInput.x;
-        let y = paneInput.y;
-        let width = paneInput.width || DEFAULT_CHAT_WIDTH;
-        let height = paneInput.height || DEFAULT_CHAT_HEIGHT;
-
-        console.log("📍 Initial position values:", { x, y, width, height });
-
-        if (x === undefined || y === undefined) {
-          // Try to use stored position for this pane
-          const storedPosition = get().closedPanePositions[id];
-          if (storedPosition) {
-            ({ x, y, width, height } = storedPosition);
-            console.log("📦 Using stored position:", { x, y, width, height });
-          } else {
-            // Smart positioning: place to the right of metadata panel
-            x = METADATA_PANEL_WIDTH + PANE_MARGIN * 2;
-            y = PANE_MARGIN;
-            
-            console.log("🎯 Base position:", { x, y });
-            
-            // Position new chat panes side-by-side first, then stack if needed
-            const existingPanes = get().panes.filter(p => p.type === "chat");
-            console.log("🔍 Existing chat panes:", existingPanes.length);
-            
-            if (existingPanes.length > 0) {
-              // Try to place side-by-side first
-              const horizontalOffset = existingPanes.length * (width + PANE_MARGIN);
-              const maxHorizontalPos = screenWidth - width - PANE_MARGIN;
-              
-              console.log("📐 Horizontal offset calculation:", { 
-                horizontalOffset, 
-                maxHorizontalPos, 
-                wouldFit: x + horizontalOffset <= maxHorizontalPos 
-              });
-              
-              if (x + horizontalOffset <= maxHorizontalPos) {
-                // Place side-by-side
-                x += horizontalOffset;
-                console.log("➡️ Placing side-by-side at x:", x);
-              } else {
-                // If not enough horizontal space, use minimal cascade
-                const cascadeOffset = Math.min(existingPanes.length * 30, 150);
-                x += cascadeOffset;
-                y += cascadeOffset;
-                console.log("↘️ Using cascade offset:", { cascadeOffset, newX: x, newY: y });
-              }
-            }
-          }
+        // Commander's exact logic: check if pane already exists first
+        const existingPane = get().panes.find(p => p.id === id);
+        if (existingPane) {
+          // Just activate existing pane and update lastPanePosition
+          set((state) => ({
+            panes: state.panes.map(p => ({ ...p, isActive: p.id === id })),
+            activePaneId: id,
+            lastPanePosition: {
+              x: existingPane.x,
+              y: existingPane.y,
+              width: existingPane.width,
+              height: existingPane.height,
+            },
+          }));
+          return id;
         }
 
-        // Ensure pane fits on screen with better bounds checking
-        const maxX = Math.max(screenWidth - width - PANE_MARGIN, PANE_MARGIN);
-        const maxY = Math.max(screenHeight - height - PANE_MARGIN - 60, PANE_MARGIN); // Leave space for hotbar
-        
-        console.log("🔒 Bounds checking:", { maxX, maxY, originalX: x, originalY: y });
-        
-        x = Math.max(PANE_MARGIN, Math.min(x, maxX));
-        y = Math.max(PANE_MARGIN, Math.min(y, maxY));
+        // Calculate base position using commander's algorithm
+        const { panes, lastPanePosition } = get();
+        const basePosition = calculateNewPanePosition(panes, lastPanePosition);
 
-        console.log("✅ Final position after bounds check:", { x, y, width, height });
-
-        const newPane: Pane = {
-          ...paneInput,
+        // Create pane with commander's exact logic
+        const paneBeforeEnsure = {
           id,
-          x,
-          y,
-          width,
-          height,
+          type: paneInput.type,
+          title: paneInput.title || `Pane ${Date.now()}`,
+          x: paneInput.x ?? basePosition.x,
+          y: paneInput.y ?? basePosition.y,
+          width: paneInput.width ?? basePosition.width,
+          height: paneInput.height ?? basePosition.height,
           isActive: true,
-        };
+          dismissable: paneInput.dismissable !== undefined ? paneInput.dismissable : true,
+          content: paneInput.content,
+        } as Pane;
 
-        console.log("🆕 Creating new pane:", newPane);
+        const newPane = ensurePaneIsVisible(paneBeforeEnsure);
 
+        // Commander's exact state update
         set((state) => ({
-          panes: [...state.panes, newPane],
-          activePaneId: id,
-          lastPanePosition: { x, y, width, height },
+          panes: [...state.panes.map(p => ({ ...p, isActive: false })), newPane],
+          activePaneId: newPane.id,
+          lastPanePosition: {
+            x: newPane.x,
+            y: newPane.y,
+            width: newPane.width,
+            height: newPane.height,
+          },
         }));
-
-        console.log("📊 Panes after adding:", get().panes.map(p => ({ id: p.id, x: p.x, y: p.y })));
 
         return id;
       },
@@ -173,32 +273,54 @@ export const usePaneStore = create<PaneStore>()(
       removePane: (id: string) => {
         const pane = get().panes.find(p => p.id === id);
         if (pane) {
-          // Store position for restoration
           set((state) => ({
             panes: state.panes.filter(p => p.id !== id),
             activePaneId: state.activePaneId === id ? null : state.activePaneId,
             closedPanePositions: {
               ...state.closedPanePositions,
-              [id]: { x: pane.x, y: pane.y, width: pane.width, height: pane.height }
+              [id]: { 
+                x: pane.x, 
+                y: pane.y, 
+                width: pane.width, 
+                height: pane.height,
+                content: pane.content,
+                shouldRestore: true
+              }
             }
           }));
         }
       },
 
       updatePanePosition: (id: string, x: number, y: number) => {
-        set((state) => ({
-          panes: state.panes.map(pane =>
-            pane.id === id ? { ...pane, x, y } : pane
-          ),
-        }));
+        set((state) => {
+          let updatedPaneRef: { x: number; y: number; width: number; height: number } | null = null;
+          const newPanes = state.panes.map((pane) => {
+            if (pane.id === id) {
+              const updated = ensurePaneIsVisible({ ...pane, x, y });
+              updatedPaneRef = { x: updated.x, y: updated.y, width: updated.width, height: updated.height };
+              return updated;
+            }
+            return pane;
+          });
+          
+          return {
+            panes: newPanes,
+            lastPanePosition: updatedPaneRef || state.lastPanePosition,
+          };
+        });
       },
 
       updatePaneSize: (id: string, width: number, height: number) => {
-        set((state) => ({
-          panes: state.panes.map(pane =>
-            pane.id === id ? { ...pane, width, height } : pane
-          ),
-        }));
+        set((state) => {
+          const newPanes = state.panes.map((pane) => {
+            if (pane.id === id) {
+              return ensurePaneIsVisible({ ...pane, width, height });
+            }
+            return pane;
+          });
+          
+          return { panes: newPanes };
+        });
       },
 
       bringPaneToFront: (id: string) => {
@@ -206,11 +328,19 @@ export const usePaneStore = create<PaneStore>()(
           const paneIndex = state.panes.findIndex(p => p.id === id);
           if (paneIndex === -1) return state;
 
-          const newPanes = [...state.panes];
-          const [pane] = newPanes.splice(paneIndex, 1);
-          newPanes.push(pane);
+          // Early return if already correct
+          if (state.activePaneId === id && paneIndex === state.panes.length - 1) {
+            return state;
+          }
+
+          // Commander's exact logic: move pane to end and update isActive flags
+          const paneToActivate = state.panes[paneIndex];
+          const otherPanes = state.panes.filter((p) => p.id !== id);
+          const updatedPanes = otherPanes.map((p) => p.isActive ? { ...p, isActive: false } : p);
+          const newPanes = [...updatedPanes, { ...paneToActivate, isActive: true }];
 
           return {
+            ...state,
             panes: newPanes,
             activePaneId: id,
           };
@@ -227,10 +357,8 @@ export const usePaneStore = create<PaneStore>()(
         );
 
         if (existingPane) {
-          // Just bring it to front if it already exists
           get().bringPaneToFront(existingPane.id);
         } else {
-          // Create new chat pane
           get().addPane({
             id: `chat-${sessionId}`,
             type: "chat",
@@ -245,158 +373,73 @@ export const usePaneStore = create<PaneStore>()(
       },
 
       toggleMetadataPane: () => {
-        const metadataPane = get().panes.find(p => p.id === "metadata");
-        
-        if (metadataPane) {
-          get().removePane("metadata");
-        } else {
-          const storedPosition = get().closedPanePositions["metadata"];
-          get().addPane({
+        togglePaneAction(set, get, {
+          paneId: "metadata",
+          createPaneInput: (_screenWidth, screenHeight, storedPosition) => ({
             id: "metadata",
             type: "metadata",
             title: "History",
             dismissable: true,
-            ...(storedPosition || {
-              x: PANE_MARGIN,
-              y: PANE_MARGIN,
-              width: METADATA_PANEL_WIDTH,
-              height: window.innerHeight - (PANE_MARGIN * 4) - 60,
-            })
-          });
-        }
+            x: storedPosition?.x || PANE_MARGIN,
+            y: storedPosition?.y || PANE_MARGIN,
+            width: storedPosition?.width || METADATA_PANEL_WIDTH,
+            height: storedPosition?.height || (screenHeight - (PANE_MARGIN * 2) - 60),
+          })
+        });
       },
 
       toggleSettingsPane: () => {
-        const settingsPane = get().panes.find(p => p.id === "settings");
-        
-        if (settingsPane) {
-          get().removePane("settings");
-        } else {
-          const storedPosition = get().closedPanePositions["settings"];
-          // Position settings pane to the right of other panes
-          const defaultX = METADATA_PANEL_WIDTH + PANE_MARGIN * 2;
-          get().addPane({
-            id: "settings",
-            type: "settings",
-            title: "Settings",
-            dismissable: true,
-            ...(storedPosition || {
-              x: defaultX,
-              y: PANE_MARGIN,
-              width: SETTINGS_PANEL_WIDTH,
-              height: window.innerHeight - (PANE_MARGIN * 4) - 60,
-            })
-          });
-        }
+        togglePaneAction(set, get, {
+          paneId: "settings",
+          createPaneInput: (_screenWidth, screenHeight, storedPosition) => {
+            const defaultX = METADATA_PANEL_WIDTH + PANE_MARGIN * 2;
+            return {
+              id: "settings",
+              type: "settings",
+              title: "Settings",
+              dismissable: true,
+              x: storedPosition?.x || defaultX,
+              y: storedPosition?.y || PANE_MARGIN,
+              width: storedPosition?.width || SETTINGS_PANEL_WIDTH,
+              height: storedPosition?.height || (screenHeight - (PANE_MARGIN * 2) - 60),
+            };
+          }
+        });
       },
 
       organizePanes: () => {
-        console.log("🔧 organizePanes called");
         const { panes } = get();
-        console.log("📊 Current panes:", panes.length, panes.map(p => ({ id: p.id, type: p.type })));
-        
         if (panes.length === 0) return;
 
-        // Get the actual container dimensions (not viewport dimensions)
-        const containerElement = document.querySelector('.fixed.inset-0') as HTMLElement;
-        const containerRect = containerElement?.getBoundingClientRect();
+        // Use commander's exact algorithm for organization
+        let lastPosition: { x: number; y: number; width: number; height: number } | null = null;
         
-        console.log("📦 Container info:", {
-          containerRect,
-          viewport: { width: window.innerWidth, height: window.innerHeight }
-        });
-
-        const containerWidth = containerRect?.width || window.innerWidth;
-        const containerHeight = containerRect?.height || window.innerHeight;
-        const hotbarHeight = 60;
-        const availableHeight = containerHeight - PANE_MARGIN * 2 - hotbarHeight;
-        const availableWidth = containerWidth - PANE_MARGIN * 2;
-
-        console.log("📐 Container dimensions:", { containerWidth, containerHeight, availableWidth, availableHeight });
-
-        // Separate panes by type for smart organization
-        const settingsPane = panes.find(p => p.type === "settings");
-        const metadataPane = panes.find(p => p.type === "metadata");
-        const chatPanes = panes.filter(p => p.type === "chat");
-        
-        console.log("🏷️ Pane breakdown:", { 
-          settings: settingsPane?.id, 
-          metadata: metadataPane?.id, 
-          chats: chatPanes.map(p => p.id) 
-        });
-        
-        let newPanes = [...panes];
-        let currentX = PANE_MARGIN;
-
-        // Account for container offset (if container isn't at viewport top)
-        const containerTop = containerRect?.top || 0;
-        const adjustedY = Math.max(0, PANE_MARGIN - containerTop);
-        
-        console.log("🎯 Container offset adjustment:", { containerTop, originalY: PANE_MARGIN, adjustedY });
-
-        // Settings pane: narrow sidebar on the left
-        if (settingsPane) {
-          const settingsIndex = newPanes.findIndex(p => p.id === settingsPane.id);
-          if (settingsIndex !== -1) {
-            newPanes[settingsIndex] = {
-              ...newPanes[settingsIndex],
-              x: currentX,
-              y: adjustedY,
-              width: SETTINGS_PANEL_WIDTH,
-              height: availableHeight,
-            };
-            currentX += SETTINGS_PANEL_WIDTH + PANE_MARGIN;
-            console.log("⚙️ Positioned settings pane at", { x: PANE_MARGIN, y: adjustedY });
-          }
-        }
-
-        // Calculate remaining space for other panes
-        const remainingWidth = availableWidth - (settingsPane ? SETTINGS_PANEL_WIDTH + PANE_MARGIN : 0);
-        const otherPanes: Pane[] = [];
-        
-        if (metadataPane) otherPanes.push(metadataPane);
-        otherPanes.push(...chatPanes);
-
-        console.log("📦 Other panes to organize:", otherPanes.length, "Remaining width:", remainingWidth);
-
-        if (otherPanes.length === 0) {
-          console.log("✅ No other panes to organize");
-          set({ panes: newPanes });
-          return;
-        }
-
-        // SIMPLE SIDE-BY-SIDE LAYOUT FOR ALL CASES
-        const paneWidth = Math.floor(remainingWidth / otherPanes.length);
-        console.log("📏 Calculated pane width:", paneWidth);
-
-        otherPanes.forEach((pane, index) => {
-          const paneIndex = newPanes.findIndex(p => p.id === pane.id);
-          if (paneIndex !== -1) {
-            const x = currentX + index * paneWidth;
-            const y = adjustedY;
-            
-            newPanes[paneIndex] = {
-              ...newPanes[paneIndex],
-              x,
-              y,
-              width: paneWidth - (index < otherPanes.length - 1 ? PANE_MARGIN : 0),
-              height: availableHeight,
-            };
-            
-            console.log(`📍 Positioned pane ${pane.id} at`, { x, y, width: paneWidth });
+        const newPanes = panes.map((pane, index) => {
+          if (index === 0) {
+            // First pane at margin
+            const updatedPane = { ...pane, x: PANE_MARGIN, y: PANE_MARGIN };
+            lastPosition = { x: updatedPane.x, y: updatedPane.y, width: updatedPane.width, height: updatedPane.height };
+            return ensurePaneIsVisible(updatedPane);
+          } else {
+            // Use commander's cascade calculation for subsequent panes
+            const position = calculateNewPanePosition(panes, lastPosition);
+            const updatedPane = { ...pane, x: position.x, y: position.y };
+            lastPosition = { x: updatedPane.x, y: updatedPane.y, width: updatedPane.width, height: updatedPane.height };
+            return ensurePaneIsVisible(updatedPane);
           }
         });
 
-        console.log("🎯 Setting new pane positions");
-        console.log("📋 Final pane positions:", newPanes.map(p => ({ 
-          id: p.id, 
-          type: p.type, 
-          x: p.x, 
-          y: p.y, 
-          width: p.width, 
-          height: p.height 
-        })));
-        set({ panes: newPanes });
+        // Update lastPanePosition in store
+        const lastPane = newPanes[newPanes.length - 1];
+        set({ 
+          panes: newPanes,
+          lastPanePosition: lastPane ? {
+            x: lastPane.x,
+            y: lastPane.y, 
+            width: lastPane.width,
+            height: lastPane.height
+          } : null
+        });
       },
 
       resetPanes: () => {
@@ -427,7 +470,7 @@ export const usePaneStore = create<PaneStore>()(
       },
     }),
     {
-      name: "openagents-pane-storage",
+      name: "openagents-pane-storage-v2", // Changed version to reset storage
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         panes: state.panes,
@@ -445,6 +488,9 @@ export const usePaneStore = create<PaneStore>()(
           if (state.activePaneId && !state.panes.find(p => p.id === state.activePaneId)) {
             state.activePaneId = state.panes.length > 0 ? state.panes[0].id : null;
           }
+
+          // Ensure all panes are visible on current screen
+          state.panes = state.panes.map(ensurePaneIsVisible);
         }
       },
     }
