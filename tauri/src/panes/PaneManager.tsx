@@ -24,7 +24,6 @@ export const PaneManager: React.FC = () => {
         />;
       case "metadata":
         return <HistoryPane 
-          claudeStatus={data.claudeStatus}
           sessions={data.sessions}
           newProjectPath={data.newProjectPath}
           isDiscoveryLoading={data.isDiscoveryLoading}
@@ -33,7 +32,11 @@ export const PaneManager: React.FC = () => {
           stopSession={data.stopSession}
         />;
       case "settings":
-        return <SettingsPane />;
+        return <SettingsPane 
+          claudeStatus={data.claudeStatus}
+          sessions={data.sessions}
+          isDiscoveryLoading={data.isDiscoveryLoading}
+        />;
       default:
         return <div>Unknown pane type: {pane.type}</div>;
     }

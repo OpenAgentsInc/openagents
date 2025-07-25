@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
-import { Plus, PanelLeft, Hand, Settings } from "lucide-react";
+import { Plus, History, Hand, Settings } from "lucide-react";
 import { usePaneStore } from "@/stores/pane";
 
 interface HotbarProps {
@@ -38,7 +38,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         onClick={toggleMetadataPane}
         title="History"
       >
-        <PanelLeft className="text-muted-foreground h-5 w-5" />
+        <History className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 2: New Chat */}

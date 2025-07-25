@@ -1,12 +1,24 @@
 import React from "react";
 import { Separator } from "@/components/ui/separator";
 
-interface SettingsPaneProps {
-  // Initial implementation can be minimal
-  // Add settings-specific props as features are added
+interface Session {
+  id: string;
+  projectPath: string;
+  messages: any[];
+  isLoading: boolean;
 }
 
-export const SettingsPane: React.FC<SettingsPaneProps> = ({}) => {
+interface SettingsPaneProps {
+  claudeStatus?: string;
+  sessions?: Session[];
+  isDiscoveryLoading?: boolean;
+}
+
+export const SettingsPane: React.FC<SettingsPaneProps> = ({
+  claudeStatus = "Ready",
+  sessions = [],
+  isDiscoveryLoading = false,
+}) => {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -17,29 +29,23 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({}) => {
 
       <Separator className="my-4" />
 
-      {/* Settings Section */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Settings</h3>
-        
-        {/* Application Settings */}
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <h4 className="text-xs font-medium text-muted-foreground">Application</h4>
-            <div className="pl-2 space-y-2">
-              <p className="text-xs text-muted-foreground">Theme settings coming soon...</p>
-              <p className="text-xs text-muted-foreground">Keyboard shortcuts coming soon...</p>
-            </div>
-          </div>
+      {/* Status Section */}
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Status</h3>
+        <p className="text-xs text-muted-foreground">
+          Sessions: {sessions.length} • {isDiscoveryLoading ? "Loading..." : "Ready"}
+        </p>
+        <p className="text-xs break-all">{claudeStatus}</p>
+      </div>
 
-          <Separator />
+      <Separator className="my-4" />
 
-          <div className="space-y-2">
-            <h4 className="text-xs font-medium text-muted-foreground">About</h4>
-            <div className="pl-2 space-y-1">
-              <p className="text-xs text-muted-foreground">Version: 1.0.0</p>
-              <p className="text-xs text-muted-foreground">Built with Tauri + React</p>
-            </div>
-          </div>
+      {/* About Section */}
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">About</h3>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Version: 1.0.0</p>
+          <p className="text-xs text-muted-foreground">Built with Tauri + React</p>
         </div>
       </div>
     </div>
