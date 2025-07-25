@@ -28,8 +28,8 @@
     "build:android:preview": "eas build --profile preview --platform android --local",
     "build:android:prod": "eas build --profile production --platform android --local --non-interactive --freeze-credentials",
     "build:android:prod:interactive": "eas build --profile production --platform android --local",
-    "submit:ios:prod": "eas submit --platform ios --profile production --non-interactive --freeze-credentials",
-    "submit": "eas submit --platform ios --profile production --non-interactive --freeze-credentials",
+    "submit:ios:prod": "eas submit --platform ios --profile production --non-interactive",
+    "submit": "eas submit --platform ios --profile production --non-interactive",
     "update:publish": "eas update --branch production",
     "update:preview": "eas update --branch preview"
   },
