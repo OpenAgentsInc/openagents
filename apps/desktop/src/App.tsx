@@ -65,6 +65,16 @@ function App() {
   const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
   const createConvexSession = useMutation(api.claude.createClaudeSession);
   
+  // Debug logging for mobile sessions
+  useEffect(() => {
+    if (pendingMobileSessions.length > 0) {
+      console.log('🔍 [MOBILE-SYNC] Detected pending mobile sessions:', pendingMobileSessions.length);
+      console.log('🔍 [MOBILE-SYNC] Mobile sessions data:', JSON.stringify(pendingMobileSessions, null, 2));
+    } else {
+      console.log('🔍 [MOBILE-SYNC] No pending mobile sessions found');
+    }
+  }, [pendingMobileSessions]);
+  
   // State tracking for sessions currently being processed to prevent duplicates
   const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
 
@@ -80,26 +90,39 @@ function App() {
   // Monitor for mobile-initiated sessions and create local Claude Code sessions
   useEffect(() => {
     const createSessionFromMobile = async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
+      console.log('🚀 [MOBILE-SYNC] Starting session creation from mobile request:', {
+        sessionId: mobileSession.sessionId,
+        projectPath: mobileSession.projectPath,
+        title: mobileSession.title
+      });
+      
       // Mark session as being processed
       setProcessingSessions(prev => new Set(prev).add(mobileSession.sessionId));
+      console.log('📝 [MOBILE-SYNC] Marked session as processing:', mobileSession.sessionId);
       
       try {
-        console.log('Creating local Claude Code session from mobile request:', mobileSession);
-        
         // Check if we already have a local session for this Convex session
         const existingLocalSession = sessions.find(s => s.id === mobileSession.sessionId);
         if (existingLocalSession) {
-          console.log('Local session already exists for:', mobileSession.sessionId);
+          console.log('⚠️ [MOBILE-SYNC] Local session already exists for:', mobileSession.sessionId);
           return;
         }
 
+        console.log('🔧 [MOBILE-SYNC] Invoking Tauri create_session command...');
         // Create Claude Code session via Tauri backend
         const result = await invoke<CommandResult<string>>("create_session", {
           projectPath: mobileSession.projectPath,
         });
 
+        console.log('📋 [MOBILE-SYNC] Tauri create_session result:', {
+          success: result.success,
+          hasData: !!result.data,
+          error: result.error
+        });
+
         if (result.success && result.data) {
           const localSessionId = result.data;
+          console.log('✅ [MOBILE-SYNC] Claude Code session created with ID:', localSessionId);
           
           // Create local session state  
           const newSession: Session = {
@@ -112,10 +135,13 @@ function App() {
 
           // Add to local sessions
           setSessions(prev => [...prev, newSession]);
+          console.log('📋 [MOBILE-SYNC] Added new session to local state');
           
           // Open chat pane
           openChatPane(localSessionId, mobileSession.projectPath);
+          console.log('🖼️ [MOBILE-SYNC] Opened chat pane for session');
           
+          console.log('🔄 [MOBILE-SYNC] Syncing session to Convex...');
           // Update the Convex session to link it to the local session
           await createConvexSession({
             sessionId: localSessionId,
@@ -128,12 +154,12 @@ function App() {
             },
           });
 
-          console.log('Successfully created local session from mobile request');
+          console.log('✅ [MOBILE-SYNC] Successfully created and synced local session from mobile request');
         } else {
-          console.error('Failed to create local Claude Code session:', result.error);
+          console.error('❌ [MOBILE-SYNC] Failed to create local Claude Code session:', result.error);
         }
       } catch (error) {
-        console.error('Error creating session from mobile:', error);
+        console.error('💥 [MOBILE-SYNC] Error creating session from mobile:', error);
       } finally {
         // Remove session from processing set
         setProcessingSessions(prev => {
@@ -141,14 +167,22 @@ function App() {
           newSet.delete(mobileSession.sessionId);
           return newSet;
         });
+        console.log('🏁 [MOBILE-SYNC] Finished processing session:', mobileSession.sessionId);
       }
     };
 
     // Process pending mobile sessions sequentially to avoid race conditions
     const processMobileSessions = async () => {
+      console.log('🔄 [MOBILE-SYNC] Processing', pendingMobileSessions.length, 'mobile sessions');
+      console.log('🔄 [MOBILE-SYNC] Currently processing sessions:', Array.from(processingSessions));
+      console.log('🔄 [MOBILE-SYNC] Current local sessions:', sessions.map(s => ({ id: s.id, path: s.projectPath })));
+      
       for (const mobileSession of pendingMobileSessions) {
+        console.log('🔍 [MOBILE-SYNC] Evaluating mobile session:', mobileSession.sessionId);
+        
         // Skip if already processing this session
         if (processingSessions.has(mobileSession.sessionId)) {
+          console.log('⏭️ [MOBILE-SYNC] Skipping - already processing:', mobileSession.sessionId);
           continue;
         }
         
@@ -158,14 +192,23 @@ function App() {
           (s.id === mobileSession.sessionId || s.id.includes(mobileSession.sessionId))
         );
         
+        console.log('🔍 [MOBILE-SYNC] Local session check for', mobileSession.sessionId, '- hasLocalSession:', hasLocalSession);
+        
         if (!hasLocalSession) {
+          console.log('🎯 [MOBILE-SYNC] Creating session for:', mobileSession.sessionId);
           await createSessionFromMobile(mobileSession);
+        } else {
+          console.log('⏭️ [MOBILE-SYNC] Skipping - local session already exists for:', mobileSession.sessionId);
         }
       }
+      console.log('✅ [MOBILE-SYNC] Finished processing all mobile sessions');
     };
     
     if (pendingMobileSessions.length > 0) {
-      processMobileSessions().catch(console.error);
+      console.log('🚀 [MOBILE-SYNC] Starting to process mobile sessions...');
+      processMobileSessions().catch((error) => {
+        console.error('💥 [MOBILE-SYNC] Error processing mobile sessions:', error);
+      });
     }
   }, [pendingMobileSessions, sessions, createConvexSession, openChatPane, processingSessions]);
 

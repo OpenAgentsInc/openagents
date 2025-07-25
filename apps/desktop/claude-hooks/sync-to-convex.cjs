@@ -11,9 +11,37 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
+// Load environment variables from desktop app .env file
+function loadEnvFile() {
+  const envPath = path.join(__dirname, '..', '.env');
+  try {
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      const lines = envContent.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const [key, ...valueParts] = trimmed.split('=');
+          if (key && valueParts.length > 0) {
+            const value = valueParts.join('=');
+            if (!process.env[key]) {
+              process.env[key] = value;
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load .env file:', error.message);
+  }
+}
+
+// Load environment variables
+loadEnvFile();
+
 // Configuration
 const CONVEX_DEPLOYMENT_URL = process.env.VITE_CONVEX_URL || process.env.CONVEX_URL;
-const DEBUG = process.env.CLAUDE_HOOK_DEBUG === 'true';
+const DEBUG = process.env.CLAUDE_HOOK_DEBUG === 'true' || true; // Enable debug for troubleshooting
 
 function debug(message, data = null) {
   if (DEBUG) {
@@ -125,7 +153,7 @@ async function syncSessionToConvex(hookData) {
     }
     
     // Create or update session in Convex
-    await makeConvexRequest('mutation:claude.createClaudeSession', {
+    await makeConvexRequest('claude:createClaudeSession', {
       sessionId: sessionId,
       projectPath: projectPath,
       createdBy: 'desktop',
@@ -174,7 +202,7 @@ async function syncSessionToConvex(hookData) {
       }));
       
       if (messages.length > 0) {
-        await makeConvexRequest('mutation:claude.batchAddMessages', {
+        await makeConvexRequest('claude:batchAddMessages', {
           sessionId: sessionId,
           messages: messages,
         });
@@ -182,7 +210,7 @@ async function syncSessionToConvex(hookData) {
     }
     
     // Update sync status
-    await makeConvexRequest('mutation:claude.updateSyncStatus', {
+    await makeConvexRequest('claude:updateSyncStatus', {
       sessionId: sessionId,
       desktopLastSeen: Date.now(),
     });
