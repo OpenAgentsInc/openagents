@@ -99,18 +99,16 @@ const calculateNewPanePosition = (
   };
 };
 
-// Ensure pane is visible on screen (exact commander implementation)
+// Ensure pane is visible on screen (Commander's EXACT implementation)
 const ensurePaneIsVisible = (pane: Pane): Pane => {
   const screenWidth = typeof window !== "undefined" ? window.innerWidth : 1920;
   const screenHeight = typeof window !== "undefined" ? window.innerHeight : 1080;
 
   let { x, y, width, height } = pane;
 
-  // Enforce minimum sizes
   width = Math.max(width, 200);
   height = Math.max(height, 100);
 
-  // Commander's exact boundary logic
   if (x + width > screenWidth - PANE_MARGIN) {
     x = screenWidth - width - PANE_MARGIN;
   }
@@ -121,7 +119,6 @@ const ensurePaneIsVisible = (pane: Pane): Pane => {
   x = Math.max(x, PANE_MARGIN);
   y = Math.max(y, PANE_MARGIN);
 
-  // Commander also clamps width/height to screen bounds
   width = Math.min(width, screenWidth - x - PANE_MARGIN);
   height = Math.min(height, screenHeight - y - PANE_MARGIN);
 
