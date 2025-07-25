@@ -42,13 +42,25 @@ function logToFile(message, data = null) {
 async function makeConvexRequest(functionPath, args) {
   return new Promise((resolve, reject) => {
     if (!CONVEX_DEPLOYMENT_URL) {
-      reject(new Error('Convex deployment URL not configured'));
+      reject(new Error('Convex deployment URL not configured. Set VITE_CONVEX_URL or CONVEX_URL environment variable.'));
       return;
     }
     
-    const url = new URL('/api/query', CONVEX_DEPLOYMENT_URL);
-    if (functionPath.startsWith('mutation:')) {
-      url.pathname = '/api/mutation';
+    // Validate URL format
+    let baseUrl;
+    try {
+      baseUrl = new URL(CONVEX_DEPLOYMENT_URL);
+    } catch (error) {
+      reject(new Error(`Invalid Convex deployment URL: ${CONVEX_DEPLOYMENT_URL}`));
+      return;
+    }
+    
+    // Simplify URL construction logic
+    const isMutation = functionPath.startsWith('mutation:');
+    const endpoint = isMutation ? '/api/mutation' : '/api/query';
+    const url = new URL(endpoint, baseUrl);
+    
+    if (isMutation) {
       functionPath = functionPath.replace('mutation:', '');
     }
     
@@ -127,10 +139,27 @@ async function syncSessionToConvex(hookData) {
     
     // Sync messages if available
     if (hookData.messages && Array.isArray(hookData.messages)) {
-      const messages = hookData.messages.map((msg, index) => ({
-        messageId: msg.id || `${msg.message_type}-${Date.now()}-${index}`,
-        messageType: msg.message_type,
-        content: msg.content,
+      // Validate message structure and filter out invalid messages
+      const validMessages = hookData.messages.filter((msg, index) => {
+        if (!msg || typeof msg !== 'object') {
+          debug(`Skipping invalid message at index ${index}: not an object`);
+          return false;
+        }
+        if (!msg.message_type && !msg.messageType) {
+          debug(`Skipping message at index ${index}: missing message_type`);
+          return false;
+        }
+        if (msg.content === undefined || msg.content === null) {
+          debug(`Skipping message at index ${index}: missing content`);
+          return false;
+        }
+        return true;
+      });
+
+      const messages = validMessages.map((msg, index) => ({
+        messageId: msg.id || `${msg.message_type || msg.messageType}-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+        messageType: msg.message_type || msg.messageType,
+        content: String(msg.content),
         timestamp: msg.timestamp || new Date().toISOString(),
         toolInfo: msg.tool_info ? {
           toolName: msg.tool_info.tool_name,

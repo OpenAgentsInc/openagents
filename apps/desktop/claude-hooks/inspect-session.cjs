@@ -8,7 +8,6 @@
  */
 
 const fs = require('fs');
-const path = require('path');
 
 function logStructure(obj, depth = 0, maxDepth = 3) {
   const indent = '  '.repeat(depth);

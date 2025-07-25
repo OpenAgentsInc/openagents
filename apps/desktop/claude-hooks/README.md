@@ -146,12 +146,12 @@ The sync script responds to these Claude Code events:
 
 ## Data Flow
 
-```
+```text
 Claude Code Session
        ↓
    Hook Trigger
        ↓
- sync-to-convex.js
+ sync-to-convex.cjs
        ↓
   Convex Backend
        ↓
@@ -202,7 +202,8 @@ This can help understand the exact message structure for debugging sync issues.
 
 ## Related Files
 
-- `sync-to-convex.js` - Main hook script
+- `sync-to-convex.cjs` - Main hook script
+- `inspect-session.cjs` - Session inspection tool
 - `claude-config-example.json` - Example configuration
 - `../../packages/convex/convex/claude.ts` - Convex functions for sync
 - `../../packages/convex/convex/schema.ts` - Database schema

@@ -131,18 +131,24 @@ function App() {
       }
     };
 
-    // Process pending mobile sessions
-    pendingMobileSessions.forEach(async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
-      // Check if this mobile session needs a local Claude Code session
-      const hasLocalSession = sessions.some(s => 
-        s.projectPath === mobileSession.projectPath && 
-        (s.id === mobileSession.sessionId || s.id.includes(mobileSession.sessionId))
-      );
-      
-      if (!hasLocalSession) {
-        await createSessionFromMobile(mobileSession);
+    // Process pending mobile sessions sequentially to avoid race conditions
+    const processMobileSessions = async () => {
+      for (const mobileSession of pendingMobileSessions) {
+        // Check if this mobile session needs a local Claude Code session
+        const hasLocalSession = sessions.some(s => 
+          s.projectPath === mobileSession.projectPath && 
+          (s.id === mobileSession.sessionId || s.id.includes(mobileSession.sessionId))
+        );
+        
+        if (!hasLocalSession) {
+          await createSessionFromMobile(mobileSession);
+        }
       }
-    });
+    };
+    
+    if (pendingMobileSessions.length > 0) {
+      processMobileSessions().catch(console.error);
+    }
   }, [pendingMobileSessions, sessions, createConvexSession, openChatPane]);
 
   // Toggle hand tracking
