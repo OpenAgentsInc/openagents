@@ -9,7 +9,7 @@ import type { PinchCoordinates, HandLandmarks } from "@/components/hands";
 import { SessionStreamManager } from "@/components/SessionStreamManager";
 import { ConvexDemo } from "@/components/ConvexDemo";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { api } from "./convex/_generated/api";
 
 interface Message {
   id: string;
@@ -62,12 +62,8 @@ function App() {
   const { openChatPane, toggleMetadataPane, toggleSettingsPane, toggleStatsPane, organizePanes, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane, updateSessionMessages, getSessionMessages } = usePaneStore();
 
   // Convex hooks for Claude Code sync
-  const convexSessions = useQuery(api.claude.getSessions, { limit: 20 }) || [];
   const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
   const createConvexSession = useMutation(api.claude.createClaudeSession);
-  const addConvexMessage = useMutation(api.claude.addClaudeMessage);
-  const batchAddConvexMessages = useMutation(api.claude.batchAddMessages);
-  const updateSyncStatus = useMutation(api.claude.updateSyncStatus);
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -80,7 +76,7 @@ function App() {
 
   // Monitor for mobile-initiated sessions and create local Claude Code sessions
   useEffect(() => {
-    const createSessionFromMobile = async (mobileSession: any) => {
+    const createSessionFromMobile = async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
       try {
         console.log('Creating local Claude Code session from mobile request:', mobileSession);
         
@@ -136,7 +132,7 @@ function App() {
     };
 
     // Process pending mobile sessions
-    pendingMobileSessions.forEach(async (mobileSession) => {
+    pendingMobileSessions.forEach(async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
       // Check if this mobile session needs a local Claude Code session
       const hasLocalSession = sessions.some(s => 
         s.projectPath === mobileSession.projectPath && 
