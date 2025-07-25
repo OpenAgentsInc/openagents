@@ -1,7 +1,8 @@
 {
   "name": "@openagents/shared",
-  "version": "0.1.0",
+  "version": "0.0.3",
   "private": true,
+  "license": "CC0-1.0",
   "description": "Shared utilities and types for OpenAgents",
   "type": "module",
   "main": "./src/index.ts",
