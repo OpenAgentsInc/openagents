@@ -84,6 +84,10 @@ function App() {
   // Debounce ref to prevent excessive useEffect firing
   const processingTimeoutRef = useRef<NodeJS.Timeout>();
   const isProcessingRef = useRef(false);
+  
+  // Circuit breaker to prevent processing same session repeatedly
+  const lastProcessedTimeRef = useRef<Record<string, number>>({});
+  const PROCESSING_COOLDOWN = 5000; // 5 seconds
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -96,14 +100,18 @@ function App() {
 
   // Monitor for mobile-initiated sessions and create local Claude Code sessions
   useEffect(() => {
-    console.log('🔄 [MOBILE-SYNC] useEffect triggered with:', {
-      pendingMobileSessionsCount: pendingMobileSessions.length,
-      sessionsCount: sessions.length,
-      processingSessions: Array.from(processingSessions),
-      processedMobileSessions: Array.from(processedMobileSessions),
-      isProcessing: isProcessingRef.current,
-      timestamp: new Date().toISOString()
-    });
+    const timestamp = new Date().toISOString();
+    const pendingIds = pendingMobileSessions.map(s => s.sessionId);
+    const processedIds = Array.from(processedMobileSessions);
+    const processingIds = Array.from(processingSessions);
+    const overlaps = pendingIds.filter(id => processedIds.includes(id));
+    
+    console.log(`🔄 [${timestamp}] useEffect TRIGGERED`);
+    console.log(`📥 Pending sessions: [${pendingIds.join(', ')}]`);
+    console.log(`✅ Processed sessions: [${processedIds.join(', ')}]`);
+    console.log(`⏳ Currently processing: [${processingIds.join(', ')}]`);
+    console.log(`🔄 Overlap detection: [${overlaps.join(', ')}]${overlaps.length > 0 ? ' ← PROBLEM!' : ''}`);
+    console.log(`🔒 Processing lock: ${isProcessingRef.current}`);
 
     // Clear existing timeout
     if (processingTimeoutRef.current) {
@@ -129,10 +137,24 @@ function App() {
       const processMobileSessions = async () => {
         try {
     const createSessionFromMobile = async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
+      const sessionId = mobileSession.sessionId;
+      const now = Date.now();
+      const lastProcessed = lastProcessedTimeRef.current[sessionId] || 0;
+      
+      // Circuit breaker: don't process same session within cooldown period
+      if (now - lastProcessed < PROCESSING_COOLDOWN) {
+        const timeSinceLastProcessed = (now - lastProcessed) / 1000;
+        console.log(`🚫 [CIRCUIT-BREAKER] Skipping ${sessionId} - processed ${timeSinceLastProcessed.toFixed(1)}s ago (cooldown: ${PROCESSING_COOLDOWN/1000}s)`);
+        return;
+      }
+      
+      lastProcessedTimeRef.current[sessionId] = now;
+      
       console.log('🚀 [MOBILE-SYNC] Starting session creation from mobile request:', {
         sessionId: mobileSession.sessionId,
         projectPath: mobileSession.projectPath,
-        title: mobileSession.title
+        title: mobileSession.title,
+        lastProcessedAgo: lastProcessed ? `${((now - lastProcessed) / 1000).toFixed(1)}s ago` : 'never'
       });
       
       // Mark session as being processed
@@ -275,7 +297,7 @@ function App() {
         clearTimeout(processingTimeoutRef.current);
       }
     };
-  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane]);
+  }, [pendingMobileSessions]); // Simplified dependencies for testing - CodeRabbit suggestion
 
   // Toggle hand tracking
   const toggleHandTracking = useCallback(() => {
