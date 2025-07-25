@@ -56,7 +56,7 @@ function App() {
   const initialPinchPositionRef = useRef<{ x: number; y: number } | null>(null);
   const paneStartPosRef = useRef<{ x: number; y: number } | null>(null);
   
-  const { openChatPane, toggleMetadataPane, toggleSettingsPane, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane, updateSessionMessages, getSessionMessages } = usePaneStore();
+  const { openChatPane, toggleMetadataPane, toggleSettingsPane, organizePanes, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane, updateSessionMessages, getSessionMessages } = usePaneStore();
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -362,6 +362,9 @@ function App() {
           }
           break;
         case 2:
+          organizePanes();
+          break;
+        case 3:
           toggleMetadataPane();
           break;
         case 7:
@@ -378,7 +381,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleMetadataPane, toggleSettingsPane, newProjectPath, createSession, toggleHandTracking, activePaneId, removePane]);
+  }, [toggleMetadataPane, toggleSettingsPane, organizePanes, newProjectPath, createSession, toggleHandTracking, activePaneId, removePane]);
 
   // Effect for pinch-to-drag logic
   useEffect(() => {
