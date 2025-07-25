@@ -5,8 +5,8 @@ import { Pane, PaneInput } from "@/types/pane";
 // Constants matching commander project
 export const PANE_MARGIN = 20;
 export const CASCADE_OFFSET = 45;
-export const DEFAULT_CHAT_WIDTH = 400; // Match commander
-export const DEFAULT_CHAT_HEIGHT = 300; // Match commander
+export const DEFAULT_CHAT_WIDTH = 600; // Larger for better usability
+export const DEFAULT_CHAT_HEIGHT = 450; // Larger for better usability
 export const METADATA_PANEL_WIDTH = 320;
 export const SETTINGS_PANEL_WIDTH = 320;
 
@@ -408,22 +408,34 @@ export const usePaneStore = create<PaneStore>()(
         const { panes } = get();
         if (panes.length === 0) return;
 
-        // Use commander's exact algorithm for organization
-        let lastPosition: { x: number; y: number; width: number; height: number } | null = null;
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        const hotbarHeight = 60;
+        const availableHeight = screenHeight - PANE_MARGIN * 2 - hotbarHeight;
+        const availableWidth = screenWidth - PANE_MARGIN * 2;
+
+        // Calculate grid dimensions
+        const cols = Math.ceil(Math.sqrt(panes.length));
+        const rows = Math.ceil(panes.length / cols);
         
+        // Calculate pane dimensions for grid
+        const gridPaneWidth = Math.floor((availableWidth - (cols - 1) * PANE_MARGIN) / cols);
+        const gridPaneHeight = Math.floor((availableHeight - (rows - 1) * PANE_MARGIN) / rows);
+
         const newPanes = panes.map((pane, index) => {
-          if (index === 0) {
-            // First pane at margin
-            const updatedPane = { ...pane, x: PANE_MARGIN, y: PANE_MARGIN };
-            lastPosition = { x: updatedPane.x, y: updatedPane.y, width: updatedPane.width, height: updatedPane.height };
-            return ensurePaneIsVisible(updatedPane);
-          } else {
-            // Use commander's cascade calculation for subsequent panes
-            const position = calculateNewPanePosition(panes, lastPosition);
-            const updatedPane = { ...pane, x: position.x, y: position.y };
-            lastPosition = { x: updatedPane.x, y: updatedPane.y, width: updatedPane.width, height: updatedPane.height };
-            return ensurePaneIsVisible(updatedPane);
-          }
+          const col = index % cols;
+          const row = Math.floor(index / cols);
+          
+          const x = PANE_MARGIN + col * (gridPaneWidth + PANE_MARGIN);
+          const y = PANE_MARGIN + row * (gridPaneHeight + PANE_MARGIN);
+          
+          return ensurePaneIsVisible({
+            ...pane,
+            x,
+            y,
+            width: gridPaneWidth,
+            height: gridPaneHeight,
+          });
         });
 
         // Update lastPanePosition in store
