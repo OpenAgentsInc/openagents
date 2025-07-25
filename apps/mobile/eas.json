@@ -36,7 +36,11 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "node": "20.11.0",
+      "npm": {
+        "cache": ".npm"
+      }
     }
   },
   "submit": {

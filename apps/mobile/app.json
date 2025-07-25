@@ -29,10 +29,7 @@
         "backgroundColor": "#ffffff"
       },
       "allowBackup": false,
-      "edgeToEdgeEnabled": true,
-      "permissions": [
-        "RECORD_AUDIO"
-      ]
+      "edgeToEdgeEnabled": true
     },
     "ios": {
       "icon": "./assets/icon.png",
@@ -57,13 +54,6 @@
       "bundler": "metro"
     },
     "plugins": [
-      [
-        "expo-audio",
-        {
-          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone to record voice messages for transcription."
-        }
-      ],
-      "expo-localization",
       "expo-font",
       [
         "expo-splash-screen",
