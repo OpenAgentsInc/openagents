@@ -1,0 +1,29 @@
+{
+  "name": "@openagents/convex",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared Convex backend for OpenAgents",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./convex/_generated/api.d.ts",
+      "default": "./convex/_generated/api.js"
+    },
+    "./react": {
+      "types": "./src/react.ts",
+      "default": "./src/react.ts"
+    }
+  },
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "codegen": "convex dev --until-success"
+  },
+  "dependencies": {
+    "convex": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "typescript": "~5.6.2"
+  }
+}
