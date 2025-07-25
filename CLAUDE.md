@@ -143,7 +143,7 @@ bun run install:all  # Reinstall all dependencies
 
 **Mobile App**:
 - React Native, Expo SDK
-- TypeScript, Expo Router
+- TypeScript
 
 **Shared**:
 - Convex: Real-time backend
