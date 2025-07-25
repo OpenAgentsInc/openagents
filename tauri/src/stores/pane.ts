@@ -267,10 +267,11 @@ export const usePaneStore = create<PaneStore>()(
       },
 
       organizePanes: () => {
+        console.log("🔧 organizePanes called");
         const { panes } = get();
-        const visiblePanes = panes.filter(p => p.id); // All panes are visible in our system
+        console.log("📊 Current panes:", panes.length, panes.map(p => ({ id: p.id, type: p.type })));
         
-        if (visiblePanes.length === 0) return;
+        if (panes.length === 0) return;
 
         const screenWidth = window.innerWidth;
         const screenHeight = window.innerHeight;
@@ -278,10 +279,18 @@ export const usePaneStore = create<PaneStore>()(
         const availableHeight = screenHeight - PANE_MARGIN * 2 - hotbarHeight;
         const availableWidth = screenWidth - PANE_MARGIN * 2;
 
+        console.log("📐 Screen dimensions:", { screenWidth, screenHeight, availableWidth, availableHeight });
+
         // Separate panes by type for smart organization
-        const settingsPane = visiblePanes.find(p => p.type === "settings");
-        const metadataPane = visiblePanes.find(p => p.type === "metadata");
-        const chatPanes = visiblePanes.filter(p => p.type === "chat");
+        const settingsPane = panes.find(p => p.type === "settings");
+        const metadataPane = panes.find(p => p.type === "metadata");
+        const chatPanes = panes.filter(p => p.type === "chat");
+        
+        console.log("🏷️ Pane breakdown:", { 
+          settings: settingsPane?.id, 
+          metadata: metadataPane?.id, 
+          chats: chatPanes.map(p => p.id) 
+        });
         
         let newPanes = [...panes];
         let currentX = PANE_MARGIN;
@@ -291,13 +300,14 @@ export const usePaneStore = create<PaneStore>()(
           const settingsIndex = newPanes.findIndex(p => p.id === settingsPane.id);
           if (settingsIndex !== -1) {
             newPanes[settingsIndex] = {
-              ...settingsPane,
+              ...newPanes[settingsIndex],
               x: currentX,
               y: PANE_MARGIN,
               width: SETTINGS_PANEL_WIDTH,
               height: availableHeight,
             };
             currentX += SETTINGS_PANEL_WIDTH + PANE_MARGIN;
+            console.log("⚙️ Positioned settings pane at", { x: PANE_MARGIN, y: PANE_MARGIN });
           }
         }
 
@@ -308,100 +318,37 @@ export const usePaneStore = create<PaneStore>()(
         if (metadataPane) otherPanes.push(metadataPane);
         otherPanes.push(...chatPanes);
 
+        console.log("📦 Other panes to organize:", otherPanes.length, "Remaining width:", remainingWidth);
+
         if (otherPanes.length === 0) {
+          console.log("✅ No other panes to organize");
           set({ panes: newPanes });
           return;
         }
 
-        // Organize remaining panes based on count
-        if (otherPanes.length === 1) {
-          // Single pane: use most of remaining width
-          const pane = otherPanes[0];
+        // SIMPLE SIDE-BY-SIDE LAYOUT FOR ALL CASES
+        const paneWidth = Math.floor(remainingWidth / otherPanes.length);
+        console.log("📏 Calculated pane width:", paneWidth);
+
+        otherPanes.forEach((pane, index) => {
           const paneIndex = newPanes.findIndex(p => p.id === pane.id);
           if (paneIndex !== -1) {
+            const x = currentX + index * paneWidth;
+            const y = PANE_MARGIN;
+            
             newPanes[paneIndex] = {
               ...newPanes[paneIndex],
-              x: currentX,
-              y: PANE_MARGIN,
-              width: remainingWidth,
+              x,
+              y,
+              width: paneWidth - (index < otherPanes.length - 1 ? PANE_MARGIN : 0),
               height: availableHeight,
             };
+            
+            console.log(`📍 Positioned pane ${pane.id} at`, { x, y, width: paneWidth });
           }
-        } else if (otherPanes.length === 2) {
-          // Two panes: side by side, equal width with gap
-          const totalGap = PANE_MARGIN; // One gap between the two panes
-          const paneWidth = Math.floor((remainingWidth - totalGap) / 2);
-          
-          otherPanes.forEach((pane, index) => {
-            const paneIndex = newPanes.findIndex(p => p.id === pane.id);
-            if (paneIndex !== -1) {
-              const xPos = index === 0 
-                ? currentX 
-                : currentX + paneWidth + PANE_MARGIN;
-              
-              newPanes[paneIndex] = {
-                ...newPanes[paneIndex],
-                x: xPos,
-                y: PANE_MARGIN,
-                width: paneWidth,
-                height: availableHeight,
-              };
-            }
-          });
-        } else if (otherPanes.length === 3) {
-          // Three panes: first one on left (~40%), other two stacked on right
-          const leftPaneWidth = Math.floor(remainingWidth * 0.4);
-          const rightPaneWidth = remainingWidth - leftPaneWidth - PANE_MARGIN;
-          const rightPaneHeight = Math.floor((availableHeight - PANE_MARGIN) / 2);
+        });
 
-          otherPanes.forEach((pane, index) => {
-            const paneIndex = newPanes.findIndex(p => p.id === pane.id);
-            if (paneIndex !== -1) {
-              if (index === 0) {
-                // Left pane
-                newPanes[paneIndex] = {
-                  ...newPanes[paneIndex],
-                  x: currentX,
-                  y: PANE_MARGIN,
-                  width: leftPaneWidth,
-                  height: availableHeight,
-                };
-              } else {
-                // Right panes (stacked)
-                newPanes[paneIndex] = {
-                  ...newPanes[paneIndex],
-                  x: currentX + leftPaneWidth + PANE_MARGIN,
-                  y: PANE_MARGIN + (index - 1) * (rightPaneHeight + PANE_MARGIN),
-                  width: rightPaneWidth,
-                  height: rightPaneHeight,
-                };
-              }
-            }
-          });
-        } else {
-          // 4+ panes: grid layout
-          const cols = Math.ceil(Math.sqrt(otherPanes.length));
-          const rows = Math.ceil(otherPanes.length / cols);
-          const paneWidth = Math.floor((remainingWidth - (cols - 1) * PANE_MARGIN) / cols);
-          const paneHeight = Math.floor((availableHeight - (rows - 1) * PANE_MARGIN) / rows);
-
-          otherPanes.forEach((pane, index) => {
-            const paneIndex = newPanes.findIndex(p => p.id === pane.id);
-            if (paneIndex !== -1) {
-              const col = index % cols;
-              const row = Math.floor(index / cols);
-              
-              newPanes[paneIndex] = {
-                ...newPanes[paneIndex],
-                x: currentX + col * (paneWidth + PANE_MARGIN),
-                y: PANE_MARGIN + row * (paneHeight + PANE_MARGIN),
-                width: paneWidth,
-                height: paneHeight,
-              };
-            }
-          });
-        }
-
+        console.log("🎯 Setting new pane positions");
         set({ panes: newPanes });
       },
 
