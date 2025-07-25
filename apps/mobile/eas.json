@@ -23,7 +23,7 @@
         "buildConfiguration": "Debug",
         "simulator": false
       },
-      "channel": "development:device"
+      "channel": "development-device"
     },
     "preview": {
       "extends": "production",
@@ -41,7 +41,7 @@
       "ios": {
         "simulator": false
       },
-      "channel": "preview:device"
+      "channel": "preview-device"
     },
     "production": {
       "autoIncrement": true,

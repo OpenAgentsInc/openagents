@@ -4,10 +4,6 @@
   "private": true,
   "license": "CC0-1.0",
   "description": "Claude Code wrapper with desktop and mobile apps",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "packageManager": "bun@1.2.16",
   "scripts": {
     "desktop": "cd apps/desktop && bun run dev",
