@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
-import { Plus, PanelLeft, Hand } from "lucide-react";
+import { Plus, History, Hand, Settings } from "lucide-react";
 import { usePaneStore } from "@/stores/pane";
 
 interface HotbarProps {
@@ -17,7 +17,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
   isHandTrackingActive,
   onToggleHandTracking 
 }) => {
-  const { toggleMetadataPane } = usePaneStore();
+  const { toggleMetadataPane, toggleSettingsPane } = usePaneStore();
 
   const handleNewChat = () => {
     if (onNewChat) {
@@ -32,22 +32,22 @@ export const Hotbar: React.FC<HotbarProps> = ({
         className,
       )}
     >
-      {/* Slot 1: Metadata Panel */}
+      {/* Slot 1: New Chat */}
       <HotbarItem
         slotNumber={1}
-        onClick={toggleMetadataPane}
-        title="Sessions Panel"
-      >
-        <PanelLeft className="text-muted-foreground h-5 w-5" />
-      </HotbarItem>
-
-      {/* Slot 2: New Chat */}
-      <HotbarItem
-        slotNumber={2}
         onClick={handleNewChat}
         title="New Chat"
       >
         <Plus className="text-muted-foreground h-5 w-5" />
+      </HotbarItem>
+
+      {/* Slot 2: History Panel */}
+      <HotbarItem
+        slotNumber={2}
+        onClick={toggleMetadataPane}
+        title="History"
+      >
+        <History className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 3: Empty */}
@@ -70,16 +70,13 @@ export const Hotbar: React.FC<HotbarProps> = ({
         <span className="h-5 w-5" />
       </HotbarItem>
 
-      {/* Slot 7: Settings (disabled for now) */}
-      {/* <HotbarItem
+      {/* Slot 7: Settings */}
+      <HotbarItem
         slotNumber={7}
-        onClick={handleSettings}
+        onClick={toggleSettingsPane}
         title="Settings"
       >
         <Settings className="text-muted-foreground h-5 w-5" />
-      </HotbarItem> */}
-      <HotbarItem slotNumber={7} isGhost>
-        <span className="h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 8: Help (disabled for now) */}
