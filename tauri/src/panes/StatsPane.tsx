@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { invoke } from "@tauri-apps/api/core";
-import { BarChart, Clock, Target, Trophy, TrendingUp, Loader2, RefreshCw, Eye } from "lucide-react";
+import { BarChart, Clock, Target, TrendingUp, Loader2, RefreshCw, Eye } from "lucide-react";
 
 interface ToolUsage {
   name: string;
@@ -24,13 +24,12 @@ interface APMSession {
 interface APMStats {
   sessionBasedAPM: number;
   allTimeAPM: number;
+  last24HoursAPM: number;
   currentSessionAPM: number;
   totalSessions: number;
   totalMessages: number;
   totalToolUses: number;
   totalDuration: number;
-  skillTier: string;
-  tierColor: string;
   toolUsage: ToolUsage[];
   recentSessions: APMSession[];
   productivityByTime: {
@@ -45,14 +44,7 @@ interface StatsPaneProps {
   // Props will be passed from PaneManager
 }
 
-const getSkillTier = (apm: number): { tier: string; color: string; emoji: string } => {
-  if (apm >= 200) return { tier: "Elite", color: "text-purple-400", emoji: "🟣" };
-  if (apm >= 100) return { tier: "Professional", color: "text-red-400", emoji: "🔴" };
-  if (apm >= 50) return { tier: "Productive", color: "text-orange-400", emoji: "🟠" };
-  if (apm >= 25) return { tier: "Active", color: "text-yellow-400", emoji: "🟡" };
-  if (apm >= 10) return { tier: "Casual", color: "text-green-400", emoji: "🟢" };
-  return { tier: "Novice", color: "text-amber-600", emoji: "🟤" };
-};
+// Removed skill tier functionality
 
 const formatDuration = (minutes: number): string => {
   if (minutes < 60) return `${minutes.toFixed(1)}m`;
@@ -96,7 +88,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
     loadStats();
   }, []);
 
-  const skillTierInfo = stats ? getSkillTier(stats.sessionBasedAPM) : null;
+  // Removed skill tier info
 
   if (loading) {
     return (
@@ -186,34 +178,26 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
           </div>
         </div>
 
-        {/* Current Session Card */}
-        <div className="bg-card rounded-lg border p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="h-4 w-4 text-orange-400" />
-            <span className="text-sm font-medium">Current Session APM</span>
-          </div>
-          <div className="text-2xl font-bold">{stats.currentSessionAPM.toFixed(1)}</div>
-          <div className="text-xs text-muted-foreground">Most recent session</div>
-        </div>
-
-        {/* Skill Tier */}
-        {skillTierInfo && (
+        {/* Last 24 Hours and Current Session */}
+        <div className="grid grid-cols-2 gap-4">
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Trophy className="h-4 w-4 text-yellow-400" />
-              <span className="text-sm font-medium">Skill Tier</span>
+              <Clock className="h-4 w-4 text-green-400" />
+              <span className="text-sm font-medium">Last 24 Hours</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg">{skillTierInfo.emoji}</span>
-              <span className={`text-xl font-bold ${skillTierInfo.color}`}>
-                {skillTierInfo.tier}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                (Session APM: {stats.sessionBasedAPM.toFixed(1)})
-              </span>
-            </div>
+            <div className="text-2xl font-bold">{stats.last24HoursAPM.toFixed(3)}</div>
+            <div className="text-xs text-muted-foreground">Actions per minute over 24 hours</div>
           </div>
-        )}
+          
+          <div className="bg-card rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="h-4 w-4 text-orange-400" />
+              <span className="text-sm font-medium">Current Session APM</span>
+            </div>
+            <div className="text-2xl font-bold">{stats.currentSessionAPM.toFixed(1)}</div>
+            <div className="text-xs text-muted-foreground">Most recent session</div>
+          </div>
+        </div>
 
         {/* Top Tools */}
         <div className="bg-card rounded-lg border p-4">

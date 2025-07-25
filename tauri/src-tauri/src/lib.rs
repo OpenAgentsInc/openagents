@@ -77,6 +77,8 @@ struct APMStats {
     session_based_apm: f64,
     #[serde(rename = "allTimeAPM")]
     all_time_apm: f64,
+    #[serde(rename = "last24HoursAPM")]
+    last_24_hours_apm: f64,
     #[serde(rename = "currentSessionAPM")]
     current_session_apm: f64,
     #[serde(rename = "totalSessions")]
@@ -87,10 +89,6 @@ struct APMStats {
     total_tool_uses: u32,
     #[serde(rename = "totalDuration")]
     total_duration: f64, // in minutes
-    #[serde(rename = "skillTier")]
-    skill_tier: String,
-    #[serde(rename = "tierColor")]
-    tier_color: String,
     #[serde(rename = "toolUsage")]
     tool_usage: Vec<ToolUsage>,
     #[serde(rename = "recentSessions")]
@@ -137,21 +135,7 @@ fn calculate_apm(message_count: u32, tool_count: u32, duration_minutes: f64) -> 
     (message_count as f64 + tool_count as f64) / duration_minutes
 }
 
-fn get_skill_tier(apm: f64) -> (String, String) {
-    if apm >= 200.0 {
-        ("Elite".to_string(), "text-purple-400".to_string())
-    } else if apm >= 100.0 {
-        ("Professional".to_string(), "text-red-400".to_string())
-    } else if apm >= 50.0 {
-        ("Productive".to_string(), "text-orange-400".to_string())
-    } else if apm >= 25.0 {
-        ("Active".to_string(), "text-yellow-400".to_string())
-    } else if apm >= 10.0 {
-        ("Casual".to_string(), "text-green-400".to_string())
-    } else {
-        ("Novice".to_string(), "text-amber-600".to_string())
-    }
-}
+// Removed skill tier functionality
 
 fn clean_project_name(project_name: &str) -> String {
     project_name
@@ -369,8 +353,25 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     apm_sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     let current_session_apm = apm_sessions.first().map(|s| s.apm).unwrap_or(0.0);
     
-    // Calculate skill tier based on session-based APM
-    let (skill_tier, tier_color) = get_skill_tier(session_based_apm);
+    // Calculate last 24 hours APM: actions in last 24 hours / 24 hours (1440 minutes)
+    let now = Utc::now();
+    let twenty_four_hours_ago = now - chrono::Duration::hours(24);
+    
+    let mut last_24h_messages = 0u32;
+    let mut last_24h_tools = 0u32;
+    
+    // Count actions from sessions that have any activity in the last 24 hours
+    for session in &apm_sessions {
+        if let Ok(session_time) = DateTime::parse_from_rfc3339(&session.timestamp) {
+            let session_utc = session_time.with_timezone(&Utc);
+            if session_utc >= twenty_four_hours_ago {
+                last_24h_messages += session.message_count;
+                last_24h_tools += session.tool_count;
+            }
+        }
+    }
+    
+    let last_24_hours_apm = (last_24h_messages as f64 + last_24h_tools as f64) / 1440.0; // 24 hours = 1440 minutes
     
     // Process tool usage statistics
     let total_tool_uses_for_percentage = total_tools as f64;
@@ -401,13 +402,12 @@ async fn analyze_conversations() -> Result<APMStats, String> {
     Ok(APMStats {
         session_based_apm,
         all_time_apm,
+        last_24_hours_apm,
         current_session_apm,
         total_sessions,
         total_messages,
         total_tool_uses: total_tools,
         total_duration,
-        skill_tier,
-        tier_color,
         tool_usage,
         recent_sessions: apm_sessions.into_iter().take(20).collect(), // Limit to 20 most recent
         productivity_by_time,
