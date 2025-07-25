@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { HandTracking, HandPose } from "@/components/hands";
 import type { PinchCoordinates, HandLandmarks } from "@/components/hands";
 import { SessionStreamManager } from "@/components/SessionStreamManager";
+import { ConvexDemo } from "@/components/ConvexDemo";
 
 interface Message {
   id: string;
@@ -519,6 +520,11 @@ function App() {
           isHandTrackingActive={isHandTrackingActive}
           onToggleHandTracking={toggleHandTracking}
         />
+        
+        {/* Convex Demo - Floating widget in bottom right */}
+        <div className="absolute bottom-4 right-4 z-50">
+          <ConvexDemo />
+        </div>
       </div>
     </TooltipProvider>
   );

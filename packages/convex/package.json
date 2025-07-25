@@ -1,10 +1,12 @@
 {
-  "name": "@openagents/convex",
+  "name": "@openagentsinc/convex",
   "version": "0.0.3",
   "private": true,
   "license": "CC0-1.0",
   "description": "Shared Convex backend for OpenAgents",
   "type": "module",
+  "main": "./convex/_generated/api.js",
+  "types": "./convex/_generated/api.d.ts",
   "exports": {
     ".": {
       "types": "./convex/_generated/api.d.ts",
@@ -12,7 +14,13 @@
     },
     "./react": {
       "types": "./src/react.ts",
-      "default": "./src/react.ts"
+      "import": "./src/react.js",
+      "default": "./src/react.js"
+    },
+    "./react-native": {
+      "types": "./src/react-native.ts", 
+      "import": "./src/react-native.js",
+      "default": "./src/react-native.js"
     }
   },
   "scripts": {
