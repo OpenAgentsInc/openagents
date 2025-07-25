@@ -199,6 +199,29 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
           </div>
         </div>
 
+        {/* APM Metrics Legend */}
+        <div className="bg-card rounded-lg border p-4">
+          <h3 className="font-semibold mb-3 text-sm">Metric Explanations</h3>
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <div className="flex items-start gap-2">
+              <span className="text-blue-400 font-medium min-w-0 flex-shrink-0">Session APM:</span>
+              <span>Average actions per minute across all your coding sessions combined</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-purple-400 font-medium min-w-0 flex-shrink-0">All-Time APM:</span>
+              <span>Actions per minute from your very first conversation to your latest (includes breaks)</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-green-400 font-medium min-w-0 flex-shrink-0">Last 24 Hours:</span>
+              <span>Actions per minute over the past 24 hours of calendar time (includes sleep/breaks)</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-orange-400 font-medium min-w-0 flex-shrink-0">Current Session:</span>
+              <span>Actions per minute in your most recent coding session only</span>
+            </div>
+          </div>
+        </div>
+
         {/* Top Tools */}
         <div className="bg-card rounded-lg border p-4">
           <h3 className="font-semibold mb-3">Top Tools</h3>

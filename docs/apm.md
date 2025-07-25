@@ -11,7 +11,7 @@ APM (Actions Per Minute) is a productivity metric borrowed from competitive gami
 
 ## Types of APM Measurements
 
-The system provides **three distinct APM calculations** to give different perspectives on productivity:
+The system provides **four distinct APM calculations** to give different perspectives on productivity:
 
 ### 1. Session APM
 **Formula**: `(Total Messages + Total Tool Uses) / Total Session Duration`
@@ -37,7 +37,18 @@ The system provides **three distinct APM calculations** to give different perspe
 
 **Use Case**: Understanding overall engagement and usage patterns
 
-### 3. Current Session APM
+### 3. Last 24 Hours APM
+**Formula**: `(Actions in Last 24 Hours) / 1440 minutes`
+
+**What it measures**: Your APM over the past 24 hours of calendar time
+
+**Example Calculation**:
+- 25 actions in the last 24 hours
+- **Last 24 Hours APM**: 25 ÷ 1440 = **0.017 APM**
+
+**Use Case**: Recent productivity regardless of active session time
+
+### 4. Current Session APM
 **Formula**: APM of your most recent active session
 
 **What it measures**: How productive your latest coding session was
@@ -46,38 +57,47 @@ The system provides **three distinct APM calculations** to give different perspe
 
 ## Understanding the Numbers
 
-### Typical APM Ranges
-
-Based on analysis of 279 real Claude Code conversations:
-
-| Tier | APM Range | % of Sessions | Typical Activity |
-|------|-----------|---------------|------------------|
-| 🟤 **Novice** | 0-10 | ~40% | Learning, reading docs, exploration |
-| 🟢 **Casual** | 10-25 | ~35% | Standard development, debugging |
-| 🟡 **Active** | 25-50 | ~15% | Focused feature development |
-| 🟠 **Productive** | 50-100 | ~7% | Sprint coding, rapid iteration |
-| 🔴 **Professional** | 100-200 | ~2% | Expert workflows, advanced automation |
-| 🟣 **Elite** | 200+ | <1% | Rapid implementation, live coding |
-
 ### Real-World Context
 
-- **Overall Average**: 3.8 Session APM across all analyzed users
-- **Peak Session**: 1,215 APM recorded (Elite tier)
+Based on analysis of 279 real Claude Code conversations:
+- **Session APM Average**: 3.8 actions/minute during active coding
+- **Peak Session**: 1,215 APM recorded
 - **Tool Distribution**: Bash (34%), Read (23%), Edit (21%)
 
-### Why Session APM vs All-Time APM?
+### APM Comparison Examples
 
-**Session APM** is typically much higher because it only counts active coding time:
+**High Session APM (50+ APM)**:
+- Rapid iteration cycles, efficient workflows
+- Bug fixing sessions, rapid prototyping
+- Flow state coding
+
+**Moderate Session APM (10-50 APM)**:
+- Balanced development work
+- Feature implementation with research
+- Normal debugging workflows
+
+**Low Session APM (0-10 APM)**:
+- Learning and exploration phases
+- Code reading and understanding
+- Research-heavy tasks
+
+### APM Comparison: Different Time Perspectives
+
+The four APM metrics provide different views of productivity:
+
 ```
-Session APM = Actions / Active Time Only
-All-Time APM = Actions / (Active Time + Breaks + Days Between Sessions)
+Session APM = Actions / Active Coding Time Only
+All-Time APM = Actions / (Total Calendar Time Since First Use)
+Last 24 Hours APM = Actions in Last 24h / 1440 minutes
+Current Session APM = Actions / Most Recent Session Duration
 ```
 
 **Example Comparison**:
-- Developer works 2 hours over 3 days
-- Session APM: Based on 2 hours (120 minutes)
-- All-Time APM: Based on 3 days (4,320 minutes)
-- **Result**: All-Time APM is ~36x lower than Session APM
+- Developer: 114 actions total, 30 minutes active coding, over 2 days, with 25 actions in last 24h
+- **Session APM**: 114 ÷ 30 = **3.8 APM** (active productivity)
+- **All-Time APM**: 114 ÷ 2,880 = **0.04 APM** (long-term engagement)
+- **Last 24 Hours APM**: 25 ÷ 1,440 = **0.017 APM** (recent activity)
+- **Current Session APM**: Varies by latest session
 
 ## What Actions Are Counted?
 
