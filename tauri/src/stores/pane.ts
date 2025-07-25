@@ -4,7 +4,7 @@ import { Pane, PaneInput } from "@/types/pane";
 
 export const PANE_MARGIN = 20;
 export const DEFAULT_CHAT_WIDTH = 600;
-export const DEFAULT_CHAT_HEIGHT = 600; // Fixed height to avoid positioning issues
+export const DEFAULT_CHAT_HEIGHT = 400; // Smaller height to allow proper positioning
 export const METADATA_PANEL_WIDTH = 320;
 export const SETTINGS_PANEL_WIDTH = 320;
 
@@ -138,7 +138,7 @@ export const usePaneStore = create<PaneStore>()(
 
         // Ensure pane fits on screen with better bounds checking
         const maxX = Math.max(screenWidth - width - PANE_MARGIN, PANE_MARGIN);
-        const maxY = Math.max(screenHeight - height - PANE_MARGIN - 100, PANE_MARGIN); // Leave more space at bottom
+        const maxY = Math.max(screenHeight - height - PANE_MARGIN - 60, PANE_MARGIN); // Leave space for hotbar
         
         console.log("🔒 Bounds checking:", { maxX, maxY, originalX: x, originalY: y });
         
