@@ -33,4 +33,4 @@ bun run mobile
 - See [Desktop README](apps/desktop/README.md) for more
 
 ## Status
-WIP: Not yet usable
+WIP: Almost usable
