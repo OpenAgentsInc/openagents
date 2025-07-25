@@ -5,7 +5,7 @@ import { v } from "convex/values";
 export const getMessages = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("messages").order("desc").take(100);
+    return await ctx.db.query("messages").order("asc").take(100);
   },
 });
 
