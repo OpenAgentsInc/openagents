@@ -6,6 +6,7 @@ export const PANE_MARGIN = 20;
 export const DEFAULT_CHAT_WIDTH = 600;
 export const DEFAULT_CHAT_HEIGHT = 600; // Fixed height to avoid positioning issues
 export const METADATA_PANEL_WIDTH = 320;
+export const SETTINGS_PANEL_WIDTH = 320;
 
 interface ClosedPanePosition {
   x: number;
@@ -44,6 +45,7 @@ interface PaneStore extends PaneState {
   setActivePane: (id: string | null) => void;
   openChatPane: (sessionId: string, projectPath: string) => void;
   toggleMetadataPane: () => void;
+  toggleSettingsPane: () => void;
   resetPanes: () => void;
   getPaneById: (id: string) => Pane | undefined;
   updateSessionMessages: (sessionId: string, messages: Message[]) => void;
@@ -217,12 +219,36 @@ export const usePaneStore = create<PaneStore>()(
           get().addPane({
             id: "metadata",
             type: "metadata",
-            title: "OpenAgents",
+            title: "History",
             dismissable: true,
             ...(storedPosition || {
               x: PANE_MARGIN,
               y: PANE_MARGIN,
               width: METADATA_PANEL_WIDTH,
+              height: window.innerHeight - (PANE_MARGIN * 4) - 60,
+            })
+          });
+        }
+      },
+
+      toggleSettingsPane: () => {
+        const settingsPane = get().panes.find(p => p.id === "settings");
+        
+        if (settingsPane) {
+          get().removePane("settings");
+        } else {
+          const storedPosition = get().closedPanePositions["settings"];
+          // Position settings pane to the right of other panes
+          const defaultX = METADATA_PANEL_WIDTH + PANE_MARGIN * 2;
+          get().addPane({
+            id: "settings",
+            type: "settings",
+            title: "Settings",
+            dismissable: true,
+            ...(storedPosition || {
+              x: defaultX,
+              y: PANE_MARGIN,
+              width: SETTINGS_PANEL_WIDTH,
               height: window.innerHeight - (PANE_MARGIN * 4) - 60,
             })
           });
