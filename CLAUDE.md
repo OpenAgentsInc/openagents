@@ -151,3 +151,53 @@ bun run install:all  # Reinstall all dependencies
 - Convex: Real-time backend
 - Bun: Package manager and runtime
 - TypeScript: Type safety across all packages
+
+## Code Review Process with CodeRabbit
+
+This repository uses **CodeRabbit AI** for automated code review. Here's how it works:
+
+### How CodeRabbit Works
+- **Automatic Triggering**: CodeRabbit automatically analyzes every pull request when opened
+- **Analysis Time**: Takes 2-3 minutes to complete initial analysis and post review comments
+- **Integration Requirement**: You should work with CodeRabbit to address relevant feedback before merging PRs
+
+### Interacting with CodeRabbit
+
+There are **3 ways** to chat with CodeRabbit:
+
+**1. Review Comments**: Directly reply to a CodeRabbit review comment
+```
+Examples:
+- "I pushed a fix in commit <commit_id>, please review it."
+- "Explain this complex logic."
+- "Open a follow-up GitHub issue for this discussion."
+```
+
+**2. Files and Specific Lines**: Tag @coderabbitai in a review comment on specific code
+```
+Examples:
+- "@coderabbitai explain this code block."
+- "@coderabbitai modularize this function."
+```
+
+**3. PR Comments**: Tag @coderabbitai in a PR comment for general questions
+```
+Examples:
+- "@coderabbitai gather interesting stats about this repository and render them as a table."
+- "@coderabbitai read src/utils.ts and explain its main purpose."
+- "@coderabbitai help me debug CodeRabbit configuration file."
+```
+
+### Best Practices
+- **Address Actionable Feedback**: Focus on "actionable" comments that suggest specific improvements
+- **Collaborate Until Satisfied**: Continue the conversation until both you and CodeRabbit are satisfied with the code quality
+- **Use for Learning**: Ask CodeRabbit to explain complex logic or suggest improvements
+- **Quality Gate**: Treat CodeRabbit review as a quality gate before merging
+
+### CodeRabbit Commands
+Use these commands in PR comments:
+- `@coderabbitai review` - Trigger incremental review
+- `@coderabbitai full review` - Complete review from scratch  
+- `@coderabbitai summary` - Regenerate PR summary
+- `@coderabbitai generate unit tests` - Generate tests for the PR
+- `@coderabbitai resolve` - Mark all review comments as resolved
