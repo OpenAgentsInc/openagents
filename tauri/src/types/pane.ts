@@ -1,7 +1,8 @@
 export type PaneType = 
   | "chat"           // Chat sessions with Claude
   | "metadata"       // Status/sessions panel
-  | "settings"       // Future settings pane
+  | "settings"       // Settings pane
+  | "stats"          // APM statistics pane
   | "help"          // Future help pane
   | string;
 
