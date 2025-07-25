@@ -8,6 +8,8 @@ import { HandTracking, HandPose } from "@/components/hands";
 import type { PinchCoordinates, HandLandmarks } from "@/components/hands";
 import { SessionStreamManager } from "@/components/SessionStreamManager";
 import { ConvexDemo } from "@/components/ConvexDemo";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../convex/_generated/api";
 
 interface Message {
   id: string;
@@ -59,6 +61,14 @@ function App() {
   
   const { openChatPane, toggleMetadataPane, toggleSettingsPane, toggleStatsPane, organizePanes, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane, updateSessionMessages, getSessionMessages } = usePaneStore();
 
+  // Convex hooks for Claude Code sync
+  const convexSessions = useQuery(api.claude.getSessions, { limit: 20 }) || [];
+  const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
+  const createConvexSession = useMutation(api.claude.createClaudeSession);
+  const addConvexMessage = useMutation(api.claude.addClaudeMessage);
+  const batchAddConvexMessages = useMutation(api.claude.batchAddMessages);
+  const updateSyncStatus = useMutation(api.claude.updateSyncStatus);
+
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
     invoke("get_project_directory").then((result: any) => {
@@ -67,6 +77,77 @@ function App() {
       }
     }).catch(console.error);
   }, []);
+
+  // Monitor for mobile-initiated sessions and create local Claude Code sessions
+  useEffect(() => {
+    const createSessionFromMobile = async (mobileSession: any) => {
+      try {
+        console.log('Creating local Claude Code session from mobile request:', mobileSession);
+        
+        // Check if we already have a local session for this Convex session
+        const existingLocalSession = sessions.find(s => s.id === mobileSession.sessionId);
+        if (existingLocalSession) {
+          console.log('Local session already exists for:', mobileSession.sessionId);
+          return;
+        }
+
+        // Create Claude Code session via Tauri backend
+        const result = await invoke<CommandResult<string>>("create_session", {
+          projectPath: mobileSession.projectPath,
+        });
+
+        if (result.success && result.data) {
+          const localSessionId = result.data;
+          
+          // Create local session state  
+          const newSession: Session = {
+            id: localSessionId,
+            projectPath: mobileSession.projectPath,
+            messages: [],
+            inputMessage: "",
+            isLoading: false,
+          };
+
+          // Add to local sessions
+          setSessions(prev => [...prev, newSession]);
+          
+          // Open chat pane
+          openChatPane(localSessionId, mobileSession.projectPath);
+          
+          // Update the Convex session to link it to the local session
+          await createConvexSession({
+            sessionId: localSessionId,
+            projectPath: mobileSession.projectPath,
+            createdBy: "mobile",
+            title: mobileSession.title || `Mobile Session - ${mobileSession.projectPath}`,
+            metadata: {
+              workingDirectory: mobileSession.projectPath,
+              originalMobileSessionId: mobileSession.sessionId,
+            },
+          });
+
+          console.log('Successfully created local session from mobile request');
+        } else {
+          console.error('Failed to create local Claude Code session:', result.error);
+        }
+      } catch (error) {
+        console.error('Error creating session from mobile:', error);
+      }
+    };
+
+    // Process pending mobile sessions
+    pendingMobileSessions.forEach(async (mobileSession) => {
+      // Check if this mobile session needs a local Claude Code session
+      const hasLocalSession = sessions.some(s => 
+        s.projectPath === mobileSession.projectPath && 
+        (s.id === mobileSession.sessionId || s.id.includes(mobileSession.sessionId))
+      );
+      
+      if (!hasLocalSession) {
+        await createSessionFromMobile(mobileSession);
+      }
+    });
+  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane]);
 
   // Toggle hand tracking
   const toggleHandTracking = useCallback(() => {
@@ -256,6 +337,23 @@ function App() {
             ? { ...s, id: realSessionId, isInitializing: false }
             : s
         ));
+
+        // Sync session to Convex
+        try {
+          await createConvexSession({
+            sessionId: realSessionId,
+            projectPath: newProjectPath,
+            createdBy: "desktop",
+            title: `Desktop Session - ${newProjectPath}`,
+            metadata: {
+              workingDirectory: newProjectPath,
+            },
+          });
+          console.log('Session synced to Convex:', realSessionId);
+        } catch (error) {
+          console.error('Failed to sync session to Convex:', error);
+          // Don't fail the session creation if Convex sync fails
+        }
         
         // Update the pane ID to match the real session ID
         // Defer state update to avoid updating during render
