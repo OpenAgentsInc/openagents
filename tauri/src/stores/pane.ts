@@ -100,12 +100,22 @@ export const usePaneStore = create<PaneStore>()(
             x = METADATA_PANEL_WIDTH + PANE_MARGIN * 2;
             y = PANE_MARGIN;
             
-            // If there are other panes, cascade them but limit the offset
+            // Position new chat panes side-by-side first, then stack if needed
             const existingPanes = get().panes.filter(p => p.type === "chat");
             if (existingPanes.length > 0) {
-              const cascadeOffset = Math.min(existingPanes.length * 30, 150); // Limit cascade offset
-              x += cascadeOffset;
-              y += cascadeOffset;
+              // Try to place side-by-side first
+              const horizontalOffset = existingPanes.length * (width + PANE_MARGIN);
+              const maxHorizontalPos = screenWidth - width - PANE_MARGIN;
+              
+              if (x + horizontalOffset <= maxHorizontalPos) {
+                // Place side-by-side
+                x += horizontalOffset;
+              } else {
+                // If not enough horizontal space, use minimal cascade
+                const cascadeOffset = Math.min(existingPanes.length * 30, 150);
+                x += cascadeOffset;
+                y += cascadeOffset;
+              }
             }
           }
         }
