@@ -10,9 +10,9 @@ This is an OpenAgents Tauri desktop application built with:
 - **Package Manager**: Bun (not npm/yarn)
 
 ### Project Structure
-**All application code is located in the `tauri/` directory.** The repository root contains documentation and configuration, but the actual Tauri application lives entirely within:
+**All application code is located in the `desktop/` directory.** The repository root contains documentation and configuration, but the actual Tauri application lives entirely within:
 ```
-tauri/                    # Main project directory
+desktop/                  # Main project directory
 ├── src/                  # Frontend React/TypeScript code
 ├── src-tauri/            # Backend Rust code
 ├── package.json          # Frontend dependencies
@@ -20,13 +20,13 @@ tauri/                    # Main project directory
 └── ...                  # Other frontend config files
 ```
 
-**Always work from the `tauri/` directory** when running commands or referencing files.
+**Always work from the `desktop/` directory** when running commands or referencing files.
 
 ## Commands
 
 ### Development
 ```bash
-cd tauri
+cd desktop
 bun install           # Install dependencies
 bun run dev           # Run Tauri app in development mode (no HMR by default)
 bun run dev:hmr       # Run Tauri app with HMR (may steal focus)
@@ -36,7 +36,7 @@ bun run dev:vite:hmr  # Start Vite dev server only with HMR
 
 ### Building
 ```bash
-cd tauri
+cd desktop
 bun run build        # Build frontend (runs tsc && vite build)
 bun run tauri build  # Build the complete Tauri app
 ```
@@ -56,15 +56,15 @@ bun run preview      # Preview production build
 
 ## Architecture
 
-### Frontend Structure (within `tauri/` directory)
-- Entry point: `tauri/src/main.tsx`
-- Main component: `tauri/src/App.tsx`
+### Frontend Structure (within `desktop/` directory)
+- Entry point: `desktop/src/main.tsx`
+- Main component: `desktop/src/App.tsx`
 - Uses Tauri API for IPC: `@tauri-apps/api/core`
-- TypeScript configuration: `tauri/tsconfig.json`
+- TypeScript configuration: `desktop/tsconfig.json`
 
-### Backend Structure (within `tauri/` directory)
-- Rust entry point: `tauri/src-tauri/src/main.rs`
-- Application logic: `tauri/src-tauri/src/lib.rs`
+### Backend Structure (within `desktop/` directory)
+- Rust entry point: `desktop/src-tauri/src/main.rs`
+- Application logic: `desktop/src-tauri/src/lib.rs`
 - Tauri commands are defined with `#[tauri::command]` macro
 - Current commands:
   - `greet(name: &str)`: Example command that returns a greeting
@@ -74,10 +74,10 @@ bun run preview      # Preview production build
 - Example: `await invoke("greet", { name: "World" })`
 - Commands must be registered in `tauri::generate_handler![]` in `lib.rs`
 
-### Configuration Files (within `tauri/` directory)
-- `tauri/src-tauri/tauri.conf.json`: Main Tauri configuration
-- `tauri/src-tauri/Cargo.toml`: Rust dependencies
-- `tauri/package.json`: Frontend dependencies and scripts
+### Configuration Files (within `desktop/` directory)
+- `desktop/src-tauri/tauri.conf.json`: Main Tauri configuration
+- `desktop/src-tauri/Cargo.toml`: Rust dependencies
+- `desktop/package.json`: Frontend dependencies and scripts
 - App identifier: `com.openagents.OpenAgents`
 
 ### Key Dependencies
