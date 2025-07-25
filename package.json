@@ -10,6 +10,7 @@
     "mobile": "cd apps/mobile && EXPO_NO_WELCOME_BANNER=1 bun start",
     "ios": "cd apps/mobile && EXPO_NO_WELCOME_BANNER=1 bun run ios",
     "android": "cd apps/mobile && EXPO_NO_WELCOME_BANNER=1 bun run android",
+    "convex": "cd packages/convex && bun run dev",
     "build:desktop": "cd apps/desktop && bun run build",
     "build:mobile": "cd apps/mobile && bun run build",
     "install:all": "bun install",
