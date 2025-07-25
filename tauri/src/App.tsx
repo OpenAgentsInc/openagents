@@ -357,12 +357,12 @@ function App() {
       // Call the appropriate function based on the digit
       switch (digit) {
         case 1:
-          toggleMetadataPane();
-          break;
-        case 2:
           if (newProjectPath) {
             createSession();
           }
+          break;
+        case 2:
+          toggleMetadataPane();
           break;
         case 7:
           toggleSettingsPane();

@@ -32,22 +32,22 @@ export const Hotbar: React.FC<HotbarProps> = ({
         className,
       )}
     >
-      {/* Slot 1: History Panel */}
+      {/* Slot 1: New Chat */}
       <HotbarItem
         slotNumber={1}
-        onClick={toggleMetadataPane}
-        title="History"
-      >
-        <History className="text-muted-foreground h-5 w-5" />
-      </HotbarItem>
-
-      {/* Slot 2: New Chat */}
-      <HotbarItem
-        slotNumber={2}
         onClick={handleNewChat}
         title="New Chat"
       >
         <Plus className="text-muted-foreground h-5 w-5" />
+      </HotbarItem>
+
+      {/* Slot 2: History Panel */}
+      <HotbarItem
+        slotNumber={2}
+        onClick={toggleMetadataPane}
+        title="History"
+      >
+        <History className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 3: Empty */}
