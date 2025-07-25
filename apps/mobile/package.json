@@ -1,18 +1,44 @@
 {
   "name": "openagents",
-  "version": "1.0.0",
+  "version": "0.0.3",
   "main": "index.ts",
+  "license": "CC0-1.0",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "start": "EXPO_NO_WELCOME_BANNER=1 expo start --dev-client",
+    "android": "EXPO_NO_WELCOME_BANNER=1 expo run:android",
+    "ios": "EXPO_NO_WELCOME_BANNER=1 expo run:ios",
+    "web": "EXPO_NO_WELCOME_BANNER=1 expo start --web",
+    "bundle:web": "npx expo export --platform web",
+    "serve:web": "npx serve dist",
+    "prebuild:clean": "npx expo prebuild --clean",
+    "compile": "tsc --noEmit -p . --pretty",
+    "lint": "eslint . --fix",
+    "lint:check": "eslint .",
+    "align-deps": "npx expo install --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "adb": "adb reverse tcp:9090 tcp:9090 && adb reverse tcp:3000 tcp:3000 && adb reverse tcp:9001 tcp:9001 && adb reverse tcp:8081 tcp:8081",
+    "build:ios:sim": "eas build --profile development --platform ios --local",
+    "build:ios:dev": "eas build --profile development:device --platform ios --local",
+    "build:ios:preview": "eas build --profile preview --platform ios --local",
+    "build:ios:prod": "eas build --profile production --platform ios --non-interactive --freeze-credentials",
+    "build:ios:prod:interactive": "eas build --profile production --platform ios",
+    "build:android:sim": "eas build --profile development --platform android --local",
+    "build:android:dev": "eas build --profile development:device --platform android --local",
+    "build:android:preview": "eas build --profile preview --platform android --local",
+    "build:android:prod": "eas build --profile production --platform android --local --non-interactive --freeze-credentials",
+    "build:android:prod:interactive": "eas build --profile production --platform android --local",
+    "submit:ios:prod": "eas submit --platform ios --profile production",
+    "submit": "eas submit --platform ios --profile production",
+    "update:publish": "eas update --branch production",
+    "update:preview": "eas update --branch preview"
   },
   "dependencies": {
     "expo": "~53.0.20",
     "expo-font": "^13.3.2",
     "expo-splash-screen": "^0.30.10",
     "expo-status-bar": "~2.2.3",
+    "expo-updates": "^0.28.17",
     "react": "19.0.0",
     "react-native": "0.79.5"
   },
@@ -21,5 +47,7 @@
     "@types/react": "~19.0.10",
     "typescript": "~5.8.3"
   },
-  "private": true
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }

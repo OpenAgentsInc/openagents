@@ -1,36 +1,76 @@
 {
   "expo": {
-    "name": "openagents",
+    "name": "OpenAgents",
     "slug": "openagents",
-    "version": "1.0.0",
+    "owner": "openagents",
+    "scheme": "openagents",
+    "version": "0.0.3",
     "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "updates": {
+      "url": "https://u.expo.dev/90d4a58a-e0c7-4eda-bbe3-1bfe96db4293",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 30000
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
-    },
+    "jsEngine": "hermes",
+    "assetBundlePatterns": [
+      "assets/fonts/*"
+    ],
     "android": {
+      "icon": "./assets/adaptive-icon.png",
+      "package": "com.openagents.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "allowBackup": false,
       "edgeToEdgeEnabled": true
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "ios": {
+      "icon": "./assets/icon.png",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.openagents.app",
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          }
+        ]
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
-    "assetBundlePatterns": [
-      "assets/fonts/*"
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 300,
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
+        }
+      ]
     ],
+    "experiments": {
+      "tsconfigPaths": true
+    },
     "extra": {
       "eas": {
-        "projectId": "openagents"
+        "projectId": "90d4a58a-e0c7-4eda-bbe3-1bfe96db4293"
       }
     },
     "developmentClient": {
