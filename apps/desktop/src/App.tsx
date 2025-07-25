@@ -64,6 +64,9 @@ function App() {
   // Convex hooks for Claude Code sync
   const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
   const createConvexSession = useMutation(api.claude.createClaudeSession);
+  
+  // State tracking for sessions currently being processed to prevent duplicates
+  const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -77,6 +80,9 @@ function App() {
   // Monitor for mobile-initiated sessions and create local Claude Code sessions
   useEffect(() => {
     const createSessionFromMobile = async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
+      // Mark session as being processed
+      setProcessingSessions(prev => new Set(prev).add(mobileSession.sessionId));
+      
       try {
         console.log('Creating local Claude Code session from mobile request:', mobileSession);
         
@@ -128,12 +134,24 @@ function App() {
         }
       } catch (error) {
         console.error('Error creating session from mobile:', error);
+      } finally {
+        // Remove session from processing set
+        setProcessingSessions(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(mobileSession.sessionId);
+          return newSet;
+        });
       }
     };
 
     // Process pending mobile sessions sequentially to avoid race conditions
     const processMobileSessions = async () => {
       for (const mobileSession of pendingMobileSessions) {
+        // Skip if already processing this session
+        if (processingSessions.has(mobileSession.sessionId)) {
+          continue;
+        }
+        
         // Check if this mobile session needs a local Claude Code session
         const hasLocalSession = sessions.some(s => 
           s.projectPath === mobileSession.projectPath && 
@@ -149,7 +167,7 @@ function App() {
     if (pendingMobileSessions.length > 0) {
       processMobileSessions().catch(console.error);
     }
-  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane]);
+  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane, processingSessions]);
 
   // Toggle hand tracking
   const toggleHandTracking = useCallback(() => {
