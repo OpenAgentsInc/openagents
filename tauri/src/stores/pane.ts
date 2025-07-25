@@ -78,6 +78,7 @@ export const usePaneStore = create<PaneStore>()(
       sessionMessages: {},
 
       addPane: (paneInput: PaneInput) => {
+        console.log("➕ addPane called with:", paneInput);
         const screenWidth = window.innerWidth;
         const screenHeight = window.innerHeight;
         
@@ -90,31 +91,46 @@ export const usePaneStore = create<PaneStore>()(
         let width = paneInput.width || DEFAULT_CHAT_WIDTH;
         let height = paneInput.height || DEFAULT_CHAT_HEIGHT;
 
+        console.log("📍 Initial position values:", { x, y, width, height });
+
         if (x === undefined || y === undefined) {
           // Try to use stored position for this pane
           const storedPosition = get().closedPanePositions[id];
           if (storedPosition) {
             ({ x, y, width, height } = storedPosition);
+            console.log("📦 Using stored position:", { x, y, width, height });
           } else {
             // Smart positioning: place to the right of metadata panel
             x = METADATA_PANEL_WIDTH + PANE_MARGIN * 2;
             y = PANE_MARGIN;
             
+            console.log("🎯 Base position:", { x, y });
+            
             // Position new chat panes side-by-side first, then stack if needed
             const existingPanes = get().panes.filter(p => p.type === "chat");
+            console.log("🔍 Existing chat panes:", existingPanes.length);
+            
             if (existingPanes.length > 0) {
               // Try to place side-by-side first
               const horizontalOffset = existingPanes.length * (width + PANE_MARGIN);
               const maxHorizontalPos = screenWidth - width - PANE_MARGIN;
               
+              console.log("📐 Horizontal offset calculation:", { 
+                horizontalOffset, 
+                maxHorizontalPos, 
+                wouldFit: x + horizontalOffset <= maxHorizontalPos 
+              });
+              
               if (x + horizontalOffset <= maxHorizontalPos) {
                 // Place side-by-side
                 x += horizontalOffset;
+                console.log("➡️ Placing side-by-side at x:", x);
               } else {
                 // If not enough horizontal space, use minimal cascade
                 const cascadeOffset = Math.min(existingPanes.length * 30, 150);
                 x += cascadeOffset;
                 y += cascadeOffset;
+                console.log("↘️ Using cascade offset:", { cascadeOffset, newX: x, newY: y });
               }
             }
           }
@@ -124,8 +140,12 @@ export const usePaneStore = create<PaneStore>()(
         const maxX = Math.max(screenWidth - width - PANE_MARGIN, PANE_MARGIN);
         const maxY = Math.max(screenHeight - height - PANE_MARGIN - 100, PANE_MARGIN); // Leave more space at bottom
         
+        console.log("🔒 Bounds checking:", { maxX, maxY, originalX: x, originalY: y });
+        
         x = Math.max(PANE_MARGIN, Math.min(x, maxX));
         y = Math.max(PANE_MARGIN, Math.min(y, maxY));
+
+        console.log("✅ Final position after bounds check:", { x, y, width, height });
 
         const newPane: Pane = {
           ...paneInput,
@@ -137,11 +157,15 @@ export const usePaneStore = create<PaneStore>()(
           isActive: true,
         };
 
+        console.log("🆕 Creating new pane:", newPane);
+
         set((state) => ({
           panes: [...state.panes, newPane],
           activePaneId: id,
           lastPanePosition: { x, y, width, height },
         }));
+
+        console.log("📊 Panes after adding:", get().panes.map(p => ({ id: p.id, x: p.x, y: p.y })));
 
         return id;
       },
@@ -349,6 +373,14 @@ export const usePaneStore = create<PaneStore>()(
         });
 
         console.log("🎯 Setting new pane positions");
+        console.log("📋 Final pane positions:", newPanes.map(p => ({ 
+          id: p.id, 
+          type: p.type, 
+          x: p.x, 
+          y: p.y, 
+          width: p.width, 
+          height: p.height 
+        })));
         set({ panes: newPanes });
       },
 
