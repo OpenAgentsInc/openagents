@@ -80,6 +80,10 @@ function App() {
   const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
   // State tracking for mobile sessions that have been successfully processed
   const [processedMobileSessions, setProcessedMobileSessions] = useState<Set<string>>(new Set());
+  
+  // Debounce ref to prevent excessive useEffect firing
+  const processingTimeoutRef = useRef<NodeJS.Timeout>();
+  const isProcessingRef = useRef(false);
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -92,6 +96,38 @@ function App() {
 
   // Monitor for mobile-initiated sessions and create local Claude Code sessions
   useEffect(() => {
+    console.log('🔄 [MOBILE-SYNC] useEffect triggered with:', {
+      pendingMobileSessionsCount: pendingMobileSessions.length,
+      sessionsCount: sessions.length,
+      processingSessions: Array.from(processingSessions),
+      processedMobileSessions: Array.from(processedMobileSessions),
+      isProcessing: isProcessingRef.current,
+      timestamp: new Date().toISOString()
+    });
+
+    // Clear existing timeout
+    if (processingTimeoutRef.current) {
+      clearTimeout(processingTimeoutRef.current);
+    }
+
+    // Prevent concurrent processing
+    if (isProcessingRef.current) {
+      console.log('⏸️ [MOBILE-SYNC] Already processing, skipping this execution');
+      return;
+    }
+
+    // Debounce processing by 200ms to batch rapid changes
+    processingTimeoutRef.current = setTimeout(() => {
+      if (pendingMobileSessions.length === 0) {
+        console.log('🔍 [MOBILE-SYNC] No pending mobile sessions, skipping processing');
+        return;
+      }
+
+      console.log('🚀 [MOBILE-SYNC] Starting debounced processing...');
+      isProcessingRef.current = true;
+
+      const processMobileSessions = async () => {
+        try {
     const createSessionFromMobile = async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
       console.log('🚀 [MOBILE-SYNC] Starting session creation from mobile request:', {
         sessionId: mobileSession.sessionId,
@@ -146,23 +182,34 @@ function App() {
           
           console.log('🔄 [MOBILE-SYNC] Syncing session to Convex...');
           // Update the Convex session to link it to the local session
-          await createConvexSession({
-            sessionId: localSessionId,
-            projectPath: mobileSession.projectPath,
-            createdBy: "mobile",
-            title: mobileSession.title || `Mobile Session - ${mobileSession.projectPath}`,
-            metadata: {
-              workingDirectory: mobileSession.projectPath,
-              originalMobileSessionId: mobileSession.sessionId,
-            },
-          });
+          try {
+            const convexResult = await createConvexSession({
+              sessionId: localSessionId,
+              projectPath: mobileSession.projectPath,
+              createdBy: "mobile",
+              title: mobileSession.title || `Mobile Session - ${mobileSession.projectPath}`,
+              metadata: {
+                workingDirectory: mobileSession.projectPath,
+                originalMobileSessionId: mobileSession.sessionId,
+              },
+            });
+            console.log('✅ [MOBILE-SYNC] Successfully synced session to Convex:', convexResult);
+          } catch (convexError) {
+            console.error('❌ [MOBILE-SYNC] Failed to sync session to Convex:', convexError);
+            throw convexError; // Re-throw to prevent marking as processed
+          }
 
           // Mark mobile session as processed in the database
           console.log('🏁 [MOBILE-SYNC] Marking mobile session as processed in database...');
-          await markMobileSessionProcessed({
-            mobileSessionId: mobileSession.sessionId,
-          });
-          console.log('✅ [MOBILE-SYNC] Marked mobile session as processed in database');
+          try {
+            const markResult = await markMobileSessionProcessed({
+              mobileSessionId: mobileSession.sessionId,
+            });
+            console.log('✅ [MOBILE-SYNC] Successfully marked mobile session as processed:', markResult);
+          } catch (markError) {
+            console.error('❌ [MOBILE-SYNC] Failed to mark mobile session as processed:', markError);
+            throw markError; // Re-throw to prevent local state update
+          }
 
           // Mark mobile session as successfully processed locally
           setProcessedMobileSessions(prev => new Set(prev).add(mobileSession.sessionId));
@@ -211,16 +258,24 @@ function App() {
           console.log('⏭️ [MOBILE-SYNC] Skipping - already successfully processed:', mobileSession.sessionId);
         }
       }
-      console.log('✅ [MOBILE-SYNC] Finished processing all mobile sessions');
+          console.log('✅ [MOBILE-SYNC] Finished processing all mobile sessions');
+        } catch (error) {
+          console.error('💥 [MOBILE-SYNC] Error processing mobile sessions:', error);
+        } finally {
+          isProcessingRef.current = false;
+        }
+      };
+
+      processMobileSessions();
+    }, 200); // 200ms debounce
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (processingTimeoutRef.current) {
+        clearTimeout(processingTimeoutRef.current);
+      }
     };
-    
-    if (pendingMobileSessions.length > 0) {
-      console.log('🚀 [MOBILE-SYNC] Starting to process mobile sessions...');
-      processMobileSessions().catch((error) => {
-        console.error('💥 [MOBILE-SYNC] Error processing mobile sessions:', error);
-      });
-    }
-  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane, processingSessions, processedMobileSessions]);
+  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane]);
 
   // Toggle hand tracking
   const toggleHandTracking = useCallback(() => {
