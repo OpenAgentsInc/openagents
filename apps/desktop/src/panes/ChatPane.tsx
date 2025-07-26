@@ -93,6 +93,7 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage }
 
   const renderMessage = (msg: Message) => {
     const isUser = msg.message_type === 'user';
+    const isThinking = msg.message_type === 'thinking';
     
     return (
       <div key={msg.id} className={`text-left font-mono ${isUser ? 'mb-4' : 'mb-2'}`}>
@@ -101,6 +102,10 @@ export const ChatPane: React.FC<ChatPaneProps> = ({ pane, session, sendMessage }
             <div className="text-zinc-400">
               <span>&gt; </span>
               <span className="whitespace-pre-wrap">{msg.content}</span>
+            </div>
+          ) : isThinking ? (
+            <div className="pl-2 text-zinc-300 opacity-50 italic">
+              <div className="whitespace-pre-wrap">{msg.content}</div>
             </div>
           ) : (
             <div className="pl-2 text-zinc-300">
