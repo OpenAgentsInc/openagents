@@ -3,6 +3,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { invoke } from "@tauri-apps/api/core";
 import { BarChart, Clock, TrendingUp, Loader2, RefreshCw, Eye } from "lucide-react";
+import { HistoricalAPMChart } from "@/components/charts/HistoricalAPMChart";
 
 interface ToolUsage {
   name: string;
@@ -312,6 +313,9 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
             </div>
           </div>
         </div>
+
+        {/* Historical APM Chart */}
+        <HistoricalAPMChart viewMode={viewMode} />
 
         {/* Top Tools */}
         <div className="bg-card rounded-lg border p-4">
