@@ -83,6 +83,11 @@ function App() {
   // State tracking for mobile sessions that have been successfully processed
   const [processedMobileSessions, setProcessedMobileSessions] = useState<Set<string>>(new Set());
   
+  // Global rate limiting for mobile session processing
+  const [isProcessingAnyMobileSession, setIsProcessingAnyMobileSession] = useState(false);
+  const [lastGlobalProcessTime, setLastGlobalProcessTime] = useState(0);
+  const GLOBAL_PROCESS_DELAY = 3000; // 3 seconds between processing any mobile sessions
+  
   // Debounce ref to prevent excessive useEffect firing
   const processingTimeoutRef = useRef<NodeJS.Timeout>();
   const isProcessingRef = useRef(false);
@@ -106,9 +111,9 @@ function App() {
         await discoverClaude();
         console.log('✅ [APP] Claude Code discovered, enabling mobile session processing');
         
-        // Clean up any old mobile sessions that might be stuck in active status
-        console.log('🧹 [APP] Cleaning up old mobile sessions...');
-        await cleanupOldMobileSessions();
+        // Do NOT cleanup mobile sessions on startup - they might be legitimate pending sessions
+        console.log('🚀 [STARTUP] Skipping mobile session cleanup to preserve legitimate pending sessions');
+        // Removed aggressive cleanup - sessions should only be marked processed after actual processing
         
         setIsAppInitialized(true);
       } catch (error) {
@@ -136,11 +141,24 @@ function App() {
       return;
     }
     
+    // Check global rate limiting
+    const now = Date.now();
+    if (now - lastGlobalProcessTime < GLOBAL_PROCESS_DELAY) {
+      console.log(`⏳ [MOBILE-SYNC] Global rate limit active, waiting ${GLOBAL_PROCESS_DELAY - (now - lastGlobalProcessTime)}ms`);
+      return;
+    }
+    
+    // Prevent concurrent processing of multiple sessions
+    if (isProcessingAnyMobileSession) {
+      console.log('🚫 [MOBILE-SYNC] Already processing a mobile session, skipping');
+      return;
+    }
+    
     const timestamp = new Date().toISOString();
-    const pendingIds = pendingMobileSessions.map(s => s.sessionId);
+    const pendingIds = pendingMobileSessions.map((s: any) => s.sessionId);
     const processedIds = Array.from(processedMobileSessions);
     const processingIds = Array.from(processingSessions);
-    const overlaps = pendingIds.filter(id => processedIds.includes(id));
+    const overlaps = pendingIds.filter((id: string) => processedIds.includes(id));
     
     // Only log when there are actually sessions to process to reduce noise
     if (pendingIds.length > 0) {
@@ -245,11 +263,12 @@ function App() {
             const convexResult = await createConvexSession({
               sessionId: localSessionId,
               projectPath: mobileSession.projectPath,
-              createdBy: "mobile",
+              createdBy: "desktop", // Mark as desktop-created to avoid re-processing
               title: mobileSession.title || `Mobile Session - ${mobileSession.projectPath}`,
               metadata: {
                 workingDirectory: mobileSession.projectPath,
                 originalMobileSessionId: mobileSession.sessionId,
+                processedFromMobile: true, // Flag to indicate this was processed from a mobile request
               },
             });
             console.log('✅ [MOBILE-SYNC] Successfully synced session to Convex:', convexResult);
@@ -310,13 +329,17 @@ function App() {
         console.log('🔄 [MOBILE-SYNC] Already processed sessions:', Array.from(processedMobileSessions));
         console.log('🔄 [MOBILE-SYNC] Current local sessions:', sessions.map(s => ({ id: s.id, path: s.projectPath })));
         
-        for (const mobileSession of pendingMobileSessions) {
+        // Process only ONE session at a time to prevent rapid creation
+        const sessionToProcess = pendingMobileSessions[0];
+        if (!sessionToProcess) return;
+        
+        const mobileSession = sessionToProcess;
         console.log('🔍 [MOBILE-SYNC] Evaluating mobile session:', mobileSession.sessionId);
         
         // Skip if already processing this session
         if (processingSessions.has(mobileSession.sessionId)) {
           console.log('⏭️ [MOBILE-SYNC] Skipping - already processing:', mobileSession.sessionId);
-          continue;
+          return;
         }
         
         // Check if this mobile session has already been successfully processed
@@ -326,10 +349,19 @@ function App() {
         
         if (!alreadyProcessed) {
           console.log('🎯 [MOBILE-SYNC] Creating session for:', mobileSession.sessionId);
+          
+          // Set global processing flag
+          setIsProcessingAnyMobileSession(true);
+          setLastGlobalProcessTime(Date.now());
+          
           await createSessionFromMobile(mobileSession);
+          
+          // Clear global processing flag after a delay
+          setTimeout(() => {
+            setIsProcessingAnyMobileSession(false);
+          }, 1000); // 1 second cooldown before allowing next session
         } else {
           console.log('⏭️ [MOBILE-SYNC] Skipping - already successfully processed:', mobileSession.sessionId);
-        }
         }
         console.log('✅ [MOBILE-SYNC] Finished processing all mobile sessions');
       } catch (error) {
@@ -348,7 +380,7 @@ function App() {
         clearTimeout(processingTimeoutRef.current);
       }
     };
-  }, [pendingMobileSessions, isAppInitialized]); // Include initialization state
+  }, [pendingMobileSessions, isAppInitialized, lastGlobalProcessTime, isProcessingAnyMobileSession]); // Include rate limiting state
 
   // Toggle hand tracking
   const toggleHandTracking = useCallback(() => {
@@ -380,28 +412,8 @@ function App() {
 
   // Claude discovery is now handled in the app initialization process above
   
-  // Clean up old mobile sessions that are stuck in active status
-  const cleanupOldMobileSessions = async () => {
-    try {
-      const currentMobileSessions = pendingMobileSessions || [];
-      console.log(`🧹 [CLEANUP] Found ${currentMobileSessions.length} active mobile sessions to clean up`);
-      
-      for (const mobileSession of currentMobileSessions) {
-        try {
-          console.log(`🗑️ [CLEANUP] Marking old mobile session as processed: ${mobileSession.sessionId}`);
-          await markMobileSessionProcessed({
-            mobileSessionId: mobileSession.sessionId,
-          });
-        } catch (error) {
-          console.error(`❌ [CLEANUP] Failed to clean up session ${mobileSession.sessionId}:`, error);
-        }
-      }
-      
-      console.log('✅ [CLEANUP] Old mobile session cleanup completed');
-    } catch (error) {
-      console.error('❌ [CLEANUP] Failed to clean up old mobile sessions:', error);
-    }
-  };
+  // Removed aggressive cleanup function - sessions should only be marked as processed
+  // after they have been actually processed, not preemptively on startup
 
 
   const handleMessagesUpdate = useCallback((sessionId: string, messages: Message[]) => {
