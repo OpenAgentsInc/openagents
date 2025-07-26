@@ -220,14 +220,6 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
             </Button>
           ))}
         </div>
-        
-        {/* Auto-refresh indicator */}
-        {refreshing && (
-          <div className="flex items-center justify-center gap-1 mt-2">
-            <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Auto-refreshing...</span>
-          </div>
-        )}
       </div>
 
       <Separator className="my-4" />
