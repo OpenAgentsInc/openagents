@@ -130,7 +130,7 @@ export const addClaudeMessage = mutation({
   args: {
     sessionId: v.string(),
     messageId: v.string(),
-    messageType: v.union(v.literal("user"), v.literal("assistant"), v.literal("tool_use"), v.literal("tool_result")),
+    messageType: v.union(v.literal("user"), v.literal("assistant"), v.literal("tool_use"), v.literal("tool_result"), v.literal("thinking")),
     content: v.string(),
     timestamp: v.string(),
     toolInfo: v.optional(v.object({
@@ -194,7 +194,7 @@ export const batchAddMessages = mutation({
     sessionId: v.string(),
     messages: v.array(v.object({
       messageId: v.string(),
-      messageType: v.union(v.literal("user"), v.literal("assistant"), v.literal("tool_use"), v.literal("tool_result")),
+      messageType: v.union(v.literal("user"), v.literal("assistant"), v.literal("tool_use"), v.literal("tool_result"), v.literal("thinking")),
       content: v.string(),
       timestamp: v.string(),
       toolInfo: v.optional(v.object({

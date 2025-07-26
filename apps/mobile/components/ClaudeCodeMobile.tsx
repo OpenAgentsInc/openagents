@@ -61,9 +61,6 @@ export function ClaudeCodeMobile() {
   // Message input state (moved from renderSessionDetail to fix hooks violation)
   const [newMessage, setNewMessage] = useState("");
   
-  // Message input state (moved from renderSessionDetail to fix hooks violation)
-  const [newMessage, setNewMessage] = useState("");
-  
   // Convex hooks
   const sessions = useQuery(api.claude.getSessions, { limit: 50 }) || [];
   const selectedSessionMessages = useQuery(
