@@ -18,6 +18,12 @@ export const PaneManager: React.FC = () => {
       case "chat":
         const sessionId = pane.content?.sessionId as string;
         const session = data.sessions?.find((s: any) => s.id === sessionId);
+        console.log('🎨 [PANE-MANAGER] Rendering ChatPane:', {
+          paneId: pane.id,
+          sessionId,
+          sessionFound: !!session,
+          totalSessions: data.sessions?.length || 0
+        });
         return <ChatPane 
           pane={pane} 
           session={session}

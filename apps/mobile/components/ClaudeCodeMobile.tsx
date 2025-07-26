@@ -43,10 +43,23 @@ export function ClaudeCodeMobile() {
   const [activeTab, setActiveTab] = useState<"sessions" | "create">("sessions");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   
+  // Generate random 4-character string for session title
+  const generateRandomString = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < 4; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+  
   // Session creation state
-  const [newProjectPath, setNewProjectPath] = useState("");
-  const [newSessionTitle, setNewSessionTitle] = useState("");
-  const [initialMessage, setInitialMessage] = useState("");
+  const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/code/openagents");
+  const [newSessionTitle, setNewSessionTitle] = useState(`Testing ${generateRandomString()}`);
+  const [initialMessage, setInitialMessage] = useState("Introduce yourself, then use 3 readonly tools to explore the codebase and summarize what you learn.");
+  
+  // Message input state (moved from renderSessionDetail to fix hooks violation)
+  const [newMessage, setNewMessage] = useState("");
   
   // Message input state (moved from renderSessionDetail to fix hooks violation)
   const [newMessage, setNewMessage] = useState("");
@@ -73,12 +86,20 @@ export function ClaudeCodeMobile() {
       return;
     }
 
+    console.log('📱 [MOBILE] Creating new Claude Code session with:', {
+      projectPath: newProjectPath.trim(),
+      title: newSessionTitle.trim() || undefined,
+      hasInitialMessage: !!initialMessage.trim()
+    });
+
     try {
       const sessionId = await requestDesktopSession({
         projectPath: newProjectPath.trim(),
         initialMessage: initialMessage.trim() || undefined,
         title: newSessionTitle.trim() || undefined,
       });
+
+      console.log('✅ [MOBILE] Session created successfully with ID:', sessionId);
 
       Alert.alert(
         "Session Created",
@@ -87,6 +108,7 @@ export function ClaudeCodeMobile() {
           {
             text: "View Session",
             onPress: () => {
+              console.log('📱 [MOBILE] User selected to view session:', sessionId);
               setSelectedSessionId(sessionId);
               setActiveTab("sessions");
             },
@@ -95,12 +117,12 @@ export function ClaudeCodeMobile() {
         ]
       );
 
-      // Clear form
-      setNewProjectPath("");
-      setNewSessionTitle("");
-      setInitialMessage("");
+      // Clear form and reset to defaults
+      setNewProjectPath("/Users/christopherdavid/code/openagents");
+      setNewSessionTitle(`Testing ${generateRandomString()}`);
+      setInitialMessage("Introduce yourself, then use 3 readonly tools to explore the codebase and summarize what you learn.");
     } catch (error) {
-      console.error("Failed to create session:", error);
+      console.error("❌ [MOBILE] Failed to create session:", error);
       Alert.alert("Error", "Failed to create session. Please try again.");
     }
   };
@@ -108,23 +130,36 @@ export function ClaudeCodeMobile() {
   const handleSendMessage = async (sessionId: string, content: string) => {
     if (!content.trim()) return;
 
+    console.log('💬 [MOBILE] Sending message to session:', {
+      sessionId,
+      contentLength: content.trim().length,
+      content: content.trim().substring(0, 100) + (content.trim().length > 100 ? '...' : '')
+    });
+
     try {
+      const messageId = `mobile-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+      console.log('📝 [MOBILE] Adding message with ID:', messageId);
+      
       await addMessage({
         sessionId,
-        messageId: `mobile-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+        messageId,
         messageType: "user",
         content: content.trim(),
         timestamp: new Date().toISOString(),
         metadata: { source: "mobile" },
       });
 
+      console.log('✅ [MOBILE] Message added to Convex successfully');
+
       // Update mobile last seen
       await updateSyncStatus({
         sessionId,
         mobileLastSeen: Date.now(),
       });
+
+      console.log('🔄 [MOBILE] Updated sync status for session');
     } catch (error) {
-      console.error("Failed to send message:", error);
+      console.error("❌ [MOBILE] Failed to send message:", error);
       Alert.alert("Error", "Failed to send message. Please try again.");
     }
   };

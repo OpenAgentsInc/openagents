@@ -351,14 +351,16 @@ export const usePaneStore = create<PaneStore>()(
       },
 
       openChatPane: (sessionId: string, projectPath: string) => {
+        console.log('🖼️ [PANE-STORE] openChatPane called with:', { sessionId, projectPath });
         const existingPane = get().panes.find(p => 
           p.type === "chat" && p.content?.sessionId === sessionId
         );
 
         if (existingPane) {
+          console.log('🔄 [PANE-STORE] Existing pane found, bringing to front:', existingPane.id);
           get().bringPaneToFront(existingPane.id);
         } else {
-          get().addPane({
+          const newPaneData = {
             id: `chat-${sessionId}`,
             type: "chat",
             title: projectPath.split('/').pop() || "Chat",
@@ -367,7 +369,10 @@ export const usePaneStore = create<PaneStore>()(
               sessionId,
               projectPath,
             }
-          });
+          };
+          console.log('➕ [PANE-STORE] Creating new chat pane:', newPaneData);
+          get().addPane(newPaneData);
+          console.log('✅ [PANE-STORE] Chat pane created. Total panes:', get().panes.length);
         }
       },
 
