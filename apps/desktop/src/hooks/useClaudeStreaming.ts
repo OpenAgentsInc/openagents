@@ -3,7 +3,7 @@ import { Effect, Stream, pipe, Layer } from 'effect';
 import { ClaudeStreamingService, ClaudeStreamingServiceLive, StreamingSession, Message } from '../services/ClaudeStreamingService';
 import { TauriEventService, TauriEventServiceLive } from '../services/TauriEventService';
 import { invoke } from '@tauri-apps/api/core';
-import { useMutation } from 'convex/react';
+import { useMutation, useConvex } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
 interface UseClaudeStreamingOptions {
@@ -35,9 +35,55 @@ export function useClaudeStreaming({
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [hasLoadedHistory, setHasLoadedHistory] = useState(false);
   
   const sessionRef = useRef<StreamingSession | null>(null);
   const addClaudeMessage = useMutation(api.claude.addClaudeMessage);
+  const convex = useConvex();
+
+  // Load historical messages from Convex
+  const loadHistoricalMessages = useCallback(async () => {
+    try {
+      // Use the persistence session ID (mobile session ID) to load messages
+      const targetSessionId = persistToSessionId || sessionId;
+      
+      console.log('📚 [STREAMING] Loading historical messages for session:', targetSessionId);
+      
+      const historicalMessages = await convex.query(api.claude.getSessionMessages, {
+        sessionId: targetSessionId,
+      });
+      
+      if (historicalMessages && historicalMessages.length > 0) {
+        // Convert Convex message format to streaming message format
+        const convertedMessages: Message[] = historicalMessages.map((msg: any) => ({
+          id: msg.messageId,
+          message_type: msg.messageType,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          tool_info: msg.toolInfo ? {
+            tool_name: msg.toolInfo.toolName,
+            tool_use_id: msg.toolInfo.toolUseId,
+            input: msg.toolInfo.input,
+            output: msg.toolInfo.output || undefined,
+          } : undefined,
+        }));
+        
+        console.log('✅ [STREAMING] Loaded', convertedMessages.length, 'historical messages');
+        setMessages(convertedMessages);
+        
+        // Notify listeners about the historical messages
+        convertedMessages.forEach(msg => onMessage?.(msg));
+      } else {
+        console.log('📭 [STREAMING] No historical messages found');
+      }
+      
+      setHasLoadedHistory(true);
+    } catch (error) {
+      console.error('❌ [STREAMING] Failed to load historical messages:', error);
+      // Don't fail streaming if we can't load history
+      setHasLoadedHistory(true);
+    }
+  }, [sessionId, persistToSessionId, convex, onMessage]);
 
   // Start streaming
   const startStreaming = useCallback(async () => {
@@ -45,6 +91,11 @@ export function useClaudeStreaming({
     
     setIsStreaming(true);
     setError(null);
+    
+    // Load historical messages first if not already loaded
+    if (!hasLoadedHistory) {
+      await loadHistoricalMessages();
+    }
     
     try {
       // Create the streaming program
@@ -106,7 +157,7 @@ export function useClaudeStreaming({
       setIsStreaming(false);
       sessionRef.current = null;
     }
-  }, [sessionId, isStreaming, onMessage, onError]);
+  }, [sessionId, isStreaming, onMessage, onError, hasLoadedHistory, loadHistoricalMessages]);
 
   // Persist streaming messages to Convex
   const persistMessageToConvex = useCallback(async (message: Message) => {
@@ -213,6 +264,12 @@ export function useClaudeStreaming({
       setIsStreaming(false);
     }
   }, []);
+
+  // Reset history loaded flag when session changes
+  useEffect(() => {
+    setHasLoadedHistory(false);
+    setMessages([]);
+  }, [sessionId, persistToSessionId]);
 
   // Cleanup on unmount
   useEffect(() => {
