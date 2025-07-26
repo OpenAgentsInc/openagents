@@ -54,6 +54,10 @@ function App() {
   const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
   const [handData, setHandData] = useState<HandDataContext | null>(null);
   
+  // Startup state management to prevent excessive initial calls
+  const [isAppInitialized, setIsAppInitialized] = useState(false);
+  const initializationTimeoutRef = useRef<NodeJS.Timeout>();
+  
   // Pinch-to-drag state
   const [draggingPaneId, setDraggingPaneId] = useState<string | null>(null);
   const initialPinchPositionRef = useRef<{ x: number; y: number } | null>(null);
@@ -86,10 +90,6 @@ function App() {
   // Circuit breaker to prevent processing same session repeatedly
   const lastProcessedTimeRef = useRef<Record<string, number>>({});
   const PROCESSING_COOLDOWN = 5000; // 5 seconds
-  
-  // Startup state management to prevent excessive initial calls
-  const [isAppInitialized, setIsAppInitialized] = useState(false);
-  const initializationTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
