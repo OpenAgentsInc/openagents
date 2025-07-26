@@ -326,10 +326,14 @@ function App() {
           
           // Add this mobile session to the initialization queue
           console.log('📥 [MOBILE-SYNC] Queueing mobile session for initial message retrieval');
-          setMobileSessionsToInitialize(prev => [...prev, {
-            mobileSessionId: mobileSession.sessionId,
-            localSessionId: localSessionId
-          }]);
+          setMobileSessionsToInitialize(prev => {
+            const newQueue = [...prev, {
+              mobileSessionId: mobileSession.sessionId,
+              localSessionId: localSessionId
+            }];
+            console.log('📋 [MOBILE-SYNC] Updated initialization queue:', newQueue);
+            return newQueue;
+          });
 
           // Mark mobile session as processed in the database
           console.log('🏁 [MOBILE-SYNC] Marking mobile session as processed in database...');
@@ -897,6 +901,7 @@ function App() {
         ))}
         
         {/* Mobile Session Initializers */}
+        {console.log('🔍 [MOBILE-INIT-RENDER] Rendering initializers:', mobileSessionsToInitialize)}
         {mobileSessionsToInitialize.map(({ mobileSessionId, localSessionId }) => (
           <MobileSessionInitializer
             key={`${mobileSessionId}-${localSessionId}`}
