@@ -99,11 +99,27 @@ function App() {
       }
     }).catch(console.error);
     
-    // Initialize app after brief delay to prevent startup spam
-    initializationTimeoutRef.current = setTimeout(() => {
-      setIsAppInitialized(true);
-      console.log('🚀 [APP] Application initialized - mobile session processing enabled');
-    }, 1000); // 1 second initialization delay
+    // Initialize Claude Code discovery and then enable mobile session processing
+    const initializeApp = async () => {
+      try {
+        console.log('🔍 [APP] Discovering Claude Code...');
+        await discoverClaude();
+        console.log('✅ [APP] Claude Code discovered, enabling mobile session processing');
+        
+        // Clean up any old mobile sessions that might be stuck in active status
+        console.log('🧹 [APP] Cleaning up old mobile sessions...');
+        await cleanupOldMobileSessions();
+        
+        setIsAppInitialized(true);
+      } catch (error) {
+        console.error('❌ [APP] Claude Code discovery failed:', error);
+        // Still enable the app but mobile sessions will be skipped
+        setIsAppInitialized(true);
+      }
+    };
+    
+    // Initialize after brief delay to prevent startup spam
+    initializationTimeoutRef.current = setTimeout(initializeApp, 1000);
     
     return () => {
       if (initializationTimeoutRef.current) {
@@ -259,6 +275,19 @@ function App() {
           console.log('✅ [MOBILE-SYNC] Successfully created and synced local session from mobile request');
         } else {
           console.error('❌ [MOBILE-SYNC] Failed to create local Claude Code session:', result.error);
+          
+          // If Claude Code is not initialized, mark the mobile session as failed to prevent retries
+          if (result.error?.includes('Claude Code not initialized') || result.error?.includes('Manager not initialized')) {
+            console.log('🚫 [MOBILE-SYNC] Claude Code not ready, marking mobile session as failed to prevent retries');
+            try {
+              await markMobileSessionProcessed({
+                mobileSessionId: mobileSession.sessionId,
+              });
+              console.log('✅ [MOBILE-SYNC] Marked failed mobile session as processed to prevent retries');
+            } catch (markError) {
+              console.error('❌ [MOBILE-SYNC] Failed to mark mobile session as processed:', markError);
+            }
+          }
         }
       } catch (error) {
         console.error('💥 [MOBILE-SYNC] Error creating session from mobile:', error);
@@ -349,10 +378,30 @@ function App() {
     }
   }, []);
 
-  // Initialize Claude on mount
-  useEffect(() => {
-    discoverClaude();
-  }, []);
+  // Claude discovery is now handled in the app initialization process above
+  
+  // Clean up old mobile sessions that are stuck in active status
+  const cleanupOldMobileSessions = async () => {
+    try {
+      const currentMobileSessions = pendingMobileSessions || [];
+      console.log(`🧹 [CLEANUP] Found ${currentMobileSessions.length} active mobile sessions to clean up`);
+      
+      for (const mobileSession of currentMobileSessions) {
+        try {
+          console.log(`🗑️ [CLEANUP] Marking old mobile session as processed: ${mobileSession.sessionId}`);
+          await markMobileSessionProcessed({
+            mobileSessionId: mobileSession.sessionId,
+          });
+        } catch (error) {
+          console.error(`❌ [CLEANUP] Failed to clean up session ${mobileSession.sessionId}:`, error);
+        }
+      }
+      
+      console.log('✅ [CLEANUP] Old mobile session cleanup completed');
+    } catch (error) {
+      console.error('❌ [CLEANUP] Failed to clean up old mobile sessions:', error);
+    }
+  };
 
 
   const handleMessagesUpdate = useCallback((sessionId: string, messages: Message[]) => {
