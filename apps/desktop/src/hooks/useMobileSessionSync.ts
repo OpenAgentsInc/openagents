@@ -34,7 +34,6 @@ export const useMobileSessionSync = (
   
   const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
   const [processedMobileSessions, setProcessedMobileSessions] = useState<Set<string>>(new Set());
-  const [mobileSessionsToInitialize, setMobileSessionsToInitialize] = useState<{mobileSessionId: string; localSessionId: string}[]>([]);
   
   // Store mapping between Claude Code UUIDs and mobile session IDs
   const [sessionIdMapping, setSessionIdMapping] = useState<Map<string, string>>(new Map());
@@ -57,9 +56,10 @@ export const useMobileSessionSync = (
   useEffect(() => {
     console.log(
       '🛰️ [MOBILE-SYNC] pendingMobileSessions update:',
-      pendingMobileSessions ? pendingMobileSessions.length : 'undefined'
+      pendingMobileSessions ? pendingMobileSessions.length : 'undefined',
+      'isAppInitialized:', isAppInitialized
     );
-  }, [pendingMobileSessions]);
+  }, [pendingMobileSessions, isAppInitialized]);
   
   // Debug logging for isAppInitialized changes
   useEffect(() => {
@@ -375,19 +375,10 @@ export const useMobileSessionSync = (
   }, [pendingMobileSessions, isAppInitialized, processingSessions, processedMobileSessions, 
       sessions, createSessionFromMobile, setIsProcessingAnyMobileSession, setLastGlobalProcessTime]);
 
-  const handleInitialMessageSent = useCallback((mobileSessionId: string) => {
-    console.log('✉️ [MOBILE-SYNC] Initial message sent for mobile session:', mobileSessionId);
-    setMobileSessionsToInitialize(prev => 
-      prev.filter(s => s.mobileSessionId !== mobileSessionId)
-    );
-  }, []);
-
   return {
     processingSessions,
     processedMobileSessions,
-    mobileSessionsToInitialize,
     isProcessingAnyMobileSession,
-    handleInitialMessageSent,
     sessionIdMapping, // Expose mapping for message persistence
   };
 };

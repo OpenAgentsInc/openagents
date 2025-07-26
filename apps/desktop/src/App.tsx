@@ -3,7 +3,6 @@ import { PaneManager } from "@/panes/PaneManager";
 import { Hotbar } from "@/components/hud/Hotbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionManager } from "@/components/session/SessionManager";
-import { MobileSessionProcessor } from "@/components/session/MobileSessionProcessor";
 import { HandTrackingManager } from "@/components/session/HandTrackingManager";
 import { useAppStore } from "@/stores/appStore";
 import { useClaudeDiscovery } from "@/hooks/useClaudeDiscovery";
@@ -41,13 +40,10 @@ function App() {
     createSession,
     stopSession,
     sendMessage,
-    replayMessage,
     updateSessionInput,
   } = useSessionManager();
 
   const {
-    mobileSessionsToInitialize,
-    handleInitialMessageSent,
     sessionIdMapping,
   } = useMobileSessionSync(sessions, setSessions, isAppInitialized);
 
@@ -125,11 +121,6 @@ function App() {
           sessionIdMapping={sessionIdMapping}
         />
         
-        <MobileSessionProcessor
-          mobileSessionsToInitialize={mobileSessionsToInitialize}
-          sendMessage={replayMessage}
-          handleInitialMessageSent={handleInitialMessageSent}
-        />
         
         <HandTrackingManager
           isActive={isHandTrackingActive}
