@@ -373,8 +373,6 @@ impl ClaudeSession {
             return;
         }
         
-        info!("Processing line from Claude: {}", trimmed);
-        
         if !trimmed.starts_with('{') {
             info!("Non-JSON line from Claude: {}", trimmed);
             return;
@@ -382,11 +380,116 @@ impl ClaudeSession {
 
         match serde_json::from_str::<IncomingMessage>(trimmed) {
             Ok(msg) => {
-                info!("Parsed message type: {}", msg.msg_type);
+                // Log concise info about the message instead of the full JSON
+                let log_info = self.extract_message_info(&msg);
+                info!("Processing line from Claude: {}", log_info);
+                
                 self.handle_message(msg).await;
             }
             Err(e) => {
-                warn!("Failed to parse JSON message: {} - Line: {}", e, trimmed);
+                // Only show first 100 chars of the problematic line
+                let truncated = if trimmed.len() > 100 {
+                    format!("{}...", &trimmed[..100])
+                } else {
+                    trimmed.to_string()
+                };
+                warn!("Failed to parse JSON message: {} - Line: {}", e, truncated);
+            }
+        }
+    }
+
+    fn extract_message_info(&self, msg: &IncomingMessage) -> String {
+        match msg.msg_type.as_str() {
+            "system" => {
+                if let Some(subtype) = msg.data.get("subtype").and_then(|v| v.as_str()) {
+                    if subtype == "init" {
+                        if let Some(session_id) = msg.data.get("session_id").and_then(|v| v.as_str()) {
+                            format!("system(init, session: {})", &session_id[..8])
+                        } else {
+                            "system(init)".to_string()
+                        }
+                    } else {
+                        format!("system({})", subtype)
+                    }
+                } else {
+                    "system".to_string()
+                }
+            }
+            "assistant" => {
+                if let Some(message) = msg.data.get("message").and_then(|v| v.as_object()) {
+                    if let Some(content_array) = message.get("content").and_then(|v| v.as_array()) {
+                        let content_types: Vec<String> = content_array.iter()
+                            .filter_map(|item| {
+                                item.get("type").and_then(|v| v.as_str()).map(|t| {
+                                    match t {
+                                        "text" => "text".to_string(),
+                                        "thinking" => "thinking".to_string(),
+                                        "tool_use" => {
+                                            if let Some(tool_name) = item.get("name").and_then(|v| v.as_str()) {
+                                                format!("tool_use({})", tool_name)
+                                            } else {
+                                                "tool_use".to_string()
+                                            }
+                                        }
+                                        _ => t.to_string()
+                                    }
+                                })
+                            })
+                            .collect();
+                        
+                        if content_types.is_empty() {
+                            "assistant".to_string()
+                        } else {
+                            format!("assistant({})", content_types.join(", "))
+                        }
+                    } else {
+                        "assistant".to_string()
+                    }
+                } else {
+                    "assistant".to_string()
+                }
+            }
+            "user" => {
+                if let Some(message) = msg.data.get("message").and_then(|v| v.as_object()) {
+                    if let Some(content_array) = message.get("content").and_then(|v| v.as_array()) {
+                        let has_tool_result = content_array.iter()
+                            .any(|item| item.get("type").and_then(|v| v.as_str()) == Some("tool_result"));
+                        
+                        if has_tool_result {
+                            "user(tool_result)".to_string()
+                        } else {
+                            "user".to_string()
+                        }
+                    } else {
+                        "user".to_string()
+                    }
+                } else {
+                    "user".to_string()
+                }
+            }
+            "result" => {
+                let is_error = msg.data.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                let subtype = msg.data.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
+                if is_error {
+                    format!("result(error, {})", subtype)
+                } else {
+                    format!("result(success, {})", subtype)
+                }
+            }
+            "error" => {
+                if let Some(message) = msg.data.get("message").and_then(|v| v.as_str()) {
+                    let preview = if message.len() > 50 {
+                        format!("{}...", &message[..50])
+                    } else {
+                        message.to_string()
+                    };
+                    format!("error({})", preview)
+                } else {
+                    "error".to_string()
+                }
+            }
+            _ => {
+                format!("{}(?)", msg.msg_type)
             }
         }
     }

@@ -17,7 +17,8 @@ export default defineSchema({
     status: v.union(                // Session state
       v.literal("active"),
       v.literal("inactive"), 
-      v.literal("error")
+      v.literal("error"),
+      v.literal("processed")
     ),
     createdBy: v.union(             // Which platform created it
       v.literal("desktop"),
@@ -28,6 +29,7 @@ export default defineSchema({
       workingDirectory: v.optional(v.string()),
       model: v.optional(v.string()),
       systemPrompt: v.optional(v.string()),
+      originalMobileSessionId: v.optional(v.string()), // Track original mobile session
     })),
   }).index("by_session_id", ["sessionId"])
     .index("by_status", ["status"])

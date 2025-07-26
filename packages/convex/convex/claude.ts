@@ -13,6 +13,7 @@ export const createClaudeSession = mutation({
       workingDirectory: v.optional(v.string()),
       model: v.optional(v.string()),
       systemPrompt: v.optional(v.string()),
+      originalMobileSessionId: v.optional(v.string()),
     })),
   },
   handler: async (ctx, args) => {
@@ -57,7 +58,7 @@ export const createClaudeSession = mutation({
 export const updateSessionStatus = mutation({
   args: {
     sessionId: v.string(),
-    status: v.union(v.literal("active"), v.literal("inactive"), v.literal("error")),
+    status: v.union(v.literal("active"), v.literal("inactive"), v.literal("error"), v.literal("processed")),
   },
   handler: async (ctx, args) => {
     const session = await ctx.db
@@ -385,11 +386,32 @@ export const syncSessionFromHook = mutation({
   },
 });
 
+// Mark mobile session as processed by desktop
+export const markMobileSessionProcessed = mutation({
+  args: {
+    mobileSessionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("claudeSessions")
+      .withIndex("by_session_id")
+      .filter(q => q.eq(q.field("sessionId"), args.mobileSessionId))
+      .first();
+      
+    if (session) {
+      await ctx.db.patch(session._id, {
+        status: "processed",
+        lastActivity: Date.now(),
+      });
+    }
+  },
+});
+
 // Get pending mobile sessions that need desktop attention
 export const getPendingMobileSessions = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const results = await ctx.db
       .query("claudeSessions")
       .withIndex("by_status")
       .filter(q => q.and(
@@ -398,5 +420,17 @@ export const getPendingMobileSessions = query({
       ))
       .order("desc")
       .take(10);
+    
+    console.log('🔍 [CONVEX] getPendingMobileSessions query returned:', results.length, 'sessions');
+    if (results.length > 0) {
+      console.log('📋 [CONVEX] Mobile sessions:', results.map(s => ({
+        sessionId: s.sessionId,
+        status: s.status,
+        createdBy: s.createdBy,
+        metadata: s.metadata
+      })));
+    }
+    
+    return results;
   },
 });

@@ -1,15 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useCallback } from "react";
 import { PaneManager } from "@/panes/PaneManager";
 import { Hotbar } from "@/components/hud/Hotbar";
-import { usePaneStore } from "@/stores/pane";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { HandTracking, HandPose } from "@/components/hands";
-import type { PinchCoordinates, HandLandmarks } from "@/components/hands";
-import { SessionStreamManager } from "@/components/SessionStreamManager";
-import { ConvexDemo } from "@/components/ConvexDemo";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "./convex/_generated/api";
+import { SessionManager } from "@/components/session/SessionManager";
+import { MobileSessionProcessor } from "@/components/session/MobileSessionProcessor";
+import { HandTrackingManager } from "@/components/session/HandTrackingManager";
+import { useAppStore } from "@/stores/appStore";
+import { useClaudeDiscovery } from "@/hooks/useClaudeDiscovery";
+import { useSessionManager } from "@/hooks/useSessionManager";
+import { useMobileSessionSync } from "@/hooks/useMobileSessionSync";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useHandTracking } from "@/hooks/useHandTracking";
+import { useAppInitialization } from "@/hooks/useAppInitialization";
+import { usePaneStore } from "@/stores/pane";
 
 interface Message {
   id: string;
@@ -24,184 +27,47 @@ interface Message {
   };
 }
 
-interface CommandResult<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
-
-interface Session {
-  id: string;
-  projectPath: string;
-  messages: Message[];
-  inputMessage: string;
-  isLoading: boolean;
-  isInitializing?: boolean;
-}
-
-interface HandDataContext {
-  activeHandPose: HandPose;
-  pinchMidpoint: PinchCoordinates | null;
-  primaryHandLandmarks: HandLandmarks | null;
-  trackedHandsCount: number;
-}
-
 function App() {
-  const [claudeStatus, setClaudeStatus] = useState<string>("Not initialized");
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [newProjectPath, setNewProjectPath] = useState("");
-  const [isDiscoveryLoading, setIsDiscoveryLoading] = useState(false);
-  const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
-  const [handData, setHandData] = useState<HandDataContext | null>(null);
+  const { isAppInitialized } = useAppStore();
+  const { initializeApp } = useAppInitialization();
+  const { claudeStatus } = useClaudeDiscovery();
+  const { updateSessionMessages } = usePaneStore();
   
-  // Pinch-to-drag state
-  const [draggingPaneId, setDraggingPaneId] = useState<string | null>(null);
-  const initialPinchPositionRef = useRef<{ x: number; y: number } | null>(null);
-  const paneStartPosRef = useRef<{ x: number; y: number } | null>(null);
-  
-  const { openChatPane, toggleMetadataPane, toggleSettingsPane, toggleStatsPane, organizePanes, panes, bringPaneToFront, updatePanePosition, activePaneId, removePane, updateSessionMessages, getSessionMessages } = usePaneStore();
+  const {
+    sessions,
+    setSessions,
+    newProjectPath,
+    setNewProjectPath,
+    createSession,
+    stopSession,
+    sendMessage,
+    updateSessionInput,
+  } = useSessionManager();
 
-  // Convex hooks for Claude Code sync
-  const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
-  const createConvexSession = useMutation(api.claude.createClaudeSession);
-  
-  // State tracking for sessions currently being processed to prevent duplicates
-  const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
+  const {
+    mobileSessionsToInitialize,
+    handleInitialMessageSent,
+  } = useMobileSessionSync(sessions, setSessions, isAppInitialized);
 
-  // Get project directory (git root or current directory) on mount
+  const {
+    isHandTrackingActive,
+    toggleHandTracking,
+    handleHandDataUpdate,
+  } = useHandTracking();
+
+  useKeyboardShortcuts({
+    newProjectPath,
+    createSession,
+    toggleHandTracking,
+  });
+
   useEffect(() => {
-    invoke("get_project_directory").then((result: any) => {
-      if (result.success && result.data) {
-        setNewProjectPath(result.data);
-      }
-    }).catch(console.error);
-  }, []);
+    initializeApp();
+  }, [initializeApp]);
 
-  // Monitor for mobile-initiated sessions and create local Claude Code sessions
   useEffect(() => {
-    const createSessionFromMobile = async (mobileSession: { sessionId: string; projectPath: string; title?: string }) => {
-      // Mark session as being processed
-      setProcessingSessions(prev => new Set(prev).add(mobileSession.sessionId));
-      
-      try {
-        console.log('Creating local Claude Code session from mobile request:', mobileSession);
-        
-        // Check if we already have a local session for this Convex session
-        const existingLocalSession = sessions.find(s => s.id === mobileSession.sessionId);
-        if (existingLocalSession) {
-          console.log('Local session already exists for:', mobileSession.sessionId);
-          return;
-        }
-
-        // Create Claude Code session via Tauri backend
-        const result = await invoke<CommandResult<string>>("create_session", {
-          projectPath: mobileSession.projectPath,
-        });
-
-        if (result.success && result.data) {
-          const localSessionId = result.data;
-          
-          // Create local session state  
-          const newSession: Session = {
-            id: localSessionId,
-            projectPath: mobileSession.projectPath,
-            messages: [],
-            inputMessage: "",
-            isLoading: false,
-          };
-
-          // Add to local sessions
-          setSessions(prev => [...prev, newSession]);
-          
-          // Open chat pane
-          openChatPane(localSessionId, mobileSession.projectPath);
-          
-          // Update the Convex session to link it to the local session
-          await createConvexSession({
-            sessionId: localSessionId,
-            projectPath: mobileSession.projectPath,
-            createdBy: "mobile",
-            title: mobileSession.title || `Mobile Session - ${mobileSession.projectPath}`,
-            metadata: {
-              workingDirectory: mobileSession.projectPath,
-              originalMobileSessionId: mobileSession.sessionId,
-            },
-          });
-
-          console.log('Successfully created local session from mobile request');
-        } else {
-          console.error('Failed to create local Claude Code session:', result.error);
-        }
-      } catch (error) {
-        console.error('Error creating session from mobile:', error);
-      } finally {
-        // Remove session from processing set
-        setProcessingSessions(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(mobileSession.sessionId);
-          return newSet;
-        });
-      }
-    };
-
-    // Process pending mobile sessions sequentially to avoid race conditions
-    const processMobileSessions = async () => {
-      for (const mobileSession of pendingMobileSessions) {
-        // Skip if already processing this session
-        if (processingSessions.has(mobileSession.sessionId)) {
-          continue;
-        }
-        
-        // Check if this mobile session needs a local Claude Code session
-        const hasLocalSession = sessions.some(s => 
-          s.projectPath === mobileSession.projectPath && 
-          (s.id === mobileSession.sessionId || s.id.includes(mobileSession.sessionId))
-        );
-        
-        if (!hasLocalSession) {
-          await createSessionFromMobile(mobileSession);
-        }
-      }
-    };
-    
-    if (pendingMobileSessions.length > 0) {
-      processMobileSessions().catch(console.error);
-    }
-  }, [pendingMobileSessions, sessions, createConvexSession, openChatPane, processingSessions]);
-
-  // Toggle hand tracking
-  const toggleHandTracking = useCallback(() => {
-    const newState = !isHandTrackingActive;
-    setIsHandTrackingActive(newState);
-    if (!newState && draggingPaneId) {
-      setDraggingPaneId(null);
-      initialPinchPositionRef.current = null;
-      paneStartPosRef.current = null;
-    }
-  }, [isHandTrackingActive, draggingPaneId]);
-
-  // Use a ref to compare previous and current data to avoid unnecessary state updates
-  const prevHandDataRef = useRef<HandDataContext | null>(null);
-
-  // Handle hand data updates
-  const handleHandDataUpdate = useCallback((data: HandDataContext) => {
-    if (
-      !prevHandDataRef.current ||
-      data.activeHandPose !== prevHandDataRef.current.activeHandPose ||
-      data.trackedHandsCount !== prevHandDataRef.current.trackedHandsCount ||
-      JSON.stringify(data.pinchMidpoint) !==
-      JSON.stringify(prevHandDataRef.current.pinchMidpoint)
-    ) {
-      prevHandDataRef.current = data;
-      setHandData(data);
-    }
+    document.documentElement.classList.add("dark");
   }, []);
-
-  // Initialize Claude on mount
-  useEffect(() => {
-    discoverClaude();
-  }, []);
-
 
   const handleMessagesUpdate = useCallback((sessionId: string, messages: Message[]) => {
     setSessions(prev => prev.map(session => {
@@ -209,7 +75,6 @@ function App() {
       
       const currentMessages = session.messages;
       
-      // Keep optimistic user messages that haven't appeared in backend yet
       const optimisticMessages = currentMessages.filter(msg => 
         msg.id.startsWith('user-') && 
         !messages.some(backend => 
@@ -218,389 +83,27 @@ function App() {
         )
       );
       
-      // Combine optimistic messages with backend messages
       const allMessages = [...optimisticMessages, ...messages];
-      
-      // Sort by timestamp to maintain order
       allMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       
-      // Persist messages to store - defer to avoid updating during render
       setTimeout(() => {
         updateSessionMessages(sessionId, allMessages);
       }, 0);
       
       return { ...session, messages: allMessages };
     }));
-  }, [updateSessionMessages]);
+  }, [setSessions, updateSessionMessages]);
 
   const handleStreamError = useCallback((sessionId: string, error: Error) => {
     console.error(`Streaming error for session ${sessionId}:`, error);
   }, []);
 
-  const sendMessage = async (sessionId: string, messageContent?: string) => {
-    const session = sessions.find(s => s.id === sessionId);
-    if (!session) {
-      return;
-    }
-    
-    const messageToSend = messageContent || session.inputMessage;
-    if (!messageToSend.trim()) {
-      return;
-    }
-    
-    // Immediately add user message to UI
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      message_type: "user",
-      content: messageToSend,
-      timestamp: new Date().toISOString(),
-    };
-    
-    // Clear input, add message, and set loading state
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId 
-        ? { ...s, messages: [...s.messages, userMessage], inputMessage: "", isLoading: true }
-        : s
-    ));
-    
-    // Persist the updated messages including the new user message
-    // Defer to avoid updating during render
-    setTimeout(() => {
-      const updatedSession = sessions.find(s => s.id === sessionId);
-      if (updatedSession) {
-        updateSessionMessages(sessionId, [...updatedSession.messages, userMessage]);
-      }
-    }, 0);
-    
-    try {
-      const result = await invoke<CommandResult<void>>("send_message", {
-        sessionId,
-        message: messageToSend,
-      });
-      if (!result.success) {
-        alert(`Error sending message: ${result.error}`);
-        console.error("Send message failed:", result.error);
-      }
-    } catch (error) {
-      alert(`Error: ${error}`);
-      console.error("Send message error:", error);
-    } finally {
-      setSessions(prev => prev.map(s => 
-        s.id === sessionId 
-          ? { ...s, isLoading: false }
-          : s
-      ));
-    }
-  };
-
-  const updateSessionInput = (sessionId: string, value: string) => {
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId ? { ...s, inputMessage: value } : s
-    ));
-  };
-
-
-  const discoverClaude = async () => {
-    setIsDiscoveryLoading(true);
-    try {
-      const result = await invoke<CommandResult<string>>("discover_claude");
-      if (result.success && result.data) {
-        setClaudeStatus(`Claude found at: ${result.data}`);
-      } else {
-        setClaudeStatus(`Error: ${result.error || "Unknown error"}`);
-        console.error("Discovery failed:", result.error);
-      }
-    } catch (error) {
-      setClaudeStatus(`Error: ${error}`);
-      console.error("Discovery error:", error);
-    }
-    setIsDiscoveryLoading(false);
-  };
-
-  const createSession = async () => {
-    if (!newProjectPath) {
-      alert("Please enter a project path");
-      return;
-    }
-
-    
-    // Create a temporary session ID
-    const tempSessionId = `temp-${Date.now()}`;
-    
-    // Create session with initializing state
-    // Load any persisted messages for this session
-    const persistedMessages = getSessionMessages(tempSessionId);
-    const newSession: Session = {
-      id: tempSessionId,
-      projectPath: newProjectPath,
-      messages: persistedMessages,
-      inputMessage: "",
-      isLoading: false,
-      isInitializing: true,
-    };
-    
-    // Add session and open pane immediately
-    setSessions(prev => [...prev, newSession]);
-    openChatPane(tempSessionId, newProjectPath);
-    
-    // Initialize Claude in the background
-    try {
-      const result = await invoke<CommandResult<string>>("create_session", {
-        projectPath: newProjectPath,
-      });
-      if (result.success && result.data) {
-        const realSessionId = result.data;
-        
-        // Update the session with the real ID and remove initializing state
-        setSessions(prev => prev.map(s => 
-          s.id === tempSessionId 
-            ? { ...s, id: realSessionId, isInitializing: false }
-            : s
-        ));
-
-        // Sync session to Convex
-        try {
-          await createConvexSession({
-            sessionId: realSessionId,
-            projectPath: newProjectPath,
-            createdBy: "desktop",
-            title: `Desktop Session - ${newProjectPath}`,
-            metadata: {
-              workingDirectory: newProjectPath,
-            },
-          });
-          console.log('Session synced to Convex:', realSessionId);
-        } catch (error) {
-          console.error('Failed to sync session to Convex:', error);
-          // Don't fail the session creation if Convex sync fails
-        }
-        
-        // Update the pane ID to match the real session ID
-        // Defer state update to avoid updating during render
-        setTimeout(() => {
-          usePaneStore.setState(state => {
-            const updatedPanes = state.panes.map(p => 
-              p.id === `chat-${tempSessionId}`
-                ? { ...p, id: `chat-${realSessionId}`, content: { ...p.content, sessionId: realSessionId } }
-                : p
-            );
-            
-            // Transfer persisted messages from temp to real session ID
-            const tempMessages = state.sessionMessages[tempSessionId];
-            const updatedSessionMessages = { ...state.sessionMessages };
-            if (tempMessages && tempMessages.length > 0) {
-              updatedSessionMessages[realSessionId] = tempMessages;
-              delete updatedSessionMessages[tempSessionId];
-            }
-            
-            return {
-              panes: updatedPanes,
-              activePaneId: state.activePaneId === `chat-${tempSessionId}` 
-                ? `chat-${realSessionId}` 
-                : state.activePaneId,
-              sessionMessages: updatedSessionMessages
-            };
-          });
-        }, 0);
-        
-        // No need to fetch messages - SessionStreamManager will handle it
-      } else {
-        // Remove the session and close the pane on error
-        setSessions(prev => prev.filter(s => s.id !== tempSessionId));
-        usePaneStore.getState().removePane(`chat-${tempSessionId}`);
-        alert(`Error creating session: ${result.error}`);
-        console.error("Session creation failed:", result.error);
-      }
-    } catch (error) {
-      // Remove the session and close the pane on error
-      setSessions(prev => prev.filter(s => s.id !== tempSessionId));
-      usePaneStore.getState().removePane(`chat-${tempSessionId}`);
-      alert(`Error: ${error}`);
-      console.error("Session creation error:", error);
-    }
-  };
-
-  const stopSession = async (sessionId: string) => {
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId ? { ...s, isLoading: true } : s
-    ));
-    
-    try {
-      const result = await invoke<CommandResult<void>>("stop_session", {
-        sessionId,
-      });
-      if (result.success) {
-        setSessions(prev => prev.filter(s => s.id !== sessionId));
-      } else {
-        alert(`Error stopping session: ${result.error}`);
-        setSessions(prev => prev.map(s => 
-          s.id === sessionId ? { ...s, isLoading: false } : s
-        ));
-      }
-    } catch (error) {
-      alert(`Error: ${error}`);
-      setSessions(prev => prev.map(s => 
-        s.id === sessionId ? { ...s, isLoading: false } : s
-      ));
-    }
-  };
-
-  // Set up keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Check if the user is typing in an input field
-      const target = event.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-        return;
-      }
-
-      // Handle Escape key to close active pane
-      if (event.key === 'Escape' && activePaneId) {
-        event.preventDefault();
-        removePane(activePaneId);
-        return;
-      }
-
-      // Handle modifier + digit combinations
-      const modifier = navigator.platform.toUpperCase().indexOf('MAC') >= 0
-        ? event.metaKey // Mac uses Cmd key
-        : event.ctrlKey; // Windows/Linux use Ctrl key
-
-      if (!modifier) return;
-
-      const digit = parseInt(event.key);
-      if (isNaN(digit) || digit < 1 || digit > 9) return;
-
-      event.preventDefault();
-
-      // Call the appropriate function based on the digit
-      switch (digit) {
-        case 1:
-          if (newProjectPath) {
-            createSession();
-          }
-          break;
-        case 2:
-          organizePanes();
-          break;
-        case 3:
-          toggleMetadataPane();
-          break;
-        case 4:
-          toggleStatsPane();
-          break;
-        case 7:
-          toggleSettingsPane();
-          break;
-        // case 8:
-        //   console.log('Help');
-        //   break;
-        case 9:
-          toggleHandTracking();
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleMetadataPane, toggleSettingsPane, toggleStatsPane, organizePanes, newProjectPath, createSession, toggleHandTracking, activePaneId, removePane]);
-
-  // Effect for pinch-to-drag logic
-  useEffect(() => {
-    const TITLE_BAR_HEIGHT = 32;
-    
-    if (
-      !isHandTrackingActive ||
-      !handData ||
-      !handData.pinchMidpoint ||
-      handData.trackedHandsCount === 0
-    ) {
-      if (draggingPaneId) {
-        setDraggingPaneId(null);
-        initialPinchPositionRef.current = null;
-        paneStartPosRef.current = null;
-      }
-      return;
-    }
-
-    const { activeHandPose, pinchMidpoint } = handData;
-
-    if (activeHandPose === HandPose.PINCH_CLOSED) {
-      if (!draggingPaneId) {
-        // Check from topmost pane (end of array) to find pinch target
-        for (let i = panes.length - 1; i >= 0; i--) {
-          const pane = panes[i];
-          // Check if pinch is in the title bar area
-          if (
-            pinchMidpoint.x >= pane.x &&
-            pinchMidpoint.x <= pane.x + pane.width &&
-            pinchMidpoint.y >= pane.y &&
-            pinchMidpoint.y <= pane.y + TITLE_BAR_HEIGHT
-          ) {
-            setDraggingPaneId(pane.id);
-            paneStartPosRef.current = { x: pane.x, y: pane.y };
-            initialPinchPositionRef.current = {
-              x: pinchMidpoint.x,
-              y: pinchMidpoint.y,
-            };
-            if (pane.id !== activePaneId) {
-              bringPaneToFront(pane.id);
-            }
-            break;
-          }
-        }
-      } else if (initialPinchPositionRef.current && paneStartPosRef.current) {
-        // Continue dragging
-        const deltaX = pinchMidpoint.x - initialPinchPositionRef.current.x;
-        const deltaY = pinchMidpoint.y - initialPinchPositionRef.current.y;
-
-        // Only update if the move is at least 1px in either direction
-        if (Math.abs(deltaX) >= 1 || Math.abs(deltaY) >= 1) {
-          const newX = paneStartPosRef.current.x + deltaX;
-          const newY = paneStartPosRef.current.y + deltaY;
-
-          // Update the refs to the new values to track relative movement
-          initialPinchPositionRef.current = {
-            x: pinchMidpoint.x,
-            y: pinchMidpoint.y,
-          };
-          paneStartPosRef.current = { x: newX, y: newY };
-
-          // Update the store
-          updatePanePosition(draggingPaneId, newX, newY);
-        }
-      }
-    } else {
-      // Pinch released or pose changed
-      if (draggingPaneId) {
-        setDraggingPaneId(null);
-        initialPinchPositionRef.current = null;
-        paneStartPosRef.current = null;
-      }
-    }
-  }, [
-    isHandTrackingActive,
-    handData,
-    draggingPaneId,
-    panes,
-    activePaneId,
-    bringPaneToFront,
-    updatePanePosition,
-  ]);
-
-  // Set dark mode on mount
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
-  // Provide session data to child components through a context or prop drilling
-  // For now, we'll use a global object (this should be replaced with proper state management)
-  // Update immediately without useEffect to ensure real-time updates
+  // Provide session data globally (should be replaced with context)
   (window as any).__openagents_data = {
     claudeStatus,
     sessions,
     newProjectPath,
-    isDiscoveryLoading,
+    isDiscoveryLoading: false,
     setNewProjectPath,
     createSession,
     sendMessage,
@@ -611,38 +114,34 @@ function App() {
   return (
     <TooltipProvider>
       <div className="relative h-full w-full font-mono overflow-hidden">
-        {/* Pane Manager */}
         <PaneManager />
         
-        {/* Session Stream Managers */}
-        {sessions.map(session => (
-          <SessionStreamManager
-            key={session.id}
-            sessionId={session.id}
-            isInitializing={session.isInitializing || false}
-            onMessagesUpdate={handleMessagesUpdate}
-            onError={handleStreamError}
-          />
-        ))}
+        <SessionManager
+          sessions={sessions}
+          handleMessagesUpdate={handleMessagesUpdate}
+          handleStreamError={handleStreamError}
+        />
         
-        {/* Hand Tracking */}
-        <HandTracking
-          showHandTracking={isHandTrackingActive}
-          setShowHandTracking={setIsHandTrackingActive}
+        <MobileSessionProcessor
+          mobileSessionsToInitialize={mobileSessionsToInitialize}
+          sendMessage={sendMessage}
+          handleInitialMessageSent={handleInitialMessageSent}
+        />
+        
+        <HandTrackingManager
+          isActive={isHandTrackingActive}
           onHandDataUpdate={handleHandDataUpdate}
         />
         
-        {/* Hotbar */}
         <Hotbar 
-          onNewChat={createSession}
+          onNewChat={() => {
+            if (newProjectPath) {
+              createSession();
+            }
+          }}
           isHandTrackingActive={isHandTrackingActive}
           onToggleHandTracking={toggleHandTracking}
         />
-        
-        {/* Convex Demo - Floating widget in bottom right */}
-        <div className="absolute bottom-4 right-4 z-50">
-          <ConvexDemo />
-        </div>
       </div>
     </TooltipProvider>
   );
