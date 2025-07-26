@@ -96,6 +96,37 @@ function App() {
   const lastProcessedTimeRef = useRef<Record<string, number>>({});
   const PROCESSING_COOLDOWN = 5000; // 5 seconds
 
+  // Clean up desktop-created sessions that were incorrectly synced as mobile
+  const cleanupIncorrectlySyncedSessions = useCallback(async (sessions: any[]) => {
+    try {
+      let cleanedCount = 0;
+      
+      for (const session of sessions) {
+        // Check if this is a desktop-created session ID (UUID format)
+        const isDesktopSessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.sessionId);
+        if (isDesktopSessionId) {
+          try {
+            console.log(`🗑️ [CLEANUP] Marking incorrectly-synced desktop session as processed: ${session.sessionId}`);
+            await markMobileSessionProcessed({
+              mobileSessionId: session.sessionId,
+            });
+            cleanedCount++;
+          } catch (error) {
+            console.error(`❌ [CLEANUP] Failed to clean up session ${session.sessionId}:`, error);
+          }
+        }
+      }
+      
+      if (cleanedCount > 0) {
+        console.log(`✅ [CLEANUP] Cleaned up ${cleanedCount} incorrectly-synced desktop sessions`);
+      } else {
+        console.log('✅ [CLEANUP] No incorrectly-synced sessions found');
+      }
+    } catch (error) {
+      console.error('❌ [CLEANUP] Failed to clean up incorrectly-synced sessions:', error);
+    }
+  }, [markMobileSessionProcessed]);
+
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
     invoke("get_project_directory").then((result: any) => {
@@ -111,9 +142,8 @@ function App() {
         await discoverClaude();
         console.log('✅ [APP] Claude Code discovered, enabling mobile session processing');
         
-        // Do NOT cleanup mobile sessions on startup - they might be legitimate pending sessions
-        console.log('🚀 [STARTUP] Skipping mobile session cleanup to preserve legitimate pending sessions');
-        // Removed aggressive cleanup - sessions should only be marked processed after actual processing
+        // Wait a bit for initial data to load
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         setIsAppInitialized(true);
       } catch (error) {
@@ -132,6 +162,21 @@ function App() {
       }
     };
   }, []);
+
+  // Clean up incorrectly-synced sessions when app is initialized
+  useEffect(() => {
+    if (isAppInitialized && pendingMobileSessions.length > 0) {
+      // Check if any sessions need cleanup
+      const hasIncorrectSessions = pendingMobileSessions.some((session: any) => 
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.sessionId)
+      );
+      
+      if (hasIncorrectSessions) {
+        console.log('🧹 [CLEANUP] Found incorrectly-synced desktop sessions, cleaning up...');
+        cleanupIncorrectlySyncedSessions(pendingMobileSessions);
+      }
+    }
+  }, [isAppInitialized, pendingMobileSessions, cleanupIncorrectlySyncedSessions]);
 
   // Monitor for mobile-initiated sessions and create local Claude Code sessions
   useEffect(() => {
@@ -268,7 +313,6 @@ function App() {
               metadata: {
                 workingDirectory: mobileSession.projectPath,
                 originalMobileSessionId: mobileSession.sessionId,
-                processedFromMobile: true, // Flag to indicate this was processed from a mobile request
               },
             });
             console.log('✅ [MOBILE-SYNC] Successfully synced session to Convex:', convexResult);
@@ -335,6 +379,13 @@ function App() {
         
         const mobileSession = sessionToProcess;
         console.log('🔍 [MOBILE-SYNC] Evaluating mobile session:', mobileSession.sessionId);
+        
+        // Skip if this is a desktop-created session ID (UUID format)
+        const isDesktopSessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mobileSession.sessionId);
+        if (isDesktopSessionId) {
+          console.log('⏭️ [MOBILE-SYNC] Skipping desktop-created session (UUID format):', mobileSession.sessionId);
+          return;
+        }
         
         // Skip if already processing this session
         if (processingSessions.has(mobileSession.sessionId)) {
@@ -411,9 +462,6 @@ function App() {
   }, []);
 
   // Claude discovery is now handled in the app initialization process above
-  
-  // Removed aggressive cleanup function - sessions should only be marked as processed
-  // after they have been actually processed, not preemptively on startup
 
 
   const handleMessagesUpdate = useCallback((sessionId: string, messages: Message[]) => {
