@@ -900,7 +900,7 @@ async fn get_unified_history(
     info!("  limit: {}", limit);
     info!("  user_id: {:?}", user_id);
     
-    let discovery = state.discovery.lock().await;
+    let mut discovery = state.discovery.lock().await;
     
     match discovery.load_unified_sessions(limit, user_id).await {
         Ok(sessions) => Ok(CommandResult::success(sessions)),
