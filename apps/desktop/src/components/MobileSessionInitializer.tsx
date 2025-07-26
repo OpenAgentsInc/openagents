@@ -15,6 +15,8 @@ export function MobileSessionInitializer({
   onInitialMessageSent,
   sendMessage
 }: MobileSessionInitializerProps) {
+  console.log('🚀 [MOBILE-INIT] Component mounted', { mobileSessionId, localSessionId });
+  
   const [hasSentInitialMessage, setHasSentInitialMessage] = useState(false);
   const [isSending, setIsSending] = useState(false);
   
@@ -25,6 +27,14 @@ export function MobileSessionInitializer({
   });
 
   useEffect(() => {
+    console.log('🔍 [MOBILE-INIT] Checking for initial message...', {
+      mobileSessionId,
+      localSessionId,
+      hasSentInitialMessage,
+      isSending,
+      messagesLength: mobileMessages?.length || 0
+    });
+    
     // Skip if we've already sent the initial message or are currently sending
     if (hasSentInitialMessage || isSending || !mobileMessages || mobileMessages.length === 0) {
       return;
