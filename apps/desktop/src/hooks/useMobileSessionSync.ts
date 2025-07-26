@@ -30,6 +30,8 @@ export const useMobileSessionSync = (
   setSessions: (sessions: Session[] | ((prev: Session[]) => Session[])) => void,
   isAppInitialized: boolean
 ) => {
+  console.log('🚀 [MOBILE-SYNC] useMobileSessionSync hook mounted');
+  
   const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
   const [processedMobileSessions, setProcessedMobileSessions] = useState<Set<string>>(new Set());
   const [mobileSessionsToInitialize, setMobileSessionsToInitialize] = useState<{mobileSessionId: string; localSessionId: string}[]>([]);
@@ -47,6 +49,14 @@ export const useMobileSessionSync = (
   const createConvexSession = useMutation(api.claude.createClaudeSession);
   const markMobileSessionProcessed = useMutation(api.claude.markMobileSessionProcessed);
   const { openChatPane } = usePaneStore();
+
+  // Debug logging to check if hook is receiving Convex updates
+  useEffect(() => {
+    console.log(
+      '🛰️ [MOBILE-SYNC] pendingMobileSessions update:',
+      pendingMobileSessions ? pendingMobileSessions.length : 'undefined'
+    );
+  }, [pendingMobileSessions]);
 
   useEffect(() => {
     if (pendingMobileSessions.length > 0 && isAppInitialized) {
