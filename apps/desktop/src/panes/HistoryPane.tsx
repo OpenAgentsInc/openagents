@@ -2,6 +2,7 @@ import React from "react";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { UnifiedHistoryList } from "@/components/session/UnifiedHistoryList";
 
 // This will be replaced with actual data from the parent component
 interface Session {
@@ -88,6 +89,13 @@ export const HistoryPane: React.FC<HistoryPaneProps> = ({
               </div>
             ))
           )}
+        </div>
+
+        <Separator />
+
+        {/* Session History */}
+        <div className="flex-1 min-h-0">
+          <UnifiedHistoryList limit={50} />
         </div>
       </div>
     </div>
