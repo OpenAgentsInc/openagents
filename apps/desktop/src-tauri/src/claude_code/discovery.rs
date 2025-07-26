@@ -1,9 +1,11 @@
-use crate::claude_code::models::{ClaudeConversation, ClaudeError};
+use crate::claude_code::models::{ClaudeConversation, ClaudeError, UnifiedSession};
+use crate::claude_code::convex_client::ConvexClient;
 use chrono::{DateTime, Utc};
 use dirs_next;
-use log::info;
+use log::{info, error};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::env;
 use tokio::fs as async_fs;
 
 pub struct ClaudeDiscovery {
@@ -294,6 +296,126 @@ impl ClaudeDiscovery {
             working_directory: cwd,
             summary,
         })
+    }
+
+    /// Load unified session history from both local files and Convex
+    pub async fn load_unified_sessions(
+        &mut self, 
+        limit: usize, 
+        user_id: Option<String>
+    ) -> Result<Vec<UnifiedSession>, ClaudeError> {
+        let mut all_sessions = Vec::new();
+
+        // Load .env files following Convex quickstart pattern  
+        // Try multiple locations since working directory might vary
+        info!("Current working directory: {:?}", std::env::current_dir());
+        dotenvy::from_filename("../.env.local").ok(); // Parent directory
+        dotenvy::from_filename("../.env").ok();       // Parent directory
+        dotenvy::from_filename(".env.local").ok();    // Current directory  
+        dotenvy::dotenv().ok();                       // Current directory
+        
+        // Debug: Check what CONVEX_URL we have after loading
+        match env::var("CONVEX_URL") {
+            Ok(url) => info!("Found CONVEX_URL after dotenv loading: {}", url),
+            Err(_) => {
+                info!("CONVEX_URL still not found after dotenv loading");
+                
+                // As a fallback, try to manually read the .env file
+                if let Ok(env_content) = std::fs::read_to_string("../.env") {
+                    info!("Found ../.env file, content preview: {}", 
+                          env_content.lines().take(3).collect::<Vec<_>>().join("; "));
+                    
+                    // Simple manual parsing for CONVEX_URL
+                    for line in env_content.lines() {
+                        if line.starts_with("CONVEX_URL=") {
+                            let url = line.trim_start_matches("CONVEX_URL=");
+                            info!("Manually found CONVEX_URL in .env: {}", url);
+                            std::env::set_var("CONVEX_URL", url);
+                            break;
+                        }
+                    }
+                } else {
+                    info!("Could not read ../.env file either");
+                }
+            }
+        }
+
+        // Load local Claude Code CLI conversations
+        // First, discover the data directory if not already done
+        if self.data_path.is_none() {
+            if let Err(e) = self.discover_data_directory().await {
+                info!("Could not discover Claude data directory: {}", e);
+            }
+        }
+        
+        match self.load_conversations(limit).await {
+            Ok(local_conversations) => {
+                info!("Loaded {} local Claude Code conversations", local_conversations.len());
+                for conv in local_conversations {
+                    all_sessions.push(UnifiedSession::from(conv));
+                }
+            }
+            Err(e) => {
+                // Log but don't fail - we can still show Convex sessions
+                info!("Could not load local conversations: {}", e);
+            }
+        }
+
+        // Load Convex sessions using environment variable (following quickstart pattern)
+        match env::var("CONVEX_URL") {
+            Ok(deployment_url) => {
+                info!("Found CONVEX_URL environment variable: {}", deployment_url);
+                match ConvexClient::new(&deployment_url).await {
+                    Ok(mut convex_client) => {
+                        match convex_client.get_sessions(Some(limit), user_id).await {
+                            Ok(convex_sessions) => {
+                                info!("Loaded {} Convex sessions", convex_sessions.len());
+                                for session in convex_sessions {
+                                    all_sessions.push(UnifiedSession::from(session));
+                                }
+                            }
+                            Err(e) => {
+                                // Log but don't fail - we can still show local sessions
+                                error!("Could not load Convex sessions: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Log but don't fail - we can still show local sessions
+                        error!("Could not create Convex client: {}", e);
+                    }
+                }
+            }
+            Err(_) => {
+                info!("CONVEX_URL environment variable not found, skipping Convex sessions");
+            }
+        }
+
+        // Sort by timestamp, most recent first
+        all_sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        // Deduplicate sessions that might appear in both sources
+        // This is a simple approach - could be enhanced with better matching logic
+        let mut unique_sessions = Vec::new();
+        let mut seen_titles = std::collections::HashSet::new();
+
+        for session in all_sessions {
+            // Create a simple key for deduplication
+            let key = format!("{}:{}", 
+                session.project_path.as_deref().unwrap_or(""), 
+                session.title.chars().take(50).collect::<String>()
+            );
+            
+            if !seen_titles.contains(&key) {
+                seen_titles.insert(key);
+                unique_sessions.push(session);
+            }
+        }
+
+        // Return limited number of sessions
+        let result: Vec<UnifiedSession> = unique_sessions.into_iter().take(limit).collect();
+        info!("Returning {} unified sessions", result.len());
+        Ok(result)
     }
 
 }
