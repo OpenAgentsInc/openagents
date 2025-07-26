@@ -419,18 +419,21 @@ impl ClaudeSession {
                 if let Some(message) = msg.data.get("message").and_then(|v| v.as_object()) {
                     if let Some(content_array) = message.get("content").and_then(|v| v.as_array()) {
                         let content_types: Vec<String> = content_array.iter()
-                            .filter_map(|item| item.get("type").and_then(|v| v.as_str()))
-                            .map(|t| match t {
-                                "text" => "text".to_string(),
-                                "thinking" => "thinking".to_string(),
-                                "tool_use" => {
-                                    if let Some(tool_name) = item.get("name").and_then(|v| v.as_str()) {
-                                        format!("tool_use({})", tool_name)
-                                    } else {
-                                        "tool_use".to_string()
+                            .filter_map(|item| {
+                                item.get("type").and_then(|v| v.as_str()).map(|t| {
+                                    match t {
+                                        "text" => "text".to_string(),
+                                        "thinking" => "thinking".to_string(),
+                                        "tool_use" => {
+                                            if let Some(tool_name) = item.get("name").and_then(|v| v.as_str()) {
+                                                format!("tool_use({})", tool_name)
+                                            } else {
+                                                "tool_use".to_string()
+                                            }
+                                        }
+                                        _ => t.to_string()
                                     }
-                                }
-                                _ => t.to_string()
+                                })
                             })
                             .collect();
                         
