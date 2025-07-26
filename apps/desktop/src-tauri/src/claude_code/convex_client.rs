@@ -24,14 +24,14 @@ impl ConvexClient {
 
     /// Fetch sessions from Convex database using official client
     pub async fn get_sessions(&mut self, limit: Option<usize>, user_id: Option<String>) -> Result<Vec<ConvexSession>, ClaudeError> {
-        // Prepare the query arguments using Convex Value enum
+        // Prepare the query arguments as BTreeMap (following quickstart pattern)
         let mut args = BTreeMap::new();
         
-        // Convert limit to Convex Value
-        args.insert("limit".to_string(), Value::from(limit.unwrap_or(50) as i64));
+        // Add limit parameter
+        args.insert("limit".to_string(), (limit.unwrap_or(50) as i64).into());
         
         if let Some(uid) = user_id {
-            args.insert("userId".to_string(), Value::from(uid));
+            args.insert("userId".to_string(), uid.into());
         }
 
         info!("Calling Convex query 'claude:getSessions' with args: {:?}", args);
@@ -45,17 +45,15 @@ impl ConvexClient {
                 ClaudeError::Other(format!("Convex query failed: {}", e))
             })?;
 
-        info!("Convex query successful, parsing response...");
+        info!("Convex query successful!");
         
-        // For debugging, let's just log what we got and return empty for now
-        info!("FunctionResult received, attempting to debug print...");
+        // Following quickstart pattern: println!("{result:#?}");
+        info!("Query result: {result:#?}");
         
-        // Let's try to extract the actual data by pattern matching or other means
-        // For now, we'll return an empty vector and see if the basic flow works
-        info!("Returning empty sessions list temporarily for debugging...");
+        // For now, return empty sessions until we figure out the result parsing
+        // We need to understand how to extract data from the FunctionResult
+        info!("Returning empty sessions list temporarily - need to parse FunctionResult");
         let sessions: Vec<ConvexSession> = vec![];
-
-        // We'll fix the data extraction once we understand the structure better
 
         info!("Successfully fetched {} sessions from Convex", sessions.len());
         Ok(sessions)

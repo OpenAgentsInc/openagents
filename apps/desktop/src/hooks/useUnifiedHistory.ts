@@ -34,26 +34,22 @@ export const useUnifiedHistory = (limit: number = 50) => {
     setError(null);
 
     try {
-      // Get Convex URL from environment
-      const convexUrl = import.meta.env.VITE_CONVEX_URL;
-      
       // Get user ID if authenticated (we can derive from GitHub ID)
       const userId = isAuthenticated && user ? user.id : undefined;
 
       console.log('📚 [UNIFIED-HISTORY] Loading unified session history:', {
         limit,
-        convexUrl: convexUrl || 'MISSING',
         userId: userId || 'MISSING',
-        isAuthenticated,
-        envVars: {
-          VITE_CONVEX_URL: import.meta.env.VITE_CONVEX_URL,
-          allEnvVars: import.meta.env
-        }
+        isAuthenticated
+      });
+      
+      console.log('📚 [UNIFIED-HISTORY] About to call get_unified_history with:', {
+        limit,
+        user_id: userId
       });
 
       const result = await invoke<CommandResult<UnifiedSession[]>>('get_unified_history', {
         limit,
-        convex_url: convexUrl,
         user_id: userId,
       });
 

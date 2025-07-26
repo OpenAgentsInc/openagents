@@ -893,17 +893,16 @@ async fn get_history(
 #[tauri::command]
 async fn get_unified_history(
     limit: usize,
-    convex_url: Option<String>,
     user_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<CommandResult<Vec<UnifiedSession>>, String> {
+    info!("get_unified_history called with params:");
+    info!("  limit: {}", limit);
+    info!("  user_id: {:?}", user_id);
+    
     let discovery = state.discovery.lock().await;
     
-    match discovery.load_unified_sessions(
-        limit, 
-        convex_url.as_deref(),
-        user_id
-    ).await {
+    match discovery.load_unified_sessions(limit, user_id).await {
         Ok(sessions) => Ok(CommandResult::success(sessions)),
         Err(e) => Ok(CommandResult::error(e.to_string())),
     }
