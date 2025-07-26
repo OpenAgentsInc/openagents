@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::fs;
 use std::collections::HashMap;
 use chrono::{DateTime, Utc, Timelike};
+use std::env;
 
 // State wrapper for Tauri
 pub struct AppState {
@@ -42,7 +43,7 @@ impl<T> CommandResult<T> {
 }
 
 // APM Analysis Structures
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ToolUsage {
     name: String,
     count: u32,
@@ -50,7 +51,7 @@ struct ToolUsage {
     category: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct APMSession {
     id: String,
     project: String,
@@ -63,7 +64,7 @@ struct APMSession {
     timestamp: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ProductivityByTime {
     morning: f64,
     afternoon: f64,
@@ -99,6 +100,44 @@ struct APMStats {
     recent_sessions: Vec<APMSession>,
     #[serde(rename = "productivityByTime")]
     productivity_by_time: ProductivityByTime,
+}
+
+// Combined APM structures for CLI + SDK data
+#[derive(Serialize, Deserialize, Debug)]
+struct CombinedAPMStats {
+    // Combined totals
+    #[serde(rename = "apm1h")]
+    apm_1h: f64,
+    #[serde(rename = "apm6h")]
+    apm_6h: f64,
+    #[serde(rename = "apm1d")]
+    apm_1d: f64,
+    #[serde(rename = "apm1w")]
+    apm_1w: f64,
+    #[serde(rename = "apm1m")]
+    apm_1m: f64,
+    #[serde(rename = "apmLifetime")]
+    apm_lifetime: f64,
+    #[serde(rename = "totalSessions")]
+    total_sessions: u32,
+    #[serde(rename = "totalMessages")]
+    total_messages: u32,
+    #[serde(rename = "totalToolUses")]
+    total_tool_uses: u32,
+    #[serde(rename = "totalDuration")]
+    total_duration: f64, // in minutes
+    #[serde(rename = "toolUsage")]
+    tool_usage: Vec<ToolUsage>,
+    #[serde(rename = "recentSessions")]
+    recent_sessions: Vec<APMSession>,
+    #[serde(rename = "productivityByTime")]
+    productivity_by_time: ProductivityByTime,
+    
+    // Breakdown by type
+    #[serde(rename = "cliStats")]
+    cli_stats: APMStats,
+    #[serde(rename = "sdkStats")]
+    sdk_stats: APMStats,
 }
 
 #[derive(Deserialize, Debug)]
@@ -147,6 +186,150 @@ fn clean_project_name(project_name: &str) -> String {
         .replace("-", "/")
         .trim_start_matches("~/")
         .to_string()
+}
+
+// Function to fetch Convex APM data
+async fn fetch_convex_apm_stats() -> Result<APMStats, String> {
+    let convex_url = env::var("VITE_CONVEX_URL")
+        .or_else(|_| env::var("CONVEX_URL"))
+        .map_err(|_| "Convex URL not configured. Set VITE_CONVEX_URL or CONVEX_URL environment variable.".to_string())?;
+    
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/query", convex_url);
+    
+    let payload = serde_json::json!({
+        "path": "claude:getConvexAPMStats",
+        "args": {},
+        "format": "json"
+    });
+    
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request to Convex: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("Convex request failed with status: {}", response.status()));
+    }
+    
+    let text = response.text().await
+        .map_err(|e| format!("Failed to read Convex response: {}", e))?;
+    
+    // Parse the response - Convex returns the result directly
+    let convex_result: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("Failed to parse Convex response: {}", e))?;
+    
+    // Extract the actual data from the Convex response
+    let stats_data = if convex_result.is_object() && convex_result.get("success").is_some() {
+        // Handle error response
+        if convex_result["success"].as_bool() == Some(false) {
+            return Err(format!("Convex error: {}", 
+                convex_result.get("error").and_then(|e| e.as_str()).unwrap_or("Unknown error")));
+        }
+        // Extract data from success response
+        convex_result.get("data").unwrap_or(&convex_result)
+    } else {
+        // Direct response
+        &convex_result
+    };
+    
+    // Convert to APMStats struct
+    let apm_stats: APMStats = serde_json::from_value(stats_data.clone())
+        .map_err(|e| format!("Failed to deserialize Convex APM stats: {}", e))?;
+    
+    Ok(apm_stats)
+}
+
+// Function to combine CLI and SDK APM stats
+fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMStats {
+    // Combine time window APMs (weighted average by total actions)
+    let cli_total_actions = cli_stats.total_messages + cli_stats.total_tool_uses;
+    let sdk_total_actions = sdk_stats.total_messages + sdk_stats.total_tool_uses;
+    let combined_total_actions = cli_total_actions + sdk_total_actions;
+    
+    let combine_apm = |cli_apm: f64, sdk_apm: f64| -> f64 {
+        if combined_total_actions == 0 {
+            return 0.0;
+        }
+        
+        // Calculate total actions for this time window based on APM and duration
+        // This is an approximation since we don't have exact per-window action counts
+        let total_apm = (cli_apm * cli_total_actions as f64 + sdk_apm * sdk_total_actions as f64) 
+            / combined_total_actions as f64;
+        
+        total_apm
+    };
+    
+    // Combine tool usage
+    let mut combined_tool_counts: HashMap<String, u32> = HashMap::new();
+    
+    for tool in &cli_stats.tool_usage {
+        *combined_tool_counts.entry(tool.name.clone()).or_insert(0) += tool.count;
+    }
+    
+    for tool in &sdk_stats.tool_usage {
+        *combined_tool_counts.entry(tool.name.clone()).or_insert(0) += tool.count;
+    }
+    
+    let combined_total_tool_uses = cli_stats.total_tool_uses + sdk_stats.total_tool_uses;
+    let combined_tool_usage: Vec<ToolUsage> = combined_tool_counts
+        .into_iter()
+        .map(|(name, count)| ToolUsage {
+            category: get_tool_category(&name),
+            name,
+            count,
+            percentage: if combined_total_tool_uses > 0 {
+                (count as f64 / combined_total_tool_uses as f64) * 100.0
+            } else {
+                0.0
+            },
+        })
+        .collect();
+    
+    // Combine recent sessions
+    let mut combined_sessions = cli_stats.recent_sessions.clone();
+    combined_sessions.extend(sdk_stats.recent_sessions.clone());
+    combined_sessions.sort_by(|a, b| b.apm.partial_cmp(&a.apm).unwrap_or(std::cmp::Ordering::Equal));
+    combined_sessions.truncate(20); // Keep top 20
+    
+    // Combine productivity by time (average weighted by session count)
+    let combine_productivity = |cli_prod: f64, sdk_prod: f64| -> f64 {
+        let cli_sessions = cli_stats.total_sessions as f64;
+        let sdk_sessions = sdk_stats.total_sessions as f64;
+        let total_sessions = cli_sessions + sdk_sessions;
+        
+        if total_sessions == 0.0 {
+            return 0.0;
+        }
+        
+        (cli_prod * cli_sessions + sdk_prod * sdk_sessions) / total_sessions
+    };
+    
+    CombinedAPMStats {
+        apm_1h: combine_apm(cli_stats.apm_1h, sdk_stats.apm_1h),
+        apm_6h: combine_apm(cli_stats.apm_6h, sdk_stats.apm_6h),
+        apm_1d: combine_apm(cli_stats.apm_1d, sdk_stats.apm_1d),
+        apm_1w: combine_apm(cli_stats.apm_1w, sdk_stats.apm_1w),
+        apm_1m: combine_apm(cli_stats.apm_1m, sdk_stats.apm_1m),
+        apm_lifetime: combine_apm(cli_stats.apm_lifetime, sdk_stats.apm_lifetime),
+        total_sessions: cli_stats.total_sessions + sdk_stats.total_sessions,
+        total_messages: cli_stats.total_messages + sdk_stats.total_messages,
+        total_tool_uses: cli_stats.total_tool_uses + sdk_stats.total_tool_uses,
+        total_duration: cli_stats.total_duration + sdk_stats.total_duration,
+        tool_usage: combined_tool_usage,
+        recent_sessions: combined_sessions,
+        productivity_by_time: ProductivityByTime {
+            morning: combine_productivity(cli_stats.productivity_by_time.morning, sdk_stats.productivity_by_time.morning),
+            afternoon: combine_productivity(cli_stats.productivity_by_time.afternoon, sdk_stats.productivity_by_time.afternoon),
+            evening: combine_productivity(cli_stats.productivity_by_time.evening, sdk_stats.productivity_by_time.evening),
+            night: combine_productivity(cli_stats.productivity_by_time.night, sdk_stats.productivity_by_time.night),
+        },
+        cli_stats,
+        sdk_stats,
+    }
 }
 
 async fn analyze_conversations() -> Result<APMStats, String> {
@@ -435,6 +618,85 @@ async fn analyze_claude_conversations() -> Result<CommandResult<APMStats>, Strin
     }
 }
 
+#[tauri::command]
+async fn analyze_combined_conversations() -> Result<CommandResult<CombinedAPMStats>, String> {
+    info!("analyze_combined_conversations called");
+    
+    // Fetch CLI stats
+    let cli_stats = match analyze_conversations().await {
+        Ok(stats) => {
+            info!("CLI APM analysis completed. Sessions: {}, Messages: {}, Tools: {}", 
+                  stats.total_sessions, stats.total_messages, stats.total_tool_uses);
+            stats
+        }
+        Err(e) => {
+            info!("CLI APM analysis failed, using empty stats: {}", e);
+            // Return empty stats if CLI analysis fails
+            APMStats {
+                apm_1h: 0.0,
+                apm_6h: 0.0,
+                apm_1d: 0.0,
+                apm_1w: 0.0,
+                apm_1m: 0.0,
+                apm_lifetime: 0.0,
+                total_sessions: 0,
+                total_messages: 0,
+                total_tool_uses: 0,
+                total_duration: 0.0,
+                tool_usage: Vec::new(),
+                recent_sessions: Vec::new(),
+                productivity_by_time: ProductivityByTime {
+                    morning: 0.0,
+                    afternoon: 0.0,
+                    evening: 0.0,
+                    night: 0.0,
+                },
+            }
+        }
+    };
+    
+    // Fetch SDK stats from Convex
+    let sdk_stats = match fetch_convex_apm_stats().await {
+        Ok(stats) => {
+            info!("SDK APM analysis completed. Sessions: {}, Messages: {}, Tools: {}", 
+                  stats.total_sessions, stats.total_messages, stats.total_tool_uses);
+            stats
+        }
+        Err(e) => {
+            info!("SDK APM analysis failed, using empty stats: {}", e);
+            // Return empty stats if SDK analysis fails
+            APMStats {
+                apm_1h: 0.0,
+                apm_6h: 0.0,
+                apm_1d: 0.0,
+                apm_1w: 0.0,
+                apm_1m: 0.0,
+                apm_lifetime: 0.0,
+                total_sessions: 0,
+                total_messages: 0,
+                total_tool_uses: 0,
+                total_duration: 0.0,
+                tool_usage: Vec::new(),
+                recent_sessions: Vec::new(),
+                productivity_by_time: ProductivityByTime {
+                    morning: 0.0,
+                    afternoon: 0.0,
+                    evening: 0.0,
+                    night: 0.0,
+                },
+            }
+        }
+    };
+    
+    // Combine the stats
+    let combined_stats = combine_apm_stats(cli_stats, sdk_stats);
+    
+    info!("Combined APM analysis completed. Total sessions: {}, Total messages: {}, Total tools: {}", 
+          combined_stats.total_sessions, combined_stats.total_messages, combined_stats.total_tool_uses);
+    
+    Ok(CommandResult::success(combined_stats))
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -676,6 +938,7 @@ pub fn run() {
             get_project_directory,
             handle_claude_event,
             analyze_claude_conversations,
+            analyze_combined_conversations,
         ])
         .setup(|app| {
             // During development, try to prevent window from stealing focus on hot reload
