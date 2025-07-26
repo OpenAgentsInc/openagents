@@ -315,8 +315,8 @@ export const useMobileSessionSync = (
         clearTimeout(processingTimeoutRef.current);
       }
     };
-  }, [pendingMobileSessions, isAppInitialized, lastGlobalProcessTime, isProcessingAnyMobileSession, 
-      processingSessions, processedMobileSessions, sessions, createSessionFromMobile]);
+  }, [pendingMobileSessions, isAppInitialized, processingSessions, processedMobileSessions, 
+      sessions, createSessionFromMobile, setIsProcessingAnyMobileSession, setLastGlobalProcessTime]);
 
   const handleInitialMessageSent = useCallback((mobileSessionId: string) => {
     console.log('✉️ [MOBILE-SYNC] Initial message sent for mobile session:', mobileSessionId);
