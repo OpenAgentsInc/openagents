@@ -7,7 +7,8 @@ import { useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
 interface UseClaudeStreamingOptions {
-  sessionId: string;
+  sessionId: string; // Claude Code session ID for streaming
+  persistToSessionId?: string; // Optional session ID for message persistence (defaults to sessionId)
   onMessage?: (message: Message) => void;
   onError?: (error: Error) => void;
 }
@@ -27,6 +28,7 @@ const ServiceLayer = Layer.provideMerge(ClaudeStreamingServiceLive, TauriEventLa
 
 export function useClaudeStreaming({
   sessionId,
+  persistToSessionId,
   onMessage,
   onError
 }: UseClaudeStreamingOptions): UseClaudeStreamingResult {
@@ -117,15 +119,18 @@ export function useClaudeStreaming({
         return;
       }
       
+      const targetSessionId = persistToSessionId || sessionId;
+      
       console.log('💾 [STREAMING] Persisting message to Convex:', {
-        sessionId,
+        streamingSessionId: sessionId,
+        persistToSessionId: targetSessionId,
         messageId: message.id,
         messageType,
         contentLength: message.content.length
       });
       
       await addClaudeMessage({
-        sessionId,
+        sessionId: targetSessionId,
         messageId: message.id,
         messageType,
         content: message.content,
@@ -144,7 +149,7 @@ export function useClaudeStreaming({
       console.error('❌ [STREAMING] Failed to persist message to Convex:', error);
       // Don't throw - streaming should continue even if persistence fails
     }
-  }, [sessionId, addClaudeMessage]);
+  }, [sessionId, persistToSessionId, addClaudeMessage]);
 
   // Helper function to map streaming message types to Convex types
   const mapMessageTypeToConvex = (streamingType: string): 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking' | null => {

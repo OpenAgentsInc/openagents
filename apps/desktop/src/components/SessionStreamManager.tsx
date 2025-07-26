@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useClaudeStreaming } from '@/hooks/useClaudeStreaming';
 
 interface SessionStreamManagerProps {
-  sessionId: string;
+  sessionId: string; // Claude Code UUID for streaming
+  persistToSessionId?: string; // Mobile session ID for persistence
   isInitializing: boolean;
   onMessagesUpdate: (sessionId: string, messages: any[]) => void;
   onError: (sessionId: string, error: Error) => void;
@@ -10,6 +11,7 @@ interface SessionStreamManagerProps {
 
 export function SessionStreamManager({ 
   sessionId, 
+  persistToSessionId,
   isInitializing,
   onMessagesUpdate, 
   onError 
@@ -18,7 +20,8 @@ export function SessionStreamManager({
   const hasStartedRef = useRef(false);
   
   const { messages, startStreaming, stopStreaming, error } = useClaudeStreaming({
-    sessionId,
+    sessionId, // Claude Code UUID for streaming
+    persistToSessionId, // Mobile session ID for persistence
     onMessage: () => {
       // Messages are already accumulated in the hook
     },

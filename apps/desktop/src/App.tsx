@@ -47,6 +47,7 @@ function App() {
   const {
     mobileSessionsToInitialize,
     handleInitialMessageSent,
+    sessionIdMapping,
   } = useMobileSessionSync(sessions, setSessions, isAppInitialized);
 
   const {
@@ -120,6 +121,7 @@ function App() {
           sessions={sessions}
           handleMessagesUpdate={handleMessagesUpdate}
           handleStreamError={handleStreamError}
+          sessionIdMapping={sessionIdMapping}
         />
         
         <MobileSessionProcessor
