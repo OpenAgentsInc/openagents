@@ -275,7 +275,7 @@ fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMSta
     }
     
     let combined_total_tool_uses = cli_stats.total_tool_uses + sdk_stats.total_tool_uses;
-    let combined_tool_usage: Vec<ToolUsage> = combined_tool_counts
+    let mut combined_tool_usage: Vec<ToolUsage> = combined_tool_counts
         .into_iter()
         .map(|(name, count)| ToolUsage {
             category: get_tool_category(&name),
@@ -288,6 +288,9 @@ fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMSta
             },
         })
         .collect();
+    
+    // Sort tool usage by count
+    combined_tool_usage.sort_by(|a, b| b.count.cmp(&a.count));
     
     // Combine recent sessions
     let mut combined_sessions = cli_stats.recent_sessions.clone();

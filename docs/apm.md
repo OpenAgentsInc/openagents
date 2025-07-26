@@ -201,8 +201,8 @@ The APM system now analyzes conversations from **two sources**:
 The stats page provides three viewing modes:
 
 1. **Combined** (default): Shows totals across both CLI and SDK conversations
-2. **CLI Only**: Shows statistics from local Claude Code CLI sessions only  
-3. **SDK Only**: Shows statistics from SDK/Convex conversations only
+2. **CLI Only**: Shows statistics from local Claude Code CLI sessions  
+3. **SDK Only**: Shows statistics from SDK/Convex conversations
 
 ### Breakdown Analysis
 

@@ -543,12 +543,12 @@ export const getConvexAPMStats = query({
           sessionMessageCount++;
           totalMessages++;
           
-          // Count for time windows
-          if (messageTime >= timeWindows.hour1) windowCounts.hour1.messages++;
-          if (messageTime >= timeWindows.hours6) windowCounts.hours6.messages++;
-          if (messageTime >= timeWindows.day1) windowCounts.day1.messages++;
-          if (messageTime >= timeWindows.week1) windowCounts.week1.messages++;
-          if (messageTime >= timeWindows.month1) windowCounts.month1.messages++;
+          // Count for all applicable time windows in one pass
+          for (const [windowName, cutoff] of Object.entries(timeWindows)) {
+            if (messageTime >= cutoff) {
+              windowCounts[windowName as keyof typeof windowCounts].messages++;
+            }
+          }
         }
         
         // Count tool uses
@@ -559,12 +559,12 @@ export const getConvexAPMStats = query({
           const toolName = message.toolInfo.toolName;
           toolCounts[toolName] = (toolCounts[toolName] || 0) + 1;
           
-          // Count for time windows
-          if (messageTime >= timeWindows.hour1) windowCounts.hour1.tools++;
-          if (messageTime >= timeWindows.hours6) windowCounts.hours6.tools++;
-          if (messageTime >= timeWindows.day1) windowCounts.day1.tools++;
-          if (messageTime >= timeWindows.week1) windowCounts.week1.tools++;
-          if (messageTime >= timeWindows.month1) windowCounts.month1.tools++;
+          // Count for all applicable time windows in one pass
+          for (const [windowName, cutoff] of Object.entries(timeWindows)) {
+            if (messageTime >= cutoff) {
+              windowCounts[windowName as keyof typeof windowCounts].tools++;
+            }
+          }
         }
       }
       
