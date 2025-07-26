@@ -3,6 +3,8 @@ import { Effect, Stream, pipe, Layer } from 'effect';
 import { ClaudeStreamingService, ClaudeStreamingServiceLive, StreamingSession, Message } from '../services/ClaudeStreamingService';
 import { TauriEventService, TauriEventServiceLive } from '../services/TauriEventService';
 import { invoke } from '@tauri-apps/api/core';
+import { useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
 
 interface UseClaudeStreamingOptions {
   sessionId: string;
@@ -33,6 +35,7 @@ export function useClaudeStreaming({
   const [error, setError] = useState<Error | null>(null);
   
   const sessionRef = useRef<StreamingSession | null>(null);
+  const addClaudeMessage = useMutation(api.claude.addClaudeMessage);
 
   // Start streaming
   const startStreaming = useCallback(async () => {
@@ -66,6 +69,10 @@ export function useClaudeStreaming({
                   return [...prev, message];
                 }
               });
+              
+              // Persist message to Convex
+              persistMessageToConvex(message);
+              
               onMessage?.(message);
             })
           ),
@@ -98,6 +105,70 @@ export function useClaudeStreaming({
       sessionRef.current = null;
     }
   }, [sessionId, isStreaming, onMessage, onError]);
+
+  // Persist streaming messages to Convex
+  const persistMessageToConvex = useCallback(async (message: Message) => {
+    try {
+      // Map message type to Convex format
+      const messageType = mapMessageTypeToConvex(message.message_type);
+      
+      if (!messageType) {
+        console.log('🔇 [STREAMING] Skipping message persistence for type:', message.message_type);
+        return;
+      }
+      
+      console.log('💾 [STREAMING] Persisting message to Convex:', {
+        sessionId,
+        messageId: message.id,
+        messageType,
+        contentLength: message.content.length
+      });
+      
+      await addClaudeMessage({
+        sessionId,
+        messageId: message.id,
+        messageType,
+        content: message.content,
+        timestamp: message.timestamp,
+        toolInfo: message.tool_info ? {
+          toolName: message.tool_info.tool_name,
+          toolUseId: message.tool_info.tool_use_id,
+          input: message.tool_info.input,
+          output: message.tool_info.output || undefined, // Convert null to undefined
+        } : undefined,
+        metadata: { source: 'claude_streaming' },
+      });
+      
+      console.log('✅ [STREAMING] Message persisted to Convex successfully');
+    } catch (error) {
+      console.error('❌ [STREAMING] Failed to persist message to Convex:', error);
+      // Don't throw - streaming should continue even if persistence fails
+    }
+  }, [sessionId, addClaudeMessage]);
+
+  // Helper function to map streaming message types to Convex types
+  const mapMessageTypeToConvex = (streamingType: string): 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking' | null => {
+    switch (streamingType) {
+      case 'assistant':
+        return 'assistant';
+      case 'user':
+        return 'user';
+      case 'tool_use':
+        return 'tool_use';
+      case 'tool_result':
+        return 'tool_result';
+      case 'thinking':
+        return 'thinking'; // Include reasoning/thinking messages
+      // Skip system messages, summaries, errors
+      case 'system':
+      case 'summary':
+      case 'error':
+        return null;
+      default:
+        console.warn('🤔 [STREAMING] Unknown message type:', streamingType);
+        return null;
+    }
+  };
 
   // Send message using the existing Tauri command
   const sendMessage = useCallback(async (message: string) => {
