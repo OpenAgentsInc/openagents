@@ -1,6 +1,6 @@
 mod claude_code;
 
-use claude_code::{ClaudeDiscovery, ClaudeManager, Message, ClaudeConversation};
+use claude_code::{ClaudeDiscovery, ClaudeManager, Message, ClaudeConversation, UnifiedSession};
 use log::info;
 use serde::{Serialize, Deserialize};
 use tauri::State;
@@ -891,6 +891,25 @@ async fn get_history(
 }
 
 #[tauri::command]
+async fn get_unified_history(
+    limit: usize,
+    convex_url: Option<String>,
+    user_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<CommandResult<Vec<UnifiedSession>>, String> {
+    let discovery = state.discovery.lock().await;
+    
+    match discovery.load_unified_sessions(
+        limit, 
+        convex_url.as_deref(),
+        user_id
+    ).await {
+        Ok(sessions) => Ok(CommandResult::success(sessions)),
+        Err(e) => Ok(CommandResult::error(e.to_string())),
+    }
+}
+
+#[tauri::command]
 fn get_project_directory() -> Result<CommandResult<String>, String> {
     // Try to find git repository root first
     if let Ok(output) = std::process::Command::new("git")
@@ -953,6 +972,7 @@ pub fn run() {
             stop_session,
             get_active_sessions,
             get_history,
+            get_unified_history,
             get_project_directory,
             handle_claude_event,
             analyze_claude_conversations,

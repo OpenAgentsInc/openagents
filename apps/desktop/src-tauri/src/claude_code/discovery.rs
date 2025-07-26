@@ -1,4 +1,5 @@
-use crate::claude_code::models::{ClaudeConversation, ClaudeError};
+use crate::claude_code::models::{ClaudeConversation, ClaudeError, UnifiedSession};
+use crate::claude_code::convex_client::ConvexClient;
 use chrono::{DateTime, Utc};
 use dirs_next;
 use log::info;
@@ -294,6 +295,76 @@ impl ClaudeDiscovery {
             working_directory: cwd,
             summary,
         })
+    }
+
+    /// Load unified session history from both local files and Convex
+    pub async fn load_unified_sessions(
+        &self, 
+        limit: usize, 
+        convex_url: Option<&str>,
+        user_id: Option<String>
+    ) -> Result<Vec<UnifiedSession>, ClaudeError> {
+        let mut all_sessions = Vec::new();
+
+        // Load local Claude Code CLI conversations
+        match self.load_conversations(limit).await {
+            Ok(local_conversations) => {
+                info!("Loaded {} local Claude Code conversations", local_conversations.len());
+                for conv in local_conversations {
+                    all_sessions.push(UnifiedSession::from(conv));
+                }
+            }
+            Err(e) => {
+                // Log but don't fail - we can still show Convex sessions
+                info!("Could not load local conversations: {}", e);
+            }
+        }
+
+        // Load Convex sessions if URL is provided
+        if let Some(url) = convex_url {
+            let convex_client = ConvexClient::new(url);
+            
+            match convex_client.get_sessions(Some(limit), user_id).await {
+                Ok(convex_sessions) => {
+                    info!("Loaded {} Convex sessions", convex_sessions.len());
+                    for session in convex_sessions {
+                        all_sessions.push(UnifiedSession::from(session));
+                    }
+                }
+                Err(e) => {
+                    // Log but don't fail - we can still show local sessions
+                    info!("Could not load Convex sessions: {}", e);
+                }
+            }
+        } else {
+            info!("No Convex URL provided, skipping Convex sessions");
+        }
+
+        // Sort by timestamp, most recent first
+        all_sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        // Deduplicate sessions that might appear in both sources
+        // This is a simple approach - could be enhanced with better matching logic
+        let mut unique_sessions = Vec::new();
+        let mut seen_titles = std::collections::HashSet::new();
+
+        for session in all_sessions {
+            // Create a simple key for deduplication
+            let key = format!("{}:{}", 
+                session.project_path.as_deref().unwrap_or(""), 
+                session.title.chars().take(50).collect::<String>()
+            );
+            
+            if !seen_titles.contains(&key) {
+                seen_titles.insert(key);
+                unique_sessions.push(session);
+            }
+        }
+
+        // Return limited number of sessions
+        let result: Vec<UnifiedSession> = unique_sessions.into_iter().take(limit).collect();
+        info!("Returning {} unified sessions", result.len());
+        Ok(result)
     }
 
 }
