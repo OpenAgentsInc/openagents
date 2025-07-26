@@ -254,22 +254,20 @@ async fn fetch_convex_apm_stats() -> Result<APMStats, String> {
 
 // Function to combine CLI and SDK APM stats
 fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMStats {
-    // Combine time window APMs (weighted average by total actions)
-    let cli_total_actions = (cli_stats.total_messages as u32) + (cli_stats.total_tool_uses as u32);
-    let sdk_total_actions = (sdk_stats.total_messages as u32) + (sdk_stats.total_tool_uses as u32);
-    let combined_total_actions = cli_total_actions + sdk_total_actions;
+    info!("Combining APM stats:");
+    info!("CLI - Sessions: {}, Messages: {}, Tools: {}, 1h APM: {}", 
+          cli_stats.total_sessions, cli_stats.total_messages, cli_stats.total_tool_uses, cli_stats.apm_1h);
+    info!("SDK - Sessions: {}, Messages: {}, Tools: {}, 1h APM: {}", 
+          sdk_stats.total_sessions, sdk_stats.total_messages, sdk_stats.total_tool_uses, sdk_stats.apm_1h);
+    
+    // Calculate total actions for reference
+    let _cli_total_actions = (cli_stats.total_messages as u32) + (cli_stats.total_tool_uses as u32);
+    let _sdk_total_actions = (sdk_stats.total_messages as u32) + (sdk_stats.total_tool_uses as u32);
     
     let combine_apm = |cli_apm: f64, sdk_apm: f64| -> f64 {
-        if combined_total_actions == 0 {
-            return 0.0;
-        }
-        
-        // Calculate total actions for this time window based on APM and duration
-        // This is an approximation since we don't have exact per-window action counts
-        let total_apm = (cli_apm * cli_total_actions as f64 + sdk_apm * sdk_total_actions as f64) 
-            / combined_total_actions as f64;
-        
-        total_apm
+        // Simply add the APM rates since they represent independent action streams
+        // CLI APM + SDK APM = Combined actions per minute across both interfaces
+        cli_apm + sdk_apm
     };
     
     // Combine tool usage
@@ -320,16 +318,24 @@ fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMSta
         (cli_prod * cli_sessions + sdk_prod * sdk_sessions) / total_sessions
     };
     
+    let combined_apm_1h = combine_apm(cli_stats.apm_1h, sdk_stats.apm_1h);
+    let combined_total_sessions = (cli_stats.total_sessions as u32) + (sdk_stats.total_sessions as u32);
+    let combined_total_messages = (cli_stats.total_messages as u32) + (sdk_stats.total_messages as u32);
+    let combined_total_tools = (cli_stats.total_tool_uses as u32) + (sdk_stats.total_tool_uses as u32);
+    
+    info!("Combined result - Sessions: {}, Messages: {}, Tools: {}, 1h APM: {}", 
+          combined_total_sessions, combined_total_messages, combined_total_tools, combined_apm_1h);
+
     CombinedAPMStats {
-        apm_1h: combine_apm(cli_stats.apm_1h, sdk_stats.apm_1h),
+        apm_1h: combined_apm_1h,
         apm_6h: combine_apm(cli_stats.apm_6h, sdk_stats.apm_6h),
         apm_1d: combine_apm(cli_stats.apm_1d, sdk_stats.apm_1d),
         apm_1w: combine_apm(cli_stats.apm_1w, sdk_stats.apm_1w),
         apm_1m: combine_apm(cli_stats.apm_1m, sdk_stats.apm_1m),
         apm_lifetime: combine_apm(cli_stats.apm_lifetime, sdk_stats.apm_lifetime),
-        total_sessions: (cli_stats.total_sessions as u32) + (sdk_stats.total_sessions as u32),
-        total_messages: (cli_stats.total_messages as u32) + (sdk_stats.total_messages as u32),
-        total_tool_uses: (cli_stats.total_tool_uses as u32) + (sdk_stats.total_tool_uses as u32),
+        total_sessions: combined_total_sessions,
+        total_messages: combined_total_messages,
+        total_tool_uses: combined_total_tools,
         total_duration: cli_stats.total_duration + sdk_stats.total_duration,
         tool_usage: combined_tool_usage,
         recent_sessions: combined_sessions,
