@@ -20,8 +20,11 @@ export const AuthButton: React.FC = () => {
           {user.avatar && (
             <img 
               src={user.avatar} 
-              alt={user.name || user.githubUsername}
+              alt={`${user.name || user.githubUsername || 'User'} avatar`}
               className="w-6 h-6 rounded-full"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
             />
           )}
           <span className="text-muted-foreground">

@@ -69,14 +69,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       
       // Redirect to OpenAuth server
-      const authUrl = process.env.VITE_OPENAUTH_URL || 'http://localhost:8787';
+      const authUrl = import.meta.env.VITE_OPENAUTH_URL || 'http://localhost:8787';
       const redirectUri = 'openagents://auth/callback';
       
       const loginUrl = `${authUrl}/authorize?provider=github&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code`;
       
-      // Open external URL using Tauri
-      const { open } = await import('@tauri-apps/api/shell');
-      await open(loginUrl);
+      // Open external URL using Tauri opener plugin
+      const { openUrl } = await import('@tauri-apps/plugin-opener');
+      await openUrl(loginUrl);
       
       // The callback will be handled by the Tauri backend
       // which will store the tokens and user info
