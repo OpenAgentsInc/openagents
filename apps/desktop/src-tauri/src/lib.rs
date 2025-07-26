@@ -102,6 +102,27 @@ struct APMStats {
     productivity_by_time: ProductivityByTime,
 }
 
+// Historical APM data structures
+#[derive(Clone, Debug, Serialize)]
+struct HistoricalAPMDataPoint {
+    period: String, // ISO date or week/month identifier (e.g., "2025-01-26", "2025-W04", "2025-01")
+    cli_apm: f64,
+    sdk_apm: f64,
+    combined_apm: f64,
+    total_sessions: u32,
+    total_messages: u32,
+    total_tools: u32,
+    average_session_duration: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct HistoricalAPMResponse {
+    data: Vec<HistoricalAPMDataPoint>,
+    time_scale: String, // "daily", "weekly", "monthly"
+    date_range: (String, String), // (start_date, end_date)
+    view_mode: String, // "combined", "cli", "sdk"
+}
+
 // Combined APM structures for CLI + SDK data
 #[derive(Serialize, Deserialize, Debug)]
 struct CombinedAPMStats {
@@ -348,6 +369,314 @@ fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMSta
         cli_stats,
         sdk_stats,
     }
+}
+
+// Historical APM data generation
+async fn generate_historical_apm_data(
+    time_scale: &str,
+    days_back: i64,
+    view_mode: &str,
+) -> Result<HistoricalAPMResponse, String> {
+    info!("Generating historical APM data: time_scale={}, days_back={}, view_mode={}", time_scale, days_back, view_mode);
+    
+    use chrono::{Utc, Duration, Datelike};
+    
+    let home_dir = dirs_next::home_dir()
+        .ok_or("Could not find home directory")?;
+    
+    let claude_dir = home_dir.join(".claude").join("projects");
+    let mut cli_sessions_by_period: std::collections::HashMap<String, Vec<APMSession>> = std::collections::HashMap::new();
+    
+    // Load and group CLI sessions by time period
+    if claude_dir.exists() {
+        let entries = std::fs::read_dir(&claude_dir)
+            .map_err(|e| format!("Failed to read Claude directory: {}", e))?;
+        
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+            let path = entry.path();
+            
+            if path.is_dir() {
+                let conv_files = std::fs::read_dir(&path)
+                    .map_err(|e| format!("Failed to read conversation directory: {}", e))?;
+                
+                for file_entry in conv_files {
+                    let file_entry = file_entry.map_err(|e| format!("Failed to read file entry: {}", e))?;
+                    let file_path = file_entry.path();
+                    
+                    if file_path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                        if let Ok(sessions) = parse_conversation_for_historical(&file_path, time_scale, days_back).await {
+                            for (period, session) in sessions {
+                                cli_sessions_by_period.entry(period).or_insert_with(Vec::new).push(session);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Load SDK sessions (simplified for now - we'll enhance this later)
+    let sdk_sessions_by_period: std::collections::HashMap<String, Vec<APMSession>> = std::collections::HashMap::new();
+    // TODO: Add SDK historical data loading from Convex
+    
+    // Generate data points for each time period
+    let mut data_points = Vec::new();
+    let end_date = Utc::now();
+    let start_date = end_date - Duration::days(days_back);
+    
+    // Generate periods based on time scale
+    match time_scale {
+        "daily" => {
+            for i in 0..days_back {
+                let date = start_date + Duration::days(i);
+                let period = date.format("%Y-%m-%d").to_string();
+                
+                let empty_vec = Vec::new();
+                let cli_sessions = cli_sessions_by_period.get(&period).unwrap_or(&empty_vec);
+                let sdk_sessions = sdk_sessions_by_period.get(&period).unwrap_or(&empty_vec);
+                
+                let cli_apm = calculate_period_apm(cli_sessions);
+                let sdk_apm = calculate_period_apm(sdk_sessions);
+                
+                data_points.push(HistoricalAPMDataPoint {
+                    period: period.clone(),
+                    cli_apm,
+                    sdk_apm,
+                    combined_apm: cli_apm + sdk_apm,
+                    total_sessions: (cli_sessions.len() + sdk_sessions.len()) as u32,
+                    total_messages: (cli_sessions.iter().map(|s| s.message_count).sum::<f64>() + 
+                                  sdk_sessions.iter().map(|s| s.message_count).sum::<f64>()) as u32,
+                    total_tools: (cli_sessions.iter().map(|s| s.tool_count).sum::<f64>() + 
+                               sdk_sessions.iter().map(|s| s.tool_count).sum::<f64>()) as u32,
+                    average_session_duration: {
+                        let all_sessions: Vec<_> = cli_sessions.iter().chain(sdk_sessions.iter()).collect();
+                        if all_sessions.is_empty() {
+                            0.0
+                        } else {
+                            all_sessions.iter().map(|s| s.duration).sum::<f64>() / all_sessions.len() as f64
+                        }
+                    },
+                });
+            }
+        }
+        "weekly" => {
+            let weeks_back = (days_back / 7).max(1);
+            for i in 0..weeks_back {
+                let week_start = start_date + Duration::weeks(i);
+                let year = week_start.year();
+                let week = week_start.iso_week().week();
+                let period = format!("{}-W{:02}", year, week);
+                
+                // Aggregate all sessions for this week
+                let mut cli_week_sessions = Vec::new();
+                let mut sdk_week_sessions = Vec::new();
+                
+                for day in 0..7 {
+                    let date = week_start + Duration::days(day);
+                    let day_period = date.format("%Y-%m-%d").to_string();
+                    
+                    if let Some(cli_sessions) = cli_sessions_by_period.get(&day_period) {
+                        cli_week_sessions.extend(cli_sessions.iter().cloned());
+                    }
+                    if let Some(sdk_sessions) = sdk_sessions_by_period.get(&day_period) {
+                        sdk_week_sessions.extend(sdk_sessions.iter().cloned());
+                    }
+                }
+                
+                let cli_apm = calculate_period_apm(&cli_week_sessions);
+                let sdk_apm = calculate_period_apm(&sdk_week_sessions);
+                
+                data_points.push(HistoricalAPMDataPoint {
+                    period: period.clone(),
+                    cli_apm,
+                    sdk_apm,
+                    combined_apm: cli_apm + sdk_apm,
+                    total_sessions: (cli_week_sessions.len() + sdk_week_sessions.len()) as u32,
+                    total_messages: (cli_week_sessions.iter().map(|s| s.message_count).sum::<f64>() + 
+                                  sdk_week_sessions.iter().map(|s| s.message_count).sum::<f64>()) as u32,
+                    total_tools: (cli_week_sessions.iter().map(|s| s.tool_count).sum::<f64>() + 
+                               sdk_week_sessions.iter().map(|s| s.tool_count).sum::<f64>()) as u32,
+                    average_session_duration: {
+                        let all_sessions: Vec<_> = cli_week_sessions.iter().chain(sdk_week_sessions.iter()).collect();
+                        if all_sessions.is_empty() {
+                            0.0
+                        } else {
+                            all_sessions.iter().map(|s| s.duration).sum::<f64>() / all_sessions.len() as f64
+                        }
+                    },
+                });
+            }
+        }
+        "monthly" => {
+            let months_back = (days_back / 30).max(1);
+            for i in 0..months_back {
+                let month_start = start_date + Duration::days(i * 30);
+                let period = month_start.format("%Y-%m").to_string();
+                
+                // Aggregate all sessions for this month (simplified)
+                let mut cli_month_sessions = Vec::new();
+                let mut sdk_month_sessions = Vec::new();
+                
+                for day in 0..30 {
+                    let date = month_start + Duration::days(day);
+                    let day_period = date.format("%Y-%m-%d").to_string();
+                    
+                    if let Some(cli_sessions) = cli_sessions_by_period.get(&day_period) {
+                        cli_month_sessions.extend(cli_sessions.iter().cloned());
+                    }
+                    if let Some(sdk_sessions) = sdk_sessions_by_period.get(&day_period) {
+                        sdk_month_sessions.extend(sdk_sessions.iter().cloned());
+                    }
+                }
+                
+                let cli_apm = calculate_period_apm(&cli_month_sessions);
+                let sdk_apm = calculate_period_apm(&sdk_month_sessions);
+                
+                data_points.push(HistoricalAPMDataPoint {
+                    period: period.clone(),
+                    cli_apm,
+                    sdk_apm,
+                    combined_apm: cli_apm + sdk_apm,
+                    total_sessions: (cli_month_sessions.len() + sdk_month_sessions.len()) as u32,
+                    total_messages: (cli_month_sessions.iter().map(|s| s.message_count).sum::<f64>() + 
+                                  sdk_month_sessions.iter().map(|s| s.message_count).sum::<f64>()) as u32,
+                    total_tools: (cli_month_sessions.iter().map(|s| s.tool_count).sum::<f64>() + 
+                               sdk_month_sessions.iter().map(|s| s.tool_count).sum::<f64>()) as u32,
+                    average_session_duration: {
+                        let all_sessions: Vec<_> = cli_month_sessions.iter().chain(sdk_month_sessions.iter()).collect();
+                        if all_sessions.is_empty() {
+                            0.0
+                        } else {
+                            all_sessions.iter().map(|s| s.duration).sum::<f64>() / all_sessions.len() as f64
+                        }
+                    },
+                });
+            }
+        }
+        _ => return Err(format!("Invalid time scale: {}", time_scale)),
+    }
+    
+    info!("Generated {} historical data points", data_points.len());
+    
+    Ok(HistoricalAPMResponse {
+        data: data_points,
+        time_scale: time_scale.to_string(),
+        date_range: (
+            start_date.format("%Y-%m-%d").to_string(),
+            end_date.format("%Y-%m-%d").to_string(),
+        ),
+        view_mode: view_mode.to_string(),
+    })
+}
+
+// Helper function to calculate APM for a period
+fn calculate_period_apm(sessions: &[APMSession]) -> f64 {
+    if sessions.is_empty() {
+        return 0.0;
+    }
+    
+    let total_actions: f64 = sessions.iter().map(|s| s.message_count + s.tool_count).sum();
+    let total_duration: f64 = sessions.iter().map(|s| s.duration).sum();
+    
+    if total_duration > 0.0 {
+        total_actions / total_duration
+    } else {
+        0.0
+    }
+}
+
+// Helper function to parse conversation files for historical data
+async fn parse_conversation_for_historical(
+    file_path: &std::path::Path,
+    time_scale: &str,
+    days_back: i64,
+) -> Result<Vec<(String, APMSession)>, String> {
+    use chrono::{DateTime, Utc, Duration, Datelike};
+    
+    let content = std::fs::read_to_string(file_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    
+    let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+    if lines.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let mut messages = 0;
+    let mut tools = 0;
+    let mut timestamps = Vec::new();
+    let mut project_name = "Unknown".to_string();
+    
+    for line in &lines {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(ts_str) = json.get("timestamp").and_then(|v| v.as_str()) {
+                if let Ok(ts) = DateTime::parse_from_rfc3339(ts_str) {
+                    timestamps.push(ts.with_timezone(&Utc));
+                }
+            }
+            
+            if let Some(msg) = json.get("message").and_then(|v| v.as_object()) {
+                if msg.get("role").and_then(|v| v.as_str()) == Some("user") {
+                    messages += 1;
+                }
+            }
+            
+            if json.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
+                tools += 1;
+            }
+            
+            if let Some(cwd) = json.get("cwd").and_then(|v| v.as_str()) {
+                project_name = cwd.split('/').last().unwrap_or("Unknown").to_string();
+            }
+        }
+    }
+    
+    if timestamps.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let earliest = timestamps.iter().min().unwrap();
+    let latest = timestamps.iter().max().unwrap();
+    let cutoff_date = Utc::now() - Duration::days(days_back);
+    
+    // Only include sessions within our time range
+    if latest < &cutoff_date {
+        return Ok(Vec::new());
+    }
+    
+    let duration = (*latest - *earliest).num_minutes() as f64;
+    if duration <= 0.0 {
+        return Ok(Vec::new());
+    }
+    
+    let apm = calculate_apm(messages, tools, duration);
+    
+    let session = APMSession {
+        id: file_path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        project: project_name,
+        apm,
+        duration,
+        message_count: messages as f64,
+        tool_count: tools as f64,
+        timestamp: latest.to_rfc3339(),
+    };
+    
+    // Determine which period this session belongs to
+    let period = match time_scale {
+        "daily" => latest.format("%Y-%m-%d").to_string(),
+        "weekly" => {
+            let year = latest.year();
+            let week = latest.iso_week().week();
+            format!("{}-W{:02}", year, week)
+        }
+        "monthly" => latest.format("%Y-%m").to_string(),
+        _ => latest.format("%Y-%m-%d").to_string(),
+    };
+    
+    Ok(vec![(period, session)])
 }
 
 async fn analyze_conversations() -> Result<APMStats, String> {
@@ -715,6 +1044,52 @@ async fn analyze_combined_conversations() -> Result<CommandResult<CombinedAPMSta
     Ok(CommandResult::success(combined_stats))
 }
 
+#[tauri::command]
+async fn get_historical_apm_data(
+    time_scale: String,
+    days_back: Option<i64>,
+    view_mode: Option<String>,
+) -> Result<CommandResult<HistoricalAPMResponse>, String> {
+    info!("get_historical_apm_data called with params:");
+    info!("  time_scale: {}", time_scale);
+    info!("  days_back: {:?}", days_back);
+    info!("  view_mode: {:?}", view_mode);
+    
+    // Set defaults
+    let days_back = days_back.unwrap_or(match time_scale.as_str() {
+        "daily" => 30,     // Last 30 days
+        "weekly" => 84,    // Last 12 weeks 
+        "monthly" => 365,  // Last 12 months
+        _ => 30,
+    });
+    
+    let view_mode = view_mode.unwrap_or_else(|| "combined".to_string());
+    
+    // Validate parameters
+    if !["daily", "weekly", "monthly"].contains(&time_scale.as_str()) {
+        return Ok(CommandResult::error("Invalid time_scale. Must be 'daily', 'weekly', or 'monthly'".to_string()));
+    }
+    
+    if !["combined", "cli", "sdk"].contains(&view_mode.as_str()) {
+        return Ok(CommandResult::error("Invalid view_mode. Must be 'combined', 'cli', or 'sdk'".to_string()));
+    }
+    
+    if days_back <= 0 || days_back > 365 {
+        return Ok(CommandResult::error("days_back must be between 1 and 365".to_string()));
+    }
+    
+    match generate_historical_apm_data(&time_scale, days_back, &view_mode).await {
+        Ok(data) => {
+            info!("Historical APM data generated successfully: {} data points", data.data.len());
+            Ok(CommandResult::success(data))
+        }
+        Err(e) => {
+            info!("Historical APM data generation failed: {}", e);
+            Ok(CommandResult::error(e))
+        }
+    }
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -976,6 +1351,7 @@ pub fn run() {
             handle_claude_event,
             analyze_claude_conversations,
             analyze_combined_conversations,
+            get_historical_apm_data,
         ])
         .setup(|app| {
             // During development, try to prevent window from stealing focus on hot reload
