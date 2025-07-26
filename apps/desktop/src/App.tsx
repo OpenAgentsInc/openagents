@@ -66,15 +66,13 @@ function App() {
   const createConvexSession = useMutation(api.claude.createClaudeSession);
   const markMobileSessionProcessed = useMutation(api.claude.markMobileSessionProcessed);
   
-  // Debug logging for mobile sessions
+  // Debug logging for mobile sessions (only when there are sessions to avoid noise)
   useEffect(() => {
-    if (pendingMobileSessions.length > 0) {
+    if (pendingMobileSessions.length > 0 && isAppInitialized) {
       console.log('🔍 [MOBILE-SYNC] Detected pending mobile sessions:', pendingMobileSessions.length);
       console.log('🔍 [MOBILE-SYNC] Mobile sessions data:', JSON.stringify(pendingMobileSessions, null, 2));
-    } else {
-      console.log('🔍 [MOBILE-SYNC] No pending mobile sessions found');
     }
-  }, [pendingMobileSessions]);
+  }, [pendingMobileSessions, isAppInitialized]);
   
   // State tracking for sessions currently being processed to prevent duplicates
   const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
@@ -88,6 +86,10 @@ function App() {
   // Circuit breaker to prevent processing same session repeatedly
   const lastProcessedTimeRef = useRef<Record<string, number>>({});
   const PROCESSING_COOLDOWN = 5000; // 5 seconds
+  
+  // Startup state management to prevent excessive initial calls
+  const [isAppInitialized, setIsAppInitialized] = useState(false);
+  const initializationTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Get project directory (git root or current directory) on mount
   useEffect(() => {
@@ -96,22 +98,43 @@ function App() {
         setNewProjectPath(result.data);
       }
     }).catch(console.error);
+    
+    // Initialize app after brief delay to prevent startup spam
+    initializationTimeoutRef.current = setTimeout(() => {
+      setIsAppInitialized(true);
+      console.log('🚀 [APP] Application initialized - mobile session processing enabled');
+    }, 1000); // 1 second initialization delay
+    
+    return () => {
+      if (initializationTimeoutRef.current) {
+        clearTimeout(initializationTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Monitor for mobile-initiated sessions and create local Claude Code sessions
   useEffect(() => {
+    // Skip processing until app is fully initialized
+    if (!isAppInitialized) {
+      console.log('⏸️ [MOBILE-SYNC] App not initialized yet, skipping mobile session processing');
+      return;
+    }
+    
     const timestamp = new Date().toISOString();
     const pendingIds = pendingMobileSessions.map(s => s.sessionId);
     const processedIds = Array.from(processedMobileSessions);
     const processingIds = Array.from(processingSessions);
     const overlaps = pendingIds.filter(id => processedIds.includes(id));
     
-    console.log(`🔄 [${timestamp}] useEffect TRIGGERED`);
-    console.log(`📥 Pending sessions: [${pendingIds.join(', ')}]`);
-    console.log(`✅ Processed sessions: [${processedIds.join(', ')}]`);
-    console.log(`⏳ Currently processing: [${processingIds.join(', ')}]`);
-    console.log(`🔄 Overlap detection: [${overlaps.join(', ')}]${overlaps.length > 0 ? ' ← PROBLEM!' : ''}`);
-    console.log(`🔒 Processing lock: ${isProcessingRef.current}`);
+    // Only log when there are actually sessions to process to reduce noise
+    if (pendingIds.length > 0) {
+      console.log(`🔄 [${timestamp}] useEffect TRIGGERED`);
+      console.log(`📥 Pending sessions: [${pendingIds.join(', ')}]`);
+      console.log(`✅ Processed sessions: [${processedIds.join(', ')}]`);
+      console.log(`⏳ Currently processing: [${processingIds.join(', ')}]`);
+      console.log(`🔄 Overlap detection: [${overlaps.join(', ')}]${overlaps.length > 0 ? ' ← PROBLEM!' : ''}`);
+      console.log(`🔒 Processing lock: ${isProcessingRef.current}`);
+    }
 
     // Clear existing timeout
     if (processingTimeoutRef.current) {
@@ -296,7 +319,7 @@ function App() {
         clearTimeout(processingTimeoutRef.current);
       }
     };
-  }, [pendingMobileSessions]); // Simplified dependencies for testing - CodeRabbit suggestion
+  }, [pendingMobileSessions, isAppInitialized]); // Include initialization state
 
   // Toggle hand tracking
   const toggleHandTracking = useCallback(() => {
