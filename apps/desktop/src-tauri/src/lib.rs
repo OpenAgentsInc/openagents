@@ -210,11 +210,15 @@ async fn fetch_convex_apm_stats(convex_url: String) -> Result<APMStats, String> 
         .map_err(|e| format!("Failed to send request to Convex: {}", e))?;
     
     if !response.status().is_success() {
-        return Err(format!("Convex request failed with status: {}", response.status()));
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_else(|_| "Unable to read error response".to_string());
+        return Err(format!("Convex request failed with status {}: {}", status, error_text));
     }
     
     let text = response.text().await
         .map_err(|e| format!("Failed to read Convex response: {}", e))?;
+    
+    info!("Convex response: {}", &text[..text.len().min(500)]); // Log first 500 chars
     
     // Parse the response - Convex returns the result directly
     let convex_result: serde_json::Value = serde_json::from_str(&text)
