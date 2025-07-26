@@ -8,6 +8,7 @@ import { HandTracking, HandPose } from "@/components/hands";
 import type { PinchCoordinates, HandLandmarks } from "@/components/hands";
 import { SessionStreamManager } from "@/components/SessionStreamManager";
 import { ConvexDemo } from "@/components/ConvexDemo";
+import { MobileSessionInitializer } from "@/components/MobileSessionInitializer";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "./convex/_generated/api";
 
@@ -82,6 +83,8 @@ function App() {
   const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
   // State tracking for mobile sessions that have been successfully processed
   const [processedMobileSessions, setProcessedMobileSessions] = useState<Set<string>>(new Set());
+  // Track mobile sessions that need initial message handling
+  const [mobileSessionsToInitialize, setMobileSessionsToInitialize] = useState<{mobileSessionId: string; localSessionId: string}[]>([]);
   
   // Global rate limiting for mobile session processing
   const [isProcessingAnyMobileSession, setIsProcessingAnyMobileSession] = useState(false);
@@ -320,6 +323,13 @@ function App() {
             console.error('❌ [MOBILE-SYNC] Failed to sync session to Convex:', convexError);
             throw convexError; // Re-throw to prevent marking as processed
           }
+          
+          // Add this mobile session to the initialization queue
+          console.log('📥 [MOBILE-SYNC] Queueing mobile session for initial message retrieval');
+          setMobileSessionsToInitialize(prev => [...prev, {
+            mobileSessionId: mobileSession.sessionId,
+            localSessionId: localSessionId
+          }]);
 
           // Mark mobile session as processed in the database
           console.log('🏁 [MOBILE-SYNC] Marking mobile session as processed in database...');
@@ -883,6 +893,22 @@ function App() {
             isInitializing={session.isInitializing || false}
             onMessagesUpdate={handleMessagesUpdate}
             onError={handleStreamError}
+          />
+        ))}
+        
+        {/* Mobile Session Initializers */}
+        {mobileSessionsToInitialize.map(({ mobileSessionId, localSessionId }) => (
+          <MobileSessionInitializer
+            key={`${mobileSessionId}-${localSessionId}`}
+            mobileSessionId={mobileSessionId}
+            localSessionId={localSessionId}
+            sendMessage={sendMessage}
+            onInitialMessageSent={() => {
+              console.log('✅ [MOBILE-SYNC] Initial message sent, removing from initialization queue');
+              setMobileSessionsToInitialize(prev => 
+                prev.filter(item => item.localSessionId !== localSessionId)
+              );
+            }}
           />
         ))}
         
