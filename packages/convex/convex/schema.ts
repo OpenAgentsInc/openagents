@@ -43,7 +43,8 @@ export default defineSchema({
       v.literal("user"),
       v.literal("assistant"), 
       v.literal("tool_use"),
-      v.literal("tool_result")
+      v.literal("tool_result"),
+      v.literal("thinking")
     ),
     content: v.string(),           // Message content
     timestamp: v.string(),         // ISO timestamp
