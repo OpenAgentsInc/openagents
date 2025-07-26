@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { usePaneStore } from '@/stores/pane';
+import { useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
 
 interface Message {
   id: string;
@@ -32,8 +34,9 @@ interface Session {
 
 export const useSessionManager = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [newProjectPath, setNewProjectPath] = useState("");
+  const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/code/openagents");
   const { openChatPane, updateSessionMessages } = usePaneStore();
+  const createClaudeSession = useMutation(api.claude.createClaudeSession);
 
   const createSession = useCallback(async () => {
     if (!newProjectPath) {
@@ -48,6 +51,21 @@ export const useSessionManager = () => {
 
       if (result.success && result.data) {
         const sessionId = result.data;
+        
+        // Create the Convex session document so mobile can see it
+        try {
+          await createClaudeSession({
+            sessionId,
+            projectPath: newProjectPath,
+            createdBy: "desktop",
+            title: `Desktop Session - ${new Date().toLocaleString()}`,
+          });
+          console.log('✅ Created Convex session document for:', sessionId);
+        } catch (convexError) {
+          console.error('❌ Failed to create Convex session:', convexError);
+          // Continue anyway - local session still works
+        }
+        
         const newSession: Session = {
           id: sessionId,
           projectPath: newProjectPath,
@@ -65,7 +83,7 @@ export const useSessionManager = () => {
     } catch (error) {
       alert(`Error: ${error}`);
     }
-  }, [newProjectPath, openChatPane]);
+  }, [newProjectPath, openChatPane, createClaudeSession]);
 
   const stopSession = useCallback(async (sessionId: string) => {
     setSessions(prev => prev.map(s => 
