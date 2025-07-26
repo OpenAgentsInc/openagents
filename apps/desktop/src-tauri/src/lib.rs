@@ -232,14 +232,14 @@ async fn fetch_convex_apm_stats() -> Result<APMStats, String> {
         .map_err(|e| format!("Failed to parse Convex response: {}", e))?;
     
     // Extract the actual data from the Convex response
-    let stats_data = if convex_result.is_object() && convex_result.get("success").is_some() {
-        // Handle error response
-        if convex_result["success"].as_bool() == Some(false) {
+    let stats_data = if convex_result.is_object() && convex_result.get("status").is_some() {
+        // Handle Convex API response format: {"status": "success", "value": {...}}
+        if convex_result["status"].as_str() != Some("success") {
             return Err(format!("Convex error: {}", 
                 convex_result.get("error").and_then(|e| e.as_str()).unwrap_or("Unknown error")));
         }
-        // Extract data from success response
-        convex_result.get("data").unwrap_or(&convex_result)
+        // Extract data from "value" field
+        convex_result.get("value").unwrap_or(&convex_result)
     } else {
         // Direct response
         &convex_result
