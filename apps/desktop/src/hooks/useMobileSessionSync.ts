@@ -80,6 +80,12 @@ export const useMobileSessionSync = (
   }, [pendingMobileSessions, isAppInitialized]);
 
   const createSessionFromMobile = useCallback(async (mobileSession: MobileSession) => {
+    console.log('🏁 [MOBILE-SYNC] createSessionFromMobile called with:', {
+      sessionId: mobileSession.sessionId,
+      projectPath: mobileSession.projectPath,
+      title: mobileSession.title
+    });
+    
     const sessionId = mobileSession.sessionId;
     const now = Date.now();
     const lastProcessed = lastProcessedTimeRef.current[sessionId] || 0;
@@ -235,10 +241,20 @@ export const useMobileSessionSync = (
     console.log('🎯 [MOBILE-SYNC] Main processing effect triggered:', {
       isAppInitialized,
       pendingSessionsLength: pendingMobileSessions.length,
-      willProcess: isAppInitialized && pendingMobileSessions.length > 0
+      willProcess: isAppInitialized && pendingMobileSessions.length > 0,
+      processingSessions: Array.from(processingSessions),
+      processedSessions: Array.from(processedMobileSessions),
+      isProcessingAnyMobileSession,
+      lastGlobalProcessTime: new Date(lastGlobalProcessTime).toISOString()
     });
     
-    if (!isAppInitialized || pendingMobileSessions.length === 0) {
+    if (!isAppInitialized) {
+      console.log('❌ [MOBILE-SYNC] App not initialized yet, skipping processing');
+      return;
+    }
+    
+    if (pendingMobileSessions.length === 0) {
+      console.log('❌ [MOBILE-SYNC] No pending sessions to process');
       return;
     }
 
@@ -278,12 +294,15 @@ export const useMobileSessionSync = (
     }
 
     processingTimeoutRef.current = setTimeout(() => {
+      console.log('⏰ [MOBILE-SYNC] Debounce timer fired, checking if we should process...');
+      
       if (pendingMobileSessions.length === 0) {
         console.log('🔍 [MOBILE-SYNC] No pending mobile sessions, skipping processing');
         return;
       }
 
       console.log('🚀 [MOBILE-SYNC] Starting debounced processing...');
+      console.log('🔒 [MOBILE-SYNC] Setting isProcessingRef to true');
       isProcessingRef.current = true;
 
       const processMobileSessions = async () => {
@@ -297,7 +316,13 @@ export const useMobileSessionSync = (
           if (!sessionToProcess) return;
           
           const mobileSession = sessionToProcess;
-          console.log('🔍 [MOBILE-SYNC] Evaluating mobile session:', mobileSession.sessionId);
+          console.log('🔍 [MOBILE-SYNC] Evaluating mobile session:', {
+            sessionId: mobileSession.sessionId,
+            status: mobileSession.status,
+            createdBy: mobileSession.createdBy,
+            title: mobileSession.title,
+            projectPath: mobileSession.projectPath
+          });
           
           const isDesktopSessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mobileSession.sessionId);
           if (isDesktopSessionId) {
@@ -320,9 +345,12 @@ export const useMobileSessionSync = (
             setIsProcessingAnyMobileSession(true);
             setLastGlobalProcessTime(Date.now());
             
+            console.log('📞 [MOBILE-SYNC] Calling createSessionFromMobile...');
             await createSessionFromMobile(mobileSession);
+            console.log('✅ [MOBILE-SYNC] createSessionFromMobile completed');
             
             setTimeout(() => {
+              console.log('🔓 [MOBILE-SYNC] Setting isProcessingAnyMobileSession to false after cooldown');
               setIsProcessingAnyMobileSession(false);
             }, 1000);
           } else {
