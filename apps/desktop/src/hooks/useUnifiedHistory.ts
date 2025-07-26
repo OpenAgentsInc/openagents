@@ -42,9 +42,13 @@ export const useUnifiedHistory = (limit: number = 50) => {
 
       console.log('📚 [UNIFIED-HISTORY] Loading unified session history:', {
         limit,
-        convexUrl: convexUrl ? 'provided' : 'not provided',
-        userId: userId ? 'provided' : 'not provided',
-        isAuthenticated
+        convexUrl: convexUrl || 'MISSING',
+        userId: userId || 'MISSING',
+        isAuthenticated,
+        envVars: {
+          VITE_CONVEX_URL: import.meta.env.VITE_CONVEX_URL,
+          allEnvVars: import.meta.env
+        }
       });
 
       const result = await invoke<CommandResult<UnifiedSession[]>>('get_unified_history', {

@@ -2,7 +2,7 @@ use crate::claude_code::models::{ClaudeConversation, ClaudeError, UnifiedSession
 use crate::claude_code::convex_client::ConvexClient;
 use chrono::{DateTime, Utc};
 use dirs_next;
-use log::info;
+use log::{info, error};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::fs as async_fs;
@@ -322,18 +322,26 @@ impl ClaudeDiscovery {
 
         // Load Convex sessions if URL is provided
         if let Some(url) = convex_url {
-            let convex_client = ConvexClient::new(url);
-            
-            match convex_client.get_sessions(Some(limit), user_id).await {
-                Ok(convex_sessions) => {
-                    info!("Loaded {} Convex sessions", convex_sessions.len());
-                    for session in convex_sessions {
-                        all_sessions.push(UnifiedSession::from(session));
+            match ConvexClient::new(url).await {
+                Ok(mut convex_client) => {
+                    match convex_client.get_sessions(Some(limit), user_id).await {
+                        Ok(convex_sessions) => {
+                            info!("Loaded {} Convex sessions", convex_sessions.len());
+                            for session in convex_sessions {
+                                all_sessions.push(UnifiedSession::from(session));
+                            }
+                        }
+                        Err(e) => {
+                            // Log but don't fail - we can still show local sessions
+                            error!("Could not load Convex sessions: {}", e);
+                            error!("Convex URL was: {:?}", url);
+                        }
                     }
                 }
                 Err(e) => {
                     // Log but don't fail - we can still show local sessions
-                    info!("Could not load Convex sessions: {}", e);
+                    error!("Could not create Convex client: {}", e);
+                    error!("Convex URL was: {:?}", url);
                 }
             }
         } else {
