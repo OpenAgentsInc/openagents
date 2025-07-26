@@ -5,6 +5,10 @@
   "license": "CC0-1.0",
   "description": "Claude Code wrapper with desktop and mobile apps",
   "packageManager": "bun@1.2.16",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "desktop": "cd apps/desktop && bun run dev",
     "mobile": "cd apps/mobile && EXPO_NO_WELCOME_BANNER=1 bun start",
