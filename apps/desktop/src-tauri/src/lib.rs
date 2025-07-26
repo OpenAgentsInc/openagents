@@ -46,7 +46,7 @@ impl<T> CommandResult<T> {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ToolUsage {
     name: String,
-    count: u32,
+    count: f64, // Accept float from JavaScript, convert to int when needed
     percentage: f64,
     category: String,
 }
@@ -58,9 +58,9 @@ struct APMSession {
     apm: f64,
     duration: f64, // in minutes
     #[serde(rename = "messageCount")]
-    message_count: u32,
+    message_count: f64, // Accept float from JavaScript, convert to int when needed
     #[serde(rename = "toolCount")]
-    tool_count: u32,
+    tool_count: f64, // Accept float from JavaScript, convert to int when needed
     timestamp: String,
 }
 
@@ -87,11 +87,11 @@ struct APMStats {
     #[serde(rename = "apmLifetime")]
     apm_lifetime: f64,
     #[serde(rename = "totalSessions")]
-    total_sessions: u32,
+    total_sessions: f64, // Accept float from JavaScript, convert to int when needed
     #[serde(rename = "totalMessages")]
-    total_messages: u32,
+    total_messages: f64, // Accept float from JavaScript, convert to int when needed
     #[serde(rename = "totalToolUses")]
-    total_tool_uses: u32,
+    total_tool_uses: f64, // Accept float from JavaScript, convert to int when needed
     #[serde(rename = "totalDuration")]
     total_duration: f64, // in minutes
     #[serde(rename = "toolUsage")]
@@ -255,8 +255,8 @@ async fn fetch_convex_apm_stats() -> Result<APMStats, String> {
 // Function to combine CLI and SDK APM stats
 fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMStats {
     // Combine time window APMs (weighted average by total actions)
-    let cli_total_actions = cli_stats.total_messages + cli_stats.total_tool_uses;
-    let sdk_total_actions = sdk_stats.total_messages + sdk_stats.total_tool_uses;
+    let cli_total_actions = (cli_stats.total_messages as u32) + (cli_stats.total_tool_uses as u32);
+    let sdk_total_actions = (sdk_stats.total_messages as u32) + (sdk_stats.total_tool_uses as u32);
     let combined_total_actions = cli_total_actions + sdk_total_actions;
     
     let combine_apm = |cli_apm: f64, sdk_apm: f64| -> f64 {
@@ -276,11 +276,11 @@ fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMSta
     let mut combined_tool_counts: HashMap<String, u32> = HashMap::new();
     
     for tool in &cli_stats.tool_usage {
-        *combined_tool_counts.entry(tool.name.clone()).or_insert(0) += tool.count;
+        *combined_tool_counts.entry(tool.name.clone()).or_insert(0) += tool.count as u32;
     }
     
     for tool in &sdk_stats.tool_usage {
-        *combined_tool_counts.entry(tool.name.clone()).or_insert(0) += tool.count;
+        *combined_tool_counts.entry(tool.name.clone()).or_insert(0) += tool.count as u32;
     }
     
     let combined_total_tool_uses = cli_stats.total_tool_uses + sdk_stats.total_tool_uses;
@@ -289,8 +289,8 @@ fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMSta
         .map(|(name, count)| ToolUsage {
             category: get_tool_category(&name),
             name,
-            count,
-            percentage: if combined_total_tool_uses > 0 {
+            count: count as f64,
+            percentage: if combined_total_tool_uses > 0.0 {
                 (count as f64 / combined_total_tool_uses as f64) * 100.0
             } else {
                 0.0
@@ -299,7 +299,7 @@ fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMSta
         .collect();
     
     // Sort tool usage by count
-    combined_tool_usage.sort_by(|a, b| b.count.cmp(&a.count));
+    combined_tool_usage.sort_by(|a, b| b.count.partial_cmp(&a.count).unwrap_or(std::cmp::Ordering::Equal));
     
     // Combine recent sessions
     let mut combined_sessions = cli_stats.recent_sessions.clone();
@@ -327,9 +327,9 @@ fn combine_apm_stats(cli_stats: APMStats, sdk_stats: APMStats) -> CombinedAPMSta
         apm_1w: combine_apm(cli_stats.apm_1w, sdk_stats.apm_1w),
         apm_1m: combine_apm(cli_stats.apm_1m, sdk_stats.apm_1m),
         apm_lifetime: combine_apm(cli_stats.apm_lifetime, sdk_stats.apm_lifetime),
-        total_sessions: cli_stats.total_sessions + sdk_stats.total_sessions,
-        total_messages: cli_stats.total_messages + sdk_stats.total_messages,
-        total_tool_uses: cli_stats.total_tool_uses + sdk_stats.total_tool_uses,
+        total_sessions: (cli_stats.total_sessions as u32) + (sdk_stats.total_sessions as u32),
+        total_messages: (cli_stats.total_messages as u32) + (sdk_stats.total_messages as u32),
+        total_tool_uses: (cli_stats.total_tool_uses as u32) + (sdk_stats.total_tool_uses as u32),
         total_duration: cli_stats.total_duration + sdk_stats.total_duration,
         tool_usage: combined_tool_usage,
         recent_sessions: combined_sessions,
@@ -516,8 +516,8 @@ async fn analyze_conversations() -> Result<APMStats, String> {
             project: project_name,
             apm: session_apm,
             duration,
-            message_count,
-            tool_count,
+            message_count: message_count as f64,
+            tool_count: tool_count as f64,
             timestamp: start_time.to_rfc3339(),
         });
         
@@ -542,8 +542,8 @@ async fn analyze_conversations() -> Result<APMStats, String> {
             if let Ok(session_time) = DateTime::parse_from_rfc3339(&session.timestamp) {
                 let session_utc = session_time.with_timezone(&Utc);
                 if session_utc >= cutoff_time {
-                    window_messages += session.message_count;
-                    window_tools += session.tool_count;
+                    window_messages += session.message_count as u32;
+                    window_tools += session.tool_count as u32;
                 }
             }
         }
@@ -577,7 +577,7 @@ async fn analyze_conversations() -> Result<APMStats, String> {
         .map(|(name, count)| ToolUsage {
             category: get_tool_category(&name),
             name,
-            count,
+            count: count as f64,
             percentage: if total_tool_uses_for_percentage > 0.0 {
                 (count as f64 / total_tool_uses_for_percentage) * 100.0
             } else {
@@ -586,7 +586,7 @@ async fn analyze_conversations() -> Result<APMStats, String> {
         })
         .collect();
     
-    tool_usage.sort_by(|a, b| b.count.cmp(&a.count));
+    tool_usage.sort_by(|a, b| b.count.partial_cmp(&a.count).unwrap_or(std::cmp::Ordering::Equal));
     
     // Calculate productivity by time of day
     let productivity_by_time = ProductivityByTime {
@@ -603,9 +603,9 @@ async fn analyze_conversations() -> Result<APMStats, String> {
         apm_1w,
         apm_1m,
         apm_lifetime,
-        total_sessions,
-        total_messages,
-        total_tool_uses: total_tools,
+        total_sessions: total_sessions as f64,
+        total_messages: total_messages as f64,
+        total_tool_uses: total_tools as f64,
         total_duration,
         tool_usage,
         recent_sessions: apm_sessions.into_iter().take(20).collect(), // Limit to 20 most recent
@@ -651,9 +651,9 @@ async fn analyze_combined_conversations() -> Result<CommandResult<CombinedAPMSta
                 apm_1w: 0.0,
                 apm_1m: 0.0,
                 apm_lifetime: 0.0,
-                total_sessions: 0,
-                total_messages: 0,
-                total_tool_uses: 0,
+                total_sessions: 0.0,
+                total_messages: 0.0,
+                total_tool_uses: 0.0,
                 total_duration: 0.0,
                 tool_usage: Vec::new(),
                 recent_sessions: Vec::new(),
@@ -684,9 +684,9 @@ async fn analyze_combined_conversations() -> Result<CommandResult<CombinedAPMSta
                 apm_1w: 0.0,
                 apm_1m: 0.0,
                 apm_lifetime: 0.0,
-                total_sessions: 0,
-                total_messages: 0,
-                total_tool_uses: 0,
+                total_sessions: 0.0,
+                total_messages: 0.0,
+                total_tool_uses: 0.0,
                 total_duration: 0.0,
                 tool_usage: Vec::new(),
                 recent_sessions: Vec::new(),
