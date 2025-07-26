@@ -41,6 +41,7 @@ function App() {
     createSession,
     stopSession,
     sendMessage,
+    replayMessage,
     updateSessionInput,
   } = useSessionManager();
 
@@ -126,7 +127,7 @@ function App() {
         
         <MobileSessionProcessor
           mobileSessionsToInitialize={mobileSessionsToInitialize}
-          sendMessage={sendMessage}
+          sendMessage={replayMessage}
           handleInitialMessageSent={handleInitialMessageSent}
         />
         
