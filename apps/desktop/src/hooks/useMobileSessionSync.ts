@@ -162,15 +162,49 @@ export const useMobileSessionSync = (
           throw statusError;
         }
         
-        console.log('📥 [MOBILE-SYNC] Queueing mobile session for initial message retrieval');
-        setMobileSessionsToInitialize(prev => {
-          const newQueue = [...prev, {
-            mobileSessionId: mobileSession.sessionId,
-            localSessionId: localSessionId // Use Claude Code UUID for streaming
-          }];
-          console.log('📋 [MOBILE-SYNC] Updated initialization queue:', newQueue);
-          return newQueue;
-        });
+        console.log('💬 [MOBILE-SYNC] Triggering Claude Code to respond to existing message...');
+        
+        // Get existing messages from mobile session to find the initial message
+        try {
+          // Use the Convex client to get messages directly
+          const mobileMessages = await new Promise((resolve, reject) => {
+            // This is a workaround to call the query directly
+            // In a real app, you'd want to use a proper Convex client method
+            fetch('/api/convex', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                query: 'claude:getSessionMessages',
+                args: { sessionId: mobileSession.sessionId, limit: 10 }
+              })
+            }).then(r => r.json()).then(resolve).catch(reject);
+          });
+          
+          console.log('📋 [MOBILE-SYNC] Found messages in mobile session');
+          
+          // Find the last user message to trigger Claude Code response
+          const lastUserMessage = (mobileMessages as any[])?.reverse().find((msg: any) => msg.messageType === 'user');
+          
+          if (lastUserMessage) {
+            console.log('🚀 [MOBILE-SYNC] Sending existing message to Claude Code to trigger response');
+            
+            // Send the existing message to Claude Code (without creating duplicate in Convex)
+            const result = await invoke<CommandResult<void>>("send_message", {
+              sessionId: localSessionId, // Send to Claude Code UUID
+              message: lastUserMessage.content,
+            });
+            
+            if (result.success) {
+              console.log('✅ [MOBILE-SYNC] Successfully triggered Claude Code response');
+            } else {
+              console.error('❌ [MOBILE-SYNC] Failed to trigger Claude Code:', result.error);
+            }
+          } else {
+            console.log('⚠️ [MOBILE-SYNC] No user message found to trigger Claude Code response');
+          }
+        } catch (messageError) {
+          console.error('❌ [MOBILE-SYNC] Failed to get mobile session messages:', messageError);
+        }
 
         // Session is now active, no need to mark as processed
 
