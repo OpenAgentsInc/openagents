@@ -16,6 +16,7 @@ export function MobileSessionInitializer({
   sendMessage
 }: MobileSessionInitializerProps) {
   const [hasSentInitialMessage, setHasSentInitialMessage] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   
   // Query messages from the mobile session
   const mobileMessages = useQuery(api.claude.getSessionMessages, { 
@@ -24,16 +25,19 @@ export function MobileSessionInitializer({
   });
 
   useEffect(() => {
-    // Skip if we've already sent the initial message
-    if (hasSentInitialMessage || !mobileMessages || mobileMessages.length === 0) {
+    // Skip if we've already sent the initial message or are currently sending
+    if (hasSentInitialMessage || isSending || !mobileMessages || mobileMessages.length === 0) {
       return;
     }
 
     // Find the first user message (which should be the initial message)
-    const initialMessage = mobileMessages.find(msg => msg.messageType === 'user');
+    const initialMessage = mobileMessages.find((msg: any) => msg.messageType === 'user');
     
     if (initialMessage) {
       console.log('📨 [MOBILE-INIT] Found initial message from mobile session:', initialMessage.content);
+      
+      // Immediately mark as sending to prevent re-triggers
+      setIsSending(true);
       
       // Send the initial message to Claude Code
       sendMessage(localSessionId, initialMessage.content)
@@ -44,6 +48,7 @@ export function MobileSessionInitializer({
         })
         .catch((error) => {
           console.error('❌ [MOBILE-INIT] Failed to send initial message:', error);
+          setIsSending(false); // Reset on error to allow retry
         });
     } else {
       console.log('⚠️ [MOBILE-INIT] No initial user message found in mobile session');
@@ -51,7 +56,7 @@ export function MobileSessionInitializer({
       setHasSentInitialMessage(true);
       onInitialMessageSent();
     }
-  }, [mobileMessages, hasSentInitialMessage, localSessionId, mobileSessionId, sendMessage, onInitialMessageSent]);
+  }, [mobileMessages?.length]); // Only depend on messages length to avoid loops
 
   return null; // This component doesn't render anything
 }
