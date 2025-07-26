@@ -142,6 +142,14 @@ export const addClaudeMessage = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    console.log('💾 [CONVEX] addClaudeMessage called:', {
+      sessionId: args.sessionId,
+      messageId: args.messageId,
+      messageType: args.messageType,
+      contentPreview: args.content.substring(0, 50),
+      timestamp: args.timestamp
+    });
+    
     // Check if message already exists to avoid duplicates
     const existingMessage = await ctx.db
       .query("claudeMessages")
@@ -153,11 +161,13 @@ export const addClaudeMessage = mutation({
       .first();
       
     if (existingMessage) {
+      console.log('⚠️ [CONVEX] Message already exists, skipping duplicate:', args.messageId);
       return existingMessage._id;
     }
     
     // Add message
     const messageDoc = await ctx.db.insert("claudeMessages", args);
+    console.log('✅ [CONVEX] Message added successfully:', args.messageId);
     
     // Update session last activity
     const session = await ctx.db
@@ -274,13 +284,16 @@ export const requestDesktopSession = mutation({
     
     // Add initial message if provided
     if (args.initialMessage) {
+      console.log('📱 [CONVEX] Mobile creating initial message for session:', sessionId);
+      const messageId = `user-${Date.now()}`;
       await ctx.db.insert("claudeMessages", {
         sessionId,
-        messageId: `user-${Date.now()}`,
+        messageId,
         messageType: "user",
         content: args.initialMessage,
         timestamp: new Date().toISOString(),
       });
+      console.log('✅ [CONVEX] Mobile initial message created with ID:', messageId);
     }
     
     return sessionId;

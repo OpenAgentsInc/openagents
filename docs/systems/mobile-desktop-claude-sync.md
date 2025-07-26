@@ -211,11 +211,18 @@ const createSessionFromMobile = async (mobileSession: MobileSession) => {
 - MobileSessionInitializer would find this message and "replay" it
 - This resulted in two identical user messages with different timestamps
 
-**Current Solution**: With single session architecture, MobileSessionInitializer is eliminated entirely:
-- Mobile session is created with initial message
-- Desktop directly queries the existing message and sends it to Claude Code
-- No separate initialization component needed
-- No message duplication occurs
+**Current Solution**: Two-part fix for duplicate messages:
+
+1. **Eliminated MobileSessionInitializer component**:
+   - Mobile session is created with initial message
+   - Desktop directly queries the existing message
+   - No separate initialization component needed
+
+2. **Implemented `trigger_claude_response` Rust command**:
+   - The original `send_message` command ALWAYS creates a new user message
+   - New `trigger_claude_response` command triggers Claude without creating a user message
+   - Used when processing mobile sessions to avoid duplicating existing user messages
+   - Preserves the existing user message from mobile session
 
 #### `useClaudeStreaming.ts`
 - **Purpose**: Handle Claude Code message streaming
@@ -269,6 +276,42 @@ export function SessionStreamManager({
   
   // Component handles streaming lifecycle
 };
+```
+
+### Rust Backend (Tauri)
+
+#### Key Commands
+
+1. **`send_message`**: Original command that ALWAYS creates a new user message
+   - Used for normal chat interactions where user is typing a new message
+   - Creates user message and triggers Claude response
+   
+2. **`trigger_claude_response`**: New command that triggers Claude WITHOUT creating a user message
+   - Used specifically for mobile session processing
+   - Preserves the existing user message from mobile session
+   - Prevents duplicate messages
+
+```rust
+// lib.rs
+#[tauri::command]
+async fn trigger_claude_response(
+    session_id: String,
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<CommandResult<()>, String> {
+    // Triggers Claude without creating a user message
+    manager.trigger_response(&session_id, message).await
+}
+
+// manager.rs
+pub async fn trigger_response(&self, session_id: &str, message: String) -> Result<(), ClaudeError> {
+    ClaudeSession::trigger_response_static(session, message).await
+}
+
+// ClaudeSession::trigger_response_static
+// Similar to send_message_static but WITHOUT this section:
+// let user_msg = Message { ... };
+// session_lock.add_message(user_msg).await;
 ```
 
 ### Convex Backend
@@ -586,8 +629,8 @@ bun run compile
 - **Solution**: Verify session mapping in `useMobileSessionSync` hook
 
 **Issue**: Duplicate user messages in mobile sessions
-- **Cause**: MobileSessionInitializer creating duplicate messages
-- **Solution**: Single session architecture eliminates need for initialization component
+- **Cause**: Rust `send_message` command always creates a new user message
+- **Solution**: Use `trigger_claude_response` command which triggers Claude without creating a user message
 
 **Issue**: Duplicate sessions being created
 - **Cause**: Race condition in session processing or mapping failure

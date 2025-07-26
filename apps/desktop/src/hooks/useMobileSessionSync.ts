@@ -187,8 +187,8 @@ export const useMobileSessionSync = (
           if (lastUserMessage) {
             console.log('🚀 [MOBILE-SYNC] Sending existing message to Claude Code to trigger response');
             
-            // Send the existing message to Claude Code (without creating duplicate in Convex)
-            const result = await invoke<CommandResult<void>>("send_message", {
+            // Trigger Claude Code response WITHOUT creating a new user message
+            const result = await invoke<CommandResult<void>>("trigger_claude_response", {
               sessionId: localSessionId, // Send to Claude Code UUID
               message: lastUserMessage.content,
             });
