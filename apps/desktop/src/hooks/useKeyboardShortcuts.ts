@@ -79,10 +79,6 @@ export const useKeyboardShortcuts = ({
     };
     
     const handleKeyUp = (event: KeyboardEvent) => {
-      const modifier = navigator.platform.toUpperCase().indexOf('MAC') >= 0
-        ? event.metaKey
-        : event.ctrlKey;
-        
       const digit = parseInt(event.key);
       if (!isNaN(digit) && digit >= 1 && digit <= 9) {
         // Release the pressed state after a short delay for better visual feedback

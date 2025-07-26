@@ -88,7 +88,7 @@ function App() {
     };
 
     // Handle window close/reload
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = () => {
       // Mark sessions as processed
       markSessionsProcessed();
     };

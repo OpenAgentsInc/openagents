@@ -16,7 +16,7 @@
     "android": "cd apps/mobile && EXPO_NO_WELCOME_BANNER=1 bun run android",
     "convex": "cd packages/convex && bun run dev",
     "build:desktop": "cd apps/desktop && bun run build",
-    "build:mobile": "cd apps/mobile && bun run build",
+    "build:mobile": "cd apps/mobile && bun run build:ios:prod",
     "build:ios": "cd apps/mobile && bun run build:ios:prod",
     "build:ios:dev": "cd apps/mobile && bun run build:ios:dev",
     "build:ios:preview": "cd apps/mobile && bun run build:ios:preview",
