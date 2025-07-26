@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation, useConvex } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { usePaneStore } from '@/stores/pane';
 
@@ -50,6 +50,7 @@ export const useMobileSessionSync = (
 
   const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
   const updateSessionStatus = useMutation(api.claude.updateSessionStatus);
+  const convex = useConvex();
   const { openChatPane } = usePaneStore();
 
   // Debug logging to check if hook is receiving Convex updates
@@ -166,24 +167,16 @@ export const useMobileSessionSync = (
         
         // Get existing messages from mobile session to find the initial message
         try {
-          // Use the Convex client to get messages directly
-          const mobileMessages = await new Promise((resolve, reject) => {
-            // This is a workaround to call the query directly
-            // In a real app, you'd want to use a proper Convex client method
-            fetch('/api/convex', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: 'claude:getSessionMessages',
-                args: { sessionId: mobileSession.sessionId, limit: 10 }
-              })
-            }).then(r => r.json()).then(resolve).catch(reject);
+          // Use proper Convex client to query messages
+          const mobileMessages = await convex.query(api.claude.getSessionMessages, {
+            sessionId: mobileSession.sessionId,
+            limit: 10
           });
           
-          console.log('📋 [MOBILE-SYNC] Found messages in mobile session');
+          console.log('📋 [MOBILE-SYNC] Found messages in mobile session:', mobileMessages.length);
           
           // Find the last user message to trigger Claude Code response
-          const lastUserMessage = (mobileMessages as any[])?.reverse().find((msg: any) => msg.messageType === 'user');
+          const lastUserMessage = mobileMessages?.reverse().find((msg: any) => msg.messageType === 'user');
           
           if (lastUserMessage) {
             console.log('🚀 [MOBILE-SYNC] Sending existing message to Claude Code to trigger response');
@@ -236,7 +229,7 @@ export const useMobileSessionSync = (
       });
       console.log('🏁 [MOBILE-SYNC] Finished processing session:', mobileSession.sessionId);
     }
-  }, [sessions, setSessions, openChatPane, updateSessionStatus]);
+  }, [sessions, setSessions, openChatPane, updateSessionStatus, convex]);
 
   useEffect(() => {
     console.log('🎯 [MOBILE-SYNC] Main processing effect triggered:', {
