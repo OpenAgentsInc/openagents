@@ -189,7 +189,14 @@ fn clean_project_name(project_name: &str) -> String {
 }
 
 // Function to fetch Convex APM data
-async fn fetch_convex_apm_stats(convex_url: String) -> Result<APMStats, String> {
+async fn fetch_convex_apm_stats() -> Result<APMStats, String> {
+    // Load environment variables from .env file
+    dotenvy::dotenv().ok();
+    
+    let convex_url = env::var("VITE_CONVEX_URL")
+        .or_else(|_| env::var("CONVEX_URL"))
+        .map_err(|_| "Convex URL not configured. Set VITE_CONVEX_URL or CONVEX_URL environment variable.".to_string())?;
+    
     info!("Fetching Convex APM stats from: {}", convex_url);
     
     let client = reqwest::Client::new();
@@ -624,8 +631,8 @@ async fn analyze_claude_conversations() -> Result<CommandResult<APMStats>, Strin
 }
 
 #[tauri::command]
-async fn analyze_combined_conversations(convex_url: Option<String>) -> Result<CommandResult<CombinedAPMStats>, String> {
-    info!("analyze_combined_conversations called with convex_url: {:?}", convex_url);
+async fn analyze_combined_conversations() -> Result<CommandResult<CombinedAPMStats>, String> {
+    info!("analyze_combined_conversations called");
     
     // Fetch CLI stats
     let cli_stats = match analyze_conversations().await {
@@ -661,43 +668,15 @@ async fn analyze_combined_conversations(convex_url: Option<String>) -> Result<Co
     };
     
     // Fetch SDK stats from Convex
-    let sdk_stats = match convex_url {
-        Some(url) => {
-            match fetch_convex_apm_stats(url).await {
-                Ok(stats) => {
-                    info!("SDK APM analysis completed. Sessions: {}, Messages: {}, Tools: {}", 
-                          stats.total_sessions, stats.total_messages, stats.total_tool_uses);
-                    stats
-                }
-                Err(e) => {
-                    info!("SDK APM analysis failed, using empty stats: {}", e);
-                    // Return empty stats if SDK analysis fails
-                    APMStats {
-                        apm_1h: 0.0,
-                        apm_6h: 0.0,
-                        apm_1d: 0.0,
-                        apm_1w: 0.0,
-                        apm_1m: 0.0,
-                        apm_lifetime: 0.0,
-                        total_sessions: 0,
-                        total_messages: 0,
-                        total_tool_uses: 0,
-                        total_duration: 0.0,
-                        tool_usage: Vec::new(),
-                        recent_sessions: Vec::new(),
-                        productivity_by_time: ProductivityByTime {
-                            morning: 0.0,
-                            afternoon: 0.0,
-                            evening: 0.0,
-                            night: 0.0,
-                        },
-                    }
-                }
-            }
+    let sdk_stats = match fetch_convex_apm_stats().await {
+        Ok(stats) => {
+            info!("SDK APM analysis completed. Sessions: {}, Messages: {}, Tools: {}", 
+                  stats.total_sessions, stats.total_messages, stats.total_tool_uses);
+            stats
         }
-        None => {
-            info!("No Convex URL provided, using empty SDK stats");
-            // Return empty stats if no Convex URL provided
+        Err(e) => {
+            info!("SDK APM analysis failed, using empty stats: {}", e);
+            // Return empty stats if SDK analysis fails
             APMStats {
                 apm_1h: 0.0,
                 apm_6h: 0.0,
