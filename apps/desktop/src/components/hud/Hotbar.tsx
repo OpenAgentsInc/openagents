@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
 import { Plus, History, Hand, Settings, LayoutGrid, BarChart } from "lucide-react";
 import { usePaneStore } from "@/stores/pane";
+import { useHotbarStore } from "@/stores/hotbar";
 
 interface HotbarProps {
   className?: string;
@@ -17,7 +18,13 @@ export const Hotbar: React.FC<HotbarProps> = ({
   isHandTrackingActive,
   onToggleHandTracking 
 }) => {
-  const { toggleMetadataPane, toggleSettingsPane, toggleStatsPane, organizePanes } = usePaneStore();
+  const { panes, toggleMetadataPane, toggleSettingsPane, toggleStatsPane, organizePanes } = usePaneStore();
+  const { pressedSlots } = useHotbarStore();
+  
+  // Check which panes are open
+  const isMetadataPaneOpen = panes.some(p => p.id === 'metadata');
+  const isSettingsPaneOpen = panes.some(p => p.id === 'settings');
+  const isStatsPaneOpen = panes.some(p => p.id === 'stats');
 
   const handleNewChat = () => {
     if (onNewChat) {
@@ -37,6 +44,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         slotNumber={1}
         onClick={handleNewChat}
         title="New Chat"
+        isPressed={pressedSlots.includes(1)}
       >
         <Plus className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
@@ -46,6 +54,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         slotNumber={2}
         onClick={organizePanes}
         title="Organize Panes"
+        isPressed={pressedSlots.includes(2)}
       >
         <LayoutGrid className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
@@ -55,6 +64,8 @@ export const Hotbar: React.FC<HotbarProps> = ({
         slotNumber={3}
         onClick={toggleMetadataPane}
         title="History"
+        isActive={isMetadataPaneOpen}
+        isPressed={pressedSlots.includes(3)}
       >
         <History className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
@@ -64,6 +75,8 @@ export const Hotbar: React.FC<HotbarProps> = ({
         slotNumber={4}
         onClick={toggleStatsPane}
         title="APM Statistics"
+        isActive={isStatsPaneOpen}
+        isPressed={pressedSlots.includes(4)}
       >
         <BarChart className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
@@ -83,6 +96,8 @@ export const Hotbar: React.FC<HotbarProps> = ({
         slotNumber={7}
         onClick={toggleSettingsPane}
         title="Settings"
+        isActive={isSettingsPaneOpen}
+        isPressed={pressedSlots.includes(7)}
       >
         <Settings className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
@@ -105,6 +120,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         onClick={onToggleHandTracking}
         title="Hand Tracking"
         isActive={isHandTrackingActive}
+        isPressed={pressedSlots.includes(9)}
       >
         <Hand className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
