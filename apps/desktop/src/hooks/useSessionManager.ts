@@ -37,6 +37,7 @@ export const useSessionManager = () => {
   const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/code/openagents");
   const { openChatPane, updateSessionMessages } = usePaneStore();
   const createClaudeSession = useMutation(api.claude.createClaudeSession);
+  const updateSessionStatus = useMutation(api.claude.updateSessionStatus);
 
   const createSession = useCallback(async () => {
     if (!newProjectPath) {
@@ -95,6 +96,18 @@ export const useSessionManager = () => {
         sessionId,
       });
       if (result.success) {
+        // Mark the session as processed in Convex before removing from local state
+        try {
+          await updateSessionStatus({
+            sessionId,
+            status: "processed"
+          });
+          console.log('✅ Marked desktop session as processed:', sessionId);
+        } catch (statusError) {
+          console.error('❌ Failed to update session status:', statusError);
+          // Continue anyway - local session removal is more important
+        }
+        
         setSessions(prev => prev.filter(s => s.id !== sessionId));
       } else {
         alert(`Error stopping session: ${result.error}`);
@@ -108,7 +121,7 @@ export const useSessionManager = () => {
         s.id === sessionId ? { ...s, isLoading: false } : s
       ));
     }
-  }, []);
+  }, [updateSessionStatus]);
 
   const sendMessage = useCallback(async (sessionId: string, messageContent?: string) => {
     console.log('📮 [SEND-MESSAGE] Called with:', { sessionId, messageContent, sessionsCount: sessions.length });
