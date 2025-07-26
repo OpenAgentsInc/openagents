@@ -34,9 +34,12 @@
     "update:preview": "eas update --branch preview"
   },
   "dependencies": {
+    "@openauthjs/openauth": "^0.4.3",
     "convex": "^1.25.4",
     "expo": "~53.0.20",
+    "expo-auth-session": "^6.2.1",
     "expo-font": "^13.3.2",
+    "expo-secure-store": "^14.2.3",
     "expo-splash-screen": "^0.30.10",
     "expo-status-bar": "~2.2.3",
     "expo-updates": "^0.28.17",

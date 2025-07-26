@@ -17,6 +17,19 @@ export const createClaudeSession = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    // Get authenticated user (optional for backwards compatibility during migration)
+    const identity = await ctx.auth.getUserIdentity();
+    let userId: string | undefined;
+    
+    if (identity) {
+      // Find user by GitHub ID from identity subject
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .first();
+      userId = user?._id;
+    }
+
     // Check if session already exists
     const existingSession = await ctx.db
       .query("claudeSessions")
@@ -31,6 +44,7 @@ export const createClaudeSession = mutation({
         status: "active",
         lastActivity: Date.now(),
         metadata: args.metadata,
+        userId: userId, // Link to user if authenticated
       });
       return existingSession._id;
     }
@@ -43,6 +57,7 @@ export const createClaudeSession = mutation({
       status: "active",
       createdBy: args.createdBy,
       lastActivity: Date.now(),
+      userId: userId, // Link to user if authenticated
       metadata: args.metadata,
     });
     
@@ -82,11 +97,36 @@ export const getSessions = query({
     status: v.optional(v.union(v.literal("active"), v.literal("inactive"), v.literal("error"))),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("claudeSessions").withIndex("by_last_activity");
+    // Get authenticated user (optional for backwards compatibility)
+    const identity = await ctx.auth.getUserIdentity();
+    let userId: string | undefined;
     
-    if (args.status) {
-      query = ctx.db.query("claudeSessions").withIndex("by_status")
-        .filter(q => q.eq(q.field("status"), args.status));
+    if (identity) {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .first();
+      userId = user?._id;
+    }
+
+    let query;
+    
+    if (userId) {
+      // Filter by user sessions when authenticated
+      query = ctx.db.query("claudeSessions").withIndex("by_user_id")
+        .filter(q => q.eq(q.field("userId"), userId));
+      
+      if (args.status) {
+        query = query.filter(q => q.eq(q.field("status"), args.status));
+      }
+    } else {
+      // Legacy mode: show all sessions (for backwards compatibility)
+      query = ctx.db.query("claudeSessions").withIndex("by_last_activity");
+      
+      if (args.status) {
+        query = ctx.db.query("claudeSessions").withIndex("by_status")
+          .filter(q => q.eq(q.field("status"), args.status));
+      }
     }
     
     return await query.order("desc").take(args.limit ?? 50);
@@ -149,6 +189,18 @@ export const addClaudeMessage = mutation({
       contentPreview: args.content.substring(0, 50),
       timestamp: args.timestamp
     });
+
+    // Get authenticated user (optional for backwards compatibility)
+    const identity = await ctx.auth.getUserIdentity();
+    let userId: string | undefined;
+    
+    if (identity) {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .first();
+      userId = user?._id;
+    }
     
     // Check if message already exists to avoid duplicates
     const existingMessage = await ctx.db
@@ -165,8 +217,11 @@ export const addClaudeMessage = mutation({
       return existingMessage._id;
     }
     
-    // Add message
-    const messageDoc = await ctx.db.insert("claudeMessages", args);
+    // Add message with user ID
+    const messageDoc = await ctx.db.insert("claudeMessages", {
+      ...args,
+      userId: userId, // Link to user if authenticated
+    });
     console.log('✅ [CONVEX] Message added successfully:', args.messageId);
     
     // Update session last activity
@@ -265,6 +320,18 @@ export const requestDesktopSession = mutation({
     title: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Get authenticated user (optional for backwards compatibility)
+    const identity = await ctx.auth.getUserIdentity();
+    let userId: string | undefined;
+    
+    if (identity) {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .first();
+      userId = user?._id;
+    }
+
     const sessionId = `mobile-${Date.now()}-${Math.random().toString(36).substring(2)}`;
     
     // Create session
@@ -275,6 +342,7 @@ export const requestDesktopSession = mutation({
       status: "active",
       createdBy: "mobile",
       lastActivity: Date.now(),
+      userId: userId, // Link to user if authenticated
     });
     
     // Initialize sync status
@@ -292,6 +360,7 @@ export const requestDesktopSession = mutation({
         messageType: "user",
         content: args.initialMessage,
         timestamp: new Date().toISOString(),
+        userId: userId, // Link to user if authenticated
       });
       console.log('✅ [CONVEX] Mobile initial message created with ID:', messageId);
     }
