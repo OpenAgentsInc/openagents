@@ -175,17 +175,46 @@ To improve your APM effectively:
 ## Technical Implementation
 
 ### Data Sources
-- Conversation files: `~/.claude/projects/*/[session].jsonl`
-- Real-time analysis during active coding sessions
-- Historical data from all past conversations
+
+The APM system now analyzes conversations from **two sources**:
+
+#### 1. CLI Conversations
+- **Location**: `~/.claude/projects/*/[session].jsonl`
+- **Source**: Official Claude Code CLI sessions
+- **Storage**: Local JSONL files on user's device
+- **Analysis**: Real-time parsing of JSONL conversation entries
+
+#### 2. SDK Conversations  
+- **Location**: Convex backend (`claudeSessions` and `claudeMessages` tables)
+- **Source**: Claude Code SDK sessions (non-interactive)
+- **Storage**: Convex cloud database
+- **Analysis**: Real-time queries to Convex backend
 
 ### Calculation Method
-- Time windows calculated from current timestamp backwards
-- Actions counted by parsing JSONL conversation entries
-- APM = Total Actions ÷ Time Window Duration in Minutes
+- **Time windows**: Calculated from current timestamp backwards
+- **Action counting**: Messages (user/assistant) + tool uses from both sources
+- **APM formula**: Total Actions ÷ Time Window Duration in Minutes
+- **Combination**: CLI and SDK stats are merged using weighted averages
+
+### Viewing Modes
+
+The stats page provides three viewing modes:
+
+1. **Combined** (default): Shows totals across both CLI and SDK conversations
+2. **CLI Only**: Shows statistics from local Claude Code CLI sessions only  
+3. **SDK Only**: Shows statistics from SDK/Convex conversations only
+
+### Breakdown Analysis
+
+When viewing in **Combined** mode, the system displays:
+- Combined totals and averages across both sources
+- Side-by-side breakdown comparing CLI vs SDK metrics
+- Unified tool usage statistics and recent sessions
 
 ### Accuracy Notes
 - Actions only counted when conversations are active
 - Silent periods (no conversation files) don't contribute to APM
 - Time zones handled using UTC normalization
 - Partial sessions at window boundaries are included proportionally
+- SDK data requires Convex backend connectivity
+- CLI data works offline from local files

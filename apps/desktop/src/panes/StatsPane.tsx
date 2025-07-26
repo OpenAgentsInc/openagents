@@ -42,6 +42,11 @@ interface APMStats {
   };
 }
 
+interface CombinedAPMStats extends APMStats {
+  cliStats: APMStats;
+  sdkStats: APMStats;
+}
+
 interface StatsPaneProps {
   // Props will be passed from PaneManager
 }
@@ -56,19 +61,20 @@ const formatDuration = (minutes: number): string => {
 };
 
 export const StatsPane: React.FC<StatsPaneProps> = () => {
-  const [stats, setStats] = useState<APMStats | null>(null);
+  const [stats, setStats] = useState<CombinedAPMStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'combined' | 'cli' | 'sdk'>('combined');
 
   const loadStats = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const result = await invoke('analyze_claude_conversations');
+      const result = await invoke('analyze_combined_conversations');
       
       if (result && typeof result === 'object' && 'success' in result) {
-        const response = result as { success: boolean; data?: APMStats; error?: string };
+        const response = result as { success: boolean; data?: CombinedAPMStats; error?: string };
         
         if (response.success && response.data) {
           setStats(response.data);
@@ -90,7 +96,35 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
     loadStats();
   }, []);
 
-  // Removed skill tier info
+  // Helper function to get current view's stats
+  const getCurrentStats = (): APMStats | null => {
+    if (!stats) return null;
+    
+    switch (viewMode) {
+      case 'cli':
+        return stats.cliStats;
+      case 'sdk':
+        return stats.sdkStats;
+      case 'combined':
+      default:
+        return stats;
+    }
+  };
+
+  const currentStats = getCurrentStats();
+
+  // Helper to get view display name
+  const getViewDisplayName = (mode: string) => {
+    switch (mode) {
+      case 'cli':
+        return 'CLI Only';
+      case 'sdk':
+        return 'SDK Only';
+      case 'combined':
+      default:
+        return 'Combined';
+    }
+  };
 
   if (loading) {
     return (
@@ -149,11 +183,26 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="text-center select-none mb-4">
-        <div className="flex items-center justify-center gap-2 mb-1">
+        <div className="flex items-center justify-center gap-2 mb-2">
           <BarChart className="h-5 w-5" />
           <h1 className="text-xl font-bold">APM Statistics</h1>
         </div>
-        <p className="text-muted-foreground text-xs">Actions Per Minute Analysis</p>
+        <p className="text-muted-foreground text-xs mb-3">Actions Per Minute Analysis</p>
+        
+        {/* View Mode Switcher */}
+        <div className="flex items-center justify-center gap-1">
+          {(['combined', 'cli', 'sdk'] as const).map((mode) => (
+            <Button
+              key={mode}
+              variant={viewMode === mode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode(mode)}
+              className="text-xs h-7 px-2"
+            >
+              {getViewDisplayName(mode)}
+            </Button>
+          ))}
+        </div>
       </div>
 
       <Separator className="my-4" />
@@ -166,7 +215,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
               <Clock className="h-4 w-4 text-red-400" />
               <span className="text-sm font-medium">1 Hour</span>
             </div>
-            <div className="text-xl font-bold">{stats.apm1h.toFixed(1)}</div>
+            <div className="text-xl font-bold">{currentStats?.apm1h.toFixed(1) || '0.0'}</div>
             <div className="text-xs text-muted-foreground">APM</div>
           </div>
           
@@ -175,7 +224,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
               <Clock className="h-4 w-4 text-orange-400" />
               <span className="text-sm font-medium">6 Hours</span>
             </div>
-            <div className="text-xl font-bold">{stats.apm6h.toFixed(2)}</div>
+            <div className="text-xl font-bold">{currentStats?.apm6h.toFixed(2) || '0.00'}</div>
             <div className="text-xs text-muted-foreground">APM</div>
           </div>
 
@@ -184,7 +233,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
               <Clock className="h-4 w-4 text-yellow-400" />
               <span className="text-sm font-medium">1 Day</span>
             </div>
-            <div className="text-xl font-bold">{stats.apm1d.toFixed(3)}</div>
+            <div className="text-xl font-bold">{currentStats?.apm1d.toFixed(3) || '0.000'}</div>
             <div className="text-xs text-muted-foreground">APM</div>
           </div>
 
@@ -193,7 +242,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
               <Clock className="h-4 w-4 text-green-400" />
               <span className="text-sm font-medium">1 Week</span>
             </div>
-            <div className="text-xl font-bold">{stats.apm1w.toFixed(3)}</div>
+            <div className="text-xl font-bold">{currentStats?.apm1w.toFixed(3) || '0.000'}</div>
             <div className="text-xs text-muted-foreground">APM</div>
           </div>
 
@@ -202,7 +251,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
               <Clock className="h-4 w-4 text-blue-400" />
               <span className="text-sm font-medium">1 Month</span>
             </div>
-            <div className="text-xl font-bold">{stats.apm1m.toFixed(3)}</div>
+            <div className="text-xl font-bold">{currentStats?.apm1m.toFixed(3) || '0.000'}</div>
             <div className="text-xs text-muted-foreground">APM</div>
           </div>
 
@@ -211,7 +260,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
               <TrendingUp className="h-4 w-4 text-purple-400" />
               <span className="text-sm font-medium">Lifetime</span>
             </div>
-            <div className="text-xl font-bold">{stats.apmLifetime.toFixed(3)}</div>
+            <div className="text-xl font-bold">{currentStats?.apmLifetime.toFixed(3) || '0.000'}</div>
             <div className="text-xs text-muted-foreground">APM</div>
           </div>
         </div>
@@ -251,7 +300,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
         <div className="bg-card rounded-lg border p-4">
           <h3 className="font-semibold mb-3">Top Tools</h3>
           <div className="space-y-2">
-            {stats.toolUsage.slice(0, 5).map((tool, index) => (
+            {(currentStats?.toolUsage || []).slice(0, 5).map((tool, index) => (
               <div key={tool.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs bg-muted px-2 py-1 rounded">
@@ -277,19 +326,19 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm">Morning (6-12)</span>
-              <span className="text-sm font-medium">{stats.productivityByTime.morning.toFixed(1)} APM</span>
+              <span className="text-sm font-medium">{currentStats?.productivityByTime.morning.toFixed(1) || '0.0'} APM</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm">Afternoon (12-18)</span>
-              <span className="text-sm font-medium">{stats.productivityByTime.afternoon.toFixed(1)} APM</span>
+              <span className="text-sm font-medium">{currentStats?.productivityByTime.afternoon.toFixed(1) || '0.0'} APM</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm">Evening (18-24)</span>
-              <span className="text-sm font-medium">{stats.productivityByTime.evening.toFixed(1)} APM</span>
+              <span className="text-sm font-medium">{currentStats?.productivityByTime.evening.toFixed(1) || '0.0'} APM</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm">Night (0-6)</span>
-              <span className="text-sm font-medium">{stats.productivityByTime.night.toFixed(1)} APM</span>
+              <span className="text-sm font-medium">{currentStats?.productivityByTime.night.toFixed(1) || '0.0'} APM</span>
             </div>
           </div>
         </div>
@@ -298,7 +347,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
         <div className="bg-card rounded-lg border p-4">
           <h3 className="font-semibold mb-3">Recent Sessions</h3>
           <div className="space-y-2 max-h-48 overflow-auto">
-            {stats.recentSessions.slice(0, 10).map((session) => (
+            {(currentStats?.recentSessions || []).slice(0, 10).map((session) => (
               <div key={session.id} className="flex items-center justify-between text-sm border-b border-border/50 pb-2">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{session.project}</div>
@@ -328,22 +377,72 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <div className="text-muted-foreground">Total Sessions</div>
-              <div className="font-medium">{stats.totalSessions}</div>
+              <div className="font-medium">{currentStats?.totalSessions || 0}</div>
             </div>
             <div>
               <div className="text-muted-foreground">Total Messages</div>
-              <div className="font-medium">{stats.totalMessages.toLocaleString()}</div>
+              <div className="font-medium">{(currentStats?.totalMessages || 0).toLocaleString()}</div>
             </div>
             <div>
               <div className="text-muted-foreground">Total Tools</div>
-              <div className="font-medium">{stats.totalToolUses.toLocaleString()}</div>
+              <div className="font-medium">{(currentStats?.totalToolUses || 0).toLocaleString()}</div>
             </div>
             <div>
               <div className="text-muted-foreground">Total Time</div>
-              <div className="font-medium">{formatDuration(stats.totalDuration)}</div>
+              <div className="font-medium">{formatDuration(currentStats?.totalDuration || 0)}</div>
             </div>
           </div>
         </div>
+
+        {/* Breakdown Comparison (only show in combined mode) */}
+        {viewMode === 'combined' && stats && (
+          <div className="bg-card rounded-lg border p-4">
+            <h3 className="font-semibold mb-3">CLI vs SDK Breakdown</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="font-medium text-muted-foreground">Metric</div>
+                <div className="font-medium text-blue-600">CLI Only</div>
+                <div className="font-medium text-green-600">SDK Only</div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>Sessions</div>
+                <div>{stats.cliStats.totalSessions}</div>
+                <div>{stats.sdkStats.totalSessions}</div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>Messages</div>
+                <div>{stats.cliStats.totalMessages.toLocaleString()}</div>
+                <div>{stats.sdkStats.totalMessages.toLocaleString()}</div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>Tool Uses</div>
+                <div>{stats.cliStats.totalToolUses.toLocaleString()}</div>
+                <div>{stats.sdkStats.totalToolUses.toLocaleString()}</div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>1 Hour APM</div>
+                <div>{stats.cliStats.apm1h.toFixed(1)}</div>
+                <div>{stats.sdkStats.apm1h.toFixed(1)}</div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>1 Day APM</div>
+                <div>{stats.cliStats.apm1d.toFixed(3)}</div>
+                <div>{stats.sdkStats.apm1d.toFixed(3)}</div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>Lifetime APM</div>
+                <div>{stats.cliStats.apmLifetime.toFixed(3)}</div>
+                <div>{stats.sdkStats.apmLifetime.toFixed(3)}</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer */}
