@@ -147,6 +147,29 @@ export const useSessionManager = () => {
     }
   }, [sessions, updateSessionMessages]);
 
+  // Separate function for replaying existing messages (doesn't add to local state)
+  const replayMessage = useCallback(async (sessionId: string, messageContent: string) => {
+    console.log('🔁 [REPLAY-MESSAGE] Replaying existing message:', { sessionId, messageContent });
+    
+    if (!messageContent.trim()) {
+      return;
+    }
+    
+    try {
+      const result = await invoke<CommandResult<void>>("send_message", {
+        sessionId,
+        message: messageContent,
+      });
+      if (!result.success) {
+        console.error("Replay message failed:", result.error);
+      } else {
+        console.log('✅ [REPLAY-MESSAGE] Successfully replayed message to Claude Code');
+      }
+    } catch (error) {
+      console.error("Replay message error:", error);
+    }
+  }, []);
+
   const updateSessionInput = useCallback((sessionId: string, value: string) => {
     setSessions(prev => prev.map(s => 
       s.id === sessionId ? { ...s, inputMessage: value } : s
@@ -161,6 +184,7 @@ export const useSessionManager = () => {
     createSession,
     stopSession,
     sendMessage,
+    replayMessage, // New function for replaying existing messages
     updateSessionInput,
   };
 };

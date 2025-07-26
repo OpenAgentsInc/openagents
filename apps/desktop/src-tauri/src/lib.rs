@@ -520,6 +520,36 @@ async fn send_message(
 }
 
 #[tauri::command]
+async fn trigger_claude_response(
+    session_id: String,
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<CommandResult<()>, String> {
+    info!("trigger_claude_response called - session_id: {}, message: {}", session_id, message);
+    info!("🚨 [RUST] This command triggers Claude WITHOUT creating a user message!");
+    
+    let manager_lock = state.manager.lock().await;
+    
+    if let Some(ref manager) = *manager_lock {
+        info!("Manager found, triggering Claude response...");
+        // This will call a new method that doesn't create a user message
+        match manager.trigger_response(&session_id, message).await {
+            Ok(_) => {
+                info!("Claude response triggered successfully");
+                Ok(CommandResult::success(()))
+            },
+            Err(e) => {
+                info!("Error triggering Claude response: {}", e);
+                Ok(CommandResult::error(e.to_string()))
+            },
+        }
+    } else {
+        info!("Manager not initialized");
+        Ok(CommandResult::error("Claude Code not initialized".to_string()))
+    }
+}
+
+#[tauri::command]
 async fn get_messages(
     session_id: String,
     state: State<'_, AppState>,
@@ -638,6 +668,7 @@ pub fn run() {
             discover_claude,
             create_session,
             send_message,
+            trigger_claude_response,
             get_messages,
             stop_session,
             get_active_sessions,

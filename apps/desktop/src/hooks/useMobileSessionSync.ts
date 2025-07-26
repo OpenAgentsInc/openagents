@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation, useConvex } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { usePaneStore } from '@/stores/pane';
 
@@ -34,7 +34,9 @@ export const useMobileSessionSync = (
   
   const [processingSessions, setProcessingSessions] = useState<Set<string>>(new Set());
   const [processedMobileSessions, setProcessedMobileSessions] = useState<Set<string>>(new Set());
-  const [mobileSessionsToInitialize, setMobileSessionsToInitialize] = useState<{mobileSessionId: string; localSessionId: string}[]>([]);
+  
+  // Store mapping between Claude Code UUIDs and mobile session IDs
+  const [sessionIdMapping, setSessionIdMapping] = useState<Map<string, string>>(new Map());
   
   const [isProcessingAnyMobileSession, setIsProcessingAnyMobileSession] = useState(false);
   const [lastGlobalProcessTime, setLastGlobalProcessTime] = useState(0);
@@ -46,17 +48,18 @@ export const useMobileSessionSync = (
   const PROCESSING_COOLDOWN = 5000;
 
   const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
-  const createConvexSession = useMutation(api.claude.createClaudeSession);
-  const markMobileSessionProcessed = useMutation(api.claude.markMobileSessionProcessed);
+  const updateSessionStatus = useMutation(api.claude.updateSessionStatus);
+  const convex = useConvex();
   const { openChatPane } = usePaneStore();
 
   // Debug logging to check if hook is receiving Convex updates
   useEffect(() => {
     console.log(
       '🛰️ [MOBILE-SYNC] pendingMobileSessions update:',
-      pendingMobileSessions ? pendingMobileSessions.length : 'undefined'
+      pendingMobileSessions ? pendingMobileSessions.length : 'undefined',
+      'isAppInitialized:', isAppInitialized
     );
-  }, [pendingMobileSessions]);
+  }, [pendingMobileSessions, isAppInitialized]);
   
   // Debug logging for isAppInitialized changes
   useEffect(() => {
@@ -77,6 +80,12 @@ export const useMobileSessionSync = (
   }, [pendingMobileSessions, isAppInitialized]);
 
   const createSessionFromMobile = useCallback(async (mobileSession: MobileSession) => {
+    console.log('🏁 [MOBILE-SYNC] createSessionFromMobile called with:', {
+      sessionId: mobileSession.sessionId,
+      projectPath: mobileSession.projectPath,
+      title: mobileSession.title
+    });
+    
     const sessionId = mobileSession.sessionId;
     const now = Date.now();
     const lastProcessed = lastProcessedTimeRef.current[sessionId] || 0;
@@ -121,13 +130,22 @@ export const useMobileSessionSync = (
         const localSessionId = result.data;
         console.log('✅ [MOBILE-SYNC] Claude Code session created with ID:', localSessionId);
         
+        // Use Claude Code UUID for local state (needed for streaming)
         const newSession: Session = {
-          id: localSessionId,
+          id: localSessionId, // Use Claude Code UUID for streaming
           projectPath: mobileSession.projectPath,
           messages: [],
           inputMessage: "",
           isLoading: false,
         };
+        
+        // Store mapping between Claude Code UUID and mobile session ID for persistence
+        setSessionIdMapping(prev => {
+          const newMapping = new Map(prev);
+          newMapping.set(localSessionId, mobileSession.sessionId);
+          console.log('🗺️ [MOBILE-SYNC] Stored session mapping:', localSessionId, '→', mobileSession.sessionId);
+          return newMapping;
+        });
 
         setSessions(prev => {
           const updated = [...prev, newSession];
@@ -139,44 +157,55 @@ export const useMobileSessionSync = (
         openChatPane(localSessionId, mobileSession.projectPath);
         console.log('✅ [MOBILE-SYNC] Chat pane opened successfully');
         
-        console.log('🔄 [MOBILE-SYNC] Syncing session to Convex...');
+        console.log('🔄 [MOBILE-SYNC] Updating mobile session status to active...');
         try {
-          const convexResult = await createConvexSession({
-            sessionId: localSessionId,
-            projectPath: mobileSession.projectPath,
-            createdBy: "desktop",
-            title: mobileSession.title || `Mobile Session - ${mobileSession.projectPath}`,
-            metadata: {
-              workingDirectory: mobileSession.projectPath,
-              originalMobileSessionId: mobileSession.sessionId,
-            },
+          await updateSessionStatus({
+            sessionId: mobileSession.sessionId,
+            status: "active"
           });
-          console.log('✅ [MOBILE-SYNC] Successfully synced session to Convex:', convexResult);
-        } catch (convexError) {
-          console.error('❌ [MOBILE-SYNC] Failed to sync session to Convex:', convexError);
-          throw convexError;
+          console.log('✅ [MOBILE-SYNC] Successfully updated mobile session to active status');
+        } catch (statusError) {
+          console.error('❌ [MOBILE-SYNC] Failed to update session status:', statusError);
+          throw statusError;
         }
         
-        console.log('📥 [MOBILE-SYNC] Queueing mobile session for initial message retrieval');
-        setMobileSessionsToInitialize(prev => {
-          const newQueue = [...prev, {
-            mobileSessionId: mobileSession.sessionId,
-            localSessionId: localSessionId
-          }];
-          console.log('📋 [MOBILE-SYNC] Updated initialization queue:', newQueue);
-          return newQueue;
-        });
-
-        console.log('🏁 [MOBILE-SYNC] Marking mobile session as processed in database...');
+        console.log('💬 [MOBILE-SYNC] Triggering Claude Code to respond to existing message...');
+        
+        // Get existing messages from mobile session to find the initial message
         try {
-          const markResult = await markMobileSessionProcessed({
-            mobileSessionId: mobileSession.sessionId,
+          // Use proper Convex client to query messages
+          const mobileMessages = await convex.query(api.claude.getSessionMessages, {
+            sessionId: mobileSession.sessionId,
+            limit: 10
           });
-          console.log('✅ [MOBILE-SYNC] Successfully marked mobile session as processed:', markResult);
-        } catch (markError) {
-          console.error('❌ [MOBILE-SYNC] Failed to mark mobile session as processed:', markError);
-          throw markError;
+          
+          console.log('📋 [MOBILE-SYNC] Found messages in mobile session:', mobileMessages.length);
+          
+          // Find the last user message to trigger Claude Code response
+          const lastUserMessage = mobileMessages?.reverse().find((msg: any) => msg.messageType === 'user');
+          
+          if (lastUserMessage) {
+            console.log('🚀 [MOBILE-SYNC] Sending existing message to Claude Code to trigger response');
+            
+            // Trigger Claude Code response WITHOUT creating a new user message
+            const result = await invoke<CommandResult<void>>("trigger_claude_response", {
+              sessionId: localSessionId, // Send to Claude Code UUID
+              message: lastUserMessage.content,
+            });
+            
+            if (result.success) {
+              console.log('✅ [MOBILE-SYNC] Successfully triggered Claude Code response');
+            } else {
+              console.error('❌ [MOBILE-SYNC] Failed to trigger Claude Code:', result.error);
+            }
+          } else {
+            console.log('⚠️ [MOBILE-SYNC] No user message found to trigger Claude Code response');
+          }
+        } catch (messageError) {
+          console.error('❌ [MOBILE-SYNC] Failed to get mobile session messages:', messageError);
         }
+
+        // Session is now active, no need to mark as processed
 
         setProcessedMobileSessions(prev => new Set(prev).add(mobileSession.sessionId));
         console.log('✅ [MOBILE-SYNC] Successfully created and synced local session from mobile request');
@@ -184,14 +213,15 @@ export const useMobileSessionSync = (
         console.error('❌ [MOBILE-SYNC] Failed to create local Claude Code session:', result.error);
         
         if (result.error?.includes('Claude Code not initialized') || result.error?.includes('Manager not initialized')) {
-          console.log('🚫 [MOBILE-SYNC] Claude Code not ready, marking mobile session as failed to prevent retries');
+          console.log('🚫 [MOBILE-SYNC] Claude Code not ready, updating session to error status');
           try {
-            await markMobileSessionProcessed({
-              mobileSessionId: mobileSession.sessionId,
+            await updateSessionStatus({
+              sessionId: mobileSession.sessionId,
+              status: "error"
             });
-            console.log('✅ [MOBILE-SYNC] Marked failed mobile session as processed to prevent retries');
-          } catch (markError) {
-            console.error('❌ [MOBILE-SYNC] Failed to mark mobile session as processed:', markError);
+            console.log('✅ [MOBILE-SYNC] Updated failed session to error status');
+          } catch (statusError) {
+            console.error('❌ [MOBILE-SYNC] Failed to update session status:', statusError);
           }
         }
       }
@@ -205,16 +235,26 @@ export const useMobileSessionSync = (
       });
       console.log('🏁 [MOBILE-SYNC] Finished processing session:', mobileSession.sessionId);
     }
-  }, [sessions, setSessions, openChatPane, createConvexSession, markMobileSessionProcessed]);
+  }, [sessions, setSessions, openChatPane, updateSessionStatus, convex]);
 
   useEffect(() => {
     console.log('🎯 [MOBILE-SYNC] Main processing effect triggered:', {
       isAppInitialized,
       pendingSessionsLength: pendingMobileSessions.length,
-      willProcess: isAppInitialized && pendingMobileSessions.length > 0
+      willProcess: isAppInitialized && pendingMobileSessions.length > 0,
+      processingSessions: Array.from(processingSessions),
+      processedSessions: Array.from(processedMobileSessions),
+      isProcessingAnyMobileSession,
+      lastGlobalProcessTime: new Date(lastGlobalProcessTime).toISOString()
     });
     
-    if (!isAppInitialized || pendingMobileSessions.length === 0) {
+    if (!isAppInitialized) {
+      console.log('❌ [MOBILE-SYNC] App not initialized yet, skipping processing');
+      return;
+    }
+    
+    if (pendingMobileSessions.length === 0) {
+      console.log('❌ [MOBILE-SYNC] No pending sessions to process');
       return;
     }
 
@@ -254,12 +294,15 @@ export const useMobileSessionSync = (
     }
 
     processingTimeoutRef.current = setTimeout(() => {
+      console.log('⏰ [MOBILE-SYNC] Debounce timer fired, checking if we should process...');
+      
       if (pendingMobileSessions.length === 0) {
         console.log('🔍 [MOBILE-SYNC] No pending mobile sessions, skipping processing');
         return;
       }
 
       console.log('🚀 [MOBILE-SYNC] Starting debounced processing...');
+      console.log('🔒 [MOBILE-SYNC] Setting isProcessingRef to true');
       isProcessingRef.current = true;
 
       const processMobileSessions = async () => {
@@ -273,7 +316,13 @@ export const useMobileSessionSync = (
           if (!sessionToProcess) return;
           
           const mobileSession = sessionToProcess;
-          console.log('🔍 [MOBILE-SYNC] Evaluating mobile session:', mobileSession.sessionId);
+          console.log('🔍 [MOBILE-SYNC] Evaluating mobile session:', {
+            sessionId: mobileSession.sessionId,
+            status: mobileSession.status,
+            createdBy: mobileSession.createdBy,
+            title: mobileSession.title,
+            projectPath: mobileSession.projectPath
+          });
           
           const isDesktopSessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mobileSession.sessionId);
           if (isDesktopSessionId) {
@@ -296,9 +345,12 @@ export const useMobileSessionSync = (
             setIsProcessingAnyMobileSession(true);
             setLastGlobalProcessTime(Date.now());
             
+            console.log('📞 [MOBILE-SYNC] Calling createSessionFromMobile...');
             await createSessionFromMobile(mobileSession);
+            console.log('✅ [MOBILE-SYNC] createSessionFromMobile completed');
             
             setTimeout(() => {
+              console.log('🔓 [MOBILE-SYNC] Setting isProcessingAnyMobileSession to false after cooldown');
               setIsProcessingAnyMobileSession(false);
             }, 1000);
           } else {
@@ -323,18 +375,10 @@ export const useMobileSessionSync = (
   }, [pendingMobileSessions, isAppInitialized, processingSessions, processedMobileSessions, 
       sessions, createSessionFromMobile, setIsProcessingAnyMobileSession, setLastGlobalProcessTime]);
 
-  const handleInitialMessageSent = useCallback((mobileSessionId: string) => {
-    console.log('✉️ [MOBILE-SYNC] Initial message sent for mobile session:', mobileSessionId);
-    setMobileSessionsToInitialize(prev => 
-      prev.filter(s => s.mobileSessionId !== mobileSessionId)
-    );
-  }, []);
-
   return {
     processingSessions,
     processedMobileSessions,
-    mobileSessionsToInitialize,
     isProcessingAnyMobileSession,
-    handleInitialMessageSent,
+    sessionIdMapping, // Expose mapping for message persistence
   };
 };
