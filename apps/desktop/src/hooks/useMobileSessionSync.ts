@@ -157,17 +157,9 @@ export const useMobileSessionSync = (
         openChatPane(localSessionId, mobileSession.projectPath);
         console.log('✅ [MOBILE-SYNC] Chat pane opened successfully');
         
-        console.log('🔄 [MOBILE-SYNC] Updating mobile session status to active...');
-        try {
-          await updateSessionStatus({
-            sessionId: mobileSession.sessionId,
-            status: "active"
-          });
-          console.log('✅ [MOBILE-SYNC] Successfully updated mobile session to active status');
-        } catch (statusError) {
-          console.error('❌ [MOBILE-SYNC] Failed to update session status:', statusError);
-          throw statusError;
-        }
+        // Note: We don't change the status to "active" here anymore
+        // The session will be marked as "processed" after successful handling
+        console.log('📝 [MOBILE-SYNC] Keeping mobile session in pending state until processing completes');
         
         console.log('💬 [MOBILE-SYNC] Triggering Claude Code to respond to existing message...');
         
@@ -205,7 +197,17 @@ export const useMobileSessionSync = (
           console.error('❌ [MOBILE-SYNC] Failed to get mobile session messages:', messageError);
         }
 
-        // Session is now active, no need to mark as processed
+        // Mark the mobile session as processed to prevent re-triggering on app restart
+        console.log('🏁 [MOBILE-SYNC] Marking mobile session as processed to prevent re-triggering...');
+        try {
+          await updateSessionStatus({
+            sessionId: mobileSession.sessionId,
+            status: "processed"
+          });
+          console.log('✅ [MOBILE-SYNC] Successfully marked mobile session as processed');
+        } catch (statusError) {
+          console.error('❌ [MOBILE-SYNC] Failed to mark session as processed:', statusError);
+        }
 
         setProcessedMobileSessions(prev => new Set(prev).add(mobileSession.sessionId));
         console.log('✅ [MOBILE-SYNC] Successfully created and synced local session from mobile request');
