@@ -9,6 +9,9 @@ interface MobileSessionInitializerProps {
   sendMessage: (sessionId: string, message: string) => Promise<void>;
 }
 
+// Use a global flag to prevent multiple instances from processing the same session
+const processingSessions = new Set<string>();
+
 export function MobileSessionInitializer({ 
   mobileSessionId, 
   localSessionId, 
@@ -16,6 +19,12 @@ export function MobileSessionInitializer({
   sendMessage
 }: MobileSessionInitializerProps) {
   console.log('🚀 [MOBILE-INIT] Component mounted', { mobileSessionId, localSessionId });
+  
+  // Check if another instance is already processing this session
+  if (processingSessions.has(localSessionId)) {
+    console.log('⚠️ [MOBILE-INIT] Another instance is already processing this session');
+    return null;
+  }
   
   const [hasSentInitialMessage, setHasSentInitialMessage] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -48,18 +57,35 @@ export function MobileSessionInitializer({
       
       // Immediately mark as sending to prevent re-triggers
       setIsSending(true);
+      processingSessions.add(localSessionId);
       
       // Send the initial message to Claude Code
-      sendMessage(localSessionId, initialMessage.content)
-        .then(() => {
-          console.log('✅ [MOBILE-INIT] Initial message sent successfully');
-          setHasSentInitialMessage(true);
-          onInitialMessageSent();
-        })
-        .catch((error) => {
-          console.error('❌ [MOBILE-INIT] Failed to send initial message:', error);
-          setIsSending(false); // Reset on error to allow retry
-        });
+      console.log('🚀 [MOBILE-INIT] Calling sendMessage with:', {
+        localSessionId,
+        messageContent: initialMessage.content
+      });
+      
+      try {
+        const sendPromise = sendMessage(localSessionId, initialMessage.content);
+        console.log('📤 [MOBILE-INIT] sendMessage called, awaiting promise...');
+        
+        sendPromise
+          .then(() => {
+            console.log('✅ [MOBILE-INIT] Initial message sent successfully');
+            setHasSentInitialMessage(true);
+            processingSessions.delete(localSessionId);
+            onInitialMessageSent();
+          })
+          .catch((error) => {
+            console.error('❌ [MOBILE-INIT] Failed to send initial message:', error);
+            setIsSending(false); // Reset on error to allow retry
+            processingSessions.delete(localSessionId);
+          });
+      } catch (syncError) {
+        console.error('💥 [MOBILE-INIT] Synchronous error calling sendMessage:', syncError);
+        setIsSending(false);
+        processingSessions.delete(localSessionId);
+      }
     } else {
       console.log('⚠️ [MOBILE-INIT] No initial user message found in mobile session');
       // Still mark as completed to prevent infinite retries
@@ -67,6 +93,13 @@ export function MobileSessionInitializer({
       onInitialMessageSent();
     }
   }, [mobileMessages?.length]); // Only depend on messages length to avoid loops
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      processingSessions.delete(localSessionId);
+    };
+  }, [localSessionId]);
 
   return null; // This component doesn't render anything
 }
