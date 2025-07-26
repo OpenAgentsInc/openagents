@@ -18,7 +18,6 @@ graph TB
     subgraph "Convex Database"
         CS[claudeSessions Table]
         CM[claudeMessages Table]
-        SS[syncStatus Table]
     end
     
     subgraph "Desktop App (Tauri + React)"
@@ -87,9 +86,13 @@ sequenceDiagram
     participant Desktop as Desktop App
     participant Claude as Claude Code
 
-    Mobile->>Convex: Add initial message
-    Desktop->>Desktop: Process pending sessions
-    Desktop->>Claude: Send initial message
+    Mobile->>Convex: Create session with initial message
+    Desktop->>Desktop: Detect pending mobile session
+    Desktop->>Claude: Create Claude Code session (UUID)
+    Desktop->>Convex: Update mobile session to "active"
+    Desktop->>Desktop: Store UUID→Mobile ID mapping
+    Desktop->>Convex: Query existing messages from mobile session
+    Desktop->>Claude: Send existing message to trigger response
     Claude->>Desktop: Stream responses
     Desktop->>Convex: Persist messages (to mobile session ID)
     Convex->>Mobile: Real-time message updates
@@ -116,7 +119,7 @@ The system uses a dual-ID approach to maintain compatibility while enabling unif
 
 ```typescript
 // Desktop maintains mapping between Claude Code UUID and Mobile session ID
-const sessionIdMapping = Map<string, string>();
+const sessionIdMapping = new Map<string, string>();
 // Key: Claude Code UUID (uuid-456-def)
 // Value: Mobile session ID (mobile-123-abc)
 
@@ -186,8 +189,33 @@ const createSessionFromMobile = async (mobileSession: MobileSession) => {
     newMapping.set(localSessionId, mobileSession.sessionId);
     return newMapping;
   });
+  
+  // Trigger Claude Code response to existing message (no duplication)
+  const mobileMessages = await queryMobileSessionMessages(mobileSession.sessionId);
+  const lastUserMessage = mobileMessages.find(msg => msg.messageType === 'user');
+  
+  if (lastUserMessage) {
+    // Send to Claude Code UUID, messages persist to mobile session ID
+    await invoke("send_message", {
+      sessionId: localSessionId,
+      message: lastUserMessage.content,
+    });
+  }
 };
 ```
+
+#### **Duplicate Message Prevention**
+
+**Historical Issue**: The original architecture used a `MobileSessionInitializer` component that would query mobile session messages and replay them to Claude Code. However, this created duplicate user messages:
+- Mobile session already contained the initial user message
+- MobileSessionInitializer would find this message and "replay" it
+- This resulted in two identical user messages with different timestamps
+
+**Current Solution**: With single session architecture, MobileSessionInitializer is eliminated entirely:
+- Mobile session is created with initial message
+- Desktop directly queries the existing message and sends it to Claude Code
+- No separate initialization component needed
+- No message duplication occurs
 
 #### `useClaudeStreaming.ts`
 - **Purpose**: Handle Claude Code message streaming
@@ -556,6 +584,10 @@ bun run compile
 **Issue**: Messages not persisting to mobile session
 - **Cause**: Session ID mapping not established or incorrect persistence ID
 - **Solution**: Verify session mapping in `useMobileSessionSync` hook
+
+**Issue**: Duplicate user messages in mobile sessions
+- **Cause**: MobileSessionInitializer creating duplicate messages
+- **Solution**: Single session architecture eliminates need for initialization component
 
 **Issue**: Duplicate sessions being created
 - **Cause**: Race condition in session processing or mapping failure
