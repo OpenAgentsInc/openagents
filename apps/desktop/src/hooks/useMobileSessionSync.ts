@@ -59,6 +59,12 @@ export const useMobileSessionSync = (
   }, [pendingMobileSessions]);
 
   useEffect(() => {
+    console.log('📊 [MOBILE-SYNC] State check:', {
+      pendingSessionsLength: pendingMobileSessions.length,
+      isAppInitialized,
+      shouldProcess: pendingMobileSessions.length > 0 && isAppInitialized
+    });
+    
     if (pendingMobileSessions.length > 0 && isAppInitialized) {
       console.log('🔍 [MOBILE-SYNC] Detected pending mobile sessions:', pendingMobileSessions.length);
       console.log('🔍 [MOBILE-SYNC] Mobile sessions data:', JSON.stringify(pendingMobileSessions, null, 2));
@@ -197,6 +203,12 @@ export const useMobileSessionSync = (
   }, [sessions, setSessions, openChatPane, createConvexSession, markMobileSessionProcessed]);
 
   useEffect(() => {
+    console.log('🎯 [MOBILE-SYNC] Main processing effect triggered:', {
+      isAppInitialized,
+      pendingSessionsLength: pendingMobileSessions.length,
+      willProcess: isAppInitialized && pendingMobileSessions.length > 0
+    });
+    
     if (!isAppInitialized || pendingMobileSessions.length === 0) {
       return;
     }
