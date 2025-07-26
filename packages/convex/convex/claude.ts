@@ -411,7 +411,7 @@ export const markMobileSessionProcessed = mutation({
 export const getPendingMobileSessions = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const results = await ctx.db
       .query("claudeSessions")
       .withIndex("by_status")
       .filter(q => q.and(
@@ -420,5 +420,17 @@ export const getPendingMobileSessions = query({
       ))
       .order("desc")
       .take(10);
+    
+    console.log('🔍 [CONVEX] getPendingMobileSessions query returned:', results.length, 'sessions');
+    if (results.length > 0) {
+      console.log('📋 [CONVEX] Mobile sessions:', results.map(s => ({
+        sessionId: s.sessionId,
+        status: s.status,
+        createdBy: s.createdBy,
+        metadata: s.metadata
+      })));
+    }
+    
+    return results;
   },
 });
