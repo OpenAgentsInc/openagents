@@ -43,10 +43,20 @@ export function ClaudeCodeMobile() {
   const [activeTab, setActiveTab] = useState<"sessions" | "create">("sessions");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   
+  // Generate random 4-character string for session title
+  const generateRandomString = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < 4; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+  
   // Session creation state
   const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/code/openagents");
-  const [newSessionTitle, setNewSessionTitle] = useState("");
-  const [initialMessage, setInitialMessage] = useState("");
+  const [newSessionTitle, setNewSessionTitle] = useState(`Testing ${generateRandomString()}`);
+  const [initialMessage, setInitialMessage] = useState("Introduce yourself, then use 3 readonly tools to explore the codebase and summarize what you learn.");
   
   // Message input state (moved from renderSessionDetail to fix hooks violation)
   const [newMessage, setNewMessage] = useState("");
@@ -104,10 +114,10 @@ export function ClaudeCodeMobile() {
         ]
       );
 
-      // Clear form
-      setNewProjectPath("");
-      setNewSessionTitle("");
-      setInitialMessage("");
+      // Clear form and reset to defaults
+      setNewProjectPath("/Users/christopherdavid/code/openagents");
+      setNewSessionTitle(`Testing ${generateRandomString()}`);
+      setInitialMessage("Introduce yourself, then use 3 readonly tools to explore the codebase and summarize what you learn.");
     } catch (error) {
       console.error("❌ [MOBILE] Failed to create session:", error);
       Alert.alert("Error", "Failed to create session. Please try again.");
