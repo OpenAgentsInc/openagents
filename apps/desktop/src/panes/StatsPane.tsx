@@ -63,12 +63,17 @@ const formatDuration = (minutes: number): string => {
 export const StatsPane: React.FC<StatsPaneProps> = () => {
   const [stats, setStats] = useState<CombinedAPMStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'combined' | 'cli' | 'sdk'>('combined');
 
-  const loadStats = async () => {
+  const loadStats = async (isRefresh = false) => {
     try {
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       
       const result = await invoke('analyze_combined_conversations');
@@ -89,12 +94,24 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
       setError(err instanceof Error ? err.message : 'Failed to load statistics');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
     loadStats();
   }, []);
+
+  // Auto-refresh every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (stats) { // Only auto-refresh if we have existing stats
+        loadStats(true);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [stats]);
 
   // Helper function to get current view's stats
   const getCurrentStats = (): APMStats | null => {
@@ -126,7 +143,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !stats) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-center h-full">
@@ -152,9 +169,9 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <p className="text-red-400 mb-4">{error}</p>
-            <Button onClick={loadStats} variant="outline" size="sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
+            <Button onClick={() => loadStats(false)} variant="outline" size="sm" disabled={refreshing}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Retrying...' : 'Retry'}
             </Button>
           </div>
         </div>
@@ -203,6 +220,14 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
             </Button>
           ))}
         </div>
+        
+        {/* Auto-refresh indicator */}
+        {refreshing && (
+          <div className="flex items-center justify-center gap-1 mt-2">
+            <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Auto-refreshing...</span>
+          </div>
+        )}
       </div>
 
       <Separator className="my-4" />
@@ -447,9 +472,15 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
 
       {/* Footer */}
       <div className="mt-4 pt-4 border-t border-border">
-        <Button onClick={loadStats} variant="outline" size="sm" className="w-full">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh Stats
+        <Button 
+          onClick={() => loadStats(false)} 
+          variant="outline" 
+          size="sm" 
+          className="w-full" 
+          disabled={refreshing}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing Stats...' : 'Refresh Stats'}
         </Button>
       </div>
     </div>
