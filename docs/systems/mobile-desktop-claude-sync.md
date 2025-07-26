@@ -632,6 +632,10 @@ bun run compile
 - **Cause**: Rust `send_message` command always creates a new user message
 - **Solution**: Use `trigger_claude_response` command which triggers Claude without creating a user message
 
+**Issue**: Mobile sessions re-triggering on app restart
+- **Cause**: Sessions remain with "active" status after processing
+- **Solution**: Mark sessions as "processed" after successful handling to prevent re-triggering
+
 **Issue**: Duplicate sessions being created
 - **Cause**: Race condition in session processing or mapping failure
 - **Solution**: Check circuit breaker logic and session deduplication
