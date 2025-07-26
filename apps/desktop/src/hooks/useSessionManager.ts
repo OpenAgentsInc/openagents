@@ -32,7 +32,7 @@ interface Session {
 
 export const useSessionManager = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [newProjectPath, setNewProjectPath] = useState("");
+  const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/code/openagents");
   const { openChatPane, updateSessionMessages } = usePaneStore();
 
   const createSession = useCallback(async () => {
