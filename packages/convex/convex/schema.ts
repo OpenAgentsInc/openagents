@@ -2,11 +2,24 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // Users table for authenticated users
+  users: defineTable({
+    email: v.string(),
+    name: v.optional(v.string()),
+    avatar: v.optional(v.string()),
+    githubId: v.string(),
+    githubUsername: v.string(),
+    createdAt: v.number(),
+    lastLogin: v.number(),
+  }).index("by_email", ["email"])
+    .index("by_github_id", ["githubId"]),
+
   // Existing basic messages (keep for demo compatibility)
   messages: defineTable({
     body: v.string(),
     user: v.string(),
     timestamp: v.number(),
+    userId: v.optional(v.id("users")), // Link to authenticated user
   }),
   
   // Claude Code sessions
@@ -25,6 +38,7 @@ export default defineSchema({
       v.literal("mobile")
     ),
     lastActivity: v.number(),       // Timestamp of last message
+    userId: v.optional(v.id("users")), // Link to authenticated user
     metadata: v.optional(v.object({ // Additional session data
       workingDirectory: v.optional(v.string()),
       model: v.optional(v.string()),
@@ -33,7 +47,8 @@ export default defineSchema({
     })),
   }).index("by_session_id", ["sessionId"])
     .index("by_status", ["status"])
-    .index("by_last_activity", ["lastActivity"]),
+    .index("by_last_activity", ["lastActivity"])
+    .index("by_user_id", ["userId"]),
     
   // Claude Code messages within sessions  
   claudeMessages: defineTable({
@@ -48,6 +63,7 @@ export default defineSchema({
     ),
     content: v.string(),           // Message content
     timestamp: v.string(),         // ISO timestamp
+    userId: v.optional(v.id("users")), // Link to authenticated user
     toolInfo: v.optional(v.object({ // Tool information if applicable
       toolName: v.string(),
       toolUseId: v.string(), 
@@ -56,7 +72,8 @@ export default defineSchema({
     })),
     metadata: v.optional(v.any()), // Additional message metadata
   }).index("by_session_id", ["sessionId"])
-    .index("by_timestamp", ["timestamp"]),
+    .index("by_timestamp", ["timestamp"])
+    .index("by_user_id", ["userId"]),
     
   // Sync status tracking
   syncStatus: defineTable({

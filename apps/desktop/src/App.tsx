@@ -4,6 +4,7 @@ import { Hotbar } from "@/components/hud/Hotbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionManager } from "@/components/session/SessionManager";
 import { HandTrackingManager } from "@/components/session/HandTrackingManager";
+import { AuthButton } from "@/components/auth/AuthButton";
 import { useAppStore } from "@/stores/appStore";
 import { useClaudeDiscovery } from "@/hooks/useClaudeDiscovery";
 import { useSessionManager } from "@/hooks/useSessionManager";
@@ -147,6 +148,11 @@ function App() {
   return (
     <TooltipProvider>
       <div className="relative h-full w-full font-mono overflow-hidden">
+        {/* Authentication Button - Top Right */}
+        <div className="absolute top-4 right-4 z-50">
+          <AuthButton />
+        </div>
+        
         <PaneManager />
         
         <SessionManager
