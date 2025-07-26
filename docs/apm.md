@@ -194,7 +194,7 @@ The APM system now analyzes conversations from **two sources**:
 - **Time windows**: Calculated from current timestamp backwards
 - **Action counting**: Messages (user/assistant) + tool uses from both sources
 - **APM formula**: Total Actions ÷ Time Window Duration in Minutes
-- **Combination**: CLI and SDK stats are merged using weighted averages
+- **Combination**: CLI and SDK APM rates are added together (independent action streams)
 
 ### Viewing Modes
 
@@ -207,9 +207,10 @@ The stats page provides three viewing modes:
 ### Breakdown Analysis
 
 When viewing in **Combined** mode, the system displays:
-- Combined totals and averages across both sources
-- Side-by-side breakdown comparing CLI vs SDK metrics
-- Unified tool usage statistics and recent sessions
+- **Combined APM**: Simple addition of CLI + SDK rates (e.g., CLI: 0.5 APM + SDK: 0.2 APM = Combined: 0.7 APM)
+- **Combined totals**: Sum of sessions, messages, and tool uses across both sources
+- **Side-by-side breakdown**: Detailed comparison showing CLI vs SDK metrics
+- **Unified statistics**: Tool usage rankings and recent sessions from both sources
 
 ### Accuracy Notes
 - Actions only counted when conversations are active
