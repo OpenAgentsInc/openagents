@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useAppStore } from '@/stores/appStore';
 
 interface CommandResult<T> {
   success: boolean;
@@ -8,8 +9,7 @@ interface CommandResult<T> {
 }
 
 export const useAppInitialization = () => {
-  const [isAppInitialized, setIsAppInitialized] = useState(false);
-  const [claudeStatus, setClaudeStatus] = useState<string>("Not initialized");
+  const { isAppInitialized, setAppInitialized, claudeStatus, setClaudeStatus } = useAppStore();
   const initializationTimeoutRef = useRef<NodeJS.Timeout>();
 
   const initializeApp = useCallback(async () => {
@@ -27,13 +27,14 @@ export const useAppInitialization = () => {
       }
       
       console.log('✅ [APP-INIT] App initialization complete!');
-      setIsAppInitialized(true);
+      console.log('🔄 [APP-INIT] Setting global isAppInitialized to true');
+      setAppInitialized(true);
     } catch (error) {
       console.error('💥 [APP-INIT] Fatal error during initialization:', error);
       setClaudeStatus(`Fatal error: ${error}`);
-      setIsAppInitialized(true);
+      setAppInitialized(true);
     }
-  }, []);
+  }, [setAppInitialized, setClaudeStatus]);
 
   useEffect(() => {
     initializationTimeoutRef.current = setTimeout(() => {

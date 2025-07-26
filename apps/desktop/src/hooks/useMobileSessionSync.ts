@@ -57,6 +57,11 @@ export const useMobileSessionSync = (
       pendingMobileSessions ? pendingMobileSessions.length : 'undefined'
     );
   }, [pendingMobileSessions]);
+  
+  // Debug logging for isAppInitialized changes
+  useEffect(() => {
+    console.log('🔧 [MOBILE-SYNC] isAppInitialized changed to:', isAppInitialized);
+  }, [isAppInitialized]);
 
   useEffect(() => {
     console.log('📊 [MOBILE-SYNC] State check:', {
