@@ -134,7 +134,7 @@ export function useClaudeStreaming({
           toolName: message.tool_info.tool_name,
           toolUseId: message.tool_info.tool_use_id,
           input: message.tool_info.input,
-          output: message.tool_info.output,
+          output: message.tool_info.output || undefined, // Convert null to undefined
         } : undefined,
         metadata: { source: 'claude_streaming' },
       });
@@ -147,7 +147,7 @@ export function useClaudeStreaming({
   }, [sessionId, addClaudeMessage]);
 
   // Helper function to map streaming message types to Convex types
-  const mapMessageTypeToConvex = (streamingType: string): 'user' | 'assistant' | 'tool_use' | 'tool_result' | null => {
+  const mapMessageTypeToConvex = (streamingType: string): 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking' | null => {
     switch (streamingType) {
       case 'assistant':
         return 'assistant';
@@ -157,9 +157,10 @@ export function useClaudeStreaming({
         return 'tool_use';
       case 'tool_result':
         return 'tool_result';
-      // Skip system messages, thinking, summaries, errors as they're not user-facing
-      case 'system':
       case 'thinking':
+        return 'thinking'; // Include reasoning/thinking messages
+      // Skip system messages, summaries, errors
+      case 'system':
       case 'summary':
       case 'error':
         return null;
