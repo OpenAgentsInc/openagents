@@ -12,6 +12,8 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useHandTracking } from "@/hooks/useHandTracking";
 import { useAppInitialization } from "@/hooks/useAppInitialization";
 import { usePaneStore } from "@/stores/pane";
+import { useMutation } from 'convex/react';
+import { api } from './convex/_generated/api';
 
 interface Message {
   id: string;
@@ -31,6 +33,7 @@ function App() {
   const { initializeApp } = useAppInitialization();
   const { claudeStatus } = useClaudeDiscovery();
   const { updateSessionMessages } = usePaneStore();
+  const updateSessionStatus = useMutation(api.claude.updateSessionStatus);
   
   const {
     sessions,
@@ -66,6 +69,38 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.add("dark");
   }, []);
+
+  // Mark all active desktop sessions as processed when app closes
+  useEffect(() => {
+    const markSessionsProcessed = async () => {
+      console.log('🏁 Marking all desktop sessions as processed...');
+      for (const session of sessions) {
+        try {
+          await updateSessionStatus({
+            sessionId: session.id,
+            status: "processed"
+          });
+          console.log('✅ Marked desktop session as processed:', session.id);
+        } catch (error) {
+          console.error('❌ Failed to mark session as processed:', error);
+        }
+      }
+    };
+
+    // Handle window close/reload
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Mark sessions as processed
+      markSessionsProcessed();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      markSessionsProcessed();
+    };
+  }, [sessions, updateSessionStatus]);
 
   const handleMessagesUpdate = useCallback((sessionId: string, messages: Message[]) => {
     setSessions(prev => prev.map(session => {
