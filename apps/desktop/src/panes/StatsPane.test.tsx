@@ -1,20 +1,25 @@
-import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect, jest, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StatsPane } from "./StatsPane";
 import { invoke } from "@tauri-apps/api/core";
 
 // Mock Tauri API
-jest.mock("@tauri-apps/api/core", () => ({
-  invoke: jest.fn(),
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
 }));
 
 // Mock lucide-react icons
-jest.mock("lucide-react", () => ({
+vi.mock("lucide-react", () => ({
   Monitor: () => <div data-testid="monitor-icon" />,
   Smartphone: () => <div data-testid="smartphone-icon" />,
   Github: () => <div data-testid="github-icon" />,
   Globe: () => <div data-testid="globe-icon" />,
+  BarChart: () => <div data-testid="barchart-icon" />,
+  Clock: () => <div data-testid="clock-icon" />,
+  TrendingUp: () => <div data-testid="trending-up-icon" />,
+  Loader2: () => <div data-testid="loader2-icon" />,
+  RefreshCw: () => <div data-testid="refresh-cw-icon" />,
+  Eye: () => <div data-testid="eye-icon" />,
 }));
 
 const mockAPMData = {
@@ -47,18 +52,18 @@ const mockUserAPMData = {
 
 describe("StatsPane", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    (invoke as jest.Mock).mockResolvedValue(mockAPMData);
+    vi.clearAllMocks();
+    (invoke as any).mockResolvedValue(mockAPMData);
   });
 
   describe("Rendering", () => {
     it("should render loading state initially", () => {
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       expect(screen.getByText("Loading stats...")).toBeInTheDocument();
     });
 
     it("should render APM stats when data is loaded", async () => {
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         expect(screen.getByText("45.5")).toBeInTheDocument(); // Current APM
@@ -68,7 +73,7 @@ describe("StatsPane", () => {
     });
 
     it("should show view mode toggle buttons", async () => {
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         expect(screen.getByText("My Device")).toBeInTheDocument();
@@ -77,7 +82,7 @@ describe("StatsPane", () => {
     });
 
     it("should highlight active view mode", async () => {
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         const myDeviceButton = screen.getByText("My Device").parentElement;
@@ -88,11 +93,11 @@ describe("StatsPane", () => {
 
   describe("View Mode Switching", () => {
     it("should switch to All Devices view when clicked", async () => {
-      (invoke as jest.Mock)
+      (invoke as any)
         .mockResolvedValueOnce(mockAPMData) // Initial load
         .mockResolvedValueOnce(mockUserAPMData); // After switch
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         expect(screen.getByText("My Device")).toBeInTheDocument();
@@ -108,9 +113,9 @@ describe("StatsPane", () => {
     });
 
     it("should show device breakdown in All Devices view", async () => {
-      (invoke as jest.Mock).mockResolvedValue(mockUserAPMData);
+      (invoke as any).mockResolvedValue(mockUserAPMData);
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       // Switch to All Devices view
       const allDevicesButton = screen.getByText("All Devices");
@@ -129,7 +134,7 @@ describe("StatsPane", () => {
     it("should maintain view mode when stats refresh", async () => {
       jest.useFakeTimers();
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       // Switch to All Devices
       await waitFor(() => screen.getByText("All Devices"));
@@ -150,7 +155,7 @@ describe("StatsPane", () => {
     it("should refresh stats every 5 seconds when running", async () => {
       jest.useFakeTimers();
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         expect(invoke).toHaveBeenCalledTimes(1);
@@ -174,7 +179,7 @@ describe("StatsPane", () => {
     it("should not refresh when not running", async () => {
       jest.useFakeTimers();
       
-      render(<StatsPane isRunning={false} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         expect(invoke).toHaveBeenCalledTimes(1);
@@ -191,10 +196,10 @@ describe("StatsPane", () => {
 
   describe("Error Handling", () => {
     it("should handle API errors gracefully", async () => {
-      (invoke as jest.Mock).mockRejectedValue(new Error("API Error"));
+      (invoke as any).mockRejectedValue(new Error("API Error"));
       const consoleSpy = jest.spyOn(console, "error").mockImplementation();
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         expect(consoleSpy).toHaveBeenCalledWith(
@@ -214,9 +219,9 @@ describe("StatsPane", () => {
         ...mockUserAPMData,
         deviceBreakdown: undefined,
       };
-      (invoke as jest.Mock).mockResolvedValue(incompleteData);
+      (invoke as any).mockResolvedValue(incompleteData);
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       fireEvent.click(screen.getByText("All Devices"));
       
@@ -229,7 +234,7 @@ describe("StatsPane", () => {
 
   describe("All Time Stats", () => {
     it("should display all time statistics", async () => {
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         expect(screen.getByText("All Time")).toBeInTheDocument();
@@ -249,9 +254,9 @@ describe("StatsPane", () => {
           apm: 751.2,
         },
       };
-      (invoke as jest.Mock).mockResolvedValue(largeNumberData);
+      (invoke as any).mockResolvedValue(largeNumberData);
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       await waitFor(() => {
         expect(screen.getByText("1,500")).toBeInTheDocument();
@@ -262,9 +267,9 @@ describe("StatsPane", () => {
 
   describe("Device Icons", () => {
     it("should show appropriate icons for each device type", async () => {
-      (invoke as jest.Mock).mockResolvedValue(mockUserAPMData);
+      (invoke as any).mockResolvedValue(mockUserAPMData);
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       fireEvent.click(screen.getByText("All Devices"));
       
@@ -278,9 +283,9 @@ describe("StatsPane", () => {
 
   describe("Metadata Display", () => {
     it("should show overlap information in All Devices view", async () => {
-      (invoke as jest.Mock).mockResolvedValue(mockUserAPMData);
+      (invoke as any).mockResolvedValue(mockUserAPMData);
       
-      render(<StatsPane isRunning={true} />);
+      render(<StatsPane />);
       
       fireEvent.click(screen.getByText("All Devices"));
       

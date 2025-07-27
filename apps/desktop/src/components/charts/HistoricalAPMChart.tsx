@@ -45,7 +45,7 @@ interface CommandResult<T> {
 }
 
 interface HistoricalAPMChartProps {
-  viewMode: 'combined' | 'cli' | 'sdk';
+  viewMode: 'combined' | 'cli' | 'sdk' | 'aggregated';
   className?: string;
 }
 
