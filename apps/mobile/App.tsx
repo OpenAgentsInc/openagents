@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 import { NavigationContainer } from "@react-navigation/native"
 import { ClaudeCodeMobile } from "./components/ClaudeCodeMobile"
+import { DARK_THEME } from "./constants/colors"
 
 // Disable all development warnings
 LogBox.ignoreAllLogs(true)
@@ -48,6 +49,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000', // Pure black zinc theme
+    backgroundColor: DARK_THEME.background,
   },
 });
