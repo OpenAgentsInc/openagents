@@ -28,7 +28,8 @@ describe('AuthButton - Simple Tests', () => {
       token: null,
     })
 
-    render(<AuthButton />)
+    const { container } = render(<AuthButton />)
+    console.log('Loading state DOM:', container.innerHTML)
     expect(screen.getByText('Loading...')).toBeInTheDocument()
   })
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import { Alert } from 'react-native';
+import { Alert, Text, TouchableOpacity } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as AuthSession from 'expo-auth-session';
 import { AuthProvider, useAuth } from '../../contexts/AuthContext';
@@ -11,12 +11,16 @@ const TestComponent = () => {
   
   return (
     <>
-      <text testID="authenticated">{isAuthenticated.toString()}</text>
-      <text testID="loading">{isLoading.toString()}</text>
-      <text testID="token">{token || 'null'}</text>
-      <text testID="user">{user ? user.githubUsername : 'null'}</text>
-      <button testID="login-button" onPress={login} />
-      <button testID="logout-button" onPress={logout} />
+      <Text testID="authenticated">{isAuthenticated.toString()}</Text>
+      <Text testID="loading">{isLoading.toString()}</Text>
+      <Text testID="token">{token || 'null'}</Text>
+      <Text testID="user">{user ? user.githubUsername : 'null'}</Text>
+      <TouchableOpacity testID="login-button" onPress={login}>
+        <Text>Login</Text>
+      </TouchableOpacity>
+      <TouchableOpacity testID="logout-button" onPress={logout}>
+        <Text>Logout</Text>
+      </TouchableOpacity>
     </>
   );
 };

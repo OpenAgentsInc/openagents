@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-import React from 'react'
 import { AuthProvider, useAuth } from './AuthContext'
-import { mockTauri } from '@/test/setup'
 
 // Mock @tauri-apps/plugin-opener
 const mockOpenUrl = vi.fn()
@@ -157,12 +155,7 @@ describe('AuthContext', () => {
     })
 
     it('should use environment variable for auth URL if available', async () => {
-      // Mock import.meta.env
-      const originalEnv = import.meta.env
-      import.meta.env = { 
-        ...originalEnv, 
-        VITE_OPENAUTH_URL: 'https://auth.openagents.com' 
-      }
+      vi.stubEnv('VITE_OPENAUTH_URL', 'https://auth.openagents.com')
       
       renderWithAuth()
       
@@ -179,9 +172,6 @@ describe('AuthContext', () => {
       expect(mockOpenUrl).toHaveBeenCalledWith(
         expect.stringContaining('https://auth.openagents.com/authorize')
       )
-      
-      // Restore original env
-      import.meta.env = originalEnv
     })
 
     it('should handle login errors gracefully', async () => {
@@ -344,8 +334,8 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('is-authenticated')).toHaveTextContent('false')
     })
 
-    it('should properly cleanup event listeners on unmount', () => {
-      const { unmount } = renderWithAuth()
+    it('should properly cleanup event listeners on unmount', async () => {
+      const { unmount } = await renderWithAuth()
       
       // Track event listener removal
       const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
