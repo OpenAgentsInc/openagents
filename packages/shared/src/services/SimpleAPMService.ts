@@ -1,5 +1,6 @@
 import { Effect, Data, Ref, Schedule, Duration, Runtime } from "effect";
 import { getStoredJson, setStoredJson } from "./SimpleStorageService";
+import { isReactNative, getPlatformId } from '../utils/platform';
 
 // Tagged error types for APM operations
 export class APMError extends Data.TaggedError("APMError")<{
@@ -61,8 +62,7 @@ export const generateDeviceId = () =>
       return existingId;
     }
     
-    const platform = typeof window !== 'undefined' && window.navigator?.product === 'ReactNative' 
-      ? 'mobile' : 'desktop';
+    const platform = getPlatformId();
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 15);
     const newId = `${platform}-${timestamp}-${random}`;
@@ -79,8 +79,7 @@ export const createInitialSessionData = (deviceId: string) =>
     sessionsCreated: 0,
     appStateChanges: 0,
     deviceId,
-    platform: typeof window !== 'undefined' && window.navigator?.product === 'ReactNative' 
-      ? 'mobile' : 'desktop',
+    platform: getPlatformId(),
   });
 
 export const trackMessage = (sessionDataRef: Ref.Ref<APMSessionData>) =>
@@ -196,7 +195,7 @@ export const subscribeToAppStateChanges = (
 ) =>
   Effect.gen(function* () {
     // Mobile app state monitoring
-    if (typeof window !== 'undefined' && window.navigator?.product === 'ReactNative') {
+    if (isReactNative()) {
       return yield* Effect.tryPromise({
         try: async () => {
           const { AppState } = await import('react-native');

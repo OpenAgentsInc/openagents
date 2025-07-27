@@ -1,4 +1,5 @@
 import { Effect, Data } from "effect";
+import { isReactNative } from '../utils/platform';
 
 // Tagged error types for storage operations
 export class StorageError extends Data.TaggedError("StorageError")<{
@@ -111,10 +112,7 @@ export const removeFromSecureStore = (key: string) =>
     })
   });
 
-// Platform detection and appropriate function selection
-export const isReactNative = () => 
-  typeof window !== 'undefined' && window.navigator?.product === 'ReactNative';
-
+// Platform-aware storage functions
 export const getStorageValue = (key: string) =>
   isReactNative() ? getFromSecureStore(key) : getFromLocalStorage(key);
 
@@ -135,10 +133,6 @@ export const setStoredJson = <T>(key: string, value: T) =>
   setStorageValue(key, JSON.stringify(value));
 
 export const removeIfExists = (key: string) =>
-  Effect.gen(function* () {
-    try {
-      yield* removeStorageValue(key);
-    } catch {
-      // Ignore errors if key doesn't exist
-    }
-  });
+  removeStorageValue(key).pipe(
+    Effect.catchAll(_ => Effect.void)
+  );

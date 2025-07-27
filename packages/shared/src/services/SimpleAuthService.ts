@@ -1,5 +1,6 @@
 import { Effect, Data, Ref, Schedule, Duration } from "effect";
 import { getStorageValue, setStorageValue, removeStorageValue } from "./SimpleStorageService";
+import { isReactNative } from '../utils/platform';
 
 // Tagged error types for auth operations
 export class AuthError extends Data.TaggedError("AuthError")<{
@@ -50,7 +51,7 @@ export const getDefaultAuthConfig = (): AuthConfig => ({
            (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_OPENAUTH_URL) || 
            'https://auth.openagents.com',
   clientId: 'openagents-app',
-  redirectUri: typeof window !== 'undefined' && window.navigator?.product === 'ReactNative' 
+  redirectUri: isReactNative() 
     ? 'openagents://auth/callback' 
     : 'openagents://auth/callback',
   scopes: ['openid', 'profile', 'email'],
@@ -245,7 +246,7 @@ export const login = (config: AuthConfig = getDefaultAuthConfig()) =>
     
     // Start OAuth flow based on platform
     const { code, state } = yield* (
-      typeof window !== 'undefined' && window.navigator?.product === 'ReactNative'
+      isReactNative()
         ? startMobileOAuthFlow(config)
         : startDesktopOAuthFlow(config)
     ).pipe(

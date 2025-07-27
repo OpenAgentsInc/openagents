@@ -3,6 +3,7 @@ import { Effect, Runtime, Ref } from 'effect';
 import { 
   APMTrackingOptions,
   APMStats,
+  APMSessionData,
   generateDeviceId,
   createInitialSessionData,
   trackMessage,
@@ -58,13 +59,16 @@ export function useSimpleAPM(options: UseSimpleAPMOptions = {}): UseSimpleAPMRet
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const sessionDataRef = useRef<Ref.Ref<any> | null>(null);
+  const sessionDataRef = useRef<Ref.Ref<APMSessionData> | null>(null);
   const isActiveRef = useRef<Ref.Ref<boolean> | null>(null);
   const syncFiberRef = useRef<any>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const initializingRef = useRef(false);
   
   // Initialize APM service
   useEffect(() => {
+    if (initializingRef.current) return;
+    initializingRef.current = true;
     const initializeAPM = async () => {
       try {
         setIsLoading(true);
@@ -121,11 +125,26 @@ export function useSimpleAPM(options: UseSimpleAPMOptions = {}): UseSimpleAPMRet
     
     // Cleanup on unmount
     return () => {
-      if (syncFiberRef.current && typeof syncFiberRef.current.interrupt === 'function') {
-        syncFiberRef.current.interrupt();
+      initializingRef.current = false;
+      
+      // Safely interrupt fiber if it exists
+      if (syncFiberRef.current?.interrupt) {
+        try {
+          syncFiberRef.current.interrupt();
+        } catch (error) {
+          console.warn('Failed to interrupt APM sync fiber:', error);
+        }
+        syncFiberRef.current = null;
       }
+      
+      // Run cleanup function if it exists
       if (cleanupRef.current) {
-        cleanupRef.current();
+        try {
+          cleanupRef.current();
+        } catch (error) {
+          console.warn('Failed to run APM cleanup:', error);
+        }
+        cleanupRef.current = null;
       }
     };
   }, []);
@@ -161,31 +180,23 @@ export function useSimpleAPM(options: UseSimpleAPMOptions = {}): UseSimpleAPMRet
   const trackMessageSent = useCallback(() => {
     if (!sessionDataRef.current || !opts.enabled || !opts.trackMessages) return;
     
-    Runtime.runSync(Runtime.defaultRuntime)(
-      trackMessage(sessionDataRef.current).pipe(
-        Effect.catchAll(error => 
-          Effect.sync(() => {
-            console.error('Failed to track message:', error);
-            setError(String(error));
-          })
-        )
-      )
-    );
+    Runtime.runPromise(Runtime.defaultRuntime)(
+      trackMessage(sessionDataRef.current)
+    ).catch(error => {
+      console.error('Failed to track message:', error);
+      setError(String(error));
+    });
   }, [opts.enabled, opts.trackMessages]);
   
   const trackSessionCreated = useCallback(() => {
     if (!sessionDataRef.current || !opts.enabled || !opts.trackSessions) return;
     
-    Runtime.runSync(Runtime.defaultRuntime)(
-      trackSession(sessionDataRef.current).pipe(
-        Effect.catchAll(error => 
-          Effect.sync(() => {
-            console.error('Failed to track session:', error);
-            setError(String(error));
-          })
-        )
-      )
-    );
+    Runtime.runPromise(Runtime.defaultRuntime)(
+      trackSession(sessionDataRef.current)
+    ).catch(error => {
+      console.error('Failed to track session:', error);
+      setError(String(error));
+    });
   }, [opts.enabled, opts.trackSessions]);
   
   const flushSessionDataFn = useCallback(async () => {

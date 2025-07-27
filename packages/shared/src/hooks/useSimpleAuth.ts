@@ -50,9 +50,12 @@ export function useSimpleAuth(config: UseSimpleAuthConfig = {}): UseSimpleAuthRe
   
   const authStateRef = useRef<Ref.Ref<AuthState> | null>(null);
   const authConfig = useRef<AuthConfig>({ ...getDefaultAuthConfig(), ...config });
+  const initializingRef = useRef(false);
   
   // Initialize auth service
   useEffect(() => {
+    if (initializingRef.current) return;
+    initializingRef.current = true;
     const initializeAuth = async () => {
       try {
         setError(null);
@@ -81,6 +84,11 @@ export function useSimpleAuth(config: UseSimpleAuthConfig = {}): UseSimpleAuthRe
     };
     
     initializeAuth();
+    
+    // Cleanup on unmount
+    return () => {
+      initializingRef.current = false;
+    };
   }, []);
   
   // Login function
