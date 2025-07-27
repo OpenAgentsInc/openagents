@@ -867,7 +867,7 @@ export const calculateUserAPM = mutation({
     }
 
     const now = Date.now();
-    const timeWindows = args.timeWindow ? [args.timeWindow] : ["1h", "6h", "1d", "1w", "1m", "lifetime"];
+    const timeWindows = args.timeWindow ? [args.timeWindow] : ["1h", "6h", "1d", "1w", "1m", "lifetime"] as const;
 
     for (const window of timeWindows) {
       const cutoff = getTimeCutoff(now, window);
@@ -1018,7 +1018,10 @@ function aggregateDeviceMetrics(
     // Track device breakdown
     const deviceAPM = calculateDeviceAPM(session, cutoff, now);
     if (deviceAPM > 0) {
-      deviceBreakdown[session.deviceType] = (deviceBreakdown[session.deviceType] || 0) + deviceAPM;
+      const deviceType = session.deviceType as keyof typeof deviceBreakdown;
+      if (deviceType === "desktop" || deviceType === "mobile" || deviceType === "github") {
+        deviceBreakdown[deviceType] = (deviceBreakdown[deviceType] || 0) + deviceAPM;
+      }
     }
     
     // Collect intervals for overlap calculation
@@ -1092,7 +1095,7 @@ function calculateDeviceAPM(session: any, cutoff: number | null, now: number): n
 }
 
 // Helper function to merge overlapping time intervals
-function mergeOverlappingIntervals(intervals: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
+export function mergeOverlappingIntervals(intervals: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
   if (intervals.length === 0) return [];
   
   // Sort intervals by start time

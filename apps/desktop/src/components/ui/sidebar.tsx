@@ -1,11 +1,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, VariantProps } from "class-variance-authority"
-import { PanelLeftIcon, type LucideProps } from "lucide-react"
-
-// Properly typed Lucide icon component
-const PanelToggleIcon: React.FC<LucideProps> = PanelLeftIcon;
-
+import { PanelLeftIcon as PanelToggleIcon } from "lucide-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"

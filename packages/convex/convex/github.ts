@@ -16,6 +16,123 @@ const TRACKED_GITHUB_EVENTS = [
   "release.created",
 ] as const;
 
+// Helper function to extract relevant metadata from GitHub events
+function extractEventMetadata(event: string, payload: any): any {
+  // For now, return basic metadata - can be expanded based on event type
+  return {
+    event: event,
+    actor: payload.sender?.login || "unknown",
+    repository: payload.repository?.full_name || "unknown",
+  };
+}
+
+// Helper function for GitHub activity tracking logic
+async function handleGitHubActivityTracking(ctx: any, args: any) {
+  const eventType = `${args.event}.${args.action}`;
+  
+  // Only track events we care about for APM
+  if (!TRACKED_GITHUB_EVENTS.includes(eventType as any)) {
+    console.log(`⏭️ [GITHUB APM] Skipping untracked event: ${eventType}`);
+    return { tracked: false, reason: "Event not tracked" };
+  }
+
+  // Try to find the user by GitHub username or user ID
+  let user = null;
+  if (args.githubUserId) {
+    user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q: any) => q.eq("githubId", args.githubUserId.toString()))
+      .first();
+  } else if (args.githubUsername) {
+    user = await ctx.db
+      .query("users")
+      .filter((q: any) => q.eq(q.field("githubUsername"), args.githubUsername))
+      .first();
+  }
+
+  if (!user) {
+    console.log(`❌ [GITHUB APM] User not found for GitHub activity: ${args.githubUsername || args.githubUserId}`);
+    return { tracked: false, reason: "User not found" };
+  }
+
+  const now = Date.now();
+  const timestamp = args.timestamp ? new Date(args.timestamp).getTime() : now;
+  const deviceId = `github-${user.githubUsername}`;
+
+  console.log(`📊 [GITHUB APM] Tracking ${eventType} for user ${user.githubUsername}`);
+
+  // Find or create GitHub device session
+  let deviceSession = await ctx.db
+    .query("userDeviceSessions")
+    .withIndex("by_device_id", (q: any) => q.eq("deviceId", deviceId))
+    .first();
+
+  if (deviceSession) {
+    // Update existing session
+    await ctx.db.patch(deviceSession._id, {
+      sessionPeriods: [
+        ...deviceSession.sessionPeriods,
+        {
+          start: timestamp,
+          end: timestamp + 60000, // Assume 1 minute of activity per GitHub event
+        }
+      ],
+      actionsCount: {
+        messages: deviceSession.actionsCount.messages || 0,
+        toolUses: deviceSession.actionsCount.toolUses || 0,
+        githubEvents: (deviceSession.actionsCount.githubEvents || 0) + 1,
+      },
+      lastActivity: timestamp,
+      metadata: {
+        platform: "github",
+        version: "webhook",
+      },
+    });
+  } else {
+    // Create new device session
+    await ctx.db.insert("userDeviceSessions", {
+      userId: user._id,
+      deviceId,
+      deviceType: "github",
+      sessionPeriods: [
+        {
+          start: timestamp,
+          end: timestamp + 60000, // Assume 1 minute of activity per GitHub event
+        }
+      ],
+      actionsCount: {
+        messages: 0,
+        toolUses: 0,
+        githubEvents: 1,
+      },
+      lastActivity: timestamp,
+      metadata: {
+        platform: "github",
+        version: "webhook",
+      },
+    });
+  }
+
+  // Log the event for detailed tracking
+  await ctx.db.insert("githubEvents", {
+    userId: user._id,
+    eventType: args.event,
+    action: args.action,
+    repository: args.repository || "unknown",
+    timestamp: timestamp,
+    metadata: extractEventMetadata(args.event, args.payload),
+  });
+
+  console.log(`✅ [GITHUB APM] Successfully tracked ${eventType} for ${user.githubUsername}`);
+  
+  return { 
+    tracked: true, 
+    userId: user._id,
+    deviceId,
+    eventType,
+  };
+}
+
 // GitHub APM webhook handler
 export const trackGitHubActivity = mutation({
   args: {
@@ -28,109 +145,7 @@ export const trackGitHubActivity = mutation({
     timestamp: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const eventType = `${args.event}.${args.action}`;
-    
-    // Only track events we care about for APM
-    if (!TRACKED_GITHUB_EVENTS.includes(eventType as any)) {
-      console.log(`⏭️ [GITHUB APM] Skipping untracked event: ${eventType}`);
-      return { tracked: false, reason: "Event not tracked" };
-    }
-
-    // Try to find the user by GitHub username or user ID
-    let user = null;
-    if (args.githubUserId) {
-      user = await ctx.db
-        .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", args.githubUserId.toString()))
-        .first();
-    } else if (args.githubUsername) {
-      user = await ctx.db
-        .query("users")
-        .filter((q) => q.eq(q.field("githubUsername"), args.githubUsername))
-        .first();
-    }
-
-    if (!user) {
-      console.log(`❌ [GITHUB APM] User not found for GitHub activity: ${args.githubUsername || args.githubUserId}`);
-      return { tracked: false, reason: "User not found" };
-    }
-
-    const now = Date.now();
-    const timestamp = args.timestamp ? new Date(args.timestamp).getTime() : now;
-    const deviceId = `github-${user.githubUsername}`;
-
-    console.log(`📊 [GITHUB APM] Tracking ${eventType} for user ${user.githubUsername}`);
-
-    // Find or create GitHub device session
-    let deviceSession = await ctx.db
-      .query("userDeviceSessions")
-      .withIndex("by_device_id", (q) => q.eq("deviceId", deviceId))
-      .first();
-
-    if (deviceSession) {
-      // Update existing session
-      await ctx.db.patch(deviceSession._id, {
-        sessionPeriods: [
-          ...deviceSession.sessionPeriods,
-          {
-            start: timestamp,
-            end: timestamp + 60000, // Assume 1 minute of activity per GitHub event
-          }
-        ],
-        actionsCount: {
-          messages: deviceSession.actionsCount.messages,
-          toolUses: deviceSession.actionsCount.toolUses,
-          githubEvents: (deviceSession.actionsCount.githubEvents || 0) + 1,
-        },
-        lastActivity: timestamp,
-        metadata: {
-          platform: "github",
-          version: "webhook",
-          lastEvent: eventType,
-          repository: args.repository,
-        },
-      });
-    } else {
-      // Create new device session
-      await ctx.db.insert("userDeviceSessions", {
-        userId: user._id,
-        deviceId,
-        deviceType: "github",
-        sessionPeriods: [
-          {
-            start: timestamp,
-            end: timestamp + 60000, // Assume 1 minute of activity per GitHub event
-          }
-        ],
-        actionsCount: {
-          messages: 0,
-          toolUses: 0,
-          githubEvents: 1,
-        },
-        lastActivity: timestamp,
-        metadata: {
-          platform: "github",
-          version: "webhook",
-          lastEvent: eventType,
-          repository: args.repository,
-        },
-      });
-    }
-
-    // Store the GitHub event for reference
-    await ctx.db.insert("githubEvents", {
-      userId: user._id,
-      eventType,
-      action: args.action,
-      timestamp,
-      repository: args.repository,
-      payload: args.payload,
-      deviceId,
-    });
-
-    console.log(`✅ [GITHUB APM] Tracked ${eventType} for ${user.githubUsername}`);
-
-    return { tracked: true, eventType, userId: user._id };
+    return await handleGitHubActivityTracking(ctx, args);
   },
 });
 
@@ -251,7 +266,8 @@ export const handleGitHubWebhook = mutation({
       repository = payload.repository.full_name;
     }
 
-    return await ctx.runMutation(trackGitHubActivity, {
+    // Track the GitHub activity directly
+    const trackingArgs = {
       event,
       action: payload.action || "unknown",
       payload,
@@ -259,6 +275,9 @@ export const handleGitHubWebhook = mutation({
       githubUsername,
       repository,
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    // Execute the tracking logic directly
+    return await handleGitHubActivityTracking(ctx, trackingArgs);
   },
 });

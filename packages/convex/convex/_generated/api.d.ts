@@ -14,6 +14,7 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as claude from "../claude.js";
+import type * as github from "../github.js";
 import type * as messages from "../messages.js";
 import type * as users from "../users.js";
 
@@ -27,6 +28,7 @@ import type * as users from "../users.js";
  */
 declare const fullApi: ApiFromModules<{
   claude: typeof claude;
+  github: typeof github;
   messages: typeof messages;
   users: typeof users;
 }>;
