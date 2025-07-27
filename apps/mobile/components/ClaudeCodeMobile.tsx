@@ -18,7 +18,7 @@ import { AuthButton } from "./auth/AuthButton";
 import { useAuth } from "../contexts/AuthContext";
 import { IconPlus } from "./icons/IconPlus";
 import type { ChatSession } from "../types/chat";
-import { useAPMTracking } from "../hooks/useAPMTracking";
+import { useAPMTracking } from "../src/hooks/useAPMTracking";
 
 interface ClaudeSession {
   _id: string;
