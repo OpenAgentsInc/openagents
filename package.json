@@ -43,7 +43,7 @@
   "dependencies": {
     "sst": "^3.17.10"
   },
-  "resolutions": {
+  "overrides": {
     "react": "19.0.0",
     "@types/react": "^19.1.6"
   }
