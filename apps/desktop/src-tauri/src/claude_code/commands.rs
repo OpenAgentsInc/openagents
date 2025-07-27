@@ -3,10 +3,9 @@ use log::info;
 use serde_json::Value;
 
 use crate::error::CommandResult;
-use crate::claude_code::{
-    EnhancedConvexClient, SessionRepository, MessageRepository
-};
+use crate::claude_code::EnhancedConvexClient;
 use crate::claude_code::database::{
+    ConvexDatabase, SessionRepository, MessageRepository,
     CreateSessionRequest, UpdateSessionRequest, CreateMessageRequest, UpdateMessageRequest
 };
 use crate::claude_code::models::{ConvexSession, ConvexMessage};
