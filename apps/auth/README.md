@@ -25,16 +25,30 @@ wrangler secret put GITHUB_CLIENT_SECRET
 wrangler secret put COOKIE_DOMAIN  # Set to ".openagents.com" for production
 ```
 
-### 3. KV Namespace
+### 3. KV Namespace Setup
 
-Create the KV namespace:
+Create KV namespaces for authentication storage:
 
 ```bash
+cd apps/auth
 wrangler kv namespace create "AUTH_STORAGE"
 wrangler kv namespace create "AUTH_STORAGE" --preview
 ```
 
-Update the `wrangler.jsonc` file with the actual namespace IDs returned from the commands above.
+**Important**: For security, namespace IDs should **never** be hardcoded in configuration files.
+
+Create a local environment file (not committed to git):
+
+```bash
+# Create .env.local with your namespace IDs
+cat > .env.local << EOF
+# KV Namespace Configuration (DO NOT COMMIT)
+KV_AUTH_STORAGE_ID=your_production_namespace_id
+KV_AUTH_STORAGE_PREVIEW_ID=your_preview_namespace_id
+EOF
+```
+
+Replace the placeholder IDs with the actual IDs returned from the namespace creation commands above.
 
 ### 4. Custom Domain (Production)
 
@@ -57,6 +71,23 @@ The service will be available at `http://localhost:8787`.
 
 ## Deployment
 
+### Secure Deployment (Recommended)
+
+Use the secure deployment script that manages KV namespace IDs via environment variables:
+
+```bash
+cd apps/auth
+./deploy.sh
+```
+
+This script:
+- Loads KV namespace IDs from `.env.local` (not committed to git)
+- Creates a temporary configuration with the namespace IDs
+- Deploys the worker securely
+- Cleans up temporary files
+
+### Alternative Deployment Methods
+
 Deploy using SST from the project root:
 
 ```bash
@@ -64,12 +95,7 @@ Deploy using SST from the project root:
 bun sst deploy
 ```
 
-Or deploy directly with Wrangler:
-
-```bash
-cd apps/auth
-bun run deploy
-```
+**Note**: Direct wrangler deployment without the secure script will fail due to missing KV namespace configuration.
 
 ## API Endpoints
 
@@ -121,9 +147,21 @@ export default {
 
 ## Security
 
+### Authentication Security
 - Cookies are configured for subdomain sharing (`.openagents.com`)
 - HTTPS enforced in production
 - Secure, httpOnly cookies
 - CSRF protection via state parameter
 - PKCE for public clients
 - Token rotation on refresh
+
+### Configuration Security
+- **KV namespace IDs**: Never hardcoded in configuration files, managed via environment variables
+- **Secrets management**: GitHub OAuth credentials stored using `wrangler secret`
+- **Environment isolation**: Separate namespaces for production and preview environments
+- **Repository safety**: Sensitive configuration files (`.env.local`) excluded from git
+
+### Deployment Security
+- Secure deployment script prevents accidental exposure of namespace IDs
+- Temporary configuration files are automatically cleaned up after deployment
+- Environment variable validation ensures required values are present before deployment

@@ -17,13 +17,6 @@
 	"observability": {
 		"enabled": true
 	},
-	"kv_namespaces": [
-		{
-			"binding": "AUTH_STORAGE",
-			"id": "d6b40d28e0a640bfb29d50c7afe458b1",
-			"preview_id": "7de50457b22744ba961f955f65e283be"
-		}
-	],
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
