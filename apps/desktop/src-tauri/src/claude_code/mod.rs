@@ -10,8 +10,4 @@ pub mod commands;
 pub use discovery::ClaudeDiscovery;
 pub use manager::ClaudeManager;
 pub use models::{Message, ClaudeConversation, UnifiedSession};
-pub use database::{
-    ConvexDatabase, SessionRepository, MessageRepository
-};
 pub use convex_impl::EnhancedConvexClient;
-// pub use auth::{AuthService, AuthContext}; // Commented out - will be used in auth integration (Issue #1215)

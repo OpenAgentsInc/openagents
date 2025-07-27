@@ -3,7 +3,8 @@ use std::env;
 use log::info;
 
 use crate::error::{AppError, AppResult};
-use crate::claude_code::{EnhancedConvexClient, ConvexDatabase};
+use crate::claude_code::EnhancedConvexClient;
+use crate::claude_code::database::ConvexDatabase;
 use super::models::{APMStats, CombinedAPMStats, ToolUsage, ProductivityByTime};
 use super::utils::get_tool_category;
 
