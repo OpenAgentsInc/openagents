@@ -342,6 +342,7 @@ export function ClaudeCodeMobile() {
           renderItem={renderMessageItem}
           style={styles.messagesList}
           showsVerticalScrollIndicator={false}
+          inverted
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <CustomText style={styles.emptyStateText}>No messages yet</CustomText>
