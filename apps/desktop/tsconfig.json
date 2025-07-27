@@ -22,11 +22,13 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
+    // "noUncheckedIndexedAccess": true, // TODO: Enable with targeted fixes for 40+ errors
 
     /* Path mapping */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@openagents/shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": ["src"],
