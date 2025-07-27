@@ -264,8 +264,9 @@ impl EnhancedConvexClient {
             .map_err(|e| AppError::AuthStateError(format!("Token refresh request failed: {}", e)))?;
         
         if !response.status().is_success() {
+            let status = response.status();
             let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            log::error!("TOKEN_REFRESH: OpenAuth refresh failed: {} - {}", response.status(), error_text);
+            log::error!("TOKEN_REFRESH: OpenAuth refresh failed: {} - {}", status, error_text);
             return Err(AppError::AuthStateError(format!("Token refresh failed: {}", error_text)));
         }
         
