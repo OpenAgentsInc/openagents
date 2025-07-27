@@ -168,12 +168,19 @@ impl RetryStrategy {
 
     /// Calculate exponential backoff delay
     fn calculate_delay(&self, attempt: u32) -> u64 {
+        use rand::Rng;
+        
         let base_delay = self.config.base_delay_ms;
         let exponential_delay = base_delay * (2_u64.pow(attempt));
         
-        // Add jitter to prevent thundering herd
-        let jitter = (exponential_delay as f64 * 0.1) as u64;
-        let delay_with_jitter = exponential_delay + (rand::random::<u64>() % jitter);
+        // Add jitter to prevent thundering herd - using secure random generation
+        let jitter_max = (exponential_delay as f64 * 0.1) as u64;
+        let jitter = if jitter_max > 0 {
+            rand::thread_rng().gen_range(0..=jitter_max)
+        } else {
+            0
+        };
+        let delay_with_jitter = exponential_delay + jitter;
         
         delay_with_jitter.min(self.config.max_delay_ms)
     }
@@ -198,18 +205,19 @@ impl StorageRecovery {
 
         log::warn!("STORAGE_RECOVERY: Attempting to recover corrupted token storage");
         
-        // Implementation would include:
-        // 1. Backup current storage
-        // 2. Attempt to parse and validate storage data
-        // 3. Remove corrupted entries
-        // 4. Migrate valid tokens to new storage format
-        // 5. Initialize with clean storage if necessary
+        // TODO: Implement complete storage recovery mechanism
+        // Phase 4 Implementation Plan:
+        // 1. Backup current storage to recovery directory
+        // 2. Attempt to parse and validate storage data integrity
+        // 3. Remove corrupted entries while preserving valid tokens
+        // 4. Migrate valid tokens to new storage format if needed
+        // 5. Initialize with clean storage if total corruption detected
+        // 6. Generate recovery report for audit trail
         
-        // For now, simulate recovery
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        
-        log::info!("STORAGE_RECOVERY: Token storage recovery completed");
-        Ok(true)
+        // TEMPORARY: Return false to indicate recovery not yet implemented
+        // This prevents false positive recovery reports in production
+        log::warn!("STORAGE_RECOVERY: Complete implementation pending - returning false");
+        Ok(false)
     }
 
     /// Validate token storage integrity
@@ -590,8 +598,9 @@ mod tests {
         assert!(health_report.is_healthy);
         assert_eq!(health_report.total_tokens, 3);
         
+        // Phase 4: Recovery implementation is still pending, so it returns false
         let recovery_result = recovery.recover_storage().await.unwrap();
-        assert!(recovery_result);
+        assert!(!recovery_result); // Expect false until implementation is completed
     }
 
     #[tokio::test]
