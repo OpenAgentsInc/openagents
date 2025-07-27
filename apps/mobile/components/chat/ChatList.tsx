@@ -1,6 +1,5 @@
 import { useMemo, useCallback, useState } from "react"
-import { View, ViewStyle, TextStyle, FlatList, Pressable, TextInput, TouchableOpacity, Modal } from "react-native"
-import { Plus } from "lucide-react-native"
+import { View, ViewStyle, TextStyle, FlatList, Pressable, TextInput, TouchableOpacity, Modal, Text as RNText } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Text } from "../core/Text"
@@ -106,7 +105,7 @@ export function ChatList({
             accessibilityRole="button"
             accessibilityLabel="Create new chat"
           >
-            <Plus size={20} color="#f4f4f5" />
+            <RNText style={{ fontSize: 20, color: "#f4f4f5", fontWeight: "bold" }}>+</RNText>
           </Pressable>
         </View>
 
@@ -126,7 +125,7 @@ export function ChatList({
           accessibilityRole="button"
           accessibilityLabel="Create new chat"
         >
-          <Plus size={20} color="#f4f4f5" />
+          <RNText style={{ fontSize: 20, color: "#f4f4f5", fontWeight: "bold" }}>+</RNText>
         </Pressable>
       </View>
 
