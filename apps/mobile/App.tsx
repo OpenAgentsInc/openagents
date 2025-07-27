@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 import { NavigationContainer } from "@react-navigation/native"
 import { ClaudeCodeMobile } from "./components/ClaudeCodeMobile"
+import { AuthProvider } from "./contexts/AuthContext"
 import { DARK_THEME } from "./constants/colors"
 
 // Disable all development warnings
@@ -29,9 +30,11 @@ function AppContent() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.container}>
-        <NavigationContainer>
-          <ClaudeCodeMobile />
-        </NavigationContainer>
+        <AuthProvider>
+          <NavigationContainer>
+            <ClaudeCodeMobile />
+          </NavigationContainer>
+        </AuthProvider>
         <StatusBar style="light" />
       </GestureHandlerRootView>
     </SafeAreaProvider>
