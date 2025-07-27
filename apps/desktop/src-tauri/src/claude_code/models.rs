@@ -12,7 +12,7 @@ pub struct Message {
     pub tool_info: Option<ToolInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageType {
     User,
@@ -96,7 +96,7 @@ pub struct ContentItem {
 }
 
 // Unified session history types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionSource {
     Local,  // From local Claude Code CLI files
