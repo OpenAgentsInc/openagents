@@ -10,7 +10,7 @@ interface CommandResult<T> {
 
 export const useAppInitialization = () => {
   const { isAppInitialized, setAppInitialized, claudeStatus, setClaudeStatus } = useAppStore();
-  const initializationTimeoutRef = useRef<NodeJS.Timeout>();
+  const initializationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const initializeApp = useCallback(async () => {
     console.log('🏁 [APP-INIT] Starting app initialization...');

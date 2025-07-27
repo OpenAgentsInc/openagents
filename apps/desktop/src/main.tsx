@@ -4,6 +4,7 @@ import App from "./App"
 import { ConvexProvider, ConvexReactClient } from "convex/react"
 import { AuthProvider } from "@/contexts/AuthContext"
 
+
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
 if (!convexUrl) {
   throw new Error("VITE_CONVEX_URL environment variable is required");

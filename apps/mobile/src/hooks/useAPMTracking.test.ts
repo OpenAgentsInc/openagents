@@ -1,6 +1,5 @@
-import { renderHook, act } from "@testing-library/react-hooks";
+import { renderHook, act } from "@testing-library/react-native";
 import { AppState, AppStateStatus } from "react-native";
-import { describe, it, expect, jest, beforeEach, afterEach } from "jest";
 import { useAPMTracking } from "./useAPMTracking";
 
 // Mock Convex hooks
@@ -31,7 +30,7 @@ describe("useAPMTracking", () => {
     appStateListeners = {};
     
     // Mock AppState.addEventListener
-    (AppState.addEventListener as jest.Mock).mockImplementation((event, handler) => {
+    (AppState.addEventListener as jest.Mock).mockImplementation((event: string, handler: (state: AppStateStatus) => void) => {
       appStateListeners[event] = handler;
       return { remove: jest.fn() };
     });

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, ReactNode } from "react";
 import { useDrag } from "@use-gesture/react";
 import { X } from "lucide-react";
+
+// Type assertion for Lucide React icon to fix TypeScript strict JSX checking
+const LucideX = X as any;
 import { Pane as PaneType } from "@/types/pane";
 import { usePaneStore } from "@/stores/pane";
 import type { FullGestureState } from "@use-gesture/react";
@@ -322,7 +325,7 @@ export const Pane: React.FC<PaneProps> = ({
             onClick={handleClose}
             className="ml-2 p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
           >
-            <X className="h-4 w-4" />
+            <LucideX className="h-4 w-4" />
           </button>
         )}
       </div>

@@ -2,6 +2,7 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
 import { Plus, History, Hand, Settings, LayoutGrid, BarChart } from "lucide-react";
+
 import { usePaneStore } from "@/stores/pane";
 import { useHotbarStore } from "@/stores/hotbar";
 
