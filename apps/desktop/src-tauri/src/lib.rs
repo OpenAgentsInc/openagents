@@ -379,7 +379,7 @@ async fn generate_historical_apm_data(
 ) -> Result<HistoricalAPMResponse, String> {
     info!("Generating historical APM data: time_scale={}, days_back={}, view_mode={}", time_scale, days_back, view_mode);
     
-    use chrono::{Utc, Duration, Datelike};
+    use chrono::{Utc, Duration, Datelike, NaiveDate};
     
     let home_dir = dirs_next::home_dir()
         .ok_or("Could not find home directory")?;
@@ -436,28 +436,7 @@ async fn generate_historical_apm_data(
                 let cli_sessions = cli_sessions_by_period.get(&period).unwrap_or(&empty_vec);
                 let sdk_sessions = sdk_sessions_by_period.get(&period).unwrap_or(&empty_vec);
                 
-                let cli_apm = calculate_period_apm(cli_sessions);
-                let sdk_apm = calculate_period_apm(sdk_sessions);
-                
-                data_points.push(HistoricalAPMDataPoint {
-                    period: period.clone(),
-                    cli_apm,
-                    sdk_apm,
-                    combined_apm: cli_apm + sdk_apm,
-                    total_sessions: (cli_sessions.len() + sdk_sessions.len()) as u32,
-                    total_messages: (cli_sessions.iter().map(|s| s.message_count).sum::<f64>() + 
-                                  sdk_sessions.iter().map(|s| s.message_count).sum::<f64>()) as u32,
-                    total_tools: (cli_sessions.iter().map(|s| s.tool_count).sum::<f64>() + 
-                               sdk_sessions.iter().map(|s| s.tool_count).sum::<f64>()) as u32,
-                    average_session_duration: {
-                        let all_sessions: Vec<_> = cli_sessions.iter().chain(sdk_sessions.iter()).collect();
-                        if all_sessions.is_empty() {
-                            0.0
-                        } else {
-                            all_sessions.iter().map(|s| s.duration).sum::<f64>() / all_sessions.len() as f64
-                        }
-                    },
-                });
+                data_points.push(create_historical_data_point(period, cli_sessions, sdk_sessions));
             }
         }
         "weekly" => {
@@ -484,74 +463,52 @@ async fn generate_historical_apm_data(
                     }
                 }
                 
-                let cli_apm = calculate_period_apm(&cli_week_sessions);
-                let sdk_apm = calculate_period_apm(&sdk_week_sessions);
-                
-                data_points.push(HistoricalAPMDataPoint {
-                    period: period.clone(),
-                    cli_apm,
-                    sdk_apm,
-                    combined_apm: cli_apm + sdk_apm,
-                    total_sessions: (cli_week_sessions.len() + sdk_week_sessions.len()) as u32,
-                    total_messages: (cli_week_sessions.iter().map(|s| s.message_count).sum::<f64>() + 
-                                  sdk_week_sessions.iter().map(|s| s.message_count).sum::<f64>()) as u32,
-                    total_tools: (cli_week_sessions.iter().map(|s| s.tool_count).sum::<f64>() + 
-                               sdk_week_sessions.iter().map(|s| s.tool_count).sum::<f64>()) as u32,
-                    average_session_duration: {
-                        let all_sessions: Vec<_> = cli_week_sessions.iter().chain(sdk_week_sessions.iter()).collect();
-                        if all_sessions.is_empty() {
-                            0.0
-                        } else {
-                            all_sessions.iter().map(|s| s.duration).sum::<f64>() / all_sessions.len() as f64
-                        }
-                    },
-                });
+                data_points.push(create_historical_data_point(period, &cli_week_sessions, &sdk_week_sessions));
             }
         }
         "monthly" => {
-            let months_back = (days_back / 30).max(1);
-            for i in 0..months_back {
-                let month_start = start_date + Duration::days(i * 30);
-                let period = month_start.format("%Y-%m").to_string();
+            
+            // Calculate actual months instead of approximating with 30 days
+            let mut current_date = start_date.date_naive();
+            let end_date = end_date.date_naive();
+            
+            while current_date <= end_date {
+                let period = current_date.format("%Y-%m").to_string();
                 
-                // Aggregate all sessions for this month (simplified)
+                // Get the actual number of days in this month
+                let year = current_date.year();
+                let month = current_date.month();
+                let days_in_month = if month == 12 {
+                    NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap().pred_opt().unwrap().day()
+                } else {
+                    NaiveDate::from_ymd_opt(year, month + 1, 1).unwrap().pred_opt().unwrap().day()
+                };
+                
+                // Aggregate all sessions for this month
                 let mut cli_month_sessions = Vec::new();
                 let mut sdk_month_sessions = Vec::new();
                 
-                for day in 0..30 {
-                    let date = month_start + Duration::days(day);
-                    let day_period = date.format("%Y-%m-%d").to_string();
-                    
-                    if let Some(cli_sessions) = cli_sessions_by_period.get(&day_period) {
-                        cli_month_sessions.extend(cli_sessions.iter().cloned());
-                    }
-                    if let Some(sdk_sessions) = sdk_sessions_by_period.get(&day_period) {
-                        sdk_month_sessions.extend(sdk_sessions.iter().cloned());
+                for day in 1..=days_in_month {
+                    if let Some(date) = NaiveDate::from_ymd_opt(year, month, day) {
+                        let day_period = date.format("%Y-%m-%d").to_string();
+                        
+                        if let Some(cli_sessions) = cli_sessions_by_period.get(&day_period) {
+                            cli_month_sessions.extend(cli_sessions.iter().cloned());
+                        }
+                        if let Some(sdk_sessions) = sdk_sessions_by_period.get(&day_period) {
+                            sdk_month_sessions.extend(sdk_sessions.iter().cloned());
+                        }
                     }
                 }
                 
-                let cli_apm = calculate_period_apm(&cli_month_sessions);
-                let sdk_apm = calculate_period_apm(&sdk_month_sessions);
+                data_points.push(create_historical_data_point(period, &cli_month_sessions, &sdk_month_sessions));
                 
-                data_points.push(HistoricalAPMDataPoint {
-                    period: period.clone(),
-                    cli_apm,
-                    sdk_apm,
-                    combined_apm: cli_apm + sdk_apm,
-                    total_sessions: (cli_month_sessions.len() + sdk_month_sessions.len()) as u32,
-                    total_messages: (cli_month_sessions.iter().map(|s| s.message_count).sum::<f64>() + 
-                                  sdk_month_sessions.iter().map(|s| s.message_count).sum::<f64>()) as u32,
-                    total_tools: (cli_month_sessions.iter().map(|s| s.tool_count).sum::<f64>() + 
-                               sdk_month_sessions.iter().map(|s| s.tool_count).sum::<f64>()) as u32,
-                    average_session_duration: {
-                        let all_sessions: Vec<_> = cli_month_sessions.iter().chain(sdk_month_sessions.iter()).collect();
-                        if all_sessions.is_empty() {
-                            0.0
-                        } else {
-                            all_sessions.iter().map(|s| s.duration).sum::<f64>() / all_sessions.len() as f64
-                        }
-                    },
-                });
+                // Move to next month
+                current_date = if month == 12 {
+                    NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap()
+                } else {
+                    NaiveDate::from_ymd_opt(year, month + 1, 1).unwrap()
+                };
             }
         }
         _ => return Err(format!("Invalid time scale: {}", time_scale)),
@@ -583,6 +540,36 @@ fn calculate_period_apm(sessions: &[APMSession]) -> f64 {
         total_actions / total_duration
     } else {
         0.0
+    }
+}
+
+// Helper function to create a data point from session collections (reduces duplication)
+fn create_historical_data_point(
+    period: String,
+    cli_sessions: &[APMSession],
+    sdk_sessions: &[APMSession],
+) -> HistoricalAPMDataPoint {
+    let cli_apm = calculate_period_apm(cli_sessions);
+    let sdk_apm = calculate_period_apm(sdk_sessions);
+    
+    let all_sessions: Vec<_> = cli_sessions.iter().chain(sdk_sessions.iter()).collect();
+    let average_session_duration = if all_sessions.is_empty() {
+        0.0
+    } else {
+        all_sessions.iter().map(|s| s.duration).sum::<f64>() / all_sessions.len() as f64
+    };
+    
+    HistoricalAPMDataPoint {
+        period,
+        cli_apm,
+        sdk_apm,
+        combined_apm: cli_apm + sdk_apm,
+        total_sessions: (cli_sessions.len() + sdk_sessions.len()) as u32,
+        total_messages: (cli_sessions.iter().map(|s| s.message_count).sum::<f64>() + 
+                        sdk_sessions.iter().map(|s| s.message_count).sum::<f64>()) as u32,
+        total_tools: (cli_sessions.iter().map(|s| s.tool_count).sum::<f64>() + 
+                     sdk_sessions.iter().map(|s| s.tool_count).sum::<f64>()) as u32,
+        average_session_duration,
     }
 }
 

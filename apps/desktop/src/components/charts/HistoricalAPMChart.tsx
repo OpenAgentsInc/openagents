@@ -1,6 +1,19 @@
-// @ts-nocheck - Recharts has compatibility issues with React 18+ strict types
+// TypeScript compatibility note: Recharts has known type compatibility issues with React 18's strict JSX component typing.
+// The library works correctly at runtime, but TypeScript's strict component type checking flags these as errors.
+// This is a well-documented issue: https://github.com/recharts/recharts/issues/3615
+// Using @ts-nocheck only for this file to address the specific library compatibility issue.
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Loader2, TrendingUp, Calendar } from 'lucide-react';
@@ -106,8 +119,8 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
     const lines: React.ReactElement[] = [];
     
     switch (viewMode) {
-      case 'combined':
-        lines.push(
+      case 'combined': {
+        const combinedLine = (
           <Line
             key="combined"
             type="monotone"
@@ -118,9 +131,11 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
             name="Combined APM"
           />
         );
+        lines.push(combinedLine);
         break;
-      case 'cli':
-        lines.push(
+      }
+      case 'cli': {
+        const cliLine = (
           <Line
             key="cli"
             type="monotone"
@@ -131,9 +146,11 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
             name="CLI APM"
           />
         );
+        lines.push(cliLine);
         break;
-      case 'sdk':
-        lines.push(
+      }
+      case 'sdk': {
+        const sdkLine = (
           <Line
             key="sdk"
             type="monotone"
@@ -144,14 +161,25 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
             name="SDK APM"
           />
         );
+        lines.push(sdkLine);
         break;
+      }
     }
 
     return lines;
   };
 
   // Custom tooltip for chart
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: {
+    active?: boolean;
+    payload?: Array<{
+      payload: HistoricalAPMDataPoint;
+      name?: string;
+      value?: number;
+      color?: string;
+    }>;
+    label?: string;
+  }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
