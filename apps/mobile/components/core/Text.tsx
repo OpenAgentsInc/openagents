@@ -97,7 +97,7 @@ const $fontWeightStyles: Record<Weights, TextStyle> = {
 const $baseStyle: TextStyle = {
   ...$sizeStyles.sm,
   ...$fontWeightStyles.normal,
-  color: '#fff', // White text for black/gray theme
+  color: '#f4f4f5', // Zinc-100 text for dark zinc theme
 }
 
 const $presets: Record<Presets, TextStyle> = {
@@ -114,6 +114,6 @@ const $presets: Record<Presets, TextStyle> = {
     ...$baseStyle,
     ...$sizeStyles.sm,
     ...$fontWeightStyles.normal,
-    color: '#999', // Dimmed text for helpers
+    color: '#a1a1aa', // Zinc-400 dimmed text for helpers
   },
 }

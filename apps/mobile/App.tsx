@@ -48,6 +48,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a', // Match our black theme
+    backgroundColor: '#000', // Pure black zinc theme
   },
 });

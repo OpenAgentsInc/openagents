@@ -157,21 +157,21 @@ export function ChatListItem({
   )
 }
 
-// Styles using our black/gray color scheme
+// Styles using our dark zinc color scheme
 const $container: ViewStyle = {
   position: "relative",
 }
 
 const $itemContainer: ViewStyle = {
-  backgroundColor: '#1a1a1a', // Our black background
+  backgroundColor: '#000', // Pure black background
   paddingHorizontal: 16, // md spacing
   paddingVertical: 10, // xs + 2 for compact look
 }
 
 const $activeContainer: ViewStyle = {
-  backgroundColor: '#1e3a8a20', // Very dark blue tint
+  backgroundColor: '#27272a', // Zinc-800 for active
   borderLeftWidth: 3,
-  borderLeftColor: '#60a5fa', // Blue accent
+  borderLeftColor: '#f4f4f5', // Zinc-100 accent
 }
 
 const $content: ViewStyle = {
@@ -187,13 +187,13 @@ const $header: ViewStyle = {
 const $title: TextStyle = {
   fontSize: 15,
   fontWeight: "500",
-  color: '#fff', // White text
+  color: '#f4f4f5', // Zinc-100 text
   flex: 1,
   marginRight: 8, // xs spacing
 }
 
 const $activeTitle: TextStyle = {
-  color: '#60a5fa', // Blue accent for active
+  color: '#f4f4f5', // Zinc-100 for active
 }
 
 const $actions: ViewStyle = {
@@ -203,7 +203,7 @@ const $actions: ViewStyle = {
   bottom: 0,
   flexDirection: "row",
   alignItems: "center",
-  backgroundColor: '#1a1a1a', // Our black background
+  backgroundColor: '#000', // Pure black background
   paddingRight: 12, // sm spacing
 }
 
@@ -217,13 +217,13 @@ const $actionButton: ViewStyle = {
 }
 
 const $starButton: ViewStyle = {
-  backgroundColor: '#f59e0b40', // Semi-transparent amber
+  backgroundColor: '#71717a', // Zinc-500 for star
 }
 
 const $editButton: ViewStyle = {
-  backgroundColor: '#1e3a8a', // Dark blue
+  backgroundColor: '#52525b', // Zinc-600 for edit
 }
 
 const $deleteButton: ViewStyle = {
-  backgroundColor: '#7f1d1d', // Dark red
+  backgroundColor: '#52525b', // Zinc-600 for delete
 }

@@ -70,7 +70,7 @@ export function ConvexMobileDemo() {
           value={newMessage}
           onChangeText={setNewMessage}
           placeholder="Type a message..."
-          placeholderTextColor="#666"
+          placeholderTextColor="#71717a"
           multiline
         />
         <TouchableOpacity
@@ -90,16 +90,16 @@ export function ConvexMobileDemo() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#000',
     borderRadius: 8,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#27272a',
   },
   title: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#f4f4f5',
     marginBottom: 16,
     textAlign: 'center',
     fontFamily: Platform.select({
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 12,
-    color: '#999',
+    color: '#a1a1aa',
     marginBottom: 4,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -143,12 +143,12 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     flex: 1,
-    backgroundColor: '#111',
+    backgroundColor: '#18181b',
     borderRadius: 4,
     padding: 8,
   },
   emptyText: {
-    color: '#666',
+    color: '#71717a',
     fontSize: 12,
     textAlign: 'center',
     padding: 16,
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#222',
+    borderBottomColor: '#27272a',
   },
   messageUser: {
     fontSize: 12,
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   },
   messageTime: {
     fontSize: 10,
-    color: '#666',
+    color: '#71717a',
     marginTop: 2,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -200,12 +200,12 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: '#111',
-    color: '#fff',
+    backgroundColor: '#18181b',
+    color: '#f4f4f5',
     padding: 12,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#27272a',
     fontSize: 12,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#374151',
   },
   buttonText: {
-    color: '#fff',
+    color: '#f4f4f5',
     fontSize: 12,
     fontWeight: 'bold',
     fontFamily: Platform.select({

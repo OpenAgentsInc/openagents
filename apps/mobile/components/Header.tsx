@@ -65,7 +65,7 @@ export interface HeaderProps {
  */
 export function Header(props: HeaderProps) {
   const {
-    backgroundColor = '#1a1a1a', // Our black theme
+    backgroundColor = '#000', // Pure black zinc theme
     LeftActionComponent,
     RightActionComponent,
     safeAreaEdges = ["top"],

@@ -119,7 +119,7 @@ export const ScreenWithSidebar: FC<ScreenWithSidebarProps> = ({
                   onPress={() => onNewChat?.()}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <PenSquare size={20} color="#60a5fa" />
+                  <PenSquare size={20} color="#f4f4f5" />
                 </Pressable>
               </View>
             }
@@ -133,10 +133,10 @@ export const ScreenWithSidebar: FC<ScreenWithSidebarProps> = ({
   )
 }
 
-// Styles using our black/gray color scheme
+// Styles using our dark zinc color scheme
 const $headerContainer: ViewStyle = {
   borderBottomWidth: 1,
-  borderBottomColor: '#333', // Gray border
+  borderBottomColor: '#27272a', // Zinc-800 border
 }
 
 const $header: ViewStyle = {
@@ -151,7 +151,7 @@ const $headerRightActions: ViewStyle = {
 }
 
 const $headerTitle: TextStyle = {
-  color: '#60a5fa', // Blue accent color
+  color: '#f4f4f5', // Zinc-100 text
   fontSize: 16,
   lineHeight: 22,
 }
