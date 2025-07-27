@@ -6,6 +6,7 @@ pub mod database;
 pub mod convex_impl;
 pub mod auth;
 pub mod commands;
+pub mod token_storage;
 
 pub use discovery::ClaudeDiscovery;
 pub use manager::ClaudeManager;
@@ -14,4 +15,5 @@ pub use database::{
     ConvexDatabase, SessionRepository, MessageRepository
 };
 pub use convex_impl::EnhancedConvexClient;
+pub use token_storage::{TokenStorage, TokenEntry, TokenInfo};
 // pub use auth::{AuthService, AuthContext}; // Commented out - will be used in auth integration (Issue #1215)

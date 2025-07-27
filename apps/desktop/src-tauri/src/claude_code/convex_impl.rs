@@ -2,8 +2,10 @@ use async_trait::async_trait;
 use convex::{ConvexClient as OfficialConvexClient, Value as ConvexValue, FunctionResult};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use reqwest::Client as HttpClient;
 use crate::error::AppError;
 use super::auth::{AuthService, AuthContext};
+use super::token_storage::{TokenStorage, TokenInfo};
 use super::database::{
     ConvexDatabase, SessionRepository, MessageRepository, ApmRepository, UserRepository, BatchOperations,
     CreateSessionRequest, UpdateSessionRequest, CreateMessageRequest, UpdateMessageRequest,
@@ -11,39 +13,62 @@ use super::database::{
     BatchQuery, BatchMutation,
 };
 use super::models::{ConvexSession, ConvexMessage};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Enhanced Convex client implementation with database abstractions and authentication
 /// 
-/// Phase 2: Updated to use Authorization headers instead of manual auth injection
+/// Phase 3: Updated with HTTP client, token storage, and refresh logic
 pub struct EnhancedConvexClient {
     client: OfficialConvexClient,
+    http_client: HttpClient,
+    convex_url: String,
     auth_service: Option<AuthService>,
     auth_token: Option<String>, // JWT token for Authorization header
+    token_storage: TokenStorage,
+    openauth_domain: String,
 }
 
 impl EnhancedConvexClient {
     /// Create a new enhanced Convex client
     /// 
-    /// Phase 2: Updated to store JWT token for Authorization header usage
+    /// Phase 3: Updated with HTTP client, token storage, and refresh logic
     pub async fn new(convex_url: &str, auth_token: Option<String>) -> Result<Self, AppError> {
         let client = OfficialConvexClient::new(convex_url)
             .await
             .map_err(|e| AppError::ConvexConnectionError(format!("Failed to create Convex client: {}", e)))?;
         
+        let http_client = HttpClient::new();
+        let mut token_storage = TokenStorage::new();
+        token_storage.load_from_storage()?;
+        
+        let openauth_domain = std::env::var("OPENAUTH_DOMAIN")
+            .unwrap_or_else(|_| "https://auth.openagents.com".to_string());
+        
         Ok(Self { 
             client, 
+            http_client,
+            convex_url: convex_url.to_string(),
             auth_service: None,
             auth_token,
+            token_storage,
+            openauth_domain,
         })
     }
 
     /// Create a new enhanced Convex client with authentication service
     /// 
-    /// Phase 2: Updated to use auth_token instead of manual_auth_token
+    /// Phase 3: Updated with HTTP client, token storage, and refresh logic
     pub async fn new_with_auth(convex_url: &str, auth_service: AuthService) -> Result<Self, AppError> {
         let client = OfficialConvexClient::new(convex_url)
             .await
             .map_err(|e| AppError::ConvexConnectionError(format!("Failed to create Convex client: {}", e)))?;
+        
+        let http_client = HttpClient::new();
+        let mut token_storage = TokenStorage::new();
+        token_storage.load_from_storage()?;
+        
+        let openauth_domain = std::env::var("OPENAUTH_DOMAIN")
+            .unwrap_or_else(|_| "https://auth.openagents.com".to_string());
         
         // Extract token from auth service if available
         let auth_token = auth_service.get_auth_context()
@@ -51,8 +76,12 @@ impl EnhancedConvexClient {
         
         Ok(Self { 
             client, 
+            http_client,
+            convex_url: convex_url.to_string(),
             auth_service: Some(auth_service),
             auth_token,
+            token_storage,
+            openauth_domain,
         })
     }
 
@@ -92,22 +121,171 @@ impl EnhancedConvexClient {
         }
     }
 
-    /// Get Authorization header value for HTTP requests
+    /// Store authentication token securely
     /// 
-    /// Phase 2: New method to support proper Authorization header approach
-    /// Returns "Bearer {token}" format for use in HTTP requests to Convex
-    pub fn get_authorization_header(&self) -> Option<String> {
+    /// Phase 3: Secure token storage with automatic expiration handling
+    pub fn store_auth_token(&mut self, token: String, expires_at: Option<u64>) -> Result<(), AppError> {
+        // Store token in both places for compatibility
+        self.auth_token = Some(token.clone());
+        self.token_storage.store_token("access_token", token, expires_at)?;
+        log::info!("Stored authentication token");
+        Ok(())
+    }
+
+    /// Get valid authentication token (with automatic refresh if needed)
+    /// 
+    /// Phase 3: Automatic token validation and refresh
+    pub async fn get_valid_token(&mut self) -> Result<Option<String>, AppError> {
+        // Check if token needs refresh
+        if self.token_needs_refresh()? {
+            log::info!("Token needs refresh, attempting to refresh");
+            self.refresh_token().await?;
+        }
+
+        // Try to get token from storage first
+        if let Some(token) = self.token_storage.get_token("access_token")? {
+            self.auth_token = Some(token.clone());
+            return Ok(Some(token));
+        }
+
+        // Fallback to auth service token
         if let Some(auth_service) = &self.auth_service {
             if let Some(auth_context) = auth_service.get_auth_context() {
-                return Some(format!("Bearer {}", auth_context.token));
+                return Ok(Some(auth_context.token.clone()));
             }
         }
+
+        // Fallback to stored token
+        Ok(self.auth_token.clone())
+    }
+
+    /// Check if current token needs refresh
+    /// 
+    /// Phase 3: Token expiration checking with configurable buffer
+    pub fn token_needs_refresh(&self) -> Result<bool, AppError> {
+        let needing_refresh = self.token_storage.get_tokens_needing_refresh(300); // 5 minute buffer
+        Ok(needing_refresh.contains(&"access_token".to_string()))
+    }
+
+    /// Refresh authentication token
+    /// 
+    /// Phase 3: Automatic token refresh from OpenAuth
+    pub async fn refresh_token(&mut self) -> Result<(), AppError> {
+        // TODO: Phase 3 - Implement actual token refresh with OpenAuth
+        // For now, this is a placeholder that would:
+        // 1. Check if refresh token is available
+        // 2. Make request to OpenAuth token endpoint
+        // 3. Store new access token
+        // 4. Update internal token state
         
-        if let Some(token) = &self.auth_token {
-            return Some(format!("Bearer {}", token));
+        log::warn!("Token refresh not yet implemented - OpenAuth server issues prevent full implementation");
+        
+        // Placeholder implementation
+        // In real implementation, this would make an HTTP request to:
+        // POST https://auth.openagents.com/token
+        // with refresh_token grant_type
+        
+        Ok(())
+    }
+
+    /// Clear all stored authentication tokens
+    /// 
+    /// Phase 3: Complete logout with secure token cleanup
+    pub fn logout(&mut self) -> Result<(), AppError> {
+        self.auth_token = None;
+        self.auth_service = None;
+        self.token_storage.clear_all_tokens()?;
+        log::info!("Logged out - cleared all stored tokens");
+        Ok(())
+    }
+
+    /// Get token information without exposing the token
+    /// 
+    /// Phase 3: Token metadata for UI and debugging
+    pub fn get_token_info(&self) -> Option<TokenInfo> {
+        self.token_storage.get_token_info("access_token")
+    }
+
+    /// Get Authorization header value for HTTP requests
+    /// 
+    /// Phase 3: Enhanced with automatic token refresh
+    /// Returns "Bearer {token}" format for use in HTTP requests to Convex
+    pub async fn get_authorization_header(&mut self) -> Result<Option<String>, AppError> {
+        if let Some(token) = self.get_valid_token().await? {
+            Ok(Some(format!("Bearer {}", token)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Execute Convex function with HTTP client and Authorization header
+    /// 
+    /// Phase 3: Direct HTTP API calls to Convex with proper JWT authentication
+    /// This bypasses the limitations of the convex Rust client v0.9 for header support
+    async fn execute_with_http_auth<T>(&mut self, operation_type: &str, function_name: &str, args: Value) -> Result<T, AppError>
+    where
+        T: for<'de> serde::Deserialize<'de>,
+    {
+        let convex_args = self.convert_args(args)?;
+        
+        // Convert ConvexValue arguments back to JSON for HTTP API
+        let json_args = self.convex_args_to_json(convex_args)?;
+        
+        // Construct Convex HTTP API URL
+        let api_url = format!("{}/api/{}/{}", self.convex_url, operation_type, function_name);
+        
+        // Prepare HTTP request
+        let mut request = self.http_client
+            .post(&api_url)
+            .header("Content-Type", "application/json")
+            .json(&json_args);
+        
+        // Add Authorization header if available
+        if let Some(auth_header) = self.get_authorization_header().await? {
+            request = request.header("Authorization", auth_header);
+            log::debug!("Making authenticated {} request to {}", operation_type, function_name);
+        } else {
+            log::debug!("Making unauthenticated {} request to {}", operation_type, function_name);
         }
         
-        None
+        // Execute request
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AppError::ConvexDatabaseError(format!("HTTP request failed: {}", e)))?;
+        
+        // Check response status
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AppError::ConvexDatabaseError(
+                format!("Convex HTTP API error {}: {}", status, error_text)
+            ));
+        }
+        
+        // Parse response
+        let json_response: Value = response
+            .json()
+            .await
+            .map_err(|e| AppError::ConvexDatabaseError(format!("Failed to parse response: {}", e)))?;
+        
+        // Deserialize to target type
+        serde_json::from_value(json_response)
+            .map_err(|e| AppError::ConvexDatabaseError(format!("Failed to deserialize response: {}", e)))
+    }
+
+    /// Convert ConvexValue arguments back to JSON for HTTP API
+    /// 
+    /// Phase 3: Helper method for HTTP API compatibility
+    fn convex_args_to_json(&self, convex_args: BTreeMap<String, ConvexValue>) -> Result<Value, AppError> {
+        let mut json_obj = serde_json::Map::new();
+        
+        for (key, convex_value) in convex_args {
+            let json_value = self.convex_value_to_json(convex_value)?;
+            json_obj.insert(key, json_value);
+        }
+        
+        Ok(Value::Object(json_obj))
     }
 
     /// Convert serde_json::Value to BTreeMap<String, ConvexValue>
@@ -211,22 +389,22 @@ impl EnhancedConvexClient {
 
     /// Execute a Convex operation with error handling
     /// 
-    /// Phase 2: Updated to support Authorization header approach
-    /// Note: Current Convex Rust client (v0.9) limitations require frontend-level auth handling
+    /// Phase 3: Uses HTTP client with Authorization headers when available
+    /// Falls back to standard Convex client for non-authenticated requests
     async fn execute_operation<T>(&mut self, operation_type: &str, function_name: &str, args: Value) -> Result<T, AppError>
     where
         T: for<'de> serde::Deserialize<'de>,
     {
-        let convex_args = self.convert_args(args)?;
-        
-        // Log authentication status for debugging
-        if let Some(auth_header) = self.get_authorization_header() {
-            log::debug!("Executing {} '{}' with authentication", operation_type, function_name);
-            // TODO: Phase 3 - Implement actual Authorization header passing when Convex client supports it
-            // For now, this relies on Convex configuration and frontend authentication
-        } else {
-            log::debug!("Executing {} '{}' without authentication", operation_type, function_name);
+        // Phase 3: Use HTTP client with Authorization headers when we have a token
+        if self.get_authorization_header().await?.is_some() {
+            log::debug!("Using HTTP client with Authorization header for {} '{}'", operation_type, function_name);
+            return self.execute_with_http_auth(operation_type, function_name, args).await;
         }
+
+        // Fallback to standard Convex client for non-authenticated requests
+        log::debug!("Using standard Convex client for {} '{}' (no auth)", operation_type, function_name);
+        
+        let convex_args = self.convert_args(args)?;
 
         let result = match operation_type {
             "query" => {

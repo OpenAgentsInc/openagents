@@ -25,10 +25,10 @@ mod baseline_tests {
         // Should create client successfully
         assert!(client_result.is_ok());
         
-        let client = client_result.unwrap();
+        let mut client = client_result.unwrap();
         
         // Test that client provides proper Authorization header format
-        let auth_header = client.get_authorization_header();
+        let auth_header = client.get_authorization_header().await.unwrap();
         assert!(auth_header.is_some());
         assert_eq!(auth_header.unwrap(), "Bearer test_jwt_token");
         

@@ -67,6 +67,10 @@ impl ConvexAuth {
     }
 
     /// Validate a JWT token and extract user context
+    /// 
+    /// DEPRECATED in Phase 3: Convex handles JWT validation automatically via auth.config.ts
+    /// This method is kept for compatibility but should not be used in new code
+    #[deprecated(note = "Phase 3: Use Convex JWT validation via ctx.auth.getUserIdentity() instead")]
     pub fn validate_token(&self, token: &str) -> Result<AuthContext, AppError> {
         let decoding_key = self.decoding_key.as_ref()
             .ok_or_else(|| AppError::ConvexAuthError("No decoding key configured".to_string()))?;
@@ -100,8 +104,10 @@ impl ConvexAuth {
 
     /// Extract basic user info from token without full validation (DEVELOPMENT ONLY)
     /// 
+    /// DEPRECATED in Phase 3: Convex handles JWT validation automatically via auth.config.ts
     /// WARNING: This method bypasses signature verification and should NEVER be used in production
     /// It's only intended for development/testing when JWKS is not available
+    #[deprecated(note = "Phase 3: Use Convex JWT validation via ctx.auth.getUserIdentity() instead")]
     #[cfg(debug_assertions)]
     pub fn extract_user_info_unsafe(&self, token: &str) -> Result<AuthContext, AppError> {
         log::warn!("Using unsafe token extraction - DO NOT USE IN PRODUCTION");
@@ -141,6 +147,9 @@ impl ConvexAuth {
     }
 
     /// Fetch JWKS (JSON Web Key Set) from OpenAuth server
+    /// 
+    /// DEPRECATED in Phase 3: Convex handles JWKS fetching automatically via auth.config.ts
+    #[deprecated(note = "Phase 3: Convex fetches JWKS automatically from configured jwks endpoint")]
     pub async fn fetch_jwks(&mut self) -> Result<(), AppError> {
         let jwks_url = format!("{}/.well-known/jwks.json", self.openauth_domain);
         
