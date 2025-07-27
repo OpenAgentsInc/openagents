@@ -24,6 +24,30 @@ pub enum AppError {
     #[error("Claude error: {0}")]
     ClaudeError(#[from] crate::claude_code::models::ClaudeError),
 
+    /// Convex client connection errors
+    #[error("Convex connection error: {0}")]
+    ConvexConnectionError(String),
+
+    /// Convex authentication errors
+    #[error("Convex authentication error: {0}")]
+    ConvexAuthError(String),
+
+    /// Convex database operation errors
+    #[error("Convex database error: {0}")]
+    ConvexDatabaseError(String),
+
+    /// Convex subscription errors
+    #[error("Convex subscription error: {0}")]
+    ConvexSubscriptionError(String),
+
+    /// JWT token validation errors
+    #[error("JWT validation error: {0}")]
+    JwtValidationError(#[from] jsonwebtoken::errors::Error),
+
+    /// Base64 decoding errors
+    #[error("Base64 decode error: {0}")]
+    Base64DecodeError(#[from] base64::DecodeError),
+
     /// IO errors
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -119,5 +143,27 @@ mod tests {
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
         let app_error: AppError = io_error.into();
         assert!(matches!(app_error, AppError::Io(_)));
+    }
+
+    #[test]
+    fn test_convex_errors() {
+        let connection_error = AppError::ConvexConnectionError("Failed to connect".to_string());
+        assert_eq!(connection_error.to_string(), "Convex connection error: Failed to connect");
+
+        let auth_error = AppError::ConvexAuthError("Invalid token".to_string());
+        assert_eq!(auth_error.to_string(), "Convex authentication error: Invalid token");
+
+        let db_error = AppError::ConvexDatabaseError("Query failed".to_string());
+        assert_eq!(db_error.to_string(), "Convex database error: Query failed");
+
+        let subscription_error = AppError::ConvexSubscriptionError("Connection lost".to_string());
+        assert_eq!(subscription_error.to_string(), "Convex subscription error: Connection lost");
+    }
+
+    #[test]
+    fn test_base64_error_conversion() {
+        let decode_error = base64::DecodeError::InvalidByte(0, b'!');
+        let app_error: AppError = decode_error.into();
+        assert!(matches!(app_error, AppError::Base64DecodeError(_)));
     }
 }

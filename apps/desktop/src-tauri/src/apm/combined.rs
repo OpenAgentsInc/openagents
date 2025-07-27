@@ -3,10 +3,11 @@ use std::env;
 use log::info;
 
 use crate::error::{AppError, AppResult};
+use crate::claude_code::{EnhancedConvexClient, ConvexDatabase};
 use super::models::{APMStats, CombinedAPMStats, ToolUsage, ProductivityByTime};
 use super::utils::get_tool_category;
 
-/// Fetch APM stats from Convex backend
+/// Fetch APM stats from Convex backend using native client
 pub async fn fetch_convex_apm_stats() -> AppResult<APMStats> {
     // Load environment variables from .env file
     dotenvy::dotenv().ok();
@@ -17,57 +18,18 @@ pub async fn fetch_convex_apm_stats() -> AppResult<APMStats> {
             "Convex URL not configured. Set VITE_CONVEX_URL or CONVEX_URL environment variable.".to_string()
         ))?;
     
-    info!("Fetching Convex APM stats from: {}", convex_url);
+    info!("Fetching Convex APM stats from: {} using native client", convex_url);
     
-    let client = reqwest::Client::new();
-    let url = format!("{}/api/query", convex_url);
+    // Create enhanced Convex client
+    let mut client = EnhancedConvexClient::new(&convex_url, None).await
+        .map_err(|e| AppError::ConvexConnectionError(format!("Failed to create Convex client: {}", e)))?;
     
-    let payload = serde_json::json!({
-        "path": "claude:getConvexAPMStats",
-        "args": {},
-        "format": "json"
-    });
+    // Call the Convex function directly using the native client
+    let args = serde_json::json!({});
+    let apm_stats: APMStats = client.query("claude:getConvexAPMStats", args).await
+        .map_err(|e| AppError::ConvexDatabaseError(format!("Failed to fetch APM stats: {}", e)))?;
     
-    let response = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| AppError::Http(e))?;
-    
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "Unable to read error response".to_string());
-        return Err(AppError::ApmError(format!("Convex request failed with status {}: {}", status, error_text)));
-    }
-    
-    let text = response.text().await
-        .map_err(|e| AppError::Http(e))?;
-    
-    info!("Convex response: {}", &text[..text.len().min(500)]); // Log first 500 chars
-    
-    // Parse the response - Convex returns the result directly
-    let convex_result: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| AppError::Json(e))?;
-    
-    // Extract the actual data from the Convex response
-    let stats_data = if convex_result.is_object() && convex_result.get("status").is_some() {
-        // Handle Convex API response format: {"status": "success", "value": {...}}
-        if convex_result["status"].as_str() != Some("success") {
-            return Err(AppError::ApmError(format!("Convex error: {}", 
-                convex_result.get("error").and_then(|e| e.as_str()).unwrap_or("Unknown error"))));
-        }
-        // Extract data from "value" field
-        convex_result.get("value").unwrap_or(&convex_result)
-    } else {
-        // Direct response
-        &convex_result
-    };
-    
-    // Convert to APMStats struct
-    let apm_stats: APMStats = serde_json::from_value(stats_data.clone())
-        .map_err(|e| AppError::Json(e))?;
+    info!("Successfully fetched APM stats using native Convex client");
     
     Ok(apm_stats)
 }

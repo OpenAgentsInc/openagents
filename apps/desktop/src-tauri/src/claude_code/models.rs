@@ -160,6 +160,25 @@ impl From<ClaudeConversation> for UnifiedSession {
     }
 }
 
+// Convex message response structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConvexMessage {
+    #[serde(rename = "_id")]
+    pub id: String,
+    #[serde(rename = "_creationTime")]
+    pub creation_time: f64,
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub content: String,
+    pub role: String, // "user", "assistant", "system"
+    #[serde(rename = "userId")]
+    pub user_id: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+    pub status: Option<String>,
+    #[serde(rename = "timestamp")]
+    pub timestamp: Option<f64>,
+}
+
 impl From<ConvexSession> for UnifiedSession {
     fn from(session: ConvexSession) -> Self {
         // Convert creation time from milliseconds to DateTime

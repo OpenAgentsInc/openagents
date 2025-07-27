@@ -21,6 +21,13 @@ use commands::{
     system::{greet, get_project_directory},
 };
 
+// Import Convex commands
+use claude_code::commands::{
+    test_convex_connection, get_sessions, create_convex_session,
+    update_session, delete_session, get_session_by_id, get_convex_messages,
+    add_message, update_message, delete_message, get_message_by_id,
+};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging with info level
@@ -48,6 +55,18 @@ pub fn run() {
             analyze_claude_conversations,
             analyze_combined_conversations,
             get_historical_apm_data,
+            // Convex commands
+            test_convex_connection,
+            get_sessions,
+            create_convex_session,
+            update_session,
+            delete_session,
+            get_session_by_id,
+            get_convex_messages,
+            add_message,
+            update_message,
+            delete_message,
+            get_message_by_id,
         ])
         .setup(|app| {
             // During development, try to prevent window from stealing focus on hot reload

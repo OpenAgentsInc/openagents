@@ -83,6 +83,9 @@ bun add <package> --cwd apps/mobile
 # Rust dependencies (from apps/desktop/src-tauri/)
 cd apps/desktop/src-tauri
 cargo add <package>
+
+# CRITICAL: NEVER manually edit Cargo.toml files
+# ALWAYS use `cargo add` and `cargo remove` commands for Rust dependencies
 ```
 
 **Shared package dependencies**:
