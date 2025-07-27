@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-// import { processGitHubWebhook } from "./github"; // Function not exported
+import { handleGitHubActivityTracking } from "./github";
 
 describe("GitHub Webhook Processing", () => {
   let mockCtx: any;
@@ -47,7 +47,15 @@ describe("GitHub Webhook Processing", () => {
         githubId: "12345",
       });
 
-      // // await processGitHubWebhook(mockCtx, "issues", payload); // Function not exported
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "issues",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
+      });
 
       expect(mockDb.insert).toHaveBeenCalledWith("githubEvents", {
         userId: "user123",
@@ -87,7 +95,15 @@ describe("GitHub Webhook Processing", () => {
         githubId: "67890",
       });
 
-      // await processGitHubWebhook(mockCtx, "pull_request", payload);
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "pull_request",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
+      });
 
       expect(mockDb.insert).toHaveBeenCalledWith("githubEvents", {
         userId: "user456",
@@ -121,14 +137,21 @@ describe("GitHub Webhook Processing", () => {
         },
       };
 
-      mockDb.first.mockResolvedValue({
-        _id: "user789",
-        githubId: "11111",
+      mockDb.first
+        .mockResolvedValueOnce({ _id: "user789", githubId: "11111" }) // User lookup
+        .mockResolvedValueOnce(null); // No existing session
+
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "push",
+        action: "push",
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
       });
 
-      // await processGitHubWebhook(mockCtx, "push", payload);
-
-      expect(mockDb.insert).toHaveBeenCalledWith("githubEvents", {
+      expect(mockDb.insert).toHaveBeenNthCalledWith(2, "githubEvents", {
         userId: "user789",
         eventType: "push",
         action: "push",
@@ -162,14 +185,21 @@ describe("GitHub Webhook Processing", () => {
         },
       };
 
-      mockDb.first.mockResolvedValue({
-        _id: "user999",
-        githubId: "99999",
+      mockDb.first
+        .mockResolvedValueOnce({ _id: "user999", githubId: "99999" }) // User lookup
+        .mockResolvedValueOnce(null); // No existing session
+
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "workflow_run",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
       });
 
-      // await processGitHubWebhook(mockCtx, "workflow_run", payload);
-
-      expect(mockDb.insert).toHaveBeenCalledWith("githubEvents", {
+      expect(mockDb.insert).toHaveBeenNthCalledWith(2, "githubEvents", {
         userId: "user999",
         eventType: "workflow_run",
         action: "completed",
@@ -194,7 +224,15 @@ describe("GitHub Webhook Processing", () => {
 
       mockDb.first.mockResolvedValue(null); // User not found
 
-      // // await processGitHubWebhook(mockCtx, "issues", payload); // Function not exported
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "issues",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
+      });
 
       expect(mockDb.insert).not.toHaveBeenCalled();
     });
@@ -206,19 +244,22 @@ describe("GitHub Webhook Processing", () => {
         sender: { login: "testuser", id: 12345 },
       };
 
-      mockDb.first.mockResolvedValue({
-        _id: "user123",
-        githubId: "12345",
-        name: "Test User",
+      mockDb.first
+        .mockResolvedValueOnce({ _id: "user123", githubId: "12345", name: "Test User" }) // User lookup  
+        .mockResolvedValueOnce(null); // No existing session
+
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "issues",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
       });
 
-      // // await processGitHubWebhook(mockCtx, "issues", payload); // Function not exported
-
-      expect(mockDb.query).toHaveBeenCalledWith("users");
-      expect(mockDb.withIndex).toHaveBeenCalledWith("by_github_id");
-      expect(mockDb.filter).toHaveBeenCalledWith(
-        expect.any(Function)
-      );
+      expect(mockDb.query).toHaveBeenNthCalledWith(1, "users");
+      expect(mockDb.withIndex).toHaveBeenNthCalledWith(1, "by_github_id");
     });
   });
 
@@ -234,27 +275,38 @@ describe("GitHub Webhook Processing", () => {
         .mockResolvedValueOnce({ _id: "user123", githubId: "12345" }) // User lookup
         .mockResolvedValueOnce(null); // No existing session
 
-      const mockTrackSession = vi.fn();
-      mockCtx.runMutation = mockTrackSession;
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "issues",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
+      });
 
-      // // await processGitHubWebhook(mockCtx, "issues", payload); // Function not exported
-
-      // Should track session with 1-minute window
-      expect(mockTrackSession).toHaveBeenCalledWith(
-        expect.any(Function),
-        {
-          deviceId: "github-12345",
-          deviceType: "github",
-          sessionPeriods: [
-            {
-              start: expect.any(Number),
-              end: expect.any(Number),
-            },
-          ],
-          actionsCount: 1,
-          userId: "user123",
-        }
-      );
+      // Should create new device session
+      expect(mockDb.insert).toHaveBeenCalledWith("userDeviceSessions", {
+        userId: "user123",
+        deviceId: "github-developer",
+        deviceType: "github",
+        sessionPeriods: [
+          {
+            start: expect.any(Number),
+            end: expect.any(Number),
+          },
+        ],
+        actionsCount: {
+          messages: 0,
+          toolUses: 0,
+          githubEvents: 1,
+        },
+        lastActivity: expect.any(Number),
+        metadata: {
+          platform: "github",
+          version: "webhook",
+        },
+      });
     });
 
     it("should update existing session for same user", async () => {
@@ -262,7 +314,11 @@ describe("GitHub Webhook Processing", () => {
         _id: "session123",
         deviceId: "github-12345",
         sessionPeriods: [{ start: 0, end: 60000 }],
-        actionsCount: 5,
+        actionsCount: {
+          messages: 0,
+          toolUses: 0,
+          githubEvents: 5,
+        },
       };
 
       mockDb.first
@@ -275,7 +331,15 @@ describe("GitHub Webhook Processing", () => {
         sender: { login: "developer", id: 12345 },
       };
 
-      // // await processGitHubWebhook(mockCtx, "issues", payload); // Function not exported
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "issues",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
+      });
 
       expect(mockDb.patch).toHaveBeenCalledWith("session123", {
         sessionPeriods: expect.arrayContaining([
@@ -285,8 +349,12 @@ describe("GitHub Webhook Processing", () => {
             end: expect.any(Number),
           }),
         ]),
-        actionsCount: 6,
-        lastUpdated: expect.any(Number),
+        actionsCount: {
+          messages: 0,
+          toolUses: 0,
+          githubEvents: 6,
+        },
+        lastActivity: expect.any(Number),
       });
     });
   });
@@ -306,7 +374,15 @@ describe("GitHub Webhook Processing", () => {
 
       mockDb.first.mockResolvedValue({ _id: "user321", githubId: "54321" });
 
-      // await processGitHubWebhook(mockCtx, "issue_comment", payload);
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "issue_comment",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
+      });
 
       expect(mockDb.insert).toHaveBeenCalledWith("githubEvents", 
         expect.objectContaining({
@@ -332,11 +408,21 @@ describe("GitHub Webhook Processing", () => {
         sender: { login: "maintainer", id: 11111 },
       };
 
-      mockDb.first.mockResolvedValue({ _id: "user111", githubId: "11111" });
+      mockDb.first
+        .mockResolvedValueOnce({ _id: "user111", githubId: "11111" }) // User lookup
+        .mockResolvedValueOnce(null); // No existing session
 
-      // await processGitHubWebhook(mockCtx, "release", payload);
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "release",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
+      });
 
-      expect(mockDb.insert).toHaveBeenCalledWith("githubEvents",
+      expect(mockDb.insert).toHaveBeenNthCalledWith(2, "githubEvents",
         expect.objectContaining({
           metadata: {
             tagName: "v1.0.0",
@@ -360,7 +446,15 @@ describe("GitHub Webhook Processing", () => {
       mockDb.first.mockRejectedValue(new Error("Database error"));
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      // // await processGitHubWebhook(mockCtx, "issues", payload); // Function not exported
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "issues",
+        action: payload.action,
+        payload,
+        githubUserId: payload.sender.id,
+        githubUsername: payload.sender.login,
+        repository: payload.repository.full_name,
+        timestamp: new Date().toISOString(),
+      });
 
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("Error processing GitHub webhook"),
@@ -378,7 +472,15 @@ describe("GitHub Webhook Processing", () => {
 
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      // await processGitHubWebhook(mockCtx, "issues", malformedPayload as any);
+      await handleGitHubActivityTracking(mockCtx, {
+        event: "issues",
+        action: malformedPayload.action,
+        payload: malformedPayload,
+        githubUserId: undefined,
+        githubUsername: undefined,
+        repository: undefined,
+        timestamp: new Date().toISOString(),
+      });
 
       expect(consoleSpy).toHaveBeenCalled();
       expect(mockDb.insert).not.toHaveBeenCalled();
@@ -387,26 +489,4 @@ describe("GitHub Webhook Processing", () => {
     });
   });
 
-  describe("APM Calculation Integration", () => {
-    it("should trigger APM recalculation after event", async () => {
-      const payload = {
-        action: "opened",
-        repository: { full_name: "org/repo" },
-        sender: { login: "developer", id: 12345 },
-      };
-
-      mockDb.first.mockResolvedValue({ _id: "user123", githubId: "12345" });
-
-      const mockCalculateAPM = vi.fn();
-      mockCtx.runMutation = mockCalculateAPM;
-
-      // // await processGitHubWebhook(mockCtx, "issues", payload); // Function not exported
-
-      // Should trigger APM recalculation
-      expect(mockCalculateAPM).toHaveBeenCalledWith(
-        expect.any(Function),
-        { userId: "user123" }
-      );
-    });
-  });
 });

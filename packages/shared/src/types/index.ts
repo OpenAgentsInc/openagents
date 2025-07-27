@@ -12,4 +12,7 @@ export interface Message {
   timestamp: number;
 }
 
+// Recharts React 19 compatibility
+export * from './recharts-compat';
+
 // Add more shared types as needed
