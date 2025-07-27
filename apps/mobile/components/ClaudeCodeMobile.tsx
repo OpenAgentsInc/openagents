@@ -243,8 +243,12 @@ export function ClaudeCodeMobile() {
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <CustomText style={styles.modalTitle}>Create New Session</CustomText>
-            <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-              <CustomText style={styles.modalClose}>✕</CustomText>
+            <TouchableOpacity 
+              onPress={() => setShowCreateModal(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close create session dialog"
+            >
+              <CustomText style={styles.modalClose}>×</CustomText>
             </TouchableOpacity>
           </View>
 
@@ -300,6 +304,9 @@ export function ClaudeCodeMobile() {
               ]}
               onPress={handleCreateSession}
               disabled={!newProjectPath.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Create new desktop session"
+              accessibilityState={{ disabled: !newProjectPath.trim() }}
             >
               <CustomText style={styles.createButtonText}>
                 Create Desktop Session

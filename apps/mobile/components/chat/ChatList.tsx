@@ -1,5 +1,5 @@
-import { useMemo } from "react"
-import { View, ViewStyle, TextStyle, FlatList, Alert, Pressable } from "react-native"
+import { useMemo, useCallback, useState } from "react"
+import { View, ViewStyle, TextStyle, FlatList, Pressable, TextInput, TouchableOpacity, Modal } from "react-native"
 import { Plus } from "lucide-react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
@@ -27,6 +27,9 @@ export function ChatList({
   onSessionRename,
 }: ChatListProps) {
   const { top } = useSafeAreaInsets()
+  const [showRenameModal, setShowRenameModal] = useState(false)
+  const [renameSession, setRenameSession] = useState<ChatSession | null>(null)
+  const [renameValue, setRenameValue] = useState("")
 
   // Sort sessions by last updated, with starred first
   const sortedSessions = useMemo(() => {
@@ -39,39 +42,39 @@ export function ChatList({
     })
   }, [sessions])
 
-  const handleSessionPress = (sessionId: string) => {
+  const handleSessionPress = useCallback((sessionId: string) => {
     onSessionSelect(sessionId)
-  }
+  }, [onSessionSelect])
 
-  const handleSessionDelete = (sessionId: string) => {
+  const handleSessionDelete = useCallback((sessionId: string) => {
     onSessionDelete(sessionId)
-  }
+  }, [onSessionDelete])
 
-  const handleSessionStar = (sessionId: string) => {
+  const handleSessionStar = useCallback((sessionId: string) => {
     onSessionStar(sessionId)
-  }
+  }, [onSessionStar])
 
-  const handleSessionRename = (session: ChatSession) => {
+  const handleSessionRename = useCallback((session: ChatSession) => {
     if (!onSessionRename) return
+    setRenameSession(session)
+    setRenameValue(session.title || "")
+    setShowRenameModal(true)
+  }, [onSessionRename])
 
-    Alert.prompt(
-      "Rename Chat",
-      "Enter a new name for this chat:",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Rename",
-          onPress: (newTitle) => {
-            if (newTitle && newTitle.trim()) {
-              onSessionRename(session.id, newTitle.trim())
-            }
-          },
-        },
-      ],
-      "plain-text",
-      session.title,
-    )
-  }
+  const handleRenameConfirm = useCallback(() => {
+    if (renameSession && onSessionRename && renameValue.trim()) {
+      onSessionRename(renameSession.id, renameValue.trim())
+    }
+    setShowRenameModal(false)
+    setRenameSession(null)
+    setRenameValue("")
+  }, [renameSession, onSessionRename, renameValue])
+
+  const handleRenameCancel = useCallback(() => {
+    setShowRenameModal(false)
+    setRenameSession(null)
+    setRenameValue("")
+  }, [])
 
   const renderSessionItem = ({ item }: { item: ChatSession }) => (
     <ChatListItem
@@ -97,7 +100,12 @@ export function ChatList({
         {/* Header */}
         <View style={[$header, { paddingTop: top + 16 }]}>
           <Text style={$headerTitle}>Chats</Text>
-          <Pressable onPress={onNewChat} style={$newChatButton}>
+          <Pressable 
+            onPress={onNewChat} 
+            style={$newChatButton}
+            accessibilityRole="button"
+            accessibilityLabel="Create new chat"
+          >
             <Plus size={20} color="#fff" />
           </Pressable>
         </View>
@@ -112,7 +120,12 @@ export function ChatList({
       {/* Header */}
       <View style={[$header, { paddingTop: top + 16 }]}>
         <Text style={$headerTitle}>Chats</Text>
-        <Pressable onPress={onNewChat} style={$newChatButton}>
+        <Pressable 
+          onPress={onNewChat} 
+          style={$newChatButton}
+          accessibilityRole="button"
+          accessibilityLabel="Create new chat"
+        >
           <Plus size={20} color="#fff" />
         </Pressable>
       </View>
@@ -125,6 +138,63 @@ export function ChatList({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={$listContent}
       />
+
+      {/* Rename Modal */}
+      <Modal
+        visible={showRenameModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleRenameCancel}
+      >
+        <View style={$modalOverlay}>
+          <View style={$modalContent}>
+            <View style={$modalHeader}>
+              <Text style={$modalTitle}>Rename Chat</Text>
+              <TouchableOpacity 
+                onPress={handleRenameCancel}
+                accessibilityRole="button"
+                accessibilityLabel="Close rename dialog"
+              >
+                <Text style={$modalClose}>×</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={$modalBody}>
+              <Text style={$modalLabel}>Enter new name:</Text>
+              <TextInput
+                style={$modalInput}
+                value={renameValue}
+                onChangeText={setRenameValue}
+                placeholder="Chat name"
+                placeholderTextColor="#666"
+                autoFocus
+                selectTextOnFocus
+                accessibilityLabel="Chat name input"
+              />
+              
+              <View style={$modalActions}>
+                <TouchableOpacity 
+                  style={[$modalButton, $modalCancelButton]} 
+                  onPress={handleRenameCancel}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel rename"
+                >
+                  <Text style={$modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[$modalButton, $modalConfirmButton, !renameValue.trim() && $modalButtonDisabled]} 
+                  onPress={handleRenameConfirm}
+                  disabled={!renameValue.trim()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Confirm rename"
+                >
+                  <Text style={$modalConfirmText}>Rename</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -180,4 +250,100 @@ const $emptyStateSubtext: TextStyle = {
   fontSize: 14,
   color: '#666', // Even dimmer text
   textAlign: "center",
+}
+
+// Modal styles
+const $modalOverlay: ViewStyle = {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  justifyContent: 'center',
+  alignItems: 'center',
+}
+
+const $modalContent: ViewStyle = {
+  backgroundColor: '#1a1a1a',
+  borderRadius: 12,
+  width: '90%',
+  maxWidth: 400,
+  borderWidth: 1,
+  borderColor: '#333',
+}
+
+const $modalHeader: ViewStyle = {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: 16,
+  borderBottomWidth: 1,
+  borderBottomColor: '#333',
+}
+
+const $modalTitle: TextStyle = {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#fff',
+}
+
+const $modalClose: TextStyle = {
+  fontSize: 20,
+  color: '#999',
+  fontWeight: 'bold',
+}
+
+const $modalBody: ViewStyle = {
+  padding: 16,
+}
+
+const $modalLabel: TextStyle = {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: 'bold',
+  marginBottom: 8,
+}
+
+const $modalInput: TextStyle = {
+  backgroundColor: '#111',
+  color: '#fff',
+  padding: 12,
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#333',
+  fontSize: 14,
+  marginBottom: 16,
+}
+
+const $modalActions: ViewStyle = {
+  flexDirection: 'row',
+  gap: 12,
+}
+
+const $modalButton: ViewStyle = {
+  flex: 1,
+  paddingVertical: 12,
+  borderRadius: 8,
+  alignItems: 'center',
+}
+
+const $modalCancelButton: ViewStyle = {
+  backgroundColor: '#333',
+}
+
+const $modalConfirmButton: ViewStyle = {
+  backgroundColor: '#60a5fa',
+}
+
+const $modalButtonDisabled: ViewStyle = {
+  backgroundColor: '#374151',
+}
+
+const $modalCancelText: TextStyle = {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: 'bold',
+}
+
+const $modalConfirmText: TextStyle = {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: 'bold',
 }
