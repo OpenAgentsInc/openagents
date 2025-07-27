@@ -1,7 +1,3 @@
-// TypeScript compatibility note: Recharts has known type compatibility issues with React 18's strict JSX component typing.
-// The library works correctly at runtime, but TypeScript's strict component type checking flags these as errors.
-// This is a well-documented issue: https://github.com/recharts/recharts/issues/3615
-// Fixed by using JSX syntax with type assertions for Recharts components.
 import React, { useState, useEffect } from 'react';
 import {
   LineChart,
@@ -14,24 +10,25 @@ import {
   Legend,
 } from 'recharts';
 
-// Type assertions for Recharts components to fix TypeScript strict JSX checking
-// Note: This is a documented issue with Recharts and React 19: https://github.com/recharts/recharts/issues/3615
-const RechartsLineChart = LineChart as any;
-const RechartsLine = Line as any;
-const RechartsXAxis = XAxis as any;
-const RechartsYAxis = YAxis as any;
-const RechartsCartesianGrid = CartesianGrid as any;
-const RechartsTooltip = Tooltip as any;
-const RechartsResponsiveContainer = ResponsiveContainer as any;
-const RechartsLegend = Legend as any;
+// Type assertions for Recharts components to resolve React 19 compatibility issues
+// Note: Recharts has documented type compatibility issues with React 19
+// Using explicit unknown conversion for cleaner type assertions than 'as any'
+// TODO: Remove these assertions when Recharts provides React 19 compatible types
+const RechartsLineChart = LineChart as unknown as React.ComponentType<any>;
+const RechartsLine = Line as unknown as React.ComponentType<any>;
+const RechartsXAxis = XAxis as unknown as React.ComponentType<any>;
+const RechartsYAxis = YAxis as unknown as React.ComponentType<any>;
+const RechartsCartesianGrid = CartesianGrid as unknown as React.ComponentType<any>;
+const RechartsTooltip = Tooltip as unknown as React.ComponentType<any>;
+const RechartsResponsiveContainer = ResponsiveContainer as unknown as React.ComponentType<any>;
+const RechartsLegend = Legend as unknown as React.ComponentType<any>;
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Loader2, TrendingUp, Calendar, type LucideProps } from 'lucide-react';
-
-// Properly typed Lucide icon components
-const LoaderIcon: React.FC<LucideProps> = Loader2;
-const TrendingUpIcon: React.FC<LucideProps> = TrendingUp;
-const CalendarIcon: React.FC<LucideProps> = Calendar;
+import {
+  Loader2 as LoaderIcon,
+  TrendingUp as TrendingUpIcon,
+  Calendar as CalendarIcon,
+} from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 // Types matching the Rust backend
