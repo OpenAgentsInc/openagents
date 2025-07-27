@@ -168,12 +168,19 @@ impl RetryStrategy {
 
     /// Calculate exponential backoff delay
     fn calculate_delay(&self, attempt: u32) -> u64 {
+        use rand::Rng;
+        
         let base_delay = self.config.base_delay_ms;
         let exponential_delay = base_delay * (2_u64.pow(attempt));
         
-        // Add jitter to prevent thundering herd
-        let jitter = (exponential_delay as f64 * 0.1) as u64;
-        let delay_with_jitter = exponential_delay + (rand::random::<u64>() % jitter);
+        // Add jitter to prevent thundering herd - using secure random generation
+        let jitter_max = (exponential_delay as f64 * 0.1) as u64;
+        let jitter = if jitter_max > 0 {
+            rand::thread_rng().gen_range(0..=jitter_max)
+        } else {
+            0
+        };
+        let delay_with_jitter = exponential_delay + jitter;
         
         delay_with_jitter.min(self.config.max_delay_ms)
     }

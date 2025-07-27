@@ -11,11 +11,70 @@ use tauri_plugin_store::{Store, StoreBuilder};
 use tauri::AppHandle;
 use std::path::PathBuf;
 use std::sync::Arc;
+use zeroize::{Zeroize, ZeroizeOnDrop};
+use sha2::{Sha256, Digest};
 
-/// Token storage entry with metadata
+/// Secure token that auto-zeroizes when dropped
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+pub struct SecureToken {
+    value: String,
+}
+
+impl SecureToken {
+    pub fn new(token: String) -> Self {
+        Self { value: token }
+    }
+    
+    pub fn as_str(&self) -> &str {
+        &self.value
+    }
+    
+    /// Get a hash of the token for logging purposes (never log the actual token)
+    pub fn hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.value.as_bytes());
+        format!("{:x}", hasher.finalize())[..8].to_string() // First 8 chars of hash
+    }
+}
+
+// Custom Debug implementation to avoid exposing token in logs
+impl std::fmt::Debug for SecureToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SecureToken(hash:{})", self.hash())
+    }
+}
+
+// Custom serialization for secure storage
+impl Serialize for SecureToken {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SecureToken {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(SecureToken::new(value))
+    }
+}
+
+/// Hash a key for secure logging
+fn hash_key(key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    format!("{:x}", hasher.finalize())[..8].to_string()
+}
+
+/// Token storage entry with metadata and secure token handling
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenEntry {
-    pub token: String,
+    pub token: SecureToken,
     pub issued_at: u64,
     pub expires_at: Option<u64>,
     pub token_type: String, // "access", "refresh", etc.
@@ -69,8 +128,9 @@ impl TokenStorage {
             .map_err(|e| AppError::TokenStorageError(format!("System time error: {}", e)))?
             .as_secs();
 
+        let secure_token = SecureToken::new(token);
         let token_entry = TokenEntry {
-            token,
+            token: secure_token,
             issued_at: now,
             expires_at,
             token_type: "access".to_string(),
@@ -80,18 +140,13 @@ impl TokenStorage {
         self.tokens.insert(key.to_string(), token_entry);
         self.persist_to_storage()?;
         
-        // Phase 4: Enhanced authentication monitoring
-        if let Some(exp) = expires_at {
-            let ttl = exp.saturating_sub(now);
-            log::info!("AUTH_MONITOR: Token stored securely [key={}, ttl={}s, expires_at={}]", 
-                key, ttl, exp);
-        } else {
-            log::info!("AUTH_MONITOR: Long-lived token stored securely [key={}, no_expiration=true]", key);
-        }
+        // Phase 4: Secure authentication monitoring - only log essential events with hashed values
+        log::debug!("AUTH_MONITOR: Token stored [key_hash={}, has_expiration={}]", 
+            hash_key(key), expires_at.is_some());
         
-        // Security audit log
-        log::warn!("SECURITY_AUDIT: Token storage event [key={}, storage_method=tauri_secure_store, timestamp={}]", 
-            key, now);
+        // Security audit log - minimal sensitive data exposure
+        log::info!("SECURITY_AUDIT: Token storage event [key_hash={}, method=secure_store]", 
+            hash_key(key));
         
         Ok(())
     }
@@ -109,35 +164,29 @@ impl TokenStorage {
             // Check if token is expired
             if let Some(expires_at) = entry.expires_at {
                 if now >= expires_at {
-                    let expired_since = now.saturating_sub(expires_at);
-                    log::warn!("AUTH_MONITOR: Token retrieval failed - expired [key={}, expired_since={}s, timestamp={}]", 
-                        key, expired_since, now);
-                    log::error!("SECURITY_AUDIT: Expired token access attempt [key={}, expired_at={}, access_time={}]", 
-                        key, expires_at, now);
+                    log::warn!("AUTH_MONITOR: Token expired [key_hash={}, expired={}s_ago]", 
+                        hash_key(key), now.saturating_sub(expires_at));
+                    log::warn!("SECURITY_AUDIT: Expired token access attempt [key_hash={}]", 
+                        hash_key(key));
                     return Ok(None);
                 }
                 
                 let ttl = expires_at.saturating_sub(now);
-                log::debug!("AUTH_MONITOR: Token retrieved successfully [key={}, ttl_remaining={}s]", key, ttl);
+                log::debug!("AUTH_MONITOR: Token retrieved [key_hash={}, ttl={}s]", hash_key(key), ttl);
                 
                 // Warning for tokens expiring soon
                 if ttl < 300 { // 5 minutes
-                    log::warn!("AUTH_MONITOR: Token expiring soon [key={}, ttl_remaining={}s]", key, ttl);
+                    log::warn!("AUTH_MONITOR: Token expiring soon [key_hash={}, ttl={}s]", hash_key(key), ttl);
                 }
             } else {
-                log::debug!("AUTH_MONITOR: Long-lived token retrieved [key={}, no_expiration=true]", key);
+                log::debug!("AUTH_MONITOR: Long-lived token retrieved [key_hash={}]", hash_key(key));
             }
 
-            // Performance monitoring
-            let token_age = now.saturating_sub(entry.issued_at);
-            log::debug!("AUTH_MONITOR: Token usage [key={}, age={}s, issuer={}]", 
-                key, token_age, entry.issuer);
-            
-            Ok(Some(entry.token.clone()))
+            Ok(Some(entry.token.as_str().to_string()))
         } else {
-            log::debug!("AUTH_MONITOR: Token not found [key={}, timestamp={}]", key, now);
-            log::warn!("SECURITY_AUDIT: Token access attempt for non-existent key [key={}, timestamp={}]", 
-                key, now);
+            log::debug!("AUTH_MONITOR: Token not found [key_hash={}]", hash_key(key));
+            log::debug!("SECURITY_AUDIT: Access attempt for non-existent token [key_hash={}]", 
+                hash_key(key));
             Ok(None)
         }
     }
@@ -146,24 +195,13 @@ impl TokenStorage {
     /// 
     /// Phase 3: Securely remove token from storage
     pub fn remove_token(&mut self, key: &str) -> Result<(), AppError> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-            
-        if let Some(removed_entry) = self.tokens.remove(key) {
+        if let Some(_removed_entry) = self.tokens.remove(key) {
             self.persist_to_storage()?;
-            
-            // Phase 4: Enhanced monitoring for token removal
-            let token_age = now.saturating_sub(removed_entry.issued_at);
-            log::info!("AUTH_MONITOR: Token removed [key={}, age={}s, issuer={}, timestamp={}]", 
-                key, token_age, removed_entry.issuer, now);
-            log::warn!("SECURITY_AUDIT: Token deletion event [key={}, deletion_method=manual, timestamp={}]", 
-                key, now);
+            log::debug!("AUTH_MONITOR: Token removed [key_hash={}]", hash_key(key));
+            log::info!("SECURITY_AUDIT: Token deletion event [key_hash={}, method=manual]", 
+                hash_key(key));
         } else {
-            log::debug!("AUTH_MONITOR: Token removal attempted but not found [key={}, timestamp={}]", key, now);
-            log::warn!("SECURITY_AUDIT: Attempted removal of non-existent token [key={}, timestamp={}]", 
-                key, now);
+            log::debug!("AUTH_MONITOR: Token removal attempted - not found [key_hash={}]", hash_key(key));
         }
         Ok(())
     }
@@ -187,16 +225,9 @@ impl TokenStorage {
             }
         }
         
-        // Phase 4: Enhanced monitoring for mass token clearing
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-            
-        log::info!("AUTH_MONITOR: Mass token clearance [count={}, method=logout, timestamp={}]", 
-            count, now);
-        log::error!("SECURITY_AUDIT: Complete authentication logout [tokens_cleared={}, timestamp={}]", 
-            count, now);
+        // Phase 4: Secure monitoring for mass token clearing
+        log::info!("AUTH_MONITOR: Mass token clearance [count={}, method=logout]", count);
+        log::info!("SECURITY_AUDIT: Complete authentication logout [tokens_cleared={}]", count);
         Ok(())
     }
 
