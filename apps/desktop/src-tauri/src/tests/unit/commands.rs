@@ -1,16 +1,17 @@
-use crate::CommandResult;
+use crate::error::CommandResult;
+use crate::commands::system::{greet, get_project_directory};
 
 #[tokio::test]
 async fn test_greet_command() {
     // Test the simple greet command
-    let result = crate::greet("Rust Tests");
+    let result = greet("Rust Tests");
     assert_eq!(result, "Hello, Rust Tests! You've been greeted from Rust!");
 }
 
 #[tokio::test]
 async fn test_get_project_directory() {
     // Test getting project directory
-    let result = crate::get_project_directory().unwrap();
+    let result = get_project_directory().unwrap();
     
     assert!(result.success);
     assert!(result.data.is_some());
