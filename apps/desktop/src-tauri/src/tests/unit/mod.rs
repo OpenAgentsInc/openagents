@@ -5,3 +5,4 @@ pub mod manager;
 pub mod models;
 pub mod apm;
 pub mod errors;
+pub mod modules;
