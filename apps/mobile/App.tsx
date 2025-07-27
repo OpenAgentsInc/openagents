@@ -4,6 +4,7 @@ import { LogBox, StyleSheet, View } from "react-native"
 import { ConvexProvider, ConvexReactClient } from "convex/react"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { SafeAreaProvider } from "react-native-safe-area-context"
+import { NavigationContainer } from "@react-navigation/native"
 import { ClaudeCodeMobile } from "./components/ClaudeCodeMobile"
 
 // Disable all development warnings
@@ -27,7 +28,9 @@ function AppContent() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.container}>
-        <ClaudeCodeMobile />
+        <NavigationContainer>
+          <ClaudeCodeMobile />
+        </NavigationContainer>
         <StatusBar style="light" />
       </GestureHandlerRootView>
     </SafeAreaProvider>

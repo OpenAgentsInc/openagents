@@ -64,11 +64,7 @@
           "resizeMode": "contain",
           "backgroundColor": "#000000"
         }
-      ],
-      "react-native-gesture-handler",
-      "react-native-reanimated",
-      "react-native-safe-area-context",
-      "react-native-screens"
+      ]
     ],
     "experiments": {
       "tsconfigPaths": true
