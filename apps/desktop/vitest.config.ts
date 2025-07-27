@@ -11,12 +11,22 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: true,
     reporters: ['verbose'],
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+    ],
+    exclude: [
+      'node_modules/**',
+      'e2e/**',
+      '**/e2e/**',
+      '**/*.e2e.{test,spec}.{ts,tsx}',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       exclude: [
         'node_modules/',
         'src/test/',
+        'e2e/',
         '**/*.d.ts',
         '**/*.test.{ts,tsx}',
         '**/*.spec.{ts,tsx}',

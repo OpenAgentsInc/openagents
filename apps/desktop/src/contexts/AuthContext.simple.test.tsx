@@ -41,11 +41,11 @@ describe('AuthContext - Logic Tests', () => {
       expect(authenticatedState).toBe(true)
 
       // Missing user
-      const noUserState = !!(null && token)
+      const noUserState = !!(false && token)
       expect(noUserState).toBe(false)
 
-      // Missing token
-      const noTokenState = !!(user && null)
+      // Missing token  
+      const noTokenState = !!(user && '')
       expect(noTokenState).toBe(false)
     })
   })
@@ -102,7 +102,7 @@ describe('AuthContext - Logic Tests', () => {
           await mockOpenUrl('test-url')
         } catch (error) {
           expect(error).toBeInstanceOf(Error)
-          expect(error.message).toBe('Failed to open URL')
+          expect((error as Error).message).toBe('Failed to open URL')
         }
       })
 

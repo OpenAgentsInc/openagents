@@ -69,10 +69,10 @@ describe('Authentication Integration - Logic Tests', () => {
     })
 
     it('should handle cross-platform authentication events', () => {
-      const events = []
+      const events: Array<{source: string, token: string}> = []
       
       // Simulate cross-platform event handling
-      const handleAuthEvent = (eventData: any) => {
+      const handleAuthEvent = (eventData: {source: string, token: string}) => {
         events.push(eventData)
         return eventData
       }
@@ -122,7 +122,7 @@ describe('Authentication Integration - Logic Tests', () => {
   describe('State Synchronization', () => {
     it('should maintain consistent authentication state', () => {
       const stateManager = {
-        state: { isAuthenticated: false, user: null, token: null },
+        state: { isAuthenticated: false, user: null as any, token: null as string | null },
         
         updateAuth(token: string, user: any) {
           this.state = { 
