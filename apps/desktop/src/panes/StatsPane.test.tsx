@@ -20,6 +20,7 @@ vi.mock("lucide-react", () => ({
   Loader2: () => <div data-testid="loader2-icon" />,
   RefreshCw: () => <div data-testid="refresh-cw-icon" />,
   Eye: () => <div data-testid="eye-icon" />,
+  Calendar: () => <div data-testid="calendar-icon" />,
 }));
 
 const mockAPMData = {

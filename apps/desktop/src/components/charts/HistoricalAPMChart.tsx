@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 
 // Type assertions for Recharts components to fix TypeScript strict JSX checking
+// Note: This is a documented issue with Recharts and React 19: https://github.com/recharts/recharts/issues/3615
 const RechartsLineChart = LineChart as any;
 const RechartsLine = Line as any;
 const RechartsXAxis = XAxis as any;
@@ -25,12 +26,12 @@ const RechartsResponsiveContainer = ResponsiveContainer as any;
 const RechartsLegend = Legend as any;
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Loader2, TrendingUp, Calendar } from 'lucide-react';
+import { Loader2, TrendingUp, Calendar, type LucideProps } from 'lucide-react';
 
-// Type assertions for Lucide icons to fix TypeScript strict JSX checking
-const LucideLoader2 = Loader2 as any;
-const LucideTrendingUp = TrendingUp as any;
-const LucideCalendar = Calendar as any;
+// Properly typed Lucide icon components
+const LoaderIcon: React.FC<LucideProps> = Loader2;
+const TrendingUpIcon: React.FC<LucideProps> = TrendingUp;
+const CalendarIcon: React.FC<LucideProps> = Calendar;
 import { invoke } from '@tauri-apps/api/core';
 
 // Types matching the Rust backend
@@ -258,7 +259,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       <Card className={`p-6 ${className}`}>
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <LucideLoader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+            <LoaderIcon className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground text-sm">Loading historical data...</p>
           </div>
         </div>
@@ -290,7 +291,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
-          <LucideTrendingUp className="h-5 w-5" />
+          <TrendingUpIcon className="h-5 w-5" />
           <h3 className="font-semibold">Historical APM Trends</h3>
         </div>
         
@@ -344,7 +345,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       ) : (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <LucideCalendar className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
+            <CalendarIcon className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground text-sm">No historical data available</p>
             <p className="text-muted-foreground text-xs mt-1">
               Try a different time scale or start using Claude Code to generate data
