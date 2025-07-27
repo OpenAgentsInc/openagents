@@ -204,3 +204,31 @@ Use these commands in PR comments:
 - `@coderabbitai summary` - Regenerate PR summary
 - `@coderabbitai generate unit tests` - Generate tests for the PR
 - `@coderabbitai resolve` - Mark all review comments as resolved
+
+## Implementation Timeline Expectations
+
+**CRITICAL**: When implementing features or fixes:
+
+### Same-Day Delivery
+- **Default Expectation**: Complete implementation within the same day when requested
+- **No Week-Long Estimates**: Avoid providing timeline estimates in weeks or days unless specifically complex architectural changes
+- **Immediate Action**: Begin implementation immediately rather than providing lengthy planning phases
+- **Iterative Progress**: Make continuous progress with regular updates and commits
+
+### Planning vs. Execution Balance
+- **Brief Planning**: Limit planning to essential architecture decisions (max 15-30 minutes)
+- **Rapid Prototyping**: Implement working solutions quickly, then iterate
+- **Progressive Enhancement**: Start with basic functionality, enhance incrementally
+- **Continuous Integration**: Make frequent commits to track progress
+
+### Communication Style
+- **Progress Updates**: Provide frequent updates on implementation progress
+- **Issue Comments**: Update GitHub issues at key milestones, not just at completion
+- **Commit Messages**: Use clear, descriptive commit messages for tracking
+- **No Timeline Promises**: Avoid specific time estimates unless absolutely certain
+
+### Implementation Approach
+1. **Start Coding Immediately**: Begin with core functionality
+2. **Test While Building**: Write tests alongside implementation
+3. **Document as You Go**: Update documentation with each major component
+4. **Deploy Early**: Get working versions ready for testing ASAP
