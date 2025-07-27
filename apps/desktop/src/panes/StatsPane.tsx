@@ -48,6 +48,26 @@ interface CombinedAPMStats extends APMStats {
   sdkStats: APMStats;
 }
 
+interface AggregatedAPMStats {
+  apm1h: number;
+  apm6h: number;
+  apm1d: number;
+  apm1w: number;
+  apm1m: number;
+  apmLifetime: number;
+  totalActions: number;
+  activeMinutes: number;
+  deviceBreakdown?: {
+    desktop?: number;
+    mobile?: number;
+    github?: number;
+  };
+  metadata?: {
+    overlappingMinutes?: number;
+    peakConcurrency?: number;
+  };
+}
+
 interface StatsPaneProps {
   // Props will be passed from PaneManager
 }
@@ -63,10 +83,11 @@ const formatDuration = (minutes: number): string => {
 
 export const StatsPane: React.FC<StatsPaneProps> = () => {
   const [stats, setStats] = useState<CombinedAPMStats | null>(null);
+  const [aggregatedStats, setAggregatedStats] = useState<AggregatedAPMStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'combined' | 'cli' | 'sdk'>('combined');
+  const [viewMode, setViewMode] = useState<'combined' | 'cli' | 'sdk' | 'aggregated'>('combined');
 
   const loadStats = async (isRefresh = false) => {
     try {
@@ -77,6 +98,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
       }
       setError(null);
       
+      // Load combined CLI+SDK stats
       const result = await invoke('analyze_combined_conversations');
       
       if (result && typeof result === 'object' && 'success' in result) {
@@ -89,6 +111,20 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
         }
       } else {
         setError('Invalid response format');
+      }
+
+      // Load aggregated multi-client stats
+      try {
+        const aggregatedResult = await invoke('get_user_apm_stats');
+        if (aggregatedResult && typeof aggregatedResult === 'object' && 'success' in aggregatedResult) {
+          const aggregatedResponse = aggregatedResult as { success: boolean; data?: AggregatedAPMStats; error?: string };
+          if (aggregatedResponse.success && aggregatedResponse.data) {
+            setAggregatedStats(aggregatedResponse.data);
+          }
+        }
+      } catch (aggregatedErr) {
+        console.log('Aggregated APM stats not available (user may not be authenticated):', aggregatedErr);
+        // Don't set error for aggregated stats - they're optional
       }
     } catch (err) {
       console.error('Error loading APM stats:', err);
@@ -116,13 +152,27 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
 
   // Helper function to get current view's stats
   const getCurrentStats = (): APMStats | null => {
-    if (!stats) return null;
-    
     switch (viewMode) {
       case 'cli':
-        return stats.cliStats;
+        return stats?.cliStats || null;
       case 'sdk':
-        return stats.sdkStats;
+        return stats?.sdkStats || null;
+      case 'aggregated':
+        return aggregatedStats ? {
+          apm1h: aggregatedStats.apm1h,
+          apm6h: aggregatedStats.apm6h,
+          apm1d: aggregatedStats.apm1d,
+          apm1w: aggregatedStats.apm1w,
+          apm1m: aggregatedStats.apm1m,
+          apmLifetime: aggregatedStats.apmLifetime,
+          totalSessions: 0, // Not tracked in aggregated stats
+          totalMessages: aggregatedStats.totalActions,
+          totalToolUses: 0, // Included in totalActions
+          totalDuration: aggregatedStats.activeMinutes,
+          toolUsage: [], // Not available in aggregated stats
+          recentSessions: [], // Not available in aggregated stats
+          productivityByTime: { morning: 0, afternoon: 0, evening: 0, night: 0 }, // Not available
+        } : null;
       case 'combined':
       default:
         return stats;
@@ -138,6 +188,8 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
         return 'CLI Only';
       case 'sdk':
         return 'SDK Only';
+      case 'aggregated':
+        return 'All Devices';
       case 'combined':
       default:
         return 'Combined';
@@ -209,13 +261,14 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
         
         {/* View Mode Switcher */}
         <div className="flex items-center justify-center gap-1">
-          {(['combined', 'cli', 'sdk'] as const).map((mode) => (
+          {(['combined', 'cli', 'sdk', 'aggregated'] as const).map((mode) => (
             <Button
               key={mode}
               variant={viewMode === mode ? "default" : "outline"}
               size="sm"
               onClick={() => setViewMode(mode)}
               className="text-xs h-7 px-2"
+              disabled={mode === 'aggregated' && !aggregatedStats}
             >
               {getViewDisplayName(mode)}
             </Button>

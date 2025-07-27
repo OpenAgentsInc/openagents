@@ -18,7 +18,7 @@ use commands::{
     },
     apm::{
         analyze_claude_conversations, analyze_combined_conversations, 
-        get_historical_apm_data,
+        get_historical_apm_data, get_user_apm_stats,
     },
     history::{get_history, get_unified_history},
     system::{greet, get_project_directory},
@@ -59,6 +59,7 @@ pub fn run() {
             analyze_claude_conversations,
             analyze_combined_conversations,
             get_historical_apm_data,
+            get_user_apm_stats,
             // Convex commands
             test_convex_connection,
             get_sessions,

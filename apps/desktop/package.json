@@ -12,6 +12,7 @@
     "tauri": "tauri",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:auth": "vitest run --grep=\"auth\"",
