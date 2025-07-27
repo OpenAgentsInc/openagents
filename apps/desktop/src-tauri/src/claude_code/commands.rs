@@ -1,5 +1,6 @@
 use std::env;
 use log::info;
+use serde_json::Value;
 
 use crate::error::CommandResult;
 use crate::claude_code::{
@@ -10,6 +11,24 @@ use crate::claude_code::database::{
     CreateSessionRequest, UpdateSessionRequest, CreateMessageRequest, UpdateMessageRequest
 };
 use crate::claude_code::models::{ConvexSession, ConvexMessage};
+
+/// Parse and validate JSON metadata with robust error handling
+fn parse_metadata(metadata: Option<String>) -> Result<Option<Value>, String> {
+    match metadata {
+        Some(meta) => {
+            if meta.trim().is_empty() {
+                Ok(None)
+            } else {
+                serde_json::from_str(&meta)
+                    .map(Some)
+                    .map_err(|e| {
+                        format!("Invalid metadata JSON: {}. Please ensure the JSON is properly formatted.", e)
+                    })
+            }
+        }
+        None => Ok(None),
+    }
+}
 
 /// Helper function to create a Convex client
 async fn create_convex_client(auth_token: Option<String>) -> Result<EnhancedConvexClient, String> {
@@ -68,11 +87,7 @@ pub async fn create_convex_session(
     
     let mut client = create_convex_client(auth_token).await?;
     
-    let metadata_value = if let Some(meta) = metadata {
-        Some(serde_json::from_str(&meta).map_err(|e| format!("Invalid metadata JSON: {}", e))?)
-    } else {
-        None
-    };
+    let metadata_value = parse_metadata(metadata)?;
     
     let request = CreateSessionRequest {
         title,
@@ -101,11 +116,7 @@ pub async fn update_session(
     
     let mut client = create_convex_client(auth_token).await?;
     
-    let metadata_value = if let Some(meta) = metadata {
-        Some(serde_json::from_str(&meta).map_err(|e| format!("Invalid metadata JSON: {}", e))?)
-    } else {
-        None
-    };
+    let metadata_value = parse_metadata(metadata)?;
     
     let updates = UpdateSessionRequest {
         title,
@@ -189,11 +200,7 @@ pub async fn add_message(
     
     let mut client = create_convex_client(auth_token).await?;
     
-    let metadata_value = if let Some(meta) = metadata {
-        Some(serde_json::from_str(&meta).map_err(|e| format!("Invalid metadata JSON: {}", e))?)
-    } else {
-        None
-    };
+    let metadata_value = parse_metadata(metadata)?;
     
     let request = CreateMessageRequest {
         session_id,
@@ -223,11 +230,7 @@ pub async fn update_message(
     
     let mut client = create_convex_client(auth_token).await?;
     
-    let metadata_value = if let Some(meta) = metadata {
-        Some(serde_json::from_str(&meta).map_err(|e| format!("Invalid metadata JSON: {}", e))?)
-    } else {
-        None
-    };
+    let metadata_value = parse_metadata(metadata)?;
     
     let updates = UpdateMessageRequest {
         content,

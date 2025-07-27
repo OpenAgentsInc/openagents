@@ -154,7 +154,17 @@ impl EnhancedConvexClient {
             ConvexValue::Null => Ok(Value::Null),
             ConvexValue::Boolean(b) => Ok(Value::Bool(b)),
             ConvexValue::Int64(i) => Ok(Value::Number(i.into())),
-            ConvexValue::Float64(f) => Ok(Value::Number(serde_json::Number::from_f64(f).unwrap_or(serde_json::Number::from(0)))),
+            ConvexValue::Float64(f) => {
+                if f.is_finite() {
+                    serde_json::Number::from_f64(f)
+                        .map(Value::Number)
+                        .ok_or_else(|| AppError::ConvexDatabaseError(format!("Invalid float64 value: {}", f)))
+                } else if f.is_nan() {
+                    Err(AppError::ConvexDatabaseError("Cannot convert NaN to JSON number".to_string()))
+                } else {
+                    Err(AppError::ConvexDatabaseError(format!("Cannot convert infinite value to JSON number: {}", f)))
+                }
+            }
             ConvexValue::String(s) => Ok(Value::String(s)),
             ConvexValue::Array(arr) => {
                 let mut json_arr = Vec::new();
@@ -387,28 +397,64 @@ impl UserRepository for EnhancedConvexClient {
 #[async_trait]
 impl BatchOperations for EnhancedConvexClient {
     async fn batch_query(&mut self, queries: Vec<BatchQuery>) -> Result<Vec<Value>, AppError> {
-        let mut results = Vec::new();
+        if queries.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut results = Vec::with_capacity(queries.len());
         
-        // For now, execute queries sequentially
-        // TODO: Implement true parallel execution when Convex client supports it
-        for query in queries {
-            let result: Value = self.query(&query.function_name, query.args).await?;
-            results.push(result);
+        // LIMITATION: Currently executing queries sequentially due to Convex client constraints
+        // This provides atomicity but sacrifices performance for large batches
+        // TODO: Implement true parallel execution when Convex client supports concurrent operations
+        // or when we can safely parallelize without affecting data consistency
+        
+        log::info!("Executing batch of {} queries sequentially", queries.len());
+        
+        for (index, query) in queries.into_iter().enumerate() {
+            match self.query(&query.function_name, query.args).await {
+                Ok(result) => results.push(result),
+                Err(e) => {
+                    log::error!("Batch query failed at index {}: {}", index, e);
+                    return Err(AppError::ConvexDatabaseError(
+                        format!("Batch query failed at operation {}: {}", index, e)
+                    ));
+                }
+            }
         }
         
+        log::info!("Completed batch query execution with {} results", results.len());
         Ok(results)
     }
 
     async fn batch_mutation(&mut self, mutations: Vec<BatchMutation>) -> Result<Vec<Value>, AppError> {
-        let mut results = Vec::new();
+        if mutations.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut results = Vec::with_capacity(mutations.len());
         
-        // For now, execute mutations sequentially to maintain consistency
-        // TODO: Implement true parallel execution when appropriate
-        for mutation in mutations {
-            let result: Value = self.mutation(&mutation.function_name, mutation.args).await?;
-            results.push(result);
+        // DESIGN DECISION: Executing mutations sequentially to maintain data consistency
+        // Mutations often have dependencies and side effects that require ordered execution
+        // Parallel execution would require careful analysis of dependencies and rollback mechanisms
+        // TODO: Consider implementing dependency analysis for safe parallelization
+        
+        log::info!("Executing batch of {} mutations sequentially for consistency", mutations.len());
+        
+        for (index, mutation) in mutations.into_iter().enumerate() {
+            match self.mutation(&mutation.function_name, mutation.args).await {
+                Ok(result) => results.push(result),
+                Err(e) => {
+                    log::error!("Batch mutation failed at index {}: {}", index, e);
+                    // Note: Previous mutations have already been committed
+                    // Consider implementing transaction rollback in future versions
+                    return Err(AppError::ConvexDatabaseError(
+                        format!("Batch mutation failed at operation {} (previous operations committed): {}", index, e)
+                    ));
+                }
+            }
         }
         
+        log::info!("Completed batch mutation execution with {} results", results.len());
         Ok(results)
     }
 }

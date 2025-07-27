@@ -98,8 +98,14 @@ impl ConvexAuth {
         })
     }
 
-    /// Extract basic user info from token without full validation (for development)
+    /// Extract basic user info from token without full validation (DEVELOPMENT ONLY)
+    /// 
+    /// WARNING: This method bypasses signature verification and should NEVER be used in production
+    /// It's only intended for development/testing when JWKS is not available
+    #[cfg(debug_assertions)]
     pub fn extract_user_info_unsafe(&self, token: &str) -> Result<AuthContext, AppError> {
+        log::warn!("Using unsafe token extraction - DO NOT USE IN PRODUCTION");
+        
         // This is for development only - decodes without signature verification
         let token_parts: Vec<&str> = token.split('.').collect();
         if token_parts.len() != 3 {
@@ -111,6 +117,16 @@ impl ConvexAuth {
 
         let claims: AuthClaims = serde_json::from_slice(&payload)
             .map_err(|e| AppError::Json(e))?;
+
+        // Still validate expiration even in unsafe mode
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| AppError::ConvexAuthError("System time error".to_string()))?
+            .as_secs();
+
+        if claims.exp < now {
+            return Err(AppError::ConvexAuthError("Token expired".to_string()));
+        }
 
         Ok(AuthContext {
             user_id: claims.sub.clone(),
@@ -128,7 +144,11 @@ impl ConvexAuth {
     pub async fn fetch_jwks(&mut self) -> Result<(), AppError> {
         let jwks_url = format!("{}/.well-known/jwks.json", self.openauth_domain);
         
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| AppError::Http(e))?;
+            
         let response = client.get(&jwks_url)
             .send()
             .await
@@ -144,19 +164,33 @@ impl ConvexAuth {
             .await
             .map_err(|e| AppError::Http(e))?;
 
-        // For now, we'll use a simplified approach
-        // In production, you'd want to properly parse the JWKS and handle key rotation
+        // Parse JWKS and extract the first RSA key
         if let Some(keys) = jwks.get("keys").and_then(|k| k.as_array()) {
-            if let Some(_key) = keys.first() {
-                // This is a simplified implementation
-                // In production, you'd properly parse RSA keys from the JWKS
-                return Err(AppError::ConvexAuthError(
-                    "JWKS parsing not fully implemented yet".to_string()
-                ));
+            for key in keys {
+                if let (Some(kty), Some(n), Some(e)) = (
+                    key.get("kty").and_then(|v| v.as_str()),
+                    key.get("n").and_then(|v| v.as_str()),
+                    key.get("e").and_then(|v| v.as_str()),
+                ) {
+                    if kty == "RSA" {
+                        // Decode the RSA components
+                        let n_bytes = general_purpose::URL_SAFE_NO_PAD.decode(n)
+                            .map_err(|_| AppError::ConvexAuthError("Invalid RSA modulus".to_string()))?;
+                        let e_bytes = general_purpose::URL_SAFE_NO_PAD.decode(e)
+                            .map_err(|_| AppError::ConvexAuthError("Invalid RSA exponent".to_string()))?;
+                        
+                        // Create RSA key from components
+                        let decoding_key = DecodingKey::from_rsa_components(&n_bytes, &e_bytes)
+                            .map_err(|_| AppError::ConvexAuthError("Failed to create RSA key".to_string()))?;
+                        
+                        self.decoding_key = Some(decoding_key);
+                        return Ok(());
+                    }
+                }
             }
         }
 
-        Err(AppError::ConvexAuthError("No valid keys found in JWKS".to_string()))
+        Err(AppError::ConvexAuthError("No valid RSA keys found in JWKS".to_string()))
     }
 
     /// Create authentication headers for Convex requests
@@ -210,9 +244,39 @@ impl AuthService {
 
     /// Authenticate with a JWT token
     pub async fn authenticate(&mut self, token: String) -> Result<AuthContext, AppError> {
-        // For development, use unsafe extraction
-        // In production, you'd use validate_token with proper JWKS
-        let auth_context = self.convex_auth.extract_user_info_unsafe(&token)?;
+        // Try secure validation first
+        let auth_context = match self.convex_auth.validate_token(&token) {
+            Ok(context) => {
+                log::info!("Token validated securely");
+                context
+            }
+            Err(AppError::ConvexAuthError(msg)) if msg.contains("No decoding key") => {
+                log::warn!("No JWKS key available, attempting to fetch...");
+                
+                // Try to fetch JWKS first
+                if let Err(e) = self.convex_auth.fetch_jwks().await {
+                    log::warn!("JWKS fetch failed: {}", e);
+                    
+                    // Only fall back to unsafe mode in debug builds
+                    #[cfg(debug_assertions)]
+                    {
+                        log::warn!("Falling back to unsafe token extraction for development");
+                        self.convex_auth.extract_user_info_unsafe(&token)?
+                    }
+                    
+                    #[cfg(not(debug_assertions))]
+                    {
+                        return Err(AppError::ConvexAuthError(
+                            "Cannot validate token: JWKS unavailable and unsafe mode disabled in release".to_string()
+                        ));
+                    }
+                } else {
+                    // Retry validation with fetched JWKS
+                    self.convex_auth.validate_token(&token)?
+                }
+            }
+            Err(e) => return Err(e),
+        };
         
         self.current_auth = Some(auth_context.clone());
         Ok(auth_context)
