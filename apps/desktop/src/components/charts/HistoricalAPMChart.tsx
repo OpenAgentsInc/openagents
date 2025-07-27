@@ -1,7 +1,7 @@
 // TypeScript compatibility note: Recharts has known type compatibility issues with React 18's strict JSX component typing.
 // The library works correctly at runtime, but TypeScript's strict component type checking flags these as errors.
 // This is a well-documented issue: https://github.com/recharts/recharts/issues/3615
-// Fixed by using proper type assertions for problematic components.
+// Fixed by using JSX syntax with type assertions for Recharts components.
 import React, { useState, useEffect } from 'react';
 import {
   LineChart,
@@ -13,6 +13,16 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
+
+// Type assertions for Recharts components to fix TypeScript strict JSX checking
+const RechartsLineChart = LineChart as any;
+const RechartsLine = Line as any;
+const RechartsXAxis = XAxis as any;
+const RechartsYAxis = YAxis as any;
+const RechartsCartesianGrid = CartesianGrid as any;
+const RechartsTooltip = Tooltip as any;
+const RechartsResponsiveContainer = ResponsiveContainer as any;
+const RechartsLegend = Legend as any;
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Loader2, TrendingUp, Calendar } from 'lucide-react';
@@ -119,74 +129,78 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
     
     switch (viewMode) {
       case 'combined': {
-        const combinedLine = React.createElement(Line, {
-          key: "combined",
-          type: "monotone",
-          dataKey: "combined_apm",
-          stroke: "#3b82f6",
-          strokeWidth: 2,
-          dot: { fill: '#3b82f6', strokeWidth: 2, r: 3 },
-          name: "Combined APM"
-        });
-        lines.push(combinedLine);
+        lines.push(
+          <RechartsLine
+            key="combined"
+            type="monotone"
+            dataKey="combined_apm"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
+            name="Combined APM"
+          />
+        );
         break;
       }
       case 'cli': {
-        const cliLine = React.createElement(Line, {
-          key: "cli",
-          type: "monotone",
-          dataKey: "cli_apm",
-          stroke: "#10b981",
-          strokeWidth: 2,
-          dot: { fill: '#10b981', strokeWidth: 2, r: 3 },
-          name: "CLI APM"
-        });
-        lines.push(cliLine);
+        lines.push(
+          <RechartsLine
+            key="cli"
+            type="monotone"
+            dataKey="cli_apm"
+            stroke="#10b981"
+            strokeWidth={2}
+            dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }}
+            name="CLI APM"
+          />
+        );
         break;
       }
       case 'sdk': {
-        const sdkLine = React.createElement(Line, {
-          key: "sdk",
-          type: "monotone",
-          dataKey: "sdk_apm",
-          stroke: "#f59e0b",
-          strokeWidth: 2,
-          dot: { fill: '#f59e0b', strokeWidth: 2, r: 3 },
-          name: "SDK APM"
-        });
-        lines.push(sdkLine);
+        lines.push(
+          <RechartsLine
+            key="sdk"
+            type="monotone"
+            dataKey="sdk_apm"
+            stroke="#f59e0b"
+            strokeWidth={2}
+            dot={{ fill: '#f59e0b', strokeWidth: 2, r: 3 }}
+            name="SDK APM"
+          />
+        );
         break;
       }
       case 'aggregated': {
         // Show all APM metrics together for comprehensive view
-        const combinedLine = React.createElement(Line, {
-          key: "combined",
-          type: "monotone",
-          dataKey: "combined_apm",
-          stroke: "#3b82f6",
-          strokeWidth: 2,
-          dot: { fill: '#3b82f6', strokeWidth: 2, r: 3 },
-          name: "Combined APM"
-        });
-        const cliLine = React.createElement(Line, {
-          key: "cli",
-          type: "monotone",
-          dataKey: "cli_apm",
-          stroke: "#10b981",
-          strokeWidth: 2,
-          dot: { fill: '#10b981', strokeWidth: 2, r: 3 },
-          name: "CLI APM"
-        });
-        const sdkLine = React.createElement(Line, {
-          key: "sdk",
-          type: "monotone",
-          dataKey: "sdk_apm",
-          stroke: "#f59e0b",
-          strokeWidth: 2,
-          dot: { fill: '#f59e0b', strokeWidth: 2, r: 3 },
-          name: "SDK APM"
-        });
-        lines.push(combinedLine, cliLine, sdkLine);
+        lines.push(
+          <RechartsLine
+            key="combined"
+            type="monotone"
+            dataKey="combined_apm"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
+            name="Combined APM"
+          />,
+          <RechartsLine
+            key="cli"
+            type="monotone"
+            dataKey="cli_apm"
+            stroke="#10b981"
+            strokeWidth={2}
+            dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }}
+            name="CLI APM"
+          />,
+          <RechartsLine
+            key="sdk"
+            type="monotone"
+            dataKey="sdk_apm"
+            stroke="#f59e0b"
+            strokeWidth={2}
+            dot={{ fill: '#f59e0b', strokeWidth: 2, r: 3 }}
+            name="SDK APM"
+          />
+        );
         break;
       }
     }
@@ -239,7 +253,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       <Card className={`p-6 ${className}`}>
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-{React.createElement(Loader2, { className: "h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" })}
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground text-sm">Loading historical data...</p>
           </div>
         </div>
@@ -271,7 +285,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
-{React.createElement(TrendingUp, { className: "h-5 w-5" })}
+          <TrendingUp className="h-5 w-5" />
           <h3 className="font-semibold">Historical APM Trends</h3>
         </div>
         
@@ -294,38 +308,38 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       {/* Chart */}
       {data.length > 0 ? (
         <div className="h-64">
-          {React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
-            React.createElement(LineChart, { 
-              data: data, 
-              margin: { top: 5, right: 30, left: 20, bottom: 5 }
-            },
-              React.createElement(CartesianGrid, { 
-                strokeDasharray: "3 3", 
-                className: "opacity-30" 
-              }),
-              React.createElement(XAxis, {
-                dataKey: "period_display",
-                tick: { fontSize: 12 },
-                className: "text-muted-foreground"
-              }),
-              React.createElement(YAxis, {
-                tick: { fontSize: 12 },
-                className: "text-muted-foreground",
-                label: { value: 'APM', angle: -90, position: 'insideLeft' }
-              }),
-              React.createElement(Tooltip, { content: CustomTooltip as any }),
-              React.createElement(Legend, {
-                wrapperStyle: { fontSize: '12px' },
-                iconType: "line"
-              }),
-              ...getChartLines()
-            )
-          )}
+          <RechartsResponsiveContainer width="100%" height="100%">
+            <RechartsLineChart 
+              data={data} 
+              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            >
+              <RechartsCartesianGrid 
+                strokeDasharray="3 3" 
+                className="opacity-30" 
+              />
+              <RechartsXAxis
+                dataKey="period_display"
+                tick={{ fontSize: 12 }}
+                className="text-muted-foreground"
+              />
+              <RechartsYAxis
+                tick={{ fontSize: 12 }}
+                className="text-muted-foreground"
+                label={{ value: 'APM', angle: -90, position: 'insideLeft' }}
+              />
+              <RechartsTooltip content={CustomTooltip as any} />
+              <RechartsLegend
+                wrapperStyle={{ fontSize: '12px' }}
+                iconType="line"
+              />
+              {getChartLines()}
+            </RechartsLineChart>
+          </RechartsResponsiveContainer>
         </div>
       ) : (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-{React.createElement(Calendar, { className: "h-8 w-8 mx-auto mb-4 text-muted-foreground" })}
+            <Calendar className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground text-sm">No historical data available</p>
             <p className="text-muted-foreground text-xs mt-1">
               Try a different time scale or start using Claude Code to generate data
