@@ -1,5 +1,5 @@
 import { FC, useCallback, useRef, useState } from "react"
-import { Platform, Pressable, View, ViewStyle } from "react-native"
+import { Platform, Pressable, View, ViewStyle, TextStyle } from "react-native"
 import { useFocusEffect } from "@react-navigation/native"
 import { PenSquare } from "lucide-react-native"
 import { DrawerLayout, DrawerState } from "react-native-gesture-handler"
@@ -150,7 +150,7 @@ const $headerRightActions: ViewStyle = {
   paddingVertical: 8, // sm spacing
 }
 
-const $headerTitle: any = {
+const $headerTitle: TextStyle = {
   color: '#60a5fa', // Blue accent color
   fontSize: 16,
   lineHeight: 22,
