@@ -3,8 +3,6 @@ import { PaneManager } from "@/panes/PaneManager";
 import { Hotbar } from "@/components/hud/Hotbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-// Type assertion for Radix UI components to fix TypeScript strict JSX checking
-const RadixTooltipProvider = TooltipProvider as any;
 import { SessionManager } from "@/components/session/SessionManager";
 import { HandTrackingManager } from "@/components/session/HandTrackingManager";
 import { AuthButton } from "@/components/auth/AuthButton";
@@ -149,7 +147,7 @@ function App() {
   };
 
   return (
-    <RadixTooltipProvider>
+    <TooltipProvider>
       <div className="relative h-full w-full font-mono overflow-hidden">
         {/* Authentication Button - Top Right */}
         <div className="absolute top-4 right-4 z-50">
@@ -181,7 +179,7 @@ function App() {
           onToggleHandTracking={toggleHandTracking}
         />
       </div>
-    </RadixTooltipProvider>
+    </TooltipProvider>
   );
 }
 

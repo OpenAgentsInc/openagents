@@ -6,10 +6,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Type assertions for Tooltip components to fix TypeScript strict JSX checking
-const TooltipComponent = Tooltip as any;
-const TooltipTriggerComponent = TooltipTrigger as any;
-const TooltipContentComponent = TooltipContent as any;
 
 interface HotbarItemProps {
   slotNumber: number;
@@ -40,8 +36,8 @@ export const HotbarItem: React.FC<HotbarItemProps> = ({
   const shortcutText = `${modifierPrefix}${slotNumber}`;
 
   return (
-    <TooltipComponent delayDuration={300}>
-      <TooltipTriggerComponent asChild>
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
         <button
           onClick={onClick}
           aria-label={title || `Hotbar slot ${slotNumber}`}
@@ -62,14 +58,14 @@ export const HotbarItem: React.FC<HotbarItemProps> = ({
             </div>
           )}
         </button>
-      </TooltipTriggerComponent>
+      </TooltipTrigger>
       {!isGhost && (
-        <TooltipContentComponent side="top" sideOffset={5}>
+        <TooltipContent side="top" sideOffset={5}>
           <p>
             {title || `Slot ${slotNumber}`} ({shortcutText})
           </p>
-        </TooltipContentComponent>
+        </TooltipContent>
       )}
-    </TooltipComponent>
+    </Tooltip>
   );
 };

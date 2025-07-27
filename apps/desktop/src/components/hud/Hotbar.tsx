@@ -3,13 +3,6 @@ import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
 import { Plus, History, Hand, Settings, LayoutGrid, BarChart } from "lucide-react";
 
-// Type assertions for Lucide React icons to fix TypeScript strict JSX checking
-const LucidePlus = Plus as any;
-const LucideHistory = History as any;
-const LucideHand = Hand as any;
-const LucideSettings = Settings as any;
-const LucideLayoutGrid = LayoutGrid as any;
-const LucideBarChart = BarChart as any;
 import { usePaneStore } from "@/stores/pane";
 import { useHotbarStore } from "@/stores/hotbar";
 
@@ -54,7 +47,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         title="New Chat"
         isPressed={pressedSlots.includes(1)}
       >
-        <LucidePlus className="text-muted-foreground h-5 w-5" />
+        <Plus className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 2: Organize Panes */}
@@ -64,7 +57,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         title="Organize Panes"
         isPressed={pressedSlots.includes(2)}
       >
-        <LucideLayoutGrid className="text-muted-foreground h-5 w-5" />
+        <LayoutGrid className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 3: History Panel */}
@@ -75,7 +68,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         isActive={isMetadataPaneOpen}
         isPressed={pressedSlots.includes(3)}
       >
-        <LucideHistory className="text-muted-foreground h-5 w-5" />
+        <History className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 4: Stats Panel */}
@@ -86,7 +79,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         isActive={isStatsPaneOpen}
         isPressed={pressedSlots.includes(4)}
       >
-        <LucideBarChart className="text-muted-foreground h-5 w-5" />
+        <BarChart className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 5: Empty */}
@@ -107,7 +100,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         isActive={isSettingsPaneOpen}
         isPressed={pressedSlots.includes(7)}
       >
-        <LucideSettings className="text-muted-foreground h-5 w-5" />
+        <Settings className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
 
       {/* Slot 8: Help (disabled for now) */}
@@ -130,7 +123,7 @@ export const Hotbar: React.FC<HotbarProps> = ({
         isActive={isHandTrackingActive}
         isPressed={pressedSlots.includes(9)}
       >
-        <LucideHand className="text-muted-foreground h-5 w-5" />
+        <Hand className="text-muted-foreground h-5 w-5" />
       </HotbarItem>
     </div>
   );

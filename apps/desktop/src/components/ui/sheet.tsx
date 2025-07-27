@@ -2,25 +2,15 @@ import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
 
-// Type assertion for Lucide React icon to fix TypeScript strict JSX checking
-const LucideXIcon = XIcon as any;
 
 import { cn } from "@/lib/utils"
 
-// Type assertions for Radix UI components to fix TypeScript strict JSX checking
-const SheetRootPrimitive = SheetPrimitive.Root as any;
-const SheetTriggerPrimitive = SheetPrimitive.Trigger as any;
-const SheetClosePrimitive = SheetPrimitive.Close as any;
-const SheetOverlayPrimitive = SheetPrimitive.Overlay as any;
-const SheetContentPrimitive = SheetPrimitive.Content as any;
-const SheetTitlePrimitive = SheetPrimitive.Title as any;
-const SheetDescriptionPrimitive = SheetPrimitive.Description as any;
 
 const Sheet = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Root>
 >((props, _ref) => (
-  <SheetRootPrimitive data-slot="sheet" {...props} />
+  <SheetPrimitive.Root data-slot="sheet" {...props} />
 ))
 Sheet.displayName = SheetPrimitive.Root.displayName
 
@@ -28,7 +18,7 @@ const SheetTrigger = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Trigger>
 >((props, ref) => (
-  <SheetTriggerPrimitive ref={ref} data-slot="sheet-trigger" {...props} />
+  <SheetPrimitive.Trigger ref={ref} data-slot="sheet-trigger" {...props} />
 ))
 SheetTrigger.displayName = SheetPrimitive.Trigger.displayName
 
@@ -36,7 +26,7 @@ const SheetClose = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Close>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Close>
 >((props, ref) => (
-  <SheetClosePrimitive ref={ref} data-slot="sheet-close" {...props} />
+  <SheetPrimitive.Close ref={ref} data-slot="sheet-close" {...props} />
 ))
 SheetClose.displayName = SheetPrimitive.Close.displayName
 
@@ -46,7 +36,7 @@ const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
-  <SheetOverlayPrimitive
+  <SheetPrimitive.Overlay
     ref={ref}
     data-slot="sheet-overlay"
     className={cn(
@@ -69,7 +59,7 @@ const SheetContent = React.forwardRef<
 >(({ className, children, side = "right", ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
-    <SheetContentPrimitive
+    <SheetPrimitive.Content
       ref={ref}
       data-slot="sheet-content"
       className={cn(
@@ -87,11 +77,11 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {children}
-      <SheetClosePrimitive className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
-        <LucideXIcon className="size-4" />
+      <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
+        <XIcon className="size-4" />
         <span className="sr-only">Close</span>
-      </SheetClosePrimitive>
-    </SheetContentPrimitive>
+      </SheetPrimitive.Close>
+    </SheetPrimitive.Content>
   </SheetPortal>
 ))
 SheetContent.displayName = SheetPrimitive.Content.displayName
@@ -120,7 +110,7 @@ const SheetTitle = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
 >(({ className, ...props }, ref) => (
-  <SheetTitlePrimitive
+  <SheetPrimitive.Title
     ref={ref}
     data-slot="sheet-title"
     className={cn("text-foreground font-semibold", className)}
@@ -133,7 +123,7 @@ const SheetDescription = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
 >(({ className, ...props }, ref) => (
-  <SheetDescriptionPrimitive
+  <SheetPrimitive.Description
     ref={ref}
     data-slot="sheet-description"
     className={cn("text-muted-foreground text-sm", className)}

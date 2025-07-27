@@ -3,8 +3,6 @@ import { Slot } from "@radix-ui/react-slot"
 import { cva, VariantProps } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
 
-// Type assertion for Lucide React icon to fix TypeScript strict JSX checking
-const LucidePanelLeftIcon = PanelLeftIcon as any;
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
@@ -275,7 +273,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <LucidePanelLeftIcon />
+      <PanelLeftIcon />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )
