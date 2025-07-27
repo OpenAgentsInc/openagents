@@ -173,14 +173,8 @@ impl ConvexAuth {
                     key.get("e").and_then(|v| v.as_str()),
                 ) {
                     if kty == "RSA" {
-                        // Decode the RSA components
-                        let n_bytes = general_purpose::URL_SAFE_NO_PAD.decode(n)
-                            .map_err(|_| AppError::ConvexAuthError("Invalid RSA modulus".to_string()))?;
-                        let e_bytes = general_purpose::URL_SAFE_NO_PAD.decode(e)
-                            .map_err(|_| AppError::ConvexAuthError("Invalid RSA exponent".to_string()))?;
-                        
-                        // Create RSA key from components
-                        let decoding_key = DecodingKey::from_rsa_components(&n_bytes, &e_bytes)
+                        // Create RSA key from base64-encoded components (no need to decode first)
+                        let decoding_key = DecodingKey::from_rsa_components(n, e)
                             .map_err(|_| AppError::ConvexAuthError("Failed to create RSA key".to_string()))?;
                         
                         self.decoding_key = Some(decoding_key);

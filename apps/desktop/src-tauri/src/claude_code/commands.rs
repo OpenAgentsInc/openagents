@@ -4,8 +4,7 @@ use serde_json::Value;
 
 use crate::error::CommandResult;
 use crate::claude_code::{
-    EnhancedConvexClient, ConvexDatabase, SessionRepository, MessageRepository, 
-    AuthService, AuthContext
+    EnhancedConvexClient, SessionRepository, MessageRepository
 };
 use crate::claude_code::database::{
     CreateSessionRequest, UpdateSessionRequest, CreateMessageRequest, UpdateMessageRequest
