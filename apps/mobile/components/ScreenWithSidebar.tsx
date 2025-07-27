@@ -1,5 +1,5 @@
 import { FC, useCallback, useRef, useState } from "react"
-import { Platform, Pressable, View, ViewStyle, TextStyle } from "react-native"
+import { Platform, Pressable, View, ViewStyle, TextStyle, Text } from "react-native"
 import { useFocusEffect } from "@react-navigation/native"
 import { Plus } from "lucide-react-native"
 import { DrawerLayout, DrawerState } from "react-native-gesture-handler"
@@ -119,7 +119,7 @@ export const ScreenWithSidebar: FC<ScreenWithSidebarProps> = ({
                   onPress={() => onNewChat?.()}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Plus size={20} color="#f4f4f5" />
+                  <Text style={{ fontSize: 20, color: "#f4f4f5", fontWeight: "bold" }}>+</Text>
                 </Pressable>
               </View>
             }
