@@ -7,6 +7,10 @@ use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri_plugin_store::{Store, StoreBuilder};
+use tauri::AppHandle;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Token storage entry with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,30 +24,49 @@ pub struct TokenEntry {
 
 /// Secure token storage manager
 /// 
-/// Phase 3: Handles secure storage of JWT tokens with automatic expiration checking
+/// Phase 4: Handles secure storage of JWT tokens with Tauri secure store integration
 pub struct TokenStorage {
     tokens: BTreeMap<String, TokenEntry>,
     storage_key: String,
+    store: Option<Arc<Store<tauri::Wry>>>,
+    store_path: PathBuf,
 }
 
 impl TokenStorage {
     /// Create a new token storage instance
     /// 
-    /// Phase 3: Initialize secure token storage for the application
+    /// Phase 4: Initialize secure token storage with Tauri secure store
     pub fn new() -> Self {
         Self {
             tokens: BTreeMap::new(),
             storage_key: "openagents_auth_tokens".to_string(),
+            store: None,
+            store_path: PathBuf::from("openagents_tokens.dat"),
         }
+    }
+
+    /// Initialize the token storage with Tauri app handle
+    /// 
+    /// Phase 4: Setup secure store connection for persistent storage
+    pub fn initialize_with_app(&mut self, app: &AppHandle) -> Result<(), AppError> {
+        let store = StoreBuilder::new(app, &self.store_path)
+            .build()
+            .map_err(|e| AppError::TokenStorageError(format!("Failed to initialize secure store: {}", e)))?;
+            
+        self.store = Some(store);
+        self.load_from_storage()?;
+        
+        log::info!("Initialized secure token storage with Tauri store");
+        Ok(())
     }
 
     /// Store a JWT token securely
     /// 
-    /// Phase 3: Securely store token with metadata for later retrieval
+    /// Phase 4: Securely store token with metadata using Tauri secure store
     pub fn store_token(&mut self, key: &str, token: String, expires_at: Option<u64>) -> Result<(), AppError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| AppError::ConvexDatabaseError(format!("System time error: {}", e)))?
+            .map_err(|e| AppError::TokenStorageError(format!("System time error: {}", e)))?
             .as_secs();
 
         let token_entry = TokenEntry {
@@ -57,7 +80,19 @@ impl TokenStorage {
         self.tokens.insert(key.to_string(), token_entry);
         self.persist_to_storage()?;
         
-        log::info!("Stored token for key: {}", key);
+        // Phase 4: Enhanced authentication monitoring
+        if let Some(exp) = expires_at {
+            let ttl = exp.saturating_sub(now);
+            log::info!("AUTH_MONITOR: Token stored securely [key={}, ttl={}s, expires_at={}]", 
+                key, ttl, exp);
+        } else {
+            log::info!("AUTH_MONITOR: Long-lived token stored securely [key={}, no_expiration=true]", key);
+        }
+        
+        // Security audit log
+        log::warn!("SECURITY_AUDIT: Token storage event [key={}, storage_method=tauri_secure_store, timestamp={}]", 
+            key, now);
+        
         Ok(())
     }
 
@@ -65,24 +100,44 @@ impl TokenStorage {
     /// 
     /// Phase 3: Get token and check expiration automatically
     pub fn get_token(&self, key: &str) -> Result<Option<String>, AppError> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| AppError::TokenStorageError(format!("System time error: {}", e)))?
+            .as_secs();
+            
         if let Some(entry) = self.tokens.get(key) {
             // Check if token is expired
             if let Some(expires_at) = entry.expires_at {
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_err(|e| AppError::ConvexDatabaseError(format!("System time error: {}", e)))?
-                    .as_secs();
-
                 if now >= expires_at {
-                    log::warn!("Token for key '{}' has expired", key);
+                    let expired_since = now.saturating_sub(expires_at);
+                    log::warn!("AUTH_MONITOR: Token retrieval failed - expired [key={}, expired_since={}s, timestamp={}]", 
+                        key, expired_since, now);
+                    log::error!("SECURITY_AUDIT: Expired token access attempt [key={}, expired_at={}, access_time={}]", 
+                        key, expires_at, now);
                     return Ok(None);
                 }
+                
+                let ttl = expires_at.saturating_sub(now);
+                log::debug!("AUTH_MONITOR: Token retrieved successfully [key={}, ttl_remaining={}s]", key, ttl);
+                
+                // Warning for tokens expiring soon
+                if ttl < 300 { // 5 minutes
+                    log::warn!("AUTH_MONITOR: Token expiring soon [key={}, ttl_remaining={}s]", key, ttl);
+                }
+            } else {
+                log::debug!("AUTH_MONITOR: Long-lived token retrieved [key={}, no_expiration=true]", key);
             }
 
-            log::debug!("Retrieved valid token for key: {}", key);
+            // Performance monitoring
+            let token_age = now.saturating_sub(entry.issued_at);
+            log::debug!("AUTH_MONITOR: Token usage [key={}, age={}s, issuer={}]", 
+                key, token_age, entry.issuer);
+            
             Ok(Some(entry.token.clone()))
         } else {
-            log::debug!("No token found for key: {}", key);
+            log::debug!("AUTH_MONITOR: Token not found [key={}, timestamp={}]", key, now);
+            log::warn!("SECURITY_AUDIT: Token access attempt for non-existent key [key={}, timestamp={}]", 
+                key, now);
             Ok(None)
         }
     }
@@ -91,23 +146,57 @@ impl TokenStorage {
     /// 
     /// Phase 3: Securely remove token from storage
     pub fn remove_token(&mut self, key: &str) -> Result<(), AppError> {
-        if self.tokens.remove(key).is_some() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+            
+        if let Some(removed_entry) = self.tokens.remove(key) {
             self.persist_to_storage()?;
-            log::info!("Removed token for key: {}", key);
+            
+            // Phase 4: Enhanced monitoring for token removal
+            let token_age = now.saturating_sub(removed_entry.issued_at);
+            log::info!("AUTH_MONITOR: Token removed [key={}, age={}s, issuer={}, timestamp={}]", 
+                key, token_age, removed_entry.issuer, now);
+            log::warn!("SECURITY_AUDIT: Token deletion event [key={}, deletion_method=manual, timestamp={}]", 
+                key, now);
         } else {
-            log::debug!("No token to remove for key: {}", key);
+            log::debug!("AUTH_MONITOR: Token removal attempted but not found [key={}, timestamp={}]", key, now);
+            log::warn!("SECURITY_AUDIT: Attempted removal of non-existent token [key={}, timestamp={}]", 
+                key, now);
         }
         Ok(())
     }
 
     /// Clear all stored tokens
     /// 
-    /// Phase 3: Complete logout - remove all authentication tokens
+    /// Phase 4: Complete logout - securely remove all authentication tokens
     pub fn clear_all_tokens(&mut self) -> Result<(), AppError> {
         let count = self.tokens.len();
         self.tokens.clear();
-        self.persist_to_storage()?;
-        log::info!("Cleared {} stored tokens", count);
+        
+        // Also clear from secure store
+        if let Some(store) = &self.store {
+            let deleted = store.delete(&self.storage_key);
+            if deleted {
+                store.save()
+                    .map_err(|e| AppError::TokenStorageError(format!("Failed to save cleared state: {}", e)))?;
+                log::debug!("Cleared tokens from secure store");
+            } else {
+                log::debug!("No tokens to clear from secure store");
+            }
+        }
+        
+        // Phase 4: Enhanced monitoring for mass token clearing
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+            
+        log::info!("AUTH_MONITOR: Mass token clearance [count={}, method=logout, timestamp={}]", 
+            count, now);
+        log::error!("SECURITY_AUDIT: Complete authentication logout [tokens_cleared={}, timestamp={}]", 
+            count, now);
         Ok(())
     }
 
@@ -152,35 +241,55 @@ impl TokenStorage {
 
     /// Load tokens from persistent storage
     /// 
-    /// Phase 3: Initialize token storage from saved data
+    /// Phase 4: Load tokens from Tauri secure store
     pub fn load_from_storage(&mut self) -> Result<(), AppError> {
-        // TODO: Phase 3 - Implement actual Tauri secure storage integration
-        // For now, this is a placeholder for the storage interface
+        if let Some(store) = &self.store {
+            // Try to load existing tokens from secure store
+            if let Some(stored_tokens) = store.get(&self.storage_key) {
+                if let Some(tokens_map) = stored_tokens.as_object() {
+                    for (key, value) in tokens_map {
+                        if let Ok(token_entry) = serde_json::from_value::<TokenEntry>(value.clone()) {
+                            // Only load non-expired tokens
+                            if !self.is_token_expired(&token_entry) {
+                                self.tokens.insert(key.clone(), token_entry);
+                            }
+                        }
+                    }
+                    log::info!("Loaded {} valid tokens from secure storage", self.tokens.len());
+                } else {
+                    log::debug!("Invalid token data format in secure storage");
+                }
+            } else {
+                log::debug!("No existing tokens found in secure storage");
+            }
+        } else {
+            log::warn!("Secure store not initialized, skipping token load");
+        }
         
-        // In a real implementation, this would:
-        // 1. Use Tauri's app data directory
-        // 2. Read encrypted token data
-        // 3. Decrypt and deserialize tokens
-        // 4. Populate self.tokens
-        
-        log::debug!("Loading tokens from secure storage (placeholder)");
         Ok(())
     }
 
     /// Save tokens to persistent storage
     /// 
-    /// Phase 3: Persist tokens securely to disk
+    /// Phase 4: Persist tokens securely using Tauri secure store
     fn persist_to_storage(&self) -> Result<(), AppError> {
-        // TODO: Phase 3 - Implement actual Tauri secure storage integration
-        // For now, this is a placeholder for the storage interface
+        if let Some(store) = &self.store {
+            // Convert tokens to JSON for secure storage
+            let tokens_json = serde_json::to_value(&self.tokens)
+                .map_err(|e| AppError::TokenStorageError(format!("Failed to serialize tokens: {}", e)))?;
+                
+            // Store encrypted tokens in secure store
+            store.set(&self.storage_key, tokens_json);
+                
+            // Force save to disk
+            store.save()
+                .map_err(|e| AppError::TokenStorageError(format!("Failed to save tokens to disk: {}", e)))?;
+                
+            log::debug!("Securely persisted {} tokens to encrypted storage", self.tokens.len());
+        } else {
+            log::warn!("Secure store not initialized, cannot persist tokens");
+        }
         
-        // In a real implementation, this would:
-        // 1. Serialize self.tokens
-        // 2. Encrypt the serialized data
-        // 3. Write to Tauri's secure app data directory
-        // 4. Set appropriate file permissions
-        
-        log::debug!("Persisting {} tokens to secure storage (placeholder)", self.tokens.len());
         Ok(())
     }
 

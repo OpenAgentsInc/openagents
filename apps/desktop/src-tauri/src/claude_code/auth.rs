@@ -102,49 +102,6 @@ impl ConvexAuth {
         })
     }
 
-    /// Extract basic user info from token without full validation (DEVELOPMENT ONLY)
-    /// 
-    /// DEPRECATED in Phase 3: Convex handles JWT validation automatically via auth.config.ts
-    /// WARNING: This method bypasses signature verification and should NEVER be used in production
-    /// It's only intended for development/testing when JWKS is not available
-    #[deprecated(note = "Phase 3: Use Convex JWT validation via ctx.auth.getUserIdentity() instead")]
-    #[cfg(debug_assertions)]
-    pub fn extract_user_info_unsafe(&self, token: &str) -> Result<AuthContext, AppError> {
-        log::warn!("Using unsafe token extraction - DO NOT USE IN PRODUCTION");
-        
-        // This is for development only - decodes without signature verification
-        let token_parts: Vec<&str> = token.split('.').collect();
-        if token_parts.len() != 3 {
-            return Err(AppError::ConvexAuthError("Invalid JWT format".to_string()));
-        }
-
-        let payload = general_purpose::URL_SAFE_NO_PAD.decode(token_parts[1])
-            .map_err(|e| AppError::Base64DecodeError(e))?;
-
-        let claims: AuthClaims = serde_json::from_slice(&payload)
-            .map_err(|e| AppError::Json(e))?;
-
-        // Still validate expiration even in unsafe mode
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| AppError::ConvexAuthError("System time error".to_string()))?
-            .as_secs();
-
-        if claims.exp < now {
-            return Err(AppError::ConvexAuthError("Token expired".to_string()));
-        }
-
-        Ok(AuthContext {
-            user_id: claims.sub.clone(),
-            github_id: claims.sub,
-            email: claims.email,
-            name: claims.name,
-            avatar: claims.avatar,
-            github_username: claims.github_username,
-            token: token.to_string(),
-            expires_at: claims.exp,
-        })
-    }
 
     /// Fetch JWKS (JSON Web Key Set) from OpenAuth server
     /// 
@@ -260,19 +217,10 @@ impl AuthService {
                 if let Err(e) = self.convex_auth.fetch_jwks().await {
                     log::warn!("JWKS fetch failed: {}", e);
                     
-                    // Only fall back to unsafe mode in debug builds
-                    #[cfg(debug_assertions)]
-                    {
-                        log::warn!("Falling back to unsafe token extraction for development");
-                        self.convex_auth.extract_user_info_unsafe(&token)?
-                    }
-                    
-                    #[cfg(not(debug_assertions))]
-                    {
-                        return Err(AppError::ConvexAuthError(
-                            "Cannot validate token: JWKS unavailable and unsafe mode disabled in release".to_string()
-                        ));
-                    }
+                    // Phase 4: Removed unsafe fallback mode - now uses proper error handling
+                    return Err(AppError::ConvexAuthError(
+                        format!("Cannot validate token: JWKS unavailable ({}). Please ensure OpenAuth server is running and accessible.", e)
+                    ));
                 } else {
                     // Retry validation with fetched JWKS
                     self.convex_auth.validate_token(&token)?
@@ -348,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_user_info_unsafe() {
+    fn test_secure_validation_required() {
         let auth = ConvexAuth::new("http://localhost:8787".to_string());
         let claims = create_test_claims();
         
@@ -357,13 +305,17 @@ mod tests {
         let key = EncodingKey::from_secret(b"secret");
         let token = encode(&header, &claims, &key).unwrap();
         
-        let result = auth.extract_user_info_unsafe(&token);
-        assert!(result.is_ok());
+        // Phase 4: Now requires proper validation with decoding key
+        let result = auth.validate_token(&token);
+        assert!(result.is_err()); // Should fail without proper decoding key
         
-        let auth_context = result.unwrap();
-        assert_eq!(auth_context.github_id, "github|12345");
-        assert_eq!(auth_context.email, Some("test@example.com".to_string()));
-        assert_eq!(auth_context.github_username, Some("testuser".to_string()));
+        // Verify proper error message
+        match result {
+            Err(AppError::ConvexAuthError(msg)) => {
+                assert!(msg.contains("No decoding key configured"));
+            }
+            _ => panic!("Expected ConvexAuthError"),
+        }
     }
 
     #[test]

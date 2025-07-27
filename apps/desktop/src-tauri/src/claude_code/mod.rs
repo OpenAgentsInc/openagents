@@ -7,6 +7,9 @@ pub mod convex_impl;
 pub mod auth;
 pub mod commands;
 pub mod token_storage;
+pub mod auth_metrics;
+pub mod cors_utils;
+pub mod error_recovery;
 
 pub use discovery::ClaudeDiscovery;
 pub use manager::ClaudeManager;

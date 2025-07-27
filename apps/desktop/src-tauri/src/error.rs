@@ -64,6 +64,14 @@ pub enum AppError {
     #[error("OpenAuth server error: {0}")]
     OpenAuthError(String),
 
+    /// Phase 4: CORS configuration errors
+    #[error("CORS error: {0}")]
+    CorsError(String),
+
+    /// Phase 4: Network timeout errors
+    #[error("Network timeout: {0}")]
+    NetworkTimeout(String),
+
     /// Base64 decoding errors
     #[error("Base64 decode error: {0}")]
     Base64DecodeError(#[from] base64::DecodeError),
