@@ -3,7 +3,7 @@ import { Effect, Stream, pipe, Layer } from 'effect';
 import { ClaudeStreamingService, ClaudeStreamingServiceLive, StreamingSession, Message } from '../services/ClaudeStreamingService';
 import { TauriEventService, TauriEventServiceLive } from '../services/TauriEventService';
 import { invoke } from '@tauri-apps/api/core';
-import { useMutation, useConvex } from 'convex/react';
+import { useMutation, useConvex, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
 interface UseClaudeStreamingOptions {
@@ -40,18 +40,21 @@ export function useClaudeStreaming({
   const sessionRef = useRef<StreamingSession | null>(null);
   const addClaudeMessage = useMutation(api.claude.addClaudeMessage);
   const convex = useConvex();
+  const lastProcessedMessageIdRef = useRef<string | null>(null);
+  
+  // Real-time subscription to messages from Convex
+  const targetSessionId = persistToSessionId || sessionId;
+  const convexMessages = useQuery(api.claude.getSessionMessages, {
+    sessionId: targetSessionId,
+  });
 
   // Load historical messages from Convex
   const loadHistoricalMessages = useCallback(async () => {
     try {
-      // Use the persistence session ID (mobile session ID) to load messages
-      const targetSessionId = persistToSessionId || sessionId;
-      
       console.log('📚 [STREAMING] Loading historical messages for session:', targetSessionId);
       
-      const historicalMessages = await convex.query(api.claude.getSessionMessages, {
-        sessionId: targetSessionId,
-      });
+      // Use the real-time subscription messages if available
+      const historicalMessages = convexMessages || [];
       
       if (historicalMessages && historicalMessages.length > 0) {
         // Convert Convex message format to streaming message format
@@ -83,7 +86,7 @@ export function useClaudeStreaming({
       // Don't fail streaming if we can't load history
       setHasLoadedHistory(true);
     }
-  }, [sessionId, persistToSessionId, convex, onMessage]);
+  }, [targetSessionId, convexMessages, onMessage]);
 
   // Start streaming
   const startStreaming = useCallback(async () => {
@@ -277,6 +280,51 @@ export function useClaudeStreaming({
       stopStreaming();
     };
   }, [stopStreaming]);
+
+  // Detect new messages from mobile and trigger Claude response
+  useEffect(() => {
+    if (!convexMessages || convexMessages.length === 0 || !isStreaming) return;
+    
+    // Find the last user message from Convex
+    const lastUserMessage = [...convexMessages]
+      .reverse()
+      .find((msg: any) => msg.messageType === 'user');
+    
+    if (!lastUserMessage) return;
+    
+    // Check if this is a new message we haven't processed
+    if (lastProcessedMessageIdRef.current !== lastUserMessage.messageId) {
+      console.log('🔄 [STREAMING] Detected new user message from mobile:', {
+        messageId: lastUserMessage.messageId,
+        content: lastUserMessage.content.substring(0, 50) + '...',
+        timestamp: lastUserMessage.timestamp
+      });
+      
+      // Update the last processed message ID
+      lastProcessedMessageIdRef.current = lastUserMessage.messageId;
+      
+      // Check if this message already exists in our local messages
+      const messageExists = messages.some(m => m.id === lastUserMessage.messageId);
+      
+      if (!messageExists) {
+        console.log('🚀 [STREAMING] Triggering Claude response for mobile message');
+        
+        // Trigger Claude Code to respond to the message
+        invoke<{ success: boolean; error?: string }>('trigger_claude_response', {
+          sessionId,
+          message: lastUserMessage.content,
+        }).then(result => {
+          if (result.success) {
+            console.log('✅ [STREAMING] Successfully triggered Claude response');
+          } else {
+            console.error('❌ [STREAMING] Failed to trigger Claude response:', result.error);
+          }
+        }).catch(error => {
+          console.error('❌ [STREAMING] Error triggering Claude response:', error);
+        });
+      }
+    }
+  }, [convexMessages, isStreaming, messages, sessionId]);
 
   return {
     messages,
