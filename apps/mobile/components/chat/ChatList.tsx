@@ -1,10 +1,12 @@
 import { useMemo, useCallback, useState } from "react"
-import { View, ViewStyle, TextStyle, FlatList, Pressable, TextInput, TouchableOpacity, Modal, Text as RNText } from "react-native"
+import { View, ViewStyle, TextStyle, FlatList, Pressable, TextInput, TouchableOpacity, Modal } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Text } from "../core/Text"
 import type { ChatSession } from "../../types/chat"
 import { ChatListItem } from "./ChatListItem"
+import { IconPlus } from "../icons/IconPlus"
+import { DARK_THEME } from "../../constants/colors"
 
 export interface ChatListProps {
   sessions: ChatSession[]
@@ -105,7 +107,7 @@ export function ChatList({
             accessibilityRole="button"
             accessibilityLabel="Create new chat"
           >
-            <RNText style={{ fontSize: 20, color: "#f4f4f5", fontWeight: "bold" }}>+</RNText>
+            <IconPlus />
           </Pressable>
         </View>
 
@@ -165,7 +167,7 @@ export function ChatList({
                 value={renameValue}
                 onChangeText={setRenameValue}
                 placeholder="Chat name"
-                placeholderTextColor="#71717a"
+                placeholderTextColor={DARK_THEME.textTertiary}
                 autoFocus
                 selectTextOnFocus
                 accessibilityLabel="Chat name input"
@@ -201,7 +203,7 @@ export function ChatList({
 // Styles using our dark zinc color scheme
 const $container: ViewStyle = {
   flex: 1,
-  backgroundColor: '#000', // Pure black background
+  backgroundColor: DARK_THEME.background,
 }
 
 const $header: ViewStyle = {
@@ -215,7 +217,7 @@ const $header: ViewStyle = {
 const $headerTitle: TextStyle = {
   fontSize: 20,
   fontWeight: "600",
-  color: '#f4f4f5', // Zinc-100 text
+  color: DARK_THEME.text,
 }
 
 const $newChatButton: ViewStyle = {
@@ -240,32 +242,32 @@ const $emptyState: ViewStyle = {
 
 const $emptyStateText: TextStyle = {
   fontSize: 16,
-  color: '#a1a1aa', // Zinc-400 text
+  color: DARK_THEME.textSecondary,
   textAlign: "center",
   marginBottom: 8, // xs spacing
 }
 
 const $emptyStateSubtext: TextStyle = {
   fontSize: 14,
-  color: '#71717a', // Zinc-500 text
+  color: DARK_THEME.textTertiary,
   textAlign: "center",
 }
 
 // Modal styles
 const $modalOverlay: ViewStyle = {
   flex: 1,
-  backgroundColor: 'rgba(9, 9, 11, 0.8)',
+  backgroundColor: DARK_THEME.overlay,
   justifyContent: 'center',
   alignItems: 'center',
 }
 
 const $modalContent: ViewStyle = {
-  backgroundColor: '#000',
+  backgroundColor: DARK_THEME.background,
   borderRadius: 12,
   width: '90%',
   maxWidth: 400,
   borderWidth: 1,
-  borderColor: '#27272a',
+  borderColor: DARK_THEME.border,
 }
 
 const $modalHeader: ViewStyle = {
@@ -274,18 +276,18 @@ const $modalHeader: ViewStyle = {
   alignItems: 'center',
   padding: 16,
   borderBottomWidth: 1,
-  borderBottomColor: '#27272a',
+  borderBottomColor: DARK_THEME.border,
 }
 
 const $modalTitle: TextStyle = {
   fontSize: 18,
   fontWeight: 'bold',
-  color: '#f4f4f5',
+  color: DARK_THEME.text,
 }
 
 const $modalClose: TextStyle = {
   fontSize: 20,
-  color: '#a1a1aa',
+  color: DARK_THEME.textSecondary,
   fontWeight: 'bold',
 }
 
@@ -294,19 +296,19 @@ const $modalBody: ViewStyle = {
 }
 
 const $modalLabel: TextStyle = {
-  color: '#f4f4f5',
+  color: DARK_THEME.text,
   fontSize: 14,
   fontWeight: 'bold',
   marginBottom: 8,
 }
 
 const $modalInput: TextStyle = {
-  backgroundColor: '#18181b',
-  color: '#f4f4f5',
+  backgroundColor: DARK_THEME.backgroundSecondary,
+  color: DARK_THEME.text,
   padding: 12,
   borderRadius: 8,
   borderWidth: 1,
-  borderColor: '#27272a',
+  borderColor: DARK_THEME.border,
   fontSize: 14,
   marginBottom: 16,
 }
@@ -324,25 +326,25 @@ const $modalButton: ViewStyle = {
 }
 
 const $modalCancelButton: ViewStyle = {
-  backgroundColor: '#27272a',
+  backgroundColor: DARK_THEME.border,
 }
 
 const $modalConfirmButton: ViewStyle = {
-  backgroundColor: '#60a5fa',
+  backgroundColor: DARK_THEME.primary,
 }
 
 const $modalButtonDisabled: ViewStyle = {
-  backgroundColor: '#374151',
+  backgroundColor: DARK_THEME.disabled,
 }
 
 const $modalCancelText: TextStyle = {
-  color: '#f4f4f5',
+  color: DARK_THEME.text,
   fontSize: 14,
   fontWeight: 'bold',
 }
 
 const $modalConfirmText: TextStyle = {
-  color: '#f4f4f5',
+  color: DARK_THEME.text,
   fontSize: 14,
   fontWeight: 'bold',
 }
