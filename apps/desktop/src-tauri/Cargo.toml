@@ -32,7 +32,10 @@ lazy_static = "1.5.0"
 env_logger = "0.11.8"
 reqwest = { version = "0.11", features = ["json"] }
 dotenvy = "0.15"
-convex = "0.6"
+convex = "0.9"
+jsonwebtoken = "9.0"
+base64 = "0.22"
+async-trait = "0.1"
 
 [dev-dependencies]
 tokio-test = "0.4"
