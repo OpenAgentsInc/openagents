@@ -5,11 +5,14 @@ import * as SeparatorPrimitive from "@radix-ui/react-separator"
 
 import { cn } from "@/lib/utils"
 
+// Type assertion for Radix UI component to fix TypeScript strict JSX checking
+const SeparatorRoot = SeparatorPrimitive.Root as any;
+
 const Separator = React.forwardRef<
   React.ElementRef<typeof SeparatorPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>
 >(({ className, orientation = "horizontal", decorative = true, ...props }, ref) => (
-  <SeparatorPrimitive.Root
+  <SeparatorRoot
     ref={ref}
     data-slot="separator"
     decorative={decorative}
