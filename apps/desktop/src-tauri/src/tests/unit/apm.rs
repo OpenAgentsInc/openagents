@@ -1,4 +1,5 @@
-use crate::{calculate_apm, get_tool_category, ProductivityByTime};
+use crate::apm::utils::{calculate_apm, get_tool_category};
+use crate::apm::models::ProductivityByTime;
 
 #[test]
 fn test_calculate_apm_basic() {

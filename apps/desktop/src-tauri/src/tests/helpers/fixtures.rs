@@ -1,4 +1,6 @@
 use crate::claude_code::models::*;
+use crate::apm::models::{APMSession, ToolUsage};
+use crate::apm::utils::get_tool_category;
 use chrono::Utc;
 use uuid::Uuid;
 use std::collections::HashMap;
@@ -62,8 +64,8 @@ pub fn create_test_conversation(id: &str, project_name: &str) -> ClaudeConversat
     }
 }
 
-pub fn create_test_apm_session(id: &str, apm: f64) -> crate::APMSession {
-    crate::APMSession {
+pub fn create_test_apm_session(id: &str, apm: f64) -> APMSession {
+    APMSession {
         id: format!("TEST_SESSION_{}", id), // Clear test prefix
         project: "TEST_PROJECT".to_string(), // Clear test prefix
         apm,
@@ -74,11 +76,11 @@ pub fn create_test_apm_session(id: &str, apm: f64) -> crate::APMSession {
     }
 }
 
-pub fn create_test_tool_usage(name: &str, count: u32) -> crate::ToolUsage {
-    crate::ToolUsage {
+pub fn create_test_tool_usage(name: &str, count: u32) -> ToolUsage {
+    ToolUsage {
         name: name.to_string(),
         count: count as f64,
         percentage: 0.0,
-        category: crate::get_tool_category(name),
+        category: get_tool_category(name),
     }
 }
