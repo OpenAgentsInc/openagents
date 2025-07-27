@@ -16,6 +16,8 @@ import {
   AddClaudeMessageResult,
   GetSessionMessagesArgs,
   GetSessionMessagesResult,
+  GetSessionMessagesPaginatedArgs,
+  GetSessionMessagesPaginatedResult,
 } from "./messages.schemas";
 
 // Query to get all messages
@@ -171,5 +173,27 @@ export const getSessionMessages = query({
       }
 
       return yield* query.collect();
+    }),
+});
+
+// Get session messages with pagination
+export const getSessionMessagesPaginated = query({
+  args: GetSessionMessagesPaginatedArgs,
+  returns: GetSessionMessagesPaginatedResult,
+  handler: ({ sessionId, paginationOpts }) =>
+    Effect.gen(function* () {
+      const { db } = yield* ConfectQueryCtx;
+
+      yield* Effect.logInfo(`📄 [CONFECT] Fetching paginated messages for session: ${sessionId} (${paginationOpts.numItems} items)`);
+
+      const result = yield* db
+        .query("claudeMessages")
+        .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
+        .order("asc")
+        .paginate(paginationOpts);
+
+      yield* Effect.logInfo(`✅ [CONFECT] Paginated messages fetched: ${result.page.length} items, isDone: ${result.isDone}`);
+
+      return result;
     }),
 });

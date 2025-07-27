@@ -17,3 +17,12 @@ export * from "./mobile-sync.schemas";
 // HTTP API
 export * from "./http-api";
 export { default as httpRouter } from "./http";
+
+// Integration layer
+export * from "./integration";
+
+// Validation and security
+export * from "./validation";
+
+// Error tracking and monitoring
+export * from "./error-tracking";

@@ -75,3 +75,38 @@ export const GetSessionMessagesResult = Schema.Array(
     _creationTime: Schema.Number,
   })
 );
+
+// Paginated GetSessionMessages schemas  
+export const GetSessionMessagesPaginatedArgs = Schema.Struct({
+  sessionId: Schema.String.pipe(Schema.nonEmpty()),
+  paginationOpts: Schema.Struct({
+    numItems: Schema.Number.pipe(Schema.positive(), Schema.max(100)), // Max 100 items per page
+    cursor: Schema.optional(Schema.String),
+  }),
+});
+
+export const GetSessionMessagesPaginatedResult = Schema.Struct({
+  page: Schema.Array(
+    Schema.Struct({
+      _id: Id.Id("claudeMessages"),
+      sessionId: Schema.String,
+      messageId: Schema.String,
+      messageType: Schema.Literal("user", "assistant", "tool_use", "tool_result", "thinking"),
+      content: Schema.String,
+      timestamp: Schema.String,
+      userId: Schema.optional(Id.Id("users")),
+      toolInfo: Schema.optional(
+        Schema.Struct({
+          toolName: Schema.String,
+          toolUseId: Schema.String,
+          input: Schema.Any,
+          output: Schema.optional(Schema.String),
+        })
+      ),
+      metadata: Schema.optional(Schema.Any),
+      _creationTime: Schema.Number,
+    })
+  ),
+  isDone: Schema.Boolean,
+  continueCursor: Schema.optional(Schema.String),
+});
