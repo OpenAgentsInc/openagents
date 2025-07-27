@@ -26,13 +26,16 @@
   "scripts": {
     "dev": "convex dev",
     "deploy": "convex deploy",
-    "codegen": "convex dev --until-success"
+    "codegen": "convex dev --until-success",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "convex": "^1.25.4"
   },
   "devDependencies": {
     "@types/node": "^24.1.0",
-    "typescript": "~5.6.2"
+    "typescript": "~5.6.2",
+    "vitest": "^2.0.0"
   }
 }

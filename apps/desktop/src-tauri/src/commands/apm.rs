@@ -6,6 +6,40 @@ use crate::apm::{
     APMStats, CombinedAPMStats, HistoricalAPMResponse, APMAnalyzer,
     generate_historical_apm_data, combine_apm_stats, fetch_convex_apm_stats
 };
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AggregatedAPMStats {
+    pub apm1h: f64,
+    pub apm6h: f64,
+    pub apm1d: f64,
+    pub apm1w: f64,
+    pub apm1m: f64,
+    #[serde(rename = "apmLifetime")]
+    pub apm_lifetime: f64,
+    #[serde(rename = "totalActions")]
+    pub total_actions: i32,
+    #[serde(rename = "activeMinutes")]
+    pub active_minutes: f64,
+    #[serde(rename = "deviceBreakdown")]
+    pub device_breakdown: Option<DeviceBreakdown>,
+    pub metadata: Option<AggregatedMetadata>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeviceBreakdown {
+    pub desktop: Option<f64>,
+    pub mobile: Option<f64>,
+    pub github: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AggregatedMetadata {
+    #[serde(rename = "overlappingMinutes")]
+    pub overlapping_minutes: Option<f64>,
+    #[serde(rename = "peakConcurrency")]
+    pub peak_concurrency: Option<i32>,
+}
 
 #[tauri::command]
 pub async fn analyze_claude_conversations() -> Result<CommandResult<APMStats>, String> {
@@ -111,4 +145,36 @@ pub async fn get_historical_apm_data(
             Ok(CommandResult::error(e.to_string()))
         }
     }
+}
+
+#[tauri::command]
+pub async fn get_user_apm_stats() -> Result<CommandResult<AggregatedAPMStats>, String> {
+    info!("get_user_apm_stats called");
+    
+    // For now, return mock data since we need to integrate with the Convex client
+    // In a real implementation, this would call the getUserAPMStats Convex function
+    
+    // TODO: Integrate with EnhancedConvexClient to call getUserAPMStats
+    let mock_stats = AggregatedAPMStats {
+        apm1h: 2.5,
+        apm6h: 1.8,
+        apm1d: 1.2,
+        apm1w: 0.9,
+        apm1m: 0.6,
+        apm_lifetime: 0.4,
+        total_actions: 1250,
+        active_minutes: 3125.0,
+        device_breakdown: Some(DeviceBreakdown {
+            desktop: Some(0.3),
+            mobile: Some(0.1),
+            github: Some(0.05),
+        }),
+        metadata: Some(AggregatedMetadata {
+            overlapping_minutes: Some(45.0),
+            peak_concurrency: Some(2),
+        }),
+    };
+    
+    info!("Returning mock aggregated APM stats - TODO: integrate with Convex");
+    Ok(CommandResult::success(mock_stats))
 }

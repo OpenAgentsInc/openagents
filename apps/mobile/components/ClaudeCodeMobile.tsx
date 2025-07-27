@@ -14,6 +14,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { ScreenWithSidebar, Text as CustomText } from "./index";
 import type { ChatSession } from "../types/chat";
+import { useAPMTracking } from "../hooks/useAPMTracking";
 
 interface ClaudeSession {
   _id: string;
@@ -74,6 +75,14 @@ export function ClaudeCodeMobile() {
   const addMessage = useMutation(api.claude.addClaudeMessage);
   const updateSyncStatus = useMutation(api.claude.updateSyncStatus);
 
+  // APM tracking
+  const { trackMessageSent, trackSessionCreated } = useAPMTracking({
+    enabled: true,
+    trackMessages: true,
+    trackSessions: true,
+    trackAppState: true,
+  });
+
   // Clear message input when switching sessions
   useEffect(() => {
     setNewMessage("");
@@ -114,6 +123,9 @@ export function ClaudeCodeMobile() {
       });
 
       console.log('✅ [MOBILE] Session created successfully with ID:', sessionId);
+
+      // Track session creation for APM
+      trackSessionCreated();
 
       Alert.alert(
         "Session Created",
@@ -167,6 +179,9 @@ export function ClaudeCodeMobile() {
       });
 
       console.log('✅ [MOBILE] Message added to Convex successfully');
+
+      // Track message sent for APM
+      trackMessageSent();
 
       // Update mobile last seen
       await updateSyncStatus({
