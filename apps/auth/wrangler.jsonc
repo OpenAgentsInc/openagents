@@ -8,7 +8,8 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-07-26",
 	"compatibility_flags": [
-		"global_fetch_strictly_public"
+		"global_fetch_strictly_public",
+		"nodejs_compat"
 	],
 	"assets": {
 		"directory": "./public"
@@ -16,13 +17,6 @@
 	"observability": {
 		"enabled": true
 	},
-	"kv_namespaces": [
-		{
-			"binding": "AUTH_STORAGE",
-			"id": "openauth_kv_namespace",
-			"preview_id": "openauth_kv_namespace_preview"
-		}
-	]
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

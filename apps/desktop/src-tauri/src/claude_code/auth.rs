@@ -139,7 +139,7 @@ impl ConvexAuth {
                     key.get("e").and_then(|v| v.as_str()),
                 ) {
                     if kty == "RSA" {
-                        // Create RSA key from base64-encoded components (no need to decode first)
+                        // Create RSA key from base64-encoded components
                         let decoding_key = DecodingKey::from_rsa_components(n, e)
                             .map_err(|_| AppError::ConvexAuthError("Failed to create RSA key".to_string()))?;
                         
