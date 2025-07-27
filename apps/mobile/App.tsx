@@ -1,7 +1,10 @@
 import { useFonts } from "expo-font"
 import { StatusBar } from "expo-status-bar"
-import { LogBox, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native"
+import { LogBox, StyleSheet, View } from "react-native"
 import { ConvexProvider, ConvexReactClient } from "convex/react"
+import { GestureHandlerRootView } from "react-native-gesture-handler"
+import { SafeAreaProvider } from "react-native-safe-area-context"
+import { NavigationContainer } from "@react-navigation/native"
 import { ClaudeCodeMobile } from "./components/ClaudeCodeMobile"
 
 // Disable all development warnings
@@ -23,13 +26,14 @@ function AppContent() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.text}>OpenAgents - Claude Code</Text>
-      <View style={styles.demoContainer}>
-        <ClaudeCodeMobile />
-      </View>
-      <StatusBar style="light" />
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={styles.container}>
+        <NavigationContainer>
+          <ClaudeCodeMobile />
+        </NavigationContainer>
+        <StatusBar style="light" />
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 
@@ -44,24 +48,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
+    backgroundColor: '#1a1a1a', // Match our black theme
   },
-  text: {
-    color: '#fff',
-    fontSize: 22,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-    marginBottom: 20,
-  },
-  demoContainer: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 400,
-  }
 });
