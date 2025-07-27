@@ -5,6 +5,22 @@ import { api } from '../convex/_generated/api';
 import { usePaneStore } from '@/stores/pane';
 import { Effect, Schedule, Duration, Exit, Runtime } from 'effect';
 
+/**
+ * Phase 1 Effect-TS integration for mobile session sync.
+ * 
+ * This hook demonstrates hybrid approach:
+ * - Uses standard Convex queries/mutations for compatibility
+ * - Adds Effect patterns for error handling, retry logic, and concurrency control
+ * - Provides foundation for future full Confect migration
+ * 
+ * Key improvements over useMobileSessionSync:
+ * - Tagged errors with structured error information
+ * - Automatic retry with exponential backoff
+ * - Controlled concurrency (max 3 sessions simultaneously)
+ * - Better memory management with periodic cleanup
+ * - Debounced processing to prevent race conditions
+ */
+
 interface CommandResult<T> {
   success: boolean;
   data?: T;
@@ -35,6 +51,22 @@ export const useMobileSessionSyncConfect = (
   const [error, setError] = useState<string | null>(null);
   const [processedSessions, setProcessedSessions] = useState<Set<string>>(new Set());
   const [sessionIdMapping, setSessionIdMapping] = useState<Map<string, string>>(new Map());
+
+  // Cleanup processed sessions periodically to prevent memory leaks
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      setProcessedSessions(prev => {
+        // Keep only recent sessions (last 100 processed)
+        if (prev.size > 100) {
+          const recentSessions = Array.from(prev).slice(-50);
+          return new Set(recentSessions);
+        }
+        return prev;
+      });
+    }, 60000); // Cleanup every minute
+
+    return () => clearInterval(cleanup);
+  }, []);
 
   const { openChatPane } = usePaneStore();
 
@@ -157,13 +189,21 @@ export const useMobileSessionSyncConfect = (
     }
   }, [isAppInitialized, pendingMobileSessions, isProcessing, processedSessions, processMobileSession]);
 
-  // Auto-process sessions when they appear
+  // Auto-process sessions when they appear with debouncing to prevent race conditions
   useEffect(() => {
-    if (pendingMobileSessions && pendingMobileSessions.length > 0 && isAppInitialized) {
-      console.log(`🔍 [CONFECT-SYNC] Found ${pendingMobileSessions.length} pending mobile sessions`);
-      processAllSessions();
+    if (!pendingMobileSessions || pendingMobileSessions.length === 0 || !isAppInitialized || isProcessing) {
+      return;
     }
-  }, [pendingMobileSessions, isAppInitialized, processAllSessions]);
+
+    console.log(`🔍 [CONFECT-SYNC] Found ${pendingMobileSessions.length} pending mobile sessions`);
+    
+    // Debounce processing to prevent rapid re-triggers
+    const debounceTimer = setTimeout(() => {
+      processAllSessions();
+    }, 500);
+
+    return () => clearTimeout(debounceTimer);
+  }, [pendingMobileSessions, isAppInitialized, isProcessing, processAllSessions]);
 
   return {
     pendingMobileSessions,

@@ -1,4 +1,4 @@
-import { Effect, Schedule, Duration, Data, Option } from "effect";
+import { Effect, Schedule, Duration, Data } from "effect";
 
 // Tagged error types for mobile sync operations
 export class MobileSyncError extends Data.TaggedError("MobileSyncError")<{
