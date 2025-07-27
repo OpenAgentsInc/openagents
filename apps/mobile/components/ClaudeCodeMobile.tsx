@@ -260,7 +260,7 @@ export function ClaudeCodeMobile() {
                 value={newProjectPath}
                 onChangeText={setNewProjectPath}
                 placeholder="/Users/username/my-project"
-                placeholderTextColor="#666"
+                placeholderTextColor="#71717a"
               />
               <CustomText style={styles.helpText}>
                 Full path to your project directory
@@ -274,7 +274,7 @@ export function ClaudeCodeMobile() {
                 value={newSessionTitle}
                 onChangeText={setNewSessionTitle}
                 placeholder="My Mobile Session"
-                placeholderTextColor="#666"
+                placeholderTextColor="#71717a"
               />
               <CustomText style={styles.helpText}>
                 Optional title for this session
@@ -288,7 +288,7 @@ export function ClaudeCodeMobile() {
                 value={initialMessage}
                 onChangeText={setInitialMessage}
                 placeholder="Hi Claude, can you help me with..."
-                placeholderTextColor="#666"
+                placeholderTextColor="#71717a"
                 multiline
                 numberOfLines={4}
               />
@@ -404,7 +404,7 @@ export function ClaudeCodeMobile() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#000',
   },
   sessionDetail: {
     flex: 1,
@@ -414,12 +414,12 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   messageItem: {
-    backgroundColor: '#111',
+    backgroundColor: '#18181b',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#333',
+    borderLeftColor: '#27272a',
   },
   userMessage: {
     borderLeftColor: '#60a5fa',
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   messageType: {
-    color: '#999',
+    color: '#a1a1aa',
     fontSize: 12,
     fontWeight: 'bold',
     textTransform: 'uppercase',
@@ -448,7 +448,7 @@ const styles = StyleSheet.create({
     }),
   },
   messageTime: {
-    color: '#666',
+    color: '#71717a',
     fontSize: 10,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
     }),
   },
   messageContent: {
-    color: '#fff',
+    color: '#f4f4f5',
     fontSize: 14,
     lineHeight: 20,
     fontFamily: Platform.select({
@@ -469,7 +469,7 @@ const styles = StyleSheet.create({
   toolInfo: {
     marginTop: 8,
     padding: 8,
-    backgroundColor: '#333',
+    backgroundColor: '#27272a',
     borderRadius: 4,
   },
   toolInfoText: {
@@ -485,17 +485,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#333',
+    borderTopColor: '#27272a',
     gap: 8,
   },
   messageTextInput: {
     flex: 1,
-    backgroundColor: '#111',
-    color: '#fff',
+    backgroundColor: '#18181b',
+    color: '#f4f4f5',
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#27272a',
     fontSize: 14,
     maxHeight: 100,
     fontFamily: Platform.select({
@@ -515,7 +515,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#374151',
   },
   sendButtonText: {
-    color: '#fff',
+    color: '#f4f4f5',
     fontSize: 14,
     fontWeight: 'bold',
     fontFamily: Platform.select({
@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   emptyStateText: {
-    color: '#999',
+    color: '#a1a1aa',
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 8,
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
     }),
   },
   emptyStateSubtext: {
-    color: '#666',
+    color: '#71717a',
     fontSize: 14,
     textAlign: 'center',
     fontFamily: Platform.select({
@@ -558,19 +558,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(9, 9, 11, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
   },
   modalContent: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#000',
     borderRadius: 12,
     width: '90%',
     maxWidth: 400,
     maxHeight: '80%',
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#27272a',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -578,16 +578,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#27272a',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#f4f4f5',
   },
   modalClose: {
     fontSize: 20,
-    color: '#999',
+    color: '#a1a1aa',
     fontWeight: 'bold',
   },
   modalBody: {
@@ -598,18 +598,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   label: {
-    color: '#fff',
+    color: '#f4f4f5',
     fontSize: 14,
     fontWeight: 'bold',
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#111',
-    color: '#fff',
+    backgroundColor: '#18181b',
+    color: '#f4f4f5',
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#27272a',
     fontSize: 14,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   helpText: {
-    color: '#666',
+    color: '#71717a',
     fontSize: 12,
     marginTop: 4,
   },
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#374151',
   },
   createButtonText: {
-    color: '#fff',
+    color: '#f4f4f5',
     fontSize: 16,
     fontWeight: 'bold',
   },

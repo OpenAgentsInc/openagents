@@ -106,7 +106,7 @@ export function ChatList({
             accessibilityRole="button"
             accessibilityLabel="Create new chat"
           >
-            <Plus size={20} color="#fff" />
+            <Plus size={20} color="#f4f4f5" />
           </Pressable>
         </View>
 
@@ -126,7 +126,7 @@ export function ChatList({
           accessibilityRole="button"
           accessibilityLabel="Create new chat"
         >
-          <Plus size={20} color="#fff" />
+          <Plus size={20} color="#f4f4f5" />
         </Pressable>
       </View>
 
@@ -166,7 +166,7 @@ export function ChatList({
                 value={renameValue}
                 onChangeText={setRenameValue}
                 placeholder="Chat name"
-                placeholderTextColor="#666"
+                placeholderTextColor="#71717a"
                 autoFocus
                 selectTextOnFocus
                 accessibilityLabel="Chat name input"
@@ -199,10 +199,10 @@ export function ChatList({
   )
 }
 
-// Styles using our black/gray color scheme
+// Styles using our dark zinc color scheme
 const $container: ViewStyle = {
   flex: 1,
-  backgroundColor: '#1a1a1a', // Our black background
+  backgroundColor: '#000', // Pure black background
 }
 
 const $header: ViewStyle = {
@@ -216,7 +216,7 @@ const $header: ViewStyle = {
 const $headerTitle: TextStyle = {
   fontSize: 20,
   fontWeight: "600",
-  color: '#fff', // White text
+  color: '#f4f4f5', // Zinc-100 text
 }
 
 const $newChatButton: ViewStyle = {
@@ -241,32 +241,32 @@ const $emptyState: ViewStyle = {
 
 const $emptyStateText: TextStyle = {
   fontSize: 16,
-  color: '#999', // Dim text
+  color: '#a1a1aa', // Zinc-400 text
   textAlign: "center",
   marginBottom: 8, // xs spacing
 }
 
 const $emptyStateSubtext: TextStyle = {
   fontSize: 14,
-  color: '#666', // Even dimmer text
+  color: '#71717a', // Zinc-500 text
   textAlign: "center",
 }
 
 // Modal styles
 const $modalOverlay: ViewStyle = {
   flex: 1,
-  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  backgroundColor: 'rgba(9, 9, 11, 0.8)',
   justifyContent: 'center',
   alignItems: 'center',
 }
 
 const $modalContent: ViewStyle = {
-  backgroundColor: '#1a1a1a',
+  backgroundColor: '#000',
   borderRadius: 12,
   width: '90%',
   maxWidth: 400,
   borderWidth: 1,
-  borderColor: '#333',
+  borderColor: '#27272a',
 }
 
 const $modalHeader: ViewStyle = {
@@ -275,18 +275,18 @@ const $modalHeader: ViewStyle = {
   alignItems: 'center',
   padding: 16,
   borderBottomWidth: 1,
-  borderBottomColor: '#333',
+  borderBottomColor: '#27272a',
 }
 
 const $modalTitle: TextStyle = {
   fontSize: 18,
   fontWeight: 'bold',
-  color: '#fff',
+  color: '#f4f4f5',
 }
 
 const $modalClose: TextStyle = {
   fontSize: 20,
-  color: '#999',
+  color: '#a1a1aa',
   fontWeight: 'bold',
 }
 
@@ -295,19 +295,19 @@ const $modalBody: ViewStyle = {
 }
 
 const $modalLabel: TextStyle = {
-  color: '#fff',
+  color: '#f4f4f5',
   fontSize: 14,
   fontWeight: 'bold',
   marginBottom: 8,
 }
 
 const $modalInput: TextStyle = {
-  backgroundColor: '#111',
-  color: '#fff',
+  backgroundColor: '#18181b',
+  color: '#f4f4f5',
   padding: 12,
   borderRadius: 8,
   borderWidth: 1,
-  borderColor: '#333',
+  borderColor: '#27272a',
   fontSize: 14,
   marginBottom: 16,
 }
@@ -325,7 +325,7 @@ const $modalButton: ViewStyle = {
 }
 
 const $modalCancelButton: ViewStyle = {
-  backgroundColor: '#333',
+  backgroundColor: '#27272a',
 }
 
 const $modalConfirmButton: ViewStyle = {
@@ -337,13 +337,13 @@ const $modalButtonDisabled: ViewStyle = {
 }
 
 const $modalCancelText: TextStyle = {
-  color: '#fff',
+  color: '#f4f4f5',
   fontSize: 14,
   fontWeight: 'bold',
 }
 
 const $modalConfirmText: TextStyle = {
-  color: '#fff',
+  color: '#f4f4f5',
   fontSize: 14,
   fontWeight: 'bold',
 }

@@ -94,8 +94,8 @@ export function SidebarContent(props: SidebarContentProps) {
 }
 
 const $container: ViewStyle = {
-  backgroundColor: '#1a1a1a', // Our black background
+  backgroundColor: '#000', // Pure black background
   flex: 1,
   borderRightWidth: 1,
-  borderRightColor: '#333', // Gray border
+  borderRightColor: '#27272a', // Zinc-800 border
 }
