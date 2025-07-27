@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { DARK_THEME } from "../constants/colors";
 
 export function ConvexMobileDemo() {
   const messages = useQuery(api.messages.getMessages) || [];
@@ -70,7 +71,7 @@ export function ConvexMobileDemo() {
           value={newMessage}
           onChangeText={setNewMessage}
           placeholder="Type a message..."
-          placeholderTextColor="#71717a"
+          placeholderTextColor={DARK_THEME.textTertiary}
           multiline
         />
         <TouchableOpacity
@@ -90,16 +91,16 @@ export function ConvexMobileDemo() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: DARK_THEME.background,
     borderRadius: 8,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: DARK_THEME.border,
   },
   title: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#f4f4f5',
+    color: DARK_THEME.text,
     marginBottom: 16,
     textAlign: 'center',
     fontFamily: Platform.select({
@@ -113,7 +114,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 12,
-    color: '#a1a1aa',
+    color: DARK_THEME.textSecondary,
     marginBottom: 4,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -122,10 +123,10 @@ const styles = StyleSheet.create({
     })
   },
   userText: {
-    color: '#4ade80',
+    color: '#4ade80', // Keep green for user text
   },
   countText: {
-    color: '#60a5fa',
+    color: DARK_THEME.primary,
   },
   messagesContainer: {
     flex: 1,
@@ -133,7 +134,7 @@ const styles = StyleSheet.create({
   },
   messagesTitle: {
     fontSize: 14,
-    color: '#ccc',
+    color: DARK_THEME.textSecondary,
     marginBottom: 8,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -143,12 +144,12 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     flex: 1,
-    backgroundColor: '#18181b',
+    backgroundColor: DARK_THEME.backgroundSecondary,
     borderRadius: 4,
     padding: 8,
   },
   emptyText: {
-    color: '#71717a',
+    color: DARK_THEME.textTertiary,
     fontSize: 12,
     textAlign: 'center',
     padding: 16,
@@ -162,11 +163,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: DARK_THEME.border,
   },
   messageUser: {
     fontSize: 12,
-    color: '#22d3ee',
+    color: '#22d3ee', // Keep cyan for message user
     fontWeight: 'bold',
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -176,7 +177,7 @@ const styles = StyleSheet.create({
   },
   messageBody: {
     fontSize: 12,
-    color: '#e5e5e5',
+    color: DARK_THEME.text,
     marginTop: 2,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -186,7 +187,7 @@ const styles = StyleSheet.create({
   },
   messageTime: {
     fontSize: 10,
-    color: '#71717a',
+    color: DARK_THEME.textTertiary,
     marginTop: 2,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -200,12 +201,12 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: '#18181b',
-    color: '#f4f4f5',
+    backgroundColor: DARK_THEME.backgroundSecondary,
+    color: DARK_THEME.text,
     padding: 12,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: DARK_THEME.border,
     fontSize: 12,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
@@ -214,17 +215,17 @@ const styles = StyleSheet.create({
     })
   },
   button: {
-    backgroundColor: '#2563eb',
+    backgroundColor: DARK_THEME.primary,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 4,
     justifyContent: 'center',
   },
   buttonDisabled: {
-    backgroundColor: '#374151',
+    backgroundColor: DARK_THEME.disabled,
   },
   buttonText: {
-    color: '#f4f4f5',
+    color: DARK_THEME.text,
     fontSize: 12,
     fontWeight: 'bold',
     fontFamily: Platform.select({
@@ -234,6 +235,6 @@ const styles = StyleSheet.create({
     })
   },
   buttonTextDisabled: {
-    color: '#9ca3af',
+    color: DARK_THEME.textTertiary,
   },
 });

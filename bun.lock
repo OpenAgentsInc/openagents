@@ -83,6 +83,7 @@
       "name": "openagents",
       "version": "0.0.3",
       "dependencies": {
+        "@expo/vector-icons": "^14.1.0",
         "@legendapp/list": "^1.1.4",
         "@openauthjs/openauth": "^0.4.3",
         "@react-navigation/native": "^7.0.14",

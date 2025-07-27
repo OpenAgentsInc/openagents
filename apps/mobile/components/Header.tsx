@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Text } from "./core/Text"
+import { DARK_THEME } from "../constants/colors"
 
 export interface HeaderProps {
   /**
@@ -65,7 +66,7 @@ export interface HeaderProps {
  */
 export function Header(props: HeaderProps) {
   const {
-    backgroundColor = '#000', // Pure black zinc theme
+    backgroundColor = DARK_THEME.background,
     LeftActionComponent,
     RightActionComponent,
     safeAreaEdges = ["top"],

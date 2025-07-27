@@ -1,7 +1,6 @@
 import { FC, useCallback, useRef, useState } from "react"
-import { Platform, Pressable, View, ViewStyle, TextStyle, Text } from "react-native"
+import { Platform, Pressable, View, ViewStyle, TextStyle } from "react-native"
 import { useFocusEffect } from "@react-navigation/native"
-import { Plus } from "lucide-react-native"
 import { DrawerLayout, DrawerState } from "react-native-gesture-handler"
 import { useSharedValue, withTiming } from "react-native-reanimated"
 
@@ -9,6 +8,8 @@ import { Header } from "./Header"
 import { Screen } from "./Screen"
 import { SidebarContent } from "./SidebarContent"
 import { DrawerIconButton } from "./DrawerIconButton"
+import { IconPlus } from "./icons/IconPlus"
+import { DARK_THEME } from "../constants/colors"
 import type { ChatSession } from "../types/chat"
 
 interface ScreenWithSidebarProps {
@@ -119,7 +120,7 @@ export const ScreenWithSidebar: FC<ScreenWithSidebarProps> = ({
                   onPress={() => onNewChat?.()}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Text style={{ fontSize: 20, color: "#f4f4f5", fontWeight: "bold" }}>+</Text>
+                  <IconPlus />
                 </Pressable>
               </View>
             }
@@ -136,7 +137,7 @@ export const ScreenWithSidebar: FC<ScreenWithSidebarProps> = ({
 // Styles using our dark zinc color scheme
 const $headerContainer: ViewStyle = {
   borderBottomWidth: 1,
-  borderBottomColor: '#27272a', // Zinc-800 border
+  borderBottomColor: DARK_THEME.border,
 }
 
 const $header: ViewStyle = {
@@ -151,7 +152,7 @@ const $headerRightActions: ViewStyle = {
 }
 
 const $headerTitle: TextStyle = {
-  color: '#f4f4f5', // Zinc-100 text
+  color: DARK_THEME.text,
   fontSize: 16,
   lineHeight: 22,
 }
