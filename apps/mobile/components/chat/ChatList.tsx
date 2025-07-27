@@ -127,7 +127,7 @@ export function ChatList({
           accessibilityRole="button"
           accessibilityLabel="Create new chat"
         >
-          <RNText style={{ fontSize: 20, color: "#f4f4f5", fontWeight: "bold" }}>+</RNText>
+          <IconPlus />
         </Pressable>
       </View>
 
