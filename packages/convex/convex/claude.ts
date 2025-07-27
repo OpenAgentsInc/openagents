@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 // Session Management
 
@@ -19,7 +20,7 @@ export const createClaudeSession = mutation({
   handler: async (ctx, args) => {
     // Get authenticated user (optional for backwards compatibility during migration)
     const identity = await ctx.auth.getUserIdentity();
-    let userId: string | undefined;
+    let userId: Id<"users"> | undefined;
     
     if (identity) {
       // Find user by GitHub ID from identity subject
@@ -99,7 +100,7 @@ export const getSessions = query({
   handler: async (ctx, args) => {
     // Get authenticated user (optional for backwards compatibility)
     const identity = await ctx.auth.getUserIdentity();
-    let userId: string | undefined;
+    let userId: Id<"users"> | undefined;
     
     if (identity) {
       const user = await ctx.db
@@ -192,7 +193,7 @@ export const addClaudeMessage = mutation({
 
     // Get authenticated user (optional for backwards compatibility)
     const identity = await ctx.auth.getUserIdentity();
-    let userId: string | undefined;
+    let userId: Id<"users"> | undefined;
     
     if (identity) {
       const user = await ctx.db
@@ -322,7 +323,7 @@ export const requestDesktopSession = mutation({
   handler: async (ctx, args) => {
     // Get authenticated user (optional for backwards compatibility)
     const identity = await ctx.auth.getUserIdentity();
-    let userId: string | undefined;
+    let userId: Id<"users"> | undefined;
     
     if (identity) {
       const user = await ctx.db
