@@ -34,11 +34,18 @@
     "update:preview": "eas update --branch preview"
   },
   "dependencies": {
+    "@babel/preset-env": "^7.28.0",
+    "@babel/preset-react": "^7.27.1",
+    "@babel/preset-typescript": "^7.27.1",
     "@expo/vector-icons": "^14.1.0",
     "@legendapp/list": "^1.1.4",
     "@openauthjs/openauth": "^0.4.3",
     "@react-navigation/native": "^7.0.14",
     "@react-navigation/native-stack": "^7.2.0",
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^13.2.0",
+    "@types/jest": "^30.0.0",
+    "babel-jest": "^30.0.5",
     "convex": "^1.25.4",
     "date-fns": "^4.1.0",
     "expo": "~53.0.20",
@@ -49,6 +56,8 @@
     "expo-status-bar": "~2.2.3",
     "expo-updates": "^0.28.17",
     "i18next": "^23.14.0",
+    "jest": "^30.0.5",
+    "jest-environment-node": "^30.0.5",
     "lucide-react-native": "^0.525.0",
     "react": "19.0.0",
     "react-i18next": "^15.0.1",
@@ -59,7 +68,8 @@
     "react-native-mmkv": "^3.2.0",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
-    "react-native-screens": "~4.11.1"
+    "react-native-screens": "~4.11.1",
+    "react-test-renderer": "19.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

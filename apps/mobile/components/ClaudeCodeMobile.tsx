@@ -9,10 +9,14 @@ import {
   Platform,
   Alert,
   ScrollView,
+  Pressable,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { ScreenWithSidebar, Text as CustomText } from "./index";
+import { AuthButton } from "./auth/AuthButton";
+import { useAuth } from "../contexts/AuthContext";
+import { IconPlus } from "./icons/IconPlus";
 import type { ChatSession } from "../types/chat";
 
 interface ClaudeSession {
@@ -42,6 +46,7 @@ interface ClaudeMessage {
 }
 
 export function ClaudeCodeMobile() {
+  const { isAuthenticated, user } = useAuth();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   
@@ -318,7 +323,27 @@ export function ClaudeCodeMobile() {
     );
   };
 
+  const renderHeaderTitle = () => (
+    <View style={styles.headerTitle}>
+      <CustomText style={styles.headerTitleText}>Claude Code</CustomText>
+      <AuthButton />
+    </View>
+  );
+
   const renderMainContent = () => {
+    if (!isAuthenticated) {
+      return (
+        <View style={styles.emptyState}>
+          <CustomText style={styles.emptyStateText}>
+            Please login to access Claude Code sessions
+          </CustomText>
+          <CustomText style={styles.emptyStateSubtext}>
+            Authentication is required to create and view sessions
+          </CustomText>
+        </View>
+      );
+    }
+
     if (!selectedSessionId) {
       return (
         <View style={styles.emptyState}>
@@ -382,11 +407,11 @@ export function ClaudeCodeMobile() {
   return (
     <>
       <ScreenWithSidebar
-        title="Claude Code"
-        onNewChat={handleNewChat}
+        title={renderHeaderTitle()}
+        onNewChat={isAuthenticated ? handleNewChat : undefined}
         onSessionSelect={handleSessionSelect}
         currentSessionId={selectedSessionId}
-        sessions={convertedSessions}
+        sessions={isAuthenticated ? convertedSessions : []}
         onSessionDelete={handleSessionDelete}
         onSessionStar={handleSessionStar}
         onSessionRename={handleSessionRename}
@@ -396,7 +421,7 @@ export function ClaudeCodeMobile() {
           {renderMainContent()}
         </View>
       </ScreenWithSidebar>
-      {renderCreateSessionModal()}
+      {isAuthenticated && renderCreateSessionModal()}
     </>
   );
 }
@@ -405,6 +430,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  headerTitle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  headerTitleText: {
+    color: '#f4f4f5',
+    fontSize: 16,
+    fontWeight: 'bold',
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace'
+    }),
   },
   sessionDetail: {
     flex: 1,
