@@ -30,8 +30,8 @@ wrangler secret put COOKIE_DOMAIN  # Set to ".openagents.com" for production
 Create the KV namespace:
 
 ```bash
-wrangler kv:namespace create "AUTH_STORAGE"
-wrangler kv:namespace create "AUTH_STORAGE" --preview
+wrangler kv namespace create "AUTH_STORAGE"
+wrangler kv namespace create "AUTH_STORAGE" --preview
 ```
 
 Update the `wrangler.jsonc` file with the actual namespace IDs returned from the commands above.
