@@ -3,7 +3,7 @@ import { Effect, Stream, pipe, Layer } from 'effect';
 import { ClaudeStreamingService, ClaudeStreamingServiceLive, StreamingSession, Message } from '../services/ClaudeStreamingService';
 import { TauriEventService, TauriEventServiceLive } from '../services/TauriEventService';
 import { invoke } from '@tauri-apps/api/core';
-import { useMutation, useConvex, useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
 interface UseClaudeStreamingOptions {
@@ -39,7 +39,6 @@ export function useClaudeStreaming({
   
   const sessionRef = useRef<StreamingSession | null>(null);
   const addClaudeMessage = useMutation(api.claude.addClaudeMessage);
-  const convex = useConvex();
   const lastProcessedMessageIdRef = useRef<string | null>(null);
   const isProcessingMessageRef = useRef(false);
   
@@ -64,7 +63,7 @@ export function useClaudeStreaming({
       
       if (historicalMessages && historicalMessages.length > 0) {
         // Convert Convex message format to streaming message format
-        const convertedMessages: Message[] = historicalMessages.map((msg) => ({
+        const convertedMessages: Message[] = historicalMessages.map((msg: any) => ({
           id: msg.messageId,
           message_type: msg.messageType,
           content: msg.content,
