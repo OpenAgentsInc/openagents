@@ -33,7 +33,7 @@ impl SecureToken {
     pub fn hash(&self) -> String {
         let mut hasher = Sha256::new();
         hasher.update(self.value.as_bytes());
-        format!("{:x}", hasher.finalize())[..8].to_string() // First 8 chars of hash
+        format!("{:x}", hasher.finalize())[..16].to_string() // First 16 chars of hash for better uniqueness
     }
 }
 
@@ -68,7 +68,7 @@ impl<'de> Deserialize<'de> for SecureToken {
 fn hash_key(key: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(key.as_bytes());
-    format!("{:x}", hasher.finalize())[..8].to_string()
+    format!("{:x}", hasher.finalize())[..16].to_string() // Increased to 16 chars for better uniqueness
 }
 
 /// Token storage entry with metadata and secure token handling

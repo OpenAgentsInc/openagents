@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use jsonwebtoken::{DecodingKey, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 
@@ -41,28 +40,15 @@ pub struct AuthContext {
 
 /// Authentication manager for Convex operations
 pub struct ConvexAuth {
-    validation: Validation,
-    decoding_key: Option<DecodingKey>,
     openauth_domain: String,
 }
 
 impl ConvexAuth {
     /// Create a new authentication manager
     pub fn new(openauth_domain: String) -> Self {
-        let mut validation = Validation::new(Algorithm::RS256);
-        validation.set_issuer(&[&openauth_domain]);
-        validation.set_audience(&["openagents"]);
-        
         Self {
-            validation,
-            decoding_key: None,
             openauth_domain,
         }
-    }
-
-    /// Set the decoding key for JWT validation (would be fetched from OpenAuth JWKS endpoint)
-    pub fn set_decoding_key(&mut self, key: DecodingKey) {
-        self.decoding_key = Some(key);
     }
 
     // DEPRECATED METHODS REMOVED IN PHASE 4 SECURITY HARDENING
@@ -133,9 +119,11 @@ impl AuthService {
         
         // Create minimal AuthContext without manual JWT parsing
         // The actual user identity will be validated by Convex on each API call
+        const CONVEX_DELEGATED_PLACEHOLDER: &str = "convex_validation_pending";
+        
         let auth_context = AuthContext {
-            user_id: "delegated_to_convex".to_string(), // Placeholder - real ID from Convex
-            github_id: "delegated_to_convex".to_string(),
+            user_id: CONVEX_DELEGATED_PLACEHOLDER.to_string(), // Placeholder - real ID from Convex
+            github_id: CONVEX_DELEGATED_PLACEHOLDER.to_string(),
             email: None, // Will be populated by Convex
             name: None,  // Will be populated by Convex
             avatar: None, // Will be populated by Convex
@@ -156,14 +144,13 @@ impl AuthService {
     }
 
     /// Check if user is authenticated
+    /// 
+    /// Phase 4: Since JWT validation is delegated to Convex, this only checks if we have a token
+    /// Actual expiration validation happens server-side in Convex functions
     pub fn is_authenticated(&self) -> bool {
         if let Some(auth) = &self.current_auth {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            
-            auth.expires_at > now
+            // Only check if we have a token - expiration is validated by Convex
+            !auth.token.is_empty()
         } else {
             false
         }

@@ -38,8 +38,8 @@ base64 = "0.22"
 async-trait = "0.1"
 tauri-plugin-store = "2.3.0"
 rand = "0.9.2"
-zeroize = { version = "1.8", features = ["derive"] }
-sha2 = "0.10"
+zeroize = { version = "=1.8.1", features = ["derive"] }
+sha2 = "=0.10.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
