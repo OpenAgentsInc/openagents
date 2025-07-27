@@ -1,18 +1,17 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
-import { Plus, History, Hand, Settings, LayoutGrid, BarChart, type LucideProps } from "lucide-react";
+import {
+  Plus as PlusIcon,
+  History as HistoryIcon,
+  Hand as HandIcon,
+  Settings as SettingsIcon,
+  LayoutGrid as LayoutGridIcon,
+  BarChart as BarChartIcon,
+} from "lucide-react";
 
 import { usePaneStore } from "@/stores/pane";
 import { useHotbarStore } from "@/stores/hotbar";
-
-// Properly typed Lucide icon components
-const PlusIcon: React.FC<LucideProps> = Plus;
-const HistoryIcon: React.FC<LucideProps> = History;
-const HandIcon: React.FC<LucideProps> = Hand;
-const SettingsIcon: React.FC<LucideProps> = Settings;
-const LayoutGridIcon: React.FC<LucideProps> = LayoutGrid;
-const BarChartIcon: React.FC<LucideProps> = BarChart;
 
 interface HotbarProps {
   className?: string;

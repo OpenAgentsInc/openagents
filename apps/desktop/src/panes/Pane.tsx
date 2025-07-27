@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef, ReactNode } from "react";
 import { useDrag } from "@use-gesture/react";
-import { X, type LucideProps } from "lucide-react";
-
-// Properly typed Lucide icon component
-const CloseIcon: React.FC<LucideProps> = X;
+import { X as CloseIcon } from "lucide-react";
 import { Pane as PaneType } from "@/types/pane";
 import { usePaneStore } from "@/stores/pane";
 import type { FullGestureState } from "@use-gesture/react";

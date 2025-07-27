@@ -2,15 +2,14 @@ import React, { useState, useEffect } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { invoke } from "@tauri-apps/api/core";
-import { BarChart, Clock, TrendingUp, Loader2, RefreshCw, Eye, type LucideProps } from "lucide-react";
-
-// Properly typed Lucide icon components
-const BarChartIcon: React.FC<LucideProps> = BarChart;
-const ClockIcon: React.FC<LucideProps> = Clock;
-const TrendingUpIcon: React.FC<LucideProps> = TrendingUp;
-const LoaderIcon: React.FC<LucideProps> = Loader2;
-const RefreshIcon: React.FC<LucideProps> = RefreshCw;
-const EyeIcon: React.FC<LucideProps> = Eye;
+import {
+  BarChart as BarChartIcon,
+  Clock as ClockIcon,
+  TrendingUp as TrendingUpIcon,
+  Loader2 as LoaderIcon,
+  RefreshCw as RefreshIcon,
+  Eye as EyeIcon,
+} from "lucide-react";
 import { HistoricalAPMChart } from "@/components/charts/HistoricalAPMChart";
 
 interface ToolUsage {

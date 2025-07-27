@@ -1,9 +1,6 @@
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
-import { XIcon, type LucideProps } from "lucide-react"
-
-// Properly typed Lucide icon component
-const CloseIcon: React.FC<LucideProps> = XIcon;
+import { XIcon as CloseIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 

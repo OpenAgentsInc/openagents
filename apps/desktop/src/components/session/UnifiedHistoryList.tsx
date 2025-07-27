@@ -1,14 +1,13 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Calendar, FileText, GitBranch, Folder, MessageSquare, RefreshCw, type LucideProps } from 'lucide-react';
-
-// Properly typed Lucide icon components
-const CalendarIcon: React.FC<LucideProps> = Calendar;
-const FileTextIcon: React.FC<LucideProps> = FileText;
-const GitBranchIcon: React.FC<LucideProps> = GitBranch;
-const FolderIcon: React.FC<LucideProps> = Folder;
-const MessageSquareIcon: React.FC<LucideProps> = MessageSquare;
-const RefreshIcon: React.FC<LucideProps> = RefreshCw;
+import {
+  Calendar as CalendarIcon,
+  FileText as FileTextIcon,
+  GitBranch as GitBranchIcon,
+  Folder as FolderIcon,
+  MessageSquare as MessageSquareIcon,
+  RefreshCw as RefreshIcon,
+} from 'lucide-react';
 import { useUnifiedHistory, UnifiedSession } from '@/hooks/useUnifiedHistory';
 
 interface UnifiedHistoryListProps {
