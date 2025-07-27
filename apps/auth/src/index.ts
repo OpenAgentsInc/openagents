@@ -1,5 +1,5 @@
 import { issuer } from "@openauthjs/openauth";
-import { CloudflareKvStorage } from "@openauthjs/openauth/storage/cloudflare-kv";
+import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
 import { GithubProvider } from "@openauthjs/openauth/provider/github";
 import { subjects, type User } from "./subjects";
 
@@ -39,7 +39,7 @@ export default issuer({
       scopes: ["user:email"],
     }),
   },
-  storage: CloudflareKvStorage({
+  storage: CloudflareStorage({
     namespace: "AUTH_STORAGE",
   }),
   subjects,
