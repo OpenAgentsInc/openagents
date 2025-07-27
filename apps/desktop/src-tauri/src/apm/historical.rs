@@ -246,7 +246,11 @@ async fn parse_conversation_for_historical(
             }
             
             if let Some(cwd) = json.get("cwd").and_then(|v| v.as_str()) {
-                project_name = cwd.split('/').last().unwrap_or("Unknown").to_string();
+                project_name = std::path::Path::new(cwd)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
             }
         }
     }

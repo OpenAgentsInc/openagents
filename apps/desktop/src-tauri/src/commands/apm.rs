@@ -97,8 +97,8 @@ pub async fn get_historical_apm_data(
         return Ok(CommandResult::error("Invalid viewMode. Must be 'combined', 'cli', or 'sdk'".to_string()));
     }
     
-    if days_back <= 0 || days_back > 365 {
-        return Ok(CommandResult::error("daysBack must be between 1 and 365".to_string()));
+    if days_back <= 0 || days_back > 1825 {
+        return Ok(CommandResult::error("daysBack must be between 1 and 1825 (5 years)".to_string()));
     }
     
     match generate_historical_apm_data(&time_scale, days_back, &view_mode).await {
