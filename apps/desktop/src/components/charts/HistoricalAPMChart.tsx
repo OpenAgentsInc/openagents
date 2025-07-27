@@ -164,6 +164,44 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
         lines.push(sdkLine);
         break;
       }
+      case 'aggregated': {
+        // Show all APM metrics together for comprehensive view
+        const combinedLine = (
+          <Line
+            key="combined"
+            type="monotone"
+            dataKey="combined_apm"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
+            name="Combined APM"
+          />
+        );
+        const cliLine = (
+          <Line
+            key="cli"
+            type="monotone"
+            dataKey="cli_apm"
+            stroke="#10b981"
+            strokeWidth={2}
+            dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }}
+            name="CLI APM"
+          />
+        );
+        const sdkLine = (
+          <Line
+            key="sdk"
+            type="monotone"
+            dataKey="sdk_apm"
+            stroke="#f59e0b"
+            strokeWidth={2}
+            dot={{ fill: '#f59e0b', strokeWidth: 2, r: 3 }}
+            name="SDK APM"
+          />
+        );
+        lines.push(combinedLine, cliLine, sdkLine);
+        break;
+      }
     }
 
     return lines;

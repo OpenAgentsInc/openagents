@@ -132,7 +132,7 @@ describe("StatsPane", () => {
     });
 
     it("should maintain view mode when stats refresh", async () => {
-      jest.useFakeTimers();
+      vi.useFakeTimers();
       
       render(<StatsPane />);
       
@@ -141,19 +141,19 @@ describe("StatsPane", () => {
       fireEvent.click(screen.getByText("All Devices"));
       
       // Fast forward to trigger refresh
-      jest.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(5000);
       
       await waitFor(() => {
         expect(invoke).toHaveBeenLastCalledWith("get_user_apm_stats");
       });
       
-      jest.useRealTimers();
+      vi.useRealTimers();
     });
   });
 
   describe("Auto-refresh", () => {
     it("should refresh stats every 5 seconds when running", async () => {
-      jest.useFakeTimers();
+      vi.useFakeTimers();
       
       render(<StatsPane />);
       
@@ -161,23 +161,23 @@ describe("StatsPane", () => {
         expect(invoke).toHaveBeenCalledTimes(1);
       });
       
-      jest.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(5000);
       
       await waitFor(() => {
         expect(invoke).toHaveBeenCalledTimes(2);
       });
       
-      jest.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(5000);
       
       await waitFor(() => {
         expect(invoke).toHaveBeenCalledTimes(3);
       });
       
-      jest.useRealTimers();
+      vi.useRealTimers();
     });
 
     it("should not refresh when not running", async () => {
-      jest.useFakeTimers();
+      vi.useFakeTimers();
       
       render(<StatsPane />);
       
@@ -185,19 +185,19 @@ describe("StatsPane", () => {
         expect(invoke).toHaveBeenCalledTimes(1);
       });
       
-      jest.advanceTimersByTime(10000);
+      vi.advanceTimersByTime(10000);
       
       // Should still only be called once
       expect(invoke).toHaveBeenCalledTimes(1);
       
-      jest.useRealTimers();
+      vi.useRealTimers();
     });
   });
 
   describe("Error Handling", () => {
     it("should handle API errors gracefully", async () => {
       (invoke as any).mockRejectedValue(new Error("API Error"));
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation();
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation();
       
       render(<StatsPane />);
       
