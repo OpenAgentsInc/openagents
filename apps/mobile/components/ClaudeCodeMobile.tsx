@@ -12,6 +12,8 @@ import {
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { ScreenWithSidebar, Text as CustomText } from "./index";
+import type { ChatSession } from "../types/chat";
 
 interface ClaudeSession {
   _id: string;
@@ -40,8 +42,8 @@ interface ClaudeMessage {
 }
 
 export function ClaudeCodeMobile() {
-  const [activeTab, setActiveTab] = useState<"sessions" | "create">("sessions");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   
   // Generate random 4-character string for session title
   const generateRandomString = () => {
@@ -58,7 +60,7 @@ export function ClaudeCodeMobile() {
   const [newSessionTitle, setNewSessionTitle] = useState(`Testing ${generateRandomString()}`);
   const [initialMessage, setInitialMessage] = useState("Introduce yourself, then use 3 readonly tools to explore the codebase and summarize what you learn.");
   
-  // Message input state (moved from renderSessionDetail to fix hooks violation)
+  // Message input state
   const [newMessage, setNewMessage] = useState("");
   
   // Convex hooks
@@ -76,6 +78,21 @@ export function ClaudeCodeMobile() {
   useEffect(() => {
     setNewMessage("");
   }, [selectedSessionId]);
+
+  // Convert sessions to ChatSession format for the sidebar
+  const convertedSessions: ChatSession[] = sessions.map((session: ClaudeSession) => ({
+    _id: session._id,
+    sessionId: session.sessionId,
+    projectPath: session.projectPath,
+    title: session.title,
+    status: session.status,
+    createdBy: session.createdBy,
+    lastActivity: session.lastActivity,
+    metadata: session.metadata,
+    id: session.sessionId, // Use sessionId as id for compatibility
+    updatedAt: new Date(session.lastActivity),
+    isStarred: false, // Add default value, can be enhanced later
+  }));
 
   const handleCreateSession = async () => {
     if (!newProjectPath.trim()) {
@@ -107,10 +124,13 @@ export function ClaudeCodeMobile() {
             onPress: () => {
               console.log('📱 [MOBILE] User selected to view session:', sessionId);
               setSelectedSessionId(sessionId);
-              setActiveTab("sessions");
+              setShowCreateModal(false);
             },
           },
-          { text: "OK" },
+          { 
+            text: "OK",
+            onPress: () => setShowCreateModal(false),
+          },
         ]
       );
 
@@ -161,40 +181,28 @@ export function ClaudeCodeMobile() {
     }
   };
 
-  const renderSessionItem = ({ item }: { item: ClaudeSession }) => (
-    <TouchableOpacity
-      style={[
-        styles.sessionItem,
-        selectedSessionId === item.sessionId && styles.selectedSessionItem,
-      ]}
-      onPress={() => setSelectedSessionId(item.sessionId)}
-    >
-      <View style={styles.sessionHeader}>
-        <Text style={styles.sessionTitle}>
-          {item.title || `Session - ${item.projectPath.split('/').pop()}`}
-        </Text>
-        <View style={[
-          styles.statusBadge,
-          item.status === "active" && styles.statusActive,
-          item.status === "inactive" && styles.statusInactive,
-          item.status === "error" && styles.statusError,
-        ]}>
-          <Text style={styles.statusText}>{item.status}</Text>
-        </View>
-      </View>
-      
-      <Text style={styles.sessionPath}>{item.projectPath}</Text>
-      
-      <View style={styles.sessionMeta}>
-        <Text style={styles.sessionMetaText}>
-          Created by: {item.createdBy}
-        </Text>
-        <Text style={styles.sessionMetaText}>
-          Last activity: {new Date(item.lastActivity).toLocaleString()}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const handleNewChat = () => {
+    setShowCreateModal(true);
+  };
+
+  const handleSessionSelect = (sessionId: string) => {
+    setSelectedSessionId(sessionId);
+  };
+
+  const handleSessionDelete = (sessionId: string) => {
+    // TODO: Implement session deletion when available in Convex API
+    Alert.alert("Delete Session", "Session deletion not yet implemented");
+  };
+
+  const handleSessionStar = (sessionId: string) => {
+    // TODO: Implement session starring when available in Convex API
+    Alert.alert("Star Session", "Session starring not yet implemented");
+  };
+
+  const handleSessionRename = (sessionId: string, newTitle: string) => {
+    // TODO: Implement session renaming when available in Convex API
+    Alert.alert("Rename Session", "Session renaming not yet implemented");
+  };
 
   const renderMessageItem = ({ item }: { item: ClaudeMessage }) => (
     <View style={[
@@ -227,11 +235,99 @@ export function ClaudeCodeMobile() {
     </View>
   );
 
-  const renderSessionDetail = () => {
+  const renderCreateSessionModal = () => {
+    if (!showCreateModal) return null;
+
+    return (
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <CustomText style={styles.modalTitle}>Create New Session</CustomText>
+            <TouchableOpacity 
+              onPress={() => setShowCreateModal(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close create session dialog"
+            >
+              <CustomText style={styles.modalClose}>×</CustomText>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <View style={styles.formGroup}>
+              <CustomText style={styles.label}>Project Path *</CustomText>
+              <TextInput
+                style={styles.input}
+                value={newProjectPath}
+                onChangeText={setNewProjectPath}
+                placeholder="/Users/username/my-project"
+                placeholderTextColor="#666"
+              />
+              <CustomText style={styles.helpText}>
+                Full path to your project directory
+              </CustomText>
+            </View>
+
+            <View style={styles.formGroup}>
+              <CustomText style={styles.label}>Session Title</CustomText>
+              <TextInput
+                style={styles.input}
+                value={newSessionTitle}
+                onChangeText={setNewSessionTitle}
+                placeholder="My Mobile Session"
+                placeholderTextColor="#666"
+              />
+              <CustomText style={styles.helpText}>
+                Optional title for this session
+              </CustomText>
+            </View>
+
+            <View style={styles.formGroup}>
+              <CustomText style={styles.label}>Initial Message</CustomText>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={initialMessage}
+                onChangeText={setInitialMessage}
+                placeholder="Hi Claude, can you help me with..."
+                placeholderTextColor="#666"
+                multiline
+                numberOfLines={4}
+              />
+              <CustomText style={styles.helpText}>
+                Optional first message to send to Claude
+              </CustomText>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.createButton,
+                !newProjectPath.trim() && styles.createButtonDisabled,
+              ]}
+              onPress={handleCreateSession}
+              disabled={!newProjectPath.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Create new desktop session"
+              accessibilityState={{ disabled: !newProjectPath.trim() }}
+            >
+              <CustomText style={styles.createButtonText}>
+                Create Desktop Session
+              </CustomText>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    );
+  };
+
+  const renderMainContent = () => {
     if (!selectedSessionId) {
       return (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyStateText}>Select a session to view messages</Text>
+          <CustomText style={styles.emptyStateText}>
+            Select a session from the sidebar to view messages
+          </CustomText>
+          <CustomText style={styles.emptyStateSubtext}>
+            Or create a new session to get started
+          </CustomText>
         </View>
       );
     }
@@ -240,24 +336,20 @@ export function ClaudeCodeMobile() {
 
     return (
       <View style={styles.sessionDetail}>
-        <View style={styles.sessionDetailHeader}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => setSelectedSessionId(null)}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.sessionDetailTitle}>
-            {session?.title || "Session"}
-          </Text>
-        </View>
-
         <FlatList
           data={selectedSessionMessages}
           keyExtractor={(item) => item._id}
           renderItem={renderMessageItem}
           style={styles.messagesList}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <CustomText style={styles.emptyStateText}>No messages yet</CustomText>
+              <CustomText style={styles.emptyStateSubtext}>
+                Start a conversation with Claude
+              </CustomText>
+            </View>
+          }
         />
 
         <View style={styles.messageInput}>
@@ -280,125 +372,32 @@ export function ClaudeCodeMobile() {
             }}
             disabled={!newMessage.trim()}
           >
-            <Text style={styles.sendButtonText}>Send</Text>
+            <CustomText style={styles.sendButtonText}>Send</CustomText>
           </TouchableOpacity>
         </View>
       </View>
     );
   };
 
-  const renderCreateSession = () => (
-    <ScrollView style={styles.createSession} showsVerticalScrollIndicator={false}>
-      <Text style={styles.createTitle}>Create New Claude Code Session</Text>
-      <Text style={styles.createDescription}>
-        Start a new Claude Code session that will run on the desktop app
-      </Text>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>Project Path *</Text>
-        <TextInput
-          style={styles.input}
-          value={newProjectPath}
-          onChangeText={setNewProjectPath}
-          placeholder="/Users/username/my-project"
-          placeholderTextColor="#666"
-        />
-        <Text style={styles.helpText}>
-          Full path to your project directory
-        </Text>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>Session Title</Text>
-        <TextInput
-          style={styles.input}
-          value={newSessionTitle}
-          onChangeText={setNewSessionTitle}
-          placeholder="My Mobile Session"
-          placeholderTextColor="#666"
-        />
-        <Text style={styles.helpText}>
-          Optional title for this session
-        </Text>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>Initial Message</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={initialMessage}
-          onChangeText={setInitialMessage}
-          placeholder="Hi Claude, can you help me with..."
-          placeholderTextColor="#666"
-          multiline
-          numberOfLines={4}
-        />
-        <Text style={styles.helpText}>
-          Optional first message to send to Claude
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={[
-          styles.createButton,
-          !newProjectPath.trim() && styles.createButtonDisabled,
-        ]}
-        onPress={handleCreateSession}
-        disabled={!newProjectPath.trim()}
-      >
-        <Text style={styles.createButtonText}>
-          Create Desktop Session
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
   return (
-    <View style={styles.container}>
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "sessions" && styles.activeTab]}
-          onPress={() => setActiveTab("sessions")}
-        >
-          <Text style={[styles.tabText, activeTab === "sessions" && styles.activeTabText]}>
-            Sessions ({sessions.length})
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "create" && styles.activeTab]}
-          onPress={() => setActiveTab("create")}
-        >
-          <Text style={[styles.tabText, activeTab === "create" && styles.activeTabText]}>
-            Create New
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {activeTab === "sessions" && (
-        selectedSessionId ? renderSessionDetail() : (
-          <FlatList
-            data={sessions}
-            keyExtractor={(item) => item._id}
-            renderItem={renderSessionItem}
-            style={styles.sessionsList}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>
-                  No Claude Code sessions yet
-                </Text>
-                <Text style={styles.emptyStateSubtext}>
-                  Create a new session to get started
-                </Text>
-              </View>
-            }
-          />
-        )
-      )}
-
-      {activeTab === "create" && renderCreateSession()}
-    </View>
+    <>
+      <ScreenWithSidebar
+        title="Claude Code"
+        onNewChat={handleNewChat}
+        onSessionSelect={handleSessionSelect}
+        currentSessionId={selectedSessionId}
+        sessions={convertedSessions}
+        onSessionDelete={handleSessionDelete}
+        onSessionStar={handleSessionStar}
+        onSessionRename={handleSessionRename}
+        disableKeyboardAvoidance={true}
+      >
+        <View style={styles.container}>
+          {renderMainContent()}
+        </View>
+      </ScreenWithSidebar>
+      {renderCreateSessionModal()}
+    </>
   );
 }
 
@@ -407,140 +406,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1a1a1a',
   },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#111',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  activeTab: {
-    backgroundColor: '#333',
-  },
-  tabText: {
-    color: '#999',
-    fontSize: 14,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  activeTabText: {
-    color: '#fff',
-  },
-  sessionsList: {
-    flex: 1,
-    padding: 16,
-  },
-  sessionItem: {
-    backgroundColor: '#111',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  selectedSessionItem: {
-    borderColor: '#60a5fa',
-    backgroundColor: '#1e3a8a20',
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  sessionTitle: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: '#333',
-  },
-  statusActive: {
-    backgroundColor: '#22c55e',
-  },
-  statusInactive: {
-    backgroundColor: '#6b7280',
-  },
-  statusError: {
-    backgroundColor: '#ef4444',
-  },
-  statusText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  sessionPath: {
-    color: '#999',
-    fontSize: 12,
-    marginBottom: 8,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  sessionMeta: {
-    flexDirection: 'column',
-  },
-  sessionMetaText: {
-    color: '#666',
-    fontSize: 10,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
   sessionDetail: {
     flex: 1,
-  },
-  sessionDetailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  backButton: {
-    marginRight: 16,
-  },
-  backButtonText: {
-    color: '#60a5fa',
-    fontSize: 16,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  sessionDetailTitle: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
   },
   messagesList: {
     flex: 1,
@@ -657,94 +524,6 @@ const styles = StyleSheet.create({
       default: 'monospace'
     }),
   },
-  createSession: {
-    flex: 1,
-    padding: 16,
-  },
-  createTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  createDescription: {
-    color: '#999',
-    fontSize: 14,
-    marginBottom: 24,
-    lineHeight: 20,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  input: {
-    backgroundColor: '#111',
-    color: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#333',
-    fontSize: 14,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  helpText: {
-    color: '#666',
-    fontSize: 12,
-    marginTop: 4,
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
-  createButton: {
-    backgroundColor: '#22c55e',
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  createButtonDisabled: {
-    backgroundColor: '#374151',
-  },
-  createButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    fontFamily: Platform.select({
-      ios: 'Berkeley Mono',
-      android: 'Berkeley Mono',
-      default: 'monospace'
-    }),
-  },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -771,5 +550,95 @@ const styles = StyleSheet.create({
       android: 'Berkeley Mono',
       default: 'monospace'
     }),
+  },
+  // Modal styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  modalClose: {
+    fontSize: 20,
+    color: '#999',
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    padding: 16,
+    maxHeight: 400,
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#111',
+    color: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    fontSize: 14,
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace'
+    }),
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  helpText: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  createButton: {
+    backgroundColor: '#22c55e',
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  createButtonDisabled: {
+    backgroundColor: '#374151',
+  },
+  createButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
