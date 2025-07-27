@@ -26,6 +26,11 @@ const RechartsLegend = Legend as any;
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Loader2, TrendingUp, Calendar } from 'lucide-react';
+
+// Type assertions for Lucide icons to fix TypeScript strict JSX checking
+const LucideLoader2 = Loader2 as any;
+const LucideTrendingUp = TrendingUp as any;
+const LucideCalendar = Calendar as any;
 import { invoke } from '@tauri-apps/api/core';
 
 // Types matching the Rust backend
@@ -253,7 +258,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       <Card className={`p-6 ${className}`}>
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+            <LucideLoader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground text-sm">Loading historical data...</p>
           </div>
         </div>
@@ -285,7 +290,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" />
+          <LucideTrendingUp className="h-5 w-5" />
           <h3 className="font-semibold">Historical APM Trends</h3>
         </div>
         
@@ -339,7 +344,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       ) : (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <Calendar className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
+            <LucideCalendar className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground text-sm">No historical data available</p>
             <p className="text-muted-foreground text-xs mt-1">
               Try a different time scale or start using Claude Code to generate data
