@@ -4,6 +4,9 @@ mod state;
 mod apm;
 mod commands;
 
+#[cfg(test)]
+mod tests;
+
 use log::info;
 use state::AppState;
 
@@ -38,6 +41,7 @@ pub fn run() {
     
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -95,6 +99,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
-#[cfg(test)]
-mod tests;

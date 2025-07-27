@@ -44,6 +44,34 @@ pub enum AppError {
     #[error("JWT validation error: {0}")]
     JwtValidationError(#[from] jsonwebtoken::errors::Error),
 
+    /// Phase 3: Token storage errors
+    #[error("Token storage error: {0}")]
+    TokenStorageError(String),
+
+    /// Phase 3: Token refresh errors
+    #[error("Token refresh error: {0}")]
+    TokenRefreshError(String),
+
+    /// Phase 3: Token expiration errors
+    #[error("Token expired: {0}")]
+    TokenExpiredError(String),
+
+    /// Phase 3: Authentication state errors
+    #[error("Authentication state error: {0}")]
+    AuthStateError(String),
+
+    /// Phase 3: OpenAuth server errors
+    #[error("OpenAuth server error: {0}")]
+    OpenAuthError(String),
+
+    /// Phase 4: CORS configuration errors
+    #[error("CORS error: {0}")]
+    CorsError(String),
+
+    /// Phase 4: Network timeout errors
+    #[error("Network timeout: {0}")]
+    NetworkTimeout(String),
+
     /// Base64 decoding errors
     #[error("Base64 decode error: {0}")]
     Base64DecodeError(#[from] base64::DecodeError),
