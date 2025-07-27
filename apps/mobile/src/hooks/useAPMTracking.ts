@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useMutation } from 'convex/react';
-import { api } from '../convex/_generated/api';
+import { api } from '../../convex/_generated/api';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 
 interface APMTrackingOptions {
@@ -8,6 +8,7 @@ interface APMTrackingOptions {
   trackMessages?: boolean;
   trackSessions?: boolean;
   trackAppState?: boolean;
+  syncInterval?: number;
 }
 
 interface APMSessionData {
@@ -139,10 +140,11 @@ export function useAPMTracking(options: APMTrackingOptions = {}) {
     };
   }, [sendSessionData]);
 
-  // Periodic session data sync (every 5 minutes)
+  // Periodic session data sync (every 5 minutes by default)
   useEffect(() => {
     if (!opts.enabled) return;
 
+    const syncIntervalMs = opts.syncInterval || (5 * 60 * 1000); // Default to 5 minutes
     const interval = setInterval(() => {
       if (sessionActive.current) {
         sendSessionData();
@@ -154,7 +156,7 @@ export function useAPMTracking(options: APMTrackingOptions = {}) {
           appStateChanges: sessionData.current.appStateChanges,
         };
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, syncIntervalMs);
 
     return () => clearInterval(interval);
   }, [opts.enabled, sendSessionData]);
@@ -203,5 +205,10 @@ export function useAPMTracking(options: APMTrackingOptions = {}) {
     getSessionStats,
     isEnabled: opts.enabled,
     isActive: sessionActive.current,
+    // Additional properties expected by tests
+    syncNow: flushSessionData,
+    sessionId: deviceId.current || '',
+    activityCount: sessionData.current.messagesSent + sessionData.current.sessionsCreated,
+    isTracking: sessionActive.current,
   };
 }

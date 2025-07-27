@@ -3,6 +3,7 @@ import { Slot } from "@radix-ui/react-slot"
 import { cva, VariantProps } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
 
+
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -179,8 +180,9 @@ function Sidebar({
   }
 
   if (isMobile) {
+    const { ref, ...sheetProps } = props;
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...sheetProps}>
         <SheetContent
           data-sidebar="sidebar"
           data-slot="sidebar"

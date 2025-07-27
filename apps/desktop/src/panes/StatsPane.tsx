@@ -3,6 +3,14 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { invoke } from "@tauri-apps/api/core";
 import { BarChart, Clock, TrendingUp, Loader2, RefreshCw, Eye } from "lucide-react";
+
+// Type assertions for Lucide React icons to fix TypeScript strict JSX checking
+const LucideBarChart = BarChart as any;
+const LucideClock = Clock as any;
+const LucideTrendingUp = TrendingUp as any;
+const LucideLoader2 = Loader2 as any;
+const LucideRefreshCw = RefreshCw as any;
+const LucideEye = Eye as any;
 import { HistoricalAPMChart } from "@/components/charts/HistoricalAPMChart";
 
 interface ToolUsage {
@@ -201,7 +209,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+            <LucideLoader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground">Analyzing conversations...</p>
           </div>
         </div>
@@ -223,7 +231,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
           <div className="text-center">
             <p className="text-red-400 mb-4">{error}</p>
             <Button onClick={() => loadStats(false)} variant="outline" size="sm" disabled={refreshing}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              <LucideRefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
               {refreshing ? 'Retrying...' : 'Retry'}
             </Button>
           </div>
@@ -254,7 +262,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
       {/* Header */}
       <div className="text-center select-none mb-4">
         <div className="flex items-center justify-center gap-2 mb-2">
-          <BarChart className="h-5 w-5" />
+          <LucideBarChart className="h-5 w-5" />
           <h1 className="text-xl font-bold">APM Statistics</h1>
         </div>
         <p className="text-muted-foreground text-xs mb-3">Actions Per Minute Analysis</p>
@@ -283,7 +291,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="h-4 w-4 text-red-400" />
+              <LucideClock className="h-4 w-4 text-red-400" />
               <span className="text-sm font-medium">1 Hour</span>
             </div>
             <div className="text-xl font-bold">{currentStats?.apm1h.toFixed(1) || '0.0'}</div>
@@ -292,7 +300,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
           
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="h-4 w-4 text-orange-400" />
+              <LucideClock className="h-4 w-4 text-orange-400" />
               <span className="text-sm font-medium">6 Hours</span>
             </div>
             <div className="text-xl font-bold">{currentStats?.apm6h.toFixed(2) || '0.00'}</div>
@@ -301,7 +309,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
 
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="h-4 w-4 text-yellow-400" />
+              <LucideClock className="h-4 w-4 text-yellow-400" />
               <span className="text-sm font-medium">1 Day</span>
             </div>
             <div className="text-xl font-bold">{currentStats?.apm1d.toFixed(3) || '0.000'}</div>
@@ -310,7 +318,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
 
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="h-4 w-4 text-green-400" />
+              <LucideClock className="h-4 w-4 text-green-400" />
               <span className="text-sm font-medium">1 Week</span>
             </div>
             <div className="text-xl font-bold">{currentStats?.apm1w.toFixed(3) || '0.000'}</div>
@@ -319,7 +327,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
 
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="h-4 w-4 text-blue-400" />
+              <LucideClock className="h-4 w-4 text-blue-400" />
               <span className="text-sm font-medium">1 Month</span>
             </div>
             <div className="text-xl font-bold">{currentStats?.apm1m.toFixed(3) || '0.000'}</div>
@@ -328,7 +336,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
 
           <div className="bg-card rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-4 w-4 text-purple-400" />
+              <LucideTrendingUp className="h-4 w-4 text-purple-400" />
               <span className="text-sm font-medium">Lifetime</span>
             </div>
             <div className="text-xl font-bold">{currentStats?.apmLifetime.toFixed(3) || '0.000'}</div>
@@ -394,7 +402,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
         {/* Productivity by Time */}
         <div className="bg-card rounded-lg border p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Clock className="h-4 w-4" />
+            <LucideClock className="h-4 w-4" />
             <h3 className="font-semibold">Productivity by Time</h3>
           </div>
           <div className="space-y-2">
@@ -437,7 +445,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
                     className="h-6 w-6 p-0"
                     onClick={() => {/* TODO: Implement session detail view */}}
                   >
-                    <Eye className="h-3 w-3" />
+                    <LucideEye className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
@@ -528,7 +536,7 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
           className="w-full" 
           disabled={refreshing}
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          <LucideRefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
           {refreshing ? 'Refreshing Stats...' : 'Refresh Stats'}
         </Button>
       </div>

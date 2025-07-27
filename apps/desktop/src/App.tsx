@@ -2,6 +2,7 @@ import { useEffect, useCallback } from "react";
 import { PaneManager } from "@/panes/PaneManager";
 import { Hotbar } from "@/components/hud/Hotbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
 import { SessionManager } from "@/components/session/SessionManager";
 import { HandTrackingManager } from "@/components/session/HandTrackingManager";
 import { AuthButton } from "@/components/auth/AuthButton";

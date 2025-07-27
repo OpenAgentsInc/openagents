@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+
 interface HotbarItemProps {
   slotNumber: number;
   onClick?: () => void;
