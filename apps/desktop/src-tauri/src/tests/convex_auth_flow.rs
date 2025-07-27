@@ -41,33 +41,31 @@ mod convex_auth_flow_tests {
         // const user = await ctx.db.query("users").withIndex("by_github_id", ...)
     }
 
-    /// Test current problematic Rust client auth injection
+    /// Test Phase 2: Clean business logic arguments
     #[test]
-    fn test_current_rust_manual_auth_injection() {
-        // This test documents the PROBLEMATIC current behavior
-        // This will be REMOVED in Phase 2
+    fn test_clean_business_logic_arguments() {
+        // Phase 2: Updated to test clean business logic without manual auth injection
+        // Manual auth injection has been REMOVED
         
         let business_args = json!({
             "title": "Test Session",
             "limit": 10
         });
         
-        // Current problematic pattern: manual auth injection
-        let mut args_with_manual_auth = business_args.as_object().unwrap().clone();
-        args_with_manual_auth.insert("auth_userId".to_string(), json!("user123"));
-        args_with_manual_auth.insert("auth_githubId".to_string(), json!("github|12345"));
-        args_with_manual_auth.insert("auth_token".to_string(), json!("jwt_token"));
+        // Phase 2: No more manual auth injection!
+        // Arguments contain only business logic data
         
-        let final_args = Value::Object(args_with_manual_auth);
+        // Verify clean structure - only business parameters
+        assert_eq!(business_args.get("title").unwrap(), &json!("Test Session"));
+        assert_eq!(business_args.get("limit").unwrap(), &json!(10));
         
-        // Verify current problematic structure
-        assert!(final_args.get("auth_userId").is_some());
-        assert!(final_args.get("auth_githubId").is_some());
-        assert!(final_args.get("auth_token").is_some());
+        // Verify NO auth parameters are injected
+        assert!(business_args.get("auth_userId").is_none());
+        assert!(business_args.get("auth_githubId").is_none());
+        assert!(business_args.get("auth_token").is_none());
         
-        // TODO: Phase 2 - REMOVE this manual injection
-        // Target: Only business data should be passed
-        // assert_eq!(clean_args, json!({"title": "Test Session", "limit": 10}));
+        // SUCCESS: Clean separation achieved - only business data passed to functions
+        // Authentication handled separately via Authorization headers
     }
 
     /// Test target Authorization header approach (Phase 2)

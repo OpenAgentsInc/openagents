@@ -13,14 +13,18 @@ use super::database::{
 use super::models::{ConvexSession, ConvexMessage};
 
 /// Enhanced Convex client implementation with database abstractions and authentication
+/// 
+/// Phase 2: Updated to use Authorization headers instead of manual auth injection
 pub struct EnhancedConvexClient {
     client: OfficialConvexClient,
     auth_service: Option<AuthService>,
-    manual_auth_token: Option<String>, // For backward compatibility
+    auth_token: Option<String>, // JWT token for Authorization header
 }
 
 impl EnhancedConvexClient {
     /// Create a new enhanced Convex client
+    /// 
+    /// Phase 2: Updated to store JWT token for Authorization header usage
     pub async fn new(convex_url: &str, auth_token: Option<String>) -> Result<Self, AppError> {
         let client = OfficialConvexClient::new(convex_url)
             .await
@@ -29,20 +33,26 @@ impl EnhancedConvexClient {
         Ok(Self { 
             client, 
             auth_service: None,
-            manual_auth_token: auth_token,
+            auth_token,
         })
     }
 
     /// Create a new enhanced Convex client with authentication service
+    /// 
+    /// Phase 2: Updated to use auth_token instead of manual_auth_token
     pub async fn new_with_auth(convex_url: &str, auth_service: AuthService) -> Result<Self, AppError> {
         let client = OfficialConvexClient::new(convex_url)
             .await
             .map_err(|e| AppError::ConvexConnectionError(format!("Failed to create Convex client: {}", e)))?;
         
+        // Extract token from auth service if available
+        let auth_token = auth_service.get_auth_context()
+            .map(|ctx| ctx.token.clone());
+        
         Ok(Self { 
             client, 
             auth_service: Some(auth_service),
-            manual_auth_token: None,
+            auth_token,
         })
     }
 
@@ -51,15 +61,19 @@ impl EnhancedConvexClient {
         self.auth_service = Some(auth_service);
     }
 
-    /// Set manual authentication token (for backward compatibility)
+    /// Set authentication token for Authorization header
+    /// 
+    /// Phase 2: Updated method name and purpose - now sets JWT token for Authorization header
     pub fn set_auth_token(&mut self, token: String) {
-        self.manual_auth_token = Some(token);
+        self.auth_token = Some(token);
     }
 
     /// Clear authentication
+    /// 
+    /// Phase 2: Updated to clear auth_token instead of manual_auth_token
     pub fn clear_auth(&mut self) {
         self.auth_service = None;
-        self.manual_auth_token = None;
+        self.auth_token = None;
     }
 
     /// Get current authentication context
@@ -68,15 +82,38 @@ impl EnhancedConvexClient {
     }
 
     /// Check if authenticated
+    /// 
+    /// Phase 2: Updated to check auth_token instead of manual_auth_token
     pub fn is_authenticated(&self) -> bool {
         if let Some(auth_service) = &self.auth_service {
             auth_service.is_authenticated()
         } else {
-            self.manual_auth_token.is_some()
+            self.auth_token.is_some()
         }
     }
 
+    /// Get Authorization header value for HTTP requests
+    /// 
+    /// Phase 2: New method to support proper Authorization header approach
+    /// Returns "Bearer {token}" format for use in HTTP requests to Convex
+    pub fn get_authorization_header(&self) -> Option<String> {
+        if let Some(auth_service) = &self.auth_service {
+            if let Some(auth_context) = auth_service.get_auth_context() {
+                return Some(format!("Bearer {}", auth_context.token));
+            }
+        }
+        
+        if let Some(token) = &self.auth_token {
+            return Some(format!("Bearer {}", token));
+        }
+        
+        None
+    }
+
     /// Convert serde_json::Value to BTreeMap<String, ConvexValue>
+    /// 
+    /// Phase 2: Removed manual auth injection - authentication now handled via Authorization headers
+    /// This method now only converts business logic arguments, letting Convex handle authentication
     fn convert_args(&self, args: Value) -> Result<BTreeMap<String, ConvexValue>, AppError> {
         let mut result = BTreeMap::new();
         
@@ -87,22 +124,10 @@ impl EnhancedConvexClient {
             }
         }
         
-        // Add authentication information if available
-        if let Some(auth_service) = &self.auth_service {
-            if let Some(auth_context) = auth_service.get_auth_context() {
-                // Add user context to the arguments
-                result.insert("auth_userId".to_string(), ConvexValue::String(auth_context.user_id.clone()));
-                result.insert("auth_githubId".to_string(), ConvexValue::String(auth_context.github_id.clone()));
-                result.insert("auth_token".to_string(), ConvexValue::String(auth_context.token.clone()));
-                
-                if let Some(email) = &auth_context.email {
-                    result.insert("auth_email".to_string(), ConvexValue::String(email.clone()));
-                }
-            }
-        } else if let Some(token) = &self.manual_auth_token {
-            // Fallback to manual token for backward compatibility
-            result.insert("auth_token".to_string(), ConvexValue::String(token.clone()));
-        }
+        // REMOVED: Manual auth injection (Phase 2)
+        // Previously added auth_userId, auth_githubId, auth_token to function arguments
+        // Now using proper Authorization header approach where Convex handles JWT validation
+        // and ctx.auth.getUserIdentity() provides user context automatically
         
         Ok(result)
     }
@@ -185,11 +210,23 @@ impl EnhancedConvexClient {
     }
 
     /// Execute a Convex operation with error handling
+    /// 
+    /// Phase 2: Updated to support Authorization header approach
+    /// Note: Current Convex Rust client (v0.9) limitations require frontend-level auth handling
     async fn execute_operation<T>(&mut self, operation_type: &str, function_name: &str, args: Value) -> Result<T, AppError>
     where
         T: for<'de> serde::Deserialize<'de>,
     {
         let convex_args = self.convert_args(args)?;
+        
+        // Log authentication status for debugging
+        if let Some(auth_header) = self.get_authorization_header() {
+            log::debug!("Executing {} '{}' with authentication", operation_type, function_name);
+            // TODO: Phase 3 - Implement actual Authorization header passing when Convex client supports it
+            // For now, this relies on Convex configuration and frontend authentication
+        } else {
+            log::debug!("Executing {} '{}' without authentication", operation_type, function_name);
+        }
 
         let result = match operation_type {
             "query" => {

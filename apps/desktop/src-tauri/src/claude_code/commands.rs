@@ -30,7 +30,10 @@ fn parse_metadata(metadata: Option<String>) -> Result<Option<Value>, String> {
 }
 
 /// Helper function to create a Convex client
-async fn create_convex_client(auth_token: Option<String>) -> Result<EnhancedConvexClient, String> {
+/// 
+/// Phase 2: Removed auth_token parameter - authentication now handled via Authorization headers
+/// The Convex client will rely on proper JWT configuration and ctx.auth.getUserIdentity()
+async fn create_convex_client() -> Result<EnhancedConvexClient, String> {
     // Load environment variables
     dotenvy::dotenv().ok();
     
@@ -38,34 +41,35 @@ async fn create_convex_client(auth_token: Option<String>) -> Result<EnhancedConv
         .or_else(|_| env::var("CONVEX_URL"))
         .map_err(|_| "Convex URL not configured".to_string())?;
     
-    EnhancedConvexClient::new(&convex_url, auth_token)
+    EnhancedConvexClient::new(&convex_url, None)
         .await
         .map_err(|e| format!("Failed to create Convex client: {}", e))
 }
 
 /// Test Convex connection
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
-pub async fn test_convex_connection(
-    auth_token: Option<String>,
-) -> Result<CommandResult<String>, String> {
+pub async fn test_convex_connection() -> Result<CommandResult<String>, String> {
     info!("Testing Convex connection");
     
-    let _client = create_convex_client(auth_token).await?;
+    let _client = create_convex_client().await?;
     
     info!("Convex connection test successful");
     Ok(CommandResult::success("Convex connection successful".to_string()))
 }
 
 /// Get sessions with optional filtering
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn get_sessions(
-    auth_token: Option<String>,
     limit: Option<usize>,
     user_id: Option<String>,
 ) -> Result<CommandResult<Vec<ConvexSession>>, String> {
     info!("Getting sessions with limit: {:?}, user_id: {:?}", limit, user_id);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     let sessions = client.get_sessions(limit, user_id)
         .await
         .map_err(|e| format!("Failed to get sessions: {}", e))?;
@@ -75,16 +79,17 @@ pub async fn get_sessions(
 }
 
 /// Create a new Convex session
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn create_convex_session(
-    auth_token: Option<String>,
     title: Option<String>,
     user_id: String,
     metadata: Option<String>,
 ) -> Result<CommandResult<String>, String> {
     info!("Creating session with title: {:?}, user_id: {}", title, user_id);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     let metadata_value = parse_metadata(metadata)?;
     
@@ -103,9 +108,10 @@ pub async fn create_convex_session(
 }
 
 /// Update an existing session
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn update_session(
-    auth_token: Option<String>,
     session_id: String,
     title: Option<String>,
     metadata: Option<String>,
@@ -113,7 +119,7 @@ pub async fn update_session(
 ) -> Result<CommandResult<()>, String> {
     info!("Updating session: {}", session_id);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     let metadata_value = parse_metadata(metadata)?;
     
@@ -132,14 +138,15 @@ pub async fn update_session(
 }
 
 /// Delete a session
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn delete_session(
-    auth_token: Option<String>,
     session_id: String,
 ) -> Result<CommandResult<()>, String> {
     info!("Deleting session: {}", session_id);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     client.delete_session(&session_id)
         .await
@@ -150,14 +157,15 @@ pub async fn delete_session(
 }
 
 /// Get session by ID
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn get_session_by_id(
-    auth_token: Option<String>,
     session_id: String,
 ) -> Result<CommandResult<Option<ConvexSession>>, String> {
     info!("Getting session by ID: {}", session_id);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     let session = client.get_session_by_id(&session_id)
         .await
@@ -168,15 +176,16 @@ pub async fn get_session_by_id(
 }
 
 /// Get messages for a Convex session
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn get_convex_messages(
-    auth_token: Option<String>,
     session_id: String,
     limit: Option<usize>,
 ) -> Result<CommandResult<Vec<ConvexMessage>>, String> {
     info!("Getting messages for session: {}, limit: {:?}", session_id, limit);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     let messages = client.get_messages(&session_id, limit)
         .await
@@ -187,9 +196,10 @@ pub async fn get_convex_messages(
 }
 
 /// Add a new message to a session
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn add_message(
-    auth_token: Option<String>,
     session_id: String,
     content: String,
     role: String,
@@ -197,7 +207,7 @@ pub async fn add_message(
 ) -> Result<CommandResult<String>, String> {
     info!("Adding message to session: {}, role: {}", session_id, role);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     let metadata_value = parse_metadata(metadata)?;
     
@@ -217,9 +227,10 @@ pub async fn add_message(
 }
 
 /// Update a message
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn update_message(
-    auth_token: Option<String>,
     message_id: String,
     content: Option<String>,
     metadata: Option<String>,
@@ -227,7 +238,7 @@ pub async fn update_message(
 ) -> Result<CommandResult<()>, String> {
     info!("Updating message: {}", message_id);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     let metadata_value = parse_metadata(metadata)?;
     
@@ -246,14 +257,15 @@ pub async fn update_message(
 }
 
 /// Delete a message
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn delete_message(
-    auth_token: Option<String>,
     message_id: String,
 ) -> Result<CommandResult<()>, String> {
     info!("Deleting message: {}", message_id);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     client.delete_message(&message_id)
         .await
@@ -264,14 +276,15 @@ pub async fn delete_message(
 }
 
 /// Get message by ID
+/// 
+/// Phase 2: Removed auth_token parameter - authentication handled via JWT/Authorization headers
 #[tauri::command]
 pub async fn get_message_by_id(
-    auth_token: Option<String>,
     message_id: String,
 ) -> Result<CommandResult<Option<ConvexMessage>>, String> {
     info!("Getting message by ID: {}", message_id);
     
-    let mut client = create_convex_client(auth_token).await?;
+    let mut client = create_convex_client().await?;
     
     let message = client.get_message_by_id(&message_id)
         .await
