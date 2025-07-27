@@ -66,8 +66,8 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       console.log('📊 [HISTORICAL-APM] Loading data:', { scale, viewMode });
       
       const result = await invoke<CommandResult<HistoricalAPMResponse>>('get_historical_apm_data', {
-        time_scale: scale,
-        view_mode: viewMode,
+        timeScale: scale,
+        viewMode: viewMode,
       });
 
       if (result.success && result.data) {

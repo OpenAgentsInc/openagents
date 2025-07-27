@@ -1033,39 +1033,39 @@ async fn analyze_combined_conversations() -> Result<CommandResult<CombinedAPMSta
 
 #[tauri::command]
 async fn get_historical_apm_data(
-    time_scale: String,
-    days_back: Option<i64>,
-    view_mode: Option<String>,
+    timeScale: String,
+    daysBack: Option<i64>,
+    viewMode: Option<String>,
 ) -> Result<CommandResult<HistoricalAPMResponse>, String> {
     info!("get_historical_apm_data called with params:");
-    info!("  time_scale: {}", time_scale);
-    info!("  days_back: {:?}", days_back);
-    info!("  view_mode: {:?}", view_mode);
+    info!("  timeScale: {}", timeScale);
+    info!("  daysBack: {:?}", daysBack);
+    info!("  viewMode: {:?}", viewMode);
     
     // Set defaults
-    let days_back = days_back.unwrap_or(match time_scale.as_str() {
+    let days_back = daysBack.unwrap_or(match timeScale.as_str() {
         "daily" => 30,     // Last 30 days
         "weekly" => 84,    // Last 12 weeks 
         "monthly" => 365,  // Last 12 months
         _ => 30,
     });
     
-    let view_mode = view_mode.unwrap_or_else(|| "combined".to_string());
+    let view_mode = viewMode.unwrap_or_else(|| "combined".to_string());
     
     // Validate parameters
-    if !["daily", "weekly", "monthly"].contains(&time_scale.as_str()) {
-        return Ok(CommandResult::error("Invalid time_scale. Must be 'daily', 'weekly', or 'monthly'".to_string()));
+    if !["daily", "weekly", "monthly"].contains(&timeScale.as_str()) {
+        return Ok(CommandResult::error("Invalid timeScale. Must be 'daily', 'weekly', or 'monthly'".to_string()));
     }
     
     if !["combined", "cli", "sdk"].contains(&view_mode.as_str()) {
-        return Ok(CommandResult::error("Invalid view_mode. Must be 'combined', 'cli', or 'sdk'".to_string()));
+        return Ok(CommandResult::error("Invalid viewMode. Must be 'combined', 'cli', or 'sdk'".to_string()));
     }
     
     if days_back <= 0 || days_back > 365 {
-        return Ok(CommandResult::error("days_back must be between 1 and 365".to_string()));
+        return Ok(CommandResult::error("daysBack must be between 1 and 365".to_string()));
     }
     
-    match generate_historical_apm_data(&time_scale, days_back, &view_mode).await {
+    match generate_historical_apm_data(&timeScale, days_back, &view_mode).await {
         Ok(data) => {
             info!("Historical APM data generated successfully: {} data points", data.data.len());
             Ok(CommandResult::success(data))
