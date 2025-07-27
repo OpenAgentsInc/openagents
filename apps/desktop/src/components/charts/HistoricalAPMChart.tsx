@@ -1,8 +1,7 @@
 // TypeScript compatibility note: Recharts has known type compatibility issues with React 18's strict JSX component typing.
 // The library works correctly at runtime, but TypeScript's strict component type checking flags these as errors.
 // This is a well-documented issue: https://github.com/recharts/recharts/issues/3615
-// Using @ts-nocheck only for this file to address the specific library compatibility issue.
-// @ts-nocheck
+// Fixed by using proper type assertions for problematic components.
 import React, { useState, useEffect } from 'react';
 import {
   LineChart,
@@ -252,7 +251,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       <Card className={`p-6 ${className}`}>
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+{React.createElement(Loader2, { className: "h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" })}
             <p className="text-muted-foreground text-sm">Loading historical data...</p>
           </div>
         </div>
@@ -284,7 +283,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" />
+{React.createElement(TrendingUp, { className: "h-5 w-5" })}
           <h3 className="font-semibold">Historical APM Trends</h3>
         </div>
         
@@ -320,7 +319,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
                 className="text-muted-foreground"
                 label={{ value: 'APM', angle: -90, position: 'insideLeft' }}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={CustomTooltip as any} />
               <Legend 
                 wrapperStyle={{ fontSize: '12px' }}
                 iconType="line"
@@ -332,7 +331,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       ) : (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
-            <Calendar className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
+{React.createElement(Calendar, { className: "h-8 w-8 mx-auto mb-4 text-muted-foreground" })}
             <p className="text-muted-foreground text-sm">No historical data available</p>
             <p className="text-muted-foreground text-xs mt-1">
               Try a different time scale or start using Claude Code to generate data
