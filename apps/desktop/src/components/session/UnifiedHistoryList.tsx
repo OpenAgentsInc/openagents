@@ -1,14 +1,14 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Calendar, FileText, GitBranch, Folder, MessageSquare, RefreshCw } from 'lucide-react';
+import { Calendar, FileText, GitBranch, Folder, MessageSquare, RefreshCw, type LucideProps } from 'lucide-react';
 
-// Type assertions for Lucide React icons to fix TypeScript strict JSX checking
-const LucideCalendar = Calendar as any;
-const LucideFileText = FileText as any;
-const LucideGitBranch = GitBranch as any;
-const LucideFolder = Folder as any;
-const LucideMessageSquare = MessageSquare as any;
-const LucideRefreshCw = RefreshCw as any;
+// Properly typed Lucide icon components
+const CalendarIcon: React.FC<LucideProps> = Calendar;
+const FileTextIcon: React.FC<LucideProps> = FileText;
+const GitBranchIcon: React.FC<LucideProps> = GitBranch;
+const FolderIcon: React.FC<LucideProps> = Folder;
+const MessageSquareIcon: React.FC<LucideProps> = MessageSquare;
+const RefreshIcon: React.FC<LucideProps> = RefreshCw;
 import { useUnifiedHistory, UnifiedSession } from '@/hooks/useUnifiedHistory';
 
 interface UnifiedHistoryListProps {
@@ -59,9 +59,9 @@ export const UnifiedHistoryList: React.FC<UnifiedHistoryListProps> = ({
 
   const getSourceIcon = (source: 'local' | 'convex') => {
     return source === 'local' ? (
-      <LucideFileText className="w-3 h-3" />
+      <FileTextIcon className="w-3 h-3" />
     ) : (
-      <LucideGitBranch className="w-3 h-3" />
+      <GitBranchIcon className="w-3 h-3" />
     );
   };
 
@@ -75,7 +75,7 @@ export const UnifiedHistoryList: React.FC<UnifiedHistoryListProps> = ({
         <p className="text-sm text-red-600 mb-2">Failed to load session history</p>
         <p className="text-xs text-muted-foreground mb-3">{error}</p>
         <Button onClick={refreshHistory} size="sm" variant="outline">
-          <LucideRefreshCw className="w-3 h-3 mr-1" />
+          <RefreshIcon className="w-3 h-3 mr-1" />
           Retry
         </Button>
       </div>
@@ -95,7 +95,7 @@ export const UnifiedHistoryList: React.FC<UnifiedHistoryListProps> = ({
           variant="ghost"
           className="h-6 px-2"
         >
-          <LucideRefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+          <RefreshIcon className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
 
@@ -123,7 +123,7 @@ export const UnifiedHistoryList: React.FC<UnifiedHistoryListProps> = ({
                   {session.source === 'local' ? 'Local' : 'Cloud'}
                 </div>
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <LucideCalendar className="w-3 h-3" />
+                  <CalendarIcon className="w-3 h-3" />
                   {formatTimestamp(session.timestamp)}
                 </span>
               </div>
@@ -136,7 +136,7 @@ export const UnifiedHistoryList: React.FC<UnifiedHistoryListProps> = ({
               {/* Project path */}
               {session.project_path && (
                 <div className="flex items-center gap-1 mb-1">
-                  <LucideFolder className="w-3 h-3 text-muted-foreground" />
+                  <FolderIcon className="w-3 h-3 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground font-mono truncate">
                     {session.project_path}
                   </span>
@@ -155,7 +155,7 @@ export const UnifiedHistoryList: React.FC<UnifiedHistoryListProps> = ({
                 <div className="flex items-center gap-3">
                   {session.message_count && (
                     <span className="flex items-center gap-1">
-                      <LucideMessageSquare className="w-3 h-3" />
+                      <MessageSquareIcon className="w-3 h-3" />
                       {session.message_count} msg{session.message_count !== 1 ? 's' : ''}
                     </span>
                   )}
