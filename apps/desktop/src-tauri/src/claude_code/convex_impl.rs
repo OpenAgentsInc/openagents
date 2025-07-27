@@ -200,21 +200,9 @@ impl EnhancedConvexClient {
         let result = self.error_recovery.execute_auth_operation(|| {
             // Check if refresh token is available in storage
             match self.token_storage.get_token("refresh_token") {
-                Ok(Some(_refresh_token)) => {
-                    // TODO: Phase 4 - Implement actual token refresh with OpenAuth
-                    // For now, this is a placeholder that would:
-                    // 1. Make request to OpenAuth token endpoint
-                    // 2. Store new access token
-                    // 3. Update internal token state
-                    
-                    log::warn!("Token refresh not yet implemented - OpenAuth server issues prevent full implementation");
-                    
-                    // Placeholder implementation
-                    // In real implementation, this would make an HTTP request to:
-                    // POST https://auth.openagents.com/token
-                    // with refresh_token grant_type
-                    
-                    Ok(())
+                Ok(Some(refresh_token)) => {
+                    log::info!("TOKEN_REFRESH: Found refresh token, initiating refresh request");
+                    Ok(refresh_token)
                 }
                 Ok(None) => {
                     log::error!("TOKEN_REFRESH: No refresh token available");
@@ -226,6 +214,14 @@ impl EnhancedConvexClient {
                 }
             }
         }).await;
+
+        // If we have a refresh token, proceed with the actual refresh
+        let result = match result {
+            Ok(refresh_token) => {
+                self.perform_token_refresh(refresh_token).await
+            }
+            Err(e) => Err(e),
+        };
         
         let elapsed = start_time.elapsed();
         
@@ -243,6 +239,68 @@ impl EnhancedConvexClient {
         }
         
         result
+    }
+
+    /// Perform the actual token refresh operation
+    /// 
+    /// Phase 4: Complete token refresh implementation with OpenAuth integration
+    async fn perform_token_refresh(&mut self, refresh_token: String) -> Result<(), AppError> {
+        log::info!("TOKEN_REFRESH: Performing token refresh with OpenAuth");
+        
+        // Prepare refresh request
+        let refresh_url = format!("{}/token", self.openauth_domain);
+        let refresh_body = serde_json::json!({
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token
+        });
+        
+        // Make refresh request with retry logic
+        let response = self.http_client
+            .post(&refresh_url)
+            .header("Content-Type", "application/json")
+            .json(&refresh_body)
+            .send()
+            .await
+            .map_err(|e| AppError::AuthStateError(format!("Token refresh request failed: {}", e)))?;
+        
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            log::error!("TOKEN_REFRESH: OpenAuth refresh failed: {} - {}", response.status(), error_text);
+            return Err(AppError::AuthStateError(format!("Token refresh failed: {}", error_text)));
+        }
+        
+        // Parse refresh response
+        let refresh_response: serde_json::Value = response.json().await
+            .map_err(|e| AppError::AuthStateError(format!("Failed to parse refresh response: {}", e)))?;
+        
+        // Extract new tokens
+        let new_access_token = refresh_response["access_token"]
+            .as_str()
+            .ok_or_else(|| AppError::AuthStateError("No access_token in refresh response".to_string()))?
+            .to_string();
+            
+        let expires_in = refresh_response["expires_in"]
+            .as_u64()
+            .unwrap_or(3600); // Default to 1 hour if not specified
+            
+        let expires_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() + expires_in;
+        
+        // Store new access token
+        self.store_auth_token(new_access_token.clone(), Some(expires_at))?;
+        
+        // Check if there's a new refresh token
+        if let Some(new_refresh_token) = refresh_response["refresh_token"].as_str() {
+            self.token_storage.store_token("refresh_token", new_refresh_token.to_string(), None)?;
+            log::info!("TOKEN_REFRESH: Updated refresh token");
+        }
+        
+        log::info!("TOKEN_REFRESH: Successfully refreshed access token [expires_in={}s]", expires_in);
+        log::info!("SECURITY_AUDIT: Token refresh successful [new_expiry={}]", expires_at);
+        
+        Ok(())
     }
 
     /// Clear all stored authentication tokens
