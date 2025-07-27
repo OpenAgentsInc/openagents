@@ -22,7 +22,7 @@ export function DrawerIconButton(props: DrawerIconButtonProps) {
     const backgroundColor = interpolateColor(
       progress.value,
       [0, 1],
-      ['#60a5fa', '#3b82f6'], // Our blue accent colors
+      ['#f4f4f5', '#f4f4f5'], // Zinc-100 colors
     )
     const marginStart = interpolate(progress.value, [0, 1], [0, -11.5])
     const rotate = interpolate(progress.value, [0, 1], [0, -45])
@@ -42,7 +42,7 @@ export function DrawerIconButton(props: DrawerIconButtonProps) {
     const backgroundColor = interpolateColor(
       progress.value,
       [0, 1],
-      ['#60a5fa', '#3b82f6'], // Our blue accent colors
+      ['#f4f4f5', '#f4f4f5'], // Zinc-100 colors
     )
     const width = interpolate(progress.value, [0, 1], [18, 16])
 
@@ -57,7 +57,7 @@ export function DrawerIconButton(props: DrawerIconButtonProps) {
     const backgroundColor = interpolateColor(
       progress.value,
       [0, 1],
-      ['#60a5fa', '#3b82f6'], // Our blue accent colors
+      ['#f4f4f5', '#f4f4f5'], // Zinc-100 colors
     )
     const marginStart = interpolate(progress.value, [0, 1], [0, -11.5])
     const rotate = interpolate(progress.value, [0, 1], [0, 45])
