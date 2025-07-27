@@ -2,33 +2,13 @@ import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
 
-
 import { cn } from "@/lib/utils"
 
+const Sheet = SheetPrimitive.Root
 
-const Sheet = React.forwardRef<
-  React.ElementRef<typeof SheetPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Root>
->((props, _ref) => (
-  <SheetPrimitive.Root data-slot="sheet" {...props} />
-))
-Sheet.displayName = SheetPrimitive.Root.displayName
+const SheetTrigger = SheetPrimitive.Trigger
 
-const SheetTrigger = React.forwardRef<
-  React.ElementRef<typeof SheetPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Trigger>
->((props, ref) => (
-  <SheetPrimitive.Trigger ref={ref} data-slot="sheet-trigger" {...props} />
-))
-SheetTrigger.displayName = SheetPrimitive.Trigger.displayName
-
-const SheetClose = React.forwardRef<
-  React.ElementRef<typeof SheetPrimitive.Close>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Close>
->((props, ref) => (
-  <SheetPrimitive.Close ref={ref} data-slot="sheet-close" {...props} />
-))
-SheetClose.displayName = SheetPrimitive.Close.displayName
+const SheetClose = SheetPrimitive.Close
 
 const SheetPortal = SheetPrimitive.Portal
 

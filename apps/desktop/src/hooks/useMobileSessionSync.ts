@@ -42,7 +42,7 @@ export const useMobileSessionSync = (
   const [lastGlobalProcessTime, setLastGlobalProcessTime] = useState(0);
   const GLOBAL_PROCESS_DELAY = 3000;
   
-  const processingTimeoutRef = useRef<NodeJS.Timeout>();
+  const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef(false);
   const lastProcessedTimeRef = useRef<Record<string, number>>({});
   const PROCESSING_COOLDOWN = 5000;
