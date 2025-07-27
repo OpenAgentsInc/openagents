@@ -119,85 +119,73 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
     
     switch (viewMode) {
       case 'combined': {
-        const combinedLine = (
-          <Line
-            key="combined"
-            type="monotone"
-            dataKey="combined_apm"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
-            name="Combined APM"
-          />
-        );
+        const combinedLine = React.createElement(Line, {
+          key: "combined",
+          type: "monotone",
+          dataKey: "combined_apm",
+          stroke: "#3b82f6",
+          strokeWidth: 2,
+          dot: { fill: '#3b82f6', strokeWidth: 2, r: 3 },
+          name: "Combined APM"
+        });
         lines.push(combinedLine);
         break;
       }
       case 'cli': {
-        const cliLine = (
-          <Line
-            key="cli"
-            type="monotone"
-            dataKey="cli_apm"
-            stroke="#10b981"
-            strokeWidth={2}
-            dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }}
-            name="CLI APM"
-          />
-        );
+        const cliLine = React.createElement(Line, {
+          key: "cli",
+          type: "monotone",
+          dataKey: "cli_apm",
+          stroke: "#10b981",
+          strokeWidth: 2,
+          dot: { fill: '#10b981', strokeWidth: 2, r: 3 },
+          name: "CLI APM"
+        });
         lines.push(cliLine);
         break;
       }
       case 'sdk': {
-        const sdkLine = (
-          <Line
-            key="sdk"
-            type="monotone"
-            dataKey="sdk_apm"
-            stroke="#f59e0b"
-            strokeWidth={2}
-            dot={{ fill: '#f59e0b', strokeWidth: 2, r: 3 }}
-            name="SDK APM"
-          />
-        );
+        const sdkLine = React.createElement(Line, {
+          key: "sdk",
+          type: "monotone",
+          dataKey: "sdk_apm",
+          stroke: "#f59e0b",
+          strokeWidth: 2,
+          dot: { fill: '#f59e0b', strokeWidth: 2, r: 3 },
+          name: "SDK APM"
+        });
         lines.push(sdkLine);
         break;
       }
       case 'aggregated': {
         // Show all APM metrics together for comprehensive view
-        const combinedLine = (
-          <Line
-            key="combined"
-            type="monotone"
-            dataKey="combined_apm"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
-            name="Combined APM"
-          />
-        );
-        const cliLine = (
-          <Line
-            key="cli"
-            type="monotone"
-            dataKey="cli_apm"
-            stroke="#10b981"
-            strokeWidth={2}
-            dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }}
-            name="CLI APM"
-          />
-        );
-        const sdkLine = (
-          <Line
-            key="sdk"
-            type="monotone"
-            dataKey="sdk_apm"
-            stroke="#f59e0b"
-            strokeWidth={2}
-            dot={{ fill: '#f59e0b', strokeWidth: 2, r: 3 }}
-            name="SDK APM"
-          />
-        );
+        const combinedLine = React.createElement(Line, {
+          key: "combined",
+          type: "monotone",
+          dataKey: "combined_apm",
+          stroke: "#3b82f6",
+          strokeWidth: 2,
+          dot: { fill: '#3b82f6', strokeWidth: 2, r: 3 },
+          name: "Combined APM"
+        });
+        const cliLine = React.createElement(Line, {
+          key: "cli",
+          type: "monotone",
+          dataKey: "cli_apm",
+          stroke: "#10b981",
+          strokeWidth: 2,
+          dot: { fill: '#10b981', strokeWidth: 2, r: 3 },
+          name: "CLI APM"
+        });
+        const sdkLine = React.createElement(Line, {
+          key: "sdk",
+          type: "monotone",
+          dataKey: "sdk_apm",
+          stroke: "#f59e0b",
+          strokeWidth: 2,
+          dot: { fill: '#f59e0b', strokeWidth: 2, r: 3 },
+          name: "SDK APM"
+        });
         lines.push(combinedLine, cliLine, sdkLine);
         break;
       }
@@ -306,27 +294,33 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       {/* Chart */}
       {data.length > 0 ? (
         <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis 
-                dataKey="period_display" 
-                tick={{ fontSize: 12 }}
-                className="text-muted-foreground"
-              />
-              <YAxis 
-                tick={{ fontSize: 12 }}
-                className="text-muted-foreground"
-                label={{ value: 'APM', angle: -90, position: 'insideLeft' }}
-              />
-              <Tooltip content={CustomTooltip as any} />
-              <Legend 
-                wrapperStyle={{ fontSize: '12px' }}
-                iconType="line"
-              />
-              {getChartLines()}
-            </LineChart>
-          </ResponsiveContainer>
+          {React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
+            React.createElement(LineChart, { 
+              data: data, 
+              margin: { top: 5, right: 30, left: 20, bottom: 5 }
+            },
+              React.createElement(CartesianGrid, { 
+                strokeDasharray: "3 3", 
+                className: "opacity-30" 
+              }),
+              React.createElement(XAxis, {
+                dataKey: "period_display",
+                tick: { fontSize: 12 },
+                className: "text-muted-foreground"
+              }),
+              React.createElement(YAxis, {
+                tick: { fontSize: 12 },
+                className: "text-muted-foreground",
+                label: { value: 'APM', angle: -90, position: 'insideLeft' }
+              }),
+              React.createElement(Tooltip, { content: CustomTooltip as any }),
+              React.createElement(Legend, {
+                wrapperStyle: { fontSize: '12px' },
+                iconType: "line"
+              }),
+              ...getChartLines()
+            )
+          )}
         </div>
       ) : (
         <div className="flex items-center justify-center h-64">
