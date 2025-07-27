@@ -3,7 +3,7 @@
 /// These tests document the CURRENT authentication behavior before Phase 2 changes.
 /// They serve as a baseline to ensure functionality is preserved during refactoring.
 
-use crate::claude_code::{EnhancedConvexClient, ConvexDatabase, SessionRepository};
+use crate::claude_code::EnhancedConvexClient;
 use crate::error::AppError;
 use serde_json::json;
 
