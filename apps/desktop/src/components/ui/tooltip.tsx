@@ -8,9 +8,8 @@ import { cn } from "@/lib/utils"
 const TooltipProvider = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Provider>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>
->(({ delayDuration = 0, children, ...props }, ref) => (
+>(({ delayDuration = 0, children, ...props }, _ref) => (
   <TooltipPrimitive.Provider
-    ref={ref}
     data-slot="tooltip-provider"
     delayDuration={delayDuration}
     {...props}
@@ -23,9 +22,9 @@ TooltipProvider.displayName = TooltipPrimitive.Provider.displayName
 const Tooltip = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Root>
->((props, ref) => (
+>((props, _ref) => (
   <TooltipProvider>
-    <TooltipPrimitive.Root ref={ref} data-slot="tooltip" {...props} />
+    <TooltipPrimitive.Root data-slot="tooltip" {...props} />
   </TooltipProvider>
 ))
 Tooltip.displayName = TooltipPrimitive.Root.displayName
