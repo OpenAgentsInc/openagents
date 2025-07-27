@@ -197,7 +197,7 @@ describe("StatsPane", () => {
   describe("Error Handling", () => {
     it("should handle API errors gracefully", async () => {
       (invoke as any).mockRejectedValue(new Error("API Error"));
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation();
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       
       render(<StatsPane />);
       
