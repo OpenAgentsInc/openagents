@@ -9,7 +9,7 @@ import { AuthButton } from "@/components/auth/AuthButton";
 import { useAppStore } from "@/stores/appStore";
 import { useClaudeDiscovery } from "@/hooks/useClaudeDiscovery";
 import { useSessionManager } from "@/hooks/useSessionManager";
-import { useMobileSessionSync } from "@/hooks/useMobileSessionSync";
+import { useMobileSessionSyncConfect } from "@/hooks/useMobileSessionSyncConfect";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useHandTracking } from "@/hooks/useHandTracking";
 import { useAppInitialization } from "@/hooks/useAppInitialization";
@@ -50,7 +50,7 @@ function App() {
 
   const {
     sessionIdMapping,
-  } = useMobileSessionSync(sessions, setSessions, isAppInitialized);
+  } = useMobileSessionSyncConfect(sessions, setSessions, isAppInitialized);
 
   const {
     isHandTrackingActive,
