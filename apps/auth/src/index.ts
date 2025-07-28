@@ -43,6 +43,30 @@ export default issuer({
     namespace: "AUTH_STORAGE",
   }),
   subjects,
+  allow: async (input, req) => {
+    // Allow mobile app with custom URL scheme
+    if (input.clientID === 'openagents-mobile' && 
+        input.redirectURI === 'openagents://auth/callback') {
+      console.log("✅ [AUTH] Allowing mobile client:", input.clientID, input.redirectURI);
+      return true;
+    }
+
+    // Allow localhost redirects (for development)
+    if (input.redirectURI.includes('localhost')) {
+      console.log("✅ [AUTH] Allowing localhost redirect:", input.redirectURI);
+      return true;
+    }
+
+    // Allow same subdomain redirects (default behavior for web clients)
+    const hostname = req.headers.get('host') || req.headers.get('x-forwarded-host');
+    if (hostname && input.redirectURI.includes(hostname)) {
+      console.log("✅ [AUTH] Allowing subdomain redirect:", input.redirectURI, "for host:", hostname);
+      return true;
+    }
+
+    console.log("❌ [AUTH] Rejecting client:", input.clientID, input.redirectURI);
+    return false;
+  },
   success: async (ctx, value) => {
     // Handle successful GitHub authentication
     if (value.provider === "github") {
