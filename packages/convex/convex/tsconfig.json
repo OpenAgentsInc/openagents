@@ -12,6 +12,10 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/shared/*": ["../../shared/src/*"]
+    },
 
     /* These compiler options are required by Convex */
     "target": "ESNext",
