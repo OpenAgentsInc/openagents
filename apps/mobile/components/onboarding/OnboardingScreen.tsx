@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 // Hybrid approach: Use working implementations with full interfaces
 // TODO: Gradually replace with full Effect-TS implementations once runtime issues are resolved
 
@@ -23,22 +24,32 @@ interface PermissionResult {
 }
 
 // Enhanced placeholder that matches the real useConfectOnboarding interface
-type OnboardingStep = 'welcome' | 'permissions_explained' | 'github_connected' | 'repository_selected' | 'preferences_set' | 'completed';
+type OnboardingStep = 'welcome' | 'permissions_explained' | 'github_connected' | 'repository_selected' | 'session_ready' | 'preferences_set' | 'completed';
 
-const useConfectOnboarding = (config: any) => ({
-  onboardingState: {
-    step: 'welcome' as OnboardingStep,
-    isLoading: false,
-    error: null,
-  },
-  isOnboardingComplete: false,
-  user: { githubUsername: 'MockUser' } as any,
-  updateOnboardingStep: async (step: OnboardingStep, completed: boolean) => {
-    console.log(`📱 [ONBOARDING] Step updated: ${step} (completed: ${completed})`);
-  },
-  completeOnboarding: async () => {
-    console.log('📱 [ONBOARDING] Onboarding completed');
-  },
+const useConfectOnboarding = (config: any) => {
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
+  const [isComplete, setIsComplete] = useState(false);
+  const { user } = useConfectAuth(); // Get actual user data
+  
+  return {
+    onboardingState: {
+      step: currentStep,
+      isLoading: false,
+      error: null,
+    },
+    isOnboardingComplete: isComplete,
+    user: user, // Use actual authenticated user
+    updateOnboardingStep: async (step: OnboardingStep, completed: boolean) => {
+      console.log(`📱 [ONBOARDING] Step updated: ${step} (completed: ${completed})`);
+      setCurrentStep(step);
+      if (step === 'completed') {
+        setIsComplete(true);
+      }
+    },
+    completeOnboarding: async () => {
+      console.log('📱 [ONBOARDING] Onboarding completed');
+      setIsComplete(true);
+    },
   checkPermissions: async (): Promise<PermissionResult[]> => {
     return [
       { type: 'notifications' as PermissionType, status: 'granted', canRetry: false, fallbackAvailable: true },
@@ -69,14 +80,18 @@ const useConfectOnboarding = (config: any) => ({
     };
     return explanations[type] || `${type} permission needed for app functionality`;
   },
-  canSkipStep: (step: OnboardingStep) => step !== 'permissions_explained',
-  getNextStep: (current: OnboardingStep): OnboardingStep | null => {
-    const steps: OnboardingStep[] = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'preferences_set', 'completed'];
-    const currentIndex = steps.indexOf(current);
-    return currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null;
-  },
-});
+    canSkipStep: (step: OnboardingStep) => step !== 'permissions_explained',
+    getNextStep: (current: OnboardingStep): OnboardingStep | null => {
+      const steps: OnboardingStep[] = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'session_ready', 'preferences_set', 'completed'];
+      const currentIndex = steps.indexOf(current);
+      return currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null;
+    },
+  };
+};
 import { DARK_THEME } from '../../constants/colors';
+import { RepositorySelectionScreen } from './RepositorySelectionScreen';
+import { NewSessionScreen } from '../session/NewSessionScreen';
+import { useConfectAuth } from '../../contexts/SimpleConfectAuthContext';
 
 interface OnboardingScreenProps {
   onComplete: () => void;
@@ -84,6 +99,7 @@ interface OnboardingScreenProps {
 
 export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedRepository, setSelectedRepository] = useState<any>(null);
   
   const onboarding = useConfectOnboarding({
     autoStartOnboarding: true,
@@ -109,6 +125,29 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
       onComplete();
     }
   }, [isOnboardingComplete, onComplete]);
+
+  const handleRepositorySelected = async (repository: any) => {
+    setSelectedRepository(repository);
+    console.log('📱 [ONBOARDING] Repository selected:', repository.name);
+    await handleContinue();
+  };
+
+  const handleRepositorySkip = async () => {
+    console.log('📱 [ONBOARDING] Repository selection skipped');
+    await handleSkip();
+  };
+
+  const handleCreateSession = async () => {
+    console.log('📱 [ONBOARDING] Session creation requested');
+    // TODO: Implement actual session creation logic
+    await handleContinue();
+  };
+
+  const handleChangeRepository = async () => {
+    console.log('📱 [ONBOARDING] Repository change requested');
+    // Go back to repository selection step
+    await updateOnboardingStep('repository_selected', false);
+  };
 
   const handleContinue = async () => {
     setIsLoading(true);
@@ -179,9 +218,9 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   const renderWelcomeStep = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Welcome to Claude Code</Text>
+      <Text style={styles.stepTitle}>Welcome to OpenAgents</Text>
       <Text style={styles.stepDescription}>
-        Claude Code brings AI-powered development assistance to your mobile device. 
+        OpenAgents brings AI-powered development assistance to your mobile device using Claude Code. 
         Let's get you set up in just a few steps.
       </Text>
       <View style={styles.featureList}>
@@ -197,7 +236,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
     <View style={styles.stepContainer}>
       <Text style={styles.stepTitle}>App Permissions</Text>
       <Text style={styles.stepDescription}>
-        Claude Code needs a few permissions to provide the best experience:
+        OpenAgents needs a few permissions to provide the best experience:
       </Text>
       <View style={styles.permissionsList}>
         {(['notifications', 'storage', 'network'] as PermissionType[]).map((permission) => (
@@ -243,22 +282,20 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   );
 
   const renderRepositoryStep = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Select Repository</Text>
-      <Text style={styles.stepDescription}>
-        Choose a repository to work with, or skip this step to set it up later.
-      </Text>
-      <View style={styles.repositoryOptions}>
-        <TouchableOpacity style={styles.repositoryOption}>
-          <Text style={styles.repositoryName}>Browse Repositories</Text>
-          <Text style={styles.repositoryDescription}>
-            Select from your GitHub repositories
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.skipText}>
-        You can set up repository access later in settings.
-      </Text>
+    <View style={styles.fullScreenStep}>
+      <RepositorySelectionScreen 
+        onRepositorySelected={handleRepositorySelected}
+        onSkip={handleRepositorySkip}
+      />
+    </View>
+  );
+
+  const renderSessionReadyStep = () => (
+    <View style={styles.fullScreenStep}>
+      <NewSessionScreen 
+        onCreateSession={handleCreateSession}
+        onChangeRepository={handleChangeRepository}
+      />
     </View>
   );
 
@@ -266,7 +303,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
     <View style={styles.stepContainer}>
       <Text style={styles.stepTitle}>Preferences</Text>
       <Text style={styles.stepDescription}>
-        Customize your Claude Code experience:
+        Customize your OpenAgents experience:
       </Text>
       <View style={styles.preferencesList}>
         <View style={styles.preferenceItem}>
@@ -298,6 +335,8 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
         return renderGitHubStep();
       case 'repository_selected':
         return renderRepositoryStep();
+      case 'session_ready':
+        return renderSessionReadyStep();
       case 'preferences_set':
         return renderPreferencesStep();
       default:
@@ -306,11 +345,11 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   };
 
   const getCurrentStepNumber = () => {
-    const steps = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'preferences_set'];
+    const steps = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'session_ready', 'preferences_set'];
     return steps.indexOf(onboardingState.step) + 1;
   };
 
-  const getTotalSteps = () => 5;
+  const getTotalSteps = () => 6;
 
   if (onboardingState.isLoading) {
     return (
@@ -322,21 +361,23 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.stepCounter}>
-            Step {getCurrentStepNumber()} of {getTotalSteps()}
-          </Text>
-          <View style={styles.progressBar}>
-            <View 
-              style={[
-                styles.progressFill, 
-                { width: `${(getCurrentStepNumber() / getTotalSteps()) * 100}%` }
-              ]} 
-            />
+        {onboardingState.step !== 'repository_selected' && onboardingState.step !== 'session_ready' && (
+          <View style={styles.header}>
+            <Text style={styles.stepCounter}>
+              Step {getCurrentStepNumber()} of {getTotalSteps()}
+            </Text>
+            <View style={styles.progressBar}>
+              <View 
+                style={[
+                  styles.progressFill, 
+                  { width: `${(getCurrentStepNumber() / getTotalSteps()) * 100}%` }
+                ]} 
+              />
+            </View>
           </View>
-        </View>
+        )}
 
         {renderStepContent()}
 
@@ -347,32 +388,34 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
         )}
       </ScrollView>
 
-      <View style={styles.buttonContainer}>
-        {canSkipStep(onboardingState.step) && (
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={handleSkip}
-            disabled={isLoading}
-          >
-            <Text style={styles.skipButtonText}>Skip</Text>
-          </TouchableOpacity>
-        )}
-        
-        {onboardingState.step !== 'permissions_explained' && (
-          <TouchableOpacity
-            style={[styles.continueButton, isLoading && styles.disabledButton]}
-            onPress={handleContinue}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.continueButtonText}>Continue</Text>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
+      {onboardingState.step !== 'repository_selected' && onboardingState.step !== 'session_ready' && (
+        <View style={styles.buttonContainer}>
+          {canSkipStep(onboardingState.step) && (
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={handleSkip}
+              disabled={isLoading}
+            >
+              <Text style={styles.skipButtonText}>Skip</Text>
+            </TouchableOpacity>
+          )}
+          
+          {onboardingState.step !== 'permissions_explained' && (
+            <TouchableOpacity
+              style={[styles.continueButton, isLoading && styles.disabledButton]}
+              onPress={handleContinue}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.continueButtonText}>Continue</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </SafeAreaView>
   );
 };
 
@@ -657,5 +700,8 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#374151',
+  },
+  fullScreenStep: {
+    flex: 1,
   },
 });

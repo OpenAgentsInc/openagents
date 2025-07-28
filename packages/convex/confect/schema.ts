@@ -12,6 +12,33 @@ export const confectSchema = defineSchema({
       githubUsername: Schema.String.pipe(Schema.nonEmpty()),
       createdAt: Schema.Number,
       lastLogin: Schema.Number,
+      githubMetadata: Schema.optional(
+        Schema.Struct({
+          publicRepos: Schema.Number,
+          totalPrivateRepos: Schema.Number,
+          ownedPrivateRepos: Schema.Number,
+          reposUrl: Schema.String,
+          // Cache 5 most recent repos to avoid API calls
+          cachedRepos: Schema.Array(
+            Schema.Struct({
+              id: Schema.Number,
+              name: Schema.String.pipe(Schema.nonEmpty()),
+              fullName: Schema.String.pipe(Schema.nonEmpty()),
+              owner: Schema.String.pipe(Schema.nonEmpty()),
+              isPrivate: Schema.Boolean,
+              defaultBranch: Schema.optional(Schema.String),
+              updatedAt: Schema.String, // ISO timestamp
+              description: Schema.optional(Schema.String),
+              language: Schema.optional(Schema.String),
+              htmlUrl: Schema.String,
+              cloneUrl: Schema.String,
+              sshUrl: Schema.String,
+            })
+          ),
+          lastReposFetch: Schema.Number,
+          lastReposFetchError: Schema.optional(Schema.String),
+        })
+      ),
     })
   ).index("by_email", ["email"])
    .index("by_github_id", ["githubId"]),
