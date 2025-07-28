@@ -139,7 +139,7 @@
       "version": "0.0.3",
       "dependencies": {
         "@effect/platform": "^0.90.0",
-        "@rjdellecese/confect": "^0.0.28",
+        "@rjdellecese/confect": "0.0.28",
         "convex": "^1.25.4",
         "effect": "^3.17.2",
       },
@@ -153,6 +153,9 @@
       "name": "@openagents/shared",
       "version": "0.0.3",
       "dependencies": {
+        "@effect/platform": "^0.90.0",
+        "@rjdellecese/confect": "0.0.28",
+        "effect": "^3.17.2",
         "zod": "^3.23.8",
       },
       "devDependencies": {

@@ -1,13 +1,21 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  Calendar as CalendarIcon,
-  FileText as FileTextIcon,
-  GitBranch as GitBranchIcon,
-  Folder as FolderIcon,
-  MessageSquare as MessageSquareIcon,
-  RefreshCw as RefreshIcon,
+  Calendar,
+  FileText,
+  GitBranch,
+  Folder,
+  MessageSquare,
+  RefreshCw,
 } from 'lucide-react';
+
+// Type assertions for lucide-react icons to resolve React 19 compatibility issues
+const CalendarIcon = Calendar as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const FileTextIcon = FileText as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const GitBranchIcon = GitBranch as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const FolderIcon = Folder as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const MessageSquareIcon = MessageSquare as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const RefreshIcon = RefreshCw as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
 import { useUnifiedHistory, UnifiedSession } from '@/hooks/useUnifiedHistory';
 
 interface UnifiedHistoryListProps {
