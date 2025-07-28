@@ -18,17 +18,19 @@ export const createClaudeSession = mutation({
     })),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user (optional for backwards compatibility during migration)
+    // Get authenticated user - authentication is required
     const identity = await ctx.auth.getUserIdentity();
-    let userId: Id<"users"> | undefined;
+    if (!identity) {
+      throw new Error("Authentication required to create session");
+    }
     
-    if (identity) {
-      // Find user by GitHub ID from identity subject
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-        .first();
-      userId = user?._id;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
     }
 
     // Check if session already exists
@@ -39,13 +41,18 @@ export const createClaudeSession = mutation({
       .first();
       
     if (existingSession) {
+      // Verify existing session belongs to the authenticated user
+      if (existingSession.userId !== user._id) {
+        throw new Error("Access denied to update session");
+      }
+      
       // Update existing session
       await ctx.db.patch(existingSession._id, {
         title: args.title,
         status: "active",
         lastActivity: Date.now(),
         metadata: args.metadata,
-        userId: userId, // Link to user if authenticated
+        userId: user._id, // Link to authenticated user
       });
       return existingSession._id;
     }
@@ -58,7 +65,7 @@ export const createClaudeSession = mutation({
       status: "active",
       createdBy: args.createdBy,
       lastActivity: Date.now(),
-      userId: userId, // Link to user if authenticated
+      userId: user._id, // Link to authenticated user
       metadata: args.metadata,
     });
     
@@ -98,36 +105,27 @@ export const getSessions = query({
     status: v.optional(v.union(v.literal("active"), v.literal("inactive"), v.literal("error"))),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user (optional for backwards compatibility)
+    // Get authenticated user - authentication is required
     const identity = await ctx.auth.getUserIdentity();
-    let userId: Id<"users"> | undefined;
+    if (!identity) {
+      throw new Error("Authentication required to view sessions");
+    }
     
-    if (identity) {
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-        .first();
-      userId = user?._id;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
     }
 
-    let query;
+    // Filter by user sessions only
+    let query = ctx.db.query("claudeSessions").withIndex("by_user_id")
+      .filter(q => q.eq(q.field("userId"), user._id));
     
-    if (userId) {
-      // Filter by user sessions when authenticated
-      query = ctx.db.query("claudeSessions").withIndex("by_user_id")
-        .filter(q => q.eq(q.field("userId"), userId));
-      
-      if (args.status) {
-        query = query.filter(q => q.eq(q.field("status"), args.status));
-      }
-    } else {
-      // Legacy mode: show all sessions (for backwards compatibility)
-      query = ctx.db.query("claudeSessions").withIndex("by_last_activity");
-      
-      if (args.status) {
-        query = ctx.db.query("claudeSessions").withIndex("by_status")
-          .filter(q => q.eq(q.field("status"), args.status));
-      }
+    if (args.status) {
+      query = query.filter(q => q.eq(q.field("status"), args.status));
     }
     
     return await query.order("desc").take(args.limit ?? 50);
@@ -137,11 +135,33 @@ export const getSessions = query({
 export const getSession = query({
   args: { sessionId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    // Get authenticated user - authentication is required
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required to view session");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const session = await ctx.db
       .query("claudeSessions")
       .withIndex("by_session_id")
       .filter(q => q.eq(q.field("sessionId"), args.sessionId))
       .first();
+    
+    // Ensure session belongs to the authenticated user
+    if (session && session.userId !== user._id) {
+      throw new Error("Session not found or access denied");
+    }
+    
+    return session;
   },
 });
 
@@ -153,6 +173,36 @@ export const getSessionMessages = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // Get authenticated user - authentication is required
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required to view messages");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // First verify the session belongs to the authenticated user
+    const session = await ctx.db
+      .query("claudeSessions")
+      .withIndex("by_session_id")
+      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
+      .first();
+    
+    if (!session) {
+      throw new Error("Session not found");
+    }
+    
+    if (session.userId !== user._id) {
+      throw new Error("Access denied to session messages");
+    }
+
     const query = ctx.db
       .query("claudeMessages")
       .withIndex("by_session_id")
@@ -191,16 +241,34 @@ export const addClaudeMessage = mutation({
       timestamp: args.timestamp
     });
 
-    // Get authenticated user (optional for backwards compatibility)
+    // Get authenticated user - authentication is required
     const identity = await ctx.auth.getUserIdentity();
-    let userId: Id<"users"> | undefined;
+    if (!identity) {
+      throw new Error("Authentication required to add message");
+    }
     
-    if (identity) {
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-        .first();
-      userId = user?._id;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Verify the session belongs to the authenticated user
+    const session = await ctx.db
+      .query("claudeSessions")
+      .withIndex("by_session_id")
+      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
+      .first();
+    
+    if (!session) {
+      throw new Error("Session not found");
+    }
+    
+    if (session.userId !== user._id) {
+      throw new Error("Access denied to add message to this session");
     }
     
     // Check if message already exists to avoid duplicates
@@ -221,22 +289,14 @@ export const addClaudeMessage = mutation({
     // Add message with user ID
     const messageDoc = await ctx.db.insert("claudeMessages", {
       ...args,
-      userId: userId, // Link to user if authenticated
+      userId: user._id, // Link to authenticated user
     });
     console.log('✅ [CONVEX] Message added successfully:', args.messageId);
     
-    // Update session last activity
-    const session = await ctx.db
-      .query("claudeSessions")
-      .withIndex("by_session_id")
-      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
-      .first();
-      
-    if (session) {
-      await ctx.db.patch(session._id, {
-        lastActivity: Date.now(),
-      });
-    }
+    // Update session last activity (reuse session from earlier validation)
+    await ctx.db.patch(session._id, {
+      lastActivity: Date.now(),
+    });
     
     // Update sync status
     const syncStatus = await ctx.db
@@ -273,6 +333,32 @@ export const batchAddMessages = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    // Get authenticated user - authentication is required
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required to add messages");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    // Verify session ownership
+    const session = await ctx.db
+      .query("claudeSessions")
+      .withIndex("by_session_id")
+      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
+      .first();
+    
+    if (!session || session.userId !== user._id) {
+      throw new Error("Session not found or access denied");
+    }
+    
     const insertedIds = [];
     
     for (const message of args.messages) {
@@ -290,23 +376,16 @@ export const batchAddMessages = mutation({
         const messageDoc = await ctx.db.insert("claudeMessages", {
           sessionId: args.sessionId,
           ...message,
+          userId: user._id, // Link to authenticated user
         });
         insertedIds.push(messageDoc);
       }
     }
     
-    // Update session last activity
-    const session = await ctx.db
-      .query("claudeSessions")
-      .withIndex("by_session_id")
-      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
-      .first();
-      
-    if (session) {
-      await ctx.db.patch(session._id, {
-        lastActivity: Date.now(),
-      });
-    }
+    // Update session last activity (reuse session from earlier validation)
+    await ctx.db.patch(session._id, {
+      lastActivity: Date.now(),
+    });
     
     return insertedIds;
   },
@@ -321,16 +400,19 @@ export const requestDesktopSession = mutation({
     title: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user (optional for backwards compatibility)
+    // Get authenticated user - authentication is required
     const identity = await ctx.auth.getUserIdentity();
-    let userId: Id<"users"> | undefined;
+    if (!identity) {
+      throw new Error("Authentication required to create mobile session");
+    }
     
-    if (identity) {
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-        .first();
-      userId = user?._id;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
     }
 
     const sessionId = `mobile-${Date.now()}-${Math.random().toString(36).substring(2)}`;
@@ -343,7 +425,7 @@ export const requestDesktopSession = mutation({
       status: "active",
       createdBy: "mobile",
       lastActivity: Date.now(),
-      userId: userId, // Link to user if authenticated
+      userId: user._id, // Link to authenticated user
     });
     
     // Initialize sync status
@@ -361,7 +443,7 @@ export const requestDesktopSession = mutation({
         messageType: "user",
         content: args.initialMessage,
         timestamp: new Date().toISOString(),
-        userId: userId, // Link to user if authenticated
+        userId: user._id, // Link to authenticated user
       });
       console.log('✅ [CONVEX] Mobile initial message created with ID:', messageId);
     }
@@ -400,6 +482,32 @@ export const updateSyncStatus = mutation({
 export const getSyncStatus = query({
   args: { sessionId: v.string() },
   handler: async (ctx, args) => {
+    // Get authenticated user - authentication is required
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required to view sync status");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Verify session belongs to user before showing sync status
+    const session = await ctx.db
+      .query("claudeSessions")
+      .withIndex("by_session_id")
+      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
+      .first();
+    
+    if (!session || session.userId !== user._id) {
+      throw new Error("Session not found or access denied");
+    }
+
     return await ctx.db
       .query("syncStatus")
       .withIndex("by_session_id")
@@ -421,6 +529,21 @@ export const syncSessionFromHook = mutation({
     }),
   },
   handler: async (ctx, args) => {
+    // Get authenticated user - authentication is required for hook sync
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required for session sync");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
     const { hookData } = args;
     
     // Ensure session exists
@@ -438,11 +561,17 @@ export const syncSessionFromHook = mutation({
         status: "active",
         createdBy: "desktop",
         lastActivity: Date.now(),
+        userId: user._id, // Link to authenticated user
       });
       
       await ctx.db.insert("syncStatus", {
         sessionId: hookData.sessionId,
       });
+    } else {
+      // Verify session belongs to the authenticated user
+      if (session.userId !== user._id) {
+        throw new Error("Access denied to sync session");
+      }
     }
     
     // Sync messages if provided
@@ -454,6 +583,7 @@ export const syncSessionFromHook = mutation({
           messageType: message.message_type,
           content: message.content,
           timestamp: message.timestamp,
+          userId: user._id, // Link to authenticated user
           toolInfo: message.tool_info ? {
             toolName: message.tool_info.tool_name,
             toolUseId: message.tool_info.tool_use_id,
@@ -521,33 +651,28 @@ export const getPendingMobileSessions = query({
 // APM (Actions Per Minute) Analysis for SDK/Convex conversations (User-scoped)
 
 export const getConvexAPMStats = query({
-  args: {
-    includeGlobalStats: v.optional(v.boolean()), // For backwards compatibility 
-  },
+  args: {},
   handler: async (ctx, args) => {
-    // Get authenticated user (optional for backwards compatibility)
+    // Get authenticated user - authentication is required
     const identity = await ctx.auth.getUserIdentity();
-    let userId: Id<"users"> | undefined;
+    if (!identity) {
+      throw new Error("Authentication required to view APM stats");
+    }
     
-    if (identity) {
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-        .first();
-      userId = user?._id;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
     }
 
-    // Get user-specific sessions or all sessions for backwards compatibility
-    let sessions;
-    if (userId && !args.includeGlobalStats) {
-      sessions = await ctx.db
-        .query("claudeSessions")
-        .withIndex("by_user_id", (q) => q.eq("userId", userId))
-        .collect();
-    } else {
-      // Fallback to global stats for unauthenticated users or when explicitly requested
-      sessions = await ctx.db.query("claudeSessions").collect();
-    }
+    // Get user-specific sessions only
+    const sessions = await ctx.db
+      .query("claudeSessions")
+      .withIndex("by_user_id", (q) => q.eq("userId", user._id))
+      .collect();
     
     if (sessions.length === 0) {
       return {
@@ -572,8 +697,11 @@ export const getConvexAPMStats = query({
       };
     }
     
-    // Get all messages
-    const allMessages = await ctx.db.query("claudeMessages").collect();
+    // Get messages for user's sessions only
+    const userSessionIds = sessions.map(s => s.sessionId);
+    const allMessages = await ctx.db.query("claudeMessages")
+      .filter(q => userSessionIds.some(sessionId => q.eq(q.field("sessionId"), sessionId)))
+      .collect();
     
     const now = Date.now();
     const timeWindows = {
