@@ -41,10 +41,12 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "sst": "^3.17.10",
     "expo": "~53.0.20",
+    "expo-camera": "^16.1.11",
+    "expo-notifications": "^0.31.4",
     "react": "19.0.0",
-    "react-native": "0.79.5"
+    "react-native": "0.79.5",
+    "sst": "^3.17.10"
   },
   "overrides": {
     "react": "19.0.0",

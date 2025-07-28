@@ -4,7 +4,7 @@ import type {
   AuthUser, 
   AuthState, 
   APMSessionData 
-} from "@openagentsinc/shared";
+} from "@/shared/types";
 
 // Integration error types
 export class ConvexIntegrationError extends Data.TaggedError("ConvexIntegrationError")<{
@@ -206,7 +206,16 @@ export const enhancedSendSessionDataToBackend = (
       yield* syncAPMDataToConfect(client, sessionData, authState.user.id);
       
       // Trigger aggregated APM calculation
-      yield* Effect.tryPromise({
+      yield* safeConvexMutation(client, "calculateUserAPM", {
+        timeWindow: "1h" as const
+      }).pipe(
+        Effect.catchAll(() => 
+          Effect.logWarning("Failed to calculate user APM, continuing anyway")
+        )
+      );
+      
+      // Remove old tryPromise block - replaced with safeConvexMutation
+      /*yield* Effect.tryPromise({
         try: async () => {
           await client.mutation("calculateUserAPM", {
             timeWindow: "1h" as const
@@ -217,7 +226,7 @@ export const enhancedSendSessionDataToBackend = (
           message: String(error),
           cause: error
         })
-      });
+      });*/
       
       yield* Effect.log(`✅ [CONFECT] Session data synced to backend with user association`);
     } else {

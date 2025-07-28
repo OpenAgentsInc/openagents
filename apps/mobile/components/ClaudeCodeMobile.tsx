@@ -13,9 +13,9 @@ import {
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { ScreenWithSidebar, Text as CustomText } from "./index";
+import { ScreenWithSidebar, Text as CustomText, ThinkingAnimation, ErrorBoundary } from "./index";
 import { AuthButton } from "./auth/AuthButton";
-import { useAuth } from "../contexts/AuthContext";
+import { useConfectAuth } from "../contexts/SimpleConfectAuthContext";
 import { IconPlus } from "./icons/IconPlus";
 import type { ChatSession } from "../types/chat";
 import { useAPMTracking } from "../src/hooks/useAPMTracking";
@@ -48,16 +48,16 @@ interface ClaudeMessage {
 }
 
 export function ClaudeCodeMobile() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user } = useConfectAuth();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   
   // Automatically sync user to Convex when authenticated
-  useUserSync();
+  const { isSynced } = useUserSync();
   
   // Generate random 4-character string for session title
   const generateRandomString = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789' as const;
     let result = '';
     for (let i = 0; i < 4; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -65,16 +65,20 @@ export function ClaudeCodeMobile() {
     return result;
   };
   
-  // Session creation state
-  const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/code/openagents");
+  // Session creation state - TODO: Move defaults to environment configuration
+  const DEFAULT_PROJECT_PATH = process.env.EXPO_PUBLIC_DEFAULT_PROJECT_PATH || "/Users/christopherdavid/code/openagents";
+  const DEFAULT_INITIAL_MESSAGE = process.env.EXPO_PUBLIC_DEFAULT_INITIAL_MESSAGE || "Introduce yourself, then use 3 readonly tools to explore the codebase and summarize what you learn.";
+  
+  const [newProjectPath, setNewProjectPath] = useState(DEFAULT_PROJECT_PATH);
   const [newSessionTitle, setNewSessionTitle] = useState(`Testing ${generateRandomString()}`);
-  const [initialMessage, setInitialMessage] = useState("Introduce yourself, then use 3 readonly tools to explore the codebase and summarize what you learn.");
+  const [initialMessage, setInitialMessage] = useState(DEFAULT_INITIAL_MESSAGE);
   
   // Message input state
   const [newMessage, setNewMessage] = useState("");
   
-  // Authentication is ready when user is authenticated
-  const authReady = isAuthenticated;
+  // Authentication is ready when user is authenticated AND synced to Convex
+  // This prevents race conditions where queries execute before user sync completes
+  const authReady = isAuthenticated && isSynced;
 
   // Convex hooks - only query data when authentication is ready
   const sessions = useQuery(
@@ -162,9 +166,9 @@ export function ClaudeCodeMobile() {
       );
 
       // Clear form and reset to defaults
-      setNewProjectPath("/Users/christopherdavid/code/openagents");
+      setNewProjectPath(DEFAULT_PROJECT_PATH);
       setNewSessionTitle(`Testing ${generateRandomString()}`);
-      setInitialMessage("Introduce yourself, then use 3 readonly tools to explore the codebase and summarize what you learn.");
+      setInitialMessage(DEFAULT_INITIAL_MESSAGE);
     } catch (error) {
       console.error("❌ [MOBILE] Failed to create session:", error);
       Alert.alert("Error", "Failed to create session. Please try again.");
@@ -351,7 +355,6 @@ export function ClaudeCodeMobile() {
   const renderHeaderTitle = () => (
     <View style={styles.headerTitle}>
       <CustomText style={styles.headerTitleText}>Claude Code</CustomText>
-      <AuthButton />
     </View>
   );
 
@@ -359,12 +362,9 @@ export function ClaudeCodeMobile() {
     if (!isAuthenticated) {
       return (
         <View style={styles.emptyState}>
-          <CustomText style={styles.emptyStateText}>
-            Please login to access Claude Code sessions
-          </CustomText>
-          <CustomText style={styles.emptyStateSubtext}>
-            Authentication is required to create and view sessions
-          </CustomText>
+          <View style={styles.authButtonContainer}>
+            <AuthButton />
+          </View>
         </View>
       );
     }
@@ -372,6 +372,7 @@ export function ClaudeCodeMobile() {
     if (!authReady) {
       return (
         <View style={styles.emptyState}>
+          <ThinkingAnimation size={38} style={styles.connectionAnimation} />
           <CustomText style={styles.emptyStateText}>
             Setting up secure connection...
           </CustomText>
@@ -444,7 +445,20 @@ export function ClaudeCodeMobile() {
   };
 
   return (
-    <>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        const timestamp = new Date().toISOString();
+        console.error(`❌ [CLAUDE_CODE_MOBILE] ${timestamp} Component error:`, {
+          error: error.message,
+          stack: error.stack,
+          componentStack: errorInfo.componentStack,
+          user: user?.githubUsername,
+          isAuthenticated,
+          selectedSessionId
+        });
+        // TODO: Report to crash analytics service
+      }}
+    >
       <ScreenWithSidebar
         title={renderHeaderTitle()}
         onNewChat={authReady ? handleNewChat : undefined}
@@ -461,7 +475,7 @@ export function ClaudeCodeMobile() {
         </View>
       </ScreenWithSidebar>
       {authReady && renderCreateSessionModal()}
-    </>
+    </ErrorBoundary>
   );
 }
 
@@ -610,6 +624,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
+    marginTop: -80,
   },
   emptyStateText: {
     color: '#a1a1aa',
@@ -631,6 +646,13 @@ const styles = StyleSheet.create({
       android: 'Berkeley Mono',
       default: 'monospace'
     }),
+  },
+  authButtonContainer: {
+    marginTop: -10,
+    alignItems: 'center',
+  },
+  connectionAnimation: {
+    marginBottom: 16,
   },
   // Modal styles
   modalOverlay: {

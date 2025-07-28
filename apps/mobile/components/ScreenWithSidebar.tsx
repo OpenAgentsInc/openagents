@@ -68,6 +68,11 @@ export const ScreenWithSidebar: FC<ScreenWithSidebarProps> = ({
     drawerRef.current?.closeDrawer({ speed: 2 })
   }
 
+  const handleCollapseSidebar = () => {
+    setOpen(false)
+    drawerRef.current?.closeDrawer({ speed: 2 })
+  }
+
   return (
     <DrawerLayout
       ref={drawerRef}
@@ -96,6 +101,7 @@ export const ScreenWithSidebar: FC<ScreenWithSidebarProps> = ({
           onSessionDelete={onSessionDelete}
           onSessionStar={onSessionStar}
           onSessionRename={onSessionRename}
+          onCollapseSidebar={handleCollapseSidebar}
         />
       )}
     >
