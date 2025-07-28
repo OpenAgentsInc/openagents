@@ -14,10 +14,8 @@ export const createTestRuntime = <R, E, A>(
     ? Effect.gen(function* () {
         const testServices = yield* TestServices.make()
         const context = yield* Effect.context<R>()
-        return yield* Runtime.make(Layer.merge(
-          Layer.succeed(TestContext.TestContext, testServices),
-          layer
-        ))
+        const runtime = yield* Effect.runtime<TestContext.TestContext>()
+        return runtime
       })
     : Effect.runtime<TestContext.TestContext>()
 
@@ -75,8 +73,8 @@ export const createTestLayer = <Services extends Record<string, Context.Tag<any,
 }
 
 // Effect test matcher
-export const expectEffect = async <A>(
-  effect: Effect.Effect<A>,
+export const expectEffect = async <A, E = never, R = never>(
+  effect: Effect.Effect<A, E, R>,
   assertion: (value: A) => void
 ) => {
   const result = await Effect.runPromise(effect)
@@ -84,8 +82,8 @@ export const expectEffect = async <A>(
 }
 
 // Effect error test matcher
-export const expectEffectError = async <E>(
-  effect: Effect.Effect<any, E>,
+export const expectEffectError = async <E, R = never>(
+  effect: Effect.Effect<any, E, R>,
   errorAssertion: (error: E) => void
 ) => {
   const exit = await Effect.runPromiseExit(effect)
@@ -99,9 +97,9 @@ export const expectEffectError = async <E>(
 }
 
 // Stream test utilities
-export const collectStream = <A>(
-  stream: Stream.Stream<A>
-): Effect.Effect<ReadonlyArray<A>> => {
+export const collectStream = <A, E = never, R = never>(
+  stream: Stream.Stream<A, E, R>
+): Effect.Effect<ReadonlyArray<A>, E, R> => {
   return Stream.runCollect(stream).pipe(
     Effect.map(chunk => Array.from(chunk))
   )
@@ -158,6 +156,13 @@ export const expectResourceCleanup = async <R, E, A>(
   // Verify cleanup was called
   expect(cleanupCalled).toBe(true)
   await cleanupCheck()
+}
+
+// STM test helper
+export const runSTM = <A, E = never>(
+  stm: STM.STM<A, E>
+): Effect.Effect<A, E> => {
+  return STM.commit(stm)
 }
 
 // Concurrent operation testing helper

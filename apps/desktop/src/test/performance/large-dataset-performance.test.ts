@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { Effect, Stream, Queue, Layer, Schedule, Duration, Chunk, Ref, STM, Fiber } from 'effect'
+import { Effect, Stream, Layer, Duration, Ref, STM, Fiber } from 'effect'
 import { 
   ClaudeStreamingService, 
   ClaudeStreamingServiceLive,

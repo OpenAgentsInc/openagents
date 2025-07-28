@@ -608,7 +608,7 @@ describe('STM State Management', () => {
       const error = new Error('STM failed')
       const mockSTM = STM.fail(error)
       
-      const { result } = renderHook(() => useSTMState(mockSTM))
+      const { result } = renderHook(() => useSTMState(mockSTM as any))
       
       await waitFor(() => {
         expect(result.current.error).toEqual(error)
@@ -621,7 +621,7 @@ describe('STM State Management', () => {
       const mockSTM = STM.sync(() => value)
       
       const { result, rerender } = renderHook(
-        ({ deps }) => useSTMState(mockSTM, deps),
+        ({ deps }) => useSTMState(mockSTM as any, deps),
         { initialProps: { deps: [1] } }
       )
       
@@ -648,7 +648,7 @@ describe('STM State Management', () => {
             Effect.gen(function* () {
               // Add 1000 panes
               for (let i = 0; i < 1000; i++) {
-                yield* Effect.promise(() => store.addPane({
+                yield* store.addPane({
                   id: `pane-${i}`,
                   type: 'chat',
                   x: Math.random() * 1920,
@@ -660,8 +660,8 @@ describe('STM State Management', () => {
               }
               
               // Perform various operations
-              yield* Effect.promise(() => store.organizePanes())
-              yield* Effect.promise(() => store.getAllPanes())
+              yield* store.organizePanes()
+              yield* store.getAllPanes()
               
               return 'completed'
             }),

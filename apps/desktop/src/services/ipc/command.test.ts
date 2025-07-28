@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Effect, Schedule, Duration, Exit, TestClock, TestContext } from 'effect'
+import { Effect, Schedule, Duration, Exit } from 'effect'
 import { createCommand, createSimpleCommand, CommandResult } from './command'
 import { IPCError } from './errors'
 import {
   expectEffect,
   expectEffectError,
   runWithTestClock,
-  advanceTime,
-  testRetryBehavior
+  advanceTime
 } from '@/test/effect-test-utils'
 import { invoke } from '@tauri-apps/api/core'
 

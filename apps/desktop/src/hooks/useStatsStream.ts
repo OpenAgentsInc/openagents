@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Effect, Stream, Runtime, Fiber, Exit, Duration } from "effect"
+import { Effect, Stream, Fiber, Exit, Duration } from "effect"
 import { createStatsStream } from "@/utils/streaming"
 import { IPC, CombinedAPMStats, AggregatedAPMStats } from "@/services/ipc"
 
@@ -43,11 +43,19 @@ export const useStatsStream = (
       )
       
       return { combinedStats, aggregated }
-    })
+    }).pipe(
+      Effect.catchAll((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        setError(errorMessage)
+        setLoading(false)
+        if (onError) onError(error)
+        return Effect.fail(error)
+      })
+    )
 
     // Create the streaming program
-    const program = createStatsStream(() => fetchStats, Duration.millis(refreshInterval)).pipe(
-      Stream.tap((data: { combinedStats: CombinedAPMStats; aggregated: AggregatedAPMStats | null }) => 
+    const program = createStatsStream(() => fetchStats.pipe(Effect.orDie), Duration.millis(refreshInterval)).pipe(
+      Stream.tap((data) => 
         Effect.sync(() => {
           setStats(data.combinedStats)
           setAggregatedStats(data.aggregated)
@@ -55,19 +63,9 @@ export const useStatsStream = (
           setError(null)
         })
       ),
-      Stream.catchAll((error) => 
+      Stream.catchAll(() => 
         Effect.gen(function* () {
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          yield* Effect.sync(() => {
-            setError(errorMessage)
-            setLoading(false)
-          })
-          
-          if (onError) {
-            yield* Effect.sync(() => onError(error))
-          }
-          
-          yield* Effect.logError("Stats stream error", error)
+          yield* Effect.logError("Stats stream error")
           
           // Continue streaming after error
           return Stream.empty

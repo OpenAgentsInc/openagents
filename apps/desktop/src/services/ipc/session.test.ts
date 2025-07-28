@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Effect, Option, Exit } from 'effect'
+import { Effect, Option } from 'effect'
 import { SessionCommands, Session, Message } from './session'
 import { SessionError, SessionNotFoundError, IPCError } from './errors'
 import { CommandResult } from './command'

@@ -31,27 +31,71 @@ export class ClaudeStreamingService extends Effect.Service<ClaudeStreamingServic
   'ClaudeStreamingService',
   {
     sync: () => ({
-      // Start streaming for a session
-      startStreaming: (sessionId: string) => 
-        Effect.gen(function* () {
-          const messageQueue = yield* Queue.unbounded<Message>()
-          return { id: sessionId, messageQueue }
-        }),
+        // Start streaming for a session
+        startStreaming: (sessionId: string) => 
+          Effect.gen(function* () {
+            const eventService = yield* TauriEventService;
+            // Create event stream for this session
+            const eventName = `claude:${sessionId}:message`;
+            const { queue: eventQueue, cleanup } = yield* eventService.createEventStream(eventName);
+            
+            // Create a simple streaming session
+            const session: StreamingSession = {
+              sessionId,
+              messageQueue: eventQueue,
+              cleanup: () => {
+                cleanup();
+              }
+            };
+            
+            return session;
+          }),
 
-      // Get message stream for a session
-      getMessageStream: (session: StreamingSession) => 
-        Stream.fromQueue(session.messageQueue),
+        // Get message stream for a session
+        getMessageStream: (session: StreamingSession) => 
+          pipe(
+            Stream.fromQueue(session.messageQueue),
+            Stream.mapEffect((payload: unknown) => {
+              // Parse the payload directly as it's already extracted
+              return parseClaudeMessage(payload).pipe(
+                Effect.catchAll(() => Effect.succeed(null))
+              );
+            }),
+            Stream.filter((msg): msg is Message => msg !== null)
+          ),
 
-      // Send message to Claude
-      sendMessage: (sessionId: string, message: string) => 
-        Effect.void,
+        // Send message to Claude
+        sendMessage: (sessionId: string, message: string): Effect.Effect<void, TauriEventError, never> =>
+          Effect.gen(function* () {
+            const eventService = yield* TauriEventService;
+            yield* pipe(
+              eventService.emit('claude:send_message', { sessionId, message }),
+              Effect.retry(
+                Schedule.exponential('100 millis').pipe(
+                  Schedule.compose(Schedule.recurs(3))
+                )
+              ),
+              Effect.catchTag('StreamingError', (error) =>
+                Effect.fail(
+                  new ConnectionError({
+                    sessionId,
+                    cause: `Failed to send message: ${error.message}`
+                  })
+                )
+              )
+            );
+          }),
 
-      // Stop streaming for a session
-      stopStreaming: (session: StreamingSession) => 
-        Effect.void
-    }),
-    
-    dependencies: [TauriEventService]
+        // Stop streaming for a session
+        stopStreaming: (session: StreamingSession) => 
+          Effect.gen(function* () {
+            // Call cleanup to unlisten from events
+            yield* Effect.sync(() => session.cleanup());
+            
+            // Shutdown the message queue
+            yield* Queue.shutdown(session.messageQueue);
+          })
+    })
   }
 ) {}
 
@@ -80,72 +124,8 @@ const parseClaudeMessage = (payload: unknown): Effect.Effect<Message | null, Mes
       
       return null;
     },
-    catch: (error) => new MessageParsingError(String(payload), error)
+    catch: (error) => new MessageParsingError({ rawMessage: String(payload), cause: error })
   });
 
 // Service implementation
-export const ClaudeStreamingServiceLive = Layer.effect(
-  ClaudeStreamingService,
-  Effect.gen(function* () {
-    const eventService = yield* TauriEventService;
-    
-    return ClaudeStreamingService.of({
-      startStreaming: (sessionId: string) =>
-        Effect.gen(function* () {
-          // Create event stream for this session
-          const eventName = `claude:${sessionId}:message`;
-          const { queue: eventQueue, cleanup } = yield* eventService.createEventStream(eventName);
-          
-          // Create a simple streaming session
-          const session: StreamingSession = {
-            sessionId,
-            messageQueue: eventQueue,
-            cleanup: () => {
-              cleanup();
-            }
-          };
-          
-          return session;
-        }),
-
-      getMessageStream: (session: StreamingSession) =>
-        pipe(
-          Stream.fromQueue(session.messageQueue),
-          Stream.mapEffect((payload: unknown) => {
-            // Parse the payload directly as it's already extracted
-            return parseClaudeMessage(payload).pipe(
-              Effect.catchAll(() => Effect.succeed(null))
-            );
-          }),
-          Stream.filter((msg): msg is Message => msg !== null)
-        ),
-
-      sendMessage: (sessionId: string, message: string): Effect.Effect<void, TauriEventError, never> =>
-        pipe(
-          eventService.emit('claude:send_message', { sessionId, message }),
-          Effect.retry(
-            Schedule.exponential('100 millis').pipe(
-              Schedule.compose(Schedule.recurs(3))
-            )
-          ),
-          Effect.catchTag('StreamingError', (error) =>
-            Effect.fail(
-              new ConnectionError(
-                sessionId,
-                `Failed to send message: ${error.message}`
-              )
-            )
-          )
-        ),
-
-      stopStreaming: (session: StreamingSession) =>
-        Effect.gen(function* () {
-          // Call cleanup to unlisten from events
-          yield* Effect.sync(() => session.cleanup());
-          
-          // Shutdown the message queue
-          yield* Queue.shutdown(session.messageQueue);
-        })
-    });
-  })
-);
+export const ClaudeStreamingServiceLive = Layer.succeed(ClaudeStreamingService);

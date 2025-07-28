@@ -1,19 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { Effect, Layer, Queue, Scope, Exit, Fiber, Duration, TestClock, TestContext } from 'effect'
+import { Effect, Queue, Duration } from 'effect'
 import { 
   TauriEventService, 
   TauriEventServiceLive,
-  StreamingError,
-  ConnectionError,
-  MessageParsingError,
-  EventStreamContext
+  StreamingError
 } from './TauriEventService'
 import {
   expectEffect,
   expectEffectError,
   expectResourceCleanup,
-  runWithTestClock,
-  advanceTime,
   measurePerformance
 } from '@/test/effect-test-utils'
 
@@ -64,7 +59,7 @@ describe('TauriEventService', () => {
           const service = yield* TauriEventService
           yield* service.listen('test:event')
         }).pipe(Effect.provide(TauriEventServiceLive)),
-        (err) => {
+        (err: any) => {
           expect(err).toBeInstanceOf(StreamingError)
           expect(err.message).toContain('Failed to listen to event: test:event')
           expect(err.cause).toBe(error)
@@ -139,7 +134,7 @@ describe('TauriEventService', () => {
       const mockUnlisten = vi.fn()
       let eventHandler: ((event: any) => void) | null = null
       
-      vi.mocked(listen).mockImplementation(async (eventName, handler) => {
+      vi.mocked(listen).mockImplementation(async (_eventName, handler) => {
         eventHandler = handler
         return mockUnlisten
       })
@@ -164,7 +159,7 @@ describe('TauriEventService', () => {
       const mockUnlisten = vi.fn()
       let eventHandler: ((event: any) => void) | null = null
       
-      vi.mocked(listen).mockImplementation(async (eventName, handler) => {
+      vi.mocked(listen).mockImplementation(async (_eventName, handler) => {
         eventHandler = handler
         return mockUnlisten
       })
@@ -205,7 +200,7 @@ describe('TauriEventService', () => {
       const mockUnlisten = vi.fn()
       let eventHandler: ((event: any) => void) | null = null
       
-      vi.mocked(listen).mockImplementation(async (eventName, handler) => {
+      vi.mocked(listen).mockImplementation(async (_eventName, handler) => {
         eventHandler = handler
         return mockUnlisten
       })
@@ -346,7 +341,7 @@ describe('TauriEventService', () => {
       const mockUnlisten = vi.fn()
       const handlers = new Map<string, (event: any) => void>()
       
-      vi.mocked(listen).mockImplementation(async (eventName, handler) => {
+      vi.mocked(listen).mockImplementation(async (_eventName, handler) => {
         handlers.set(eventName as string, handler)
         return mockUnlisten
       })
@@ -415,7 +410,7 @@ describe('TauriEventService', () => {
       const mockUnlisten = vi.fn()
       let eventHandler: ((event: any) => void) | null = null
       
-      vi.mocked(listen).mockImplementation(async (eventName, handler) => {
+      vi.mocked(listen).mockImplementation(async (_eventName, handler) => {
         eventHandler = handler
         return mockUnlisten
       })
@@ -458,7 +453,7 @@ describe('TauriEventService', () => {
       const mockUnlisten = vi.fn()
       let eventHandler: ((event: any) => void) | null = null
       
-      vi.mocked(listen).mockImplementation(async (eventName, handler) => {
+      vi.mocked(listen).mockImplementation(async (_eventName, handler) => {
         eventHandler = handler
         return mockUnlisten
       })

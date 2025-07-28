@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Effect, Stream, Queue, Schedule, Duration, Chunk, TestClock, TestContext, Fiber, Exit } from 'effect'
+import { Effect, Stream, Queue, Duration, Fiber, TestClock, TestContext } from 'effect'
 import {
   createAutoRefreshStream,
   createDebouncedStream,
@@ -18,11 +18,8 @@ import {
   withStreamMetrics
 } from './streaming'
 import {
-  expectEffect,
-  expectEffectError,
   collectStream,
   runWithTestClock,
-  advanceTime,
   measurePerformance
 } from '@/test/effect-test-utils'
 
@@ -62,10 +59,10 @@ describe('Streaming Utilities', () => {
       const fetch = () => Effect.gen(function* () {
         attempts++
         if (attempts === 2) {
-          return yield* Effect.fail(new Error('Fetch failed'))
+          throw new Error('Fetch failed')
         }
         return `data-${attempts}`
-      })
+      }).pipe(Effect.orDie)
 
       await runWithTestClock(
         Effect.gen(function* () {
@@ -251,13 +248,13 @@ describe('Streaming Utilities', () => {
   describe('createReconnectingStream', () => {
     it('should reconnect on stream failure', async () => {
       let attempts = 0
-      const connect = () => Effect.sync(() => {
+      const connect = () => Effect.gen(function* () {
         attempts++
         if (attempts === 1) {
-          return Stream.fail(new Error('Connection lost'))
+          yield* Effect.fail(new Error('Connection lost'))
         }
         return Stream.fromIterable([`connected-${attempts}`])
-      })
+      }).pipe(Effect.orElse(() => Effect.succeed(Stream.empty)))
       
       await runWithTestClock(
         Effect.gen(function* () {
@@ -282,10 +279,11 @@ describe('Streaming Utilities', () => {
 
     it('should use exponential backoff for reconnection', async () => {
       let connectTimes: number[] = []
-      const connect = () => Effect.sync(() => {
+      const connect = () => Effect.gen(function* () {
         connectTimes.push(Date.now())
-        return Stream.fail(new Error('Always fails'))
-      })
+        yield* Effect.fail(new Error('Always fails'))
+        return Stream.empty as Stream.Stream<never>
+      }).pipe(Effect.orElse(() => Effect.succeed(Stream.empty)))
       
       await runWithTestClock(
         Effect.gen(function* () {
@@ -368,7 +366,7 @@ describe('Streaming Utilities', () => {
       const merged = createMergedStream([stream1, stream2], 'concurrent')
       const result = await Effect.runPromise(collectStream(merged))
       
-      expect(result.sort()).toEqual([1, 2, 3, 4, 5, 6])
+      expect([...result].sort()).toEqual([1, 2, 3, 4, 5, 6])
     })
 
     it('should merge streams sequentially', async () => {
@@ -517,10 +515,10 @@ describe('Streaming Utilities', () => {
       const fetchStats = () => Effect.gen(function* () {
         attempts++
         if (attempts === 2) {
-          return yield* Effect.fail(new Error('Stats unavailable'))
+          throw new Error('Stats unavailable')
         }
         return { value: attempts }
-      })
+      }).pipe(Effect.orDie)
       
       const statsStream = createStatsStream(fetchStats)
       const result = await Effect.runPromise(

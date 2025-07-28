@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { Effect, Layer, Stream, Queue, Ref, TestClock, TestContext, Duration, Fiber, Schedule, STM } from 'effect'
+import { Effect, Layer, Stream, Duration, Fiber, Schedule, TestClock } from 'effect'
 import { 
   ClaudeStreamingService, 
   ClaudeStreamingServiceLive,
@@ -15,14 +15,10 @@ import { createCircuitBreaker, RetryPolicies } from '@/utils/error-handling'
 import { createMessageQueueStream, createReconnectingStream } from '@/utils/streaming'
 import {
   expectEffect,
-  expectEffectError,
   runWithTestClock,
   advanceTime,
   generateTestData,
-  testConcurrent,
-  measurePerformance,
-  createMockService,
-  createTestLayer
+  measurePerformance
 } from '@/test/effect-test-utils'
 
 // Mock dependencies

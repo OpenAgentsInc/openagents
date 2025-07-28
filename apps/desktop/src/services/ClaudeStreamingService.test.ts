@@ -1,16 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Effect, Layer, Queue, Stream, TestClock, TestContext, Exit, Fiber, Schedule, Duration, Chunk } from 'effect'
+import { Effect, Layer, Queue, Stream, Fiber, Duration } from 'effect'
 import { 
   ClaudeStreamingService, 
   ClaudeStreamingServiceLive,
-  Message,
-  StreamingSession
+  Message
 } from './ClaudeStreamingService'
 import { 
   TauriEventService, 
-  TauriEventError,
   ConnectionError,
-  MessageParsingError,
   StreamingError
 } from './TauriEventService'
 import {
@@ -21,14 +18,13 @@ import {
   runWithTestClock,
   advanceTime,
   generateTestData,
-  testRetryBehavior,
   measurePerformance
 } from '@/test/effect-test-utils'
 
 describe('ClaudeStreamingService', () => {
   // Mock event queue and cleanup function
   let mockEventQueue: Queue.Queue<unknown>
-  let mockCleanup: vi.Mock
+  let mockCleanup: ReturnType<typeof vi.fn>
   
   // Mock TauriEventService
   const createMockTauriEventService = (overrides?: Partial<TauriEventService>) => {
@@ -52,7 +48,9 @@ describe('ClaudeStreamingService', () => {
   describe('startStreaming', () => {
     it('should create a streaming session with correct sessionId', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       await expectEffect(
         Effect.gen(function* () {
@@ -82,7 +80,9 @@ describe('ClaudeStreamingService', () => {
         emit: vi.fn().mockReturnValue(Effect.void)
       })
       
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       await expectEffect(
         Effect.gen(function* () {
@@ -96,20 +96,22 @@ describe('ClaudeStreamingService', () => {
     })
 
     it('should handle errors from event service', async () => {
-      const error = new ConnectionError('test-session', 'Failed to create stream')
+      const error = new ConnectionError({ sessionId: 'test-session', cause: 'Failed to create stream' })
       const mockTauriService = createMockService(TauriEventService, {
         createEventStream: vi.fn().mockReturnValue(Effect.fail(error)),
         emit: vi.fn().mockReturnValue(Effect.void)
       })
       
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       await expectEffectError(
         Effect.gen(function* () {
           const service = yield* ClaudeStreamingService
           yield* service.startStreaming('test-session')
         }).pipe(Effect.provide(serviceLayer)),
-        (err) => {
+        (err: any) => {
           expect(err).toBeInstanceOf(ConnectionError)
           expect(err.sessionId).toBe('test-session')
         }
@@ -120,7 +122,9 @@ describe('ClaudeStreamingService', () => {
   describe('getMessageStream', () => {
     it('should stream and parse valid messages', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       const testMessages: Message[] = [
         {
@@ -167,7 +171,9 @@ describe('ClaudeStreamingService', () => {
 
     it('should parse JSON string payloads', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       const testMessage: Message = {
         id: 'msg-1',
@@ -200,7 +206,9 @@ describe('ClaudeStreamingService', () => {
 
     it('should filter out invalid messages', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       const validMessage: Message = {
         id: 'msg-1',
@@ -240,7 +248,9 @@ describe('ClaudeStreamingService', () => {
 
     it('should handle tool_use messages with tool_info', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       const toolMessage: Message = {
         id: 'msg-1',
@@ -292,7 +302,9 @@ describe('ClaudeStreamingService', () => {
         emit: emitMock
       })
       
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       await expectEffect(
         Effect.gen(function* () {
@@ -313,7 +325,7 @@ describe('ClaudeStreamingService', () => {
       const emitMock = vi.fn().mockImplementation(() => {
         attempts++
         if (attempts < 3) {
-          return Effect.fail(new StreamingError('claude:send_message', 'Temporary failure'))
+          return Effect.fail(new StreamingError({ message: 'Temporary failure', cause: 'claude:send_message' }))
         }
         return Effect.void
       })
@@ -329,7 +341,9 @@ describe('ClaudeStreamingService', () => {
         emit: emitMock
       })
       
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       await runWithTestClock(
         Effect.gen(function* () {
@@ -348,7 +362,7 @@ describe('ClaudeStreamingService', () => {
 
     it('should fail with ConnectionError after retry exhaustion', async () => {
       const emitMock = vi.fn().mockReturnValue(
-        Effect.fail(new StreamingError('claude:send_message', 'Persistent failure'))
+        Effect.fail(new StreamingError({ message: 'Persistent failure', cause: 'claude:send_message' }))
       )
       
       const mockTauriService = createMockService(TauriEventService, {
@@ -362,28 +376,21 @@ describe('ClaudeStreamingService', () => {
         emit: emitMock
       })
       
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
-      await runWithTestClock(
-        async () => {
-          await expectEffectError(
-            Effect.gen(function* () {
-              const service = yield* ClaudeStreamingService
-              yield* service.sendMessage('test-session', 'Test message')
-            }).pipe(Effect.provide(serviceLayer)),
-            (err) => {
-              expect(err).toBeInstanceOf(ConnectionError)
-              expect(err.sessionId).toBe('test-session')
-              expect(err.message).toContain('Failed to send message')
-            }
-          )
-          
+      await expectEffectError(
+        Effect.gen(function* () {
+          const service = yield* ClaudeStreamingService
+          yield* service.sendMessage('test-session', 'Test message')
+        }).pipe(Effect.provide(serviceLayer)),
+        (err: ConnectionError) => {
+          expect(err).toBeInstanceOf(ConnectionError)
+          expect(err.sessionId).toBe('test-session')
+          expect(err.message).toContain('Failed to send message')
           // Verify retry attempts (initial + 3 retries = 4 total)
           expect(emitMock).toHaveBeenCalledTimes(4)
-        },
-        async (testClock) => {
-          // Allow time for all retry attempts
-          await advanceTime(Duration.seconds(2))(testClock)
         }
       )
     })
@@ -392,7 +399,9 @@ describe('ClaudeStreamingService', () => {
   describe('stopStreaming', () => {
     it('should call cleanup and shutdown queue', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       await expectEffect(
         Effect.gen(function* () {
@@ -425,7 +434,9 @@ describe('ClaudeStreamingService', () => {
 
     it('should be idempotent', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       await expectEffect(
         Effect.gen(function* () {
@@ -448,7 +459,9 @@ describe('ClaudeStreamingService', () => {
   describe('integration scenarios', () => {
     it('should handle complete message flow', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       const conversation: Message[] = [
         {
@@ -480,7 +493,7 @@ describe('ClaudeStreamingService', () => {
           const messages: Message[] = []
           const collectFiber = yield* Effect.fork(
             service.getMessageStream(session).pipe(
-              Stream.tap(msg => Effect.sync(() => messages.push(msg))),
+              Stream.tap((msg: Message) => Effect.sync(() => messages.push(msg))),
               Stream.runDrain
             )
           )
@@ -508,7 +521,9 @@ describe('ClaudeStreamingService', () => {
 
     it('should handle high-throughput message streaming', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       const messageCount = 1000
       const testMessages = generateTestData.messages(messageCount)
@@ -546,7 +561,9 @@ describe('ClaudeStreamingService', () => {
 
     it('should handle concurrent sessions', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       await expectEffect(
         Effect.gen(function* () {
@@ -561,10 +578,10 @@ describe('ClaudeStreamingService', () => {
           
           // Verify all sessions are independent
           expect(sessions).toHaveLength(3)
-          expect(new Set(sessions.map(s => s.sessionId)).size).toBe(3)
+          expect(new Set(sessions.map((s: any) => s.sessionId)).size).toBe(3)
           
           // Each should have its own queue
-          const queues = sessions.map(s => s.messageQueue)
+          const queues = sessions.map((s: any) => s.messageQueue)
           expect(new Set(queues).size).toBe(3)
           
           // Clean up all sessions
@@ -580,7 +597,9 @@ describe('ClaudeStreamingService', () => {
   describe('error recovery', () => {
     it('should continue streaming after parse errors', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
+      const serviceLayer = ClaudeStreamingServiceLive.pipe(
+        Layer.provide(mockTauriService)
+      )
       
       const validMessage: Message = {
         id: 'valid',
@@ -597,7 +616,7 @@ describe('ClaudeStreamingService', () => {
           const messages: Message[] = []
           const collectFiber = yield* Effect.fork(
             service.getMessageStream(session).pipe(
-              Stream.tap(msg => Effect.sync(() => messages.push(msg))),
+              Stream.tap((msg: Message) => Effect.sync(() => messages.push(msg))),
               Stream.runDrain
             )
           )

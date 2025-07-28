@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Effect, Stream, pipe, Layer } from 'effect';
 import { ClaudeStreamingService, ClaudeStreamingServiceLive, StreamingSession, Message } from '../services/ClaudeStreamingService';
-import { TauriEventService, TauriEventServiceLive } from '../services/TauriEventService';
+import { TauriEventServiceLive } from '../services/TauriEventService';
 import { invoke } from '@tauri-apps/api/core';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
@@ -23,7 +23,7 @@ interface UseClaudeStreamingResult {
 }
 
 // Create the service layer once
-const ServiceLayer = Layer.provideMerge(ClaudeStreamingServiceLive, TauriEventServiceLive);
+const ServiceLayer = Layer.mergeAll(TauriEventServiceLive, ClaudeStreamingServiceLive);
 
 export function useClaudeStreaming({
   sessionId,
@@ -114,9 +114,9 @@ export function useClaudeStreaming({
         // Run the stream processing in the background
         yield* pipe(
           service.getMessageStream(session),
-          Stream.tap((message: Message) =>
+          Stream.tap((message: any) =>
             Effect.sync(() => {
-              setMessages((prev: Message[]) => {
+              setMessages((prev) => {
                 // Check if message already exists (for updates)
                 const existingIndex = prev.findIndex(m => m.id === message.id);
                 if (existingIndex >= 0) {
@@ -153,9 +153,9 @@ export function useClaudeStreaming({
       
       // Run the program with the service layer
       await Effect.runPromise(
-        pipe(
-          program,
-          Effect.provide(ServiceLayer)
+        program.pipe(
+          Effect.provide(ServiceLayer),
+          Effect.orDie
         )
       );
     } catch (err) {
