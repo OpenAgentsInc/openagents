@@ -23,8 +23,7 @@ interface UseClaudeStreamingResult {
 }
 
 // Create the service layer once
-const TauriEventLayer = Layer.succeed(TauriEventService, TauriEventServiceLive);
-const ServiceLayer = Layer.provideMerge(ClaudeStreamingServiceLive, TauriEventLayer);
+const ServiceLayer = Layer.provideMerge(ClaudeStreamingServiceLive, TauriEventServiceLive);
 
 export function useClaudeStreaming({
   sessionId,
@@ -115,9 +114,9 @@ export function useClaudeStreaming({
         // Run the stream processing in the background
         yield* pipe(
           service.getMessageStream(session),
-          Stream.tap((message) =>
+          Stream.tap((message: Message) =>
             Effect.sync(() => {
-              setMessages(prev => {
+              setMessages((prev: Message[]) => {
                 // Check if message already exists (for updates)
                 const existingIndex = prev.findIndex(m => m.id === message.id);
                 if (existingIndex >= 0) {
@@ -143,7 +142,7 @@ export function useClaudeStreaming({
               const err = new Error(String(error));
               setError(err);
               onError?.(err);
-            })
+            }).pipe(Effect.asVoid)
           ),
           Effect.forkDaemon // Use forkDaemon to run in background without blocking
         );
