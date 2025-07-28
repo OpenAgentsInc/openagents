@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { View, ViewStyle, TextStyle, TouchableOpacity, Platform } from "react-native"
 
 import { ChatList } from "./chat/ChatList"
-import { Text } from "./index"
+import { Text } from "./core/Text"
 import { useConfectAuth } from "../contexts/SimpleConfectAuthContext"
 import type { ChatSession } from "../types/chat"
 
