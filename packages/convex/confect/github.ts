@@ -39,25 +39,15 @@ export const fetchUserRepositories = mutation({
         return yield* Effect.fail(new GitHubAuthError("Not authenticated"));
       }
 
-      // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      // Get the user record by OpenAuth subject
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [GITHUB_API] ${timestamp} Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [GITHUB_API] ${timestamp} Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [GITHUB_API] ${timestamp} User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return yield* Effect.fail(new GitHubAuthError("User not found"));
@@ -201,25 +191,15 @@ export const getUserRepositories = query({
         return Option.none();
       }
 
-      // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      // Get the user record by OpenAuth subject
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [GITHUB_API] ${timestamp} Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [GITHUB_API] ${timestamp} Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [GITHUB_API] ${timestamp} User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         console.log(`⚠️ [GITHUB_API] ${timestamp} User not found in database`);
@@ -269,25 +249,15 @@ export const updateGitHubMetadata = mutation({
         return yield* Effect.fail(new GitHubAuthError("Not authenticated"));
       }
 
-      // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      // Get the user record by OpenAuth subject
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [GITHUB_API] ${timestamp} Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [GITHUB_API] ${timestamp} Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [GITHUB_API] ${timestamp} User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return yield* Effect.fail(new GitHubAuthError("User not found"));

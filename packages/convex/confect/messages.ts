@@ -82,25 +82,15 @@ export const addClaudeMessage = mutation({
       let userId = Option.none<string>();
       
       if (Option.isSome(identity)) {
-        // Find user by GitHub ID from identity subject - try both formats
-        const fullSubject = identity.value.subject;
-        const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+        // Find user by OpenAuth subject
+        const authSubject = identity.value.subject;
         
-        console.log(`🔍 [MESSAGES] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+        console.log(`🔍 [MESSAGES] Looking for user with OpenAuth subject: ${authSubject}`);
         
-        let user = yield* db
+        const user = yield* db
           .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+          .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
           .first();
-        
-        // If not found with full subject, try with just the GitHub ID part
-        if (Option.isNone(user)) {
-          console.log(`🔍 [MESSAGES] User not found with full subject, trying GitHub ID part`);
-          user = yield* db
-            .query("users")
-            .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-            .first();
-        }
           
         if (Option.isSome(user)) {
           userId = Option.some(user.value._id);

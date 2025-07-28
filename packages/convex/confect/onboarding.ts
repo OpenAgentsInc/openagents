@@ -40,25 +40,15 @@ export const startOnboarding = mutation({
         return yield* Effect.fail(new Error("Not authenticated"));
       }
 
-      // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      // Get the user record by OpenAuth subject
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [ONBOARDING] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [ONBOARDING] Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.value.subject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [ONBOARDING] User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return yield* Effect.fail(new Error("User not found"));
@@ -109,24 +99,14 @@ export const getOnboardingProgress = query({
       }
 
       // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [ONBOARDING] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [ONBOARDING] Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [ONBOARDING] User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return Option.none();
@@ -158,24 +138,14 @@ export const updateOnboardingStep = mutation({
       }
 
       // Get the user record - try both full subject and GitHub ID part  
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [ONBOARDING] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [ONBOARDING] Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [ONBOARDING] User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return yield* Effect.fail(new Error("User not found"));
@@ -220,24 +190,14 @@ export const setUserPreferences = mutation({
       }
 
       // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [ONBOARDING] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [ONBOARDING] Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [ONBOARDING] User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return yield* Effect.fail(new Error("User not found"));
@@ -277,24 +237,14 @@ export const completeOnboarding = mutation({
       }
 
       // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [ONBOARDING] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [ONBOARDING] Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [ONBOARDING] User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return yield* Effect.fail(new Error("User not found"));
@@ -334,24 +284,14 @@ export const requestPermission = mutation({
       }
 
       // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [ONBOARDING] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [ONBOARDING] Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [ONBOARDING] User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return yield* Effect.fail(new Error("User not found"));
@@ -412,24 +352,14 @@ export const updatePermissionStatus = mutation({
       }
 
       // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [ONBOARDING] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [ONBOARDING] Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [ONBOARDING] User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return yield* Effect.fail(new Error("User not found"));
@@ -483,24 +413,14 @@ export const getUserPermissions = query({
       }
 
       // Get the user record - try both full subject and GitHub ID part
-      const fullSubject = identity.value.subject;
-      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+      const authSubject = identity.value.subject;
       
-      console.log(`🔍 [ONBOARDING] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      console.log(`🔍 [ONBOARDING] Looking for user with OpenAuth subject: ${authSubject}`);
       
-      let user = yield* db
+      const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
         .first();
-        
-      // If not found with full subject, try with just the GitHub ID part
-      if (Option.isNone(user)) {
-        console.log(`🔍 [ONBOARDING] User not found with full subject, trying GitHub ID part`);
-        user = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
-          .first();
-      }
 
       if (Option.isNone(user)) {
         return [];
@@ -542,7 +462,7 @@ export const setActiveRepository = mutation({
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.value.subject))
+        .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", identity.value.subject))
         .first();
 
       if (Option.isNone(user)) {
