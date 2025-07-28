@@ -16,6 +16,7 @@ import type {
 import type * as claude from "../claude.js";
 import type * as github from "../github.js";
 import type * as messages from "../messages.js";
+import type * as migration from "../migration.js";
 import type * as users from "../users.js";
 
 /**
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   claude: typeof claude;
   github: typeof github;
   messages: typeof messages;
+  migration: typeof migration;
   users: typeof users;
 }>;
 export declare const api: FilterApi<
