@@ -165,3 +165,25 @@ Land's architecture provides proven patterns for:
 - **Documentation**: https://github.com/CodeEditorLand/Land/tree/Current/docs
 - **Funding**: [NLnet Project Page](https://NLnet.NL/project/Land)
 - **License**: CC0 Universal (Public Domain)
+
+### Key Repository Insights
+
+Based on analysis of the CodeEditorLand organization repositories:
+
+#### Wind Repository
+- Provides "highly reliable, composable, and maintainable logic" using Effect-TS
+- Uses a master `AppLayer` for composing all services
+- Implements "typed, tagged errors" as a core principle
+- Runtime pattern: `Layer.toRuntime(AppLayer).pipe(Effect.scoped, Effect.runSync)`
+
+#### Cocoon Repository  
+- Built as a "comprehensive, **Effect-TS native** environment"
+- Implements bidirectional gRPC using `IPCProvider` for "the entire bi-directional communication lifecycle"
+- Translates extension API calls into "declarative Effects that are sent to `Mountain` for native execution"
+- Features "process hardening" and automatic termination if parent process exits
+
+#### Mountain Repository
+- Implements `ActionEffect` pattern as a "declarative, composable system" in Rust
+- Routes commands through central `Track` dispatcher
+- Decoupled from UI via "asynchronous Tauri commands and events"
+- Provides "strongly-typed, high-performance communication" via gRPC (Vine)

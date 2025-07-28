@@ -380,3 +380,27 @@ For OpenAgents Phase 4 (Testing), focus on:
 5. Error scenario coverage with tagged errors
 
 These patterns from Land provide a proven foundation for building a robust, scalable, and maintainable Tauri + Effect-TS application.
+
+## Repository-Specific Insights
+
+Based on analysis of the CodeEditorLand GitHub repositories:
+
+### Wind Repository Patterns
+- **Master AppLayer**: Uses `Layer.toRuntime(AppLayer).pipe(Effect.scoped, Effect.runSync)` for runtime creation
+- **Dialog Service Example**: Shows clean Effect generator pattern for UI interactions
+- **Typed Tagged Errors**: Core architectural principle emphasized throughout
+- **Declarative Dependency Management**: Services composed through master AppLayer
+
+### Cocoon Repository Patterns  
+- **Bidirectional IPC**: Implements `IPCProvider` for complete lifecycle management
+- **Effect-Native Environment**: Comprehensive reimplementation of VS Code Extension Host
+- **Process Hardening**: Automatic termination if parent process exits
+- **Declarative Effects**: Extension API calls translated to Effects sent to Mountain
+
+### Mountain Repository Patterns
+- **ActionEffect System**: Rust implementation mirroring Effect-TS patterns
+- **Track Dispatcher**: Central command routing decoupled from UI
+- **Asynchronous Tauri Commands**: Clean separation between backend and frontend
+- **gRPC via Vine**: Strongly-typed, high-performance inter-process communication
+
+These concrete implementations demonstrate how Effect-TS principles scale across language boundaries and complex architectures.
