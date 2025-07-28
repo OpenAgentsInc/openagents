@@ -9,11 +9,11 @@ export interface CommandResult<T> {
 }
 
 // Base command wrapper with automatic retry and error handling
-export const createCommand = <TArgs, TResult>(name: string) => ({
+export const createCommand = <TArgs extends Record<string, unknown>, TResult>(name: string) => ({
   name,
   invoke: (args: TArgs) =>
     Effect.tryPromise({
-      try: () => invoke<CommandResult<TResult>>(name, args as any),
+      try: () => invoke<CommandResult<TResult>>(name, args),
       catch: (error) => new IPCError({ 
         command: name, 
         args, 
