@@ -3,11 +3,11 @@ import { Id } from "@rjdellecese/confect/server";
 
 // GetOrCreateUser schemas
 export const GetOrCreateUserArgs = Schema.Struct({
-  email: Schema.String.pipe(Schema.nonEmpty()),
+  email: Schema.String.pipe(Schema.nonEmptyString()),
   name: Schema.optional(Schema.String),
   avatar: Schema.optional(Schema.String),
-  githubId: Schema.String.pipe(Schema.nonEmpty()),
-  githubUsername: Schema.String.pipe(Schema.nonEmpty()),
+  githubId: Schema.String.pipe(Schema.nonEmptyString()),
+  githubUsername: Schema.String.pipe(Schema.nonEmptyString()),
 });
 
 export const GetOrCreateUserResult = Id.Id("users");

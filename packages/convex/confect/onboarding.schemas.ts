@@ -31,9 +31,9 @@ export const PermissionStatus = Schema.Literal(
 
 // Repository structure
 export const RepositorySchema = Schema.Struct({
-  url: Schema.String.pipe(Schema.nonEmpty()),
-  name: Schema.String.pipe(Schema.nonEmpty()),
-  owner: Schema.String.pipe(Schema.nonEmpty()),
+  url: Schema.String.pipe(Schema.nonEmptyString()),
+  name: Schema.String.pipe(Schema.nonEmptyString()),
+  owner: Schema.String.pipe(Schema.nonEmptyString()),
   isPrivate: Schema.Boolean,
   defaultBranch: Schema.optional(Schema.String),
 });
@@ -107,9 +107,9 @@ export const UpdateOnboardingStepResult = Id.Id("onboardingProgress");
 
 // Set Active Repository
 export const SetActiveRepositoryArgs = Schema.Struct({
-  repositoryUrl: Schema.String.pipe(Schema.nonEmpty()),
-  repositoryName: Schema.String.pipe(Schema.nonEmpty()),
-  repositoryOwner: Schema.String.pipe(Schema.nonEmpty()),
+  repositoryUrl: Schema.String.pipe(Schema.nonEmptyString()),
+  repositoryName: Schema.String.pipe(Schema.nonEmptyString()),
+  repositoryOwner: Schema.String.pipe(Schema.nonEmptyString()),
   isPrivate: Schema.Boolean,
   defaultBranch: Schema.optional(Schema.String),
 });
@@ -132,7 +132,7 @@ export const CompleteOnboardingResult = Id.Id("onboardingProgress");
 export const RequestPermissionArgs = Schema.Struct({
   permissionType: PermissionType,
   reason: Schema.optional(Schema.String),
-  platform: Schema.String.pipe(Schema.nonEmpty()),
+  platform: Schema.String.pipe(Schema.nonEmptyString()),
 });
 
 export const RequestPermissionResult = Id.Id("userPermissions");
@@ -141,7 +141,7 @@ export const RequestPermissionResult = Id.Id("userPermissions");
 export const UpdatePermissionStatusArgs = Schema.Struct({
   permissionType: PermissionType,
   status: PermissionStatus,
-  platform: Schema.String.pipe(Schema.nonEmpty()),
+  platform: Schema.String.pipe(Schema.nonEmptyString()),
   fallbackEnabled: Schema.optional(Schema.Boolean),
 });
 
