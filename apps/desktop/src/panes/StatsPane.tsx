@@ -3,13 +3,13 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  BarChart as BarChartIcon,
-  Clock as ClockIcon,
-  TrendingUp as TrendingUpIcon,
-  Loader2 as LoaderIcon,
-  RefreshCw as RefreshIcon,
-  Eye as EyeIcon,
-} from "lucide-react";
+  BarChartIcon,
+  ClockIcon,
+  TrendingUpIcon,
+  LoaderIcon,
+  RefreshIcon,
+  EyeIcon,
+} from "@/components/icons/React19Icons";
 import { HistoricalAPMChart } from "@/components/charts/HistoricalAPMChart";
 
 interface ToolUsage {
