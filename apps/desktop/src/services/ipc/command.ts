@@ -41,8 +41,8 @@ export const createCommand = <TArgs, TResult>(name: string) => ({
         Schedule.either(Schedule.spaced(Duration.seconds(1))),
         Schedule.whileInput((error: IPCError) => 
           // Only retry on network errors or timeouts
-          error.cause?.toString().includes("network") ||
-          error.cause?.toString().includes("timeout")
+          !!(error.cause?.toString().includes("network") ||
+          error.cause?.toString().includes("timeout"))
         ),
         Schedule.compose(Schedule.elapsed),
         Schedule.whileOutput((elapsed) => elapsed < Duration.minutes(1))

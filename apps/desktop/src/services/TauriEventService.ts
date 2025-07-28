@@ -1,5 +1,5 @@
-import { Effect, Queue, Context, Data, Layer } from 'effect';
-import { listen, emit, Event as TauriEvent, UnlistenFn } from '@tauri-apps/api/event';
+import { Effect, Queue, Data, Layer } from 'effect';
+import { listen, emit, Event as TauriEvent } from '@tauri-apps/api/event';
 
 // Tagged error types using Data.TaggedError for better Effect integration
 export class StreamingError extends Data.TaggedError('StreamingError')<{
@@ -83,8 +83,8 @@ export class TauriEventService extends Effect.Service<TauriEventService>()(
             // Add finalizer for queue cleanup
             yield* Effect.addFinalizer(() =>
               Queue.shutdown(queue).pipe(
-                Effect.catchAll(() => Effect.unit)
-              )
+                Effect.catchAll(() => Effect.void)
+              ) as any
             );
 
             const cleanup = () => {

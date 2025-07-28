@@ -13,6 +13,7 @@ const convex = new ConvexReactClient(convexUrl);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <AuthProvider>
+    {/* @ts-ignore React 19 JSX component type issue */}
     <ConvexProvider client={convex}>
       <App />
     </ConvexProvider>

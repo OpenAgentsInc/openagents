@@ -2,8 +2,7 @@ import { Effect, Stream, Queue, pipe, Layer, Schedule } from 'effect';
 import { 
   TauriEventService, 
   ConnectionError, 
-  MessageParsingError,
-  type TauriEventError
+  MessageParsingError
 } from './TauriEventService';
 
 // Import the Message type from our existing code

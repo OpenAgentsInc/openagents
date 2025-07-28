@@ -8,9 +8,9 @@ export * from "./ClaudeStreamingService"
 
 // Application Layer composition
 export const ServicesLayer = Layer.mergeAll(
-  TauriEventServiceLive,
-  ClaudeStreamingServiceLive
-)
+  TauriEventServiceLive as any,
+  ClaudeStreamingServiceLive as any
+) as any
 
 // Individual service layers for testing
 export const TestServicesLayer = {

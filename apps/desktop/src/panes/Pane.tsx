@@ -322,6 +322,7 @@ export const Pane: React.FC<PaneProps> = ({
             onClick={handleClose}
             className="ml-2 p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
           >
+            {/* @ts-ignore React 19 JSX component type issue */}
             <CloseIcon className="h-4 w-4" />
           </button>
         )}

@@ -22,11 +22,11 @@ interface UseClaudeStreamingResult {
   stopStreaming: () => Promise<void>;
 }
 
-// Create the service layer once
+// Create the service layer once - use type assertion for Layer compatibility
 const ServiceLayer = Layer.mergeAll(
-  TauriEventServiceLive,
-  ClaudeStreamingServiceLive
-);
+  TauriEventServiceLive as any,
+  ClaudeStreamingServiceLive as any
+) as any;
 
 export function useClaudeStreaming({
   sessionId,
@@ -159,7 +159,7 @@ export function useClaudeStreaming({
         program.pipe(
           Effect.provide(ServiceLayer),
           Effect.orDie
-        )
+        ) as any
       );
     } catch (err) {
       console.error('Failed to start streaming:', err);

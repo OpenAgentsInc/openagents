@@ -272,6 +272,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
+      {/* @ts-ignore React 19 JSX component type issue */}
       <PanelToggleIcon />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
