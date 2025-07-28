@@ -73,21 +73,8 @@ export function ClaudeCodeMobile() {
   // Message input state
   const [newMessage, setNewMessage] = useState("");
   
-  // Track authentication state with a small delay
-  const [authReady, setAuthReady] = useState(false);
-  
-  useEffect(() => {
-    if (isAuthenticated) {
-      // Add delay to ensure Convex auth is fully established
-      const timer = setTimeout(() => {
-        console.log('🔐 [AUTH] Authentication ready for Convex queries');
-        setAuthReady(true);
-      }, 1500);
-      return () => clearTimeout(timer);
-    } else {
-      setAuthReady(false);
-    }
-  }, [isAuthenticated]);
+  // Authentication is ready when user is authenticated
+  const authReady = isAuthenticated;
 
   // Convex hooks - only query data when authentication is ready
   const sessions = useQuery(
