@@ -116,14 +116,14 @@ export const fetchUserRepositories = mutation({
 
       // Ensure user is authenticated  
       const identity = yield* auth.getUserIdentity();
-      if (!identity) {
+      if (Option.isNone(identity)) {
         return yield* Effect.fail(new GitHubAuthError("Not authenticated"));
       }
 
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.value.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -137,12 +137,12 @@ export const fetchUserRepositories = mutation({
         const cacheAge = Date.now() - userData.githubMetadata.lastReposFetch;
         if (cacheAge < CACHE_DURATION_MS) {
           console.log(`📦 [GITHUB_API] ${timestamp} Using cached repositories (age: ${Math.round(cacheAge / 1000)}s)`);
-          return {
+          return yield* Effect.succeed({
             repositories: userData.githubMetadata.cachedRepos,
             totalCount: userData.githubMetadata.cachedRepos.length,
             isCached: true,
             lastFetched: userData.githubMetadata.lastReposFetch,
-          };
+          });
         }
       }
 
@@ -176,12 +176,12 @@ export const fetchUserRepositories = mutation({
 
       console.log(`✅ [GITHUB_API] ${timestamp} Successfully cached ${repositories.length} repositories`);
 
-      return {
+      return yield* Effect.succeed({
         repositories,
         totalCount: repositories.length,
         isCached: false,
         lastFetched: Date.now(),
-      };
+      });
     }),
 });
 
@@ -196,7 +196,7 @@ export const getUserRepositories = query({
 
       // Ensure user is authenticated
       const identity = yield* auth.getUserIdentity();
-      if (!identity) {
+      if (Option.isNone(identity)) {
         console.log(`⚠️ [GITHUB_API] ${timestamp} User not authenticated`);
         return Option.none();
       }
@@ -204,7 +204,7 @@ export const getUserRepositories = query({
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.value.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -250,14 +250,14 @@ export const updateGitHubMetadata = mutation({
 
       // Ensure user is authenticated  
       const identity = yield* auth.getUserIdentity();
-      if (!identity) {
+      if (Option.isNone(identity)) {
         return yield* Effect.fail(new GitHubAuthError("Not authenticated"));
       }
 
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.value.subject))
         .first();
 
       if (Option.isNone(user)) {
