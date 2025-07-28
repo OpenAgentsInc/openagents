@@ -656,7 +656,7 @@ describe('STM State Management', () => {
                   width: 400,
                   height: 300,
                   isActive: false
-                }))
+                })
               }
               
               // Perform various operations
