@@ -53,7 +53,7 @@ export function ClaudeCodeMobile() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   
   // Automatically sync user to Convex when authenticated
-  useUserSync();
+  const { isSynced } = useUserSync();
   
   // Generate random 4-character string for session title
   const generateRandomString = () => {
@@ -73,8 +73,9 @@ export function ClaudeCodeMobile() {
   // Message input state
   const [newMessage, setNewMessage] = useState("");
   
-  // Authentication is ready when user is authenticated
-  const authReady = isAuthenticated;
+  // Authentication is ready when user is authenticated AND synced to Convex
+  // This prevents race conditions where queries execute before user sync completes
+  const authReady = isAuthenticated && isSynced;
 
   // Convex hooks - only query data when authentication is ready
   const sessions = useQuery(
