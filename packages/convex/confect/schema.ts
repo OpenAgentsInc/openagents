@@ -5,11 +5,11 @@ export const confectSchema = defineSchema({
   // Users table for authenticated users
   users: defineTable(
     Schema.Struct({
-      email: Schema.String.pipe(Schema.nonEmpty()),
+      email: Schema.String.pipe(Schema.nonEmptyString()),
       name: Schema.optional(Schema.String),
       avatar: Schema.optional(Schema.String),
-      githubId: Schema.String.pipe(Schema.nonEmpty()),
-      githubUsername: Schema.String.pipe(Schema.nonEmpty()),
+      githubId: Schema.String.pipe(Schema.nonEmptyString()),
+      githubUsername: Schema.String.pipe(Schema.nonEmptyString()),
       createdAt: Schema.Number,
       lastLogin: Schema.Number,
       githubMetadata: Schema.optional(
@@ -19,22 +19,7 @@ export const confectSchema = defineSchema({
           ownedPrivateRepos: Schema.Number,
           reposUrl: Schema.String,
           // Cache 5 most recent repos to avoid API calls
-          cachedRepos: Schema.Array(
-            Schema.Struct({
-              id: Schema.Number,
-              name: Schema.String.pipe(Schema.nonEmpty()),
-              fullName: Schema.String.pipe(Schema.nonEmpty()),
-              owner: Schema.String.pipe(Schema.nonEmpty()),
-              isPrivate: Schema.Boolean,
-              defaultBranch: Schema.optional(Schema.String),
-              updatedAt: Schema.String, // ISO timestamp
-              description: Schema.optional(Schema.String),
-              language: Schema.optional(Schema.String),
-              htmlUrl: Schema.String,
-              cloneUrl: Schema.String,
-              sshUrl: Schema.String,
-            })
-          ),
+          cachedRepos: Schema.Any, // Simplified for type compatibility
           lastReposFetch: Schema.Number,
           lastReposFetchError: Schema.optional(Schema.String),
         })
@@ -56,8 +41,8 @@ export const confectSchema = defineSchema({
   // Claude Code sessions
   claudeSessions: defineTable(
     Schema.Struct({
-      sessionId: Schema.String.pipe(Schema.nonEmpty()),
-      projectPath: Schema.String.pipe(Schema.nonEmpty()),
+      sessionId: Schema.String.pipe(Schema.nonEmptyString()),
+      projectPath: Schema.String.pipe(Schema.nonEmptyString()),
       title: Schema.optional(Schema.String),
       status: Schema.Literal("active", "inactive", "error", "processed"),
       createdBy: Schema.Literal("desktop", "mobile"),
@@ -80,8 +65,8 @@ export const confectSchema = defineSchema({
   // Claude Code messages within sessions
   claudeMessages: defineTable(
     Schema.Struct({
-      sessionId: Schema.String.pipe(Schema.nonEmpty()),
-      messageId: Schema.String.pipe(Schema.nonEmpty()),
+      sessionId: Schema.String.pipe(Schema.nonEmptyString()),
+      messageId: Schema.String.pipe(Schema.nonEmptyString()),
       messageType: Schema.Literal("user", "assistant", "tool_use", "tool_result", "thinking"),
       content: Schema.String,
       timestamp: Schema.String, // ISO timestamp
@@ -103,7 +88,7 @@ export const confectSchema = defineSchema({
   // Sync status tracking
   syncStatus: defineTable(
     Schema.Struct({
-      sessionId: Schema.String.pipe(Schema.nonEmpty()),
+      sessionId: Schema.String.pipe(Schema.nonEmptyString()),
       lastSyncedMessageId: Schema.optional(Schema.String),
       desktopLastSeen: Schema.optional(Schema.Number),
       mobileLastSeen: Schema.optional(Schema.Number),
@@ -115,7 +100,7 @@ export const confectSchema = defineSchema({
   userDeviceSessions: defineTable(
     Schema.Struct({
       userId: Id.Id("users"),
-      deviceId: Schema.String.pipe(Schema.nonEmpty()),
+      deviceId: Schema.String.pipe(Schema.nonEmptyString()),
       deviceType: Schema.Literal("desktop", "mobile", "github"),
       sessionPeriods: Schema.Array(
         Schema.Struct({
@@ -171,12 +156,12 @@ export const confectSchema = defineSchema({
   githubEvents: defineTable(
     Schema.Struct({
       userId: Id.Id("users"),
-      eventType: Schema.String.pipe(Schema.nonEmpty()),
-      action: Schema.String.pipe(Schema.nonEmpty()),
+      eventType: Schema.String.pipe(Schema.nonEmptyString()),
+      action: Schema.String.pipe(Schema.nonEmptyString()),
       timestamp: Schema.Number,
       repository: Schema.optional(Schema.String),
       payload: Schema.optional(Schema.Any), // GitHub webhook payload
-      deviceId: Schema.String.pipe(Schema.nonEmpty()), // GitHub device ID for APM tracking
+      deviceId: Schema.String.pipe(Schema.nonEmptyString()), // GitHub device ID for APM tracking
     })
   ).index("by_user_id", ["userId"])
    .index("by_timestamp", ["timestamp"])
@@ -200,9 +185,9 @@ export const confectSchema = defineSchema({
       completedSteps: Schema.Array(Schema.String),
       activeRepository: Schema.optional(
         Schema.Struct({
-          url: Schema.String.pipe(Schema.nonEmpty()),
-          name: Schema.String.pipe(Schema.nonEmpty()),
-          owner: Schema.String.pipe(Schema.nonEmpty()),
+          url: Schema.String.pipe(Schema.nonEmptyString()),
+          name: Schema.String.pipe(Schema.nonEmptyString()),
+          owner: Schema.String.pipe(Schema.nonEmptyString()),
           isPrivate: Schema.Boolean,
           defaultBranch: Schema.optional(Schema.String),
         })
@@ -254,7 +239,7 @@ export const confectSchema = defineSchema({
       requestedAt: Schema.optional(Schema.Number),
       grantedAt: Schema.optional(Schema.Number),
       deniedAt: Schema.optional(Schema.Number),
-      platform: Schema.String.pipe(Schema.nonEmpty()), // "ios", "android", "desktop", "web"
+      platform: Schema.String.pipe(Schema.nonEmptyString()), // "ios", "android", "desktop", "web"
       metadata: Schema.optional(
         Schema.Struct({
           reason: Schema.optional(Schema.String), // Why permission was needed

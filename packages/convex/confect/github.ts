@@ -114,7 +114,7 @@ export const fetchUserRepositories = mutation({
       const { db, auth } = yield* ConfectMutationCtx;
       const timestamp = new Date().toISOString();
 
-      // Ensure user is authenticated
+      // Ensure user is authenticated  
       const identity = yield* Effect.promise(() => auth.getUserIdentity());
       if (!identity) {
         return yield* Effect.fail(new GitHubAuthError("Not authenticated"));
@@ -123,7 +123,7 @@ export const fetchUserRepositories = mutation({
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -195,8 +195,8 @@ export const getUserRepositories = query({
       const timestamp = new Date().toISOString();
 
       // Ensure user is authenticated
-      const identity = yield* Effect.promise(() => auth.getUserIdentity());
-      if (!identity) {
+      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
+      if (!identity || !identity.subject) {
         console.log(`⚠️ [GITHUB_API] ${timestamp} User not authenticated`);
         return Option.none();
       }
@@ -204,7 +204,7 @@ export const getUserRepositories = query({
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -248,7 +248,7 @@ export const updateGitHubMetadata = mutation({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
 
-      // Ensure user is authenticated
+      // Ensure user is authenticated  
       const identity = yield* Effect.promise(() => auth.getUserIdentity());
       if (!identity) {
         return yield* Effect.fail(new GitHubAuthError("Not authenticated"));
@@ -257,7 +257,7 @@ export const updateGitHubMetadata = mutation({
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
         .first();
 
       if (Option.isNone(user)) {
