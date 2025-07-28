@@ -161,54 +161,6 @@ export const updateOnboardingStep = mutation({
     }),
 });
 
-// Set active repository during onboarding
-export const setActiveRepository = mutation({
-  args: SetActiveRepositoryArgs,
-  returns: SetActiveRepositoryResult,
-  handler: ({ repositoryUrl, repositoryName, repositoryOwner, isPrivate, defaultBranch }) =>
-    Effect.gen(function* () {
-      const { db, auth } = yield* ConfectMutationCtx;
-
-      const identity = yield* Effect.promise(() => auth.getUserIdentity());
-      if (!identity) {
-        return yield* Effect.fail(new Error("Not authenticated"));
-      }
-
-      const user = yield* db
-        .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-        .first();
-
-      if (Option.isNone(user)) {
-        return yield* Effect.fail(new Error("User not found"));
-      }
-
-      const userId = user.value._id;
-
-      const progress = yield* db
-        .query("onboardingProgress")
-        .withIndex("by_user_id", (q) => q.eq("userId", userId))
-        .first();
-
-      if (Option.isNone(progress)) {
-        return yield* Effect.fail(new Error("Onboarding not started"));
-      }
-
-      const repository = {
-        url: repositoryUrl,
-        name: repositoryName,
-        owner: repositoryOwner,
-        isPrivate,
-        defaultBranch,
-      };
-
-      return yield* db.patch(progress.value._id, {
-        activeRepository: repository,
-        step: "repository_selected",
-        completedSteps: [...progress.value.completedSteps, "repository_selected"],
-      });
-    }),
-});
 
 // Set user preferences during onboarding
 export const setUserPreferences = mutation({
@@ -446,5 +398,92 @@ export const getUserPermissions = query({
 
       const permissions = yield* permissionsQuery.collect();
       return permissions;
+    }),
+});
+
+// Set active repository for the authenticated user during onboarding
+export const setActiveRepository = mutation({
+  args: SetActiveRepositoryArgs,
+  returns: SetActiveRepositoryResult,
+  handler: ({ repositoryUrl, repositoryName, repositoryOwner, isPrivate, defaultBranch }) =>
+    Effect.gen(function* () {
+      const { db, auth } = yield* ConfectMutationCtx;
+      const timestamp = new Date().toISOString();
+
+      // Ensure user is authenticated
+      const identity = yield* Effect.promise(() => auth.getUserIdentity());
+      if (!identity) {
+        console.error(`❌ [ONBOARDING] ${timestamp} Not authenticated`);
+        return yield* Effect.fail(new Error("Not authenticated"));
+      }
+
+      // Get the user record
+      const user = yield* db
+        .query("users")
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+        .first();
+
+      if (Option.isNone(user)) {
+        console.error(`❌ [ONBOARDING] ${timestamp} User not found`);
+        return yield* Effect.fail(new Error("User not found"));
+      }
+
+      const userId = user.value._id;
+
+      // Get current onboarding progress
+      const onboardingProgress = yield* db
+        .query("onboardingProgress")
+        .withIndex("by_user_id", (q) => q.eq("userId", userId))
+        .first();
+
+      if (Option.isNone(onboardingProgress)) {
+        console.error(`❌ [ONBOARDING] ${timestamp} No onboarding progress found for user`);
+        return yield* Effect.fail(new Error("No onboarding progress found"));
+      }
+
+      const progress = onboardingProgress.value;
+
+      // Create repository object
+      const repository = {
+        url: repositoryUrl,
+        name: repositoryName,
+        owner: repositoryOwner,
+        isPrivate,
+        defaultBranch: defaultBranch || "main",
+      };
+
+      console.log(`🔄 [ONBOARDING] ${timestamp} Setting active repository for user`, {
+        userId,
+        repository: `${repositoryOwner}/${repositoryName}`,
+        isPrivate,
+        currentStep: progress.step,
+      });
+
+      // Update onboarding progress with active repository
+      const updatedCompletedSteps = progress.completedSteps.includes("repository_selected")
+        ? progress.completedSteps
+        : [...progress.completedSteps, "repository_selected"];
+
+      const updateData = {
+        activeRepository: repository,
+        completedSteps: updatedCompletedSteps,
+        step: "repository_selected" as const,
+      };
+
+      // If this is the first time setting a repository, advance to next step
+      if (progress.step === "github_connected") {
+        console.log(`📈 [ONBOARDING] ${timestamp} Advancing to repository_selected step`);
+      }
+
+      yield* db.patch(progress._id, updateData);
+
+      console.log(`✅ [ONBOARDING] ${timestamp} Successfully set active repository`, {
+        progressId: progress._id,
+        repository: `${repositoryOwner}/${repositoryName}`,
+        newStep: "repository_selected",
+        completedSteps: updatedCompletedSteps.length,
+      });
+
+      return progress._id;
     }),
 });

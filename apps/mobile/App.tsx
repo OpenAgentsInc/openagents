@@ -7,7 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context"
 import { NavigationContainer } from "@react-navigation/native"
 import { ClaudeCodeMobile } from "./components/ClaudeCodeMobile"
 import { SimpleConfectAuthProvider, useConfectAuth } from "./contexts/SimpleConfectAuthContext"
-import { SimpleOnboardingScreen } from "./components/onboarding/SimpleOnboardingScreen"
+import { OnboardingScreen } from "./components/onboarding/OnboardingScreen"
 import { DARK_THEME } from "./constants/colors"
 import { ConvexProviderWithAuth } from "./contexts/ConvexProviderWithAuth"
 
@@ -33,12 +33,21 @@ function MainApp() {
     );
   }
 
-  // TEMPORARILY SKIP ONBOARDING - just show main app
+  // Show onboarding if needed, otherwise show main app
   return (
     <ConvexProviderWithAuth>
-      <NavigationContainer>
-        <ClaudeCodeMobile />
-      </NavigationContainer>
+      {needsOnboarding ? (
+        <OnboardingScreen 
+          onComplete={() => {
+            // Handle onboarding completion
+            console.log('📱 [APP] Onboarding completed');
+          }} 
+        />
+      ) : (
+        <NavigationContainer>
+          <ClaudeCodeMobile />
+        </NavigationContainer>
+      )}
     </ConvexProviderWithAuth>
   );
 }
