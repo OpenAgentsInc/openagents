@@ -261,3 +261,7 @@ Use these commands in PR comments:
 - Do NOT use @mentions for any other usernames
 - Do NOT cc or tag people who are not associated with the project
 - This applies to all GitHub interactions: issues, PRs, commits, comments
+
+## Memories
+
+- 2 - you fucking check it
