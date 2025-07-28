@@ -23,25 +23,27 @@ async function getUser(claims: { sub: string; github_id: string; email: string; 
   };
 }
 
-export default issuer({
-  providers: {
-    github: GithubProvider({
-      clientID: (() => {
-        const clientId = process.env.GITHUB_CLIENT_ID;
-        if (!clientId) throw new Error("GITHUB_CLIENT_ID environment variable is required");
-        return clientId;
-      })(),
-      clientSecret: (() => {
-        const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-        if (!clientSecret) throw new Error("GITHUB_CLIENT_SECRET environment variable is required");
-        return clientSecret;
-      })(),
-      scopes: ["user:email"],
-    }),
-  },
-  storage: CloudflareStorage({
-    namespace: "AUTH_STORAGE",
-  }),
+export default {
+  async fetch(request: Request, env: any, ctx: ExecutionContext) {
+    const app = issuer({
+      providers: {
+        github: GithubProvider({
+          clientID: (() => {
+            const clientId = env.GITHUB_CLIENT_ID;
+            if (!clientId) throw new Error("GITHUB_CLIENT_ID environment variable is required");
+            return clientId;
+          })(),
+          clientSecret: (() => {
+            const clientSecret = env.GITHUB_CLIENT_SECRET;
+            if (!clientSecret) throw new Error("GITHUB_CLIENT_SECRET environment variable is required");
+            return clientSecret;
+          })(),
+          scopes: ["user:email"],
+        }),
+      },
+      storage: CloudflareStorage({
+        namespace: env.AUTH_STORAGE,
+      }),
   subjects,
   allow: async (input, req) => {
     // Allow mobile app with custom URL scheme
@@ -90,11 +92,15 @@ export default issuer({
     console.error("Authentication attempted with unsupported provider:", value.provider);
     throw new Error(`Unsupported provider: ${value.provider}`);
   },
-  cookie: {
-    // Configure for subdomain sharing
-    domain: process.env.COOKIE_DOMAIN || undefined,
-    secure: true,
-    httpOnly: true,
-    sameSite: "lax",
+      cookie: {
+        // Configure for subdomain sharing
+        domain: env.COOKIE_DOMAIN || undefined,
+        secure: true,
+        httpOnly: true,
+        sameSite: "lax",
+      },
+    });
+
+    return app.fetch(request, env, ctx);
   },
-});
+};
