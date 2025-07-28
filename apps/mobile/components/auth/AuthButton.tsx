@@ -40,7 +40,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonLogin: {
-    backgroundColor: '#22c55e',
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#ffffff',
   },
   buttonLogout: {
     backgroundColor: '#ef4444',

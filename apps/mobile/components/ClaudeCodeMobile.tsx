@@ -351,7 +351,6 @@ export function ClaudeCodeMobile() {
   const renderHeaderTitle = () => (
     <View style={styles.headerTitle}>
       <CustomText style={styles.headerTitleText}>Claude Code</CustomText>
-      <AuthButton />
     </View>
   );
 
@@ -365,6 +364,9 @@ export function ClaudeCodeMobile() {
           <CustomText style={styles.emptyStateSubtext}>
             Authentication is required to create and view sessions
           </CustomText>
+          <View style={styles.authButtonContainer}>
+            <AuthButton />
+          </View>
         </View>
       );
     }
@@ -631,6 +633,10 @@ const styles = StyleSheet.create({
       android: 'Berkeley Mono',
       default: 'monospace'
     }),
+  },
+  authButtonContainer: {
+    marginTop: 24,
+    alignItems: 'center',
   },
   // Modal styles
   modalOverlay: {
