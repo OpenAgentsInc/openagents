@@ -1,4 +1,4 @@
-import { Effect, Data, Schedule, Duration, Either, pipe, Ref } from "effect"
+import { Effect, Data, Schedule, Duration, Either, Ref } from "effect"
 
 /**
  * Comprehensive error handling patterns based on Land architecture
@@ -26,14 +26,14 @@ export const RetryPolicies = {
   exponentialBackoff: Schedule.exponential(Duration.millis(100)).pipe(
     Schedule.jittered,
     Schedule.either(Schedule.spaced(Duration.seconds(1))),
-    Schedule.whileOutput(Duration.lessThan(Duration.minutes(5)))
+    Schedule.compose(Schedule.elapsed),
+    Schedule.whileOutput((elapsed) => Duration.lessThan(elapsed, Duration.minutes(5)))
   ),
   
   // Fixed delay with max attempts
   fixedDelay: (delay: Duration.DurationInput, maxAttempts: number) =>
     Schedule.fixed(delay).pipe(
-      Schedule.recurWhile(() => true),
-      Schedule.whileOutput((_: any, i: any) => i < maxAttempts)
+      Schedule.compose(Schedule.recurs(maxAttempts))
     ),
   
   // Network-specific retry
@@ -75,56 +75,55 @@ export const createCircuitBreaker = <E>(config: {
       Effect.gen(function* () {
         const currentState = yield* Ref.get(stateRef)
         
-        switch (currentState._tag) {
-          case "Open": {
-            const now = Date.now()
-            const resetTime = (currentState.lastFailure || 0) + Duration.toMillis(config.resetTimeout)
-            
-            if (now > resetTime) {
-              yield* Ref.set(stateRef, { _tag: "HalfOpen" })
-              // Fall through to HalfOpen case
-            } else {
-              return yield* Effect.fail({
-                _tag: "OpenAgentsError" as const,
-                message: "Circuit breaker is open",
-                context: { state: currentState },
-                timestamp: new Date()
-              })
-            }
-          }
-          // fallthrough
+        if (currentState._tag === "Open") {
+          const now = Date.now()
+          const resetTime = (currentState.lastFailure || 0) + Duration.toMillis(config.resetTimeout)
           
-          case "HalfOpen":
-          case "Closed": {
-            return yield* effect.pipe(
-              Effect.tapError((error) =>
-                Effect.gen(function* () {
-                  if (config.shouldTrip(error)) {
-                    const currentState = yield* Ref.get(stateRef)
-                    const failures = (currentState.failures || 0) + 1
-                    
-                    if (failures >= config.maxFailures) {
-                      yield* Ref.set(stateRef, {
-                        _tag: "Open",
-                        failures,
-                        lastFailure: Date.now()
-                      })
-                      yield* Effect.logWarning("Circuit breaker opened")
-                    } else {
-                      yield* Ref.update(stateRef, (s) => ({
-                        ...s,
-                        failures
-                      }))
-                    }
-                  }
-                })
-              ),
-              Effect.tap(() =>
-                Ref.set(stateRef, { _tag: "Closed", failures: 0 })
-              )
-            )
+          if (now <= resetTime) {
+            return yield* Effect.fail({
+              _tag: "OpenAgentsError" as const,
+              message: "Circuit breaker is open",
+              context: { state: currentState },
+              timestamp: new Date()
+            })
+          } else {
+            yield* Ref.set(stateRef, { _tag: "HalfOpen" })
           }
         }
+
+        // Handle HalfOpen and Closed states
+        if (currentState._tag === "HalfOpen" || currentState._tag === "Closed") {
+          return yield* effect.pipe(
+            Effect.tapError((error) =>
+              Effect.gen(function* () {
+                if (config.shouldTrip(error)) {
+                  const currentState = yield* Ref.get(stateRef)
+                  const failures = (currentState.failures || 0) + 1
+                  
+                  if (failures >= config.maxFailures) {
+                    yield* Ref.set(stateRef, {
+                      _tag: "Open",
+                      failures,
+                      lastFailure: Date.now()
+                    })
+                    yield* Effect.logWarning("Circuit breaker opened")
+                  } else {
+                    yield* Ref.update(stateRef, (s) => ({
+                      ...s,
+                      failures
+                    }))
+                  }
+                }
+              })
+            ),
+            Effect.tap(() =>
+              Ref.set(stateRef, { _tag: "Closed", failures: 0 })
+            )
+          )
+        }
+
+        // Default case - should not happen
+        return yield* effect
       })
     
     return { execute }
