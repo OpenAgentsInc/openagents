@@ -9,8 +9,8 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useConfectOnboarding } from '../../../../packages/shared/src/hooks/useConfectOnboarding';
-import { PermissionType } from '../../../../packages/shared/src/services/PermissionService';
+import { useConfectOnboarding } from '@/shared/hooks/useConfectOnboarding';
+import { PermissionType } from '@/shared/services/PermissionService';
 import { DARK_THEME } from '../../constants/colors';
 
 interface OnboardingScreenProps {

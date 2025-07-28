@@ -2,7 +2,12 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/shared/*": ["../../packages/shared/src/*"],
+      "@/convex/*": ["../../packages/convex/*"]
+    }
   },
   "exclude": [
     "../../packages/shared/src/hooks/useConfectOnboarding.ts",
