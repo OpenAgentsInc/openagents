@@ -73,13 +73,25 @@ export const getCurrentUser = query({
         return Option.none();
       }
 
-      // Extract GitHub ID from identity subject
-      const githubId = identity.value.subject;
+      // Extract GitHub ID from identity subject - try both formats
+      const fullSubject = identity.value.subject;
+      const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
       
-      const user = yield* db
+      console.log(`🔍 [USERS] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+      
+      let user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", githubId))
+        .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
         .first();
+      
+      // If not found with full subject, try with just the GitHub ID part
+      if (Option.isNone(user)) {
+        console.log(`🔍 [USERS] User not found with full subject, trying GitHub ID part`);
+        user = yield* db
+          .query("users")
+          .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
+          .first();
+      }
 
       return user;
     }),

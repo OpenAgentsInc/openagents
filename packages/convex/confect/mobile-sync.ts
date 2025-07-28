@@ -26,11 +26,25 @@ export const createClaudeSession = mutation({
       let userId = Option.none<string>();
       
       if (Option.isSome(identity)) {
-        // Find user by GitHub ID from identity subject  
-        const user = yield* db
+        // Find user by GitHub ID from identity subject - try both formats
+        const fullSubject = identity.value.subject;
+        const githubIdPart = fullSubject.startsWith("user:") ? fullSubject.substring(5) : fullSubject;
+        
+        console.log(`🔍 [MOBILE_SYNC] Looking for user with subject: ${fullSubject}, githubId part: ${githubIdPart}`);
+        
+        let user = yield* db
           .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", identity.value.subject))
+          .withIndex("by_github_id", (q) => q.eq("githubId", fullSubject))
           .first();
+        
+        // If not found with full subject, try with just the GitHub ID part
+        if (Option.isNone(user)) {
+          console.log(`🔍 [MOBILE_SYNC] User not found with full subject, trying GitHub ID part`);
+          user = yield* db
+            .query("users")
+            .withIndex("by_github_id", (q) => q.eq("githubId", githubIdPart))
+            .first();
+        }
           
         if (Option.isSome(user)) {
           userId = Option.some(user.value._id);
