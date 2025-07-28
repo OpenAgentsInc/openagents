@@ -11,3 +11,6 @@ export * from "./DrawerIconButton"
 // Chat components
 export * from "./chat/ChatList"
 export * from "./chat/ChatListItem"
+
+// Animation components
+export * from "./ThinkingAnimation"

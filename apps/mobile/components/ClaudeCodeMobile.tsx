@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { ScreenWithSidebar, Text as CustomText } from "./index";
+import { ScreenWithSidebar, Text as CustomText, ThinkingAnimation } from "./index";
 import { AuthButton } from "./auth/AuthButton";
 import { useConfectAuth } from "../contexts/SimpleConfectAuthContext";
 import { IconPlus } from "./icons/IconPlus";
@@ -366,6 +366,7 @@ export function ClaudeCodeMobile() {
           </CustomText>
           <View style={styles.authButtonContainer}>
             <AuthButton />
+            <ThinkingAnimation size={50} style={{ marginTop: 16 }} />
           </View>
         </View>
       );

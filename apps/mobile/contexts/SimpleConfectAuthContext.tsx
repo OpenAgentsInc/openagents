@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 import { Alert } from 'react-native';
+import { useSimpleConfectAuth } from '@/shared/hooks/useSimpleConfectAuth';
 
 interface User {
   id: string;
@@ -55,13 +56,18 @@ console.log('🔗 [SIMPLE_CONFECT_AUTH] Generated REDIRECT_URI:', REDIRECT_URI);
 console.log('🔗 [SIMPLE_CONFECT_AUTH] OPENAUTH_URL:', OPENAUTH_URL);
 
 export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [hasCompletedInitialSetup, setHasCompletedInitialSetup] = useState(false);
+  // Use the simplified Confect auth hook
+  const authHook = useSimpleConfectAuth({
+    convexUrl: process.env.EXPO_PUBLIC_CONVEX_URL,
+  });
 
-  const isAuthenticated = !!user && !!token;
+  const [hasCompletedInitialSetup, setHasCompletedInitialSetup] = useState(false);
+  const [customToken, setCustomToken] = useState<string | null>(null);
+  const [customUser, setCustomUser] = useState<User | null>(null);
+  const [customError, setCustomError] = useState<string | null>(null);
+
+  // Override with actual OAuth implementation for now
+  const isAuthenticated = !!(authHook.user ?? customUser) && !!(authHook.token ?? customToken);
   
   // Check if user needs onboarding (simplified logic)
   const needsOnboarding = isAuthenticated && !hasCompletedInitialSetup;
@@ -79,8 +85,8 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
       const storedOnboardingComplete = await SecureStore.getItemAsync('onboarding_complete');
 
       if (storedToken && storedUser) {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        setCustomToken(storedToken);
+        setCustomUser(JSON.parse(storedUser));
         setHasCompletedInitialSetup(storedOnboardingComplete === 'true');
         console.log('📱 [SIMPLE_CONFECT_AUTH] Restored authentication from secure storage');
       } else {
@@ -90,9 +96,7 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
       console.error('📱 [SIMPLE_CONFECT_AUTH] Failed to check auth state:', error);
       // Clear invalid stored data
       await clearStoredAuth();
-      setError('Failed to restore authentication');
-    } finally {
-      setIsLoading(false);
+      setCustomError('Failed to restore authentication');
     }
   };
 
@@ -108,8 +112,7 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
 
   const login = async () => {
     try {
-      setIsLoading(true);
-      setError(null);
+      setCustomError(null);
       console.log('📱 [SIMPLE_CONFECT_AUTH] Starting OAuth flow with OpenAuth');
 
       // Create OAuth request
@@ -192,8 +195,8 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
             await SecureStore.setItemAsync('openauth_user', JSON.stringify(userData));
             
             // Update state
-            setToken(tokenData.access_token);
-            setUser(userData);
+            setCustomToken(tokenData.access_token);
+            setCustomUser(userData);
             
             console.log('✅ [SIMPLE_CONFECT_AUTH] Login successful:', userData.githubUsername);
           } else {
@@ -210,34 +213,32 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
       }
     } catch (error) {
       console.error('📱 [SIMPLE_CONFECT_AUTH] Login error:', error);
-      setError(error instanceof Error ? error.message : 'Login failed');
+      setCustomError(error instanceof Error ? error.message : 'Login failed');
       Alert.alert('Login Error', 'An error occurred during login. Please try again.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const logout = async () => {
     try {
-      setIsLoading(true);
       console.log('📱 [SIMPLE_CONFECT_AUTH] Logging out user');
       
       // Clear secure storage
       await clearStoredAuth();
       
-      // Clear state
-      setToken(null);
-      setUser(null);
+      // Clear custom state
+      setCustomToken(null);
+      setCustomUser(null);
       setHasCompletedInitialSetup(false);
-      setError(null);
+      setCustomError(null);
+      
+      // Call authHook logout
+      await authHook.logout();
       
       console.log('✅ [SIMPLE_CONFECT_AUTH] Logout successful');
     } catch (error) {
       console.error('📱 [SIMPLE_CONFECT_AUTH] Logout error:', error);
-      setError(error instanceof Error ? error.message : 'Logout failed');
+      setCustomError(error instanceof Error ? error.message : 'Logout failed');
       Alert.alert('Logout Error', 'An error occurred during logout.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -252,11 +253,11 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
   };
 
   const value: SimpleConfectAuthContextType = {
-    user,
+    user: authHook.user ?? customUser,
     isAuthenticated,
-    isLoading,
-    error,
-    token,
+    isLoading: authHook.isLoading,
+    error: authHook.error ?? customError,
+    token: authHook.token ?? customToken,
     login,
     logout,
     needsOnboarding,
