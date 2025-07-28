@@ -131,7 +131,9 @@ const $logoutContainer: ViewStyle = {
 }
 
 const $logoutButton: ViewStyle = {
-  backgroundColor: '#ef4444', // Red-500 for logout
+  backgroundColor: '#000000', // Match login button style
+  borderWidth: 1,
+  borderColor: '#ffffff',
   paddingHorizontal: 16,
   paddingVertical: 12,
   borderRadius: 8,

@@ -359,15 +359,8 @@ export function ClaudeCodeMobile() {
     if (!isAuthenticated) {
       return (
         <View style={styles.emptyState}>
-          <CustomText style={styles.emptyStateText}>
-            Please login to access Claude Code sessions
-          </CustomText>
-          <CustomText style={styles.emptyStateSubtext}>
-            Authentication is required to create and view sessions
-          </CustomText>
           <View style={styles.authButtonContainer}>
             <AuthButton />
-            <ThinkingAnimation size={50} style={{ marginTop: 16 }} />
           </View>
         </View>
       );
@@ -376,6 +369,7 @@ export function ClaudeCodeMobile() {
     if (!authReady) {
       return (
         <View style={styles.emptyState}>
+          <ThinkingAnimation size={38} style={styles.connectionAnimation} />
           <CustomText style={styles.emptyStateText}>
             Setting up secure connection...
           </CustomText>
@@ -614,6 +608,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
+    marginTop: -80,
   },
   emptyStateText: {
     color: '#a1a1aa',
@@ -637,8 +632,11 @@ const styles = StyleSheet.create({
     }),
   },
   authButtonContainer: {
-    marginTop: 24,
+    marginTop: -50,
     alignItems: 'center',
+  },
+  connectionAnimation: {
+    marginBottom: 16,
   },
   // Modal styles
   modalOverlay: {
