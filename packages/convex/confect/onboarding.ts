@@ -43,7 +43,7 @@ export const startOnboarding = mutation({
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -89,15 +89,15 @@ export const getOnboardingProgress = query({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectQueryCtx;
 
-      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
-      if (!identity || !identity.subject) {
+      const identity = yield* auth.getUserIdentity();
+      if (!identity) {
         return Option.none();
       }
 
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -124,14 +124,14 @@ export const updateOnboardingStep = mutation({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
 
-      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
-      if (!identity || !identity.subject) {
+      const identity = yield* auth.getUserIdentity();
+      if (!identity) {
         return yield* Effect.fail(new Error("Not authenticated"));
       }
 
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -171,14 +171,14 @@ export const setUserPreferences = mutation({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
 
-      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
-      if (!identity || !identity.subject) {
+      const identity = yield* auth.getUserIdentity();
+      if (!identity) {
         return yield* Effect.fail(new Error("Not authenticated"));
       }
 
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -213,14 +213,14 @@ export const completeOnboarding = mutation({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
 
-      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
-      if (!identity || !identity.subject) {
+      const identity = yield* auth.getUserIdentity();
+      if (!identity) {
         return yield* Effect.fail(new Error("Not authenticated"));
       }
 
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -255,14 +255,14 @@ export const requestPermission = mutation({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
 
-      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
-      if (!identity || !identity.subject) {
+      const identity = yield* auth.getUserIdentity();
+      if (!identity) {
         return yield* Effect.fail(new Error("Not authenticated"));
       }
 
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -318,14 +318,14 @@ export const updatePermissionStatus = mutation({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
 
-      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
-      if (!identity || !identity.subject) {
+      const identity = yield* auth.getUserIdentity();
+      if (!identity) {
         return yield* Effect.fail(new Error("Not authenticated"));
       }
 
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -373,14 +373,14 @@ export const getUserPermissions = query({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectQueryCtx;
 
-      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
-      if (!identity || !identity.subject) {
+      const identity = yield* auth.getUserIdentity();
+      if (!identity) {
         return [];
       }
 
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
@@ -414,8 +414,8 @@ export const setActiveRepository = mutation({
       const timestamp = new Date().toISOString();
 
       // Ensure user is authenticated
-      const identity = (yield* Effect.promise(() => auth.getUserIdentity())) as any;
-      if (!identity || !identity.subject) {
+      const identity = yield* auth.getUserIdentity();
+      if (!identity) {
         console.error(`❌ [ONBOARDING] ${timestamp} Not authenticated`);
         return yield* Effect.fail(new Error("Not authenticated"));
       }
@@ -423,7 +423,7 @@ export const setActiveRepository = mutation({
       // Get the user record
       const user = yield* db
         .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", (identity as any).subject))
+        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
         .first();
 
       if (Option.isNone(user)) {
