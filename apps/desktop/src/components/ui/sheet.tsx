@@ -1,6 +1,6 @@
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
-import { XIcon as CloseIcon } from "lucide-react"
+import { CloseIconAlt as CloseIcon } from "@/components/icons/React19Icons"
 
 import { cn } from "@/lib/utils"
 

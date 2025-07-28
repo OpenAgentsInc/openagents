@@ -1,7 +1,8 @@
 import "./index.css"
 import ReactDOM from "react-dom/client"
 import App from "./App"
-import { ConvexProvider, ConvexReactClient } from "convex/react"
+import { ConvexReactClient } from "convex/react"
+import { ConvexProvider } from "@/components/providers/React19ConvexProvider"
 import { AuthProvider } from "@/contexts/AuthContext"
 
 
