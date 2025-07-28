@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+import { getAuthenticatedUser } from "./users";
 
 // Session Management
 
@@ -18,20 +19,8 @@ export const createClaudeSession = mutation({
     })),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to create session");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    // Get authenticated user - handles OpenAuth subject lookup
+    const user = await getAuthenticatedUser(ctx);
 
     // Check if session already exists
     const existingSession = await ctx.db
@@ -105,20 +94,8 @@ export const getSessions = query({
     status: v.optional(v.union(v.literal("active"), v.literal("inactive"), v.literal("error"))),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to view sessions");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    // Get authenticated user - handles OpenAuth subject lookup
+    const user = await getAuthenticatedUser(ctx);
 
     // Filter by user sessions only
     let query = ctx.db.query("claudeSessions").withIndex("by_user_id")
@@ -135,20 +112,8 @@ export const getSessions = query({
 export const getSession = query({
   args: { sessionId: v.string() },
   handler: async (ctx, args) => {
-    // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to view session");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    // Get authenticated user - handles OpenAuth subject lookup
+    const user = await getAuthenticatedUser(ctx);
 
     const session = await ctx.db
       .query("claudeSessions")
@@ -174,19 +139,7 @@ export const getSessionMessages = query({
   },
   handler: async (ctx, args) => {
     // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to view messages");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await getAuthenticatedUser(ctx);
 
     // First verify the session belongs to the authenticated user
     const session = await ctx.db
@@ -242,19 +195,7 @@ export const addClaudeMessage = mutation({
     });
 
     // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to add message");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await getAuthenticatedUser(ctx);
 
     // Verify the session belongs to the authenticated user
     const session = await ctx.db
@@ -334,19 +275,7 @@ export const batchAddMessages = mutation({
   },
   handler: async (ctx, args) => {
     // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to add messages");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await getAuthenticatedUser(ctx);
     
     // Verify session ownership
     const session = await ctx.db
@@ -401,19 +330,7 @@ export const requestDesktopSession = mutation({
   },
   handler: async (ctx, args) => {
     // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to create mobile session");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await getAuthenticatedUser(ctx);
 
     const sessionId = `mobile-${Date.now()}-${Math.random().toString(36).substring(2)}`;
     
@@ -482,20 +399,8 @@ export const updateSyncStatus = mutation({
 export const getSyncStatus = query({
   args: { sessionId: v.string() },
   handler: async (ctx, args) => {
-    // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to view sync status");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    // Get authenticated user - handles OpenAuth subject lookup
+    const user = await getAuthenticatedUser(ctx);
 
     // Verify session belongs to user before showing sync status
     const session = await ctx.db
@@ -529,20 +434,8 @@ export const syncSessionFromHook = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user - authentication is required for hook sync
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required for session sync");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    // Get authenticated user - handles OpenAuth subject lookup
+    const user = await getAuthenticatedUser(ctx);
     
     const { hookData } = args;
     
@@ -653,20 +546,8 @@ export const getPendingMobileSessions = query({
 export const getConvexAPMStats = query({
   args: {},
   handler: async (ctx, args) => {
-    // Get authenticated user - authentication is required
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Authentication required to view APM stats");
-    }
-    
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    // Get authenticated user - handles OpenAuth subject lookup
+    const user = await getAuthenticatedUser(ctx);
 
     // Get user-specific sessions only
     const sessions = await ctx.db
@@ -919,20 +800,8 @@ export const trackDeviceSession = mutation({
     })),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("User must be authenticated to track device sessions");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    // Get authenticated user - handles OpenAuth subject lookup
+    const user = await getAuthenticatedUser(ctx);
 
     // Find existing device session
     const existingSession = await ctx.db
@@ -979,20 +848,8 @@ export const calculateUserAPM = mutation({
     timeWindow: v.optional(v.union(v.literal("1h"), v.literal("6h"), v.literal("1d"), v.literal("1w"), v.literal("1m"), v.literal("lifetime"))),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("User must be authenticated to calculate APM");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
+    // Get authenticated user - handles OpenAuth subject lookup
+    const user = await getAuthenticatedUser(ctx);
 
     const now = Date.now();
     const timeWindows = args.timeWindow ? [args.timeWindow] : ["1h", "6h", "1d", "1w", "1m", "lifetime"] as const;
@@ -1051,26 +908,15 @@ export const getUserAPMStats = query({
     includeDeviceBreakdown: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return null; // Return null for unauthenticated users
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-      .first();
-    
-    if (!user) {
-      return null;
-    }
-
-    // Get cached APM stats for all time windows
-    const allStats = await ctx.db
-      .query("userAPMStats")
-      .withIndex("by_user_id", (q) => q.eq("userId", user._id))
-      .collect();
+    // Get authenticated user - return null if not authenticated
+    try {
+      const user = await getAuthenticatedUser(ctx);
+      
+      // Get cached APM stats for all time windows
+      const allStats = await ctx.db
+        .query("userAPMStats")
+        .withIndex("by_user_id", (q) => q.eq("userId", user._id))
+        .collect();
 
     const statsByWindow = allStats.reduce((acc, stat) => {
       acc[stat.timeWindow] = stat;
@@ -1101,7 +947,11 @@ export const getUserAPMStats = query({
       };
     }
 
-    return result;
+      return result;
+    } catch (error) {
+      // Return null if authentication fails or user not found
+      return null;
+    }
   },
 });
 

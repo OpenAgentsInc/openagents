@@ -8,15 +8,10 @@ import { NavigationContainer } from "@react-navigation/native"
 import { ClaudeCodeMobile } from "./components/ClaudeCodeMobile"
 import { AuthProvider } from "./contexts/AuthContext"
 import { DARK_THEME } from "./constants/colors"
+import { ConvexProviderWithAuth } from "./contexts/ConvexProviderWithAuth"
 
 // Disable all development warnings
 LogBox.ignoreAllLogs(true)
-
-const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
-const convex = new ConvexReactClient(convexUrl!, {
-  // Disable for React Native compatibility
-  unsavedChangesWarning: false,
-});
 
 function AppContent() {
   const [fontsLoaded] = useFonts({
@@ -31,9 +26,11 @@ function AppContent() {
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.container}>
         <AuthProvider>
-          <NavigationContainer>
-            <ClaudeCodeMobile />
-          </NavigationContainer>
+          <ConvexProviderWithAuth>
+            <NavigationContainer>
+              <ClaudeCodeMobile />
+            </NavigationContainer>
+          </ConvexProviderWithAuth>
         </AuthProvider>
         <StatusBar style="light" />
       </GestureHandlerRootView>
@@ -42,11 +39,7 @@ function AppContent() {
 }
 
 export default function App() {
-  return (
-    <ConvexProvider client={convex}>
-      <AppContent />
-    </ConvexProvider>
-  );
+  return <AppContent />;
 }
 
 const styles = StyleSheet.create({
