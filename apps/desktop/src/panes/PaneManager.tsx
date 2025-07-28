@@ -30,38 +30,38 @@ export const PaneManager: React.FC = () => {
   const { panes, activePaneId } = usePaneStore();
 
   // Get data from global object (temporary solution)
-  const data = window.__openagents_data || {};
+  const data = window.__openagents_data;
 
   const renderPaneContent = (pane: PaneType) => {
     switch (pane.type) {
       case "chat":
         const sessionId = pane.content?.sessionId as string;
-        const session = data.sessions?.find((s: any) => s.id === sessionId);
+        const session = data?.sessions?.find((s: any) => s.id === sessionId);
         console.log('🎨 [PANE-MANAGER] Rendering ChatPane:', {
           paneId: pane.id,
           sessionId,
           sessionFound: !!session,
-          totalSessions: data.sessions?.length || 0
+          totalSessions: data?.sessions?.length || 0
         });
         return <ChatPane 
           pane={pane} 
           session={session}
-          sendMessage={data.sendMessage}
+          sendMessage={data?.sendMessage}
         />;
       case "metadata":
         return <HistoryPane 
-          sessions={data.sessions}
-          newProjectPath={data.newProjectPath}
-          isDiscoveryLoading={data.isDiscoveryLoading}
-          setNewProjectPath={data.setNewProjectPath}
-          createSession={data.createSession}
-          stopSession={data.stopSession}
+          sessions={data?.sessions}
+          newProjectPath={data?.newProjectPath}
+          isDiscoveryLoading={data?.isDiscoveryLoading}
+          setNewProjectPath={data?.setNewProjectPath}
+          createSession={data?.createSession}
+          stopSession={data?.stopSession}
         />;
       case "settings":
         return <SettingsPane 
-          claudeStatus={data.claudeStatus}
-          sessions={data.sessions}
-          isDiscoveryLoading={data.isDiscoveryLoading}
+          claudeStatus={data?.claudeStatus}
+          sessions={data?.sessions}
+          isDiscoveryLoading={data?.isDiscoveryLoading}
         />;
       case "stats":
         return <StatsPane />;

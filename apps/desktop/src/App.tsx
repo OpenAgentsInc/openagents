@@ -45,7 +45,7 @@ interface OpenAgentsGlobalData {
 
 declare global {
   interface Window {
-    __openagents_data: OpenAgentsGlobalData;
+    __openagents_data?: OpenAgentsGlobalData;
   }
 }
 
