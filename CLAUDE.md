@@ -155,6 +155,27 @@ bun run install:all  # Reinstall all dependencies
 - Bun: Package manager and runtime
 - TypeScript: Type safety across all packages
 
+## Effect-TS Integration
+
+**IMPORTANT**: Before doing any work with Effect-TS in this codebase, you MUST:
+1. Read the comprehensive Effect-TS integration guide at `docs/effect/README.md`
+2. Review relevant linked documentation and PRs mentioned in that guide
+3. Understand the current migration phase (Phase 3 of 4 completed)
+
+### Key Effect-TS Requirements
+- **Service Architecture**: All new features should use Effect services when appropriate
+- **Error Handling**: Use tagged errors (e.g., `StorageError`, `AuthError`)
+- **State Management**: Use STM for atomic updates in sync scenarios
+- **Streaming**: Replace polling with Effect streams where possible
+- **Testing**: Follow Effect testing patterns with 90%+ coverage goal
+
+### Current Effect Integration
+- **Confect**: Using Confect (Effect-TS + Convex) for database integration
+- **Services**: Storage, APM, Authentication services already implemented
+- **Performance**: <1ms latency for streaming (vs 25ms polling)
+
+See `docs/effect/README.md` for patterns, examples, and migration status.
+
 ## Code Review Process with CodeRabbit
 
 This repository uses **CodeRabbit AI** for automated code review. Here's how it works:
