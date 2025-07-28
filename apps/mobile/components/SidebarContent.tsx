@@ -38,6 +38,10 @@ export interface SidebarContentProps {
   onSessionDelete?: (sessionId: string) => void
   onSessionStar?: (sessionId: string) => void
   onSessionRename?: (sessionId: string, newTitle: string) => void
+  /**
+   * Callback when sidebar should be collapsed
+   */
+  onCollapseSidebar?: () => void
 }
 
 /**
@@ -55,6 +59,7 @@ export function SidebarContent(props: SidebarContentProps) {
     onSessionDelete,
     onSessionStar,
     onSessionRename,
+    onCollapseSidebar,
   } = props
 
   const { isAuthenticated, user, logout } = useConfectAuth()
@@ -84,6 +89,7 @@ export function SidebarContent(props: SidebarContentProps) {
 
   const handleLogout = () => {
     logout()
+    onCollapseSidebar?.()
   }
 
   return (
