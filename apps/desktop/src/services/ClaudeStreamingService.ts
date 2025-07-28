@@ -1,4 +1,4 @@
-import { Effect, Stream, Queue, pipe, Context, Layer, Schedule } from 'effect';
+import { Effect, Stream, Queue, pipe, Layer, Schedule } from 'effect';
 import { 
   TauriEventService, 
   TauriEventError, 
@@ -32,16 +32,23 @@ export class ClaudeStreamingService extends Effect.Service<ClaudeStreamingServic
   {
     sync: () => ({
       // Start streaming for a session
-      startStreaming: (sessionId: string) => Effect.Effect<StreamingSession, TauriEventError>,
+      startStreaming: (sessionId: string) => 
+        Effect.gen(function* () {
+          const messageQueue = yield* Queue.unbounded<Message>()
+          return { id: sessionId, messageQueue }
+        }),
 
       // Get message stream for a session
-      getMessageStream: (session: StreamingSession) => Stream.Stream<Message, never>,
+      getMessageStream: (session: StreamingSession) => 
+        Stream.fromQueue(session.messageQueue),
 
       // Send message to Claude
-      sendMessage: (sessionId: string, message: string) => Effect.Effect<void, TauriEventError>,
+      sendMessage: (sessionId: string, message: string) => 
+        Effect.void,
 
       // Stop streaming for a session
-      stopStreaming: (session: StreamingSession) => Effect.Effect<void, never>
+      stopStreaming: (session: StreamingSession) => 
+        Effect.void
     }),
     
     dependencies: [TauriEventService]

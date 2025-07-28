@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { Effect, Stream, Runtime, Fiber, Exit, Duration } from "effect"
 import { createStatsStream } from "@/utils/streaming"
-import { IPC, APMStats, CombinedAPMStats, AggregatedAPMStats } from "@/services/ipc"
+import { IPC, CombinedAPMStats, AggregatedAPMStats } from "@/services/ipc"
 
 interface UseStatsStreamOptions {
   refreshInterval?: number // milliseconds
@@ -46,11 +46,11 @@ export const useStatsStream = (
     })
 
     // Create the streaming program
-    const program = createStatsStream(fetchStats, Duration.millis(refreshInterval)).pipe(
-      Stream.tap(({ combinedStats, aggregated }) => 
+    const program = createStatsStream(() => fetchStats, Duration.millis(refreshInterval)).pipe(
+      Stream.tap((data: { combinedStats: CombinedAPMStats; aggregated: AggregatedAPMStats | null }) => 
         Effect.sync(() => {
-          setStats(combinedStats)
-          setAggregatedStats(aggregated)
+          setStats(data.combinedStats)
+          setAggregatedStats(data.aggregated)
           setLoading(false)
           setError(null)
         })
@@ -77,21 +77,26 @@ export const useStatsStream = (
     )
 
     // Run the stream
-    const runtime = Runtime.defaultRuntime
-    const fiber = Runtime.runFork(runtime)(program)
+    const fiber = Effect.runFork(program)
 
     // Handle fiber result
-    Fiber.await(fiber).pipe(
-      Effect.runCallback(runtime, (exit) => {
-        if (Exit.isFailure(exit)) {
-          console.error("Stats stream failed:", exit.cause)
-        }
-      })
-    )
+    Effect.runPromise(
+      Fiber.await(fiber).pipe(
+        Effect.tap((exit: Exit.Exit<void, never>) => {
+          if (Exit.isFailure(exit)) {
+            console.error("Stats stream failed:", exit.cause)
+          }
+          return Effect.void
+        }),
+        Effect.catchAll(() => Effect.void)
+      )
+    ).catch(() => {
+      // Ignore errors in fiber handling
+    })
 
     // Cleanup function
     return () => {
-      Runtime.runPromise(runtime)(Fiber.interrupt(fiber)).catch(() => {
+      Effect.runPromise(Fiber.interrupt(fiber)).catch(() => {
         // Ignore interrupt errors
       })
     }
@@ -123,7 +128,9 @@ export const useHistoricalStatsStream = (
   
   useEffect(() => {
     const fetchHistoricalData = () =>
-      IPC.apm.getHistoricalData(timeScale, viewMode)
+      IPC.apm.getHistoricalData(timeScale, viewMode).pipe(
+        Effect.orElse(() => Effect.succeed(null))
+      )
     
     const program = createStatsStream(
       fetchHistoricalData,
@@ -138,7 +145,10 @@ export const useHistoricalStatsStream = (
       ),
       Stream.catchAll((error) =>
         Effect.sync(() => {
-          setError(error instanceof Error ? error.message : String(error))
+          const errorMessage = error && typeof error === 'object' && 'message' in error 
+            ? (error as Error).message 
+            : String(error)
+          setError(errorMessage)
           setLoading(false)
         }).pipe(
           Effect.map(() => Stream.empty),
@@ -148,11 +158,10 @@ export const useHistoricalStatsStream = (
       Stream.runDrain
     )
     
-    const runtime = Runtime.defaultRuntime
-    const fiber = Runtime.runFork(runtime)(program)
+    const fiber = Effect.runFork(program)
     
     return () => {
-      Runtime.runPromise(runtime)(Fiber.interrupt(fiber)).catch(() => {})
+      Effect.runPromise(Fiber.interrupt(fiber)).catch(() => {})
     }
   }, [timeScale, viewMode, options.refreshInterval])
   

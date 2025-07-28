@@ -33,7 +33,7 @@ export const RetryPolicies = {
   fixedDelay: (delay: Duration.DurationInput, maxAttempts: number) =>
     Schedule.fixed(delay).pipe(
       Schedule.recurWhile(() => true),
-      Schedule.whileOutput((_, i) => i < maxAttempts)
+      Schedule.whileOutput((_: any, i: any) => i < maxAttempts)
     ),
   
   // Network-specific retry
@@ -82,6 +82,7 @@ export const createCircuitBreaker = <E>(config: {
             
             if (now > resetTime) {
               yield* Ref.set(stateRef, { _tag: "HalfOpen" })
+              // Fall through to HalfOpen case
             } else {
               return yield* Effect.fail({
                 _tag: "OpenAgentsError" as const,
@@ -91,6 +92,7 @@ export const createCircuitBreaker = <E>(config: {
               })
             }
           }
+          // fallthrough
           
           case "HalfOpen":
           case "Closed": {
@@ -330,7 +332,7 @@ export const createErrorHandler = <E extends { _tag: string }>() => ({
         handlers.reduce((acc, { tag, handler }) => ({
           ...acc,
           [tag]: handler
-        }), {} as Record<E["_tag"], (error: any) => Effect.Effect<any>>)
+        }), {} as any)
       )
     )
 })

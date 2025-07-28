@@ -1,4 +1,4 @@
-import { Effect, Scope, Exit, Fiber } from "effect"
+import { Effect, Scope } from "effect"
 
 /**
  * Resource management utilities following Land patterns
@@ -264,7 +264,7 @@ export const createResourcePool = <T>(
   const pool: T[] = []
   const inUse = new Set<T>()
   
-  const acquire = () =>
+  const acquire = (): Effect.Effect<T> =>
     Effect.gen(function* () {
       // Try to get from pool
       const resource = pool.pop()
@@ -285,7 +285,7 @@ export const createResourcePool = <T>(
       return yield* acquire()
     })
   
-  const release = (resource: T) =>
+  const release = (resource: T): Effect.Effect<void> =>
     Effect.sync(() => {
       inUse.delete(resource)
       pool.push(resource)
