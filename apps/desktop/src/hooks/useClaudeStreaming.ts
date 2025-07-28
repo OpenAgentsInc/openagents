@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Effect, Stream, pipe, Layer } from 'effect';
 import { ClaudeStreamingService, ClaudeStreamingServiceLive, StreamingSession, Message } from '../services/ClaudeStreamingService';
-import { TauriEventService, TauriEventServiceLive } from '../services/TauriEventService';
+import { TauriEventServiceLive } from '../services/TauriEventService';
 import { invoke } from '@tauri-apps/api/core';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';

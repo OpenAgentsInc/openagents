@@ -1,7 +1,7 @@
-import { Effect, Stream, Queue, pipe, Layer, Schedule } from 'effect';
+import { Effect, Stream, Queue, pipe, Context, Layer, Schedule } from 'effect';
 import { 
   TauriEventService, 
-  TauriEventError, 
+  StreamingError,
   ConnectionError, 
   MessageParsingError
 } from './TauriEventService';
@@ -26,34 +26,23 @@ export interface StreamingSession {
   cleanup: () => void;
 }
 
-// Service definition using Effect.Service pattern
-export class ClaudeStreamingService extends Effect.Service<ClaudeStreamingService>()(
-  'ClaudeStreamingService',
-  {
-    sync: () => ({
-      // Start streaming for a session
-      startStreaming: (sessionId: string) => 
-        Effect.gen(function* () {
-          const messageQueue = yield* Queue.unbounded<Message>()
-          return { id: sessionId, messageQueue }
-        }),
+// Service interface
+export interface ClaudeStreamingService {
+  // Start streaming for a session
+  startStreaming: (sessionId: string) => Effect.Effect<StreamingSession, StreamingError>;
 
-      // Get message stream for a session
-      getMessageStream: (session: StreamingSession) => 
-        Stream.fromQueue(session.messageQueue),
+  // Get message stream for a session
+  getMessageStream: (session: StreamingSession) => Stream.Stream<Message, never>;
 
-      // Send message to Claude
-      sendMessage: (sessionId: string, message: string) => 
-        Effect.void,
+  // Send message to Claude
+  sendMessage: (sessionId: string, message: string) => Effect.Effect<void, StreamingError | ConnectionError>;
 
-      // Stop streaming for a session
-      stopStreaming: (session: StreamingSession) => 
-        Effect.void
-    }),
-    
-    dependencies: [TauriEventService]
-  }
-) {}
+  // Stop streaming for a session
+  stopStreaming: (session: StreamingSession) => Effect.Effect<void, never>;
+}
+
+// Service tag
+export const ClaudeStreamingService = Context.GenericTag<ClaudeStreamingService>('ClaudeStreamingService');
 
 // Helper function to parse Claude messages
 const parseClaudeMessage = (payload: unknown): Effect.Effect<Message | null, MessageParsingError> =>
@@ -80,7 +69,7 @@ const parseClaudeMessage = (payload: unknown): Effect.Effect<Message | null, Mes
       
       return null;
     },
-    catch: (error) => new MessageParsingError(String(payload), error)
+    catch: (error) => new MessageParsingError({ rawMessage: String(payload), cause: error })
   });
 
 // Service implementation
@@ -89,7 +78,7 @@ export const ClaudeStreamingServiceLive = Layer.effect(
   Effect.gen(function* () {
     const eventService = yield* TauriEventService;
     
-    return ClaudeStreamingService.of({
+    const implementation: ClaudeStreamingService = {
       startStreaming: (sessionId: string) =>
         Effect.gen(function* () {
           // Create event stream for this session
@@ -120,7 +109,7 @@ export const ClaudeStreamingServiceLive = Layer.effect(
           Stream.filter((msg): msg is Message => msg !== null)
         ),
 
-      sendMessage: (sessionId: string, message: string): Effect.Effect<void, TauriEventError, never> =>
+      sendMessage: (sessionId: string, message: string) =>
         pipe(
           eventService.emit('claude:send_message', { sessionId, message }),
           Effect.retry(
@@ -130,10 +119,10 @@ export const ClaudeStreamingServiceLive = Layer.effect(
           ),
           Effect.catchTag('StreamingError', (error) =>
             Effect.fail(
-              new ConnectionError(
+              new ConnectionError({
                 sessionId,
-                `Failed to send message: ${error.message}`
-              )
+                cause: `Failed to send message: ${error.message}`
+              })
             )
           )
         ),
@@ -146,6 +135,8 @@ export const ClaudeStreamingServiceLive = Layer.effect(
           // Shutdown the message queue
           yield* Queue.shutdown(session.messageQueue);
         })
-    });
+    };
+    
+    return implementation;
   })
 );

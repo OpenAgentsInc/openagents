@@ -28,7 +28,7 @@ export interface ConvexMessage {
 export const ConvexCommands = {
   testConnection: () =>
     createSimpleCommand<string>("test_convex_connection")
-      .invoke()
+      .invoke({})
       .pipe(
         Effect.mapError((error) => new ConvexError({
           operation: "test",
