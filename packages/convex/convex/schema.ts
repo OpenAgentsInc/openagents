@@ -9,10 +9,12 @@ export default defineSchema({
     avatar: v.optional(v.string()),
     githubId: v.string(),
     githubUsername: v.string(),
+    openAuthSubject: v.optional(v.string()), // OpenAuth JWT subject for lookup
     createdAt: v.number(),
     lastLogin: v.number(),
   }).index("by_email", ["email"])
-    .index("by_github_id", ["githubId"]),
+    .index("by_github_id", ["githubId"])
+    .index("by_openauth_subject", ["openAuthSubject"]),
 
   // Existing basic messages (keep for demo compatibility)
   messages: defineTable({

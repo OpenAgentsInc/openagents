@@ -19,6 +19,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { IconPlus } from "./icons/IconPlus";
 import type { ChatSession } from "../types/chat";
 import { useAPMTracking } from "../src/hooks/useAPMTracking";
+import { useUserSync } from "../hooks/useUserSync";
 
 interface ClaudeSession {
   _id: string;
@@ -51,6 +52,9 @@ export function ClaudeCodeMobile() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   
+  // Automatically sync user to Convex when authenticated
+  useUserSync();
+  
   // Generate random 4-character string for session title
   const generateRandomString = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -69,23 +73,29 @@ export function ClaudeCodeMobile() {
   // Message input state
   const [newMessage, setNewMessage] = useState("");
   
-  // Convex hooks
-  const sessions = useQuery(api.claude.getSessions, { limit: 50 }) || [];
+  // Authentication is ready when user is authenticated
+  const authReady = isAuthenticated;
+
+  // Convex hooks - only query data when authentication is ready
+  const sessions = useQuery(
+    api.claude.getSessions, 
+    authReady ? { limit: 50 } : "skip"
+  ) || [];
   const selectedSessionMessages = useQuery(
     api.claude.getSessionMessages, 
-    selectedSessionId ? { sessionId: selectedSessionId } : "skip"
+    authReady && selectedSessionId ? { sessionId: selectedSessionId } : "skip"
   ) || [];
   
   const requestDesktopSession = useMutation(api.claude.requestDesktopSession);
   const addMessage = useMutation(api.claude.addClaudeMessage);
   const updateSyncStatus = useMutation(api.claude.updateSyncStatus);
 
-  // APM tracking
+  // APM tracking - only enabled when authentication is ready
   const { trackMessageSent, trackSessionCreated } = useAPMTracking({
-    enabled: true,
-    trackMessages: true,
-    trackSessions: true,
-    trackAppState: true,
+    enabled: authReady,
+    trackMessages: authReady,
+    trackSessions: authReady,
+    trackAppState: authReady,
   });
 
   // Clear message input when switching sessions
@@ -359,6 +369,19 @@ export function ClaudeCodeMobile() {
       );
     }
 
+    if (!authReady) {
+      return (
+        <View style={styles.emptyState}>
+          <CustomText style={styles.emptyStateText}>
+            Setting up secure connection...
+          </CustomText>
+          <CustomText style={styles.emptyStateSubtext}>
+            Please wait while we authenticate with the server
+          </CustomText>
+        </View>
+      );
+    }
+
     if (!selectedSessionId) {
       return (
         <View style={styles.emptyState}>
@@ -424,10 +447,10 @@ export function ClaudeCodeMobile() {
     <>
       <ScreenWithSidebar
         title={renderHeaderTitle()}
-        onNewChat={isAuthenticated ? handleNewChat : undefined}
+        onNewChat={authReady ? handleNewChat : undefined}
         onSessionSelect={handleSessionSelect}
         currentSessionId={selectedSessionId}
-        sessions={isAuthenticated ? convertedSessions : []}
+        sessions={authReady ? convertedSessions : []}
         onSessionDelete={handleSessionDelete}
         onSessionStar={handleSessionStar}
         onSessionRename={handleSessionRename}
@@ -437,7 +460,7 @@ export function ClaudeCodeMobile() {
           {renderMainContent()}
         </View>
       </ScreenWithSidebar>
-      {isAuthenticated && renderCreateSessionModal()}
+      {authReady && renderCreateSessionModal()}
     </>
   );
 }
