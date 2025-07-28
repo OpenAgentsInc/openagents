@@ -1,9 +1,9 @@
 import { Effect, Stream, Queue, pipe, Layer, Schedule } from 'effect';
 import { 
   TauriEventService, 
-  TauriEventError, 
   ConnectionError, 
-  MessageParsingError
+  MessageParsingError,
+  type TauriEventError
 } from './TauriEventService';
 
 // Import the Message type from our existing code
@@ -65,7 +65,7 @@ export class ClaudeStreamingService extends Effect.Service<ClaudeStreamingServic
           ),
 
         // Send message to Claude
-        sendMessage: (sessionId: string, message: string): Effect.Effect<void, TauriEventError, never> =>
+        sendMessage: (sessionId: string, message: string) =>
           Effect.gen(function* () {
             const eventService = yield* TauriEventService;
             yield* pipe(

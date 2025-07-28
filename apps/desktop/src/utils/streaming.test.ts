@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Effect, Stream, Queue, Duration, Fiber, TestClock, TestContext } from 'effect'
+import { Effect, Stream, Queue, Duration, Fiber, TestClock } from 'effect'
 import {
   createAutoRefreshStream,
   createDebouncedStream,
@@ -86,19 +86,15 @@ describe('Streaming Utilities', () => {
 
   describe('createDebouncedStream', () => {
     it('should debounce rapid events', async () => {
-      await runWithTestClock(
-        async () => {
-          const source = Stream.fromIterable([1, 2, 3, 4, 5])
-          const debounced = createDebouncedStream(source, Duration.millis(100))
-          
-          const result = await Effect.runPromise(
-            collectStream(debounced)
-          )
-          
-          // Only the last value should pass through after debouncing
-          expect(result).toEqual([5])
-        }
+      const source = Stream.fromIterable([1, 2, 3, 4, 5])
+      const debounced = createDebouncedStream(source, Duration.millis(100))
+      
+      const result = await Effect.runPromise(
+        collectStream(debounced)
       )
+      
+      // Only the last value should pass through after debouncing
+      expect(result).toEqual([5])
     })
 
     it('should emit values after debounce period', async () => {
@@ -136,7 +132,7 @@ describe('Streaming Utilities', () => {
           const source = Stream.fromIterable(Array.from({ length: 10 }, (_, i) => i))
           const throttled = createThrottledStream(source, 2) // 2 per second
           
-          const start = Date.now()
+          // const start = Date.now()
           const collectFiber = yield* Effect.fork(collectStream(throttled))
           
           const testClock = yield* TestClock.TestClock
@@ -645,7 +641,7 @@ describe('Streaming Utilities', () => {
       
       const source = Stream.concat(
         Stream.fromIterable([1, 2]),
-        Stream.fail(new Error('Stream error'))
+        Stream.fail(new Error('Stream error') as never)
       )
       
       const metricsStream = withStreamMetrics('error-stream')(source)

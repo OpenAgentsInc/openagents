@@ -48,9 +48,7 @@ describe('ClaudeStreamingService', () => {
   describe('startStreaming', () => {
     it('should create a streaming session with correct sessionId', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await expectEffect(
         Effect.gen(function* () {
@@ -80,9 +78,7 @@ describe('ClaudeStreamingService', () => {
         emit: vi.fn().mockReturnValue(Effect.void)
       })
       
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await expectEffect(
         Effect.gen(function* () {
@@ -102,9 +98,7 @@ describe('ClaudeStreamingService', () => {
         emit: vi.fn().mockReturnValue(Effect.void)
       })
       
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await expectEffectError(
         Effect.gen(function* () {
@@ -122,9 +116,7 @@ describe('ClaudeStreamingService', () => {
   describe('getMessageStream', () => {
     it('should stream and parse valid messages', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       const testMessages: Message[] = [
         {
@@ -171,9 +163,7 @@ describe('ClaudeStreamingService', () => {
 
     it('should parse JSON string payloads', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       const testMessage: Message = {
         id: 'msg-1',
@@ -206,9 +196,7 @@ describe('ClaudeStreamingService', () => {
 
     it('should filter out invalid messages', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       const validMessage: Message = {
         id: 'msg-1',
@@ -248,9 +236,7 @@ describe('ClaudeStreamingService', () => {
 
     it('should handle tool_use messages with tool_info', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       const toolMessage: Message = {
         id: 'msg-1',
@@ -302,9 +288,7 @@ describe('ClaudeStreamingService', () => {
         emit: emitMock
       })
       
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await expectEffect(
         Effect.gen(function* () {
@@ -341,9 +325,7 @@ describe('ClaudeStreamingService', () => {
         emit: emitMock
       })
       
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await runWithTestClock(
         Effect.gen(function* () {
@@ -353,10 +335,7 @@ describe('ClaudeStreamingService', () => {
           expect(attempts).toBe(3)
           expect(emitMock).toHaveBeenCalledTimes(3)
         }).pipe(Effect.provide(serviceLayer)),
-        async (testClock) => {
-          // Allow time for exponential backoff retries
-          await advanceTime(Duration.seconds(1))(testClock)
-        }
+        (testClock) => advanceTime(Duration.seconds(1))(testClock)
       )
     })
 
@@ -376,9 +355,7 @@ describe('ClaudeStreamingService', () => {
         emit: emitMock
       })
       
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await expectEffectError(
         Effect.gen(function* () {
@@ -399,9 +376,7 @@ describe('ClaudeStreamingService', () => {
   describe('stopStreaming', () => {
     it('should call cleanup and shutdown queue', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await expectEffect(
         Effect.gen(function* () {
@@ -434,9 +409,7 @@ describe('ClaudeStreamingService', () => {
 
     it('should be idempotent', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await expectEffect(
         Effect.gen(function* () {
@@ -459,9 +432,7 @@ describe('ClaudeStreamingService', () => {
   describe('integration scenarios', () => {
     it('should handle complete message flow', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       const conversation: Message[] = [
         {
@@ -521,14 +492,12 @@ describe('ClaudeStreamingService', () => {
 
     it('should handle high-throughput message streaming', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       const messageCount = 1000
       const testMessages = generateTestData.messages(messageCount)
       
-      const result = await measurePerformance(
+      const result = await measurePerformance<number>(
         Effect.gen(function* () {
           const service = yield* ClaudeStreamingService
           const session = yield* service.startStreaming('perf-test')
@@ -548,7 +517,7 @@ describe('ClaudeStreamingService', () => {
           
           const collected = yield* Fiber.join(collectFiber)
           return collected.length
-        }).pipe(Effect.provide(serviceLayer)),
+        }).pipe(Effect.provide(serviceLayer as any)),
         { iterations: 10, warmup: 2 }
       )
       
@@ -561,9 +530,7 @@ describe('ClaudeStreamingService', () => {
 
     it('should handle concurrent sessions', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       await expectEffect(
         Effect.gen(function* () {
@@ -597,9 +564,7 @@ describe('ClaudeStreamingService', () => {
   describe('error recovery', () => {
     it('should continue streaming after parse errors', async () => {
       const mockTauriService = createMockTauriEventService()
-      const serviceLayer = ClaudeStreamingServiceLive.pipe(
-        Layer.provide(mockTauriService)
-      )
+      const serviceLayer = Layer.merge(mockTauriService, ClaudeStreamingServiceLive)
       
       const validMessage: Message = {
         id: 'valid',

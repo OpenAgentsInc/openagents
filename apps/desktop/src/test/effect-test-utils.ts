@@ -25,7 +25,7 @@ export const createTestRuntime = <R, E, A>(
 // Helper to run Effect with TestClock
 export const runWithTestClock = async <A, E>(
   effect: Effect.Effect<A, E, TestContext.TestContext>,
-  adjustTime?: (testClock: TestClock.TestClock) => Effect.Effect<void>
+  adjustTime?: (testClock: TestClock.TestClock) => Effect.Effect<void, never, never>
 ) => {
   const program = Effect.gen(function* () {
     const testClock = yield* TestClock.TestClock

@@ -23,7 +23,10 @@ interface UseClaudeStreamingResult {
 }
 
 // Create the service layer once
-const ServiceLayer = Layer.mergeAll(TauriEventServiceLive, ClaudeStreamingServiceLive);
+const ServiceLayer = Layer.mergeAll(
+  TauriEventServiceLive,
+  ClaudeStreamingServiceLive
+);
 
 export function useClaudeStreaming({
   sessionId,

@@ -132,10 +132,8 @@ describe('TauriEventService', () => {
   describe('createEventStream', () => {
     it('should create event stream with queue', async () => {
       const mockUnlisten = vi.fn()
-      let eventHandler: ((event: any) => void) | null = null
       
-      vi.mocked(listen).mockImplementation(async (_eventName, handler) => {
-        eventHandler = handler
+      vi.mocked(listen).mockImplementation(async (_eventName, _handler) => {
         return mockUnlisten
       })
       
