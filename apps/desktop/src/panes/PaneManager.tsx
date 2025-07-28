@@ -7,11 +7,30 @@ import { HistoryPane } from "./HistoryPane";
 import { SettingsPane } from "./SettingsPane";
 import { StatsPane } from "./StatsPane";
 
+// Global data interface for OpenAgents
+interface OpenAgentsGlobalData {
+  claudeStatus: any;
+  sessions: any[];
+  newProjectPath: string;
+  isDiscoveryLoading: boolean;
+  setNewProjectPath: (path: string) => void;
+  createSession: (...args: any[]) => any;
+  sendMessage: (...args: any[]) => any;
+  updateSessionInput: (...args: any[]) => any;
+  stopSession: (...args: any[]) => any;
+}
+
+declare global {
+  interface Window {
+    __openagents_data?: OpenAgentsGlobalData;
+  }
+}
+
 export const PaneManager: React.FC = () => {
   const { panes, activePaneId } = usePaneStore();
 
   // Get data from global object (temporary solution)
-  const data = (window as any).__openagents_data || {};
+  const data = window.__openagents_data || {};
 
   const renderPaneContent = (pane: PaneType) => {
     switch (pane.type) {

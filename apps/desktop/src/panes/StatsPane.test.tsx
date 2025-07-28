@@ -8,6 +8,9 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+// Get properly typed mock
+const mockInvoke = vi.mocked(invoke);
+
 // Mock lucide-react icons
 vi.mock("lucide-react", () => ({
   Monitor: () => <div data-testid="monitor-icon" />,
@@ -54,7 +57,7 @@ const mockUserAPMData = {
 describe("StatsPane", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (invoke as any).mockResolvedValue(mockAPMData);
+    mockInvoke.mockResolvedValue(mockAPMData);
   });
 
   describe("Rendering", () => {
@@ -94,7 +97,7 @@ describe("StatsPane", () => {
 
   describe("View Mode Switching", () => {
     it("should switch to All Devices view when clicked", async () => {
-      (invoke as any)
+      mockInvoke
         .mockResolvedValueOnce(mockAPMData) // Initial load
         .mockResolvedValueOnce(mockUserAPMData); // After switch
       
@@ -114,7 +117,7 @@ describe("StatsPane", () => {
     });
 
     it("should show device breakdown in All Devices view", async () => {
-      (invoke as any).mockResolvedValue(mockUserAPMData);
+      mockInvoke.mockResolvedValue(mockUserAPMData);
       
       render(<StatsPane />);
       
@@ -197,7 +200,7 @@ describe("StatsPane", () => {
 
   describe("Error Handling", () => {
     it("should handle API errors gracefully", async () => {
-      (invoke as any).mockRejectedValue(new Error("API Error"));
+      mockInvoke.mockRejectedValue(new Error("API Error"));
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       
       render(<StatsPane />);
@@ -220,7 +223,7 @@ describe("StatsPane", () => {
         ...mockUserAPMData,
         deviceBreakdown: undefined,
       };
-      (invoke as any).mockResolvedValue(incompleteData);
+      mockInvoke.mockResolvedValue(incompleteData);
       
       render(<StatsPane />);
       
@@ -255,7 +258,7 @@ describe("StatsPane", () => {
           apm: 751.2,
         },
       };
-      (invoke as any).mockResolvedValue(largeNumberData);
+      mockInvoke.mockResolvedValue(largeNumberData);
       
       render(<StatsPane />);
       
@@ -268,7 +271,7 @@ describe("StatsPane", () => {
 
   describe("Device Icons", () => {
     it("should show appropriate icons for each device type", async () => {
-      (invoke as any).mockResolvedValue(mockUserAPMData);
+      mockInvoke.mockResolvedValue(mockUserAPMData);
       
       render(<StatsPane />);
       
@@ -284,7 +287,7 @@ describe("StatsPane", () => {
 
   describe("Metadata Display", () => {
     it("should show overlap information in All Devices view", async () => {
-      (invoke as any).mockResolvedValue(mockUserAPMData);
+      mockInvoke.mockResolvedValue(mockUserAPMData);
       
       render(<StatsPane />);
       

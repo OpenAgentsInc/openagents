@@ -122,7 +122,7 @@ describe('Authentication Integration - Logic Tests', () => {
   describe('State Synchronization', () => {
     it('should maintain consistent authentication state', () => {
       const stateManager = {
-        state: { isAuthenticated: false, user: null as any, token: null as string | null },
+        state: { isAuthenticated: false, user: null, token: null as string | null },
         
         updateAuth(token: string, user: any) {
           this.state = { 

@@ -36,7 +36,7 @@ export const addDocumentEventListener = <K extends keyof DocumentEventMap>(
   handler: (event: DocumentEventMap[K]) => void,
   options?: AddEventListenerOptions
 ) =>
-  addEventListener(document as any, event as any, handler as any, options)
+  document.addEventListener(event, handler, options)
 
 // Window event listener helper
 export const addWindowEventListener = <K extends keyof WindowEventMap>(
@@ -179,6 +179,29 @@ interface FilePickerOptions {
   multiple?: boolean
 }
 
+// File System Access API type definitions
+interface FileSystemFileHandle {
+  readonly kind: 'file'
+  readonly name: string
+  getFile(): Promise<File>
+  createWritable(): Promise<FileSystemWritableFileStream>
+}
+
+interface FileSystemWritableFileStream extends WritableStream {
+  write(data: FileSystemWriteChunkType): Promise<void>
+  seek(position: number): Promise<void>
+  truncate(size: number): Promise<void>
+}
+
+type FileSystemWriteChunkType = BufferSource | Blob | string
+
+// Extend window interface for File System Access API
+declare global {
+  interface Window {
+    showOpenFilePicker?(options?: FilePickerOptions): Promise<FileSystemFileHandle[]>
+  }
+}
+
 // File handle management
 export const openFileHandle = (
   options?: FilePickerOptions
@@ -186,7 +209,7 @@ export const openFileHandle = (
   Effect.acquireRelease(
     Effect.tryPromise({
       try: async () => {
-        const [handle] = await (window as any).showOpenFilePicker(options)
+        const [handle] = await window.showOpenFilePicker!(options)
         return handle
       },
       catch: (error) => new Error(`Failed to open file: ${error}`)

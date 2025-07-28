@@ -1,13 +1,22 @@
 import "@testing-library/jest-dom";
 import { vi } from "vitest";
 
+// Extend window interface for Tauri runtime
+declare global {
+  interface Window {
+    __TAURI__: {
+      invoke: typeof vi.fn
+    }
+  }
+}
+
 // Mock Tauri API
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
 // Mock window.__TAURI__
-(window as any).__TAURI__ = {
+window.__TAURI__ = {
   invoke: vi.fn(),
 };
 

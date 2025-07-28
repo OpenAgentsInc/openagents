@@ -30,6 +30,25 @@ interface Message {
   };
 }
 
+// Global data interface for OpenAgents
+interface OpenAgentsGlobalData {
+  claudeStatus: any;
+  sessions: any[];
+  newProjectPath: string;
+  isDiscoveryLoading: boolean;
+  setNewProjectPath: (path: string) => void;
+  createSession: (...args: any[]) => any;
+  sendMessage: (...args: any[]) => any;
+  updateSessionInput: (...args: any[]) => any;
+  stopSession: (...args: any[]) => any;
+}
+
+declare global {
+  interface Window {
+    __openagents_data: OpenAgentsGlobalData;
+  }
+}
+
 function App() {
   const { isAppInitialized } = useAppStore();
   const { initializeApp } = useAppInitialization();
@@ -134,7 +153,7 @@ function App() {
   }, []);
 
   // Provide session data globally (should be replaced with context)
-  (window as any).__openagents_data = {
+  window.__openagents_data = {
     claudeStatus,
     sessions,
     newProjectPath,

@@ -328,10 +328,10 @@ export const createErrorHandler = <E extends { _tag: string }>() => ({
   ) =>
     effect.pipe(
       Effect.catchTags(
-        handlers.reduce((acc, { tag, handler }) => ({
+        handlers.reduce<Record<string, (error: any) => Effect.Effect<any>>>((acc, { tag, handler }) => ({
           ...acc,
           [tag]: handler
-        }), {} as any)
+        }), {})
       )
     )
 })
