@@ -1,22 +1,43 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Text } from '../index';
-import { useAuth } from '../../contexts/AuthContext';
+import { useConfectAuth } from '../../contexts/SimpleConfectAuthContext';
 
 export const AuthButton: React.FC = () => {
-  const { user, isAuthenticated, isLoading, login, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, login, logout } = useConfectAuth();
+  const [localLoading, setLocalLoading] = useState(false);
 
-  if (isLoading) {
+  const handleLogin = async () => {
+    setLocalLoading(true);
+    try {
+      await login();
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setLocalLoading(true);
+    try {
+      await logout();
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const showLoading = isLoading || localLoading;
+
+  if (showLoading) {
     return (
       <TouchableOpacity style={[styles.button, styles.buttonLoading]} disabled>
-        <Text style={styles.buttonText}>Loading...</Text>
+        <Text style={styles.buttonText}>Log in with GitHub</Text>
       </TouchableOpacity>
     );
   }
 
   if (isAuthenticated && user) {
     return (
-      <TouchableOpacity style={[styles.button, styles.buttonLogout]} onPress={logout}>
+      <TouchableOpacity style={[styles.button, styles.buttonLogin]} onPress={handleLogout}>
         <Text style={styles.buttonText}>
           Logout ({user.githubUsername})
         </Text>
@@ -25,8 +46,8 @@ export const AuthButton: React.FC = () => {
   }
 
   return (
-    <TouchableOpacity style={[styles.button, styles.buttonLogin]} onPress={login}>
-      <Text style={styles.buttonText}>Login with GitHub</Text>
+    <TouchableOpacity style={[styles.button, styles.buttonLogin]} onPress={handleLogin}>
+      <Text style={styles.buttonText}>Log in with GitHub</Text>
     </TouchableOpacity>
   );
 };
@@ -40,13 +61,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonLogin: {
-    backgroundColor: '#22c55e',
-  },
-  buttonLogout: {
-    backgroundColor: '#ef4444',
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#ffffff',
   },
   buttonLoading: {
-    backgroundColor: '#6b7280',
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    opacity: 0.6,
   },
   buttonText: {
     color: '#ffffff',
@@ -56,6 +79,6 @@ const styles = StyleSheet.create({
       ios: 'Berkeley Mono',
       android: 'Berkeley Mono',
       default: 'monospace'
-    }),
+    } as const),
   },
 });

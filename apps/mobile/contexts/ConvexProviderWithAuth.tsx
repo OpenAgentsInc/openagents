@@ -1,13 +1,13 @@
 import React, { useEffect, useState, ReactNode, useMemo } from 'react';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
-import { useAuth } from './AuthContext';
+import { useConfectAuth } from './SimpleConfectAuthContext';
 
 interface ConvexProviderWithAuthProps {
   children: ReactNode;
 }
 
 export const ConvexProviderWithAuth: React.FC<ConvexProviderWithAuthProps> = ({ children }) => {
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated } = useConfectAuth();
 
   // Create Convex client once and reuse it
   const convex = useMemo(() => {

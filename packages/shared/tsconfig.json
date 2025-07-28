@@ -25,6 +25,9 @@
     "node_modules",
     "dist",
     "src/services/MobileSyncService.ts",
-    "src/hooks/useConfectMobileSync.ts"
+    "src/hooks/useConfectMobileSync.ts",
+    "src/hooks/useConfectAuth.ts",
+    "src/hooks/useConfectOnboarding.ts",
+    "src/services/PermissionService.ts"
   ]
 }
