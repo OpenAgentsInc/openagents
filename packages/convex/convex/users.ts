@@ -13,7 +13,7 @@ export async function getAuthenticatedUser(ctx: any) {
   // Look up user by OpenAuth subject first, fallback to GitHub ID for backwards compatibility
   let user = await ctx.db
     .query("users")
-    .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", identity.subject))
+    .withIndex("by_openauth_subject", (q: any) => q.eq("openAuthSubject", identity.subject))
     .first();
 
   console.log("[DEBUG] getAuthenticatedUser - user found by openAuthSubject:", !!user);
@@ -22,7 +22,7 @@ export async function getAuthenticatedUser(ctx: any) {
   if (!user) {
     user = await ctx.db
       .query("users")
-      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .withIndex("by_github_id", (q: any) => q.eq("githubId", identity.subject))
       .first();
     console.log("[DEBUG] getAuthenticatedUser - user found by githubId:", !!user);
   }
