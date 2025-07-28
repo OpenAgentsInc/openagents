@@ -335,7 +335,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
                 className="text-muted-foreground"
                 label={{ value: 'APM', angle: -90, position: 'insideLeft' }}
               />
-              <RechartsTooltip content={CustomTooltip as any} />
+              <RechartsTooltip content={CustomTooltip} />
               <RechartsLegend
                 wrapperStyle={{ fontSize: '12px' }}
                 iconType="line"
