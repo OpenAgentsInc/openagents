@@ -282,7 +282,7 @@ export const requestPermission = mutation({
 
       return yield* Option.match(existingPermission, {
         onSome: (permission) =>
-          // Update existing permission request
+          // Update existing permission request and return its ID
           db.patch(permission._id, {
             status: "not_requested",
             requestedAt: Date.now(),
@@ -291,7 +291,7 @@ export const requestPermission = mutation({
               retryCount: (permission.metadata?.retryCount ?? 0) + 1,
               lastRetryAt: Date.now(),
             },
-          }),
+          }).pipe(Effect.as(permission._id)),
         onNone: () =>
           // Create new permission record
           db.insert("userPermissions", {

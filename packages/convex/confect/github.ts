@@ -23,87 +23,6 @@ const GITHUB_API_BASE = "https://api.github.com";
 const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour
 const MAX_REPOSITORIES = 5;
 
-// Helper function to fetch from GitHub API with error handling
-const fetchFromGitHubAPI = (url: string, token: string) =>
-  Effect.gen(function* () {
-    const timestamp = new Date().toISOString();
-    console.log(`🔍 [GITHUB_API] ${timestamp} Fetching: ${url}`);
-
-    const response = yield* Effect.promise(() =>
-      fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3+json",
-          "User-Agent": "OpenAgents-Mobile/1.0",
-        },
-      })
-    );
-
-    if (!response.ok) {
-      const errorBody = yield* Effect.promise(() => response.text());
-      const timestamp = new Date().toISOString();
-      
-      console.error(`❌ [GITHUB_API] ${timestamp} API Error:`, {
-        status: response.status,
-        statusText: response.statusText,
-        body: errorBody,
-        url,
-      });
-
-      if (response.status === 401 || response.status === 403) {
-        if (response.headers.get("X-RateLimit-Remaining") === "0") {
-          const resetTime = parseInt(response.headers.get("X-RateLimit-Reset") || "0");
-          return yield* Effect.fail(
-            new GitHubRateLimitError(
-              "GitHub API rate limit exceeded",
-              resetTime,
-              0
-            )
-          );
-        }
-        return yield* Effect.fail(
-          new GitHubAuthError(`GitHub authentication failed: ${response.statusText}`)
-        );
-      }
-
-      return yield* Effect.fail(
-        new GitHubAPIError(
-          `GitHub API request failed: ${response.statusText}`,
-          response.status,
-          errorBody
-        )
-      );
-    }
-
-    const data = yield* Effect.promise(() => response.json());
-    console.log(`✅ [GITHUB_API] ${timestamp} API request successful`);
-    return data;
-  });
-
-// Transform GitHub API response to our schema
-const transformGitHubRepo = (repo: any) =>
-  Effect.gen(function* () {
-    try {
-      return {
-        id: repo.id,
-        name: repo.name,
-        fullName: repo.full_name,
-        owner: repo.owner.login,
-        isPrivate: repo.private,
-        defaultBranch: repo.default_branch || "main",
-        updatedAt: repo.updated_at,
-        description: repo.description || undefined,
-        language: repo.language || undefined,
-        htmlUrl: repo.html_url,
-        cloneUrl: repo.clone_url,
-        sshUrl: repo.ssh_url,
-      };
-    } catch (error) {
-      return yield* Effect.fail(
-        new GitHubAPIError(`Failed to transform repository data: ${error}`)
-      );
-    }
-  });
 
 // Fetch user repositories from GitHub API
 export const fetchUserRepositories = mutation({
@@ -152,14 +71,81 @@ export const fetchUserRepositories = mutation({
       // For now, we'll need to get this from the authentication system
       const oauthToken = "placeholder_token"; // This needs to be implemented
 
-      // Fetch repositories from GitHub API
+      // Fetch repositories from GitHub API inline to avoid context pollution
       const reposUrl = `${GITHUB_API_BASE}/user/repos?sort=updated&per_page=${MAX_REPOSITORIES}&type=all`;
-      const apiResponse = yield* fetchFromGitHubAPI(reposUrl, oauthToken);
-
-      // Transform API response to our schema
-      const repositories = yield* Effect.all(
-        apiResponse.map((repo: any) => transformGitHubRepo(repo))
+      
+      console.log(`🔍 [GITHUB_API] ${timestamp} Fetching: ${reposUrl}`);
+      const response = yield* Effect.promise(() =>
+        fetch(reposUrl, {
+          headers: {
+            Authorization: `Bearer ${oauthToken}`,
+            Accept: "application/vnd.github.v3+json",
+            "User-Agent": "OpenAgents-Mobile/1.0",
+          },
+        })
       );
+
+      if (!response.ok) {
+        const errorBody = yield* Effect.promise(() => response.text());
+        console.error(`❌ [GITHUB_API] ${timestamp} API Error:`, {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorBody,
+          url: reposUrl,
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          if (response.headers.get("X-RateLimit-Remaining") === "0") {
+            const resetTime = parseInt(response.headers.get("X-RateLimit-Reset") || "0");
+            return yield* Effect.fail(
+              new GitHubRateLimitError(
+                "GitHub API rate limit exceeded",
+                resetTime,
+                0
+              )
+            );
+          }
+          return yield* Effect.fail(
+            new GitHubAuthError(`GitHub authentication failed: ${response.statusText}`)
+          );
+        }
+
+        return yield* Effect.fail(
+          new GitHubAPIError(
+            `GitHub API request failed: ${response.statusText}`,
+            response.status,
+            errorBody
+          )
+        );
+      }
+
+      const apiResponse = yield* Effect.promise(() => response.json());
+      console.log(`✅ [GITHUB_API] ${timestamp} API request successful`);
+
+      // Transform repositories inline to avoid context pollution
+      const repositories = [];
+      for (const repo of apiResponse) {
+        try {
+          repositories.push({
+            id: repo.id,
+            name: repo.name,
+            fullName: repo.full_name,
+            owner: repo.owner.login,
+            isPrivate: repo.private,
+            defaultBranch: repo.default_branch || "main",
+            updatedAt: repo.updated_at,
+            description: repo.description || undefined,
+            language: repo.language || undefined,
+            htmlUrl: repo.html_url,
+            cloneUrl: repo.clone_url,
+            sshUrl: repo.ssh_url,
+          });
+        } catch (error) {
+          return yield* Effect.fail(
+            new GitHubAPIError(`Failed to transform repository data: ${error}`)
+          );
+        }
+      }
 
       // Update user's GitHub metadata
       const githubMetadata = {
