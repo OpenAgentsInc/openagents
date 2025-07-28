@@ -2,13 +2,21 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { HotbarItem } from "./HotbarItem";
 import {
-  Plus as PlusIcon,
-  History as HistoryIcon,
-  Hand as HandIcon,
-  Settings as SettingsIcon,
-  LayoutGrid as LayoutGridIcon,
-  BarChart as BarChartIcon,
+  Plus,
+  History,
+  Hand,
+  Settings,
+  LayoutGrid,
+  BarChart,
 } from "lucide-react";
+
+// Type assertions for lucide-react icons to resolve React 19 compatibility issues
+const PlusIcon = Plus as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const HistoryIcon = History as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const HandIcon = Hand as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const SettingsIcon = Settings as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const LayoutGridIcon = LayoutGrid as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const BarChartIcon = BarChart as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
 
 import { usePaneStore } from "@/stores/pane";
 import { useHotbarStore } from "@/stores/hotbar";

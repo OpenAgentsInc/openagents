@@ -76,7 +76,8 @@ export const createSTMPaneStore = () =>
     
     const bringPaneToFront = (id: string) =>
       STM.gen(function* () {
-        const pane = yield* TMap.get(panes, id)
+        const paneOption = yield* TMap.get(panes, id)
+        const pane = Option.getOrNull(paneOption)
         if (pane) {
           const newZIndex = yield* getNextZIndex
           yield* TMap.set(panes, id, { ...pane, zIndex: newZIndex })
@@ -86,7 +87,8 @@ export const createSTMPaneStore = () =>
     
     const updatePanePosition = (id: string, x: number, y: number) =>
       STM.gen(function* () {
-        const pane = yield* TMap.get(panes, id)
+        const paneOption = yield* TMap.get(panes, id)
+        const pane = Option.getOrNull(paneOption)
         if (pane) {
           yield* TMap.set(panes, id, { ...pane, x, y })
         }
@@ -94,7 +96,8 @@ export const createSTMPaneStore = () =>
     
     const updatePaneSize = (id: string, width: number, height: number) =>
       STM.gen(function* () {
-        const pane = yield* TMap.get(panes, id)
+        const paneOption = yield* TMap.get(panes, id)
+        const pane = Option.getOrNull(paneOption)
         if (pane) {
           yield* TMap.set(panes, id, { ...pane, width, height })
         }
@@ -137,8 +140,11 @@ export const createSTMPaneStore = () =>
     
     const getSessionMessages = (sessionId: string) =>
       STM.gen(function* () {
-        const session = yield* TMap.get(sessionMessages, sessionId)
-        return session?.messages || []
+        const sessionOption = yield* TMap.get(sessionMessages, sessionId)
+        return Option.match(sessionOption, {
+          onNone: () => [] as SessionMessages["messages"],
+          onSome: (session) => session.messages
+        })
       })
     
     // Expose operations
@@ -201,7 +207,7 @@ export const createSTMSessionStore = () =>
         STM.gen(function* () {
           const sessionOption = yield* TMap.get(sessions, sessionId)
           yield* Option.match(sessionOption, {
-            onNone: () => STM.unit,
+            onNone: () => STM.void,
             onSome: (session) => 
               TMap.set(sessions, sessionId, {
                 ...session,
@@ -217,7 +223,7 @@ export const createSTMSessionStore = () =>
         STM.gen(function* () {
           const sessionOption = yield* TMap.get(sessions, sessionId)
           yield* Option.match(sessionOption, {
-            onNone: () => STM.unit,
+            onNone: () => STM.void,
             onSome: (session) =>
               TMap.set(sessions, sessionId, {
                 ...session,

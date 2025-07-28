@@ -58,7 +58,7 @@ export const createBackpressureStream = <T>(
     
     const offer = (item: T) =>
       Queue.offer(queue, item).pipe(
-        Effect.catchTag("QueueFullError", () => {
+        Effect.catchAll(() => {
           // Handle backpressure - drop oldest
           return Effect.gen(function* () {
             yield* Queue.take(queue)
@@ -115,7 +115,7 @@ export const createMergedStream = <T>(
 ) =>
   strategy === "concurrent"
     ? Stream.mergeAll(streams, { concurrency: streams.length })
-    : Stream.concat(...streams)
+    : streams.reduce((acc, stream) => Stream.concat(acc, stream), Stream.empty as Stream.Stream<T>)
 
 // Create a stream with state accumulation
 export const createStatefulStream = <T, S>(
@@ -152,10 +152,7 @@ export const createTimeoutStream = <T>(
   onTimeout: () => T
 ) =>
   source.pipe(
-    Stream.timeoutTo({
-      duration: timeout,
-      onTimeout: () => Stream.make(onTimeout())
-    })
+    Stream.timeoutTo(timeout, Stream.make(onTimeout()))
   )
 
 // Stats streaming specific helper
@@ -241,9 +238,9 @@ export const withStreamMetrics = <T>(name: string) =>
     const startTime = Date.now()
     
     return stream.pipe(
-      Stream.tap(() => {
+      Stream.tap(() => Effect.sync(() => {
         itemCount++
-      }),
+      })),
       Stream.catchAll((error) => {
         errorCount++
         Effect.logError(`Stream ${name} error:`, error)

@@ -1,4 +1,4 @@
-import { Effect, Data, Schedule, Duration, Either, pipe } from "effect"
+import { Effect, Data, Schedule, Duration, Either, pipe, Ref } from "effect"
 
 /**
  * Comprehensive error handling patterns based on Land architecture
@@ -11,9 +11,10 @@ export class OpenAgentsError extends Data.TaggedError("OpenAgentsError")<{
   context?: Record<string, unknown>
   timestamp: Date
 }> {
-  constructor(params: Omit<OpenAgentsError["_tag"], "_tag" | "timestamp">) {
+  constructor(params: { message: string; context?: Record<string, unknown> }) {
     super({
-      ...params,
+      message: params.message,
+      context: params.context,
       timestamp: new Date()
     })
   }
@@ -25,13 +26,14 @@ export const RetryPolicies = {
   exponentialBackoff: Schedule.exponential(Duration.millis(100)).pipe(
     Schedule.jittered,
     Schedule.either(Schedule.spaced(Duration.seconds(1))),
-    Schedule.whileOutput((duration) => duration < Duration.minutes(5))
+    Schedule.whileOutput(Duration.lessThan(Duration.minutes(5)))
   ),
   
   // Fixed delay with max attempts
   fixedDelay: (delay: Duration.DurationInput, maxAttempts: number) =>
     Schedule.fixed(delay).pipe(
-      Schedule.whileInput((_: unknown, attempt: number) => attempt < maxAttempts)
+      Schedule.recurWhile(() => true),
+      Schedule.whileOutput((_, i) => i < maxAttempts)
     ),
   
   // Network-specific retry
@@ -61,69 +63,70 @@ interface CircuitState {
 }
 
 // Circuit breaker implementation
-export class CircuitBreaker<E> {
-  private state = Effect.unsafeMake<CircuitState>({ _tag: "Closed", failures: 0 })
-  
-  constructor(
-    private readonly config: {
-      maxFailures: number
-      resetTimeout: Duration.DurationInput
-      shouldTrip: (error: E) => boolean
-    }
-  ) {}
-  
-  execute = <A>(effect: Effect.Effect<A, E>) =>
-    Effect.gen(function* () {
-      const currentState = yield* Effect.sync(() => Effect.runSync(this.state))
-      
-      switch (currentState._tag) {
-        case "Open": {
-          const now = Date.now()
-          const resetTime = (currentState.lastFailure || 0) + Duration.toMillis(this.config.resetTimeout)
+export const createCircuitBreaker = <E>(config: {
+  maxFailures: number
+  resetTimeout: Duration.DurationInput
+  shouldTrip: (error: E) => boolean
+}) =>
+  Effect.gen(function* () {
+    const stateRef = yield* Ref.make<CircuitState>({ _tag: "Closed", failures: 0 })
+    
+    const execute = <A>(effect: Effect.Effect<A, E>): Effect.Effect<A, E | { _tag: "OpenAgentsError"; message: string; context?: any; timestamp: Date }> =>
+      Effect.gen(function* () {
+        const currentState = yield* Ref.get(stateRef)
+        
+        switch (currentState._tag) {
+          case "Open": {
+            const now = Date.now()
+            const resetTime = (currentState.lastFailure || 0) + Duration.toMillis(config.resetTimeout)
+            
+            if (now > resetTime) {
+              yield* Ref.set(stateRef, { _tag: "HalfOpen" })
+            } else {
+              return yield* Effect.fail({
+                _tag: "OpenAgentsError" as const,
+                message: "Circuit breaker is open",
+                context: { state: currentState },
+                timestamp: new Date()
+              })
+            }
+          }
           
-          if (now > resetTime) {
-            yield* Effect.sync(() => 
-              Effect.runSync(Effect.update(this.state, () => ({ _tag: "HalfOpen" })))
+          case "HalfOpen":
+          case "Closed": {
+            return yield* effect.pipe(
+              Effect.tapError((error) =>
+                Effect.gen(function* () {
+                  if (config.shouldTrip(error)) {
+                    const currentState = yield* Ref.get(stateRef)
+                    const failures = (currentState.failures || 0) + 1
+                    
+                    if (failures >= config.maxFailures) {
+                      yield* Ref.set(stateRef, {
+                        _tag: "Open",
+                        failures,
+                        lastFailure: Date.now()
+                      })
+                      yield* Effect.logWarning("Circuit breaker opened")
+                    } else {
+                      yield* Ref.update(stateRef, (s) => ({
+                        ...s,
+                        failures
+                      }))
+                    }
+                  }
+                })
+              ),
+              Effect.tap(() =>
+                Ref.set(stateRef, { _tag: "Closed", failures: 0 })
+              )
             )
-          } else {
-            return yield* Effect.fail(new OpenAgentsError({
-              message: "Circuit breaker is open",
-              context: { state: currentState }
-            }))
           }
         }
-      }
-      
-      return yield* effect.pipe(
-        Effect.tapError((error) =>
-          Effect.gen(function* () {
-            if (this.config.shouldTrip(error)) {
-              const newState = yield* Effect.sync(() =>
-                Effect.runSync(Effect.modify(this.state, (s) => {
-                  const failures = (s.failures || 0) + 1
-                  const shouldOpen = failures >= this.config.maxFailures
-                  return [failures, {
-                    _tag: shouldOpen ? "Open" : "Closed",
-                    failures,
-                    lastFailure: Date.now()
-                  } as CircuitState]
-                }))
-              )
-              
-              if (newState >= this.config.maxFailures) {
-                yield* Effect.logWarning("Circuit breaker opened")
-              }
-            }
-          })
-        ),
-        Effect.tap(() =>
-          Effect.sync(() =>
-            Effect.runSync(Effect.update(this.state, () => ({ _tag: "Closed", failures: 0 })))
-          )
-        )
-      )
-    })
-}
+      })
+    
+    return { execute }
+  })
 
 // Error recovery strategies
 export const ErrorRecovery = {
@@ -164,9 +167,11 @@ export const ErrorRecovery = {
               yield* Effect.logInfo("Using cached value")
               return cached
             }
-            return yield* Effect.fail(new OpenAgentsError({
-              message: "No cached value available"
-            }))
+            return yield* Effect.fail({
+              _tag: "OpenAgentsError" as const,
+              message: "No cached value available",
+              timestamp: new Date()
+            })
           })
         )
       ),
@@ -243,10 +248,12 @@ export const aggregateErrors = <A, E>(
     const successes = results.filter(Either.isRight).map((e) => e.right)
     
     if (errors.length > 0) {
-      return yield* Effect.fail(new OpenAgentsError({
+      return yield* Effect.fail({
+        _tag: "OpenAgentsError" as const,
         message: `${errors.length} operations failed`,
+        timestamp: new Date(),
         context: { errors, successCount: successes.length }
-      }))
+      })
     }
     
     return successes
@@ -287,7 +294,7 @@ export const createErrorBoundary = <A, E>(
   operation.pipe(
     Effect.catchAll((error) => {
       onError(error)
-      return Effect.unit
+      return Effect.void
     })
   )
 

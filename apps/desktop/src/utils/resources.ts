@@ -70,11 +70,11 @@ export const setTimer = (
   )
 
 // Timeout helper
-export const setTimeout = (callback: () => void, delay: number) =>
+export const setTimeoutEffect = (callback: () => void, delay: number) =>
   setTimer(callback, delay, "timeout")
 
 // Interval helper
-export const setInterval = (callback: () => void, delay: number) =>
+export const setIntervalEffect = (callback: () => void, delay: number) =>
   setTimer(callback, delay, "interval")
 
 // ResizeObserver management
@@ -169,20 +169,30 @@ export const getMediaStream = (constraints: MediaStreamConstraints) =>
       })
   )
 
+// File picker options interface
+interface FilePickerOptions {
+  types?: Array<{
+    description?: string
+    accept: Record<string, string[]>
+  }>
+  excludeAcceptAllOption?: boolean
+  multiple?: boolean
+}
+
 // File handle management
 export const openFileHandle = (
-  options?: OpenFilePickerOptions
+  options?: FilePickerOptions
 ) =>
   Effect.acquireRelease(
     Effect.tryPromise({
       try: async () => {
-        const [handle] = await window.showOpenFilePicker(options)
+        const [handle] = await (window as any).showOpenFilePicker(options)
         return handle
       },
       catch: (error) => new Error(`Failed to open file: ${error}`)
     }),
     // File handles don't need explicit cleanup
-    () => Effect.unit
+    () => Effect.void
   )
 
 // IndexedDB connection management
@@ -192,7 +202,7 @@ export const openIndexedDB = (
   onupgradeneeded?: (event: IDBVersionChangeEvent) => void
 ) =>
   Effect.acquireRelease(
-    Effect.async<IDBDatabase>((resume) => {
+    Effect.async<IDBDatabase, Error>((resume) => {
       const request = indexedDB.open(name, version)
       
       request.onsuccess = () => resume(Effect.succeed(request.result))
