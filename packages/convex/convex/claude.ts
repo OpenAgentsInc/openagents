@@ -333,6 +333,32 @@ export const batchAddMessages = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    // Get authenticated user - authentication is required
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required to add messages");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    // Verify session ownership
+    const session = await ctx.db
+      .query("claudeSessions")
+      .withIndex("by_session_id")
+      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
+      .first();
+    
+    if (!session || session.userId !== user._id) {
+      throw new Error("Session not found or access denied");
+    }
+    
     const insertedIds = [];
     
     for (const message of args.messages) {
@@ -350,23 +376,16 @@ export const batchAddMessages = mutation({
         const messageDoc = await ctx.db.insert("claudeMessages", {
           sessionId: args.sessionId,
           ...message,
+          userId: user._id, // Link to authenticated user
         });
         insertedIds.push(messageDoc);
       }
     }
     
-    // Update session last activity
-    const session = await ctx.db
-      .query("claudeSessions")
-      .withIndex("by_session_id")
-      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
-      .first();
-      
-    if (session) {
-      await ctx.db.patch(session._id, {
-        lastActivity: Date.now(),
-      });
-    }
+    // Update session last activity (reuse session from earlier validation)
+    await ctx.db.patch(session._id, {
+      lastActivity: Date.now(),
+    });
     
     return insertedIds;
   },
@@ -381,16 +400,19 @@ export const requestDesktopSession = mutation({
     title: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Get authenticated user (optional for backwards compatibility)
+    // Get authenticated user - authentication is required
     const identity = await ctx.auth.getUserIdentity();
-    let userId: Id<"users"> | undefined;
+    if (!identity) {
+      throw new Error("Authentication required to create mobile session");
+    }
     
-    if (identity) {
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
-        .first();
-      userId = user?._id;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
     }
 
     const sessionId = `mobile-${Date.now()}-${Math.random().toString(36).substring(2)}`;
@@ -403,7 +425,7 @@ export const requestDesktopSession = mutation({
       status: "active",
       createdBy: "mobile",
       lastActivity: Date.now(),
-      userId: userId, // Link to user if authenticated
+      userId: user._id, // Link to authenticated user
     });
     
     // Initialize sync status
@@ -421,7 +443,7 @@ export const requestDesktopSession = mutation({
         messageType: "user",
         content: args.initialMessage,
         timestamp: new Date().toISOString(),
-        userId: userId, // Link to user if authenticated
+        userId: user._id, // Link to authenticated user
       });
       console.log('✅ [CONVEX] Mobile initial message created with ID:', messageId);
     }
@@ -460,6 +482,32 @@ export const updateSyncStatus = mutation({
 export const getSyncStatus = query({
   args: { sessionId: v.string() },
   handler: async (ctx, args) => {
+    // Get authenticated user - authentication is required
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required to view sync status");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Verify session belongs to user before showing sync status
+    const session = await ctx.db
+      .query("claudeSessions")
+      .withIndex("by_session_id")
+      .filter(q => q.eq(q.field("sessionId"), args.sessionId))
+      .first();
+    
+    if (!session || session.userId !== user._id) {
+      throw new Error("Session not found or access denied");
+    }
+
     return await ctx.db
       .query("syncStatus")
       .withIndex("by_session_id")
@@ -481,6 +529,21 @@ export const syncSessionFromHook = mutation({
     }),
   },
   handler: async (ctx, args) => {
+    // Get authenticated user - authentication is required for hook sync
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required for session sync");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
     const { hookData } = args;
     
     // Ensure session exists
@@ -498,11 +561,17 @@ export const syncSessionFromHook = mutation({
         status: "active",
         createdBy: "desktop",
         lastActivity: Date.now(),
+        userId: user._id, // Link to authenticated user
       });
       
       await ctx.db.insert("syncStatus", {
         sessionId: hookData.sessionId,
       });
+    } else {
+      // Verify session belongs to the authenticated user
+      if (session.userId !== user._id) {
+        throw new Error("Access denied to sync session");
+      }
     }
     
     // Sync messages if provided
@@ -514,6 +583,7 @@ export const syncSessionFromHook = mutation({
           messageType: message.message_type,
           content: message.content,
           timestamp: message.timestamp,
+          userId: user._id, // Link to authenticated user
           toolInfo: message.tool_info ? {
             toolName: message.tool_info.tool_name,
             toolUseId: message.tool_info.tool_use_id,

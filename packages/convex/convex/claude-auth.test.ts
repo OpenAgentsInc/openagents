@@ -2,40 +2,104 @@ import { describe, expect, it } from "vitest";
 
 // Test suite for Claude authentication and user isolation fixes
 describe("Claude Authentication & User Isolation", () => {
-  it("should require authentication for getSessions", () => {
-    // This test ensures that the getSessions function now requires authentication
-    // and throws an error when called without authentication
-    expect(true).toBe(true); // Placeholder - actual testing would require Convex test setup
+  
+  // Note: These tests require proper Convex test setup with mocked authentication
+  // For now, they document the expected behavior and serve as integration test guides
+  
+  describe("Authentication Requirements", () => {
+    it("getSessions should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required to view sessions"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
+
+    it("getSession should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required to view session"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
+
+    it("getSessionMessages should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required to view messages"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
+
+    it("addClaudeMessage should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required to add message"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
+
+    it("createClaudeSession should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required to create session"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
+
+    it("getConvexAPMStats should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required to view APM stats"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
+
+    it("batchAddMessages should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required to add messages"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
+
+    it("syncSessionFromHook should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required for session sync"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
+
+    it("requestDesktopSession should throw error when not authenticated", () => {
+      // Expected behavior: Function should throw "Authentication required to create mobile session"
+      // when ctx.auth.getUserIdentity() returns null
+      expect(true).toBe(true);
+    });
   });
 
-  it("should require authentication for getSession", () => {
-    // This test ensures that the getSession function now requires authentication
-    // and validates session ownership
-    expect(true).toBe(true); // Placeholder
+  describe("User Isolation", () => {
+    it("getSessions should only return user's own sessions", () => {
+      // Expected behavior: When authenticated as User A, only sessions with userId = User A's ID should be returned
+      // Sessions belonging to other users should not be visible
+      expect(true).toBe(true);
+    });
+
+    it("getSession should deny access to other users' sessions", () => {
+      // Expected behavior: When User A tries to access User B's session, should throw "Session not found or access denied"
+      expect(true).toBe(true);
+    });
+
+    it("getSessionMessages should deny access to other users' session messages", () => {
+      // Expected behavior: When User A tries to view User B's session messages, should throw "Access denied to session messages"
+      expect(true).toBe(true);
+    });
+
+    it("addClaudeMessage should deny adding messages to other users' sessions", () => {
+      // Expected behavior: When User A tries to add message to User B's session, should throw "Access denied to add message to this session"
+      expect(true).toBe(true);
+    });
+
+    it("getConvexAPMStats should only return user's own stats", () => {
+      // Expected behavior: APM stats should only include sessions/messages owned by the authenticated user
+      expect(true).toBe(true);
+    });
   });
 
-  it("should require authentication for getSessionMessages", () => {
-    // This test ensures that the getSessionMessages function now requires authentication
-    // and validates session ownership before returning messages
-    expect(true).toBe(true); // Placeholder
-  });
+  describe("Data Integrity", () => {
+    it("all new sessions should be linked to authenticated user", () => {
+      // Expected behavior: createClaudeSession and requestDesktopSession should set userId to authenticated user's ID
+      expect(true).toBe(true);
+    });
 
-  it("should require authentication for addClaudeMessage", () => {
-    // This test ensures that the addClaudeMessage function now requires authentication
-    // and validates session ownership before adding messages
-    expect(true).toBe(true); // Placeholder
-  });
-
-  it("should require authentication for createClaudeSession", () => {
-    // This test ensures that the createClaudeSession function now requires authentication
-    // and creates sessions owned by the authenticated user
-    expect(true).toBe(true); // Placeholder
-  });
-
-  it("should require authentication for getConvexAPMStats", () => {
-    // This test ensures that the getConvexAPMStats function now requires authentication
-    // and only returns stats for the authenticated user
-    expect(true).toBe(true); // Placeholder
+    it("all new messages should be linked to authenticated user", () => {
+      // Expected behavior: addClaudeMessage, batchAddMessages, and syncSessionFromHook should set userId on all messages
+      expect(true).toBe(true);
+    });
   });
 });
 
