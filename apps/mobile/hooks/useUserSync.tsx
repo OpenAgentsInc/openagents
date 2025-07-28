@@ -1,14 +1,14 @@
 import { useEffect } from 'react';
 import { useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useConfectAuth } from '../contexts/SimpleConfectAuthContext';
 
 /**
  * Hook that automatically creates/syncs the user record in Convex
  * when the user is authenticated
  */
 export const useUserSync = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user } = useConfectAuth();
   const getOrCreateUser = useMutation(api.users.getOrCreateUser);
 
   useEffect(() => {

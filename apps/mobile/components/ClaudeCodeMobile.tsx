@@ -15,7 +15,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { ScreenWithSidebar, Text as CustomText } from "./index";
 import { AuthButton } from "./auth/AuthButton";
-import { useAuth } from "../contexts/AuthContext";
+import { useConfectAuth } from "../contexts/SimpleConfectAuthContext";
 import { IconPlus } from "./icons/IconPlus";
 import type { ChatSession } from "../types/chat";
 import { useAPMTracking } from "../src/hooks/useAPMTracking";
@@ -48,7 +48,7 @@ interface ClaudeMessage {
 }
 
 export function ClaudeCodeMobile() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user } = useConfectAuth();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   

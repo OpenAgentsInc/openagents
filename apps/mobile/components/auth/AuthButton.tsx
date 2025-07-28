@@ -1,10 +1,10 @@
 import React from 'react';
 import { TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Text } from '../index';
-import { useAuth } from '../../contexts/AuthContext';
+import { useConfectAuth } from '../../contexts/SimpleConfectAuthContext';
 
 export const AuthButton: React.FC = () => {
-  const { user, isAuthenticated, isLoading, login, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, login, logout } = useConfectAuth();
 
   if (isLoading) {
     return (

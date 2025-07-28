@@ -155,6 +155,92 @@ export const confectSchema = defineSchema({
    .index("by_timestamp", ["timestamp"])
    .index("by_event_type", ["eventType"])
    .index("by_repository", ["repository"]),
+
+  // User onboarding progress tracking
+  onboardingProgress: defineTable(
+    Schema.Struct({
+      userId: Id.Id("users"),
+      step: Schema.Literal(
+        "welcome",
+        "permissions_explained", 
+        "github_connected",
+        "repository_selected",
+        "preferences_set",
+        "completed"
+      ),
+      startedAt: Schema.Number,
+      completedAt: Schema.optional(Schema.Number),
+      completedSteps: Schema.Array(Schema.String),
+      activeRepository: Schema.optional(
+        Schema.Struct({
+          url: Schema.String.pipe(Schema.nonEmpty()),
+          name: Schema.String.pipe(Schema.nonEmpty()),
+          owner: Schema.String.pipe(Schema.nonEmpty()),
+          isPrivate: Schema.Boolean,
+          defaultBranch: Schema.optional(Schema.String),
+        })
+      ),
+      preferences: Schema.optional(
+        Schema.Struct({
+          theme: Schema.optional(Schema.Literal("light", "dark", "system")),
+          notifications: Schema.optional(Schema.Boolean),
+          autoSync: Schema.optional(Schema.Boolean),
+          defaultModel: Schema.optional(Schema.String),
+        })
+      ),
+      permissions: Schema.optional(
+        Schema.Struct({
+          notifications: Schema.Boolean,
+          storage: Schema.Boolean,
+          network: Schema.Boolean,
+          camera: Schema.optional(Schema.Boolean),
+          microphone: Schema.optional(Schema.Boolean),
+        })
+      ),
+      metadata: Schema.optional(
+        Schema.Struct({
+          platform: Schema.optional(Schema.String),
+          version: Schema.optional(Schema.String),
+          deviceModel: Schema.optional(Schema.String),
+          skipReason: Schema.optional(Schema.String), // If user skipped certain steps
+        })
+      ),
+    })
+  ).index("by_user_id", ["userId"])
+   .index("by_step", ["step"])
+   .index("by_started_at", ["startedAt"])
+   .index("by_completed_at", ["completedAt"]),
+
+  // User permissions state tracking
+  userPermissions: defineTable(
+    Schema.Struct({
+      userId: Id.Id("users"),
+      permissionType: Schema.Literal(
+        "notifications",
+        "storage", 
+        "network",
+        "camera",
+        "microphone",
+        "location"
+      ),
+      status: Schema.Literal("granted", "denied", "not_requested", "restricted"),
+      requestedAt: Schema.optional(Schema.Number),
+      grantedAt: Schema.optional(Schema.Number),
+      deniedAt: Schema.optional(Schema.Number),
+      platform: Schema.String.pipe(Schema.nonEmpty()), // "ios", "android", "desktop", "web"
+      metadata: Schema.optional(
+        Schema.Struct({
+          reason: Schema.optional(Schema.String), // Why permission was needed
+          fallbackEnabled: Schema.optional(Schema.Boolean), // If fallback is available
+          retryCount: Schema.optional(Schema.Number),
+          lastRetryAt: Schema.optional(Schema.Number),
+        })
+      ),
+    })
+  ).index("by_user_id", ["userId"])
+   .index("by_permission_type", ["permissionType"])
+   .index("by_status", ["status"])
+   .index("by_user_permission", ["userId", "permissionType"]),
 });
 
 // Export the traditional Convex schema for compatibility
