@@ -44,6 +44,7 @@ bun run android           # Run mobile app on Android emulator
 bun run build:desktop     # Build desktop app
 bun run build:mobile      # Build mobile app
 bun run clean             # Clean all node_modules and dist folders
+bun convex --once         # Check Convex function compilation without full deployment
 ```
 
 ### Desktop Development (from apps/desktop/)

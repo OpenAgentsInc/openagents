@@ -10,6 +10,7 @@ export const confectSchema = defineSchema({
       avatar: Schema.optional(Schema.String),
       githubId: Schema.String.pipe(Schema.nonEmptyString()),
       githubUsername: Schema.String.pipe(Schema.nonEmptyString()),
+      openAuthSubject: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
       createdAt: Schema.Number,
       lastLogin: Schema.Number,
       githubMetadata: Schema.optional(
@@ -26,7 +27,8 @@ export const confectSchema = defineSchema({
       ),
     })
   ).index("by_email", ["email"])
-   .index("by_github_id", ["githubId"]),
+   .index("by_github_id", ["githubId"])
+   .index("by_openauth_subject", ["openAuthSubject"]),
 
   // Existing basic messages (keep for demo compatibility)
   messages: defineTable(
