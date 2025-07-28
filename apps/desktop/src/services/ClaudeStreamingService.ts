@@ -1,7 +1,7 @@
 import { Effect, Stream, Queue, pipe, Context, Layer, Schedule } from 'effect';
 import { 
   TauriEventService, 
-  TauriEventError, 
+  StreamingError,
   ConnectionError, 
   MessageParsingError
 } from './TauriEventService';
@@ -29,13 +29,13 @@ export interface StreamingSession {
 // Service interface
 export interface ClaudeStreamingService {
   // Start streaming for a session
-  startStreaming: (sessionId: string) => Effect.Effect<StreamingSession, TauriEventError>;
+  startStreaming: (sessionId: string) => Effect.Effect<StreamingSession, StreamingError>;
 
   // Get message stream for a session
   getMessageStream: (session: StreamingSession) => Stream.Stream<Message, never>;
 
   // Send message to Claude
-  sendMessage: (sessionId: string, message: string) => Effect.Effect<void, TauriEventError>;
+  sendMessage: (sessionId: string, message: string) => Effect.Effect<void, StreamingError | ConnectionError>;
 
   // Stop streaming for a session
   stopStreaming: (session: StreamingSession) => Effect.Effect<void, never>;
@@ -69,7 +69,7 @@ const parseClaudeMessage = (payload: unknown): Effect.Effect<Message | null, Mes
       
       return null;
     },
-    catch: (error) => new MessageParsingError(String(payload), error)
+    catch: (error) => new MessageParsingError({ rawMessage: String(payload), cause: error })
   });
 
 // Service implementation
@@ -119,10 +119,10 @@ export const ClaudeStreamingServiceLive = Layer.effect(
           ),
           Effect.catchTag('StreamingError', (error) =>
             Effect.fail(
-              new ConnectionError(
+              new ConnectionError({
                 sessionId,
-                `Failed to send message: ${error.message}`
-              )
+                cause: `Failed to send message: ${error.message}`
+              })
             )
           )
         ),

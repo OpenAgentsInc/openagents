@@ -1,21 +1,21 @@
-import { Effect, Queue, Context, Layer } from 'effect';
+import { Effect, Queue, Context, Data, Layer } from 'effect';
 import { listen, emit, Event as TauriEvent } from '@tauri-apps/api/event';
 
-// Tagged error types for precise error handling
-export class StreamingError {
-  readonly _tag = 'StreamingError' as const;
-  constructor(readonly message: string, readonly cause?: unknown) {}
-}
+// Tagged error types using Data.TaggedError for better Effect integration
+export class StreamingError extends Data.TaggedError('StreamingError')<{
+  message: string;
+  cause?: unknown;
+}> {}
 
-export class ConnectionError {
-  readonly _tag = 'ConnectionError' as const;
-  constructor(readonly sessionId: string, readonly cause?: unknown) {}
-}
+export class ConnectionError extends Data.TaggedError('ConnectionError')<{
+  sessionId: string;
+  cause?: unknown;
+}> {}
 
-export class MessageParsingError {
-  readonly _tag = 'MessageParsingError' as const;
-  constructor(readonly rawMessage: string, readonly cause?: unknown) {}
-}
+export class MessageParsingError extends Data.TaggedError('MessageParsingError')<{
+  rawMessage: string;
+  cause?: unknown;
+}> {}
 
 export type TauriEventError = StreamingError | ConnectionError | MessageParsingError;
 
@@ -57,13 +57,13 @@ const TauriEventServiceImpl: TauriEventService = {
         });
         return { unlisten, eventName };
       },
-      catch: (error) => new StreamingError(`Failed to listen to event: ${eventName}`, error)
+      catch: (error) => new StreamingError({ message: `Failed to listen to event: ${eventName}`, cause: error })
     }),
 
   emit: (event: string, payload: unknown) =>
     Effect.tryPromise({
       try: () => emit(event, payload),
-      catch: (error) => new StreamingError(`Failed to emit event: ${event}`, error)
+      catch: (error) => new StreamingError({ message: `Failed to emit event: ${event}`, cause: error })
     }),
 
   createEventStream: (eventName: string, bufferSize = 100) =>
@@ -83,7 +83,7 @@ const TauriEventServiceImpl: TauriEventService = {
             });
           });
         },
-        catch: (error) => new StreamingError(`Failed to create event stream: ${eventName}`, error)
+        catch: (error) => new StreamingError({ message: `Failed to create event stream: ${eventName}`, cause: error })
       });
 
       const cleanup = () => {

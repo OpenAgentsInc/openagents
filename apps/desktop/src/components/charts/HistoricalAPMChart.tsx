@@ -25,10 +25,15 @@ const RechartsLegend = Legend as unknown as React.ComponentType<any>;
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
-  Loader2 as LoaderIcon,
-  TrendingUp as TrendingUpIcon,
-  Calendar as CalendarIcon,
+  Loader2,
+  TrendingUp,
+  Calendar,
 } from 'lucide-react';
+
+// Type assertions for lucide-react icons to resolve React 19 compatibility issues
+const LoaderIcon = Loader2 as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const TrendingUpIcon = TrendingUp as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
+const CalendarIcon = Calendar as unknown as React.FC<React.SVGProps<SVGSVGElement>>;
 import { invoke } from '@tauri-apps/api/core';
 
 // Types matching the Rust backend
