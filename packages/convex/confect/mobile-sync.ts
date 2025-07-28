@@ -22,14 +22,14 @@ export const createClaudeSession = mutation({
       const { db, auth } = yield* ConfectMutationCtx;
 
       // Get authenticated user (optional for backwards compatibility)
-      const identity = yield* Effect.promise(() => auth.getUserIdentity());
+      const identity = yield* auth.getUserIdentity();
       let userId = Option.none<string>();
       
-      if (identity) {
+      if (Option.isSome(identity)) {
         // Find user by GitHub ID from identity subject  
         const user = yield* db
           .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+          .withIndex("by_github_id", (q) => q.eq("githubId", identity.value.subject))
           .first();
           
         if (Option.isSome(user)) {

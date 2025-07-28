@@ -23,8 +23,8 @@ export const getOrCreateUser = mutation({
       const { db, auth } = yield* ConfectMutationCtx;
 
       // Ensure user is authenticated
-      const identity = yield* Effect.promise(() => auth.getUserIdentity());
-      if (!identity) {
+      const identity = yield* auth.getUserIdentity();
+      if (Option.isNone(identity)) {
         return yield* Effect.fail(new Error("Not authenticated"));
       }
 
@@ -68,13 +68,13 @@ export const getCurrentUser = query({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectQueryCtx;
 
-      const identity = yield* Effect.promise(() => auth.getUserIdentity());
-      if (!identity) {
+      const identity = yield* auth.getUserIdentity();
+      if (Option.isNone(identity)) {
         return Option.none();
       }
 
       // Extract GitHub ID from identity subject
-      const githubId = identity.subject;
+      const githubId = identity.value.subject;
       
       const user = yield* db
         .query("users")
