@@ -1,6 +1,50 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+// Helper function to get authenticated user (for internal use by other functions)
+export async function getAuthenticatedUser(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new Error("Not authenticated");
+  }
+
+  console.log("[DEBUG] getAuthenticatedUser - identity.subject:", identity.subject);
+
+  // Look up user by OpenAuth subject first, fallback to GitHub ID for backwards compatibility
+  let user = await ctx.db
+    .query("users")
+    .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", identity.subject))
+    .first();
+
+  console.log("[DEBUG] getAuthenticatedUser - user found by openAuthSubject:", !!user);
+
+  // Fallback: try looking up by GitHub ID (for backwards compatibility with old users)
+  if (!user) {
+    user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+      .first();
+    console.log("[DEBUG] getAuthenticatedUser - user found by githubId:", !!user);
+  }
+
+  // Last resort: try finding any user and log what we have
+  if (!user) {
+    const allUsers = await ctx.db.query("users").collect();
+    console.log("[DEBUG] getAuthenticatedUser - total users in DB:", allUsers.length);
+    if (allUsers.length > 0) {
+      console.log("[DEBUG] getAuthenticatedUser - sample user:", {
+        githubId: allUsers[0].githubId,
+        openAuthSubject: allUsers[0].openAuthSubject,
+        email: allUsers[0].email
+      });
+    }
+    throw new Error("User not found");
+  }
+
+  console.log("[DEBUG] getAuthenticatedUser - returning user:", user.githubUsername);
+  return user;
+}
+
 // Get or create user from JWT claims
 export const getOrCreateUser = mutation({
   args: {
@@ -30,6 +74,7 @@ export const getOrCreateUser = mutation({
         name: args.name,
         avatar: args.avatar,
         githubUsername: args.githubUsername,
+        openAuthSubject: identity.subject, // Update OpenAuth subject for future lookups
       });
       return existingUser._id;
     }
@@ -41,6 +86,7 @@ export const getOrCreateUser = mutation({
       avatar: args.avatar,
       githubId: args.githubId,
       githubUsername: args.githubUsername,
+      openAuthSubject: identity.subject, // Store OpenAuth subject for future lookups
       createdAt: Date.now(),
       lastLogin: Date.now(),
     });
