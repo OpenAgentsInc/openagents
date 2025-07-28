@@ -26,23 +26,27 @@ export interface StreamingSession {
   cleanup: () => void;
 }
 
-// Service interface
-export interface ClaudeStreamingService {
-  // Start streaming for a session
-  startStreaming: (sessionId: string) => Effect.Effect<StreamingSession, TauriEventError>;
+// Service definition using Effect.Service pattern
+export class ClaudeStreamingService extends Effect.Service<ClaudeStreamingService>()(
+  'ClaudeStreamingService',
+  {
+    sync: () => ({
+      // Start streaming for a session
+      startStreaming: (sessionId: string) => Effect.Effect<StreamingSession, TauriEventError>,
 
-  // Get message stream for a session
-  getMessageStream: (session: StreamingSession) => Stream.Stream<Message, never>;
+      // Get message stream for a session
+      getMessageStream: (session: StreamingSession) => Stream.Stream<Message, never>,
 
-  // Send message to Claude
-  sendMessage: (sessionId: string, message: string) => Effect.Effect<void, TauriEventError>;
+      // Send message to Claude
+      sendMessage: (sessionId: string, message: string) => Effect.Effect<void, TauriEventError>,
 
-  // Stop streaming for a session
-  stopStreaming: (session: StreamingSession) => Effect.Effect<void, never>;
-}
-
-// Service tag
-export const ClaudeStreamingService = Context.GenericTag<ClaudeStreamingService>('ClaudeStreamingService');
+      // Stop streaming for a session
+      stopStreaming: (session: StreamingSession) => Effect.Effect<void, never>
+    }),
+    
+    dependencies: [TauriEventService]
+  }
+) {}
 
 // Helper function to parse Claude messages
 const parseClaudeMessage = (payload: unknown): Effect.Effect<Message | null, MessageParsingError> =>

@@ -1,0 +1,160 @@
+import { useState, useEffect } from "react"
+import { Effect, Stream, Runtime, Fiber, Exit, Duration } from "effect"
+import { createStatsStream } from "@/utils/streaming"
+import { IPC, APMStats, CombinedAPMStats, AggregatedAPMStats } from "@/services/ipc"
+
+interface UseStatsStreamOptions {
+  refreshInterval?: number // milliseconds
+  onError?: (error: unknown) => void
+}
+
+interface StatsStreamResult {
+  stats: CombinedAPMStats | null
+  aggregatedStats: AggregatedAPMStats | null
+  loading: boolean
+  error: string | null
+  refresh: () => void
+}
+
+/**
+ * Hook that streams stats updates using Effect instead of polling
+ * Demonstrates Land's streaming patterns for real-time data
+ */
+export const useStatsStream = (
+  options: UseStatsStreamOptions = {}
+): StatsStreamResult => {
+  const { refreshInterval = 10000, onError } = options
+  
+  const [stats, setStats] = useState<CombinedAPMStats | null>(null)
+  const [aggregatedStats, setAggregatedStats] = useState<AggregatedAPMStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  useEffect(() => {
+    // Create the stats fetching effect
+    const fetchStats = Effect.gen(function* () {
+      // Fetch combined stats
+      const combinedStats = yield* IPC.apm.analyzeCombined()
+      
+      // Try to fetch aggregated stats (optional)
+      const aggregated = yield* IPC.apm.getUserStats().pipe(
+        Effect.orElseSucceed(() => null)
+      )
+      
+      return { combinedStats, aggregated }
+    })
+
+    // Create the streaming program
+    const program = createStatsStream(fetchStats, Duration.millis(refreshInterval)).pipe(
+      Stream.tap(({ combinedStats, aggregated }) => 
+        Effect.sync(() => {
+          setStats(combinedStats)
+          setAggregatedStats(aggregated)
+          setLoading(false)
+          setError(null)
+        })
+      ),
+      Stream.catchAll((error) => 
+        Effect.gen(function* () {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          yield* Effect.sync(() => {
+            setError(errorMessage)
+            setLoading(false)
+          })
+          
+          if (onError) {
+            yield* Effect.sync(() => onError(error))
+          }
+          
+          yield* Effect.logError("Stats stream error", error)
+          
+          // Continue streaming after error
+          return Stream.empty
+        }).pipe(Stream.unwrap)
+      ),
+      Stream.runDrain
+    )
+
+    // Run the stream
+    const runtime = Runtime.defaultRuntime
+    const fiber = Runtime.runFork(runtime)(program)
+
+    // Handle fiber result
+    Fiber.await(fiber).pipe(
+      Effect.runCallback(runtime, (exit) => {
+        if (Exit.isFailure(exit)) {
+          console.error("Stats stream failed:", exit.cause)
+        }
+      })
+    )
+
+    // Cleanup function
+    return () => {
+      Runtime.runPromise(runtime)(Fiber.interrupt(fiber)).catch(() => {
+        // Ignore interrupt errors
+      })
+    }
+  }, [refreshInterval, onError, refreshTrigger])
+
+  // Manual refresh function
+  const refresh = () => {
+    setRefreshTrigger((prev) => prev + 1)
+  }
+
+  return {
+    stats,
+    aggregatedStats,
+    loading,
+    error,
+    refresh
+  }
+}
+
+// Helper hook for historical data streaming
+export const useHistoricalStatsStream = (
+  timeScale: string,
+  viewMode: string,
+  options: UseStatsStreamOptions = {}
+) => {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  
+  useEffect(() => {
+    const fetchHistoricalData = () =>
+      IPC.apm.getHistoricalData(timeScale, viewMode)
+    
+    const program = createStatsStream(
+      fetchHistoricalData,
+      Duration.millis(options.refreshInterval || 30000)
+    ).pipe(
+      Stream.tap((historicalData) =>
+        Effect.sync(() => {
+          setData(historicalData)
+          setLoading(false)
+          setError(null)
+        })
+      ),
+      Stream.catchAll((error) =>
+        Effect.sync(() => {
+          setError(error instanceof Error ? error.message : String(error))
+          setLoading(false)
+        }).pipe(
+          Effect.map(() => Stream.empty),
+          Stream.unwrap
+        )
+      ),
+      Stream.runDrain
+    )
+    
+    const runtime = Runtime.defaultRuntime
+    const fiber = Runtime.runFork(runtime)(program)
+    
+    return () => {
+      Runtime.runPromise(runtime)(Fiber.interrupt(fiber)).catch(() => {})
+    }
+  }, [timeScale, viewMode, options.refreshInterval])
+  
+  return { data, loading, error }
+}
