@@ -253,3 +253,11 @@ Use these commands in PR comments:
 2. **Test While Building**: Write tests alongside implementation
 3. **Document as You Go**: Update documentation with each major component
 4. **Deploy Early**: Get working versions ready for testing ASAP
+
+## GitHub Etiquette
+
+**CRITICAL**: When creating issues, pull requests, or comments on GitHub:
+- **NEVER tag anyone** except @AtlantisPleb
+- Do NOT use @mentions for any other usernames
+- Do NOT cc or tag people who are not associated with the project
+- This applies to all GitHub interactions: issues, PRs, commits, comments
