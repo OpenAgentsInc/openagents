@@ -179,6 +179,66 @@ export function RepositorySelectionScreen({
     );
   }
 
+  // Render repository content with proper error handling
+  const renderRepositoryContent = () => {
+    // Handle null/undefined repositoriesData
+    if (!repositoriesData) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            Failed to load repositories (GitHub API error)
+          </Text>
+          <Text style={styles.errorSubtext}>
+            This might be due to authentication issues. Try refreshing or skip for now.
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Handle case where repositories array doesn't exist
+    if (!repositoriesData.repositories || !Array.isArray(repositoriesData.repositories)) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            Invalid repository data received
+          </Text>
+          <Text style={styles.errorSubtext}>
+            Please try refreshing to reload your repositories.
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+            <Text style={styles.retryButtonText}>Refresh</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Handle empty repositories
+    if (repositoriesData.repositories.length === 0) {
+      return (
+        <View style={styles.emptyRepositoriesContainer}>
+          <Text style={styles.emptyRepositoriesText}>
+            No repositories found
+          </Text>
+          <Text style={styles.emptyRepositoriesSubtext}>
+            Create a repository on GitHub to get started
+          </Text>
+        </View>
+      );
+    }
+
+    // Render repositories
+    return repositoriesData.repositories.map((repository: Repository) => (
+      <RepositoryCard
+        key={repository.id}
+        repository={repository}
+        onSelect={() => handleRepositorySelect(repository)}
+      />
+    ));
+  };
+
   // Main content with repositories
   return (
     <ErrorBoundary
@@ -219,24 +279,7 @@ export function RepositorySelectionScreen({
           testID="repository-scroll"
         >
           <View style={styles.repositoriesContainer}>
-            {repositoriesData.repositories.map((repository: Repository) => (
-              <RepositoryCard
-                key={repository.id}
-                repository={repository}
-                onSelect={() => handleRepositorySelect(repository)}
-              />
-            ))}
-
-            {repositoriesData.repositories.length === 0 && (
-              <View style={styles.emptyRepositoriesContainer}>
-                <Text style={styles.emptyRepositoriesText}>
-                  No repositories found
-                </Text>
-                <Text style={styles.emptyRepositoriesSubtext}>
-                  Create a repository on GitHub to get started
-                </Text>
-              </View>
-            )}
+            {renderRepositoryContent()}
           </View>
         </ScrollView>
 
@@ -538,7 +581,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#ef4444',
     textAlign: 'center',
+    marginBottom: 12,
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace',
+    } as const),
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: '#a1a1aa',
+    textAlign: 'center',
     marginBottom: 24,
+    lineHeight: 20,
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',
       android: 'Berkeley Mono',

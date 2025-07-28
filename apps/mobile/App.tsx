@@ -10,6 +10,7 @@ import { SimpleConfectAuthProvider, useConfectAuth } from "./contexts/SimpleConf
 import { OnboardingScreen } from "./components/onboarding/OnboardingScreen"
 import { DARK_THEME } from "./constants/colors"
 import { ConvexProviderWithAuth } from "./contexts/ConvexProviderWithAuth"
+import { ErrorBoundary } from "./components/ErrorBoundary"
 
 // Disable all development warnings
 LogBox.ignoreAllLogs(true)
@@ -35,20 +36,49 @@ function MainApp() {
 
   // Show onboarding if needed, otherwise show main app
   return (
-    <ConvexProviderWithAuth>
-      {needsOnboarding ? (
-        <OnboardingScreen 
-          onComplete={() => {
-            // Handle onboarding completion
-            console.log('📱 [APP] Onboarding completed');
-          }} 
-        />
-      ) : (
-        <NavigationContainer>
-          <ClaudeCodeMobile />
-        </NavigationContainer>
-      )}
-    </ConvexProviderWithAuth>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        console.error('🚨 [APP_LEVEL] Critical app error:', {
+          error: error.message,
+          stack: error.stack,
+          componentStack: errorInfo.componentStack,
+          timestamp: new Date().toISOString(),
+        });
+      }}
+    >
+      <ConvexProviderWithAuth>
+        {needsOnboarding ? (
+          <ErrorBoundary
+            onError={(error, errorInfo) => {
+              console.error('🚨 [ONBOARDING] Onboarding error:', {
+                error: error.message,
+                componentStack: errorInfo.componentStack,
+              });
+            }}
+          >
+            <OnboardingScreen 
+              onComplete={() => {
+                // Handle onboarding completion
+                console.log('📱 [APP] Onboarding completed');
+              }} 
+            />
+          </ErrorBoundary>
+        ) : (
+          <ErrorBoundary
+            onError={(error, errorInfo) => {
+              console.error('🚨 [MAIN_APP] Main app error:', {
+                error: error.message,
+                componentStack: errorInfo.componentStack,
+              });
+            }}
+          >
+            <NavigationContainer>
+              <ClaudeCodeMobile />
+            </NavigationContainer>
+          </ErrorBoundary>
+        )}
+      </ConvexProviderWithAuth>
+    </ErrorBoundary>
   );
 }
 
@@ -62,19 +92,52 @@ function AppContent() {
   }
 
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={styles.container}>
-        <SimpleConfectAuthProvider>
-          <MainApp />
-        </SimpleConfectAuthProvider>
-        <StatusBar style="light" />
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        console.error('🚨 [ROOT_LEVEL] Root app error:', {
+          error: error.message,
+          stack: error.stack,
+          componentStack: errorInfo.componentStack,
+          timestamp: new Date().toISOString(),
+        });
+      }}
+    >
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={styles.container}>
+          <ErrorBoundary
+            onError={(error, errorInfo) => {
+              console.error('🚨 [AUTH_PROVIDER] Auth provider error:', {
+                error: error.message,
+                componentStack: errorInfo.componentStack,
+              });
+            }}
+          >
+            <SimpleConfectAuthProvider>
+              <MainApp />
+            </SimpleConfectAuthProvider>
+          </ErrorBoundary>
+          <StatusBar style="light" />
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
 export default function App() {
-  return <AppContent />;
+  return (
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        console.error('🚨 [TOP_LEVEL] Top-level app error:', {
+          error: error.message,
+          stack: error.stack,
+          componentStack: errorInfo.componentStack,
+          timestamp: new Date().toISOString(),
+        });
+      }}
+    >
+      <AppContent />
+    </ErrorBoundary>
+  );
 }
 
 const styles = StyleSheet.create({
