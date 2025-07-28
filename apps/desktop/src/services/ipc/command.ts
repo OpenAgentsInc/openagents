@@ -39,11 +39,11 @@ export const createCommand = <TArgs, TResult>(name: string) => ({
       Effect.retry(retryPolicy || Schedule.exponential(Duration.millis(100)).pipe(
         Schedule.jittered,
         Schedule.either(Schedule.spaced(Duration.seconds(1))),
-        Schedule.whileInput((error: IPCError) => 
+        Schedule.whileInput((error: IPCError) => {
           // Only retry on network errors or timeouts
-          error.cause?.toString().includes("network") ||
-          error.cause?.toString().includes("timeout")
-        ),
+          const cause = error.cause?.toString() || "";
+          return cause.includes("network") || cause.includes("timeout");
+        }),
         Schedule.compose(Schedule.elapsed),
         Schedule.whileOutput((elapsed) => elapsed < Duration.minutes(1))
       ))

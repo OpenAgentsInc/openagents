@@ -1,4 +1,4 @@
-import { Effect, Option, Array as EffectArray } from "effect"
+import { Effect, Option } from "effect"
 import { createCommand, createSimpleCommand } from "./command"
 import { SessionError, SessionNotFoundError } from "./errors"
 
@@ -26,7 +26,7 @@ export interface Session {
 
 // Session Commands
 export const SessionCommands = {
-  discover: createSimpleCommand<string>("discover_claude").invoke,
+  discover: () => createSimpleCommand<string>("discover_claude").invoke({}),
   
   create: (projectPath: string) => 
     createCommand<{ project_path: string }, string>("create_session")
@@ -90,7 +90,7 @@ export const SessionCommands = {
   
   getActiveSessions: () =>
     createSimpleCommand<Session[]>("get_active_sessions")
-      .invoke()
+      .invoke({})
       .pipe(
         Effect.mapError((error) => new SessionError({
           operation: "get",
@@ -131,12 +131,14 @@ export const findSessionById = (sessionId: string) =>
 export const getAllMessages = () =>
   Effect.gen(function* () {
     const sessions = yield* SessionCommands.getActiveSessions()
-    const allMessages = yield* EffectArray.map(sessions, (session) =>
-      SessionCommands.getMessages(session.id).pipe(
-        Effect.map((messages) => ({ sessionId: session.id, messages }))
+    const allMessages = yield* Effect.all(
+      sessions.map((session: Session) =>
+        SessionCommands.getMessages(session.id).pipe(
+          Effect.map((messages: Message[]) => ({ sessionId: session.id, messages }))
+        )
       )
     )
-    return allMessages.flatMap(({ sessionId, messages }) =>
-      messages.map((msg) => ({ ...msg, sessionId }))
-    )
+    return allMessages?.flatMap(({ sessionId, messages }: { sessionId: string; messages: Message[] }) =>
+      messages.map((msg: Message) => ({ ...msg, sessionId }))
+    ) || []
   })

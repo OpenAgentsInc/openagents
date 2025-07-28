@@ -17,7 +17,7 @@ export const SystemCommands = {
   
   getProjectDirectory: () =>
     createSimpleCommand<string>("get_project_directory")
-      .invoke()
+      .invoke({})
       .pipe(
         Effect.mapError((error) => new SystemError({
           operation: "get_directory",

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Effect, Stream, Runtime, Fiber, Exit, Duration } from "effect"
+import { Effect, Stream, Fiber, Exit, Duration } from "effect"
 import { createStatsStream } from "@/utils/streaming"
 import { IPC, CombinedAPMStats, AggregatedAPMStats } from "@/services/ipc"
 
@@ -33,9 +33,17 @@ export const useStatsStream = (
 
   useEffect(() => {
     // Create the stats fetching effect
-    const fetchStats = Effect.gen(function* () {
+    const fetchStats = () => Effect.gen(function* () {
       // Fetch combined stats
-      const combinedStats = yield* IPC.apm.analyzeCombined()
+      const combinedStats = yield* IPC.apm.analyzeCombined().pipe(
+        Effect.catchAll(() => Effect.succeed({ 
+          apm1h: 0, apm6h: 0, apm1d: 0, apm1w: 0, apm1m: 0, apmLifetime: 0,
+          totalSessions: 0, totalMessages: 0, totalToolUses: 0, totalDuration: 0,
+          toolUsage: [], recentSessions: [], productivityByTime: { morning: 0, afternoon: 0, evening: 0, night: 0 },
+          cliStats: { apm1h: 0, apm6h: 0, apm1d: 0, apm1w: 0, apm1m: 0, apmLifetime: 0, totalSessions: 0, totalMessages: 0, totalToolUses: 0, totalDuration: 0, toolUsage: [], recentSessions: [], productivityByTime: { morning: 0, afternoon: 0, evening: 0, night: 0 } },
+          sdkStats: { apm1h: 0, apm6h: 0, apm1d: 0, apm1w: 0, apm1m: 0, apmLifetime: 0, totalSessions: 0, totalMessages: 0, totalToolUses: 0, totalDuration: 0, toolUsage: [], recentSessions: [], productivityByTime: { morning: 0, afternoon: 0, evening: 0, night: 0 } }
+        } as CombinedAPMStats))
+      )
       
       // Try to fetch aggregated stats (optional)
       const aggregated = yield* IPC.apm.getUserStats().pipe(
@@ -46,7 +54,7 @@ export const useStatsStream = (
     })
 
     // Create the streaming program
-    const program = createStatsStream(() => fetchStats, Duration.millis(refreshInterval)).pipe(
+    const program = createStatsStream(fetchStats, Duration.millis(refreshInterval)).pipe(
       Stream.tap((data: { combinedStats: CombinedAPMStats; aggregated: AggregatedAPMStats | null }) => 
         Effect.sync(() => {
           setStats(data.combinedStats)
@@ -55,7 +63,7 @@ export const useStatsStream = (
           setError(null)
         })
       ),
-      Stream.catchAll((error) => 
+      Stream.catchAll((error: unknown) => 
         Effect.gen(function* () {
           const errorMessage = error instanceof Error ? error.message : String(error)
           yield* Effect.sync(() => {

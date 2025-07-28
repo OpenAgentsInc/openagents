@@ -85,7 +85,7 @@ export interface HistoricalAPMData {
 export const APMCommands = {
   analyzeConversations: () =>
     createSimpleCommand<APMStats>("analyze_claude_conversations")
-      .invoke()
+      .invoke({})
       .pipe(
         Effect.mapError((error) => new APMError({
           operation: "analyze",
@@ -96,7 +96,7 @@ export const APMCommands = {
   
   analyzeCombined: () =>
     createSimpleCommand<CombinedAPMStats>("analyze_combined_conversations")
-      .invoke()
+      .invoke({})
       .pipe(
         Effect.mapError((error) => new APMError({
           operation: "analyze",
@@ -118,7 +118,7 @@ export const APMCommands = {
   
   getUserStats: () =>
     createSimpleCommand<AggregatedAPMStats>("get_user_apm_stats")
-      .invoke()
+      .invoke({})
       .pipe(
         Effect.mapError((error) => new APMError({
           operation: "get_stats",

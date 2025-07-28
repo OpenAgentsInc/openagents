@@ -42,6 +42,9 @@ const REDIRECT_URI = AuthSession.makeRedirectUri({
   path: 'auth/callback'
 });
 
+console.log('🔗 [AUTH] Generated REDIRECT_URI:', REDIRECT_URI);
+console.log('🔗 [AUTH] OPENAUTH_URL:', OPENAUTH_URL);
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,19 +95,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Create OAuth request
       const request = new AuthSession.AuthRequest({
-        clientId: 'openagents-mobile', // This should match your OpenAuth configuration
-        scopes: ['openid', 'profile', 'email'],
+        clientId: 'Ov23lirHI1DWTzZ1zT1u', // GitHub OAuth App Client ID
+        scopes: ['user:email', 'read:user'],
         redirectUri: REDIRECT_URI,
         responseType: AuthSession.ResponseType.Code,
         state: Math.random().toString(36).substring(2, 15),
+        usePKCE: false, // Disable PKCE for now
         extraParams: {
           provider: 'github'
         },
       });
 
       console.log('📱 [AUTH] OAuth request configured:', {
+        clientId: 'Ov23lirHI1DWTzZ1zT1u',
         redirectUri: REDIRECT_URI,
-        authUrl: OPENAUTH_URL
+        authUrl: OPENAUTH_URL,
+        scopes: ['user:email', 'read:user'],
+        responseType: 'code',
+        provider: 'github'
       });
 
       // Prompt for authentication
@@ -118,18 +126,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log('📱 [AUTH] OAuth success, exchanging code for token');
         
         // Exchange authorization code for tokens
-        const tokenResponse = await exchangeCodeForToken(result.params.code, result.params.state);
+        const params = new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: result.params.code,
+          redirect_uri: REDIRECT_URI,
+          client_id: 'Ov23lirHI1DWTzZ1zT1u',
+        });
+
+        console.log('📱 [AUTH] Token exchange params:', {
+          grant_type: 'authorization_code',
+          code: result.params.code,
+          redirect_uri: REDIRECT_URI,
+          client_id: 'Ov23lirHI1DWTzZ1zT1u',
+        });
+
+        const response = await fetch(`${OPENAUTH_URL}/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params.toString(),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('📱 [AUTH] Token exchange failed:', response.status, errorText);
+          throw new Error(`Token exchange failed: ${response.status}`);
+        }
+
+        const tokenData = await response.json();
+        console.log('📱 [AUTH] Token exchange successful');
         
-        if (tokenResponse.access_token && tokenResponse.user) {
-          // Store tokens securely
-          await SecureStore.setItemAsync('openauth_token', tokenResponse.access_token);
-          await SecureStore.setItemAsync('openauth_user', JSON.stringify(tokenResponse.user));
+        if (tokenData.access_token) {
+          // Fetch user data from OpenAuth server
+          const userResponse = await fetch(`${OPENAUTH_URL}/user`, {
+            headers: {
+              'Authorization': `Bearer ${tokenData.access_token}`,
+            },
+          });
           
-          // Update state
-          setToken(tokenResponse.access_token);
-          setUser(tokenResponse.user);
-          
-          console.log('✅ [AUTH] Login successful:', tokenResponse.user.githubUsername);
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            
+            // Store tokens securely
+            await SecureStore.setItemAsync('openauth_token', tokenData.access_token);
+            await SecureStore.setItemAsync('openauth_user', JSON.stringify(userData));
+            
+            // Update state
+            setToken(tokenData.access_token);
+            setUser(userData);
+            
+            console.log('✅ [AUTH] Login successful:', userData.githubUsername);
+          } else {
+            throw new Error('Failed to fetch user data');
+          }
         } else {
           throw new Error('Invalid token response');
         }
@@ -147,34 +197,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const exchangeCodeForToken = async (code: string, state: string) => {
-    console.log('📱 [AUTH] Exchanging authorization code for tokens');
-    
-    const response = await fetch(`${OPENAUTH_URL}/token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: REDIRECT_URI,
-        client_id: 'openagents-mobile',
-        state,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('📱 [AUTH] Token exchange failed:', response.status, errorText);
-      throw new Error(`Token exchange failed: ${response.status}`);
-    }
-
-    const tokenData = await response.json();
-    console.log('📱 [AUTH] Token exchange successful');
-    
-    return tokenData;
-  };
 
   const logout = async () => {
     try {

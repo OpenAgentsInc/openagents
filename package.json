@@ -41,7 +41,10 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "sst": "^3.17.10"
+    "sst": "^3.17.10",
+    "expo": "~53.0.20",
+    "react": "19.0.0",
+    "react-native": "0.79.5"
   },
   "overrides": {
     "react": "19.0.0",
