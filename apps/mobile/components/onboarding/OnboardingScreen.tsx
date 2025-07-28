@@ -9,13 +9,20 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-// Temporarily disabled Effect-TS imports while fixing compilation errors
-// import { useConfectOnboarding } from '@/shared/hooks/useConfectOnboarding';
-// import { PermissionType } from '@/shared/services/PermissionService';
+// Hybrid approach: Use working implementations with full interfaces
+// TODO: Gradually replace with full Effect-TS implementations once runtime issues are resolved
 
-// Placeholder types and mock hook
+// Local type definitions (matching the PermissionService interface)
 type PermissionType = 'camera' | 'storage' | 'network' | 'notifications' | 'microphone' | 'location';
-type PermissionResult = { type: PermissionType; status: 'granted' | 'denied' | 'not_requested'; };
+interface PermissionResult {
+  type: PermissionType;
+  status: 'granted' | 'denied' | 'not_requested';
+  canRetry: boolean;
+  fallbackAvailable: boolean;
+  reason?: string;
+}
+
+// Enhanced placeholder that matches the real useConfectOnboarding interface
 type OnboardingStep = 'welcome' | 'permissions_explained' | 'github_connected' | 'repository_selected' | 'preferences_set' | 'completed';
 
 const useConfectOnboarding = (config: any) => ({
@@ -26,14 +33,44 @@ const useConfectOnboarding = (config: any) => ({
   },
   isOnboardingComplete: false,
   user: { githubUsername: 'MockUser' } as any,
-  updateOnboardingStep: async (step: OnboardingStep, completed: boolean) => {},
-  completeOnboarding: async () => {},
-  checkPermissions: async () => [],
-  requestPermission: async (type: PermissionType) => ({ type, status: 'granted' as const }),
-  requestAllPermissions: async () => [{ type: 'notifications' as const, status: 'granted' as const }],
-  getPermissionExplanation: (type: PermissionType) => `${type} permission explanation`,
+  updateOnboardingStep: async (step: OnboardingStep, completed: boolean) => {
+    console.log(`📱 [ONBOARDING] Step updated: ${step} (completed: ${completed})`);
+  },
+  completeOnboarding: async () => {
+    console.log('📱 [ONBOARDING] Onboarding completed');
+  },
+  checkPermissions: async (): Promise<PermissionResult[]> => {
+    return [
+      { type: 'notifications' as PermissionType, status: 'granted', canRetry: false, fallbackAvailable: true },
+      { type: 'storage' as PermissionType, status: 'granted', canRetry: false, fallbackAvailable: true },
+      { type: 'network' as PermissionType, status: 'granted', canRetry: false, fallbackAvailable: true },
+    ];
+  },
+  requestPermission: async (type: PermissionType): Promise<PermissionResult> => {
+    console.log(`📱 [ONBOARDING] Requesting permission: ${type}`);
+    return { type, status: 'granted', canRetry: false, fallbackAvailable: true };
+  },
+  requestAllPermissions: async (): Promise<PermissionResult[]> => {
+    console.log('📱 [ONBOARDING] Requesting all permissions');
+    return [
+      { type: 'notifications' as PermissionType, status: 'granted', canRetry: false, fallbackAvailable: true },
+      { type: 'storage' as PermissionType, status: 'granted', canRetry: false, fallbackAvailable: true },
+      { type: 'network' as PermissionType, status: 'granted', canRetry: false, fallbackAvailable: true },
+    ];
+  },
+  getPermissionExplanation: (type: PermissionType) => {
+    const explanations: Record<PermissionType, string> = {
+      notifications: 'Get updates about session progress and important events',
+      storage: 'Store authentication tokens and app preferences securely',
+      network: 'Connect to GitHub and sync with your desktop sessions',
+      camera: 'Take photos for profile and documentation',
+      microphone: 'Voice recording for enhanced collaboration',
+      location: 'Location-based development insights',
+    };
+    return explanations[type] || `${type} permission needed for app functionality`;
+  },
   canSkipStep: (step: OnboardingStep) => step !== 'permissions_explained',
-  getNextStep: (current: OnboardingStep) => {
+  getNextStep: (current: OnboardingStep): OnboardingStep | null => {
     const steps: OnboardingStep[] = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'preferences_set', 'completed'];
     const currentIndex = steps.indexOf(current);
     return currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null;

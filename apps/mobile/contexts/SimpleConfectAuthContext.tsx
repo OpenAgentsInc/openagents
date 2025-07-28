@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 import { Alert } from 'react-native';
-import { useSimpleConfectAuth } from '@/shared/hooks/useSimpleConfectAuth';
+import { useSimpleConfectAuth } from '../../../packages/shared/src/hooks/useSimpleConfectAuth';
 
 interface User {
   id: string;

@@ -2,12 +2,18 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 import { Alert } from 'react-native';
-// Temporarily disabled Effect-TS imports while fixing compilation errors
+// Temporary placeholder while Effect-TS runtime issues are being resolved
 // import { useConfectOnboarding, UseConfectOnboardingReturn } from '@/shared/hooks/useConfectOnboarding';
 
-// Placeholder types and interface
+// Placeholder types and hook
 type PermissionType = 'camera' | 'storage' | 'network' | 'notifications' | 'microphone' | 'location';
-type PermissionResult = { type: PermissionType; status: 'granted' | 'denied' | 'not_requested'; };
+interface PermissionResult {
+  type: PermissionType;
+  status: 'granted' | 'denied' | 'not_requested';
+  canRetry: boolean;
+  fallbackAvailable: boolean;
+  reason?: string;
+}
 type OnboardingStep = 'welcome' | 'permissions_explained' | 'github_connected' | 'repository_selected' | 'preferences_set' | 'completed';
 
 interface UseConfectOnboardingReturn {
@@ -46,8 +52,8 @@ const useConfectOnboarding = (config: any): UseConfectOnboardingReturn => ({
   updateOnboardingStep: async (step: OnboardingStep, completed: boolean) => {},
   completeOnboarding: async () => {},
   checkPermissions: async () => [],
-  requestPermission: async (type: PermissionType) => ({ type, status: 'granted' as const }),
-  requestAllPermissions: async () => [{ type: 'notifications' as const, status: 'granted' as const }],
+  requestPermission: async (type: PermissionType) => ({ type, status: 'granted' as const, canRetry: false, fallbackAvailable: true }),
+  requestAllPermissions: async () => [{ type: 'notifications' as const, status: 'granted' as const, canRetry: false, fallbackAvailable: true }],
   getPermissionExplanation: (type: PermissionType) => `${type} permission explanation`,
   canSkipStep: (step: OnboardingStep) => step !== 'permissions_explained',
   getNextStep: (current: OnboardingStep) => {
