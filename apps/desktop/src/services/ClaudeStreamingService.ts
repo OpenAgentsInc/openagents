@@ -78,7 +78,7 @@ export const ClaudeStreamingServiceLive = Layer.effect(
   Effect.gen(function* () {
     const eventService = yield* TauriEventService;
     
-    return ClaudeStreamingService.of({
+    const implementation: ClaudeStreamingService = {
       startStreaming: (sessionId: string) =>
         Effect.gen(function* () {
           // Create event stream for this session
@@ -109,7 +109,7 @@ export const ClaudeStreamingServiceLive = Layer.effect(
           Stream.filter((msg): msg is Message => msg !== null)
         ),
 
-      sendMessage: (sessionId: string, message: string): Effect.Effect<void, TauriEventError, never> =>
+      sendMessage: (sessionId: string, message: string) =>
         pipe(
           eventService.emit('claude:send_message', { sessionId, message }),
           Effect.retry(
@@ -135,6 +135,8 @@ export const ClaudeStreamingServiceLive = Layer.effect(
           // Shutdown the message queue
           yield* Queue.shutdown(session.messageQueue);
         })
-    });
+    };
+    
+    return implementation;
   })
 );

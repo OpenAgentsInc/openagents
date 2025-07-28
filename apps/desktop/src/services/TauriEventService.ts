@@ -1,5 +1,5 @@
-import { Effect, Queue, Context } from 'effect';
-import { listen, emit, Event as TauriEvent, UnlistenFn } from '@tauri-apps/api/event';
+import { Effect, Queue, Context, Layer } from 'effect';
+import { listen, emit, Event as TauriEvent } from '@tauri-apps/api/event';
 
 // Tagged error types for precise error handling
 export class StreamingError {
@@ -29,7 +29,7 @@ export interface EventStreamContext {
 export interface TauriEventService {
   // Create event listener
   listen: (eventName: string) => Effect.Effect<
-    { unlisten: UnlistenFn; eventName: string },
+    { unlisten: () => void; eventName: string },
     StreamingError,
     never
   >;
@@ -48,7 +48,7 @@ export interface TauriEventService {
 export const TauriEventService = Context.GenericTag<TauriEventService>('TauriEventService');
 
 // Service implementation
-export const TauriEventServiceLive = TauriEventService.of({
+const TauriEventServiceImpl: TauriEventService = {
   listen: (eventName: string) =>
     Effect.tryPromise({
       try: async () => {
@@ -101,4 +101,7 @@ export const TauriEventServiceLive = TauriEventService.of({
 
       return { queue, cleanup };
     })
-});
+};
+
+// Export the service layer
+export const TauriEventServiceLive = Layer.succeed(TauriEventService, TauriEventServiceImpl);
