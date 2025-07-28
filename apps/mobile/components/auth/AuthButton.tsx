@@ -79,6 +79,6 @@ const styles = StyleSheet.create({
       ios: 'Berkeley Mono',
       android: 'Berkeley Mono',
       default: 'monospace'
-    }),
+    } as const),
   },
 });

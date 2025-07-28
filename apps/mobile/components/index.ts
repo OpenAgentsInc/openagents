@@ -14,3 +14,6 @@ export * from "./chat/ChatListItem"
 
 // Animation components
 export * from "./ThinkingAnimation"
+
+// Error handling components
+export * from "./ErrorBoundary"

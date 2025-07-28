@@ -155,5 +155,5 @@ const $logoutText: TextStyle = {
     ios: 'Berkeley Mono',
     android: 'Berkeley Mono',
     default: 'monospace',
-  }),
+  } as const),
 }

@@ -32,7 +32,8 @@ interface UseSimpleConfectAuthReturn {
   logout: () => Promise<void>;
   clearError: () => void;
   
-  // Placeholder Confect features (to be implemented gradually)
+  // TODO: Replace with full Effect-TS Confect implementation
+  // These are placeholder methods to maintain interface compatibility
   syncToBackend: () => Promise<void>;
   getUserStats: (includeDeviceBreakdown?: boolean) => Promise<any>;
   requestDesktopSession: (projectPath: string, initialMessage?: string, title?: string) => Promise<string>;
@@ -41,6 +42,13 @@ interface UseSimpleConfectAuthReturn {
 /**
  * Simplified Confect auth hook that works without complex Effect-TS patterns.
  * This is a stepping stone toward the full Effect-TS implementation.
+ * 
+ * TODO: Migrate to full Effect-TS implementation with:
+ * - STM-based state management
+ * - Proper error boundary handling
+ * - OAuth PKCE flow with token refresh
+ * - Exponential backoff retry mechanisms
+ * - Environment-based configuration
  */
 export function useSimpleConfectAuth(config: UseSimpleConfectAuthConfig = {}): UseSimpleConfectAuthReturn {
   const [user, setUser] = useState<User | null>(null);
@@ -57,26 +65,52 @@ export function useSimpleConfectAuth(config: UseSimpleConfectAuthConfig = {}): U
 
   const checkAuthState = async () => {
     try {
-      // For now, return empty state - this will be enhanced gradually
-      console.log('🔄 [SIMPLE_CONFECT_AUTH] Checking auth state...');
+      const timestamp = new Date().toISOString();
+      console.log(`🔄 [SIMPLE_CONFECT_AUTH] ${timestamp} Checking auth state...`);
+      
+      // TODO: Implement proper auth state restoration from secure storage
+      // TODO: Add token validation and refresh logic
+      // TODO: Add network connectivity check before auth state check
+      console.log(`✅ [SIMPLE_CONFECT_AUTH] ${timestamp} Auth state check completed (placeholder)`);
       setIsLoading(false);
     } catch (error) {
-      console.error('❌ [SIMPLE_CONFECT_AUTH] Failed to check auth state:', error);
-      setError(error instanceof Error ? error.message : 'Unknown error');
+      const timestamp = new Date().toISOString();
+      const errorDetails = {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        config: { ...config, clientId: config.clientId ? '[REDACTED]' : undefined }
+      };
+      console.error(`❌ [SIMPLE_CONFECT_AUTH] ${timestamp} Failed to check auth state:`, errorDetails);
+      setError(errorDetails.message);
       setIsLoading(false);
     }
   };
 
   const login = useCallback(async () => {
     try {
+      const timestamp = new Date().toISOString();
       setIsLoading(true);
       setError(null);
-      console.log('🔄 [SIMPLE_CONFECT_AUTH] Login not yet implemented');
-      // Placeholder - will be implemented gradually
+      
+      console.log(`🔄 [SIMPLE_CONFECT_AUTH] ${timestamp} Starting login process...`);
+      
+      // TODO: Implement OAuth PKCE flow
+      // TODO: Add proper error boundary handling
+      // TODO: Add exponential backoff for network failures
+      // TODO: Add proper redirect URI validation
+      // TODO: Store tokens in secure storage
+      console.warn(`⚠️ [SIMPLE_CONFECT_AUTH] ${timestamp} Login not yet implemented - placeholder only`);
       throw new Error('Login not yet implemented');
     } catch (error) {
-      console.error('❌ [SIMPLE_CONFECT_AUTH] Login error:', error);
-      setError(error instanceof Error ? error.message : 'Login failed');
+      const timestamp = new Date().toISOString();
+      const errorDetails = {
+        message: error instanceof Error ? error.message : 'Login failed',
+        stack: error instanceof Error ? error.stack : undefined,
+        timestamp,
+        context: 'login_attempt'
+      };
+      console.error(`❌ [SIMPLE_CONFECT_AUTH] ${timestamp} Login error:`, errorDetails);
+      setError(errorDetails.message);
     } finally {
       setIsLoading(false);
     }
@@ -102,12 +136,20 @@ export function useSimpleConfectAuth(config: UseSimpleConfectAuthConfig = {}): U
   }, []);
 
   const syncToBackend = useCallback(async () => {
-    console.log('🔄 [SIMPLE_CONFECT_AUTH] syncToBackend placeholder');
+    const timestamp = new Date().toISOString();
+    console.log(`🔄 [SIMPLE_CONFECT_AUTH] ${timestamp} syncToBackend placeholder`);
+    // TODO: Implement proper backend sync with Convex using Confect patterns
+    // TODO: Add retry logic with exponential backoff
+    // TODO: Add conflict resolution for concurrent updates
     return Promise.resolve();
   }, []);
 
   const getUserStats = useCallback(async (includeDeviceBreakdown?: boolean) => {
-    console.log('🔄 [SIMPLE_CONFECT_AUTH] getUserStats placeholder');
+    const timestamp = new Date().toISOString();
+    console.log(`🔄 [SIMPLE_CONFECT_AUTH] ${timestamp} getUserStats placeholder (includeDeviceBreakdown: ${includeDeviceBreakdown})`);
+    // TODO: Implement real user statistics from Convex
+    // TODO: Add caching with proper invalidation
+    // TODO: Add device breakdown analytics
     return Promise.resolve({});
   }, []);
 
@@ -116,7 +158,15 @@ export function useSimpleConfectAuth(config: UseSimpleConfectAuthConfig = {}): U
     initialMessage?: string, 
     title?: string
   ): Promise<string> => {
-    console.log('🔄 [SIMPLE_CONFECT_AUTH] requestDesktopSession placeholder');
+    const timestamp = new Date().toISOString();
+    console.log(`🔄 [SIMPLE_CONFECT_AUTH] ${timestamp} requestDesktopSession placeholder`, {
+      projectPath: projectPath.substring(0, 50) + (projectPath.length > 50 ? '...' : ''),
+      hasInitialMessage: !!initialMessage,
+      title: title?.substring(0, 30) + (title && title.length > 30 ? '...' : '')
+    });
+    // TODO: Implement real desktop session creation via Convex
+    // TODO: Add validation for projectPath existence
+    // TODO: Add proper session ID generation
     return Promise.resolve('mock-session-id');
   }, []);
 
