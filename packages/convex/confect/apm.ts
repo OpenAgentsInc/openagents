@@ -14,6 +14,12 @@ import {
   GetUserAPMStatsResult,
   GetConvexAPMStatsArgs,
   GetConvexAPMStatsResult,
+  GetRealtimeAPMArgs,
+  GetRealtimeAPMResult,
+  UpdateRealtimeAPMArgs,
+  UpdateRealtimeAPMResult,
+  TrackRealtimeActionArgs,
+  TrackRealtimeActionResult,
 } from "./apm.schemas";
 
 // Helper function to get authenticated user with Effect-TS patterns (for mutations)
@@ -479,6 +485,230 @@ export const getConvexAPMStats = query({
         avgMessagesPerSession,
         uniqueUsers,
         recentActivity,
+      };
+    }),
+});
+
+// Realtime APM functions
+export const getRealtimeAPM = query({
+  args: GetRealtimeAPMArgs,
+  returns: GetRealtimeAPMResult,
+  handler: ({ deviceId, includeHistory = false }) =>
+    Effect.gen(function* () {
+      const { db } = yield* ConfectQueryCtx;
+      const user = yield* getAuthenticatedUserEffectQuery;
+
+      console.log(`📊 [RealtimeAPM] Getting realtime APM for user: ${user._id}, device: ${deviceId || 'current'}`);
+
+      // Get the most recent device session for this user
+      const recentSession = yield* db
+        .query("userDeviceSessions")
+        .withIndex("by_user_id", (q) => q.eq("userId", user._id))
+        .filter((q) => deviceId ? q.eq(q.field("deviceId"), deviceId) : true)
+        .order("desc")
+        .first();
+
+      if (Option.isNone(recentSession)) {
+        console.log(`📊 [RealtimeAPM] No session found for user: ${user._id}`);
+        return null;
+      }
+
+      const session = recentSession.value;
+      const now = Date.now();
+      
+      // Calculate current session metrics
+      const sessionStart = Math.min(...session.sessionPeriods.map(p => p.startTime));
+      const sessionEnd = Math.max(...session.sessionPeriods.map(p => p.endTime || now));
+      const sessionDuration = sessionEnd - sessionStart;
+      
+      // Calculate total actions from all session periods
+      const totalActions = session.sessionPeriods.reduce((sum, period) => sum + period.actionsCount, 0);
+      
+      // Calculate current APM
+      const currentAPM = sessionDuration > 0 ? (totalActions / (sessionDuration / 60000)) : 0;
+      
+      // Determine if session is currently active (last activity within 5 minutes)
+      const isActive = (now - sessionEnd) < (5 * 60 * 1000);
+
+      // Get APM history for trend calculation if requested
+      let history: number[] = [];
+      let trend: "up" | "down" | "stable" = "stable";
+      let trendPercentage = 0;
+
+      if (includeHistory) {
+        // Get recent APM calculations from user's recent sessions
+        const recentSessions = yield* db
+          .query("userDeviceSessions")
+          .withIndex("by_user_id", (q) => q.eq("userId", user._id))
+          .filter((q) => deviceId ? q.eq(q.field("deviceId"), deviceId) : true)
+          .order("desc")
+          .take(10);
+
+        history = recentSessions.map(s => {
+          const sDuration = Math.max(...s.sessionPeriods.map(p => p.endTime || now)) - 
+                           Math.min(...s.sessionPeriods.map(p => p.startTime));
+          const sActions = s.sessionPeriods.reduce((sum, p) => sum + p.actionsCount, 0);
+          return sDuration > 0 ? (sActions / (sDuration / 60000)) : 0;
+        });
+
+        // Calculate trend
+        if (history.length > 1) {
+          const previousAPM = history[1]; // Second most recent (index 0 is current)
+          if (previousAPM > 0) {
+            trendPercentage = ((currentAPM - previousAPM) / previousAPM) * 100;
+            if (Math.abs(trendPercentage) >= 10) { // 10% threshold
+              trend = trendPercentage > 0 ? "up" : "down";
+            }
+          }
+        }
+      }
+
+      console.log(`📊 [RealtimeAPM] Current APM: ${currentAPM.toFixed(2)}, Trend: ${trend}, Active: ${isActive}`);
+
+      return {
+        currentAPM: Number(currentAPM.toFixed(2)),
+        trend,
+        sessionDuration,
+        totalActions,
+        lastUpdateTimestamp: now,
+        isActive,
+        deviceId: session.deviceId,
+        trendPercentage: includeHistory ? Number(trendPercentage.toFixed(1)) : undefined,
+        history: includeHistory ? history : undefined,
+      };
+    }),
+});
+
+export const updateRealtimeAPM = mutation({
+  args: UpdateRealtimeAPMArgs,
+  returns: UpdateRealtimeAPMResult,
+  handler: ({ deviceId, currentAPM, totalActions, sessionDuration, isActive }) =>
+    Effect.gen(function* () {
+      const { db } = yield* ConfectMutationCtx;
+      const user = yield* getAuthenticatedUserEffectMutation;
+
+      console.log(`📊 [RealtimeAPM] Updating APM: ${currentAPM}, Device: ${deviceId}, Active: ${isActive}`);
+
+      const now = Date.now();
+
+      // Find or create device session
+      const existingSession = yield* db
+        .query("userDeviceSessions")
+        .withIndex("by_user_id", (q) => q.eq("userId", user._id))
+        .filter((q) => q.eq(q.field("deviceId"), deviceId))
+        .order("desc")
+        .first();
+
+      if (Option.isSome(existingSession)) {
+        // Update existing session
+        yield* db.patch(existingSession.value._id, {
+          sessionPeriods: [
+            ...existingSession.value.sessionPeriods.slice(0, -1), // Keep all but last
+            {
+              ...existingSession.value.sessionPeriods[existingSession.value.sessionPeriods.length - 1],
+              endTime: isActive ? undefined : now,
+              actionsCount: totalActions,
+            }
+          ],
+          lastUpdated: now,
+        });
+      } else {
+        // Create new session
+        yield* db.insert("userDeviceSessions", {
+          userId: user._id,
+          deviceId,
+          deviceType: deviceId.includes("mobile") ? "mobile" : "desktop",
+          sessionPeriods: [{
+            startTime: now - sessionDuration,
+            endTime: isActive ? undefined : now,
+            actionsCount: totalActions,
+          }],
+          totalOverlapMinutes: 0,
+          lastUpdated: now,
+        });
+      }
+
+      return {
+        success: true,
+        timestamp: now,
+      };
+    }),
+});
+
+export const trackRealtimeAction = mutation({
+  args: TrackRealtimeActionArgs,
+  returns: TrackRealtimeActionResult,
+  handler: ({ deviceId, actionType, timestamp = Date.now(), metadata }) =>
+    Effect.gen(function* () {
+      const { db } = yield* ConfectMutationCtx;
+      const user = yield* getAuthenticatedUserEffectMutation;
+
+      console.log(`📊 [RealtimeAPM] Tracking action: ${actionType}, Device: ${deviceId}`);
+
+      // Find current active session
+      const currentSession = yield* db
+        .query("userDeviceSessions")
+        .withIndex("by_user_id", (q) => q.eq("userId", user._id))
+        .filter((q) => q.eq(q.field("deviceId"), deviceId))
+        .order("desc")
+        .first();
+
+      let newAPM = 0;
+      let totalActions = 0;
+
+      if (Option.isSome(currentSession)) {
+        const session = currentSession.value;
+        const now = Date.now();
+        
+        // Get the most recent session period
+        const lastPeriod = session.sessionPeriods[session.sessionPeriods.length - 1];
+        const updatedActionsCount = lastPeriod.actionsCount + 1;
+        totalActions = updatedActionsCount;
+        
+        // Calculate new APM
+        const sessionStart = lastPeriod.startTime;
+        const duration = now - sessionStart;
+        newAPM = duration > 0 ? (updatedActionsCount / (duration / 60000)) : 0;
+        
+        // Update the session
+        const updatedPeriods = [
+          ...session.sessionPeriods.slice(0, -1),
+          {
+            ...lastPeriod,
+            actionsCount: updatedActionsCount,
+            endTime: undefined, // Keep session active
+          }
+        ];
+
+        yield* db.patch(session._id, {
+          sessionPeriods: updatedPeriods,
+          lastUpdated: now,
+        });
+      } else {
+        // Create new session with first action
+        totalActions = 1;
+        newAPM = 60; // 1 action in 1 second = 60 APM initially
+
+        yield* db.insert("userDeviceSessions", {
+          userId: user._id,
+          deviceId,
+          deviceType: deviceId.includes("mobile") ? "mobile" : "desktop",
+          sessionPeriods: [{
+            startTime: timestamp,
+            endTime: undefined,
+            actionsCount: 1,
+          }],
+          totalOverlapMinutes: 0,
+          lastUpdated: timestamp,
+        });
+      }
+
+      console.log(`📊 [RealtimeAPM] Action tracked, new APM: ${newAPM.toFixed(2)}, total actions: ${totalActions}`);
+
+      return {
+        success: true,
+        newAPM: Number(newAPM.toFixed(2)),
+        totalActions,
       };
     }),
 });

@@ -76,3 +76,55 @@ export const GetConvexAPMStatsResult = Schema.Struct({
     })
   ),
 });
+
+// Realtime APM schemas
+export const GetRealtimeAPMArgs = Schema.Struct({
+  deviceId: Schema.optional(Schema.String),
+  includeHistory: Schema.optional(Schema.Boolean),
+});
+
+export const GetRealtimeAPMResult = Schema.Union(
+  Schema.Null,
+  Schema.Struct({
+    currentAPM: Schema.Number,
+    trend: Schema.Literal("up", "down", "stable"),
+    sessionDuration: Schema.Number,
+    totalActions: Schema.Number,
+    lastUpdateTimestamp: Schema.Number,
+    isActive: Schema.Boolean,
+    deviceId: Schema.String,
+    trendPercentage: Schema.optional(Schema.Number),
+    history: Schema.optional(Schema.Array(Schema.Number)),
+  })
+);
+
+export const UpdateRealtimeAPMArgs = Schema.Struct({
+  deviceId: Schema.String,
+  currentAPM: Schema.Number,
+  totalActions: Schema.Number,
+  sessionDuration: Schema.Number,
+  isActive: Schema.Boolean,
+});
+
+export const UpdateRealtimeAPMResult = Schema.Struct({
+  success: Schema.Boolean,
+  timestamp: Schema.Number,
+});
+
+export const SubscribeRealtimeAPMArgs = Schema.Struct({
+  deviceId: Schema.optional(Schema.String),
+  updateInterval: Schema.optional(Schema.Number),
+});
+
+export const TrackRealtimeActionArgs = Schema.Struct({
+  deviceId: Schema.String,
+  actionType: Schema.Literal("message", "session", "tool", "github"),
+  timestamp: Schema.optional(Schema.Number),
+  metadata: Schema.optional(Schema.Any),
+});
+
+export const TrackRealtimeActionResult = Schema.Struct({
+  success: Schema.Boolean,
+  newAPM: Schema.Number,
+  totalActions: Schema.Number,
+});

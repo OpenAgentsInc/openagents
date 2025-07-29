@@ -11,6 +11,8 @@ import {
   BarChart,
   Clock,
   TrendingUp,
+  TrendingDown,
+  Activity,
   Loader2,
   RefreshCw,
   Eye,
@@ -24,6 +26,8 @@ import type { LucideProps } from 'lucide-react'
 export const BarChartIcon: React.FC<LucideProps> = (props) => React.createElement(BarChart as React.ComponentType<LucideProps>, props)
 export const ClockIcon: React.FC<LucideProps> = (props) => React.createElement(Clock as React.ComponentType<LucideProps>, props)
 export const TrendingUpIcon: React.FC<LucideProps> = (props) => React.createElement(TrendingUp as React.ComponentType<LucideProps>, props)
+export const TrendingDownIcon: React.FC<LucideProps> = (props) => React.createElement(TrendingDown as React.ComponentType<LucideProps>, props)
+export const ActivityIcon: React.FC<LucideProps> = (props) => React.createElement(Activity as React.ComponentType<LucideProps>, props)
 export const LoaderIcon: React.FC<LucideProps> = (props) => React.createElement(Loader2 as React.ComponentType<LucideProps>, props)
 export const RefreshIcon: React.FC<LucideProps> = (props) => React.createElement(RefreshCw as React.ComponentType<LucideProps>, props)
 export const EyeIcon: React.FC<LucideProps> = (props) => React.createElement(Eye as React.ComponentType<LucideProps>, props)
