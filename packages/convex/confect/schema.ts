@@ -179,6 +179,7 @@ export const confectSchema = defineSchema({
         "welcome",
         "permissions_explained", 
         "github_connected",
+        "device_sync",
         "repository_selected",
         "preferences_set",
         "completed"
@@ -256,6 +257,58 @@ export const confectSchema = defineSchema({
    .index("by_permission_type", ["permissionType"])
    .index("by_status", ["status"])
    .index("by_user_permission", ["userId", "permissionType"]),
+
+  // Device connections for cross-platform sync and presence
+  deviceConnections: defineTable(
+    Schema.Struct({
+      deviceId: Schema.String.pipe(Schema.nonEmptyString()),
+      userId: Id.Id("users"),
+      deviceType: Schema.Literal("desktop", "mobile", "web"),
+      platform: Schema.String.pipe(Schema.nonEmptyString()),
+      appVersion: Schema.String.pipe(Schema.nonEmptyString()),
+      userAgent: Schema.optional(Schema.String),
+      status: Schema.Literal("online", "offline", "idle"),
+      sessionToken: Schema.String.pipe(Schema.nonEmptyString()),
+      roomToken: Schema.String.pipe(Schema.nonEmptyString()),
+      connectedAt: Schema.Number,
+      lastHeartbeat: Schema.Number,
+      capabilities: Schema.Array(Schema.String),
+      metadata: Schema.optional(
+        Schema.Struct({
+          screenResolution: Schema.optional(Schema.String),
+          deviceModel: Schema.optional(Schema.String),
+          browserName: Schema.optional(Schema.String),
+          osVersion: Schema.optional(Schema.String),
+          location: Schema.optional(Schema.String),
+        })
+      ),
+    })
+  ).index("by_user_id", ["userId"])
+   .index("by_device_id", ["deviceId"])
+   .index("by_session_token", ["sessionToken"])
+   .index("by_status", ["status"])
+   .index("by_room_token", ["roomToken"])
+   .index("by_last_heartbeat", ["lastHeartbeat"])
+   .index("by_user_status", ["userId", "status"]),
+
+  // Device presence rooms for real-time sync
+  devicePresenceRooms: defineTable(
+    Schema.Struct({
+      roomId: Schema.String.pipe(Schema.nonEmptyString()),
+      createdAt: Schema.Number,
+      updatedAt: Schema.Number,
+      activeDevices: Schema.optional(Schema.Array(Schema.String)),
+      metadata: Schema.optional(
+        Schema.Struct({
+          maxDevices: Schema.optional(Schema.Number),
+          allowedTypes: Schema.optional(Schema.Array(Schema.String)),
+          features: Schema.optional(Schema.Array(Schema.String)),
+        })
+      ),
+    })
+  ).index("by_room_id", ["roomId"])
+   .index("by_created_at", ["createdAt"])
+   .index("by_updated_at", ["updatedAt"]),
 });
 
 // Export the traditional Convex schema for compatibility

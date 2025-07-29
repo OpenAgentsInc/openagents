@@ -6,6 +6,7 @@ export const OnboardingStep = Schema.Literal(
   "welcome",
   "permissions_explained", 
   "github_connected",
+  "device_sync",
   "repository_selected",
   "preferences_set",
   "completed"
