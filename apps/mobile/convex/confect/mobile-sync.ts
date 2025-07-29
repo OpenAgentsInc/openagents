@@ -26,7 +26,7 @@ export const createClaudeSession = mutation({
 
       // Get authenticated user (optional for backwards compatibility)
       const identity = yield* auth.getUserIdentity();
-      let userId = Option.none<string>();
+      let userId = Option.none<ConfectDoc<"users">["_id"]>();
       
       if (Option.isSome(identity)) {
         // Find user by OpenAuth subject
@@ -99,8 +99,8 @@ export const updateSessionStatus = mutation({
         .first();
 
       yield* Option.match(session, {
-        onSome: (s) =>
-          db.patch((s as ConfectDoc<"claudeSessions">)._id, {
+        onSome: (s: ConfectDoc<"claudeSessions">) =>
+          db.patch(s._id, {
             status,
             lastActivity: Date.now(),
           }),
@@ -118,18 +118,17 @@ export const getPendingMobileSessions = query({
     Effect.gen(function* () {
       const { db } = yield* ConfectQueryCtx;
 
-      const query = db
+      const results = yield* db
         .query("claudeSessions")
         .withIndex("by_status", (q) => q.eq("status", "active"))
         .filter((q) => q.eq(q.field("createdBy"), "mobile"))
         .order("desc")
         .take(10);
-      const results = yield* (query as any).collect();
 
       console.log(`🔍 [CONFECT] getPendingMobileSessions query returned: ${results.length} sessions`);
       
       if (results.length > 0) {
-        console.log("📋 [CONFECT] Mobile sessions:", results.map(s => ({
+        console.log("📋 [CONFECT] Mobile sessions:", results.map((s: any) => ({
           sessionId: s.sessionId,
           status: s.status,
           createdBy: s.createdBy,

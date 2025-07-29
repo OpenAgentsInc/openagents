@@ -31,8 +31,7 @@ export const getMessages = query({
     Effect.gen(function* () {
       const { db } = yield* ConfectQueryCtx;
 
-      const query = db.query("messages").order("asc").take(100);
-      return yield* (query as any).collect();
+      return yield* db.query("messages").order("asc").take(100);
     }),
 });
 
@@ -83,7 +82,7 @@ export const addClaudeMessage = mutation({
 
       // Get authenticated user (optional for backwards compatibility)
       const identity = yield* auth.getUserIdentity();
-      let userId = Option.none<string>();
+      let userId = Option.none<ConfectDoc<"users">["_id"]>();
       
       if (Option.isSome(identity)) {
         // Find user by OpenAuth subject
@@ -169,11 +168,10 @@ export const getSessionMessages = query({
         .order("asc");
 
       if (limit) {
-        const limitedQuery = query.take(limit);
-        return yield* (limitedQuery as any).collect();
+        return yield* query.take(limit);
       }
 
-      return yield* (query as any).collect();
+      return yield* query.collect();
     }),
 });
 
@@ -191,7 +189,10 @@ export const getSessionMessagesPaginated = query({
         .query("claudeMessages")
         .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
         .order("asc")
-        .paginate(paginationOpts);
+        .paginate({
+          ...paginationOpts,
+          cursor: paginationOpts.cursor ?? null,
+        });
 
       console.log(`✅ [CONFECT] Paginated messages fetched: ${result.page.length} items, isDone: ${result.isDone}`);
 
