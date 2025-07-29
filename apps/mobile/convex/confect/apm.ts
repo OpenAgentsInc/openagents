@@ -14,7 +14,7 @@ export const TrackDeviceSessionArgs = Schema.Struct({
   deviceType: Schema.Literal("desktop", "mobile", "github"),
   sessionStart: Schema.Number,
   sessionEnd: Schema.optional(Schema.Number),
-  actionsCount: Schema.Struct({
+  actions: Schema.Struct({
     messages: Schema.Number,
     toolUses: Schema.Number,
     githubEvents: Schema.optional(Schema.Number),
@@ -39,7 +39,7 @@ export const CalculateUserAPMResult = Schema.Struct({
 export const trackDeviceSession = mutation({
   args: TrackDeviceSessionArgs,
   returns: TrackDeviceSessionResult,
-  handler: ({ deviceId, deviceType, sessionStart, sessionEnd, actionsCount, metadata }) =>
+  handler: ({ deviceId, deviceType, sessionStart, sessionEnd, actions, metadata }) =>
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
       
@@ -61,7 +61,7 @@ export const trackDeviceSession = mutation({
             end: sessionEnd,
           }
         ],
-        actionsCount,
+        actions,
         lastActivity: Date.now(),
         metadata,
       });

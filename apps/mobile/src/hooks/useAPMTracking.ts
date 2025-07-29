@@ -106,7 +106,7 @@ export function useAPMTracking(options: APMTrackingOptions = {}) {
         deviceType: 'mobile',
         sessionStart: session.sessionStart,
         sessionEnd: sessionActive.current ? undefined : now,
-        actionsCount: {
+        actions: {
           messages: session.messagesSent,
           toolUses: 0, // Mobile doesn't directly use tools
           githubEvents: 0,

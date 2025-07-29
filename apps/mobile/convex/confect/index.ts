@@ -11,8 +11,8 @@ export * from "./messages";
 export * from "./messages.schemas";
 
 // Mobile sync functions
-export * from "./mobile-sync";
-export * from "./mobile-sync.schemas";
+export * from "./mobile_sync";
+export * from "./mobile_sync.schemas";
 
 // HTTP API - temporarily disabled due to TypeScript errors
 // export * from "./http-api";

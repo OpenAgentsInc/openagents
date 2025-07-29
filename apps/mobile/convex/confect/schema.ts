@@ -111,7 +111,7 @@ export const confectSchema = defineSchema({
           end: Schema.optional(Schema.Number),
         })
       ),
-      actionsCount: Schema.Struct({
+      actions: Schema.Struct({
         messages: Schema.Number,
         toolUses: Schema.Number,
         githubEvents: Schema.optional(Schema.Number),
