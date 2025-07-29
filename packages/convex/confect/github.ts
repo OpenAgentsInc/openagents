@@ -1,10 +1,14 @@
-import { Effect, Option } from "effect";
+import { Effect, Option, Schema } from "effect";
 import {
+  ConfectActionCtx,
   ConfectMutationCtx,
   ConfectQueryCtx,
+  action,
+  internalMutation,
   mutation,
   query,
 } from "./confect";
+import { api } from "../convex/_generated/api";
 import {
   FetchUserRepositoriesArgs,
   FetchUserRepositoriesResult,
@@ -24,12 +28,13 @@ const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour
 const MAX_REPOSITORIES = 5;
 
 
-// Fetch user repositories from GitHub API
-export const fetchUserRepositories = mutation({
-  args: FetchUserRepositoriesArgs,
+// Force refresh repositories (for testing)
+export const forceRefreshRepositories = mutation({
+  args: Schema.Struct({}),
   returns: FetchUserRepositoriesResult,
-  handler: ({ forceRefresh = false }) =>
+  handler: () =>
     Effect.gen(function* () {
+      console.log(`🔄 [GITHUB_API] Force refresh triggered by user`);
       const { db, auth } = yield* ConfectMutationCtx;
       const timestamp = new Date().toISOString();
 
@@ -55,6 +60,108 @@ export const fetchUserRepositories = mutation({
 
       const userData = user.value;
 
+      // Force refresh - skip cache check and try to fetch repositories
+      console.log(`🔄 [GITHUB_API] ${timestamp} Force fetching repositories (ignoring cache)`);
+
+      // Get GitHub OAuth token from user's stored data
+      if (!userData.githubAccessToken) {
+        console.log(`⚠️ [GITHUB_API] ${timestamp} No GitHub access token found, trying OpenAuth token`);
+        
+        // Fallback: try using OpenAuth token directly 
+        const identity = yield* auth.getUserIdentity();
+        if (Option.isNone(identity) || !identity.value.tokenIdentifier) {
+          return yield* Effect.fail(
+            new GitHubAuthError("No GitHub or OpenAuth token available - user needs to re-authenticate")
+          );
+        }
+        
+        // Extract the actual JWT token and try it with GitHub API
+        const jwtToken = identity.value.tokenIdentifier.split(' ')[1]; // Remove "Bearer " prefix
+        console.log(`🔑 [GITHUB_API] ${timestamp} Testing OpenAuth token with GitHub API`);
+        
+        // Try calling GitHub API with OpenAuth token
+        const reposUrl = `${GITHUB_API_BASE}/user/repos?sort=updated&per_page=${MAX_REPOSITORIES}&type=all`;
+        
+        const response = yield* Effect.promise(() =>
+          fetch(reposUrl, {
+            headers: {
+              Authorization: `Bearer ${jwtToken}`,
+              Accept: "application/vnd.github.v3+json",
+              "User-Agent": "OpenAgents-Mobile/1.0",
+            },
+          })
+        );
+
+        if (!response.ok) {
+          const errorBody = yield* Effect.promise(() => response.text());
+          console.log(`❌ [GITHUB_API] ${timestamp} OpenAuth token failed: ${response.status} - ${errorBody}`);
+          return yield* Effect.fail(
+            new GitHubAuthError(`GitHub API failed with OpenAuth token: ${response.statusText}`)
+          );
+        }
+
+        console.log(`✅ [GITHUB_API] ${timestamp} SUCCESS! OpenAuth token works with GitHub API`);
+        const apiResponse = yield* Effect.promise(() => response.json());
+        
+        // Process repositories
+        const repositories = [];
+        for (const repo of apiResponse) {
+          repositories.push({
+            id: repo.id,
+            name: repo.name,
+            fullName: repo.full_name,
+            owner: repo.owner.login,
+            isPrivate: repo.private,
+            defaultBranch: repo.default_branch || "main",
+            updatedAt: repo.updated_at,
+            description: repo.description || undefined,
+            language: repo.language || undefined,
+            htmlUrl: repo.html_url,
+            cloneUrl: repo.clone_url,
+            sshUrl: repo.ssh_url,
+          });
+        }
+
+        console.log(`✅ [GITHUB_API] ${timestamp} Successfully fetched ${repositories.length} repositories using OpenAuth token`);
+
+        return yield* Effect.succeed({
+          repositories,
+          totalCount: repositories.length,
+          isCached: false,
+          lastFetched: Date.now(),
+        });
+      }
+
+      return yield* Effect.fail(new GitHubAPIError("Not implemented yet for GitHub access token"));
+    }),
+});
+
+// Fetch user repositories from GitHub API
+export const fetchUserRepositories = action({
+  args: FetchUserRepositoriesArgs,
+  returns: FetchUserRepositoriesResult,
+  handler: ({ forceRefresh = false }): any =>
+    Effect.gen(function* (): any {
+      const { runQuery, runMutation, auth } = yield* ConfectActionCtx;
+      const timestamp = new Date().toISOString();
+
+      // Ensure user is authenticated  
+      const identity = yield* auth.getUserIdentity();
+      if (Option.isNone(identity)) {
+        return yield* Effect.fail(new GitHubAuthError("Not authenticated"));
+      }
+
+      // Get the user record using internal helper
+      console.log(`🔍 [GITHUB_API] ${timestamp} Getting authenticated user`);
+      
+      const user = yield* runQuery((api as any)["confect/github"]._getAuthenticatedUserForAction, {});
+
+      if (Option.isNone(user)) {
+        return yield* Effect.fail(new GitHubAuthError("User not found"));
+      }
+
+      const userData = user.value;
+
       // Check if we have cached data and it's still valid
       if (!forceRefresh && userData.githubMetadata) {
         const cacheAge = Date.now() - userData.githubMetadata.lastReposFetch;
@@ -71,11 +178,98 @@ export const fetchUserRepositories = mutation({
 
       console.log(`🔄 [GITHUB_API] ${timestamp} Fetching fresh repositories from GitHub API`);
 
-      // TODO: Get OAuth token from secure storage or auth context
-      // For now, we'll need to get this from the authentication system
-      const oauthToken = "placeholder_token"; // This needs to be implemented
+      // Get GitHub OAuth token from user's stored data
+      if (!userData.githubAccessToken) {
+        console.log(`⚠️ [GITHUB_API] ${timestamp} No GitHub access token found, trying OpenAuth token`);
+        
+        // Fallback: try using OpenAuth token directly 
+        // OpenAuth might proxy GitHub API calls or the token might work directly
+        const identity = yield* auth.getUserIdentity();
+        if (Option.isNone(identity) || !identity.value.tokenIdentifier) {
+          return yield* Effect.fail(
+            new GitHubAuthError("No GitHub or OpenAuth token available - user needs to re-authenticate")
+          );
+        }
+        
+        // Extract the actual JWT token and try it with GitHub API
+        const jwtToken = identity.value.tokenIdentifier.split(' ')[1]; // Remove "Bearer " prefix
+        console.log(`🔑 [GITHUB_API] ${timestamp} Trying OpenAuth JWT token as fallback`);
+        
+        // Try calling GitHub API with OpenAuth token (might be proxied)
+        const reposUrl = `${GITHUB_API_BASE}/user/repos?sort=updated&per_page=${MAX_REPOSITORIES}&type=all`;
+        
+        console.log(`🔍 [GITHUB_API] ${timestamp} Testing GitHub API with OpenAuth token: ${reposUrl}`);
+        const response = yield* Effect.promise(() =>
+          fetch(reposUrl, {
+            headers: {
+              Authorization: `Bearer ${jwtToken}`,
+              Accept: "application/vnd.github.v3+json",
+              "User-Agent": "OpenAgents-Mobile/1.0",
+            },
+          })
+        );
 
-      // Fetch repositories from GitHub API inline to avoid context pollution
+        if (!response.ok) {
+          const errorBody = yield* Effect.promise(() => response.text());
+          console.log(`❌ [GITHUB_API] ${timestamp} OpenAuth token failed for GitHub API: ${response.status} - ${errorBody}`);
+          
+          if (response.status === 401 || response.status === 403) {
+            return yield* Effect.fail(
+              new GitHubAuthError(`GitHub authentication failed with OpenAuth token: ${response.statusText}`)
+            );
+          }
+          
+          return yield* Effect.fail(
+            new GitHubAPIError(
+              `GitHub API request failed with OpenAuth token: ${response.statusText}`,
+              response.status,
+              errorBody
+            )
+          );
+        }
+
+        console.log(`✅ [GITHUB_API] ${timestamp} SUCCESS! OpenAuth token works with GitHub API`);
+        const apiResponse = yield* Effect.promise(() => response.json());
+        
+        // Process the response same as normal GitHub token flow
+        const repositories = [];
+        for (const repo of apiResponse) {
+          try {
+            repositories.push({
+              id: repo.id,
+              name: repo.name,
+              fullName: repo.full_name,
+              owner: repo.owner.login,
+              isPrivate: repo.private,
+              defaultBranch: repo.default_branch || "main",
+              updatedAt: repo.updated_at,
+              description: repo.description || undefined,
+              language: repo.language || undefined,
+              htmlUrl: repo.html_url,
+              cloneUrl: repo.clone_url,
+              sshUrl: repo.ssh_url,
+            });
+          } catch (error) {
+            return yield* Effect.fail(
+              new GitHubAPIError(`Failed to transform repository data: ${error}`)
+            );
+          }
+        }
+
+        console.log(`✅ [GITHUB_API] ${timestamp} Successfully fetched ${repositories.length} repositories using OpenAuth token`);
+
+        return yield* Effect.succeed({
+          repositories,
+          totalCount: repositories.length,
+          isCached: false,
+          lastFetched: Date.now(),
+        });
+      }
+
+      const oauthToken = userData.githubAccessToken;
+      console.log(`🔑 [GITHUB_API] ${timestamp} Using stored GitHub access token`);
+
+      // Fetch repositories from GitHub API
       const reposUrl = `${GITHUB_API_BASE}/user/repos?sort=updated&per_page=${MAX_REPOSITORIES}&type=all`;
       
       console.log(`🔍 [GITHUB_API] ${timestamp} Fetching: ${reposUrl}`);
@@ -151,18 +345,22 @@ export const fetchUserRepositories = mutation({
         }
       }
 
-      // Update user's GitHub metadata
+      // Save repositories using internal helper
+      const lastFetched = Date.now();
       const githubMetadata = {
         publicRepos: userData.githubMetadata?.publicRepos || 0,
         totalPrivateRepos: userData.githubMetadata?.totalPrivateRepos || 0,
         ownedPrivateRepos: userData.githubMetadata?.ownedPrivateRepos || 0,
         reposUrl: userData.githubMetadata?.reposUrl || `${GITHUB_API_BASE}/users/${userData.githubUsername}/repos`,
         cachedRepos: repositories,
-        lastReposFetch: Date.now(),
+        lastReposFetch: lastFetched,
         lastReposFetchError: undefined, // Clear any previous errors
       };
 
-      yield* db.patch(userData._id, { githubMetadata });
+      yield* runMutation((api as any)["confect/github"]._saveRepositoryDataFromAction, { 
+        userId: userData._id, 
+        githubMetadata 
+      });
 
       console.log(`✅ [GITHUB_API] ${timestamp} Successfully cached ${repositories.length} repositories`);
 
@@ -170,7 +368,7 @@ export const fetchUserRepositories = mutation({
         repositories,
         totalCount: repositories.length,
         isCached: false,
-        lastFetched: Date.now(),
+        lastFetched,
       });
     }),
 });
@@ -234,6 +432,54 @@ export const getUserRepositories = query({
     }),
 });
 
+// Internal helper to get authenticated user for actions
+export const _getAuthenticatedUserForAction = query({
+  args: Schema.Struct({}),
+  returns: Schema.Option(Schema.Struct({
+    _id: Schema.String,
+    githubAccessToken: Schema.optional(Schema.String),
+    githubMetadata: Schema.optional(Schema.Any),
+    githubUsername: Schema.String,
+  })),
+  handler: () =>
+    Effect.gen(function* () {
+      const { db, auth } = yield* ConfectQueryCtx;
+
+      // Ensure user is authenticated  
+      const identity = yield* auth.getUserIdentity();
+      if (Option.isNone(identity)) {
+        return Option.none();
+      }
+
+      // Get the user record by OpenAuth subject
+      const authSubject = identity.value.subject;
+      
+      const user = yield* db
+        .query("users")
+        .withIndex("by_openauth_subject", (q: any) => q.eq("openAuthSubject", authSubject))
+        .first();
+
+      return user;
+    }),
+});
+
+// Internal helper to save repository data from actions
+export const _saveRepositoryDataFromAction = internalMutation({
+  args: Schema.Struct({
+    userId: Schema.String,
+    githubMetadata: Schema.Any,
+  }),
+  returns: Schema.String,
+  handler: ({ userId, githubMetadata }) =>
+    Effect.gen(function* () {
+      const { db } = yield* ConfectMutationCtx;
+
+      yield* db.patch(userId as any, { githubMetadata });
+
+      return "success";
+    }),
+});
+
 // Update GitHub metadata (internal helper)
 export const updateGitHubMetadata = mutation({
   args: UpdateGitHubMetadataArgs,
@@ -269,3 +515,4 @@ export const updateGitHubMetadata = mutation({
       return user.value._id;
     }),
 });
+

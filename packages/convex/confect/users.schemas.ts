@@ -8,6 +8,8 @@ export const GetOrCreateUserArgs = Schema.Struct({
   avatar: Schema.optional(Schema.String),
   githubId: Schema.String.pipe(Schema.nonEmptyString()),
   githubUsername: Schema.String.pipe(Schema.nonEmptyString()),
+  openAuthSubject: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
+  githubAccessToken: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
 });
 
 export const GetOrCreateUserResult = Id.Id("users");

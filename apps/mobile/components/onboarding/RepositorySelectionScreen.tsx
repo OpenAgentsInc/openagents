@@ -8,7 +8,7 @@ import {
   RefreshControl,
   ScrollView,
 } from 'react-native';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { Text, ThinkingAnimation, ErrorBoundary } from '../index';
 import { useConfectAuth } from '../../contexts/SimpleConfectAuthContext';
@@ -42,18 +42,64 @@ export function RepositorySelectionScreen({
 }: RepositorySelectionScreenProps) {
   const { isAuthenticated, user } = useConfectAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAutoFetching, setIsAutoFetching] = useState(false);
 
   // Query cached repositories
   const repositoriesData = useQuery(
-    api.confect.github.getUserRepositories,
+    api["confect/github"].getUserRepositories,
     isAuthenticated ? {} : "skip"
   );
 
-  // Mutation to fetch fresh repositories
-  const fetchRepositories = useMutation(api.confect.github.fetchUserRepositories);
+  // Action to fetch fresh repositories
+  const fetchRepositories = useAction(api["confect/github"].fetchUserRepositories);
   
   // Repository state management
   const { setActiveRepository } = useRepositoryState();
+
+  // Auto-fetch repositories when no cached data exists
+  useEffect(() => {
+    const autoFetchRepositories = async () => {
+      const timestamp = new Date().toISOString();
+      console.log(`🔄 [REPO_SELECTION] ${timestamp} Auto-fetch check:`, {
+        isAuthenticated,
+        hasUser: !!user,
+        isAutoFetching,
+        isRefreshing,
+        repositoriesData: repositoriesData,
+        repositoriesDataType: typeof repositoriesData,
+      });
+
+      if (!isAuthenticated || !user || isAutoFetching || isRefreshing) {
+        console.log(`⏭️ [REPO_SELECTION] ${timestamp} Skipping auto-fetch due to conditions`);
+        return;
+      }
+
+      // Check if we have no cached data (null, undefined, or Option.none)
+      const hasNoData = !repositoriesData || 
+                       (repositoriesData && typeof repositoriesData === 'object' && repositoriesData._tag === 'None');
+      
+      if (hasNoData) {
+        console.log(`🔄 [REPO_SELECTION] ${timestamp} No cached repositories found (Option.none), auto-fetching from GitHub API`);
+        
+        try {
+          setIsAutoFetching(true);
+          await fetchRepositories({ forceRefresh: false });
+          console.log(`✅ [REPO_SELECTION] ${timestamp} Auto-fetch completed successfully`);
+        } catch (error) {
+          console.error(`❌ [REPO_SELECTION] ${timestamp} Auto-fetch failed:`, error);
+          // Don't show alert for auto-fetch failures, user can manually refresh
+        } finally {
+          setIsAutoFetching(false);
+        }
+      } else {
+        console.log(`📦 [REPO_SELECTION] ${timestamp} Cached data exists, skipping auto-fetch`);
+      }
+    };
+
+    // Add a small delay to ensure user sync is complete
+    const timeoutId = setTimeout(autoFetchRepositories, 2000);
+    return () => clearTimeout(timeoutId);
+  }, [isAuthenticated, user, repositoriesData, fetchRepositories, isAutoFetching, isRefreshing]);
 
   // Handle repository selection
   const handleRepositorySelect = async (repository: Repository) => {
@@ -127,7 +173,7 @@ export function RepositorySelectionScreen({
     );
   }
 
-  // No data available
+  // No data available (loading or auto-fetching)
   if (!repositoriesData) {
     return (
       <View style={styles.container}>
@@ -140,7 +186,9 @@ export function RepositorySelectionScreen({
 
         <View style={styles.loadingContainer}>
           <ThinkingAnimation size={40} style={styles.loadingAnimation} />
-          <Text style={styles.loadingText}>Loading your repositories...</Text>
+          <Text style={styles.loadingText}>
+            {isAutoFetching ? 'Fetching your repositories from GitHub...' : 'Loading your repositories...'}
+          </Text>
         </View>
 
         <View style={styles.footer}>

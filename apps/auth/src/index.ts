@@ -3,6 +3,36 @@ import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
 import { GithubProvider } from "@openauthjs/openauth/provider/github";
 import { subjects, type User } from "./subjects";
 
+// Store provider tokens (GitHub access tokens) in KV
+// Key format: "provider_tokens:{user_sub}"
+interface ProviderTokens {
+  github?: {
+    access_token: string;
+    refresh_token?: string;
+    expires_at?: number;
+  };
+}
+
+// Helper functions for provider token management
+async function storeProviderTokens(storage: any, userSub: string, tokens: ProviderTokens): Promise<void> {
+  const key = `provider_tokens:${userSub}`;
+  await storage.put(key, JSON.stringify(tokens));
+  console.log(`🔑 [AUTH] Stored provider tokens for user ${userSub}`);
+}
+
+async function getProviderTokens(storage: any, userSub: string): Promise<ProviderTokens | null> {
+  const key = `provider_tokens:${userSub}`;
+  const data = await storage.get(key);
+  if (!data) return null;
+  
+  try {
+    return JSON.parse(data);
+  } catch (error) {
+    console.error(`❌ [AUTH] Failed to parse provider tokens for user ${userSub}:`, error);
+    return null;
+  }
+}
+
 // User management functions
 async function getUser(claims: { sub: string; github_id: string; email: string; name?: string; avatar?: string; username: string }): Promise<User> {
   // Validate required fields

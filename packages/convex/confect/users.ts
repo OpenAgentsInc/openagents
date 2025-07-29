@@ -14,11 +14,39 @@ import {
   GetUserByIdResult,
 } from "./users.schemas";
 
+// Helper function to get authenticated user (for internal use by other functions)
+export async function getAuthenticatedUser(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new Error("Not authenticated");
+  }
+
+  // Look up user by OpenAuth subject first, fallback to GitHub ID for backwards compatibility
+  let user = await ctx.db
+    .query("users")
+    .withIndex("by_openauth_subject", (q: any) => q.eq("openAuthSubject", identity.subject))
+    .first();
+
+  // Fallback: try looking up by GitHub ID (for backwards compatibility with old users)
+  if (!user) {
+    user = await ctx.db
+      .query("users")
+      .withIndex("by_github_id", (q: any) => q.eq("githubId", identity.subject))
+      .first();
+  }
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return user;
+}
+
 // Get or create user from JWT claims
 export const getOrCreateUser = mutation({
   args: GetOrCreateUserArgs,
   returns: GetOrCreateUserResult,
-  handler: ({ email, name, avatar, githubId, githubUsername }) =>
+  handler: ({ email, name, avatar, githubId, githubUsername, openAuthSubject, githubAccessToken }) =>
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
 
@@ -28,7 +56,7 @@ export const getOrCreateUser = mutation({
         return yield* Effect.fail(new Error("Not authenticated"));
       }
 
-      // Check if user already exists
+      // Check if user already exists by GitHub ID
       const existingUser = yield* db
         .query("users")
         .withIndex("by_github_id", (q) => q.eq("githubId", githubId))
@@ -36,13 +64,15 @@ export const getOrCreateUser = mutation({
 
       return yield* Option.match(existingUser, {
         onSome: (user) =>
-          // Update existing user
+          // Update existing user with new token and auth subject
           db.patch(user._id, {
             lastLogin: Date.now(),
             email,
             name,
             avatar,
             githubUsername,
+            openAuthSubject,
+            githubAccessToken,
           }).pipe(Effect.as(user._id)),
         
         onNone: () =>
@@ -53,6 +83,8 @@ export const getOrCreateUser = mutation({
             avatar,
             githubId,
             githubUsername,
+            openAuthSubject,
+            githubAccessToken,
             createdAt: Date.now(),
             lastLogin: Date.now(),
           })

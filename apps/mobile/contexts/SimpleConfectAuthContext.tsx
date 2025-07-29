@@ -24,6 +24,7 @@ interface SimpleConfectAuthContextType {
   // Auth methods
   login: () => Promise<void>;
   logout: () => Promise<void>;
+  forceLogout: () => Promise<void>; // Debug method
   
   // Onboarding state (simplified)
   needsOnboarding: boolean;
@@ -143,6 +144,7 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
       });
 
       console.log('📱 [SIMPLE_CONFECT_AUTH] OAuth result:', result.type);
+      console.log('📱 [SIMPLE_CONFECT_AUTH] Full OAuth result:', result);
 
       if (result.type === 'success') {
         console.log('📱 [SIMPLE_CONFECT_AUTH] OAuth success, exchanging code for token');
@@ -178,6 +180,26 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
 
         const tokenData = await response.json();
         console.log('📱 [SIMPLE_CONFECT_AUTH] Token exchange successful');
+        console.log('🔍 [SIMPLE_CONFECT_AUTH] Raw token response:', tokenData);
+        console.log('🔍 [SIMPLE_CONFECT_AUTH] Token data structure:', {
+          hasAccessToken: !!tokenData.access_token,
+          hasRefreshToken: !!tokenData.refresh_token,
+          hasGithubToken: !!tokenData.github_access_token,
+          hasProviderTokens: !!tokenData.provider_tokens,
+          tokenKeys: Object.keys(tokenData),
+          tokenDataType: typeof tokenData,
+          isArray: Array.isArray(tokenData),
+        });
+
+        // Check if GitHub token is directly in the token response
+        let initialGithubToken = null;
+        if (tokenData.github_access_token) {
+          initialGithubToken = tokenData.github_access_token;
+          console.log('✅ [SIMPLE_CONFECT_AUTH] GitHub token found in token exchange response');
+        } else if (tokenData.provider_tokens?.github) {
+          initialGithubToken = tokenData.provider_tokens.github;
+          console.log('✅ [SIMPLE_CONFECT_AUTH] GitHub token found in provider_tokens');
+        }
         
         if (tokenData.access_token) {
           // Fetch user data from OpenAuth server
@@ -186,13 +208,70 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
               'Authorization': `Bearer ${tokenData.access_token}`,
             },
           });
+
+          // Also try to get provider tokens (GitHub access token)
+          const tokensResponse = await fetch(`${OPENAUTH_URL}/tokens`, {
+            headers: {
+              'Authorization': `Bearer ${tokenData.access_token}`,
+            },
+          });
           
           if (userResponse.ok) {
             const userData = await userResponse.json();
+            console.log('👤 [SIMPLE_CONFECT_AUTH] Raw user response:', userData);
+            
+            // Try to get GitHub token from tokens endpoint or initial token response
+            let githubAccessToken = initialGithubToken; // Start with token from initial response
+            
+            if (tokensResponse.ok) {
+              const tokensData = await tokensResponse.json();
+              console.log('🔑 [SIMPLE_CONFECT_AUTH] Raw tokens response:', tokensData);
+              console.log('🔑 [SIMPLE_CONFECT_AUTH] Tokens data structure:', {
+                tokensKeys: Object.keys(tokensData),
+                hasGithubToken: !!tokensData.github,
+                hasProviders: !!tokensData.providers,
+                tokensDataType: typeof tokensData,
+                isArray: Array.isArray(tokensData),
+              });
+              
+              // Extract GitHub token from tokens response (prefer this over initial)
+              if (tokensData.github?.access_token) {
+                githubAccessToken = tokensData.github.access_token;
+                console.log('✅ [SIMPLE_CONFECT_AUTH] GitHub access token found in tokens response');
+              } else if (tokensData.providers?.github?.access_token) {
+                githubAccessToken = tokensData.providers.github.access_token;
+                console.log('✅ [SIMPLE_CONFECT_AUTH] GitHub access token found in providers.github');
+              }
+            } else {
+              console.warn('⚠️ [SIMPLE_CONFECT_AUTH] Failed to fetch tokens:', tokensResponse.status);
+              console.log('💡 [SIMPLE_CONFECT_AUTH] Using GitHub token from initial response if available');
+            }
+            
+            // Final fallback: check if GitHub token is in user data
+            if (!githubAccessToken && userData.githubAccessToken) {
+              githubAccessToken = userData.githubAccessToken;
+              console.log('✅ [SIMPLE_CONFECT_AUTH] GitHub access token found in user data');
+            }
+            
+            console.log('📊 [SIMPLE_CONFECT_AUTH] User data received:', {
+              githubUsername: userData.githubUsername,
+              hasGithubToken: !!githubAccessToken,
+              tokenKeys: Object.keys(userData).filter(k => k.includes('token')),
+              allKeys: Object.keys(userData),
+              fullUserData: userData, // Log everything to debug
+            });
             
             // Store tokens securely
             await SecureStore.setItemAsync('openauth_token', tokenData.access_token);
             await SecureStore.setItemAsync('openauth_user', JSON.stringify(userData));
+            
+            // Store GitHub access token separately if available
+            if (githubAccessToken) {
+              await SecureStore.setItemAsync('github_access_token', githubAccessToken);
+              console.log('💾 [SIMPLE_CONFECT_AUTH] GitHub access token stored in secure storage');
+            } else {
+              console.warn('⚠️ [SIMPLE_CONFECT_AUTH] No GitHub access token available to store');
+            }
             
             // Update state
             setCustomToken(tokenData.access_token);
@@ -242,6 +321,30 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
     }
   };
 
+  // Debug method to force clear all auth data
+  const forceLogout = async () => {
+    try {
+      console.log('🔄 [SIMPLE_CONFECT_AUTH] Force logout - clearing ALL auth data');
+      
+      // Clear ALL stored auth data including GitHub token
+      await clearStoredAuth();
+      await SecureStore.deleteItemAsync('github_access_token');
+      
+      // Clear custom state
+      setCustomToken(null);
+      setCustomUser(null);
+      setHasCompletedInitialSetup(false);
+      setCustomError(null);
+      
+      // Call authHook logout
+      await authHook.logout();
+      
+      console.log('✅ [SIMPLE_CONFECT_AUTH] Force logout completed - please log in again');
+    } catch (error) {
+      console.error('📱 [SIMPLE_CONFECT_AUTH] Force logout error:', error);
+    }
+  };
+
   const markOnboardingComplete = async () => {
     try {
       await SecureStore.setItemAsync('onboarding_complete', 'true');
@@ -260,6 +363,7 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
     token: authHook.token ?? customToken,
     login,
     logout,
+    forceLogout, // Debug method
     needsOnboarding,
     hasCompletedInitialSetup,
     markOnboardingComplete,
