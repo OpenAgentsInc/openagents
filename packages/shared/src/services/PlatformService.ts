@@ -35,7 +35,7 @@ export interface PlatformCapabilities {
 
 // Platform information interface
 export interface PlatformInfo {
-  type: "web" | "mobile" | "desktop";
+  type: "web" | "mobile" | "desktop" | "unknown";
   os: "ios" | "android" | "windows" | "macos" | "linux" | "unknown";
   userAgent?: string;
   version?: string;
@@ -54,9 +54,39 @@ export class PlatformService extends Effect.Service<PlatformService>()(
     sync: () => {
       // Platform detection logic
       const detectPlatform = (): PlatformInfo["type"] => {
-        if (typeof window === "undefined") return "desktop"; // Node.js/Tauri context
-        if (typeof navigator !== "undefined" && /react-native/i.test(navigator.userAgent)) return "mobile";
-        return "web";
+        // Check for Tauri-specific environment variables and globals
+        if (typeof window === "undefined") {
+          // More specific Tauri detection
+          if (typeof process !== "undefined" && 
+              (process.env.TAURI_PLATFORM || 
+               process.env.TAURI_FAMILY || 
+               process.env.TAURI_ARCH)) {
+            return "desktop";
+          }
+          // Check for other Tauri indicators (when available in Node.js context)
+          if (typeof global !== "undefined" && 
+              (global as any).__TAURI_METADATA__) {
+            return "desktop";
+          }
+          // Default to unknown for other Node.js contexts (SSR, servers, etc.)
+          return "unknown" as any; // Will be handled as fallback
+        }
+        
+        // Browser contexts
+        if (typeof window !== "undefined") {
+          // Check for Tauri APIs in browser context
+          if ((window as any).__TAURI__ || (window as any).__TAURI_IPC__) {
+            return "desktop";
+          }
+          // React Native detection
+          if (typeof navigator !== "undefined" && /react-native/i.test(navigator.userAgent)) {
+            return "mobile";
+          }
+          // Regular web browser
+          return "web";
+        }
+        
+        return "unknown" as any;
       };
 
       const detectOS = (): PlatformInfo["os"] => {
@@ -110,7 +140,9 @@ export class PlatformService extends Effect.Service<PlatformService>()(
               })(),
               maxConcurrency: 6
             };
+          case "unknown":
           default:
+            // Conservative defaults for unknown/undetected platforms (SSR, servers, etc.)
             return {
               hasSecureStorage: false,
               hasNotifications: false,
@@ -228,7 +260,10 @@ export class PlatformService extends Effect.Service<PlatformService>()(
           Effect.gen(function* () {
             const platformType = yield* Effect.sync(() => detectPlatform());
             
-            const implementation = implementations[platformType] || implementations.fallback;
+            // Handle "unknown" platform type by falling back to the fallback implementation
+            const implementation = (platformType === "unknown") 
+              ? implementations.fallback
+              : (implementations[platformType as keyof typeof implementations] || implementations.fallback);
             
             if (!implementation) {
               yield* Effect.fail(new PlatformError({
@@ -306,7 +341,10 @@ export class PlatformService extends Effect.Service<PlatformService>()(
         fallback?: () => Effect.Effect<any, PlatformError, never>;
       }) => {
         const platformType = overrides.type ?? "web";
-        const implementation = implementations[platformType] || implementations.fallback;
+        // Handle "unknown" platform type by falling back to the fallback implementation
+        const implementation = (platformType === "unknown") 
+          ? implementations.fallback
+          : (implementations[platformType as keyof typeof implementations] || implementations.fallback);
         return implementation ? implementation() : Effect.fail(new PlatformError({
           operation: "executeForPlatform",
           message: `No test implementation for platform: ${platformType}`

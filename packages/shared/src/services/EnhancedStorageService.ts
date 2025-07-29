@@ -99,6 +99,7 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
     effect: Effect.gen(function* () {
       const platform = yield* PlatformService;
       const config = yield* ConfigService;
+      const platformInfo = yield* platform.getPlatformInfo();
       
       // Get storage configuration
       const storageConfig = yield* config.getPath("storage", DEFAULT_STORAGE_CONFIG);
@@ -197,15 +198,35 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
       const secureStorage = {
         get: (key: string) => Effect.tryPromise({
           try: async () => {
-            const { getItemAsync } = await import('expo-secure-store');
-            const value = await getItemAsync(key);
-            if (value === null) {
-              throw new StorageNotFoundError({ key, storageType: "secureStore" });
+            // Only attempt expo-secure-store import on mobile platforms
+            if (platformInfo.type !== "mobile") {
+              throw new StorageError({
+                operation: "get",
+                key,
+                message: "Secure storage not available on this platform",
+                cause: new Error(`Platform ${platformInfo.type} does not support secure storage`)
+              });
             }
-            return value;
+            
+            try {
+              const { getItemAsync } = await import('expo-secure-store');
+              const value = await getItemAsync(key);
+              if (value === null) {
+                throw new StorageNotFoundError({ key, storageType: "secureStore" });
+              }
+              return value;
+            } catch (importError) {
+              // Handle import failures gracefully
+              throw new StorageError({
+                operation: "get",
+                key,
+                message: "Failed to import expo-secure-store. Ensure you're running on a mobile platform with Expo.",
+                cause: importError
+              });
+            }
           },
           catch: (error) => {
-            if (error instanceof StorageNotFoundError) {
+            if (error instanceof StorageNotFoundError || error instanceof StorageError) {
               throw error;
             }
             throw new StorageError({
@@ -219,7 +240,15 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
 
         set: (key: string, value: string) => Effect.tryPromise({
           try: async () => {
-            const { setItemAsync } = await import('expo-secure-store');
+            // Only attempt expo-secure-store import on mobile platforms
+            if (platformInfo.type !== "mobile") {
+              throw new StorageError({
+                operation: "set",
+                key,
+                message: "Secure storage not available on this platform",
+                cause: new Error(`Platform ${platformInfo.type} does not support secure storage`)
+              });
+            }
             
             // Check value size
             const estimatedSize = new Blob([value]).size;
@@ -231,10 +260,21 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
               });
             }
             
-            await setItemAsync(key, value);
+            try {
+              const { setItemAsync } = await import('expo-secure-store');
+              await setItemAsync(key, value);
+            } catch (importError) {
+              // Handle import failures gracefully
+              throw new StorageError({
+                operation: "set",
+                key,
+                message: "Failed to import expo-secure-store. Ensure you're running on a mobile platform with Expo.",
+                cause: importError
+              });
+            }
           },
           catch: (error) => {
-            if (error instanceof StorageQuotaExceededError) {
+            if (error instanceof StorageQuotaExceededError || error instanceof StorageError) {
               throw error;
             }
             throw new StorageError({
@@ -248,15 +288,40 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
 
         remove: (key: string) => Effect.tryPromise({
           try: async () => {
-            const { deleteItemAsync } = await import('expo-secure-store');
-            await deleteItemAsync(key);
+            // Only attempt expo-secure-store import on mobile platforms
+            if (platformInfo.type !== "mobile") {
+              throw new StorageError({
+                operation: "remove",
+                key,
+                message: "Secure storage not available on this platform",
+                cause: new Error(`Platform ${platformInfo.type} does not support secure storage`)
+              });
+            }
+            
+            try {
+              const { deleteItemAsync } = await import('expo-secure-store');
+              await deleteItemAsync(key);
+            } catch (importError) {
+              // Handle import failures gracefully
+              throw new StorageError({
+                operation: "remove",
+                key,
+                message: "Failed to import expo-secure-store. Ensure you're running on a mobile platform with Expo.",
+                cause: importError
+              });
+            }
           },
-          catch: (error) => new StorageError({
-            operation: "remove",
-            key,
-            message: String(error),
-            cause: error
-          })
+          catch: (error) => {
+            if (error instanceof StorageError) {
+              throw error;
+            }
+            throw new StorageError({
+              operation: "remove",
+              key,
+              message: String(error),
+              cause: error
+            });
+          }
         }),
 
         keys: () => Effect.tryPromise({

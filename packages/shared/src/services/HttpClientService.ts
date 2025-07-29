@@ -266,7 +266,18 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
           const response = yield* makeRequest("POST", url, { ...options, body });
           
           if (!schema) {
-            return response as T;
+            // Parse JSON response when no schema provided
+            const data = yield* Effect.tryPromise({
+              try: () => response.json(),
+              catch: (error) => new ParseError({
+                method: "POST",
+                url: buildUrl(url),
+                contentType: response.headers.get("content-type") || "",
+                message: "Failed to parse JSON response",
+                cause: error
+              })
+            });
+            return data as T;
           }
 
           const contentType = response.headers.get("content-type") || "";
@@ -316,7 +327,18 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
           const response = yield* makeRequest("PUT", url, { ...options, body });
           
           if (!schema) {
-            return response as T;
+            // Parse JSON response when no schema provided
+            const data = yield* Effect.tryPromise({
+              try: () => response.json(),
+              catch: (error) => new ParseError({
+                method: "PUT",
+                url: buildUrl(url),
+                contentType: response.headers.get("content-type") || "",
+                message: "Failed to parse JSON response",
+                cause: error
+              })
+            });
+            return data as T;
           }
 
           const contentType = response.headers.get("content-type") || "";

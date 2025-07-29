@@ -201,6 +201,45 @@ export class EventBusService extends Effect.Service<EventBusService>()(
         priority
       });
       
+      // Helper to clean up dead subscribers
+      const cleanupDeadSubscribers = () => Effect.gen(function* () {
+        const deadSubscriberIds: string[] = [];
+        
+        // Check for inactive subscribers (timeout-based cleanup)
+        for (const [subscriberId, subscriberData] of subscribers.entries()) {
+          const now = Date.now();
+          
+          // Check for inactive subscribers (no activity in 5 minutes)
+          if (subscriberData.stats.lastProcessed > 0 && 
+              now - subscriberData.stats.lastProcessed > 300000) {
+            deadSubscriberIds.push(subscriberId);
+          }
+          // Also check for subscribers with high failure rates (>90% failures)
+          else if (subscriberData.stats.processed + subscriberData.stats.failed > 10 && 
+                   subscriberData.stats.failed / (subscriberData.stats.processed + subscriberData.stats.failed) > 0.9) {
+            deadSubscriberIds.push(subscriberId);
+          }
+        }
+        
+        // Remove dead subscribers
+        for (const subscriberId of deadSubscriberIds) {
+          const subscriberData = subscribers.get(subscriberId);
+          if (subscriberData) {
+            // Interrupt the fiber if still running
+            yield* Fiber.interrupt(subscriberData.fiber).pipe(
+              Effect.catchAll(() => Effect.void) // Ignore interruption errors
+            );
+            subscribers.delete(subscriberId);
+            yield* Effect.logInfo(`Cleaned up dead subscriber: ${subscriberId}`);
+          }
+        }
+        
+        // Update stats
+        stats.activeSubscribers = subscribers.size;
+        
+        return deadSubscriberIds.length;
+      });
+      
       // Process events for a specific subscriber
       const processSubscriberEvents = <T>(
         subscriberInfo: EventSubscriber<T>,
@@ -334,10 +373,13 @@ export class EventBusService extends Effect.Service<EventBusService>()(
          * Subscribe to events of a specific type
          */
         subscribe: <T>(subscriber: EventSubscriber<T>) => Effect.gen(function* () {
+          // Clean up dead subscribers before checking limits
+          yield* cleanupDeadSubscribers();
+          
           if (subscribers.size >= config.maxSubscribers) {
             yield* Effect.fail(new EventBusError({
               operation: "subscribe",
-              message: `Maximum number of subscribers (${config.maxSubscribers}) reached`
+              message: `Maximum number of subscribers (${config.maxSubscribers}) reached after cleanup`
             }));
           }
           

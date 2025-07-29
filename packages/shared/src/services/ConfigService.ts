@@ -140,7 +140,7 @@ const createDefaultConfig = (env: Environment): AppConfig => ({
   },
   auth: {
     jwtSecret: env === "production" 
-      ? "REPLACE_WITH_SECURE_SECRET_IN_PRODUCTION_32_CHARS_MIN" 
+      ? (process.env.JWT_SECRET || (() => { throw new Error("JWT_SECRET environment variable is required in production") })())
       : "development_jwt_secret_key_32_chars_minimum",
     tokenExpiry: "1h",
     refreshTokenExpiry: "7d",
