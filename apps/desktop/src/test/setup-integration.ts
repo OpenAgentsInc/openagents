@@ -41,7 +41,7 @@ if (typeof window === 'undefined') {
 }
 
 // Mock localStorage (if not already mocked above)
-if (typeof window !== 'undefined' && !window.localStorage.getItem.mock) {
+if (typeof window !== 'undefined' && !(window.localStorage.getItem as any).mock) {
   const localStorageMock = {
     getItem: vi.fn(),
     setItem: vi.fn(),
@@ -71,7 +71,7 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock matchMedia (if not already mocked above)
-if (typeof window !== 'undefined' && !window.matchMedia.mock) {
+if (typeof window !== 'undefined' && !(window.matchMedia as any).mock) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation(query => ({
@@ -88,8 +88,8 @@ if (typeof window !== 'undefined' && !window.matchMedia.mock) {
 }
 
 // Mock requestAnimationFrame
-global.requestAnimationFrame = vi.fn((cb) => setTimeout(cb, 0));
-global.cancelAnimationFrame = vi.fn((id) => clearTimeout(id));
+global.requestAnimationFrame = vi.fn((cb) => setTimeout(cb, 0)) as any;
+global.cancelAnimationFrame = vi.fn((id) => clearTimeout(id)) as any;
 
 // Prevent console noise in tests
 beforeEach(() => {

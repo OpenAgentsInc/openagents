@@ -1,9 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act, waitFor } from '@testing-library/react';
+import { render, waitFor, act } from '@testing-library/react';
 import { ConvexProvider } from 'convex/react';
-import { Effect, Runtime, Exit } from 'effect';
 import React from 'react';
 import './setup-integration';
+
+// Types
+interface Session {
+  id: string;
+  projectPath: string;
+  messages: any[];
+  inputMessage: string;
+  isLoading: boolean;
+  isInitializing?: boolean;
+}
+
+interface Message {
+  id: string;
+  message_type: 'assistant' | 'user' | 'system' | 'error' | 'tool_use' | 'thinking' | 'summary';
+  content: string;
+  timestamp: string;
+  tool_info?: {
+    tool_name: string;
+    tool_use_id: string;
+    input: Record<string, any>;
+    output?: string;
+  };
+}
 
 // Mock the entire Confect mobile sync module
 const mockMobileSyncFunctions = {
@@ -114,7 +136,7 @@ describe('Mobile-Desktop Sync Integration', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestSyncFlow() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         const { 
           pendingMobileSessions, 
           isProcessing,
@@ -197,7 +219,7 @@ describe('Mobile-Desktop Sync Integration', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestMessageSync() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         const { processAllSessions, isProcessing } = useMobileSessionSyncConfect(
           sessions, 
           setSessions, 
@@ -272,11 +294,11 @@ describe('Mobile-Desktop Sync Integration', () => {
       const { useClaudeStreaming } = await import('../hooks/useClaudeStreaming');
 
       function TestRealtimeSync() {
-        const [messages, setMessages] = React.useState([]);
+        const [messages, setMessages] = React.useState<Message[]>([]);
         
         const { messages: streamMessages, sendMessage } = useClaudeStreaming({
           sessionId,
-          onMessage: (msg) => {
+          onMessage: (msg: Message) => {
             setMessages(prev => [...prev, msg]);
           },
         });
@@ -342,7 +364,7 @@ describe('Mobile-Desktop Sync Integration', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestErrorHandling() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         const { error, processAllSessions } = useMobileSessionSyncConfect(
           sessions,
           setSessions,
@@ -399,7 +421,7 @@ describe('Mobile-Desktop Sync Integration', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestClaudeNotReady() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         useMobileSessionSyncConfect(sessions, setSessions, true);
         return <div data-testid="claude-not-ready" />;
       }
@@ -451,7 +473,7 @@ describe('Mobile-Desktop Sync Integration', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestConcurrency() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         const { isProcessing, processedCount } = useMobileSessionSyncConfect(
           sessions,
           setSessions,
@@ -503,7 +525,7 @@ describe('Mobile-Desktop Sync Integration', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestCooldown() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         const { processAllSessions, isProcessing } = useMobileSessionSyncConfect(
           sessions,
           setSessions,
@@ -558,7 +580,7 @@ describe('Mobile-Desktop Sync Integration', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestSessionMapping() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions] = React.useState<Session[]>([]);
         const { sessionIdMapping, processAllSessions } = useMobileSessionSyncConfect(
           sessions,
           mockSetSessions,

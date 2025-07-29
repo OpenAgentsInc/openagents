@@ -1,8 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act, waitFor } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { ConvexProvider } from 'convex/react';
 import React from 'react';
 import './setup-integration';
+
+// Types
+interface Session {
+  id: string;
+  projectPath: string;
+  messages: any[];
+  inputMessage: string;
+  isLoading: boolean;
+  isInitializing?: boolean;
+}
 
 // Performance testing utilities
 function measureExecutionTime<T>(fn: () => T | Promise<T>): Promise<{ result: T; duration: number }> {
@@ -94,9 +104,9 @@ describe('Performance Tests', () => {
       
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
-      const { result: renderResult, duration: renderTime } = await measureExecutionTime(() => {
+      const { duration: renderTime } = await measureExecutionTime(() => {
         function TestLargeDataset() {
-          const [sessions, setSessions] = React.useState([]);
+          const [sessions, setSessions] = React.useState<Session[]>([]);
           const { pendingMobileSessions, isProcessing } = useMobileSessionSyncConfect(
             sessions,
             setSessions,
@@ -147,7 +157,7 @@ describe('Performance Tests', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestProcessingPerformance() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         const { processAllSessions, processedCount, isProcessing } = useMobileSessionSyncConfect(
           sessions,
           setSessions,
@@ -199,7 +209,7 @@ describe('Performance Tests', () => {
 
       const { useClaudeStreaming } = await import('../hooks/useClaudeStreaming');
 
-      const { result, duration } = await measureExecutionTime(() => {
+      const { duration } = await measureExecutionTime(() => {
         function TestStreamingPerformance() {
           const [messageCount, setMessageCount] = React.useState(0);
           
@@ -303,10 +313,10 @@ describe('Performance Tests', () => {
 
       function TestCleanup() {
         const [mounted, setMounted] = React.useState(true);
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         
         if (mounted) {
-          const result = useMobileSessionSyncConfect(sessions, setSessions, true);
+          useMobileSessionSyncConfect(sessions, setSessions, true);
           
           // Simulate unmounting
           setTimeout(() => setMounted(false), 100);
@@ -347,7 +357,7 @@ describe('Performance Tests', () => {
           const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
           function TestMemoryIntensive() {
-            const [sessions, setSessions] = React.useState([]);
+            const [sessions, setSessions] = React.useState<Session[]>([]);
             const { pendingMobileSessions } = useMobileSessionSyncConfect(
               sessions,
               setSessions,
@@ -409,7 +419,7 @@ describe('Performance Tests', () => {
 
       const { duration } = await measureExecutionTime(async () => {
         function TestConcurrentOps() {
-          const [sessions, setSessions] = React.useState([]);
+          const [sessions, setSessions] = React.useState<Session[]>([]);
           const { processAllSessions, processedCount } = useMobileSessionSyncConfect(
             sessions,
             setSessions,
@@ -463,7 +473,7 @@ describe('Performance Tests', () => {
       const { useMobileSessionSyncConfect } = await import('../hooks/useMobileSessionSyncConfect');
 
       function TestHighLatency() {
-        const [sessions, setSessions] = React.useState([]);
+        const [sessions, setSessions] = React.useState<Session[]>([]);
         const [userInteraction, setUserInteraction] = React.useState(0);
         const { processAllSessions, isProcessing } = useMobileSessionSyncConfect(
           sessions,
