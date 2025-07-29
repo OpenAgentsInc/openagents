@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor, act } from '@testing-library/react';
-import { ConvexProvider, ConvexReactClient } from 'convex/react';
+import { render, waitFor } from '@testing-library/react';
+import { ConvexProvider } from 'convex/react';
 import React from 'react';
 import { mockTauri } from './setup';
 import { useMobileSessionSyncConfect } from '../hooks/useMobileSessionSyncConfect';
@@ -8,6 +8,16 @@ import { useMobileSessionSync } from '../hooks/useMobileSessionSync';
 import { useSessionManager } from '../hooks/useSessionManager';
 import { useClaudeStreaming } from '../hooks/useClaudeStreaming';
 import { api } from '../convex/_generated/api';
+
+// Types
+interface Session {
+  id: string;
+  projectPath: string;
+  messages: any[];
+  inputMessage: string;
+  isLoading: boolean;
+  isInitializing?: boolean;
+}
 
 // Mock Convex client
 const mockConvexClient = {
@@ -30,10 +40,7 @@ vi.mock('@/stores/pane', () => ({
 const mockUseQuery = vi.fn();
 const mockUseMutation = vi.fn();
 
-// Manually mock Convex hooks since vi.mock isn't working in this setup
-const originalUseQuery = vi.fn();
-const originalUseMutation = vi.fn();
-const originalUseConvex = vi.fn();
+// Mock Convex hooks
 
 // Test wrapper component
 function TestWrapper({ children }: { children: React.ReactNode }) {
@@ -60,7 +67,7 @@ describe('Confect Integration Tests', () => {
 
   describe('Mobile Session Sync Confect Hook', () => {
     it('should use api.confect.mobile_sync functions', async () => {
-      const mockSessions = [];
+      const mockSessions: Session[] = [];
       const mockSetSessions = vi.fn();
       
       // Mock pending mobile sessions
@@ -100,7 +107,7 @@ describe('Confect Integration Tests', () => {
     });
 
     it('should process mobile sessions with Effect-TS patterns', async () => {
-      const mockSessions = [];
+      const mockSessions: Session[] = [];
       const mockSetSessions = vi.fn();
       
       const mockPendingSessions = [
@@ -162,7 +169,7 @@ describe('Confect Integration Tests', () => {
     });
 
     it('should handle session processing errors gracefully', async () => {
-      const mockSessions = [];
+      const mockSessions: Session[] = [];
       const mockSetSessions = vi.fn();
       
       const mockPendingSessions = [
@@ -204,17 +211,16 @@ describe('Confect Integration Tests', () => {
       });
 
       // Error should be handled without crashing
-      const errorElement = await waitFor(() => {
+      await waitFor(() => {
         const element = document.querySelector('[data-testid="error"]');
         expect(element).toBeTruthy();
-        return element;
       });
     });
   });
 
   describe('Traditional Mobile Session Sync Hook', () => {
     it('should use api.confect.mobile_sync functions', () => {
-      const mockSessions = [];
+      const mockSessions: Session[] = [];
       const mockSetSessions = vi.fn();
       
       mockUseQuery.mockReturnValue([]);
@@ -276,7 +282,7 @@ describe('Confect Integration Tests', () => {
 
   describe('End-to-End Session Flow', () => {
     it('should handle complete mobile-to-desktop session sync', async () => {
-      const mockSessions = [];
+      const mockSessions: Session[] = [];
       const mockSetSessions = vi.fn();
       
       // Mock mobile session data
@@ -378,7 +384,7 @@ describe('Confect Integration Tests', () => {
     });
 
     it('should handle network failures with proper retry logic', async () => {
-      const mockSessions = [];
+      const mockSessions: Session[] = [];
       const mockSetSessions = vi.fn();
       
       const mobileSession = {
@@ -426,7 +432,7 @@ describe('Confect Integration Tests', () => {
 
   describe('Performance and Concurrency', () => {
     it('should handle multiple sessions with concurrency control', async () => {
-      const mockSessions = [];
+      const mockSessions: Session[] = [];
       const mockSetSessions = vi.fn();
       
       // Mock multiple pending sessions
