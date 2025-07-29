@@ -86,12 +86,12 @@ export function ClaudeCodeMobile() {
     authReady ? {} : "skip"
   ) || [];
   const selectedSessionMessages = useQuery(
-    api.confect.messages.getSessionMessages, 
+    api.confect.mobile_sync.getSessionMessages, 
     authReady && selectedSessionId ? { sessionId: selectedSessionId } : "skip"
   ) || [];
   
   const requestDesktopSession = useMutation(api.confect.mobile_sync.createClaudeSession);
-  const addMessage = useMutation(api.confect.messages.addClaudeMessage);
+  const addMessage = useMutation(api.confect.mobile_sync.addClaudeMessage);
   const updateSyncStatus = useMutation(api.confect.mobile_sync.updateSessionStatus);
 
   // APM tracking - only enabled when authentication is ready
