@@ -6,14 +6,14 @@ import { usePaneStore } from '@/stores/pane';
 import { Effect, Schedule, Duration, Exit, Runtime } from 'effect';
 
 /**
- * Phase 1 Effect-TS integration for mobile session sync.
+ * Complete Confect + Effect-TS integration for mobile session sync.
  * 
- * This hook demonstrates hybrid approach:
- * - Uses standard Convex queries/mutations for compatibility
- * - Adds Effect patterns for error handling, retry logic, and concurrency control
- * - Provides foundation for future full Confect migration
+ * This hook uses full Confect implementation:
+ * - Uses Confect queries/mutations for all backend operations
+ * - Effect patterns for error handling, retry logic, and concurrency control
+ * - Complete migration from legacy Convex functions
  * 
- * Key improvements over useMobileSessionSync:
+ * Key features:
  * - Tagged errors with structured error information
  * - Automatic retry with exponential backoff
  * - Controlled concurrency (max 3 sessions simultaneously)
@@ -70,9 +70,9 @@ export const useMobileSessionSyncConfect = (
 
   const { openChatPane } = usePaneStore();
 
-  // Use standard Convex queries and mutations
-  const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
-  const updateStatusMutation = useMutation(api.claude.updateSessionStatus);
+  // Use Confect queries and mutations
+  const pendingMobileSessions = useQuery(api.confect.mobile_sync.getPendingMobileSessions) || [];
+  const updateStatusMutation = useMutation(api.confect.mobile_sync.updateSessionStatus);
 
   // Effect-based session processing
   const processMobileSession = useCallback((session: MobileSession) => {

@@ -37,13 +37,13 @@ export function useClaudeStreaming({
   const [hasLoadedHistory, setHasLoadedHistory] = useState(false);
   
   const sessionRef = useRef<StreamingSession | null>(null);
-  const addClaudeMessage = useMutation(api.claude.addClaudeMessage);
+  const addClaudeMessage = useMutation(api.confect.mobile_sync.addClaudeMessage);
   const lastProcessedMessageIdRef = useRef<string | null>(null);
   const isProcessingMessageRef = useRef(false);
   
   // Real-time subscription to messages from Convex
   const targetSessionId = persistToSessionId || sessionId;
-  const convexMessages = useQuery(api.claude.getSessionMessages, {
+  const convexMessages = useQuery(api.confect.mobile_sync.getSessionMessages, {
     sessionId: targetSessionId,
   });
 
