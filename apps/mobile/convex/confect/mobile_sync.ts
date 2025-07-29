@@ -15,7 +15,7 @@ import {
   UpdateSessionStatusResult,
   GetPendingMobileSessionsArgs,
   GetPendingMobileSessionsResult,
-} from "./mobile-sync.schemas";
+} from "./mobile_sync.schemas";
 
 export const createClaudeSession = mutation({
   args: CreateClaudeSessionArgs,
