@@ -1,5 +1,5 @@
 // Mobile APM Components Export
-export { RealtimeAPMWidget, useAPMActionTracking } from './RealtimeAPMWidget';
+export { RealtimeAPMWidget as BasicRealtimeAPMWidget, useAPMActionTracking } from './RealtimeAPMWidget';
 export { ConvexRealtimeAPMWidget } from './ConvexRealtimeAPMWidget';
 
 // Re-export hooks for convenience

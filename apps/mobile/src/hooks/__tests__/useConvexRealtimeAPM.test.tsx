@@ -504,7 +504,7 @@ describe("useAPMActionTracker", () => {
 
     const initialDeviceId = result.current.deviceId;
     
-    rerender();
+    rerender({});
     
     expect(result.current.deviceId).toBe(initialDeviceId);
   });
