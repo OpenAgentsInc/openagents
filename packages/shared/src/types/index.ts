@@ -12,32 +12,13 @@ export interface Message {
   timestamp: number;
 }
 
-// Auth types for Confect integration
-export interface AuthUser {
-  id: string;
-  email: string;
-  name?: string;
-  avatar?: string;
-  githubId: string;
-  githubUsername: string;
-}
+// Auth types for Confect integration are now exported from services
+// export interface AuthUser { ... } - moved to SimpleAuthService.ts
 
-export interface AuthState {
-  isAuthenticated: boolean;
-  user: AuthUser | null;
-  token: string | null;
-  isLoading: boolean;
-  error: string | null;
-}
+// export interface AuthState { ... } - moved to SimpleAuthService.ts
 
-// APM types for session tracking
-export interface APMSessionData {
-  deviceId: string;
-  platform: 'ios' | 'android' | 'web' | 'desktop';
-  sessionStart: number;
-  sessionEnd: number;
-  messagesSent: number;
-}
+// APM types for session tracking are now exported from services
+// export interface APMSessionData { ... } - moved to SimpleAPMService.ts
 
 // Recharts React 19 compatibility
 export * from './recharts-compat';

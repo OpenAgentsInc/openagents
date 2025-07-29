@@ -12,7 +12,7 @@ export * from './hooks/useSimpleAPM';
 export * from './hooks/useSimpleAuth';
 
 // Export Confect-enhanced hooks (Phase 3)
-export * from './hooks/useConfectAuth';
+// export * from './hooks/useConfectAuth'; // Disabled for now
 export * from './hooks/useConfectAPM';
 
 // Device presence hooks
