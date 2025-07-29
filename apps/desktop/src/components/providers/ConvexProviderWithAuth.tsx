@@ -1,6 +1,7 @@
 import React, { useEffect, ReactNode, useMemo } from 'react';
-import { ConvexProvider, ConvexReactClient } from 'convex/react';
+import { ConvexReactClient } from 'convex/react';
 import { useAuth } from '@/contexts/AuthContext';
+import { ConvexProviderReact19 } from '@/utils/react19-compat';
 
 interface ConvexProviderWithAuthProps {
   children: ReactNode;
@@ -73,8 +74,8 @@ export const ConvexProviderWithAuth: React.FC<ConvexProviderWithAuthProps> = ({ 
   }
 
   return (
-    <ConvexProvider client={convex}>
+    <ConvexProviderReact19 client={convex}>
       {children}
-    </ConvexProvider>
+    </ConvexProviderReact19>
   );
 };

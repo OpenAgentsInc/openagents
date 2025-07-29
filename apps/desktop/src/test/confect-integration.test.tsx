@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
-import { ConvexProvider } from 'convex/react';
 import React from 'react';
+import { ConvexProviderReact19 } from '@/utils/react19-compat';
 import { mockTauri } from './setup';
 import { useMobileSessionSyncConfect } from '../hooks/useMobileSessionSyncConfect';
 import { useMobileSessionSync } from '../hooks/useMobileSessionSync';
@@ -45,9 +45,9 @@ const mockUseMutation = vi.fn();
 // Test wrapper component
 function TestWrapper({ children }: { children: React.ReactNode }) {
   return (
-    <ConvexProvider client={mockConvexClient as any}>
+    <ConvexProviderReact19 client={mockConvexClient as any}>
       {children}
-    </ConvexProvider>
+    </ConvexProviderReact19>
   );
 }
 

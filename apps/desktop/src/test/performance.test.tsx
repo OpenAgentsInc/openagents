@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
-import { ConvexProvider } from 'convex/react';
+import { ConvexProviderReact19 } from '@/utils/react19-compat';
 import React from 'react';
 import './setup-integration';
 
@@ -123,9 +123,9 @@ describe('Performance Tests', () => {
 
         return render(<TestLargeDataset />, {
           wrapper: ({ children }) => (
-            <ConvexProvider client={mockConvexClient as any}>
+            <ConvexProviderReact19 client={mockConvexClient as any}>
               {children}
-            </ConvexProvider>
+            </ConvexProviderReact19>
           ),
         });
       });
@@ -181,9 +181,9 @@ describe('Performance Tests', () => {
       const startTime = performance.now();
       render(<TestProcessingPerformance />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -229,9 +229,9 @@ describe('Performance Tests', () => {
 
         return render(<TestStreamingPerformance />, {
           wrapper: ({ children }) => (
-            <ConvexProvider client={mockConvexClient as any}>
+            <ConvexProviderReact19 client={mockConvexClient as any}>
               {children}
-            </ConvexProvider>
+            </ConvexProviderReact19>
           ),
         });
       });
@@ -287,9 +287,9 @@ describe('Performance Tests', () => {
       const startTime = performance.now();
       render(<TestRapidUpdates />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -329,9 +329,9 @@ describe('Performance Tests', () => {
 
       render(<TestCleanup />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -369,9 +369,9 @@ describe('Performance Tests', () => {
 
           const { unmount } = render(<TestMemoryIntensive />, {
             wrapper: ({ children }) => (
-              <ConvexProvider client={mockConvexClient as any}>
+              <ConvexProviderReact19 client={mockConvexClient as any}>
                 {children}
-              </ConvexProvider>
+              </ConvexProviderReact19>
             ),
           });
 
@@ -437,9 +437,9 @@ describe('Performance Tests', () => {
 
         render(<TestConcurrentOps />, {
           wrapper: ({ children }) => (
-            <ConvexProvider client={mockConvexClient as any}>
+            <ConvexProviderReact19 client={mockConvexClient as any}>
               {children}
-            </ConvexProvider>
+            </ConvexProviderReact19>
           ),
         });
 
@@ -505,9 +505,9 @@ describe('Performance Tests', () => {
       const startTime = performance.now();
       render(<TestHighLatency />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
