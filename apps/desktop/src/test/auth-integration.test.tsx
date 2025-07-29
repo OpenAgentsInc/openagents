@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockTauri } from './setup'
 
 describe('Authentication Integration - Logic Tests', () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { vi, expect, beforeEach, afterEach } from 'vitest';
+import { vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 
 // Create global window mock for Node.js environment

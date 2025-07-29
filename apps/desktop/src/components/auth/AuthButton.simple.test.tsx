@@ -1,8 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 
-// Mock the AuthContext - simple logic test without actual components
-const mockUseAuth = vi.fn()
-
 describe('AuthButton - Logic Tests', () => {
   it('should return loading state when isLoading is true', () => {
     const authState = {
