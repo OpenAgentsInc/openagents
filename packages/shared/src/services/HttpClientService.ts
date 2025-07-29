@@ -408,7 +408,11 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
          */
         withConfig: (newConfig: Partial<HttpConfig>): HttpClientService => {
           const updatedConfig = { ...mergedConfig, ...newConfig };
-          return HttpClientService.of(HttpClientService.sync(updatedConfig));
+          const newServiceImpl = HttpClientService.sync(updatedConfig);
+          return HttpClientService.of({
+            ...newServiceImpl,
+            _tag: "HttpClientService" as const
+          });
         }
       };
     }

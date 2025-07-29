@@ -65,7 +65,7 @@ export type BaseEvent<T> = {
 const UserPayloadSchema = Schema.Struct({
   userId: Schema.String,
   action: Schema.Literal("login", "logout", "register", "update", "delete"),
-  details: Schema.optional(Schema.Record(Schema.String, Schema.Unknown))
+  details: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown }))
 });
 
 const SessionPayloadSchema = Schema.Struct({
@@ -79,7 +79,7 @@ const SystemPayloadSchema = Schema.Struct({
   component: Schema.String,
   level: Schema.Literal("info", "warn", "error", "fatal"),
   message: Schema.String,
-  details: Schema.optional(Schema.Record(Schema.String, Schema.Unknown))
+  details: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown }))
 });
 
 const ClaudePayloadSchema = Schema.Struct({
