@@ -48,7 +48,9 @@ export const EventMetadataSchema = Schema.Struct({
 export type EventMetadata = Schema.Schema.Type<typeof EventMetadataSchema>;
 
 // Base event schema
-export const BaseEventSchema = <T>(payloadSchema: Schema.Schema<T>) =>
+export const BaseEventSchema = <T, I = unknown, R = never>(
+  payloadSchema: Schema.Schema<T, I, R>
+) =>
   Schema.Struct({
     type: Schema.String,
     payload: payloadSchema,
@@ -72,7 +74,7 @@ const SessionPayloadSchema = Schema.Struct({
   sessionId: Schema.String,
   action: Schema.Literal("start", "end", "pause", "resume"),
   duration: Schema.optional(Schema.Number),
-  metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown))
+  metadata: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown }))
 });
 
 const SystemPayloadSchema = Schema.Struct({
