@@ -3,7 +3,7 @@ export interface ChatSession {
   sessionId: string;
   projectPath: string;
   title?: string;
-  status: "active" | "inactive" | "error";
+  status: "active" | "inactive" | "error" | "processed";
   createdBy: "desktop" | "mobile";
   lastActivity: number;
   metadata?: any;
@@ -16,7 +16,7 @@ export interface ClaudeMessage {
   _id: string;
   sessionId: string;
   messageId: string;
-  messageType: "user" | "assistant" | "tool_use" | "tool_result";
+  messageType: "user" | "assistant" | "tool_use" | "tool_result" | "thinking";
   content: string;
   timestamp: string;
   toolInfo?: {

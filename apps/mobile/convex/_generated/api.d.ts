@@ -13,6 +13,7 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as confect_apm from "../confect/apm.js";
 import type * as confect_confect from "../confect/confect.js";
 import type * as confect_error_tracking from "../confect/error-tracking.js";
 import type * as confect_github from "../confect/github.js";
@@ -35,6 +36,7 @@ import type * as confect_validation from "../confect/validation.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  "confect/apm": typeof confect_apm;
   "confect/confect": typeof confect_confect;
   "confect/error-tracking": typeof confect_error_tracking;
   "confect/github": typeof confect_github;
