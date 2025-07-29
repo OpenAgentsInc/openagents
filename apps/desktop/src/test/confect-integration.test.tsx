@@ -9,7 +9,7 @@ import { useMobileSessionSyncConfect } from '../hooks/useMobileSessionSyncConfec
 import { useMobileSessionSync } from '../hooks/useMobileSessionSync';
 import { useSessionManager } from '../hooks/useSessionManager';
 import { useClaudeStreaming } from '../hooks/useClaudeStreaming';
-import { api } from '../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 
 // Types
 interface Session {

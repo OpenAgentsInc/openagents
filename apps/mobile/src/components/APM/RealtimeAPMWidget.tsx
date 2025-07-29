@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 import { useRealtimeAPM } from '../../../../../packages/shared/src/hooks/useRealtimeAPM';
 
 interface RealtimeAPMWidgetProps {

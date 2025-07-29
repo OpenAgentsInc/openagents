@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { usePaneStore } from '@/stores/pane';
 import { useMutation } from 'convex/react';
-import { api } from '../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 
 interface Message {
   id: string;

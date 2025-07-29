@@ -12,7 +12,7 @@ import {
   Pressable,
 } from "react-native";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { api } from '@openagentsinc/convex';
 import { ScreenWithSidebar, Text as CustomText, ThinkingAnimation, ErrorBoundary } from "./index";
 import { AuthButton } from "./auth/AuthButton";
 import { useConfectAuth } from "../contexts/SimpleConfectAuthContext";
