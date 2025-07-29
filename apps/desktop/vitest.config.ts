@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
+    setupFiles: ['./test-setup.ts'],
     css: true,
     reporters: ['verbose'],
     include: [
@@ -16,9 +16,11 @@ export default defineConfig({
     ],
     exclude: [
       'node_modules/**',
-      'e2e/**',
-      '**/e2e/**',
-      '**/*.e2e.{test,spec}.{ts,tsx}',
+      'e2e/**/*',
+      '**/e2e/**/*',
+      '**/*.e2e.*',
+      'src-tauri/**',
+      '**/playwright.config.*',
     ],
     coverage: {
       provider: 'v8',

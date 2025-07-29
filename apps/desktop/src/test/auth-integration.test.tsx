@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-// Mock dependencies
-const mockOpenUrl = vi.fn()
-vi.mock('@tauri-apps/plugin-opener', () => ({
-  openUrl: mockOpenUrl,
-}))
+import { mockTauri } from './setup'
 
 describe('Authentication Integration - Logic Tests', () => {
   beforeEach(() => {

@@ -1,15 +1,10 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StatsPane } from "./StatsPane";
-import { invoke } from "@tauri-apps/api/core";
-
-// Mock Tauri API
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
-}));
+import { mockTauri } from "../test/setup";
 
 // Get properly typed mock
-const mockInvoke = vi.mocked(invoke);
+const mockInvoke = mockTauri.invoke;
 
 // Mock lucide-react icons
 vi.mock("lucide-react", () => ({
@@ -111,7 +106,7 @@ describe("StatsPane", () => {
       fireEvent.click(allDevicesButton);
       
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledWith("get_user_apm_stats");
+        expect(mockInvoke).toHaveBeenCalledWith("get_user_apm_stats");
         expect(screen.getByText("52.3")).toBeInTheDocument(); // User APM
       });
     });
@@ -148,7 +143,7 @@ describe("StatsPane", () => {
       vi.advanceTimersByTime(5000);
       
       await waitFor(() => {
-        expect(invoke).toHaveBeenLastCalledWith("get_user_apm_stats");
+        expect(mockInvoke).toHaveBeenLastCalledWith("get_user_apm_stats");
       });
       
       vi.useRealTimers();
@@ -162,19 +157,19 @@ describe("StatsPane", () => {
       render(<StatsPane />);
       
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledTimes(1);
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
       });
       
       vi.advanceTimersByTime(5000);
       
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledTimes(2);
+        expect(mockInvoke).toHaveBeenCalledTimes(2);
       });
       
       vi.advanceTimersByTime(5000);
       
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledTimes(3);
+        expect(mockInvoke).toHaveBeenCalledTimes(3);
       });
       
       vi.useRealTimers();
@@ -186,13 +181,13 @@ describe("StatsPane", () => {
       render(<StatsPane />);
       
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledTimes(1);
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
       });
       
       vi.advanceTimersByTime(10000);
       
       // Should still only be called once
-      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(mockInvoke).toHaveBeenCalledTimes(1);
       
       vi.useRealTimers();
     });

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, act } from '@testing-library/react';
-import { ConvexProviderReact19 } from '@/utils/react19-compat';
+import { ConvexProvider } from 'convex/react';
 import React from 'react';
 import './setup-integration';
 
@@ -45,34 +45,9 @@ const mockApi = {
   },
 };
 
-// Mock Convex client
-const mockConvexClient = {
-  query: vi.fn(),
-  mutation: vi.fn(),
-  action: vi.fn(),
-  subscribe: vi.fn(),
-};
-
-// Mock Tauri API
-const mockTauri = {
-  invoke: vi.fn(),
-};
-
-vi.mock('@tauri-apps/api/core', () => mockTauri);
-vi.mock('../convex/_generated/api', () => ({ api: mockApi }));
-
-// Mock Convex React hooks
-const mockUseQuery = vi.fn();
-const mockUseMutation = vi.fn();
-vi.mock('convex/react', async () => {
-  const actual = await vi.importActual('convex/react');
-  return {
-    ...actual,
-    useQuery: mockUseQuery,
-    useMutation: mockUseMutation,
-    useConvex: () => mockConvexClient,
-  };
-});
+// Use setup mocks
+import { mockTauri } from './setup';
+import { mockConvexClient, mockUseQuery, mockUseMutation } from './setup-integration';
 
 // Test utilities
 function createMockMobileSession(overrides = {}) {
@@ -161,9 +136,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestSyncFlow />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -237,9 +212,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestMessageSync />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -318,9 +293,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestRealtimeSync />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -384,9 +359,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestErrorHandling />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -428,9 +403,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestClaudeNotReady />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -490,9 +465,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestConcurrency />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -544,9 +519,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestCooldown />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -603,9 +578,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestSessionMapping />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 

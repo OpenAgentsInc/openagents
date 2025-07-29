@@ -137,6 +137,9 @@ describe("SimpleAPMService Tests", () => {
         yield* apm.trackAction("user_type");
         yield* apm.trackAction("user_scroll");
         
+        // Add small delay to ensure time passage for duration measurement
+        yield* Effect.sleep("1 millis");
+        
         const metrics = yield* apm.getSessionMetrics();
         
         expect(metrics.actionsCount).toBe(3);

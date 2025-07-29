@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
-import { ConvexProviderReact19 } from '@/utils/react19-compat';
+import { ConvexProvider } from 'convex/react';
 import React from 'react';
 import './setup-integration';
 
@@ -62,28 +62,9 @@ function createLargeMessageSet(sessionId: string, count: number) {
   }));
 }
 
-// Mock implementations
-const mockConvexClient = {
-  query: vi.fn(),
-  mutation: vi.fn(),
-  action: vi.fn(),
-  subscribe: vi.fn(),
-};
-
-const mockUseQuery = vi.fn();
-const mockUseMutation = vi.fn();
-const mockTauri = { invoke: vi.fn() };
-
-vi.mock('@tauri-apps/api/core', () => mockTauri);
-vi.mock('convex/react', async () => {
-  const actual = await vi.importActual('convex/react');
-  return {
-    ...actual,
-    useQuery: mockUseQuery,
-    useMutation: mockUseMutation,
-    useConvex: () => mockConvexClient,
-  };
-});
+// Use setup mocks
+import { mockTauri } from './setup';
+import { mockConvexClient, mockUseQuery, mockUseMutation } from './setup-integration';
 
 describe('Performance Tests', () => {
   beforeEach(() => {
@@ -123,9 +104,9 @@ describe('Performance Tests', () => {
 
         return render(<TestLargeDataset />, {
           wrapper: ({ children }) => (
-            <ConvexProviderReact19 client={mockConvexClient as any}>
+            <ConvexProvider client={mockConvexClient as any}>
               {children}
-            </ConvexProviderReact19>
+            </ConvexProvider>
           ),
         });
       });
@@ -181,9 +162,9 @@ describe('Performance Tests', () => {
       const startTime = performance.now();
       render(<TestProcessingPerformance />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -229,9 +210,9 @@ describe('Performance Tests', () => {
 
         return render(<TestStreamingPerformance />, {
           wrapper: ({ children }) => (
-            <ConvexProviderReact19 client={mockConvexClient as any}>
+            <ConvexProvider client={mockConvexClient as any}>
               {children}
-            </ConvexProviderReact19>
+            </ConvexProvider>
           ),
         });
       });
@@ -287,9 +268,9 @@ describe('Performance Tests', () => {
       const startTime = performance.now();
       render(<TestRapidUpdates />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -329,9 +310,9 @@ describe('Performance Tests', () => {
 
       render(<TestCleanup />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
@@ -369,9 +350,9 @@ describe('Performance Tests', () => {
 
           const { unmount } = render(<TestMemoryIntensive />, {
             wrapper: ({ children }) => (
-              <ConvexProviderReact19 client={mockConvexClient as any}>
+              <ConvexProvider client={mockConvexClient as any}>
                 {children}
-              </ConvexProviderReact19>
+              </ConvexProvider>
             ),
           });
 
@@ -437,9 +418,9 @@ describe('Performance Tests', () => {
 
         render(<TestConcurrentOps />, {
           wrapper: ({ children }) => (
-            <ConvexProviderReact19 client={mockConvexClient as any}>
+            <ConvexProvider client={mockConvexClient as any}>
               {children}
-            </ConvexProviderReact19>
+            </ConvexProvider>
           ),
         });
 
@@ -505,9 +486,9 @@ describe('Performance Tests', () => {
       const startTime = performance.now();
       render(<TestHighLatency />, {
         wrapper: ({ children }) => (
-          <ConvexProviderReact19 client={mockConvexClient as any}>
+          <ConvexProvider client={mockConvexClient as any}>
             {children}
-          </ConvexProviderReact19>
+          </ConvexProvider>
         ),
       });
 
