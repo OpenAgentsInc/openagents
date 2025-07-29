@@ -1,6 +1,5 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
 
 // Migration script to assign existing sessions and messages to the user
 // User GitHub ID: 14167547
