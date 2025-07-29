@@ -1,6 +1,6 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, STM, TRef, TMap } from "effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ServiceTestUtils, benchmarkEffect } from "./setup-service-tests";
+import { ServiceTestUtils, benchmarkEffect, STMTestUtils } from "./setup-service-tests";
 
 /**
  * SimpleStorageService Testing Suite
@@ -696,5 +696,80 @@ describe("SimpleStorageService Tests", () => {
         return results;
       }).pipe(Effect.provide(TestStorageService.Default))
     );
+  });
+
+  describe("STM Atomic Operations", () => {
+    STMTestUtils.testAtomicOperation(
+      "should handle atomic storage updates with STM",
+      STM.gen(function* () {
+        // Create STM state for coordinated storage operations
+        const storageRef = yield* TRef.make<{ [key: string]: string }>({})
+        const platformRef = yield* TRef.make<"web" | "mobile">("web")
+        
+        // Atomic operation: update storage and platform together
+        yield* TRef.update(storageRef, (storage) => ({
+          ...storage,
+          "user-id": "user-123",
+          "session-token": "token-abc"
+        }))
+        yield* TRef.set(platformRef, "mobile")
+        
+        // Verify both updates happened atomically
+        const finalStorage = yield* TRef.get(storageRef)
+        const finalPlatform = yield* TRef.get(platformRef)
+        
+        expect(finalStorage["user-id"]).toBe("user-123")
+        expect(finalStorage["session-token"]).toBe("token-abc")
+        expect(finalPlatform).toBe("mobile")
+        
+        return { storage: finalStorage, platform: finalPlatform }
+      })
+    )
+
+    STMTestUtils.testConcurrentSTM(
+      "should handle concurrent storage operations safely",
+      Array.from({ length: 10 }, (_, i) => 
+        STM.gen(function* () {
+          const counterRef = yield* TRef.make(0)
+          
+          // Concurrent increment operations
+          const currentValue = yield* TRef.get(counterRef)
+          yield* TRef.set(counterRef, currentValue + 1)
+          
+          return yield* TRef.get(counterRef)
+        })
+      ),
+      5 // Run 5 operations concurrently
+    )
+
+    STMTestUtils.testTransactionIsolation(
+      "should maintain transaction isolation in storage operations",
+      Effect.gen(function* () {
+        const storageState = yield* TRef.make<{ count: number; updates: string[] }>({
+          count: 0,
+          updates: []
+        })
+        
+        const operation1 = STM.gen(function* () {
+          const current = yield* TRef.get(storageState)
+          yield* TRef.set(storageState, {
+            count: current.count + 1,
+            updates: [...current.updates, "operation1"]
+          })
+          return yield* TRef.get(storageState)
+        })
+        
+        const operation2 = STM.gen(function* () {
+          const current = yield* TRef.get(storageState)
+          yield* TRef.set(storageState, {
+            count: current.count + 10,
+            updates: [...current.updates, "operation2"]
+          })
+          return yield* TRef.get(storageState)
+        })
+        
+        return { state: storageState, operation1, operation2 }
+      })
+    )
   });
 });

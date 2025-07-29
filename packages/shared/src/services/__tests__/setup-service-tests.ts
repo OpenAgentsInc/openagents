@@ -1,4 +1,4 @@
-import { Effect, Layer, Context } from "effect";
+import { Effect, Layer, Context, STM, TRef, TMap, Option } from "effect";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 /**
@@ -196,3 +196,90 @@ export const benchmarkEffect = <A, E>(
     
     return { result, duration };
   });
+
+/**
+ * STM Testing Utilities
+ * 
+ * Our app uses STM extensively for pane and session management,
+ * so we need comprehensive STM testing patterns
+ */
+export const STMTestUtils = {
+  /**
+   * Create test STM state for atomic operations testing
+   */
+  createTestSTMState: <T>(initialValue: T) => 
+    Effect.gen(function* () {
+      const ref = yield* TRef.make(initialValue)
+      const map = yield* TMap.empty<string, T>()
+      
+      return {
+        ref,
+        map,
+        // Helper operations
+        setValue: (value: T) => STM.commit(TRef.set(ref, value)),
+        getValue: () => STM.commit(TRef.get(ref)),
+        setMapValue: (key: string, value: T) => STM.commit(TMap.set(map, key, value)),
+        getMapValue: (key: string) => STM.commit(TMap.get(map, key)),
+        getAllMapValues: () => STM.commit(TMap.toArray(map))
+      }
+    }),
+
+  /**
+   * Test atomic operations with STM
+   */
+  testAtomicOperation: <A>(
+    description: string,
+    stmOperation: STM.STM<A, never, never>
+  ) => {
+    it(description, async () => {
+      const result = await Effect.runPromise(STM.commit(stmOperation))
+      return result
+    })
+  },
+
+  /**
+   * Test concurrent STM operations for race condition safety
+   */
+  testConcurrentSTM: <A>(
+    description: string,
+    operations: Array<STM.STM<A, never, never>>,
+    concurrency = 10
+  ) => {
+    it(description, async () => {
+      const effects = operations.map(op => STM.commit(op))
+      const results = await Effect.runPromise(
+        Effect.all(effects, { concurrency })
+      )
+      return results
+    })
+  },
+
+  /**
+   * Test STM transaction isolation
+   */
+  testTransactionIsolation: <T>(
+    description: string,
+    setup: Effect.Effect<{
+      state: TRef.TRef<T>
+      operation1: STM.STM<T, never, never>
+      operation2: STM.STM<T, never, never>
+    }, never, never>
+  ) => {
+    it(description, async () => {
+      const { state, operation1, operation2 } = await Effect.runPromise(setup)
+      
+      // Run operations concurrently
+      const [result1, result2] = await Effect.runPromise(
+        Effect.all([
+          STM.commit(operation1),
+          STM.commit(operation2)
+        ], { concurrency: 2 })
+      )
+      
+      // Verify final state consistency
+      const finalState = await Effect.runPromise(STM.commit(TRef.get(state)))
+      
+      return { result1, result2, finalState }
+    })
+  }
+};
