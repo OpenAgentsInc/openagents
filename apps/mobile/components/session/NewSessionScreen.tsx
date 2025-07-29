@@ -44,6 +44,34 @@ export function NewSessionScreen({
     isAuthenticated ? {} : "skip"
   );
 
+  // Helper function to extract data from Effect Option type
+  const extractOnboardingData = (optionData: any) => {
+    if (!optionData || typeof optionData !== 'object') return null;
+    if (optionData._tag === 'Some' && optionData.value) return optionData.value;
+    if (optionData._tag === 'None') return null;
+    // If it's already unwrapped data (fallback)
+    if (optionData.step) return optionData;
+    return null;
+  };
+
+  const actualOnboardingData = extractOnboardingData(onboardingProgress);
+
+  // Debug logging
+  React.useEffect(() => {
+    const timestamp = new Date().toISOString();
+    console.log(`🔍 [NEW_SESSION] ${timestamp} Component state:`, {
+      isAuthenticated,
+      user: user?.githubUsername,
+      activeRepository: activeRepository ? `${activeRepository.owner}/${activeRepository.name}` : 'null/undefined',
+      hasActiveRepository: !!activeRepository,
+      activeRepositoryRaw: activeRepository,
+      onboardingProgressStep: actualOnboardingData?.step,
+      onboardingProgressActiveRepo: actualOnboardingData?.activeRepository,
+      buttonDisabled: !activeRepository,
+      onboardingRaw: onboardingProgress,
+    });
+  }, [isAuthenticated, user, activeRepository, onboardingProgress, actualOnboardingData]);
+
   // Handle create session
   const handleCreateSession = () => {
     const timestamp = new Date().toISOString();
@@ -157,11 +185,17 @@ export function NewSessionScreen({
                 styles.newSessionButton,
                 !activeRepository && styles.newSessionButtonDisabled,
               ]}
-              onPress={handleCreateSession}
+              onPress={() => {
+                const timestamp = new Date().toISOString();
+                console.log(`🎯 [NEW_SESSION] ${timestamp} Button pressed! activeRepository:`, activeRepository);
+                handleCreateSession();
+              }}
               disabled={!activeRepository}
               accessibilityRole="button"
               accessibilityLabel="Create new OpenAgents session"
               accessibilityState={{ disabled: !activeRepository }}
+              activeOpacity={0.8}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Text style={[
                 styles.newSessionButtonText,
@@ -172,9 +206,26 @@ export function NewSessionScreen({
             </TouchableOpacity>
 
             {!activeRepository && (
-              <Text style={styles.helperText}>
-                Select a repository to get started
-              </Text>
+              <View style={styles.helperContainer}>
+                <Text style={styles.helperText}>
+                  Select a repository to get started
+                </Text>
+                {actualOnboardingData?.step && (
+                  <Text style={styles.debugText}>
+                    Onboarding step: {actualOnboardingData.step}
+                  </Text>
+                )}
+                <TouchableOpacity 
+                  style={styles.selectRepositoryButton}
+                  onPress={onChangeRepository}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back to repository selection"
+                >
+                  <Text style={styles.selectRepositoryText}>
+                    Go Back to Repository Selection
+                  </Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         </View>
@@ -336,20 +387,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-    // Add subtle shadow for depth
+    // Enhanced visual depth and feedback
     shadowColor: '#22c55e',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 6,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+    // Add border for better definition
+    borderWidth: 1,
+    borderColor: '#16a34a',
+    // Minimum touch target size
+    minHeight: 56,
   },
   newSessionButtonDisabled: {
     backgroundColor: '#374151',
     shadowOpacity: 0,
     elevation: 0,
+    borderColor: '#4b5563',
   },
   newSessionButtonText: {
     color: '#ffffff',
@@ -364,9 +421,44 @@ const styles = StyleSheet.create({
   newSessionButtonTextDisabled: {
     color: '#6b7280',
   },
+  helperContainer: {
+    alignItems: 'center',
+    gap: 12,
+  },
   helperText: {
     fontSize: 14,
     color: '#71717a',
+    textAlign: 'center',
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace',
+    } as const),
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#52525b',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace',
+    } as const),
+  },
+  selectRepositoryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#60a5fa',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  selectRepositoryText: {
+    color: '#60a5fa',
+    fontSize: 14,
+    fontWeight: 'bold',
     textAlign: 'center',
     fontFamily: Platform.select({
       ios: 'Berkeley Mono',

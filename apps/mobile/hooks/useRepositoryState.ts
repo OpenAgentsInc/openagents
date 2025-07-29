@@ -44,12 +44,24 @@ export function useRepositoryState(): RepositoryState {
   // Mutation to set active repository
   const setActiveRepositoryMutation = useMutation(api.confect.onboarding.setActiveRepository);
 
+  // Helper function to extract data from Effect Option type
+  const extractOnboardingData = (optionData: any) => {
+    if (!optionData || typeof optionData !== 'object') return null;
+    if (optionData._tag === 'Some' && optionData.value) return optionData.value;
+    if (optionData._tag === 'None') return null;
+    // If it's already unwrapped data (fallback)
+    if (optionData.step) return optionData;
+    return null;
+  };
+
   // Update active repository when onboarding progress changes
   useEffect(() => {
-    if (onboardingProgress && onboardingProgress.activeRepository) {
-      setActiveRepositoryState(onboardingProgress.activeRepository);
+    const actualOnboardingData = extractOnboardingData(onboardingProgress);
+    
+    if (actualOnboardingData?.activeRepository) {
+      setActiveRepositoryState(actualOnboardingData.activeRepository);
       setRepositoryError(null);
-    } else if (onboardingProgress && !onboardingProgress.activeRepository) {
+    } else if (actualOnboardingData && !actualOnboardingData.activeRepository) {
       setActiveRepositoryState(null);
     }
   }, [onboardingProgress]);
