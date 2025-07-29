@@ -160,8 +160,15 @@ describe("Onboarding Repository Selection Effects", () => {
         return yield* Effect.fail(new Error("Not authenticated"));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toThrow("Not authenticated");
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error.message).toBe("Not authenticated");
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect.message).toBe("Not authenticated");
+        }
+      }
     });
 
     it("should handle user not found scenario", async () => {
@@ -180,8 +187,15 @@ describe("Onboarding Repository Selection Effects", () => {
         return yield* Effect.fail(new Error("User not found"));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toThrow("User not found");
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error.message).toBe("User not found");
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect.message).toBe("User not found");
+        }
+      }
     });
 
     it("should handle missing onboarding progress scenario", async () => {
@@ -208,8 +222,15 @@ describe("Onboarding Repository Selection Effects", () => {
         return yield* Effect.fail(new Error("No onboarding progress found"));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toThrow("No onboarding progress found");
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error.message).toBe("No onboarding progress found");
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect.message).toBe("No onboarding progress found");
+        }
+      }
     });
 
     it("should correctly handle repository with missing optional fields", async () => {
@@ -281,8 +302,15 @@ describe("Onboarding Repository Selection Effects", () => {
         return yield* Effect.fail(new Error("Database update failed"));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toThrow("Database update failed");
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error.message).toBe("Database update failed");
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect.message).toBe("Database update failed");
+        }
+      }
     });
 
     it("should preserve existing completed steps when adding repository_selected", async () => {

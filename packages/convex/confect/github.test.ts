@@ -198,8 +198,15 @@ describe("GitHub Integration Effects", () => {
         return yield* Effect.fail(new GitHubAuthError("GitHub authentication failed: Unauthorized"));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toBeInstanceOf(GitHubAuthError);
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error).toBeInstanceOf(GitHubAuthError);
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect).toBeInstanceOf(GitHubAuthError);
+        }
+      }
     });
 
     it("should handle GitHub API rate limit errors", async () => {
@@ -234,8 +241,15 @@ describe("GitHub Integration Effects", () => {
         ));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toBeInstanceOf(GitHubRateLimitError);
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error).toBeInstanceOf(GitHubRateLimitError);
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect).toBeInstanceOf(GitHubRateLimitError);
+        }
+      }
     });
 
     it("should handle general GitHub API errors", async () => {
@@ -266,8 +280,15 @@ describe("GitHub Integration Effects", () => {
         ));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toBeInstanceOf(GitHubAPIError);
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error).toBeInstanceOf(GitHubAPIError);
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect).toBeInstanceOf(GitHubAPIError);
+        }
+      }
     });
 
     it("should handle user not found scenario", async () => {
@@ -285,8 +306,15 @@ describe("GitHub Integration Effects", () => {
         return yield* Effect.fail(new GitHubAuthError("User not found"));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toBeInstanceOf(GitHubAuthError);
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error).toBeInstanceOf(GitHubAuthError);
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect).toBeInstanceOf(GitHubAuthError);
+        }
+      }
     });
 
     it("should handle network errors gracefully", async () => {
@@ -307,8 +335,15 @@ describe("GitHub Integration Effects", () => {
         return yield* Effect.fail(new GitHubAPIError("Network error occurred"));
       });
 
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
-      await expect(result).rejects.toBeInstanceOf(GitHubAPIError);
+      const result = await Runtime.runPromiseExit(Runtime.defaultRuntime)(errorEffect);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        if (result.cause._tag === "Fail") {
+          expect(result.cause.error).toBeInstanceOf(GitHubAPIError);
+        } else if (result.cause._tag === "Die") {
+          expect(result.cause.defect).toBeInstanceOf(GitHubAPIError);
+        }
+      }
     });
   });
 

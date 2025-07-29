@@ -401,7 +401,7 @@ describe("Confect Error Handling", () => {
       const result = yield* Effect.promise(() => mockDb.query("users"));
       return result;
     }).pipe(
-      Effect.retry(Schedule.exponential("100 millis").pipe(Schedule.recurs(3)))
+      Effect.retry(Schedule.intersect(Schedule.exponential("100 millis"), Schedule.recurs(3)))
     );
 
     const result = await Runtime.runPromise(Runtime.defaultRuntime)(retryEffect);
