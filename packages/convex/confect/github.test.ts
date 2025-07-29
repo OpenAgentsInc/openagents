@@ -34,7 +34,6 @@ global.fetch = vi.fn();
 describe("GitHub Integration Effects", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.resetAllMocks();
   });
 
   describe("fetchUserRepositories", () => {
