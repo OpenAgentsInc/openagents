@@ -26,7 +26,7 @@ interface ClaudeSession {
   sessionId: string;
   projectPath: string;
   title?: string;
-  status: "active" | "inactive" | "error";
+  status: "active" | "inactive" | "error" | "processed";
   createdBy: "desktop" | "mobile";
   lastActivity: number;
   metadata?: any;
@@ -36,7 +36,7 @@ interface ClaudeMessage {
   _id: string;
   sessionId: string;
   messageId: string;
-  messageType: "user" | "assistant" | "tool_use" | "tool_result";
+  messageType: "user" | "assistant" | "tool_use" | "tool_result" | "thinking";
   content: string;
   timestamp: string;
   toolInfo?: {
@@ -82,17 +82,17 @@ export function ClaudeCodeMobile() {
 
   // Convex hooks - only query data when authentication is ready
   const sessions = useQuery(
-    api.claude.getSessions, 
-    authReady ? { limit: 50 } : "skip"
+    api.confect["mobile-sync"].getPendingMobileSessions, 
+    authReady ? {} : "skip"
   ) || [];
   const selectedSessionMessages = useQuery(
-    api.claude.getSessionMessages, 
+    api.confect.messages.getSessionMessages, 
     authReady && selectedSessionId ? { sessionId: selectedSessionId } : "skip"
   ) || [];
   
-  const requestDesktopSession = useMutation(api.claude.requestDesktopSession);
-  const addMessage = useMutation(api.claude.addClaudeMessage);
-  const updateSyncStatus = useMutation(api.claude.updateSyncStatus);
+  const requestDesktopSession = useMutation(api.confect["mobile-sync"].createClaudeSession);
+  const addMessage = useMutation(api.confect.messages.addClaudeMessage);
+  const updateSyncStatus = useMutation(api.confect["mobile-sync"].updateSessionStatus);
 
   // APM tracking - only enabled when authentication is ready
   const { trackMessageSent, trackSessionCreated } = useAPMTracking({
@@ -136,9 +136,14 @@ export function ClaudeCodeMobile() {
 
     try {
       const sessionId = await requestDesktopSession({
+        sessionId: `mobile-${Date.now()}`,
         projectPath: newProjectPath.trim(),
-        initialMessage: initialMessage.trim() || undefined,
+        createdBy: "mobile" as const,
         title: newSessionTitle.trim() || undefined,
+        metadata: {
+          workingDirectory: newProjectPath.trim(),
+          originalMobileSessionId: `mobile-${Date.now()}`,
+        },
       });
 
       console.log('✅ [MOBILE] Session created successfully with ID:', sessionId);
@@ -202,10 +207,10 @@ export function ClaudeCodeMobile() {
       // Track message sent for APM
       trackMessageSent();
 
-      // Update mobile last seen
+      // Update session status
       await updateSyncStatus({
         sessionId,
-        mobileLastSeen: Date.now(),
+        status: "active",
       });
 
       console.log('🔄 [MOBILE] Updated sync status for session');
@@ -359,16 +364,6 @@ export function ClaudeCodeMobile() {
   );
 
   const renderMainContent = () => {
-    if (!isAuthenticated) {
-      return (
-        <View style={styles.emptyState}>
-          <View style={styles.authButtonContainer}>
-            <AuthButton />
-          </View>
-        </View>
-      );
-    }
-
     if (!authReady) {
       return (
         <View style={styles.emptyState}>
@@ -444,6 +439,36 @@ export function ClaudeCodeMobile() {
     );
   };
 
+  // Show clean login screen without header/sidebar when not authenticated
+  if (!isAuthenticated) {
+    return (
+      <ErrorBoundary
+        onError={(error, errorInfo) => {
+          const timestamp = new Date().toISOString();
+          console.error(`❌ [CLAUDE_CODE_MOBILE] ${timestamp} Component error:`, {
+            error: error.message,
+            stack: error.stack,
+            componentStack: errorInfo.componentStack,
+            user: user?.githubUsername,
+            isAuthenticated,
+            selectedSessionId
+          });
+          // TODO: Report to crash analytics service
+        }}
+      >
+        <View style={styles.loginContainer}>
+          <View style={styles.loginContent}>
+            <CustomText style={styles.loginTitle}>OpenAgents</CustomText>
+            <View style={styles.authButtonContainer}>
+              <AuthButton />
+            </View>
+          </View>
+        </View>
+      </ErrorBoundary>
+    );
+  }
+
+  // Show main app with header/sidebar when authenticated
   return (
     <ErrorBoundary
       onError={(error, errorInfo) => {
@@ -743,5 +768,42 @@ const styles = StyleSheet.create({
     color: '#f4f4f5',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Login screen styles
+  loginContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  loginContent: {
+    alignItems: 'center',
+    maxWidth: 400,
+    width: '100%',
+  },
+  loginTitle: {
+    color: '#f4f4f5',
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 48,
+    textAlign: 'center',
+    lineHeight: 32,
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace'
+    }),
+  },
+  loginSubtitle: {
+    color: '#a1a1aa',
+    fontSize: 16,
+    marginBottom: 48,
+    textAlign: 'center',
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace'
+    }),
   },
 });

@@ -26,3 +26,11 @@ export * from "./validation";
 
 // Error tracking and monitoring
 export * from "./error-tracking";
+
+// Onboarding functions
+export * from "./onboarding";
+export * from "./onboarding.schemas";
+
+// GitHub integration functions
+export * from "./github"; 
+export * from "./github.schemas";

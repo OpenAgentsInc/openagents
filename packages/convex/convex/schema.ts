@@ -10,8 +10,18 @@ export default defineSchema({
     githubId: v.string(),
     githubUsername: v.string(),
     openAuthSubject: v.optional(v.string()), // OpenAuth JWT subject for lookup
+    githubAccessToken: v.optional(v.string()), // GitHub OAuth token for API access
     createdAt: v.number(),
     lastLogin: v.number(),
+    githubMetadata: v.optional(v.object({
+      publicRepos: v.number(),
+      totalPrivateRepos: v.number(),
+      ownedPrivateRepos: v.number(),
+      reposUrl: v.string(),
+      cachedRepos: v.any(), // Simplified for type compatibility
+      lastReposFetch: v.number(),
+      lastReposFetchError: v.optional(v.string()),
+    })),
   }).index("by_email", ["email"])
     .index("by_github_id", ["githubId"])
     .index("by_openauth_subject", ["openAuthSubject"]),
@@ -156,4 +166,76 @@ export default defineSchema({
     .index("by_timestamp", ["timestamp"])
     .index("by_event_type", ["eventType"])
     .index("by_repository", ["repository"]),
+
+  // User onboarding progress tracking
+  onboardingProgress: defineTable({
+    userId: v.id("users"),
+    step: v.union(
+      v.literal("welcome"),
+      v.literal("permissions_explained"), 
+      v.literal("github_connected"),
+      v.literal("repository_selected"),
+      v.literal("preferences_set"),
+      v.literal("completed")
+    ),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    completedSteps: v.array(v.string()),
+    activeRepository: v.optional(v.object({
+      url: v.string(),
+      name: v.string(),
+      owner: v.string(),
+      isPrivate: v.boolean(),
+      defaultBranch: v.optional(v.string()),
+    })),
+    preferences: v.optional(v.object({
+      theme: v.optional(v.union(v.literal("light"), v.literal("dark"), v.literal("system"))),
+      notifications: v.optional(v.boolean()),
+      autoSync: v.optional(v.boolean()),
+      defaultModel: v.optional(v.string()),
+    })),
+    permissions: v.optional(v.object({
+      notifications: v.boolean(),
+      storage: v.boolean(),
+      network: v.boolean(),
+      camera: v.optional(v.boolean()),
+      microphone: v.optional(v.boolean()),
+    })),
+    metadata: v.optional(v.object({
+      platform: v.optional(v.string()),
+      version: v.optional(v.string()),
+      deviceModel: v.optional(v.string()),
+      skipReason: v.optional(v.string()), // If user skipped certain steps
+    })),
+  }).index("by_user_id", ["userId"])
+    .index("by_step", ["step"])
+    .index("by_started_at", ["startedAt"])
+    .index("by_completed_at", ["completedAt"]),
+
+  // User permissions state tracking
+  userPermissions: defineTable({
+    userId: v.id("users"),
+    permissionType: v.union(
+      v.literal("notifications"),
+      v.literal("storage"), 
+      v.literal("network"),
+      v.literal("camera"),
+      v.literal("microphone"),
+      v.literal("location")
+    ),
+    status: v.union(v.literal("granted"), v.literal("denied"), v.literal("not_requested"), v.literal("restricted")),
+    requestedAt: v.optional(v.number()),
+    grantedAt: v.optional(v.number()),
+    deniedAt: v.optional(v.number()),
+    platform: v.string(), // "ios", "android", "desktop", "web"
+    metadata: v.optional(v.object({
+      reason: v.optional(v.string()), // Why permission was needed
+      fallbackEnabled: v.optional(v.boolean()), // If fallback is available
+      retryCount: v.optional(v.number()),
+      lastRetryAt: v.optional(v.number()),
+    })),
+  }).index("by_user_id", ["userId"])
+    .index("by_permission_type", ["permissionType"])
+    .index("by_status", ["status"])
+    .index("by_user_permission", ["userId", "permissionType"]),
 });

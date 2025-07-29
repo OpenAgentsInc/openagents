@@ -17,8 +17,8 @@ export const GetMessagesResult = Schema.Array(
 
 // AddMessage schemas
 export const AddMessageArgs = Schema.Struct({
-  body: Schema.String.pipe(Schema.nonEmpty()),
-  user: Schema.String.pipe(Schema.nonEmpty()),
+  body: Schema.String.pipe(Schema.nonEmptyString()),
+  user: Schema.String.pipe(Schema.nonEmptyString()),
 });
 
 export const AddMessageResult = Id.Id("messages");
@@ -30,8 +30,8 @@ export const GetMessageCountResult = Schema.Number;
 
 // AddClaudeMessage schemas
 export const AddClaudeMessageArgs = Schema.Struct({
-  sessionId: Schema.String.pipe(Schema.nonEmpty()),
-  messageId: Schema.String.pipe(Schema.nonEmpty()),
+  sessionId: Schema.String.pipe(Schema.nonEmptyString()),
+  messageId: Schema.String.pipe(Schema.nonEmptyString()),
   messageType: Schema.Literal("user", "assistant", "tool_use", "tool_result", "thinking"),
   content: Schema.String,
   timestamp: Schema.String, // ISO timestamp
@@ -50,7 +50,7 @@ export const AddClaudeMessageResult = Id.Id("claudeMessages");
 
 // GetSessionMessages schemas
 export const GetSessionMessagesArgs = Schema.Struct({
-  sessionId: Schema.String.pipe(Schema.nonEmpty()),
+  sessionId: Schema.String.pipe(Schema.nonEmptyString()),
   limit: Schema.optional(Schema.Number),
 });
 
@@ -78,7 +78,7 @@ export const GetSessionMessagesResult = Schema.Array(
 
 // Paginated GetSessionMessages schemas  
 export const GetSessionMessagesPaginatedArgs = Schema.Struct({
-  sessionId: Schema.String.pipe(Schema.nonEmpty()),
+  sessionId: Schema.String.pipe(Schema.nonEmptyString()),
   paginationOpts: Schema.Struct({
     numItems: Schema.Number.pipe(Schema.positive(), Schema.max(100)), // Max 100 items per page
     cursor: Schema.optional(Schema.String),
