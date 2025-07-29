@@ -25,7 +25,7 @@ interface PermissionResult {
 }
 
 // Enhanced placeholder that matches the real useConfectOnboarding interface
-type OnboardingStep = 'welcome' | 'permissions_explained' | 'github_connected' | 'repository_selected' | 'session_ready' | 'preferences_set' | 'completed';
+type OnboardingStep = 'welcome' | 'permissions_explained' | 'github_connected' | 'device_sync' | 'repository_selected' | 'session_ready' | 'preferences_set' | 'completed';
 
 const useConfectOnboarding = (config: any) => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
@@ -85,7 +85,7 @@ const useConfectOnboarding = (config: any) => {
   },
     canSkipStep: (step: OnboardingStep) => step !== 'permissions_explained',
     getNextStep: (current: OnboardingStep): OnboardingStep | null => {
-      const steps: OnboardingStep[] = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'session_ready', 'preferences_set', 'completed'];
+      const steps: OnboardingStep[] = ['welcome', 'permissions_explained', 'github_connected', 'device_sync', 'repository_selected', 'session_ready', 'preferences_set', 'completed'];
       const currentIndex = steps.indexOf(current);
       return currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null;
     },
@@ -93,6 +93,7 @@ const useConfectOnboarding = (config: any) => {
 };
 import { DARK_THEME } from '../../constants/colors';
 import { RepositorySelectionScreen } from './RepositorySelectionScreen';
+import { DeviceSyncOnboardingScreen } from './DeviceSyncOnboardingScreen';
 import { NewSessionScreen } from '../session/NewSessionScreen';
 import { useConfectAuth } from '../../contexts/SimpleConfectAuthContext';
 
@@ -307,6 +308,16 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
     </View>
   );
 
+  const renderDeviceSyncStep = () => (
+    <View style={styles.fullScreenStep}>
+      <DeviceSyncOnboardingScreen 
+        onContinue={handleContinue}
+        onSkip={handleSkip}
+        canSkip={true}
+      />
+    </View>
+  );
+
   const renderRepositoryStep = () => (
     <View style={styles.fullScreenStep}>
       <RepositorySelectionScreen 
@@ -359,6 +370,8 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
         return renderPermissionsStep();
       case 'github_connected':
         return renderGitHubStep();
+      case 'device_sync':
+        return renderDeviceSyncStep();
       case 'repository_selected':
         return renderRepositoryStep();
       case 'session_ready':
@@ -371,13 +384,13 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   };
 
   const getCurrentStepNumber = () => {
-    const steps = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'session_ready', 'preferences_set'];
+    const steps = ['welcome', 'permissions_explained', 'github_connected', 'device_sync', 'repository_selected', 'session_ready', 'preferences_set'];
     const stepIndex = steps.indexOf(onboardingState.step);
     // If step is 'completed' or not found, return the total number of steps
     return stepIndex === -1 ? getTotalSteps() : stepIndex + 1;
   };
 
-  const getTotalSteps = () => 6;
+  const getTotalSteps = () => 7;
 
   if (onboardingState.isLoading) {
     return (
@@ -402,7 +415,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {onboardingState.step !== 'repository_selected' && onboardingState.step !== 'session_ready' && (
+        {onboardingState.step !== 'device_sync' && onboardingState.step !== 'repository_selected' && onboardingState.step !== 'session_ready' && (
           <View style={styles.header}>
             <Text style={styles.stepCounter}>
               Step {getCurrentStepNumber()} of {getTotalSteps()}
@@ -427,7 +440,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
         )}
       </ScrollView>
 
-      {onboardingState.step !== 'repository_selected' && onboardingState.step !== 'session_ready' && (
+      {onboardingState.step !== 'device_sync' && onboardingState.step !== 'repository_selected' && onboardingState.step !== 'session_ready' && (
         <View style={styles.buttonContainer}>
           {canSkipStep(onboardingState.step) && (
             <TouchableOpacity

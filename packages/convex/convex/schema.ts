@@ -174,6 +174,7 @@ export default defineSchema({
       v.literal("welcome"),
       v.literal("permissions_explained"), 
       v.literal("github_connected"),
+      v.literal("device_sync"),
       v.literal("repository_selected"),
       v.literal("preferences_set"),
       v.literal("completed")
@@ -238,4 +239,56 @@ export default defineSchema({
     .index("by_permission_type", ["permissionType"])
     .index("by_status", ["status"])
     .index("by_user_permission", ["userId", "permissionType"]),
+
+  // Device connections for cross-platform sync and presence
+  deviceConnections: defineTable({
+    deviceId: v.string(),                          // Unique device identifier
+    userId: v.id("users"),                         // Link to authenticated user
+    deviceType: v.union(                           // Device type
+      v.literal("desktop"), 
+      v.literal("mobile"), 
+      v.literal("web")
+    ),
+    platform: v.string(),                          // "macos", "ios", "android", "windows", "linux", "browser"
+    appVersion: v.string(),                        // App version for compatibility
+    userAgent: v.optional(v.string()),             // Browser user agent for web devices
+    status: v.union(                               // Current connection status
+      v.literal("online"), 
+      v.literal("offline"), 
+      v.literal("idle")
+    ),
+    sessionToken: v.string(),                      // Session authentication token
+    roomToken: v.string(),                         // Presence room token (usually userId)
+    connectedAt: v.number(),                       // When device first connected
+    lastHeartbeat: v.number(),                     // Last heartbeat timestamp
+    capabilities: v.array(v.string()),             // Device capabilities ["claude-code", "file-sync", "push-notifications"]
+    metadata: v.optional(v.object({                // Device-specific metadata
+      screenResolution: v.optional(v.string()),   // For desktop
+      deviceModel: v.optional(v.string()),        // For mobile
+      browserName: v.optional(v.string()),        // For web
+      osVersion: v.optional(v.string()),          // OS version info
+      location: v.optional(v.string()),           // Geographic location (optional)
+    })),
+  }).index("by_user_id", ["userId"])
+    .index("by_device_id", ["deviceId"])
+    .index("by_session_token", ["sessionToken"])
+    .index("by_status", ["status"])
+    .index("by_room_token", ["roomToken"])
+    .index("by_last_heartbeat", ["lastHeartbeat"])
+    .index("by_user_status", ["userId", "status"]),
+
+  // Device presence rooms for real-time sync
+  devicePresenceRooms: defineTable({
+    roomId: v.string(),                            // Room identifier (usually userId)
+    createdAt: v.number(),                         // Room creation timestamp
+    updatedAt: v.number(),                         // Last activity in room
+    activeDevices: v.optional(v.array(v.string())), // Currently active device IDs
+    metadata: v.optional(v.object({                // Room-specific metadata
+      maxDevices: v.optional(v.number()),         // Maximum devices allowed
+      allowedTypes: v.optional(v.array(v.string())), // Allowed device types
+      features: v.optional(v.array(v.string())),  // Enabled features for this room
+    })),
+  }).index("by_room_id", ["roomId"])
+    .index("by_created_at", ["createdAt"])
+    .index("by_updated_at", ["updatedAt"]),
 });
