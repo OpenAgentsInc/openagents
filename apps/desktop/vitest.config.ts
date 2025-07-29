@@ -11,6 +11,7 @@ export default defineConfig({
     setupFiles: ['./test-setup.ts'],
     css: true,
     reporters: ['verbose'],
+    testTimeout: 10000, // 10 second timeout for React 19 tests
     deps: {
       optimizer: {
         web: {

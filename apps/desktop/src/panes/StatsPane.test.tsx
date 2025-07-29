@@ -52,13 +52,16 @@ const mockUserAPMData = {
 describe("StatsPane", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockInvoke.mockResolvedValue(mockAPMData);
+    // Mock both invoke calls that the component makes
+    mockInvoke
+      .mockResolvedValueOnce({ success: true, data: mockAPMData })  // analyze_combined_conversations
+      .mockResolvedValue({ success: true, data: mockUserAPMData }); // get_user_apm_stats
   });
 
   describe("Rendering", () => {
     it("should render loading state initially", () => {
       render(<StatsPane />);
-      expect(screen.getByText("Loading stats...")).toBeInTheDocument();
+      expect(screen.getByText("Analyzing conversations...")).toBeInTheDocument();
     });
 
     it("should render APM stats when data is loaded", async () => {
@@ -93,8 +96,8 @@ describe("StatsPane", () => {
   describe("View Mode Switching", () => {
     it("should switch to All Devices view when clicked", async () => {
       mockInvoke
-        .mockResolvedValueOnce(mockAPMData) // Initial load
-        .mockResolvedValueOnce(mockUserAPMData); // After switch
+        .mockResolvedValueOnce({ success: true, data: mockAPMData }) // Initial load
+        .mockResolvedValueOnce({ success: true, data: mockUserAPMData }); // After switch
       
       render(<StatsPane />);
       
@@ -112,7 +115,7 @@ describe("StatsPane", () => {
     });
 
     it("should show device breakdown in All Devices view", async () => {
-      mockInvoke.mockResolvedValue(mockUserAPMData);
+      mockInvoke.mockResolvedValue({ success: true, data: mockUserAPMData });
       
       render(<StatsPane />);
       
@@ -208,7 +211,7 @@ describe("StatsPane", () => {
       });
       
       // Should still show UI, possibly with default values
-      expect(screen.getByText("Loading stats...")).toBeInTheDocument();
+      expect(screen.getByText("Analyzing conversations...")).toBeInTheDocument();
       
       consoleSpy.mockRestore();
     });
@@ -253,7 +256,7 @@ describe("StatsPane", () => {
           apm: 751.2,
         },
       };
-      mockInvoke.mockResolvedValue(largeNumberData);
+      mockInvoke.mockResolvedValue({ success: true, data: largeNumberData });
       
       render(<StatsPane />);
       
@@ -266,7 +269,7 @@ describe("StatsPane", () => {
 
   describe("Device Icons", () => {
     it("should show appropriate icons for each device type", async () => {
-      mockInvoke.mockResolvedValue(mockUserAPMData);
+      mockInvoke.mockResolvedValue({ success: true, data: mockUserAPMData });
       
       render(<StatsPane />);
       
@@ -282,7 +285,7 @@ describe("StatsPane", () => {
 
   describe("Metadata Display", () => {
     it("should show overlap information in All Devices view", async () => {
-      mockInvoke.mockResolvedValue(mockUserAPMData);
+      mockInvoke.mockResolvedValue({ success: true, data: mockUserAPMData });
       
       render(<StatsPane />);
       
