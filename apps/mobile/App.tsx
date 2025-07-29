@@ -1,3 +1,4 @@
+import React from "react"
 import { useFonts } from "expo-font"
 import { StatusBar } from "expo-status-bar"
 import { LogBox, StyleSheet, View } from "react-native"
@@ -7,6 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context"
 import { NavigationContainer } from "@react-navigation/native"
 import { ClaudeCodeMobile } from "./components/ClaudeCodeMobile"
 import { SimpleConfectAuthProvider, useConfectAuth } from "./contexts/SimpleConfectAuthContext"
+import { useUserSync } from "./hooks/useUserSync"
 import { OnboardingScreen } from "./components/onboarding/OnboardingScreen"
 import { DARK_THEME } from "./constants/colors"
 import { ConvexProviderWithAuth } from "./contexts/ConvexProviderWithAuth"
@@ -14,6 +16,28 @@ import { ErrorBoundary } from "./components/ErrorBoundary"
 
 // Disable all development warnings
 LogBox.ignoreAllLogs(true)
+
+// Component that handles user sync (must be inside ConvexProvider)
+function UserSyncWrapper({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useConfectAuth();
+  
+  // Sync user data to Convex when authenticated
+  const { isSynced } = useUserSync();
+  console.log('📱 [USER_SYNC_WRAPPER] User sync status:', { isAuthenticated, isSynced });
+
+  // Show loading state while syncing user
+  if (isAuthenticated && !isSynced) {
+    return (
+      <View style={styles.loadingContainer}>
+        <View style={styles.loadingContent}>
+          {/* Loading indicator while syncing user data */}
+        </View>
+      </View>
+    );
+  }
+
+  return <>{children}</>;
+}
 
 function MainApp() {
   const { 
@@ -47,36 +71,38 @@ function MainApp() {
       }}
     >
       <ConvexProviderWithAuth>
-        {needsOnboarding ? (
-          <ErrorBoundary
-            onError={(error, errorInfo) => {
-              console.error('🚨 [ONBOARDING] Onboarding error:', {
-                error: error.message,
-                componentStack: errorInfo.componentStack,
-              });
-            }}
-          >
-            <OnboardingScreen 
-              onComplete={() => {
-                // Handle onboarding completion
-                console.log('📱 [APP] Onboarding completed');
-              }} 
-            />
-          </ErrorBoundary>
-        ) : (
-          <ErrorBoundary
-            onError={(error, errorInfo) => {
-              console.error('🚨 [MAIN_APP] Main app error:', {
-                error: error.message,
-                componentStack: errorInfo.componentStack,
-              });
-            }}
-          >
-            <NavigationContainer>
-              <ClaudeCodeMobile />
-            </NavigationContainer>
-          </ErrorBoundary>
-        )}
+        <UserSyncWrapper>
+          {needsOnboarding ? (
+            <ErrorBoundary
+              onError={(error, errorInfo) => {
+                console.error('🚨 [ONBOARDING] Onboarding error:', {
+                  error: error.message,
+                  componentStack: errorInfo.componentStack,
+                });
+              }}
+            >
+              <OnboardingScreen 
+                onComplete={() => {
+                  // Handle onboarding completion
+                  console.log('📱 [APP] Onboarding completed');
+                }} 
+              />
+            </ErrorBoundary>
+          ) : (
+            <ErrorBoundary
+              onError={(error, errorInfo) => {
+                console.error('🚨 [MAIN_APP] Main app error:', {
+                  error: error.message,
+                  componentStack: errorInfo.componentStack,
+                });
+              }}
+            >
+              <NavigationContainer>
+                <ClaudeCodeMobile />
+              </NavigationContainer>
+            </ErrorBoundary>
+          )}
+        </UserSyncWrapper>
       </ConvexProviderWithAuth>
     </ErrorBoundary>
   );

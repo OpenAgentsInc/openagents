@@ -11,6 +11,7 @@ export const confectSchema = defineSchema({
       githubId: Schema.String.pipe(Schema.nonEmptyString()),
       githubUsername: Schema.String.pipe(Schema.nonEmptyString()),
       openAuthSubject: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
+      githubAccessToken: Schema.optional(Schema.String.pipe(Schema.nonEmptyString())),
       createdAt: Schema.Number,
       lastLogin: Schema.Number,
       githubMetadata: Schema.optional(

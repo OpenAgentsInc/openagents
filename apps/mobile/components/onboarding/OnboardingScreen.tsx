@@ -264,22 +264,44 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
     </View>
   );
 
-  const renderGitHubStep = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>GitHub Connected</Text>
-      <Text style={styles.stepDescription}>
-        Your GitHub account is successfully connected! This enables:
-      </Text>
-      <View style={styles.featureList}>
-        <Text style={styles.featureItem}>• Access to your repositories</Text>
-        <Text style={styles.featureItem}>• Secure authentication</Text>
-        <Text style={styles.featureItem}>• Synchronized project settings</Text>
+  const renderGitHubStep = () => {
+    const { forceLogout } = useConfectAuth();
+    
+    const handleForceLogout = async () => {
+      try {
+        console.log('🔄 [DEBUG] User triggered force logout');
+        await forceLogout();
+        console.log('🔄 [DEBUG] Force logout completed - app should redirect to login');
+      } catch (error) {
+        console.error('❌ [DEBUG] Force logout failed:', error);
+      }
+    };
+
+    return (
+      <View style={styles.stepContainer}>
+        <Text style={styles.stepTitle}>GitHub Connected</Text>
+        <Text style={styles.stepDescription}>
+          Your GitHub account is successfully connected! This enables:
+        </Text>
+        <View style={styles.featureList}>
+          <Text style={styles.featureItem}>• Access to your repositories</Text>
+          <Text style={styles.featureItem}>• Secure authentication</Text>
+          <Text style={styles.featureItem}>• Synchronized project settings</Text>
+        </View>
+        <Text style={styles.connectedUser}>
+          Connected as: {onboarding.user?.githubUsername || 'Unknown'}
+        </Text>
+        
+        {/* Debug button to force fresh login */}
+        <TouchableOpacity 
+          style={styles.debugButton} 
+          onPress={handleForceLogout}
+        >
+          <Text style={styles.debugButtonText}>🔄 Debug: Force Fresh Login</Text>
+        </TouchableOpacity>
       </View>
-      <Text style={styles.connectedUser}>
-        Connected as: {onboarding.user?.githubUsername || 'Unknown'}
-      </Text>
-    </View>
-  );
+    );
+  };
 
   const renderRepositoryStep = () => (
     <View style={styles.fullScreenStep}>
@@ -703,5 +725,23 @@ const styles = StyleSheet.create({
   },
   fullScreenStep: {
     flex: 1,
+  },
+  debugButton: {
+    backgroundColor: '#dc2626',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  debugButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace'
+    }),
   },
 });
