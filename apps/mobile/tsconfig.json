@@ -14,8 +14,6 @@
     "../../packages/shared/src/hooks/useConfectOnboarding.ts",
     "../../packages/shared/src/services/PermissionService.ts",
     "../../packages/shared/src/hooks/useConfectAuth.ts",
-    "../../packages/convex/confect/integration.ts",
-    "convex/confect/http-api.ts",
-    "convex/confect/http.ts"
+    "../../packages/convex/confect/integration.ts"
   ]
 }

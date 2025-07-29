@@ -31,7 +31,6 @@ export function useAPMTracking(options: APMTrackingOptions = {}) {
   
   // Convex mutations
   const trackDeviceSession = useMutation(api.confect.apm.trackDeviceSession);
-  const calculateUserAPM = useMutation(api.confect.apm.calculateUserAPM);
   
   // Session tracking state
   const sessionData = useRef<APMSessionData>({
@@ -123,13 +122,10 @@ export function useAPMTracking(options: APMTrackingOptions = {}) {
         actions: session.messagesSent,
       });
 
-      // Trigger APM calculation
-      await calculateUserAPM({});
-
     } catch (error) {
       console.error('❌ [APM] Failed to send session data:', error);
     }
-  }, [trackDeviceSession, calculateUserAPM, opts.enabled]);
+  }, [trackDeviceSession, opts.enabled]);
 
   // Send session data when app is closing or going to background
   useEffect(() => {
