@@ -204,8 +204,18 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
           const response = yield* makeRequest("GET", url, options);
           
           if (!schema) {
-            // Return raw response if no schema provided
-            return response as T;
+            // Return raw response if no schema provided - parse JSON first
+            const data = yield* Effect.tryPromise({
+              try: () => response.json(),
+              catch: (error) => new ParseError({
+                method: "GET",
+                url: buildUrl(url),
+                contentType: response.headers.get("content-type") || "",
+                message: "Failed to parse JSON response",
+                cause: error
+              })
+            });
+            return data as T;
           }
 
           // Parse and validate response
@@ -229,7 +239,7 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
                   method: "GET",
                   url: buildUrl(url),
                   schema: schema.toString(),
-                  errors: error.errors
+                  errors: [String(error)]
                 }))
               )
             );
@@ -279,7 +289,7 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
                   method: "POST",
                   url: buildUrl(url),
                   schema: schema.toString(),
-                  errors: error.errors
+                  errors: [String(error)]
                 }))
               )
             );
@@ -329,7 +339,7 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
                   method: "PUT",
                   url: buildUrl(url),
                   schema: schema.toString(),
-                  errors: error.errors
+                  errors: [String(error)]
                 }))
               )
             );
