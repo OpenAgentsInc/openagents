@@ -148,7 +148,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   const handleCreateSession = async () => {
     console.log('📱 [ONBOARDING] Session creation requested');
-    // TODO: Implement actual session creation logic
+    // Onboarding session creation not implemented - just continue
     await handleContinue();
   };
 

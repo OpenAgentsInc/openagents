@@ -205,29 +205,6 @@ export const enhancedSendSessionDataToBackend = (
       // Then sync APM data
       yield* syncAPMDataToConfect(client, sessionData, authState.user.id);
       
-      // Trigger aggregated APM calculation
-      yield* safeConvexMutation(client, "calculateUserAPM", {
-        timeWindow: "1h" as const
-      }).pipe(
-        Effect.catchAll(() => 
-          Effect.logWarning("Failed to calculate user APM, continuing anyway")
-        )
-      );
-      
-      // Remove old tryPromise block - replaced with safeConvexMutation
-      /*yield* Effect.tryPromise({
-        try: async () => {
-          await client.mutation("calculateUserAPM", {
-            timeWindow: "1h" as const
-          });
-        },
-        catch: (error) => new ConvexIntegrationError({
-          operation: "calculateUserAPM",
-          message: String(error),
-          cause: error
-        })
-      });*/
-      
       yield* Effect.log(`✅ [CONFECT] Session data synced to backend with user association`);
     } else {
       // Fallback to local-only tracking for unauthenticated users

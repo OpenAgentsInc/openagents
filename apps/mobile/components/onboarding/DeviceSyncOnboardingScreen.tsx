@@ -11,25 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DARK_THEME } from '../../constants/colors';
 import { useConfectAuth } from '../../contexts/SimpleConfectAuthContext';
+// Device sync functionality not available in mobile app
 
-// Define device sync types
-interface DeviceConnection {
-  deviceId: string;
-  userId: string;
-  deviceInfo: {
-    deviceType: 'desktop' | 'mobile' | 'web';
-    platform: string;
-    appVersion: string;
-    userAgent?: string;
-    lastSeen: number;
-    capabilities: string[];
-  };
-  status: 'online' | 'offline' | 'idle';
-  sessionToken: string;
-  roomToken: string;
-  connectedAt: number;
-  lastHeartbeat: number;
-}
+// Device sync functionality not implemented in mobile app
 
 interface DeviceSyncOnboardingScreenProps {
   onContinue: () => void;
@@ -37,9 +21,17 @@ interface DeviceSyncOnboardingScreenProps {
   canSkip?: boolean;
 }
 
+// Simplified device type for display
+interface SimpleDevice {
+  deviceId: string;
+  deviceType: string;
+  platform: string;
+  status: string;
+}
+
 // Device avatar component for the facepile
 const DeviceAvatar: React.FC<{
-  device: DeviceConnection;
+  device: SimpleDevice;
   index: number;
   total: number;
 }> = ({ device, index, total }) => {
@@ -96,12 +88,12 @@ const DeviceAvatar: React.FC<{
         device.status === "online" ? styles.onlineIndicator : styles.offlineIndicator
       ]}>
         <Text style={styles.deviceIcon}>
-          {getDeviceIcon(device.deviceInfo.deviceType, device.deviceInfo.platform)}
+          {getDeviceIcon(device.deviceType, device.platform)}
         </Text>
       </View>
       <View style={styles.deviceTooltip}>
         <Text style={styles.deviceName}>
-          {getDeviceName(device.deviceInfo.deviceType, device.deviceInfo.platform)}
+          {getDeviceName(device.deviceType, device.platform)}
         </Text>
         <Text style={styles.deviceStatus}>
           {device.status === "online" ? "Connected" : "Offline"}
@@ -113,7 +105,7 @@ const DeviceAvatar: React.FC<{
 
 // Device connection facepile component
 const DeviceConnectionFacePile: React.FC<{
-  devices: DeviceConnection[];
+  devices: SimpleDevice[];
   maxVisible?: number;
 }> = ({ devices, maxVisible = 5 }) => {
   const visible = devices.slice(0, maxVisible);
@@ -161,10 +153,12 @@ export const DeviceSyncOnboardingScreen: React.FC<DeviceSyncOnboardingScreenProp
   canSkip = true,
 }) => {
   const { user } = useConfectAuth();
-  const [connectedDevices, setConnectedDevices] = useState<DeviceConnection[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isWaiting, setIsWaiting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Device sync not implemented in mobile app - show informational state
+  const connectedDevices: SimpleDevice[] = [];
+  
+  const isLoading = false;
+  const isWaiting = true; // Always in waiting state since device sync is not implemented
+  const error = null;
 
   // Pulse animation for waiting state
   const pulseAnim = new Animated.Value(1);
@@ -191,49 +185,10 @@ export const DeviceSyncOnboardingScreen: React.FC<DeviceSyncOnboardingScreenProp
     }
   }, [isWaiting, pulseAnim]);
 
-  // Simulate device detection (in real implementation, this would use useDevicePresence hook)
-  useEffect(() => {
-    const detectDevices = async () => {
-      setIsLoading(true);
-      try {
-        // Simulate loading time
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Mock connected devices (in real implementation, this would come from Convex)
-        const mockDevices: DeviceConnection[] = [
-          {
-            deviceId: 'desktop_macos_001',
-            userId: user?.id || 'mock_user',
-            deviceInfo: {
-              deviceType: 'desktop',
-              platform: 'macos',
-              appVersion: '1.0.0',
-              lastSeen: Date.now(),
-              capabilities: ['claude-code', 'file-sync'],
-            },
-            status: 'online',
-            sessionToken: 'mock_session_token',
-            roomToken: `room_${user?.id}`,
-            connectedAt: Date.now() - 60000,
-            lastHeartbeat: Date.now(),
-          },
-        ];
-
-        setConnectedDevices(mockDevices);
-        setIsWaiting(mockDevices.length === 0);
-      } catch (err) {
-        setError('Failed to detect devices. Please try again.');
-        console.error('Device detection error:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    detectDevices();
-  }, [user?.id]);
+  // Device sync not available in mobile app - always show waiting state
 
   const hasDesktopConnected = connectedDevices.some(
-    device => device.deviceInfo.deviceType === 'desktop' && device.status === 'online'
+    (device: SimpleDevice) => device.deviceType === 'desktop' && device.status === 'online'
   );
 
   const handleContinue = () => {
@@ -246,15 +201,7 @@ export const DeviceSyncOnboardingScreen: React.FC<DeviceSyncOnboardingScreenProp
     onSkip();
   };
 
-  const handleRetryDetection = () => {
-    setError(null);
-    setIsLoading(true);
-    // Trigger device detection again
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsWaiting(true);
-    }, 1000);
-  };
+  // No manual retry needed - Convex queries handle reconnection automatically
 
   if (isLoading) {
     return (
@@ -279,59 +226,44 @@ export const DeviceSyncOnboardingScreen: React.FC<DeviceSyncOnboardingScreenProp
       </View>
 
       <View style={styles.content}>
-        {error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorIcon}>⚠️</Text>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity 
-              style={styles.retryButton}
-              onPress={handleRetryDetection}
-            >
-              <Text style={styles.retryButtonText}>Try Again</Text>
-            </TouchableOpacity>
+        <DeviceConnectionFacePile devices={connectedDevices} />
+
+        {isWaiting ? (
+          <Animated.View 
+            style={[
+              styles.waitingContainer,
+              { opacity: pulseAnim }
+            ]}
+          >
+            <ActivityIndicator size="small" color={DARK_THEME.primary} />
+            <Text style={styles.waitingText}>
+              Waiting for desktop connection...
+            </Text>
+            <Text style={styles.instructionText}>
+              Open Claude Code on your desktop to continue
+            </Text>
+          </Animated.View>
+        ) : hasDesktopConnected ? (
+          <View style={styles.successContainer}>
+            <Text style={styles.successIcon}>✅</Text>
+            <Text style={styles.successText}>
+              Desktop connected successfully!
+            </Text>
+            <Text style={styles.successSubtext}>
+              You can now sync sessions between your devices.
+            </Text>
           </View>
         ) : (
-          <>
-            <DeviceConnectionFacePile devices={connectedDevices} />
-
-            {isWaiting ? (
-              <Animated.View 
-                style={[
-                  styles.waitingContainer,
-                  { opacity: pulseAnim }
-                ]}
-              >
-                <ActivityIndicator size="small" color={DARK_THEME.primary} />
-                <Text style={styles.waitingText}>
-                  Waiting for desktop connection...
-                </Text>
-                <Text style={styles.instructionText}>
-                  Open Claude Code on your desktop to continue
-                </Text>
-              </Animated.View>
-            ) : hasDesktopConnected ? (
-              <View style={styles.successContainer}>
-                <Text style={styles.successIcon}>✅</Text>
-                <Text style={styles.successText}>
-                  Desktop connected successfully!
-                </Text>
-                <Text style={styles.successSubtext}>
-                  You can now sync sessions between your devices.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.infoContainer}>
-                <Text style={styles.infoText}>
-                  Connect your desktop for the best experience:
-                </Text>
-                <View style={styles.featureList}>
-                  <Text style={styles.featureItem}>• Real-time session sync</Text>
-                  <Text style={styles.featureItem}>• Cross-device continuity</Text>
-                  <Text style={styles.featureItem}>• Shared project context</Text>
-                </View>
-              </View>
-            )}
-          </>
+          <View style={styles.infoContainer}>
+            <Text style={styles.infoText}>
+              Connect your desktop for the best experience:
+            </Text>
+            <View style={styles.featureList}>
+              <Text style={styles.featureItem}>• Real-time session sync</Text>
+              <Text style={styles.featureItem}>• Cross-device continuity</Text>
+              <Text style={styles.featureItem}>• Shared project context</Text>
+            </View>
+          </View>
         )}
       </View>
 
@@ -348,10 +280,11 @@ export const DeviceSyncOnboardingScreen: React.FC<DeviceSyncOnboardingScreenProp
         ) : (
           <TouchableOpacity
             style={styles.waitButton}
-            onPress={handleRetryDetection}
+            onPress={() => {}}
+            disabled={true}
           >
             <Text style={styles.waitButtonText}>
-              🔄 Check Again
+              ⏳ Scanning for devices...
             </Text>
           </TouchableOpacity>
         )}

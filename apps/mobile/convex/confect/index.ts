@@ -34,3 +34,5 @@ export * from "./onboarding.schemas";
 // GitHub integration functions
 export * from "./github"; 
 export * from "./github.schemas";
+
+// Device sync functions - disabled in mobile app (use main backend)

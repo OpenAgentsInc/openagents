@@ -2,67 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 import { Alert } from 'react-native';
-// Temporary placeholder while Effect-TS runtime issues are being resolved
-// import { useConfectOnboarding, UseConfectOnboardingReturn } from '@/shared/hooks/useConfectOnboarding';
-
-// Placeholder types and hook
-type PermissionType = 'camera' | 'storage' | 'network' | 'notifications' | 'microphone' | 'location';
-interface PermissionResult {
-  type: PermissionType;
-  status: 'granted' | 'denied' | 'not_requested';
-  canRetry: boolean;
-  fallbackAvailable: boolean;
-  reason?: string;
-}
-type OnboardingStep = 'welcome' | 'permissions_explained' | 'github_connected' | 'repository_selected' | 'preferences_set' | 'completed';
-
-interface UseConfectOnboardingReturn {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
-  onboardingState: {
-    step: OnboardingStep;
-    isLoading: boolean;
-    error: string | null;
-  };
-  isOnboardingComplete: boolean;
-  updateOnboardingStep: (step: OnboardingStep, completed: boolean) => Promise<void>;
-  completeOnboarding: () => Promise<void>;
-  checkPermissions: () => Promise<PermissionResult[]>;
-  requestPermission: (type: PermissionType) => Promise<PermissionResult>;
-  requestAllPermissions: () => Promise<PermissionResult[]>;
-  getPermissionExplanation: (type: PermissionType) => string;
-  canSkipStep: (step: OnboardingStep) => boolean;
-  getNextStep: (current: OnboardingStep) => OnboardingStep | null;
-  logout?: () => Promise<void>;
-}
-
-const useConfectOnboarding = (config: any): UseConfectOnboardingReturn => ({
-  user: null,
-  isAuthenticated: false,
-  isLoading: false,
-  error: null,
-  onboardingState: {
-    step: 'welcome' as OnboardingStep,
-    isLoading: false,
-    error: null,
-  },
-  isOnboardingComplete: false,
-  updateOnboardingStep: async (step: OnboardingStep, completed: boolean) => {},
-  completeOnboarding: async () => {},
-  checkPermissions: async () => [],
-  requestPermission: async (type: PermissionType) => ({ type, status: 'granted' as const, canRetry: false, fallbackAvailable: true }),
-  requestAllPermissions: async () => [{ type: 'notifications' as const, status: 'granted' as const, canRetry: false, fallbackAvailable: true }],
-  getPermissionExplanation: (type: PermissionType) => `${type} permission explanation`,
-  canSkipStep: (step: OnboardingStep) => step !== 'permissions_explained',
-  getNextStep: (current: OnboardingStep) => {
-    const steps: OnboardingStep[] = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'preferences_set', 'completed'];
-    const currentIndex = steps.indexOf(current);
-    return currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null;
-  },
-  logout: async () => {},
-});
+// Onboarding functionality is not implemented in mobile app
 
 interface User {
   id: string;
@@ -73,15 +13,17 @@ interface User {
   githubUsername: string;
 }
 
-interface ConfectAuthContextType extends UseConfectOnboardingReturn {
-  // Legacy auth methods for backward compatibility
+interface ConfectAuthContextType {
+  // Core auth state
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+  
+  // Auth methods
   login: () => Promise<void>;
   logout: () => Promise<void>;
   token: string | null;
-  
-  // Enhanced onboarding state
-  needsOnboarding: boolean;
-  hasCompletedInitialSetup: boolean;
 }
 
 const ConfectAuthContext = createContext<ConfectAuthContextType | undefined>(undefined);
@@ -110,49 +52,38 @@ console.log('🔗 [CONFECT_AUTH] OPENAUTH_URL:', OPENAUTH_URL);
 
 export const ConfectAuthProvider: React.FC<ConfectAuthProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null);
-  const [hasCompletedInitialSetup, setHasCompletedInitialSetup] = useState(false);
-  
-  // Initialize Confect onboarding system
-  const confectOnboarding = useConfectOnboarding({
-    autoStartOnboarding: true,
-    requiredPermissions: ['notifications', 'storage', 'network'],
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Check for existing authentication on mount
   useEffect(() => {
     checkAuthState();
   }, []);
 
-  // Check if user needs onboarding
-  const needsOnboarding = confectOnboarding.isAuthenticated && 
-                          !confectOnboarding.isOnboardingComplete &&
-                          !confectOnboarding.onboardingState.isLoading;
-
-  // Mark initial setup as complete when onboarding is done
-  useEffect(() => {
-    if (confectOnboarding.isOnboardingComplete && confectOnboarding.isAuthenticated) {
-      setHasCompletedInitialSetup(true);
-    }
-  }, [confectOnboarding.isOnboardingComplete, confectOnboarding.isAuthenticated]);
-
   const checkAuthState = async () => {
     try {
+      setIsLoading(true);
+      
       // Check if we have stored tokens in secure storage
       const storedToken = await SecureStore.getItemAsync('openauth_token');
       const storedUser = await SecureStore.getItemAsync('openauth_user');
 
       if (storedToken && storedUser) {
+        const userData = JSON.parse(storedUser);
         setToken(storedToken);
+        setUser(userData);
         console.log('📱 [CONFECT_AUTH] Restored authentication from secure storage');
-        
-        // The confect hook will handle the rest of the auth setup
       } else {
         console.log('📱 [CONFECT_AUTH] No stored authentication found');
       }
     } catch (error) {
       console.error('📱 [CONFECT_AUTH] Failed to check auth state:', error);
+      setError('Failed to restore authentication');
       // Clear invalid stored data
       await clearStoredAuth();
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -250,10 +181,10 @@ export const ConfectAuthProvider: React.FC<ConfectAuthProviderProps> = ({ childr
             
             // Update state
             setToken(tokenData.access_token);
+            setUser(userData);
+            setError(null);
             
             console.log('✅ [CONFECT_AUTH] Login successful:', userData.githubUsername);
-            
-            // The confect hook will automatically sync the user and start onboarding if needed
           } else {
             throw new Error('Failed to fetch user data');
           }
@@ -276,17 +207,13 @@ export const ConfectAuthProvider: React.FC<ConfectAuthProviderProps> = ({ childr
     try {
       console.log('📱 [CONFECT_AUTH] Logging out user');
       
-      // Use confect logout if available
-      if (confectOnboarding.logout) {
-        await confectOnboarding.logout();
-      }
-      
       // Clear secure storage
       await clearStoredAuth();
       
       // Clear state
       setToken(null);
-      setHasCompletedInitialSetup(false);
+      setUser(null);
+      setError(null);
       
       console.log('✅ [CONFECT_AUTH] Logout successful');
     } catch (error) {
@@ -296,17 +223,16 @@ export const ConfectAuthProvider: React.FC<ConfectAuthProviderProps> = ({ childr
   };
 
   const value: ConfectAuthContextType = {
-    // Spread all confect onboarding functionality
-    ...confectOnboarding,
+    // Core auth state
+    user,
+    isAuthenticated: !!user && !!token,
+    isLoading,
+    error,
     
-    // Legacy auth methods for backward compatibility
+    // Auth methods
     login,
     logout,
     token,
-    
-    // Enhanced onboarding state
-    needsOnboarding,
-    hasCompletedInitialSetup,
   };
 
   return (

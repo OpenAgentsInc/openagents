@@ -229,18 +229,15 @@ export function ClaudeCodeMobile() {
   };
 
   const handleSessionDelete = (sessionId: string) => {
-    // TODO: Implement session deletion when available in Convex API
-    Alert.alert("Delete Session", "Session deletion not yet implemented");
+    // Session deletion not implemented - no-op
   };
 
   const handleSessionStar = (sessionId: string) => {
-    // TODO: Implement session starring when available in Convex API
-    Alert.alert("Star Session", "Session starring not yet implemented");
+    // Session starring not implemented - no-op
   };
 
   const handleSessionRename = (sessionId: string, newTitle: string) => {
-    // TODO: Implement session renaming when available in Convex API
-    Alert.alert("Rename Session", "Session renaming not yet implemented");
+    // Session renaming not implemented - no-op
   };
 
   const renderMessageItem = ({ item }: { item: ClaudeMessage }) => (
