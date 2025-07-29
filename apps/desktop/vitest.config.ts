@@ -4,13 +4,25 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react({
+    jsxRuntime: 'automatic'
+  })],
+  esbuild: {
+    jsx: 'automatic',
+    jsxFactory: undefined,
+    jsxFragment: undefined
+  },
   test: {
     globals: true,
-    environment: 'jsdom',
+    environment: 'jsdom', 
     setupFiles: ['./test-setup.ts'],
     css: true,
     reporters: ['verbose'],
+    server: {
+      deps: {
+        inline: ['@testing-library/react', 'react', 'react-dom']
+      }
+    },
     include: [
       'src/**/*.{test,spec}.{ts,tsx}',
     ],
