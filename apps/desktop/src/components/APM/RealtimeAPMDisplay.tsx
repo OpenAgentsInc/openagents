@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../../convex/_generated/api';
 import { TrendingUpIcon, TrendingDownIcon, ActivityIcon, ClockIcon } from "../icons/React19Icons";
 
 interface RealtimeAPMDisplayProps {
@@ -40,7 +40,6 @@ export const RealtimeAPMDisplay: React.FC<RealtimeAPMDisplayProps> = ({
   onUpdate,
   onError,
 }) => {
-  const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Query realtime APM data from Convex
@@ -51,16 +50,21 @@ export const RealtimeAPMDisplay: React.FC<RealtimeAPMDisplayProps> = ({
 
   // Handle data updates
   useEffect(() => {
-    if (realtimeAPMData) {
-      setLastUpdate(Date.now());
-      onUpdate?.(realtimeAPMData);
-      
-      // Trigger animation for visual feedback
-      setIsAnimating(true);
-      const timer = setTimeout(() => setIsAnimating(false), 500);
-      return () => clearTimeout(timer);
+    try {
+      if (realtimeAPMData) {
+        onUpdate?.(realtimeAPMData);
+        
+        // Trigger animation for visual feedback
+        setIsAnimating(true);
+        const timer = setTimeout(() => setIsAnimating(false), 500);
+        return () => clearTimeout(timer);
+      }
+    } catch (error) {
+      onError?.(error);
     }
-  }, [realtimeAPMData, onUpdate]);
+    // Return undefined if no cleanup needed
+    return undefined;
+  }, [realtimeAPMData, onUpdate, onError]);
 
   const getTrendIcon = (trend: 'up' | 'down' | 'stable') => {
     switch (trend) {
