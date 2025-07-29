@@ -6,7 +6,8 @@ import {
   mutation,
   query,
 } from "./confect";
-import { UserIdentity } from "@rjdellecese/confect/server";
+import { UserIdentity } from "convex/server";
+import { Id } from "@rjdellecese/confect/server";
 import {
   GetMessagesArgs,
   GetMessagesResult,
@@ -30,7 +31,8 @@ export const getMessages = query({
     Effect.gen(function* () {
       const { db } = yield* ConfectQueryCtx;
 
-      return yield* db.query("messages").order("asc").take(100).collect();
+      const query = db.query("messages").order("asc").take(100);
+      return yield* (query as any).collect();
     }),
 });
 
@@ -167,10 +169,11 @@ export const getSessionMessages = query({
         .order("asc");
 
       if (limit) {
-        return yield* query.take(limit).collect();
+        const limitedQuery = query.take(limit);
+        return yield* (limitedQuery as any).collect();
       }
 
-      return yield* query.collect();
+      return yield* (query as any).collect();
     }),
 });
 

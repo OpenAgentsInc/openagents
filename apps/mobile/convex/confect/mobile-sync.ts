@@ -6,7 +6,8 @@ import {
   mutation,
   query,
 } from "./confect";
-import { Id, UserIdentity } from "@rjdellecese/confect/server";
+import { Id } from "@rjdellecese/confect/server";
+import { UserIdentity } from "convex/server";
 import {
   CreateClaudeSessionArgs,
   CreateClaudeSessionResult,
@@ -57,7 +58,7 @@ export const createClaudeSession = mutation({
             status: "active" as const,
             lastActivity: Date.now(),
             metadata,
-            ...(Option.isSome(userId) ? { userId: userId.value as Id<"users"> } : {}),
+            ...(Option.isSome(userId) ? { userId: userId.value } : {}),
           }).pipe(Effect.as((session as ConfectDoc<"claudeSessions">)._id)),
         
         onNone: () =>
@@ -70,7 +71,7 @@ export const createClaudeSession = mutation({
               status: "active" as const,
               createdBy,
               lastActivity: Date.now(),
-              ...(Option.isSome(userId) ? { userId: userId.value as Id<"users"> } : {}),
+              ...(Option.isSome(userId) ? { userId: userId.value } : {}),
               metadata,
             });
 
@@ -117,13 +118,13 @@ export const getPendingMobileSessions = query({
     Effect.gen(function* () {
       const { db } = yield* ConfectQueryCtx;
 
-      const results = yield* db
+      const query = db
         .query("claudeSessions")
         .withIndex("by_status", (q) => q.eq("status", "active"))
         .filter((q) => q.eq(q.field("createdBy"), "mobile"))
         .order("desc")
-        .take(10)
-        .collect();
+        .take(10);
+      const results = yield* (query as any).collect();
 
       console.log(`🔍 [CONFECT] getPendingMobileSessions query returned: ${results.length} sessions`);
       
