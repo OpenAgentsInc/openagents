@@ -11,6 +11,7 @@ import {
   EyeIcon,
 } from "@/components/icons/React19Icons";
 import { HistoricalAPMChart } from "@/components/charts/HistoricalAPMChart";
+import { RealtimeAPMDisplay } from "@/components/APM/RealtimeAPMDisplay";
 
 interface ToolUsage {
   name: string;
@@ -286,6 +287,20 @@ export const StatsPane: React.FC<StatsPaneProps> = () => {
       <Separator className="my-4" />
 
       <div className="flex-1 overflow-auto space-y-6">
+        {/* Realtime APM Display */}
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Live Session
+          </h2>
+          <RealtimeAPMDisplay 
+            showTrend={true}
+            showDetails={true}
+            compact={false}
+          />
+        </div>
+
+        <Separator className="my-4" />
+
         {/* Time Window APM Cards */}
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-card rounded-lg border p-4">
