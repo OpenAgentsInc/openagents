@@ -69,7 +69,7 @@ export const addClaudeMessage = mutation({
     Effect.gen(function* () {
       const { db, auth } = yield* ConfectMutationCtx;
 
-      yield* Effect.logInfo('💾 [CONFECT] addClaudeMessage called:', {
+      console.log('💾 [CONFECT] addClaudeMessage called:', {
         sessionId,
         messageId,
         messageType,
@@ -124,7 +124,7 @@ export const addClaudeMessage = mutation({
               ...(Option.isSome(userId) ? { userId: userId.value } : {}),
             });
             
-            yield* Effect.logInfo('✅ [CONFECT] Message added successfully:', messageId);
+            console.log('✅ [CONFECT] Message added successfully:', messageId);
 
             // Update session last activity
             const session = yield* db
@@ -189,7 +189,7 @@ export const getSessionMessagesPaginated = query({
     Effect.gen(function* () {
       const { db } = yield* ConfectQueryCtx;
 
-      yield* Effect.logInfo(`📄 [CONFECT] Fetching paginated messages for session: ${sessionId} (${paginationOpts.numItems} items)`);
+      console.log(`📄 [CONFECT] Fetching paginated messages for session: ${sessionId} (${paginationOpts.numItems} items)`);
 
       const result = yield* db
         .query("claudeMessages")
@@ -197,7 +197,7 @@ export const getSessionMessagesPaginated = query({
         .order("asc")
         .paginate(paginationOpts);
 
-      yield* Effect.logInfo(`✅ [CONFECT] Paginated messages fetched: ${result.page.length} items, isDone: ${result.isDone}`);
+      console.log(`✅ [CONFECT] Paginated messages fetched: ${result.page.length} items, isDone: ${result.isDone}`);
 
       return result;
     }),

@@ -36,7 +36,7 @@ export const useUserSync = () => {
       // Get GitHub access token from secure storage
       let githubAccessToken: string | undefined;
       try {
-        githubAccessToken = await SecureStore.getItemAsync('github_access_token');
+        githubAccessToken = await SecureStore.getItemAsync('github_access_token') || undefined;
         console.log('🔑 [USER SYNC] GitHub token found:', !!githubAccessToken);
         if (githubAccessToken) {
           console.log('🔍 [USER SYNC] GitHub token preview:', githubAccessToken.substring(0, 20) + '...');

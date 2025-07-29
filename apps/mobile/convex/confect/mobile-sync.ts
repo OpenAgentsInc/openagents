@@ -5,6 +5,7 @@ import {
   mutation,
   query,
 } from "./confect";
+import { Id, UserIdentity } from "@rjdellecese/confect/server";
 import {
   CreateClaudeSessionArgs,
   CreateClaudeSessionResult,
@@ -55,7 +56,7 @@ export const createClaudeSession = mutation({
             status: "active" as const,
             lastActivity: Date.now(),
             metadata,
-            ...(Option.isSome(userId) ? { userId: userId.value } : {}),
+            ...(Option.isSome(userId) ? { userId: userId.value as Id<"users"> } : {}),
           }).pipe(Effect.as(session._id)),
         
         onNone: () =>
@@ -68,7 +69,7 @@ export const createClaudeSession = mutation({
               status: "active" as const,
               createdBy,
               lastActivity: Date.now(),
-              ...(Option.isSome(userId) ? { userId: userId.value } : {}),
+              ...(Option.isSome(userId) ? { userId: userId.value as Id<"users"> } : {}),
               metadata,
             });
 
@@ -123,10 +124,10 @@ export const getPendingMobileSessions = query({
         .take(10)
         .collect();
 
-      yield* Effect.logInfo(`🔍 [CONFECT] getPendingMobileSessions query returned: ${results.length} sessions`);
+      console.log(`🔍 [CONFECT] getPendingMobileSessions query returned: ${results.length} sessions`);
       
       if (results.length > 0) {
-        yield* Effect.logInfo("📋 [CONFECT] Mobile sessions:", results.map(s => ({
+        console.log("📋 [CONFECT] Mobile sessions:", results.map(s => ({
           sessionId: s.sessionId,
           status: s.status,
           createdBy: s.createdBy,
