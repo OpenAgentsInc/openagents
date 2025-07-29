@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, act } from '@testing-library/react';
-import { ConvexProvider } from 'convex/react';
+import { ConvexProviderReact19 } from '@/utils/react19-compat';
 import React from 'react';
 import './setup-integration';
 
@@ -161,9 +161,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestSyncFlow />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -237,9 +237,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestMessageSync />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -318,9 +318,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestRealtimeSync />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -384,9 +384,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestErrorHandling />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -428,9 +428,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestClaudeNotReady />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -490,9 +490,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestConcurrency />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -544,9 +544,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestCooldown />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 
@@ -603,9 +603,9 @@ describe('Mobile-Desktop Sync Integration', () => {
 
       render(<TestSessionMapping />, {
         wrapper: ({ children }) => (
-          <ConvexProvider client={mockConvexClient as any}>
+          <ConvexProviderReact19 client={mockConvexClient as any}>
             {children}
-          </ConvexProvider>
+          </ConvexProviderReact19>
         ),
       });
 

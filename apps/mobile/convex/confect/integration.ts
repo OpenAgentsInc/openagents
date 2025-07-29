@@ -2,9 +2,11 @@ import { Effect, Option, Data, Schedule, Duration } from "effect";
 import { ConvexReactClient } from "convex/react";
 import type { 
   AuthUser, 
-  AuthState, 
+  AuthState
+} from "../../../../packages/shared/src/services/SimpleAuthService";
+import type { 
   APMSessionData 
-} from "@/shared/types";
+} from "../../../../packages/shared/src/services/SimpleAPMService";
 
 // Integration error types
 export class ConvexIntegrationError extends Data.TaggedError("ConvexIntegrationError")<{
