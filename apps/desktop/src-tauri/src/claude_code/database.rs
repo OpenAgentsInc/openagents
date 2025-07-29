@@ -60,7 +60,7 @@ pub trait MessageRepository: Send + Sync {
     async fn get_message_by_id(&mut self, message_id: &str) -> Result<Option<ConvexMessage>, AppError>;
 }
 
-/// APM (Application Performance Monitoring) operations
+/// APM (Actions Per Minute) operations
 #[async_trait]
 pub trait ApmRepository: Send + Sync {
     /// Get APM statistics

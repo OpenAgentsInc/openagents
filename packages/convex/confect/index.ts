@@ -11,8 +11,12 @@ export * from "./messages";
 export * from "./messages.schemas";
 
 // Mobile sync functions
-export * from "./mobile-sync";
-export * from "./mobile-sync.schemas";
+export * from "./mobile_sync";
+export * from "./mobile_sync_schemas";
+
+// APM functions
+export * from "./apm";
+export * from "./apm.schemas";
 
 // HTTP API
 export * from "./http-api";
