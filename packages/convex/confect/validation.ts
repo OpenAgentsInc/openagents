@@ -26,11 +26,14 @@ export const sanitizeString = (input: string, maxLength: number = 1000): Effect.
     }
     
     // Remove potentially dangerous characters
-    const sanitized = input
+    let sanitized = input
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags
-      .replace(/javascript:/gi, '') // Remove javascript: protocols
       .replace(/on\w+\s*=/gi, '') // Remove event handlers
       .trim();
+    
+    // More comprehensive javascript protocol removal from href attributes
+    sanitized = sanitized.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href=""');
+    sanitized = sanitized.replace(/javascript:/gi, ''); // General javascript: protocol removal
     
     // Enforce length limits
     const truncated = sanitized.length > maxLength 
@@ -60,11 +63,28 @@ export const sanitizeEmail = (email: string): Effect.Effect<string, ValidationEr
 
 export const sanitizeGitHubUsername = (username: string): Effect.Effect<string, ValidationError, never> =>
   Effect.gen(function* () {
+    // Check original length before sanitization
+    if (username.length > 39) {
+      return yield* Effect.fail(new ValidationError({
+        field: 'githubUsername',
+        value: username,
+        message: 'Invalid GitHub username format',
+        rule: 'github_username_format'
+      }));
+    }
+
     const sanitized = yield* sanitizeString(username, 39); // GitHub username limit
     
-    // GitHub username validation
-    const usernameRegex = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
-    if (!usernameRegex.test(sanitized)) {
+    // GitHub username validation - more strict rules
+    // Cannot start/end with hyphen, no consecutive hyphens, alphanumeric + hyphens only
+    const usernameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9]|-(?!-))*[a-zA-Z0-9]$|^[a-zA-Z0-9]$/;
+    
+    if (!usernameRegex.test(sanitized) || 
+        sanitized.length === 0 || 
+        sanitized.startsWith('-') || 
+        sanitized.endsWith('-') || 
+        sanitized.includes('--') ||
+        sanitized.includes(' ')) {
       return yield* Effect.fail(new ValidationError({
         field: 'githubUsername',
         value: sanitized,
