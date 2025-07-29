@@ -82,7 +82,7 @@ export function ClaudeCodeMobile() {
 
   // Convex hooks - only query data when authentication is ready
   const sessions = useQuery(
-    api.confect["mobile-sync"].getPendingMobileSessions, 
+    api.confect.mobile_sync.getPendingMobileSessions, 
     authReady ? {} : "skip"
   ) || [];
   const selectedSessionMessages = useQuery(
@@ -90,9 +90,9 @@ export function ClaudeCodeMobile() {
     authReady && selectedSessionId ? { sessionId: selectedSessionId } : "skip"
   ) || [];
   
-  const requestDesktopSession = useMutation(api.confect["mobile-sync"].createClaudeSession);
+  const requestDesktopSession = useMutation(api.confect.mobile_sync.createClaudeSession);
   const addMessage = useMutation(api.confect.messages.addClaudeMessage);
-  const updateSyncStatus = useMutation(api.confect["mobile-sync"].updateSessionStatus);
+  const updateSyncStatus = useMutation(api.confect.mobile_sync.updateSessionStatus);
 
   // APM tracking - only enabled when authentication is ready
   const { trackMessageSent, trackSessionCreated } = useAPMTracking({
