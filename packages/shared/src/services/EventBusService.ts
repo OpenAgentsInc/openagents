@@ -61,34 +61,40 @@ export type BaseEvent<T> = {
   metadata: EventMetadata;
 };
 
-// Predefined event schemas for common application events
-export const UserEventSchema = BaseEventSchema(Schema.Struct({
+// Define payload schemas first
+const UserPayloadSchema = Schema.Struct({
   userId: Schema.String,
   action: Schema.Literal("login", "logout", "register", "update", "delete"),
   details: Schema.optional(Schema.Record(Schema.String, Schema.Unknown))
-}));
+});
 
-export const SessionEventSchema = BaseEventSchema(Schema.Struct({
+const SessionPayloadSchema = Schema.Struct({
   sessionId: Schema.String,
   action: Schema.Literal("start", "end", "pause", "resume"),
   duration: Schema.optional(Schema.Number),
   metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown))
-}));
+});
 
-export const SystemEventSchema = BaseEventSchema(Schema.Struct({
+const SystemPayloadSchema = Schema.Struct({
   component: Schema.String,
   level: Schema.Literal("info", "warn", "error", "fatal"),
   message: Schema.String,
   details: Schema.optional(Schema.Record(Schema.String, Schema.Unknown))
-}));
+});
 
-export const ClaudeEventSchema = BaseEventSchema(Schema.Struct({
+const ClaudePayloadSchema = Schema.Struct({
   messageId: Schema.String,
   action: Schema.Literal("start", "chunk", "complete", "error"),
   content: Schema.optional(Schema.String),
   tokens: Schema.optional(Schema.Number),
   error: Schema.optional(Schema.String)
-}));
+});
+
+// Predefined event schemas for common application events
+export const UserEventSchema = BaseEventSchema(UserPayloadSchema);
+export const SessionEventSchema = BaseEventSchema(SessionPayloadSchema);
+export const SystemEventSchema = BaseEventSchema(SystemPayloadSchema);
+export const ClaudeEventSchema = BaseEventSchema(ClaudePayloadSchema);
 
 // Event subscriber configuration
 export interface EventSubscriber<T> {
@@ -209,12 +215,12 @@ export class EventBusService extends Effect.Service<EventBusService>()(
           
           try {
             // Validate event against subscriber schema
-            const validatedEvent = yield* Schema.decode(subscriberInfo.schema)(event).pipe(
+            const validatedEvent = yield* Schema.decode(subscriberInfo.schema)(event as BaseEvent<T>).pipe(
               Effect.catchTag("ParseError", (error) =>
                 Effect.fail(new EventValidationError({
                   eventType: subscriberInfo.eventType,
                   payload: event.payload,
-                  errors: error.errors
+                  errors: [String(error)]
                 }))
               )
             );
@@ -298,7 +304,7 @@ export class EventBusService extends Effect.Service<EventBusService>()(
               Effect.fail(new EventValidationError({
                 eventType,
                 payload,
-                errors: error.errors
+                errors: [String(error)]
               }))
             )
           );
@@ -381,7 +387,7 @@ export class EventBusService extends Effect.Service<EventBusService>()(
           }
           
           // Interrupt the processing fiber
-          yield* Fiber.interrupt(subscriberData.fiber);
+          yield* Fiber.interrupt(subscriberData!.fiber);
           
           // Remove from subscribers
           subscribers.delete(subscriberId);
@@ -433,17 +439,17 @@ export class EventBusService extends Effect.Service<EventBusService>()(
           let processedCount = 0;
           
           while (true) {
-            const maybeEvent = yield* Queue.poll(deadLetterQueue).pipe(
-              Effect.catchAll(() => Effect.succeed(undefined))
-            );
+            const maybeEvent = yield* Queue.poll(deadLetterQueue!);
             
-            if (!maybeEvent) break;
+            if (maybeEvent._tag === "None") break;
+            
+            const event = maybeEvent.value;
             
             // Re-publish the event with reset retry count
             const retryEvent = {
-              ...maybeEvent,
+              ...event,
               metadata: {
-                ...maybeEvent.metadata,
+                ...event.metadata,
                 retryCount: 0
               }
             };
@@ -503,9 +509,11 @@ export class EventBusService extends Effect.Service<EventBusService>()(
    */
   static Live = Layer.effect(
     EventBusService,
-    EventBusService.make
+    Effect.gen(function* () {
+      return yield* EventBusService;
+    })
   ).pipe(
-    Layer.provide(ConfigService.Live)
+    Layer.provide(ConfigService.Default)
   );
   
   /**
@@ -516,8 +524,17 @@ export class EventBusService extends Effect.Service<EventBusService>()(
     const mockSubscribers = new Map<string, EventSubscriber<unknown>>();
     
     return EventBusService.of({
+      _tag: "EventBusService" as const,
       publish: (eventType, payload, schema, options = {}) => Effect.gen(function* () {
-        const validatedPayload = yield* Schema.decode(schema)(payload);
+        const validatedPayload = yield* Schema.decode(schema)(payload).pipe(
+          Effect.catchTag("ParseError", (error) =>
+            Effect.fail(new EventValidationError({
+              eventType,
+              payload,
+              errors: [String(error)]
+            }))
+          )
+        );
         const event: BaseEvent<unknown> = {
           type: eventType,
           payload: validatedPayload,

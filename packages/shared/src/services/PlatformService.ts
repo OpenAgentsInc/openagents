@@ -267,8 +267,9 @@ export class PlatformService extends Effect.Service<PlatformService>()(
   /**
    * Test implementation for mocking in tests
    */
-  static Test = (overrides: Partial<PlatformInfo> = {}) =>
-    PlatformService.of({
+  static Test = (overrides: Partial<PlatformInfo> = {}) => {
+    const testService = {
+      _tag: "PlatformService" as const,
       getPlatformInfo: () => Effect.succeed({
         type: "web",
         os: "unknown",
@@ -289,16 +290,21 @@ export class PlatformService extends Effect.Service<PlatformService>()(
       isReactNative: () => Effect.succeed(overrides.type === "mobile"),
       isWeb: () => Effect.succeed(overrides.type === "web"),
       isDesktop: () => Effect.succeed(overrides.type === "desktop"),
-      hasCapability: (capability) => Effect.succeed(overrides.capabilities?.[capability] ?? false),
+      hasCapability: (capability: keyof PlatformCapabilities) => Effect.succeed(overrides.capabilities?.[capability] ?? false),
       getOptimalConcurrency: () => Effect.succeed(overrides.capabilities?.maxConcurrency ?? 2),
-      requireCapability: (capability) => 
+      requireCapability: (capability: keyof PlatformCapabilities) => 
         overrides.capabilities?.[capability] 
           ? Effect.void 
           : Effect.fail(new UnsupportedPlatformError({
               platform: overrides.type ?? "test",
               feature: capability
             })),
-      executeForPlatform: (implementations) => {
+      executeForPlatform: (implementations: {
+        web?: () => Effect.Effect<any, PlatformError, never>;
+        mobile?: () => Effect.Effect<any, PlatformError, never>;
+        desktop?: () => Effect.Effect<any, PlatformError, never>;
+        fallback?: () => Effect.Effect<any, PlatformError, never>;
+      }) => {
         const platformType = overrides.type ?? "web";
         const implementation = implementations[platformType] || implementations.fallback;
         return implementation ? implementation() : Effect.fail(new PlatformError({
@@ -316,5 +322,10 @@ export class PlatformService extends Effect.Service<PlatformService>()(
         timeoutMs: 5000,
         batchSize: 50
       })
-    });
+    };
+    
+    return PlatformService.of(testService);
+  };
 }
+
+// Note: PlatformService.Default is automatically created by Effect.Service pattern

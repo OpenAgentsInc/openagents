@@ -199,7 +199,7 @@ export class ConfigService extends Effect.Service<ConfigService>()(
       };
 
       // Initialize configuration
-      const initializeConfig = (): Effect.Effect<FullConfig, ConfigError> => Effect.gen(function* () {
+      const initializeConfig = (): Effect.Effect<FullConfig, ConfigValidationError> => Effect.gen(function* () {
         const environment = detectEnvironment();
         const defaults = createDefaultConfig(environment);
         const envConfig = loadFromEnvironment();
@@ -322,8 +322,8 @@ export class ConfigService extends Effect.Service<ConfigService>()(
         /**
          * Validate a configuration object against the schema
          */
-        validate: <T>(data: unknown, schema: Schema.Schema<T>) => 
-          Schema.decode(schema)(data).pipe(
+        validate: <T>(data: unknown, schema: Schema.Schema<T>): Effect.Effect<T, ConfigValidationError> => 
+          Schema.decode(schema)(data as T).pipe(
             Effect.catchTag("ParseError", (error) =>
               Effect.fail(new ConfigValidationError({
                 key: "validation",
@@ -344,10 +344,17 @@ export class ConfigService extends Effect.Service<ConfigService>()(
             }));
           }
 
-          const newConfig = yield* initializeConfig();
-          currentConfig = newConfig;
-          
-          return newConfig;
+          try {
+            const newConfig = yield* initializeConfig();
+            currentConfig = newConfig;
+            return newConfig;
+          } catch (error) {
+            yield* Effect.fail(new ConfigError({
+              operation: "reload", 
+              message: "Failed to reload configuration",
+              cause: error
+            }));
+          }
         }),
 
         /**
@@ -373,14 +380,8 @@ export class ConfigService extends Effect.Service<ConfigService>()(
         /**
          * Get configuration for a specific service
          */
-        getServiceConfig: <T>(serviceName: string, schema: Schema.Schema<T>) => Effect.gen(function* () {
-          const serviceConfig = yield* Effect.gen(function* () {
-            // Try to get service-specific config
-            const path = `services.${serviceName}`;
-            return yield* Effect.succeed((currentConfig as any).services?.[serviceName]);
-          }).pipe(
-            Effect.catchAll(() => Effect.succeed({}))
-          );
+        getServiceConfig: <T>(serviceName: string, schema: Schema.Schema<T>): Effect.Effect<T, ConfigValidationError> => Effect.gen(function* () {
+          const serviceConfig = (currentConfig as any).services?.[serviceName] || {};
 
           return yield* Schema.decode(schema)(serviceConfig).pipe(
             Effect.catchTag("ParseError", (error) =>
@@ -396,11 +397,6 @@ export class ConfigService extends Effect.Service<ConfigService>()(
     }
   }
 ) {
-  /**
-   * Live layer that provides the ConfigService
-   */
-  static Live = Layer.succeed(ConfigService, ConfigService.of(ConfigService.make()));
-
   /**
    * Test implementation with mock configuration
    */
@@ -418,6 +414,7 @@ export class ConfigService extends Effect.Service<ConfigService>()(
     };
 
     return ConfigService.of({
+      _tag: "ConfigService" as const,
       getConfig: () => Effect.succeed(mockConfig),
       get: (key) => Effect.succeed(mockConfig[key]),
       getPath: (path, defaultValue) => {
@@ -445,10 +442,26 @@ export class ConfigService extends Effect.Service<ConfigService>()(
         debug: true,
         logLevel: "debug" as const
       }),
-      validate: (data, schema) => Schema.decode(schema)(data),
+      validate: <T>(data: unknown, schema: Schema.Schema<T>) => Schema.decode(schema)(data as T).pipe(
+        Effect.catchTag("ParseError", (error) =>
+          Effect.fail(new ConfigValidationError({
+            key: "test-validation",
+            value: data,
+            errors: [String(error)]
+          }))
+        )
+      ),
       reload: () => Effect.succeed(mockConfig),
       update: (updates) => Effect.succeed({ ...mockConfig, ...updates }),
-      getServiceConfig: (serviceName, schema) => Schema.decode(schema)({})
+      getServiceConfig: <T>(serviceName: string, schema: Schema.Schema<T>) => Schema.decode(schema)({} as T).pipe(
+        Effect.catchTag("ParseError", (error) =>
+          Effect.fail(new ConfigValidationError({
+            key: `test-services.${serviceName}`,
+            value: {},
+            errors: [String(error)]
+          }))
+        )
+      )
     });
   };
 
@@ -458,3 +471,5 @@ export class ConfigService extends Effect.Service<ConfigService>()(
   static TestLive = (testConfig?: Partial<FullConfig>) => 
     Layer.succeed(ConfigService, ConfigService.Test(testConfig));
 }
+
+// Note: ConfigService.Default is automatically created by Effect.Service pattern

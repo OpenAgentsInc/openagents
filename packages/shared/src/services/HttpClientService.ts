@@ -121,7 +121,7 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
             const requestInit: RequestInit = {
               method,
               headers,
-              ...(options.body && { body: JSON.stringify(options.body) })
+              body: options.body ? JSON.stringify(options.body) : undefined
             };
 
             const response = await fetch(fullUrl, requestInit);
@@ -406,22 +406,20 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
         /**
          * Create a new instance with updated configuration
          */
-        withConfig: (newConfig: Partial<HttpConfig>) => 
-          HttpClientService.of(HttpClientService.sync({ ...mergedConfig, ...newConfig }))
+        withConfig: (newConfig: Partial<HttpConfig>): HttpClientService => {
+          const updatedConfig = { ...mergedConfig, ...newConfig };
+          return HttpClientService.of(HttpClientService.sync(updatedConfig));
+        }
       };
     }
   }
 ) {
   /**
-   * Default implementation with standard configuration
-   */
-  static Default = HttpClientService.of(HttpClientService.sync());
-
-  /**
    * Test implementation for mocking in tests
    */
   static Test = (mockResponses: Map<string, unknown> = new Map()) =>
     HttpClientService.of({
+      _tag: "HttpClientService" as const,
       get: (url, schema) => {
         const mockResponse = mockResponses.get(`GET:${url}`);
         if (mockResponse === undefined) {
@@ -440,7 +438,7 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
                 method: "GET",
                 url,
                 schema: schema.toString(),
-                errors: error.errors
+                errors: [String(error)]
               }))
             )
           );
@@ -467,7 +465,7 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
                 method: "POST",
                 url,
                 schema: schema.toString(),
-                errors: error.errors
+                errors: [String(error)]
               }))
             )
           );
@@ -494,7 +492,7 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
                 method: "PUT",
                 url,
                 schema: schema.toString(),
-                errors: error.errors
+                errors: [String(error)]
               }))
             )
           );
@@ -525,6 +523,8 @@ export class HttpClientService extends Effect.Service<HttpClientService>()(
 
       getConfig: () => Effect.succeed(DEFAULT_CONFIG),
       
-      withConfig: (newConfig) => HttpClientService.Test(mockResponses)
+      withConfig: (newConfig): HttpClientService => HttpClientService.Test(mockResponses)
     });
 }
+
+// Note: HttpClientService.Default is automatically created by Effect.Service pattern

@@ -1,5 +1,5 @@
 import { Effect, Data, Schema, Layer } from "effect";
-import { PlatformService, UnsupportedPlatformError } from "./PlatformService";
+import { PlatformService, PlatformError, UnsupportedPlatformError } from "./PlatformService";
 import { ConfigService } from "./ConfigService";
 
 /**
@@ -95,6 +95,7 @@ const DEFAULT_STORAGE_CONFIG: StorageConfig = {
 export class EnhancedStorageService extends Effect.Service<EnhancedStorageService>()(
   "EnhancedStorageService",
   {
+    dependencies: [PlatformService.Default, ConfigService.Default],
     effect: Effect.gen(function* () {
       const platform = yield* PlatformService;
       const config = yield* ConfigService;
@@ -263,7 +264,7 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
             // SecureStore doesn't have a keys() method, so we maintain our own index
             const { getItemAsync } = await import('expo-secure-store');
             const keysIndex = await getItemAsync('__storage_keys_index__');
-            return keysIndex ? JSON.parse(keysIndex) : [];
+            return keysIndex ? JSON.parse(keysIndex) as string[] : [] as string[];
           },
           catch: (error) => new StorageError({
             operation: "keys",
@@ -284,9 +285,9 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
         web: () => Effect.succeed(webStorage),
         desktop: () => Effect.succeed(webStorage), // Tauri uses localStorage
         mobile: () => Effect.succeed(secureStorage),
-        fallback: () => Effect.fail(new UnsupportedPlatformError({
-          platform: "unknown",
-          feature: "storage"
+        fallback: () => Effect.fail(new PlatformError({
+          operation: "platform_detection",
+          message: "Unsupported platform for storage operations"
         }))
       });
 
@@ -365,7 +366,7 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
                   key,
                   schema: schema.toString(),
                   value: raw,
-                  errors: error.errors
+                  errors: [String(error)]
                 }))
               )
             );
@@ -383,13 +384,13 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
           }
 
           // Validate and return the value
-          return yield* Schema.decode(schema)(entry.value).pipe(
+          return yield* Schema.decode(schema)(entry.value as T).pipe(
             Effect.catchTag("ParseError", (error) =>
               Effect.fail(new StorageValidationError({
                 key,
                 schema: schema.toString(),
                 value: entry.value,
-                errors: error.errors
+                errors: [String(error)]
               }))
             )
           );
@@ -408,7 +409,7 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
                 key,
                 schema: schema.toString(),
                 value,
-                errors: error.errors
+                errors: [String(error)]
               }))
             )
           );
@@ -436,7 +437,7 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
           
           return yield* storage.get(key).pipe(
             Effect.map(() => true),
-            Effect.catchTag("StorageNotFoundError", () => Effect.succeed(false))
+            Effect.catchAll((_error) => Effect.succeed(false))
           );
         }),
 
@@ -550,27 +551,24 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
     })
   }
 ) {
-  /**
-   * Live layer that provides the EnhancedStorageService
-   */
-  static Live = Layer.effect(
-    EnhancedStorageService,
-    EnhancedStorageService.make
-  ).pipe(
-    Layer.provide(PlatformService.Live),
-    Layer.provide(ConfigService.Live)
-  );
+  // Note: EnhancedStorageService.Default is automatically created by Effect.Service pattern
+  // Dependencies (PlatformService.Default and ConfigService.Default) are handled by the dependencies property
 
   /**
    * Test implementation for mocking in tests
    */
   static Test = (mockData: Map<string, string> = new Map()) => {
     return EnhancedStorageService.of({
+      _tag: "EnhancedStorageService" as const,
       getString: (key) => {
         const value = mockData.get(key);
         return value !== undefined 
           ? Effect.succeed(value)
-          : Effect.fail(new StorageNotFoundError({ key, storageType: "localStorage" }));
+          : Effect.fail(new StorageError({ 
+              operation: "get", 
+              key, 
+              message: "Mock key not found in test storage" 
+            }));
       },
       
       setString: (key, value) => Effect.sync(() => mockData.set(key, value)),
@@ -578,12 +576,25 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
       get: (key, schema) => {
         const value = mockData.get(key);
         if (value === undefined) {
-          return Effect.fail(new StorageNotFoundError({ key, storageType: "localStorage" }));
+          return Effect.fail(new StorageError({ 
+            operation: "get", 
+            key, 
+            message: "Mock key not found in test storage" 
+          }));
         }
         
         try {
           const parsed = JSON.parse(value);
-          return Schema.decode(schema)(parsed.value || parsed);
+          return Schema.decode(schema)(parsed.value || parsed).pipe(
+            Effect.catchTag("ParseError", (error) =>
+              Effect.fail(new StorageValidationError({
+                key,
+                schema: schema.toString(),
+                value: parsed.value || parsed,
+                errors: [String(error)]
+              }))
+            )
+          );
         } catch {
           return Effect.fail(new StorageError({
             operation: "get",
@@ -594,7 +605,16 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
       },
       
       set: (key, value, schema) => Effect.gen(function* () {
-        const validated = yield* Schema.decode(schema)(value);
+        const validated = yield* Schema.decode(schema)(value).pipe(
+          Effect.catchTag("ParseError", (error) =>
+            Effect.fail(new StorageValidationError({
+              key,
+              schema: schema.toString(),
+              value,
+              errors: [String(error)]
+            }))
+          )
+        );
         const entry = {
           value: validated,
           metadata: {
@@ -623,7 +643,7 @@ export class EnhancedStorageService extends Effect.Service<EnhancedStorageServic
       getConfig: () => Effect.succeed(DEFAULT_STORAGE_CONFIG),
       backup: () => Effect.succeed({
         timestamp: Date.now(),
-        platform: "test" as const,
+        platform: "web" as const,
         data: Object.fromEntries(mockData)
       }),
       restore: () => Effect.succeed({ restoredCount: 0 })
