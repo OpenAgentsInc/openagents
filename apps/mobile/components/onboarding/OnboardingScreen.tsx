@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ThinkingAnimation } from '../ThinkingAnimation';
 // Hybrid approach: Use working implementations with full interfaces
 // TODO: Gradually replace with full Effect-TS implementations once runtime issues are resolved
 
@@ -43,11 +44,13 @@ const useConfectOnboarding = (config: any) => {
       console.log(`📱 [ONBOARDING] Step updated: ${step} (completed: ${completed})`);
       setCurrentStep(step);
       if (step === 'completed') {
+        console.log('📱 [ONBOARDING] Setting onboarding as complete');
         setIsComplete(true);
       }
     },
     completeOnboarding: async () => {
       console.log('📱 [ONBOARDING] Onboarding completed');
+      setCurrentStep('completed');
       setIsComplete(true);
     },
   checkPermissions: async (): Promise<PermissionResult[]> => {
@@ -101,6 +104,9 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   const [isLoading, setIsLoading] = useState(false);
   const [selectedRepository, setSelectedRepository] = useState<any>(null);
   
+  // Move useConfectAuth hook to component level to avoid hooks order violation
+  const { forceLogout } = useConfectAuth();
+  
   const onboarding = useConfectOnboarding({
     autoStartOnboarding: true,
     requiredPermissions: ['notifications', 'storage', 'network'],
@@ -121,7 +127,9 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   // Auto-complete when onboarding is finished
   useEffect(() => {
+    console.log(`📱 [ONBOARDING] useEffect triggered - isOnboardingComplete: ${isOnboardingComplete}`);
     if (isOnboardingComplete) {
+      console.log('📱 [ONBOARDING] Calling onComplete() to exit onboarding');
       onComplete();
     }
   }, [isOnboardingComplete, onComplete]);
@@ -264,44 +272,40 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
     </View>
   );
 
-  const renderGitHubStep = () => {
-    const { forceLogout } = useConfectAuth();
-    
-    const handleForceLogout = async () => {
-      try {
-        console.log('🔄 [DEBUG] User triggered force logout');
-        await forceLogout();
-        console.log('🔄 [DEBUG] Force logout completed - app should redirect to login');
-      } catch (error) {
-        console.error('❌ [DEBUG] Force logout failed:', error);
-      }
-    };
-
-    return (
-      <View style={styles.stepContainer}>
-        <Text style={styles.stepTitle}>GitHub Connected</Text>
-        <Text style={styles.stepDescription}>
-          Your GitHub account is successfully connected! This enables:
-        </Text>
-        <View style={styles.featureList}>
-          <Text style={styles.featureItem}>• Access to your repositories</Text>
-          <Text style={styles.featureItem}>• Secure authentication</Text>
-          <Text style={styles.featureItem}>• Synchronized project settings</Text>
-        </View>
-        <Text style={styles.connectedUser}>
-          Connected as: {onboarding.user?.githubUsername || 'Unknown'}
-        </Text>
-        
-        {/* Debug button to force fresh login */}
-        <TouchableOpacity 
-          style={styles.debugButton} 
-          onPress={handleForceLogout}
-        >
-          <Text style={styles.debugButtonText}>🔄 Debug: Force Fresh Login</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  const handleForceLogout = async () => {
+    try {
+      console.log('🔄 [DEBUG] User triggered force logout');
+      await forceLogout();
+      console.log('🔄 [DEBUG] Force logout completed - app should redirect to login');
+    } catch (error) {
+      console.error('❌ [DEBUG] Force logout failed:', error);
+    }
   };
+
+  const renderGitHubStep = () => (
+    <View style={styles.stepContainer}>
+      <Text style={styles.stepTitle}>GitHub Connected</Text>
+      <Text style={styles.stepDescription}>
+        Your GitHub account is successfully connected! This enables:
+      </Text>
+      <View style={styles.featureList}>
+        <Text style={styles.featureItem}>• Access to your repositories</Text>
+        <Text style={styles.featureItem}>• Secure authentication</Text>
+        <Text style={styles.featureItem}>• Synchronized project settings</Text>
+      </View>
+      <Text style={styles.connectedUser}>
+        Connected as: {onboarding.user?.githubUsername || 'Unknown'}
+      </Text>
+      
+      {/* Debug button to force fresh login */}
+      <TouchableOpacity 
+        style={styles.debugButton} 
+        onPress={handleForceLogout}
+      >
+        <Text style={styles.debugButtonText}>🔄 Debug: Force Fresh Login</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const renderRepositoryStep = () => (
     <View style={styles.fullScreenStep}>
@@ -368,7 +372,9 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   const getCurrentStepNumber = () => {
     const steps = ['welcome', 'permissions_explained', 'github_connected', 'repository_selected', 'session_ready', 'preferences_set'];
-    return steps.indexOf(onboardingState.step) + 1;
+    const stepIndex = steps.indexOf(onboardingState.step);
+    // If step is 'completed' or not found, return the total number of steps
+    return stepIndex === -1 ? getTotalSteps() : stepIndex + 1;
   };
 
   const getTotalSteps = () => 6;
@@ -378,6 +384,17 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#60a5fa" />
         <Text style={styles.loadingText}>Setting up your experience...</Text>
+      </View>
+    );
+  }
+
+  // Don't render onboarding screen if completed
+  if (isOnboardingComplete) {
+    console.log('📱 [ONBOARDING] Onboarding is complete, showing completion screen');
+    return (
+      <View style={styles.loadingContainer}>
+        <ThinkingAnimation size={40} style={styles.loadingAnimation} />
+        <Text style={styles.loadingText}>Completing setup...</Text>
       </View>
     );
   }
@@ -461,6 +478,9 @@ const styles = StyleSheet.create({
       android: 'Berkeley Mono',
       default: 'monospace'
     }),
+  },
+  loadingAnimation: {
+    marginBottom: 16,
   },
   scrollContainer: {
     flex: 1,

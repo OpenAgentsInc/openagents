@@ -44,22 +44,34 @@ export function RepositorySelectionScreen({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAutoFetching, setIsAutoFetching] = useState(false);
 
+  // Helper function to extract data from Effect Option type
+  const extractRepositoryData = (optionData: any) => {
+    if (!optionData || typeof optionData !== 'object') return null;
+    if (optionData._tag === 'Some' && optionData.value) return optionData.value;
+    if (optionData._tag === 'None') return null;
+    // If it's already unwrapped data (fallback)
+    if (optionData.repositories) return optionData;
+    return null;
+  };
+
   // Query cached repositories
   const repositoriesData = useQuery(
-    api["confect/github"].getUserRepositories,
+    api.confect.github.getUserRepositories,
     isAuthenticated ? {} : "skip"
   );
 
   // Action to fetch fresh repositories
-  const fetchRepositories = useAction(api["confect/github"].fetchUserRepositories);
+  const fetchRepositories = useAction(api.confect.github.fetchUserRepositories);
   
   // Repository state management
   const { setActiveRepository } = useRepositoryState();
 
-  // Auto-fetch repositories when no cached data exists
+  // Auto-fetch repositories when no cached data exists or cache is very stale
   useEffect(() => {
     const autoFetchRepositories = async () => {
       const timestamp = new Date().toISOString();
+      const cacheAgeHours = actualRepositoryData ? (Date.now() - actualRepositoryData.lastFetched) / (1000 * 60 * 60) : 0;
+      
       console.log(`🔄 [REPO_SELECTION] ${timestamp} Auto-fetch check:`, {
         isAuthenticated,
         hasUser: !!user,
@@ -67,6 +79,7 @@ export function RepositorySelectionScreen({
         isRefreshing,
         repositoriesData: repositoriesData,
         repositoriesDataType: typeof repositoriesData,
+        cacheAgeHours: Math.round(cacheAgeHours * 100) / 100,
       });
 
       if (!isAuthenticated || !user || isAutoFetching || isRefreshing) {
@@ -78,12 +91,19 @@ export function RepositorySelectionScreen({
       const hasNoData = !repositoriesData || 
                        (repositoriesData && typeof repositoriesData === 'object' && repositoriesData._tag === 'None');
       
-      if (hasNoData) {
-        console.log(`🔄 [REPO_SELECTION] ${timestamp} No cached repositories found (Option.none), auto-fetching from GitHub API`);
+      // Check if cache is stale (older than 5 minutes) - indicates token might have changed or new login  
+      const cacheIsStale = actualRepositoryData && cacheAgeHours > 0.08; // 5 minutes
+      
+      if (hasNoData || cacheIsStale) {
+        if (cacheIsStale) {
+          console.log(`🔄 [REPO_SELECTION] ${timestamp} Cache is stale (${Math.round(cacheAgeHours * 100) / 100}h old), forcing refresh for updated permissions`);
+        } else {
+          console.log(`🔄 [REPO_SELECTION] ${timestamp} No cached repositories found, auto-fetching from GitHub API`);
+        }
         
         try {
           setIsAutoFetching(true);
-          await fetchRepositories({ forceRefresh: false });
+          await fetchRepositories({ forceRefresh: cacheIsStale });
           console.log(`✅ [REPO_SELECTION] ${timestamp} Auto-fetch completed successfully`);
         } catch (error) {
           console.error(`❌ [REPO_SELECTION] ${timestamp} Auto-fetch failed:`, error);
@@ -139,7 +159,7 @@ export function RepositorySelectionScreen({
       const timestamp = new Date().toISOString();
       console.log(`🔄 [REPO_SELECTION] ${timestamp} User triggered repository refresh`);
 
-      await fetchRepositories({ forceRefresh: true });
+      await fetchRepositories({ forceRefresh: true }); // Always force refresh on manual refresh
       
       console.log(`✅ [REPO_SELECTION] ${timestamp} Repository refresh completed`);
     } catch (error) {
@@ -173,8 +193,8 @@ export function RepositorySelectionScreen({
     );
   }
 
-  // No data available (loading or auto-fetching)
-  if (!repositoriesData) {
+  // Handle Option.none() or undefined
+  if (!repositoriesData || (repositoriesData && typeof repositoriesData === 'object' && repositoriesData._tag === 'None')) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -200,8 +220,11 @@ export function RepositorySelectionScreen({
     );
   }
 
+  // Extract data from Option type
+  const actualRepositoryData = extractRepositoryData(repositoriesData);
+
   // Error state
-  if (repositoriesData.hasError && repositoriesData.repositories.length === 0) {
+  if (actualRepositoryData && actualRepositoryData.hasError && actualRepositoryData.repositories.length === 0) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -211,7 +234,7 @@ export function RepositorySelectionScreen({
 
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>
-            {repositoriesData.errorMessage || 'Failed to load repositories'}
+            {actualRepositoryData.errorMessage || 'Failed to load repositories'}
           </Text>
           <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
             <Text style={styles.retryButtonText}>Try Again</Text>
@@ -229,8 +252,8 @@ export function RepositorySelectionScreen({
 
   // Render repository content with proper error handling
   const renderRepositoryContent = () => {
-    // Handle null/undefined repositoriesData
-    if (!repositoriesData) {
+    // Handle null/undefined repositoriesData or Option.none
+    if (!actualRepositoryData) {
       return (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>
@@ -247,7 +270,7 @@ export function RepositorySelectionScreen({
     }
 
     // Handle case where repositories array doesn't exist
-    if (!repositoriesData.repositories || !Array.isArray(repositoriesData.repositories)) {
+    if (!actualRepositoryData.repositories || !Array.isArray(actualRepositoryData.repositories)) {
       return (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>
@@ -264,7 +287,7 @@ export function RepositorySelectionScreen({
     }
 
     // Handle empty repositories
-    if (repositoriesData.repositories.length === 0) {
+    if (actualRepositoryData.repositories.length === 0) {
       return (
         <View style={styles.emptyRepositoriesContainer}>
           <Text style={styles.emptyRepositoriesText}>
@@ -278,7 +301,7 @@ export function RepositorySelectionScreen({
     }
 
     // Render repositories
-    return repositoriesData.repositories.map((repository: Repository) => (
+    return actualRepositoryData.repositories.map((repository: Repository) => (
       <RepositoryCard
         key={repository.id}
         repository={repository}
@@ -306,7 +329,7 @@ export function RepositorySelectionScreen({
           <Text style={styles.subtitle}>
             Choose the repository you'll work with most often
           </Text>
-          {repositoriesData.hasError && (
+          {actualRepositoryData && actualRepositoryData.hasError && (
             <Text style={styles.warningText}>
               ⚠️ Some repositories may not be up to date
             </Text>

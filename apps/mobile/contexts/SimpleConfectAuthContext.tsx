@@ -119,7 +119,7 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
       // Create OAuth request
       const request = new AuthSession.AuthRequest({
         clientId: 'Ov23lirHI1DWTzZ1zT1u', // GitHub OAuth App Client ID
-        scopes: ['user:email', 'read:user'],
+        scopes: ['user:email', 'read:user', 'repo'],
         redirectUri: REDIRECT_URI,
         responseType: AuthSession.ResponseType.Code,
         state: Math.random().toString(36).substring(2, 15),
@@ -133,7 +133,7 @@ export const SimpleConfectAuthProvider: React.FC<SimpleConfectAuthProviderProps>
         clientId: 'Ov23lirHI1DWTzZ1zT1u',
         redirectUri: REDIRECT_URI,
         authUrl: OPENAUTH_URL,
-        scopes: ['user:email', 'read:user'],
+        scopes: ['user:email', 'read:user', 'repo'],
         responseType: 'code',
         provider: 'github'
       });

@@ -45,6 +45,7 @@ function MainApp() {
     isLoading, 
     needsOnboarding, 
     hasCompletedInitialSetup,
+    markOnboardingComplete,
   } = useConfectAuth();
 
   // Show loading state while checking authentication
@@ -82,9 +83,11 @@ function MainApp() {
               }}
             >
               <OnboardingScreen 
-                onComplete={() => {
+                onComplete={async () => {
                   // Handle onboarding completion
                   console.log('📱 [APP] Onboarding completed');
+                  await markOnboardingComplete();
+                  console.log('📱 [APP] Onboarding marked as complete, transitioning to main app');
                 }} 
               />
             </ErrorBoundary>
