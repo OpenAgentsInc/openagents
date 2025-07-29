@@ -3,8 +3,8 @@ import { Id } from "@rjdellecese/confect/server";
 
 // CreateClaudeSession schemas
 export const CreateClaudeSessionArgs = Schema.Struct({
-  sessionId: Schema.String.pipe(Schema.nonEmpty()),
-  projectPath: Schema.String.pipe(Schema.nonEmpty()),
+  sessionId: Schema.String,
+  projectPath: Schema.String,
   createdBy: Schema.Literal("desktop", "mobile"),
   title: Schema.optional(Schema.String),
   metadata: Schema.optional(
@@ -21,7 +21,7 @@ export const CreateClaudeSessionResult = Id.Id("claudeSessions");
 
 // UpdateSessionStatus schemas
 export const UpdateSessionStatusArgs = Schema.Struct({
-  sessionId: Schema.String.pipe(Schema.nonEmpty()),
+  sessionId: Schema.String,
   status: Schema.Literal("active", "inactive", "error", "processed"),
 });
 
