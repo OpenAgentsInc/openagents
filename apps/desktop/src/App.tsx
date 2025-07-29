@@ -54,7 +54,7 @@ function App() {
   const { initializeApp } = useAppInitialization();
   const { claudeStatus } = useClaudeDiscovery();
   const { updateSessionMessages } = usePaneStore();
-  const updateSessionStatus = useMutation(api.claude.updateSessionStatus);
+  const updateSessionStatus = useMutation(api.confect.mobile_sync.updateSessionStatus);
   
   const {
     sessions,
