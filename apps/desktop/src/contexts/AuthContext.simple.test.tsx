@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-// Mock dependencies
-const mockOpenUrl = vi.fn()
-vi.mock('@tauri-apps/plugin-opener', () => ({
-  openUrl: mockOpenUrl,
-}))
+import { mockTauri } from '../test/setup'
 
 describe('AuthContext - Logic Tests', () => {
   beforeEach(() => {
@@ -86,20 +81,20 @@ describe('AuthContext - Logic Tests', () => {
       
       // Simulate login function call
       const mockLogin = vi.fn().mockImplementation(() => {
-        return mockOpenUrl(expectedUrl)
+        return mockTauri.invoke('plugin:opener|open', { uri: expectedUrl })
       })
 
       await mockLogin()
       
-      expect(mockOpenUrl).toHaveBeenCalledWith(expectedUrl)
+      expect(mockTauri.invoke).toHaveBeenCalledWith('plugin:opener|open', { uri: expectedUrl })
     })
 
     it('should handle login errors gracefully', async () => {
-      mockOpenUrl.mockRejectedValueOnce(new Error('Failed to open URL'))
+      mockTauri.invoke.mockRejectedValueOnce(new Error('Failed to open URL'))
 
       const mockLogin = vi.fn().mockImplementation(async () => {
         try {
-          await mockOpenUrl('test-url')
+          await mockTauri.invoke('plugin:opener|open', { uri: 'test-url' })
         } catch (error) {
           expect(error).toBeInstanceOf(Error)
           expect((error as Error).message).toBe('Failed to open URL')
@@ -107,7 +102,7 @@ describe('AuthContext - Logic Tests', () => {
       })
 
       await mockLogin()
-      expect(mockOpenUrl).toHaveBeenCalled()
+      expect(mockTauri.invoke).toHaveBeenCalled()
     })
   })
 

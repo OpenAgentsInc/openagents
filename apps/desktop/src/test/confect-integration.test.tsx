@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import React from 'react';
-import { ConvexProviderReact19 } from '@/utils/react19-compat';
+import { ConvexProvider } from 'convex/react';
 import { mockTauri } from './setup';
+import { mockConvexClient, mockUseQuery, mockUseMutation } from './setup-integration';
+import './setup-integration';
 import { useMobileSessionSyncConfect } from '../hooks/useMobileSessionSyncConfect';
 import { useMobileSessionSync } from '../hooks/useMobileSessionSync';
 import { useSessionManager } from '../hooks/useSessionManager';
@@ -19,14 +21,6 @@ interface Session {
   isInitializing?: boolean;
 }
 
-// Mock Convex client
-const mockConvexClient = {
-  query: vi.fn(),
-  mutation: vi.fn(),
-  action: vi.fn(),
-  subscribe: vi.fn(),
-};
-
 // Mock pane store
 const mockPaneStore = {
   openChatPane: vi.fn(),
@@ -36,18 +30,12 @@ vi.mock('@/stores/pane', () => ({
   usePaneStore: () => mockPaneStore,
 }));
 
-// Mock Convex hooks
-const mockUseQuery = vi.fn();
-const mockUseMutation = vi.fn();
-
-// Mock Convex hooks
-
 // Test wrapper component
 function TestWrapper({ children }: { children: React.ReactNode }) {
   return (
-    <ConvexProviderReact19 client={mockConvexClient as any}>
+    <ConvexProvider client={mockConvexClient as any}>
       {children}
-    </ConvexProviderReact19>
+    </ConvexProvider>
   );
 }
 

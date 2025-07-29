@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Effect, Option, Runtime } from "effect";
+import { Effect, Option, Runtime, Schedule } from "effect";
 import { sanitizeEmail, sanitizeGitHubUsername, sanitizeMessageContent, ValidationError } from "./validation";
 
 // Mock Confect context for testing
@@ -47,15 +47,21 @@ describe("Confect Validation", () => {
       ];
 
       for (const email of invalidEmails) {
-        const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(sanitizeEmail(email));
-        await expect(result).rejects.toBeInstanceOf(ValidationError);
+        const result = await Effect.runPromise(Effect.either(sanitizeEmail(email)));
+        expect(result._tag).toBe("Left");
+        if (result._tag === "Left") {
+          expect(result.left).toBeInstanceOf(ValidationError);
+        }
       }
     });
 
     it("should enforce email length limits", async () => {
       const longEmail = "a".repeat(250) + "@example.com";
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(sanitizeEmail(longEmail));
-      await expect(result).rejects.toBeInstanceOf(ValidationError);
+      const result = await Effect.runPromise(Effect.either(sanitizeEmail(longEmail)));
+      expect(result._tag).toBe("Left");
+      if (result._tag === "Left") {
+        expect(result.left).toBeInstanceOf(ValidationError);
+      }
     });
   });
 
@@ -80,8 +86,11 @@ describe("Confect Validation", () => {
       ];
 
       for (const username of invalidUsernames) {
-        const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(sanitizeGitHubUsername(username));
-        await expect(result).rejects.toBeInstanceOf(ValidationError);
+        const result = await Effect.runPromise(Effect.either(sanitizeGitHubUsername(username)));
+        expect(result._tag).toBe("Left");
+        if (result._tag === "Left") {
+          expect(result.left).toBeInstanceOf(ValidationError);
+        }
       }
     });
   });
@@ -107,8 +116,11 @@ describe("Confect Validation", () => {
 
     it("should reject empty content after sanitization", async () => {
       const emptyContent = '<script></script>   ';
-      const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(sanitizeMessageContent(emptyContent));
-      await expect(result).rejects.toBeInstanceOf(ValidationError);
+      const result = await Effect.runPromise(Effect.either(sanitizeMessageContent(emptyContent)));
+      expect(result._tag).toBe("Left");
+      if (result._tag === "Left") {
+        expect(result.left).toBeInstanceOf(ValidationError);
+      }
     });
   });
 });
@@ -368,8 +380,11 @@ describe("Confect Error Handling", () => {
       }
     });
 
-    const result = Runtime.runPromiseExit(Runtime.defaultRuntime)(queryEffect);
-    await expect(result).rejects.toThrow("Database connection failed");
+    const result = await Effect.runPromise(Effect.either(queryEffect));
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toContain("Database connection failed");
+    }
   });
 
   it("should retry failed operations with exponential backoff", async () => {
@@ -386,10 +401,7 @@ describe("Confect Error Handling", () => {
       const result = yield* Effect.promise(() => mockDb.query("users"));
       return result;
     }).pipe(
-      Effect.retry({
-        times: 3,
-        schedule: Effect.schedule.exponential("100 milliseconds")
-      })
+      Effect.retry(Schedule.exponential("100 millis").pipe(Schedule.recurs(3)))
     );
 
     const result = await Runtime.runPromise(Runtime.defaultRuntime)(retryEffect);

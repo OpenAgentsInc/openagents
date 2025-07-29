@@ -22,7 +22,6 @@ const mockConfectCtx = {
 describe("Onboarding Repository Selection Effects", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.resetAllMocks();
   });
 
   describe("setActiveRepository", () => {

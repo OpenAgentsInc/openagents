@@ -1,5 +1,5 @@
-import { vi } from 'vitest';
-import { beforeEach, afterEach } from 'vitest';
+import { vi, beforeEach, afterEach } from 'vitest';
+import React from 'react';
 
 // Create global window mock for Node.js environment
 if (typeof window === 'undefined') {
@@ -101,3 +101,22 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+// Centralized Convex mocks
+export const mockConvexClient = {
+  query: vi.fn(),
+  mutation: vi.fn(),
+  action: vi.fn(),
+  subscribe: vi.fn(),
+};
+
+export const mockUseQuery = vi.fn();
+export const mockUseMutation = vi.fn();
+
+// Mock Convex React hooks
+vi.mock('convex/react', () => ({
+  useQuery: mockUseQuery,
+  useMutation: mockUseMutation,
+  useConvex: () => mockConvexClient,
+  ConvexProvider: ({ children }: { children: React.ReactNode }) => children,
+}));

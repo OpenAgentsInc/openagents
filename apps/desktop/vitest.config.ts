@@ -4,21 +4,32 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react()], // Uses automatic JSX runtime by default
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
+    setupFiles: ['./test-setup.ts'],
     css: true,
     reporters: ['verbose'],
+    testTimeout: 10000, // 10 second timeout for React 19 tests
+    deps: {
+      optimizer: {
+        web: {
+          // Critical for React 19 compatibility
+          include: ['react', 'react-dom', 'react/jsx-runtime', '@tauri-apps/api']
+        }
+      }
+    },
     include: [
       'src/**/*.{test,spec}.{ts,tsx}',
     ],
     exclude: [
       'node_modules/**',
-      'e2e/**',
-      '**/e2e/**',
-      '**/*.e2e.{test,spec}.{ts,tsx}',
+      'e2e/**/*',
+      '**/e2e/**/*',
+      '**/*.e2e.*',
+      'src-tauri/**',
+      '**/playwright.config.*',
     ],
     coverage: {
       provider: 'v8',
@@ -32,13 +43,12 @@ export default defineConfig({
         '**/*.spec.{ts,tsx}',
       ],
     },
-    deps: {
-      inline: ['@tauri-apps/api'],
-    },
   },
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
+      // Resolve jsx-runtime conflicts
+      'react/jsx-runtime': 'react/jsx-runtime'
     },
   },
 })
