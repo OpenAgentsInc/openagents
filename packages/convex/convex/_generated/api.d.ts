@@ -14,10 +14,12 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as claude from "../claude.js";
+import type * as confect_github from "../confect/github.js";
+import type * as confect_onboarding from "../confect/onboarding.js";
+import type * as confect_users from "../confect/users.js";
 import type * as github from "../github.js";
 import type * as messages from "../messages.js";
 import type * as migration from "../migration.js";
-import type * as users from "../users.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -29,10 +31,12 @@ import type * as users from "../users.js";
  */
 declare const fullApi: ApiFromModules<{
   claude: typeof claude;
+  "confect/github": typeof confect_github;
+  "confect/onboarding": typeof confect_onboarding;
+  "confect/users": typeof confect_users;
   github: typeof github;
   messages: typeof messages;
   migration: typeof migration;
-  users: typeof users;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

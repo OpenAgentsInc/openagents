@@ -22,14 +22,18 @@ export const createClaudeSession = mutation({
       const { db, auth } = yield* ConfectMutationCtx;
 
       // Get authenticated user (optional for backwards compatibility)
-      const identity = yield* Effect.promise(() => auth.getUserIdentity());
+      const identity = yield* auth.getUserIdentity();
       let userId = Option.none<string>();
       
-      if (identity) {
-        // Find user by GitHub ID from identity subject  
+      if (Option.isSome(identity)) {
+        // Find user by OpenAuth subject
+        const authSubject = identity.value.subject;
+        
+        console.log(`🔍 [MOBILE_SYNC] Looking for user with OpenAuth subject: ${authSubject}`);
+        
         const user = yield* db
           .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", identity.subject))
+          .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
           .first();
           
         if (Option.isSome(user)) {

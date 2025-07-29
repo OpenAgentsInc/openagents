@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { getAuthenticatedUser } from "./users";
+import { getAuthenticatedUser } from "../confect/users";
 
 // Session Management
 
