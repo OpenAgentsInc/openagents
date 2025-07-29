@@ -359,16 +359,6 @@ export function ClaudeCodeMobile() {
   );
 
   const renderMainContent = () => {
-    if (!isAuthenticated) {
-      return (
-        <View style={styles.emptyState}>
-          <View style={styles.authButtonContainer}>
-            <AuthButton />
-          </View>
-        </View>
-      );
-    }
-
     if (!authReady) {
       return (
         <View style={styles.emptyState}>
@@ -444,6 +434,36 @@ export function ClaudeCodeMobile() {
     );
   };
 
+  // Show clean login screen without header/sidebar when not authenticated
+  if (!isAuthenticated) {
+    return (
+      <ErrorBoundary
+        onError={(error, errorInfo) => {
+          const timestamp = new Date().toISOString();
+          console.error(`❌ [CLAUDE_CODE_MOBILE] ${timestamp} Component error:`, {
+            error: error.message,
+            stack: error.stack,
+            componentStack: errorInfo.componentStack,
+            user: user?.githubUsername,
+            isAuthenticated,
+            selectedSessionId
+          });
+          // TODO: Report to crash analytics service
+        }}
+      >
+        <View style={styles.loginContainer}>
+          <View style={styles.loginContent}>
+            <CustomText style={styles.loginTitle}>OpenAgents</CustomText>
+            <View style={styles.authButtonContainer}>
+              <AuthButton />
+            </View>
+          </View>
+        </View>
+      </ErrorBoundary>
+    );
+  }
+
+  // Show main app with header/sidebar when authenticated
   return (
     <ErrorBoundary
       onError={(error, errorInfo) => {
@@ -743,5 +763,42 @@ const styles = StyleSheet.create({
     color: '#f4f4f5',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Login screen styles
+  loginContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  loginContent: {
+    alignItems: 'center',
+    maxWidth: 400,
+    width: '100%',
+  },
+  loginTitle: {
+    color: '#f4f4f5',
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 48,
+    textAlign: 'center',
+    lineHeight: 32,
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace'
+    }),
+  },
+  loginSubtitle: {
+    color: '#a1a1aa',
+    fontSize: 16,
+    marginBottom: 48,
+    textAlign: 'center',
+    fontFamily: Platform.select({
+      ios: 'Berkeley Mono',
+      android: 'Berkeley Mono',
+      default: 'monospace'
+    }),
   },
 });
