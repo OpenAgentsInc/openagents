@@ -172,6 +172,13 @@ export default {
       return true;
     }
 
+    // Allow dashboard client (dashboard.openagents.com)
+    if (input.clientID === 'dashboard' && 
+        input.redirectURI === 'https://dashboard.openagents.com/api/callback') {
+      console.log("✅ [AUTH] Allowing dashboard client:", input.clientID, input.redirectURI);
+      return true;
+    }
+
     // Allow localhost redirects (for development)
     if (input.redirectURI.includes('localhost')) {
       console.log("✅ [AUTH] Allowing localhost redirect:", input.redirectURI);
