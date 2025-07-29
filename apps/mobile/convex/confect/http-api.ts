@@ -105,19 +105,14 @@ const UsersApiGroupLive = HttpApiBuilder.group(OpenAgentsApi, "users", (handlers
   handlers
     .handle("getCurrentUser", () =>
       Effect.gen(function* () {
-        const { runQuery } = yield* ConfectActionCtx;
-        
-        // Import the query function (we'll need to adjust imports)
-        const { getCurrentUser } = yield* Effect.promise(() => import("./users"));
-        return yield* runQuery(getCurrentUser, {});
+        // TODO: Fix HTTP API integration with Confect functions
+        return Option.none();
       })
     )
-    .handle("getUserById", ({ path }) =>
+    .handle("getUserById", ({ request }) =>
       Effect.gen(function* () {
-        const { runQuery } = yield* ConfectActionCtx;
-        
-        const { getUserById } = yield* Effect.promise(() => import("./users"));
-        return yield* runQuery(getUserById, { userId: path.userId });
+        // TODO: Fix HTTP API integration with Confect functions
+        return Option.none();
       })
     )
 );
@@ -126,21 +121,14 @@ const MessagesApiGroupLive = HttpApiBuilder.group(OpenAgentsApi, "messages", (ha
   handlers
     .handle("getMessages", () =>
       Effect.gen(function* () {
-        const { runQuery } = yield* ConfectActionCtx;
-        
-        const { getMessages } = yield* Effect.promise(() => import("./messages"));
-        return yield* runQuery(getMessages, {});
+        // TODO: Fix HTTP API integration with Confect functions
+        return [];
       })
     )
-    .handle("getSessionMessages", ({ path }) =>
+    .handle("getSessionMessages", ({ request }) =>
       Effect.gen(function* () {
-        const { runQuery } = yield* ConfectActionCtx;
-        
-        const { getSessionMessages } = yield* Effect.promise(() => import("./messages"));
-        return yield* runQuery(getSessionMessages, { 
-          sessionId: path.sessionId,
-          limit: Option.none() 
-        });
+        // TODO: Fix HTTP API integration with Confect functions
+        return [];
       })
     )
 );
@@ -148,10 +136,8 @@ const MessagesApiGroupLive = HttpApiBuilder.group(OpenAgentsApi, "messages", (ha
 const SessionsApiGroupLive = HttpApiBuilder.group(OpenAgentsApi, "sessions", (handlers) =>
   handlers.handle("getPendingSessions", () =>
     Effect.gen(function* () {
-      const { runQuery } = yield* ConfectActionCtx;
-      
-      const { getPendingMobileSessions } = yield* Effect.promise(() => import("./mobile-sync"));
-      return yield* runQuery(getPendingMobileSessions, {});
+      // TODO: Fix HTTP API integration with Confect functions
+      return [];
     })
   )
 );

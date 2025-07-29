@@ -30,8 +30,8 @@ export function useAPMTracking(options: APMTrackingOptions = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   
   // Convex mutations
-  const trackDeviceSession = useMutation(api.claude.trackDeviceSession);
-  const calculateUserAPM = useMutation(api.claude.calculateUserAPM);
+  const trackDeviceSession = useMutation(api.confect.apm.trackDeviceSession);
+  const calculateUserAPM = useMutation(api.confect.apm.calculateUserAPM);
   
   // Session tracking state
   const sessionData = useRef<APMSessionData>({
@@ -106,7 +106,7 @@ export function useAPMTracking(options: APMTrackingOptions = {}) {
         deviceType: 'mobile',
         sessionStart: session.sessionStart,
         sessionEnd: sessionActive.current ? undefined : now,
-        actions: {
+        actionsCount: {
           messages: session.messagesSent,
           toolUses: 0, // Mobile doesn't directly use tools
           githubEvents: 0,

@@ -13,9 +13,9 @@ import { api } from "../convex/_generated/api";
 import { DARK_THEME } from "../constants/colors";
 
 export function ConvexMobileDemo() {
-  const messages = useQuery(api.messages.getMessages) || [];
-  const messageCount = useQuery(api.messages.getMessageCount) || 0;
-  const addMessage = useMutation(api.messages.addMessage);
+  const messages = useQuery(api.confect.messages.getMessages) || [];
+  const messageCount = useQuery(api.confect.messages.getMessageCount) || 0;
+  const addMessage = useMutation(api.confect.messages.addMessage);
   
   const [newMessage, setNewMessage] = useState("");
   const [userName] = useState(() => `Mobile-${Math.floor(Math.random() * 1000)}`);
