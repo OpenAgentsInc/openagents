@@ -38,3 +38,7 @@ export * from "./onboarding.schemas";
 // GitHub integration functions
 export * from "./github"; 
 export * from "./github.schemas";
+
+// Device sync functions
+export * from "./device-sync";
+export * from "./device-sync.schemas";

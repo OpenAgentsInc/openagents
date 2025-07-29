@@ -15,6 +15,9 @@ export * from './hooks/useSimpleAuth';
 export * from './hooks/useConfectAuth';
 export * from './hooks/useConfectAPM';
 
+// Device presence hooks
+export * from './hooks/useDevicePresence';
+
 // Re-export Phase 1 mobile sync services (temporarily disabled while fixing Phase 2)
 // export * from './services/MobileSyncService';
 // export * from './hooks/useConfectMobileSync';
