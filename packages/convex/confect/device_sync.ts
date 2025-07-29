@@ -1,4 +1,4 @@
-import { Effect, Option, Data } from "effect";
+import { Effect, Option } from "effect";
 import {
   ConfectMutationCtx,
   ConfectQueryCtx,
@@ -18,25 +18,10 @@ import {
   UpdateDeviceStatusResult,
   CreatePresenceRoomArgs,
   CreatePresenceRoomResult,
-  GetRoomDevicesArgs,
-  GetRoomDevicesResult,
-} from "./device-sync.schemas";
+} from "./device_sync.schemas";
 
-// Device-specific error types
-export class DeviceError extends Data.TaggedError("DeviceError")<{
-  operation: string;
-  message: string;
-  cause?: unknown;
-}> {}
-
-export class DeviceNotFoundError extends Data.TaggedError("DeviceNotFoundError")<{
-  deviceId: string;
-}> {}
-
-export class DeviceAuthError extends Data.TaggedError("DeviceAuthError")<{
-  operation: string;
-  deviceId?: string;
-}> {}
+// Constants
+const HEARTBEAT_TIMEOUT = 30000; // 30 seconds
 
 // Helper function to get authenticated user with Effect-TS patterns (for mutations)
 const getAuthenticatedUserEffectMutation = Effect.gen(function* () {
@@ -44,14 +29,11 @@ const getAuthenticatedUserEffectMutation = Effect.gen(function* () {
   
   const identity = yield* auth.getUserIdentity();
   if (Option.isNone(identity)) {
-    return yield* Effect.fail(new DeviceAuthError({
-      operation: "getAuthenticatedUser",
-    }));
+    return yield* Effect.fail(new Error("Not authenticated"));
   }
 
   // Look up user by OpenAuth subject first
   const authSubject = identity.value.subject;
-  console.log(`🔍 [DEVICE-SYNC] Looking for user with OpenAuth subject: ${authSubject}`);
   
   const user = yield* db
     .query("users")
@@ -60,7 +42,7 @@ const getAuthenticatedUserEffectMutation = Effect.gen(function* () {
 
   return yield* Option.match(user, {
     onSome: (u) => Effect.succeed(u),
-    onNone: () =>
+    onNone: () => 
       // Fallback: try looking up by GitHub ID (for backwards compatibility)
       Effect.gen(function* () {
         const fallbackUser = yield* db
@@ -70,9 +52,7 @@ const getAuthenticatedUserEffectMutation = Effect.gen(function* () {
         
         return yield* Option.match(fallbackUser, {
           onSome: (u) => Effect.succeed(u),
-          onNone: () => Effect.fail(new DeviceAuthError({
-            operation: "getAuthenticatedUser",
-          }))
+          onNone: () => Effect.fail(new Error("User not found"))
         });
       })
   });
@@ -84,14 +64,10 @@ const getAuthenticatedUserEffectQuery = Effect.gen(function* () {
   
   const identity = yield* auth.getUserIdentity();
   if (Option.isNone(identity)) {
-    return yield* Effect.fail(new DeviceAuthError({
-      operation: "getAuthenticatedUser",
-    }));
+    return yield* Effect.fail(new Error("Not authenticated"));
   }
 
-  // Look up user by OpenAuth subject first
   const authSubject = identity.value.subject;
-  console.log(`🔍 [DEVICE-SYNC] Looking for user with OpenAuth subject: ${authSubject}`);
   
   const user = yield* db
     .query("users")
@@ -100,8 +76,7 @@ const getAuthenticatedUserEffectQuery = Effect.gen(function* () {
 
   return yield* Option.match(user, {
     onSome: (u) => Effect.succeed(u),
-    onNone: () =>
-      // Fallback: try looking up by GitHub ID (for backwards compatibility)
+    onNone: () => 
       Effect.gen(function* () {
         const fallbackUser = yield* db
           .query("users")
@@ -110,27 +85,11 @@ const getAuthenticatedUserEffectQuery = Effect.gen(function* () {
         
         return yield* Option.match(fallbackUser, {
           onSome: (u) => Effect.succeed(u),
-          onNone: () => Effect.fail(new DeviceAuthError({
-            operation: "getAuthenticatedUser",
-          }))
+          onNone: () => Effect.fail(new Error("User not found"))
         });
       })
   });
 });
-
-// Helper function to generate unique device ID
-const generateDeviceId = () => {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 15);
-  return `device_${timestamp}_${random}`;
-};
-
-// Helper function to generate session token
-const generateSessionToken = () => {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 15);
-  return `session_${timestamp}_${random}`;
-};
 
 // Connect device to user's presence room
 export const connectDevice = mutation({
@@ -141,24 +100,21 @@ export const connectDevice = mutation({
       const { db } = yield* ConfectMutationCtx;
       const user = yield* getAuthenticatedUserEffectMutation;
 
-      yield* Effect.logInfo(`🔗 [DEVICE-SYNC] connectDevice called:`, {
-        deviceType: deviceInfo.deviceType,
-        platform: deviceInfo.platform,
-        userId: user._id,
-      });
+      yield* Effect.logInfo(`🔗 [DEVICE-SYNC] Connecting device for user: ${user._id}`);
 
       // Generate unique identifiers
-      const deviceId = generateDeviceId();
-      const sessionToken = generateSessionToken();
+      const deviceId = `device_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+      const sessionToken = `session_${Date.now()}_${Math.random().toString(36).substring(2)}`;
       const roomToken = `room_${user._id}`;
 
-      // Ensure presence room exists for user
+      // Create or update presence room
       const existingRoom = yield* db
         .query("devicePresenceRooms")
         .withIndex("by_room_id", (q) => q.eq("roomId", roomToken))
         .first();
 
       if (Option.isNone(existingRoom)) {
+        // Create new presence room
         yield* db.insert("devicePresenceRooms", {
           roomId: roomToken,
           createdAt: Date.now(),
@@ -183,26 +139,21 @@ export const connectDevice = mutation({
         platform: deviceInfo.platform,
         appVersion: deviceInfo.appVersion,
         userAgent: deviceInfo.userAgent,
-        status: "online" as const,
+        status: "online",
         sessionToken,
         roomToken,
         connectedAt: Date.now(),
         lastHeartbeat: Date.now(),
-        capabilities: deviceInfo.capabilities || [],
+        capabilities: deviceInfo.capabilities,
       });
 
-      yield* Effect.logInfo(`✅ [DEVICE-SYNC] Device connected:`, {
-        deviceId,
-        sessionToken,
-        roomToken,
-        connectionId,
-      });
+      yield* Effect.logInfo(`✅ [DEVICE-SYNC] Device connected: ${deviceId}`);
 
       return { deviceId, sessionToken, roomToken };
     }),
 });
 
-// Send heartbeat to keep device connection alive
+// Send heartbeat to keep connection alive
 export const deviceHeartbeat = mutation({
   args: DeviceHeartbeatArgs,
   returns: DeviceHeartbeatResult,
@@ -210,7 +161,8 @@ export const deviceHeartbeat = mutation({
     Effect.gen(function* () {
       const { db } = yield* ConfectMutationCtx;
 
-      // Find device connection
+      yield* Effect.logInfo(`💓 [DEVICE-SYNC] Processing heartbeat for device: ${deviceId}`);
+
       const connection = yield* db
         .query("deviceConnections")
         .withIndex("by_session_token", (q) => q.eq("sessionToken", sessionToken))
@@ -220,21 +172,21 @@ export const deviceHeartbeat = mutation({
       yield* Option.match(connection, {
         onSome: (conn) =>
           Effect.gen(function* () {
-            yield* db.update(conn._id, {
+            yield* db.patch(conn._id, {
               lastHeartbeat: Date.now(),
-              status: "online" as const,
+              status: "online",
             });
             yield* Effect.logInfo(`💓 [DEVICE-SYNC] Heartbeat updated for device: ${deviceId}`);
           }),
         onNone: () => 
-          Effect.fail(new DeviceNotFoundError({ deviceId })),
+          Effect.logWarning(`⚠️ [DEVICE-SYNC] Connection not found for heartbeat: ${deviceId}`)
       });
 
-      return null;
+      return {};
     }),
 });
 
-// Get all connected devices for a user
+// Get all devices for a user
 export const getUserDevices = query({
   args: GetUserDevicesArgs,
   returns: GetUserDevicesResult,
@@ -253,30 +205,21 @@ export const getUserDevices = query({
 
       // Check for stale connections (no heartbeat in 30 seconds)
       const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds
-      
       const activeDevices = devices.filter(device => 
         now - device.lastHeartbeat < HEARTBEAT_TIMEOUT
       );
 
-      // Mark stale devices as offline
-      const staleDevices = devices.filter(device => 
-        now - device.lastHeartbeat >= HEARTBEAT_TIMEOUT
-      );
+      yield* Effect.logInfo(`📊 [DEVICE-SYNC] Found ${activeDevices.length} active devices`);
 
-      for (const staleDevice of staleDevices) {
-        yield* db.update(staleDevice._id, {
-          status: "offline" as const,
-          lastHeartbeat: now,
-        });
-      }
-
-      yield* Effect.logInfo(`📊 [DEVICE-SYNC] Found ${activeDevices.length} active devices, marked ${staleDevices.length} as stale`);
-
-      // Return devices with proper schema format
+      // Transform to expected return format
       return activeDevices.map(device => ({
-        deviceId: device.deviceId,
         userId: device.userId,
+        deviceId: device.deviceId,
+        status: device.status,
+        sessionToken: device.sessionToken,
+        roomToken: device.roomToken,
+        connectedAt: device.connectedAt,
+        lastHeartbeat: device.lastHeartbeat,
         deviceInfo: {
           deviceType: device.deviceType,
           platform: device.platform,
@@ -285,16 +228,11 @@ export const getUserDevices = query({
           lastSeen: device.lastHeartbeat,
           capabilities: device.capabilities,
         },
-        status: device.status,
-        sessionToken: device.sessionToken,
-        roomToken: device.roomToken,
-        connectedAt: device.connectedAt,
-        lastHeartbeat: device.lastHeartbeat,
       }));
     }),
 });
 
-// Disconnect device and remove from presence room
+// Disconnect device and clean up
 export const disconnectDevice = mutation({
   args: DisconnectDeviceArgs,
   returns: DisconnectDeviceResult,
@@ -302,7 +240,7 @@ export const disconnectDevice = mutation({
     Effect.gen(function* () {
       const { db } = yield* ConfectMutationCtx;
 
-      yield* Effect.logInfo(`🔌 [DEVICE-SYNC] disconnectDevice called with session: ${sessionToken}`);
+      yield* Effect.logInfo(`🔌 [DEVICE-SYNC] Disconnecting device with session: ${sessionToken}`);
 
       const connection = yield* db
         .query("deviceConnections")
@@ -313,8 +251,8 @@ export const disconnectDevice = mutation({
         onSome: (conn) =>
           Effect.gen(function* () {
             // Mark device as offline
-            yield* db.update(conn._id, {
-              status: "offline" as const,
+            yield* db.patch(conn._id, {
+              status: "offline",
               lastHeartbeat: Date.now(),
             });
 
@@ -326,60 +264,56 @@ export const disconnectDevice = mutation({
 
             yield* Option.match(room, {
               onSome: (r) => {
-                const activeDevices = (r.activeDevices || []).filter(id => id !== conn.deviceId);
-                return db.update(r._id, {
+                const updatedDevices = (r.activeDevices || []).filter(id => id !== conn.deviceId);
+                return db.patch(r._id, {
                   updatedAt: Date.now(),
-                  activeDevices,
+                  activeDevices: updatedDevices,
                 });
               },
-              onNone: () => Effect.void,
+              onNone: () => Effect.void
             });
 
             yield* Effect.logInfo(`✅ [DEVICE-SYNC] Device disconnected: ${conn.deviceId}`);
           }),
         onNone: () => 
-          Effect.logInfo(`⚠️ [DEVICE-SYNC] No connection found for session: ${sessionToken}`),
+          Effect.logWarning(`⚠️ [DEVICE-SYNC] Connection not found for disconnect: ${sessionToken}`)
       });
 
-      return null;
+      return {};
     }),
 });
 
-// Update device status (online, offline, idle)
+// Update device status (online/offline/idle)
 export const updateDeviceStatus = mutation({
   args: UpdateDeviceStatusArgs,
   returns: UpdateDeviceStatusResult,
-  handler: ({ deviceId, sessionToken, status }) =>
+  handler: ({ sessionToken, status }) =>
     Effect.gen(function* () {
       const { db } = yield* ConfectMutationCtx;
 
-      yield* Effect.logInfo(`🔄 [DEVICE-SYNC] updateDeviceStatus:`, {
-        deviceId,
-        status,
-      });
+      yield* Effect.logInfo(`📊 [DEVICE-SYNC] Updating device status to: ${status}`);
 
       const connection = yield* db
         .query("deviceConnections")
         .withIndex("by_session_token", (q) => q.eq("sessionToken", sessionToken))
-        .filter((q) => q.eq(q.field("deviceId"), deviceId))
         .first();
 
       yield* Option.match(connection, {
         onSome: (conn) => {
-          return db.update(conn._id, {
+          return db.patch(conn._id, {
             status,
             lastHeartbeat: Date.now(),
           });
         },
         onNone: () => 
-          Effect.fail(new DeviceNotFoundError({ deviceId })),
+          Effect.logWarning(`⚠️ [DEVICE-SYNC] Connection not found for status update: ${sessionToken}`)
       });
 
-      return null;
+      return {};
     }),
 });
 
-// Create presence room for real-time sync
+// Create or get presence room for device sync
 export const createPresenceRoom = mutation({
   args: CreatePresenceRoomArgs,
   returns: CreatePresenceRoomResult,
@@ -387,7 +321,7 @@ export const createPresenceRoom = mutation({
     Effect.gen(function* () {
       const { db } = yield* ConfectMutationCtx;
 
-      yield* Effect.logInfo(`🏠 [DEVICE-SYNC] createPresenceRoom: ${roomId}`);
+      yield* Effect.logInfo(`📡 [DEVICE-SYNC] Creating/getting presence room: ${roomId}`);
 
       const existingRoom = yield* db
         .query("devicePresenceRooms")
@@ -399,7 +333,7 @@ export const createPresenceRoom = mutation({
           roomId: room.roomId,
           createdAt: room.createdAt,
         }),
-        onNone: () =>
+        onNone: () => 
           Effect.gen(function* () {
             const now = Date.now();
             yield* db.insert("devicePresenceRooms", {
@@ -408,59 +342,9 @@ export const createPresenceRoom = mutation({
               updatedAt: now,
               activeDevices: [],
             });
-
-            yield* Effect.logInfo(`✅ [DEVICE-SYNC] Created presence room: ${roomId}`);
-
+            
             return { roomId, createdAt: now };
-          }),
+          })
       });
-    }),
-});
-
-// Get all devices in a presence room
-export const getRoomDevices = query({
-  args: GetRoomDevicesArgs,
-  returns: GetRoomDevicesResult,
-  handler: ({ roomId }) =>
-    Effect.gen(function* () {
-      const { db } = yield* ConfectQueryCtx;
-
-      yield* Effect.logInfo(`🏠 [DEVICE-SYNC] getRoomDevices: ${roomId}`);
-
-      const devices = yield* db
-        .query("deviceConnections")
-        .withIndex("by_room_token", (q) => q.eq("roomToken", roomId))
-        .filter((q) => q.neq(q.field("status"), "offline"))
-        .order("desc")
-        .collect();
-
-      // Check for stale connections
-      const now = Date.now();
-      const HEARTBEAT_TIMEOUT = 30000; // 30 seconds
-      
-      const activeDevices = devices.filter(device => 
-        now - device.lastHeartbeat < HEARTBEAT_TIMEOUT
-      );
-
-      yield* Effect.logInfo(`📊 [DEVICE-SYNC] Room ${roomId} has ${activeDevices.length} active devices`);
-
-      // Return devices with proper schema format
-      return activeDevices.map(device => ({
-        deviceId: device.deviceId,
-        userId: device.userId,
-        deviceInfo: {
-          deviceType: device.deviceType,
-          platform: device.platform,
-          appVersion: device.appVersion,
-          userAgent: device.userAgent,
-          lastSeen: device.lastHeartbeat,
-          capabilities: device.capabilities,
-        },
-        status: device.status,
-        sessionToken: device.sessionToken,
-        roomToken: device.roomToken,
-        connectedAt: device.connectedAt,
-        lastHeartbeat: device.lastHeartbeat,
-      }));
     }),
 });
