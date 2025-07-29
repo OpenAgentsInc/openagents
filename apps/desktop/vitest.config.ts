@@ -4,23 +4,19 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
 export default defineConfig({
-  plugins: [react({
-    jsxRuntime: 'automatic'
-  })],
-  esbuild: {
-    jsx: 'automatic',
-    jsxFactory: undefined,
-    jsxFragment: undefined
-  },
+  plugins: [react()], // Uses automatic JSX runtime by default
   test: {
     globals: true,
-    environment: 'jsdom', 
+    environment: 'jsdom',
     setupFiles: ['./test-setup.ts'],
     css: true,
     reporters: ['verbose'],
-    server: {
-      deps: {
-        inline: ['@testing-library/react', 'react', 'react-dom']
+    deps: {
+      optimizer: {
+        web: {
+          // Critical for React 19 compatibility
+          include: ['react', 'react-dom', 'react/jsx-runtime', '@tauri-apps/api']
+        }
       }
     },
     include: [
@@ -46,13 +42,12 @@ export default defineConfig({
         '**/*.spec.{ts,tsx}',
       ],
     },
-    deps: {
-      inline: ['@tauri-apps/api'],
-    },
   },
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
+      // Resolve jsx-runtime conflicts
+      'react/jsx-runtime': 'react/jsx-runtime'
     },
   },
 })
