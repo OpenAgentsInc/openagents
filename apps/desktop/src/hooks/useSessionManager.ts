@@ -36,8 +36,8 @@ export const useSessionManager = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [newProjectPath, setNewProjectPath] = useState("/Users/christopherdavid/code/openagents");
   const { openChatPane, updateSessionMessages } = usePaneStore();
-  const createClaudeSession = useMutation(api.claude.createClaudeSession);
-  const updateSessionStatus = useMutation(api.claude.updateSessionStatus);
+  const createClaudeSession = useMutation(api.confect.mobile_sync.createClaudeSession);
+  const updateSessionStatus = useMutation(api.confect.mobile_sync.updateSessionStatus);
 
   const createSession = useCallback(async () => {
     if (!newProjectPath) {

@@ -30,7 +30,7 @@ export function MobileSessionInitializer({
   const [isSending, setIsSending] = useState(false);
   
   // Query messages from the mobile session
-  const mobileMessages = useQuery(api.claude.getSessionMessages, { 
+  const mobileMessages = useQuery(api.confect.mobile_sync.getSessionMessages, { 
     sessionId: mobileSessionId,
     limit: 10 // Get the first few messages
   });

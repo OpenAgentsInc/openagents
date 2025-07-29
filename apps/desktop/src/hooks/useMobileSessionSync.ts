@@ -47,8 +47,8 @@ export const useMobileSessionSync = (
   const lastProcessedTimeRef = useRef<Record<string, number>>({});
   const PROCESSING_COOLDOWN = 5000;
 
-  const pendingMobileSessions = useQuery(api.claude.getPendingMobileSessions) || [];
-  const updateSessionStatus = useMutation(api.claude.updateSessionStatus);
+  const pendingMobileSessions = useQuery(api.confect.mobile_sync.getPendingMobileSessions) || [];
+  const updateSessionStatus = useMutation(api.confect.mobile_sync.updateSessionStatus);
   const convex = useConvex();
   const { openChatPane } = usePaneStore();
 
@@ -166,7 +166,7 @@ export const useMobileSessionSync = (
         // Get existing messages from mobile session to find the initial message
         try {
           // Use proper Convex client to query messages
-          const mobileMessages = await convex.query(api.claude.getSessionMessages, {
+          const mobileMessages = await convex.query(api.confect.mobile_sync.getSessionMessages, {
             sessionId: mobileSession.sessionId,
             limit: 10
           });

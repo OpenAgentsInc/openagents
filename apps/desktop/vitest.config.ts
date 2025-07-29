@@ -32,6 +32,9 @@ export default defineConfig({
         '**/*.spec.{ts,tsx}',
       ],
     },
+    deps: {
+      inline: ['@tauri-apps/api'],
+    },
   },
   resolve: {
     alias: {
