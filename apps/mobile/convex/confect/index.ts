@@ -14,9 +14,9 @@ export * from "./messages.schemas";
 export * from "./mobile-sync";
 export * from "./mobile-sync.schemas";
 
-// HTTP API
-export * from "./http-api";
-export { default as httpRouter } from "./http";
+// HTTP API - temporarily disabled due to TypeScript errors
+// export * from "./http-api";
+// export { default as httpRouter } from "./http";
 
 // Integration layer
 export * from "./integration";

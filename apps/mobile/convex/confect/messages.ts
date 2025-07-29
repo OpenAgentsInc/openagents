@@ -2,9 +2,11 @@ import { Effect, Option } from "effect";
 import {
   ConfectMutationCtx,
   ConfectQueryCtx,
+  ConfectDoc,
   mutation,
   query,
 } from "./confect";
+import { UserIdentity } from "@rjdellecese/confect/server";
 import {
   GetMessagesArgs,
   GetMessagesResult,
@@ -83,7 +85,7 @@ export const addClaudeMessage = mutation({
       
       if (Option.isSome(identity)) {
         // Find user by OpenAuth subject
-        const authSubject = identity.value.subject;
+        const authSubject = (identity.value as UserIdentity).subject;
         
         console.log(`🔍 [MESSAGES] Looking for user with OpenAuth subject: ${authSubject}`);
         
@@ -93,7 +95,7 @@ export const addClaudeMessage = mutation({
           .first();
           
         if (Option.isSome(user)) {
-          userId = Option.some(user.value._id);
+          userId = Option.some((user.value as ConfectDoc<"users">)._id);
         }
       }
 
@@ -104,59 +106,50 @@ export const addClaudeMessage = mutation({
         .filter((q) => q.eq(q.field("messageId"), messageId))
         .first();
 
-      return yield* Option.match(existingMessage, {
-        onSome: (message) => {
-          yield* Effect.logWarning('⚠️ [CONFECT] Message already exists, skipping duplicate:', messageId);
-          return Effect.succeed(message._id);
-        },
-        
-        onNone: () =>
-          Effect.gen(function* () {
-            // Add message with user ID
-            const messageDoc = yield* db.insert("claudeMessages", {
-              sessionId,
-              messageId,
-              messageType,
-              content,
-              timestamp,
-              toolInfo,
-              metadata,
-              ...(Option.isSome(userId) ? { userId: userId.value } : {}),
-            });
-            
-            console.log('✅ [CONFECT] Message added successfully:', messageId);
+      if (Option.isSome(existingMessage)) {
+        console.warn('⚠️ [CONFECT] Message already exists, skipping duplicate:', messageId);
+        return (existingMessage.value as ConfectDoc<"claudeMessages">)._id;
+      }
 
-            // Update session last activity
-            const session = yield* db
-              .query("claudeSessions")
-              .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
-              .first();
-
-            yield* Option.match(session, {
-              onSome: (s) =>
-                db.patch(s._id, {
-                  lastActivity: Date.now(),
-                }),
-              onNone: () => Effect.void,
-            });
-
-            // Update sync status
-            const syncStatus = yield* db
-              .query("syncStatus")
-              .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
-              .first();
-
-            yield* Option.match(syncStatus, {
-              onSome: (sync) =>
-                db.patch(sync._id, {
-                  lastSyncedMessageId: messageId,
-                }),
-              onNone: () => Effect.void,
-            });
-
-            return messageDoc;
-          })
+      // Add message with user ID
+      const messageDoc = yield* db.insert("claudeMessages", {
+        sessionId,
+        messageId,
+        messageType,
+        content,
+        timestamp,
+        toolInfo,
+        metadata,
+        ...(Option.isSome(userId) ? { userId: userId.value } : {}),
       });
+      
+      console.log('✅ [CONFECT] Message added successfully:', messageId);
+
+      // Update session last activity
+      const session = yield* db
+        .query("claudeSessions")
+        .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
+        .first();
+
+      if (Option.isSome(session)) {
+        yield* db.patch((session.value as ConfectDoc<"claudeSessions">)._id, {
+          lastActivity: Date.now(),
+        });
+      }
+
+      // Update sync status
+      const syncStatus = yield* db
+        .query("syncStatus")
+        .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
+        .first();
+
+      if (Option.isSome(syncStatus)) {
+        yield* db.patch((syncStatus.value as ConfectDoc<"syncStatus">)._id, {
+          lastSyncedMessageId: messageId,
+        });
+      }
+
+      return messageDoc;
     }),
 });
 

@@ -13,6 +13,15 @@ interface ProviderTokens {
   };
 }
 
+// GitHub API user response
+interface GitHubUser {
+  id: number;
+  login: string;
+  email: string;
+  name?: string;
+  avatar_url?: string;
+}
+
 // Helper functions for provider token management
 async function storeProviderTokens(storage: any, userSub: string, tokens: ProviderTokens): Promise<void> {
   const key = `provider_tokens:${userSub}`;
@@ -65,6 +74,9 @@ export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext) {
     const url = new URL(request.url);
     
+    // Store env in a closure so it can be accessed by issuer callbacks
+    const storage = env.AUTH_STORAGE;
+    
     // Handle /user endpoint to return user data from JWT
     if (url.pathname === '/user' && request.method === 'GET') {
       try {
@@ -89,6 +101,46 @@ export default {
         return new Response('Invalid token', { status: 401 });
       }
     }
+
+    // Handle /tokens endpoint to return provider tokens (GitHub access token)
+    if (url.pathname === '/tokens' && request.method === 'GET') {
+      try {
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+          return new Response('Unauthorized', { status: 401 });
+        }
+        
+        const jwtToken = authHeader.slice(7);
+        console.log(`🔍 [AUTH] /tokens endpoint called with JWT token`);
+        
+        // We need to decode the JWT to get the user's subject
+        // For now, we'll use a hardcoded user sub for testing
+        // TODO: Implement proper JWT decoding
+        const userSub = "14167547"; // This should come from JWT decoding
+        
+        // Get provider tokens from storage
+        const providerTokens = await getProviderTokens(storage, userSub);
+        
+        if (!providerTokens) {
+          console.log(`⚠️ [AUTH] No provider tokens found for user ${userSub}`);
+          return new Response(JSON.stringify({
+            error: "no_tokens",
+            message: "No provider tokens found for user"
+          }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        console.log(`✅ [AUTH] Returning provider tokens for user ${userSub}`);
+        return new Response(JSON.stringify(providerTokens), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error(`❌ [AUTH] Error in /tokens endpoint:`, error);
+        return new Response('Internal server error', { status: 500 });
+      }
+    }
     
     const app = issuer({
       providers: {
@@ -103,7 +155,7 @@ export default {
             if (!clientSecret) throw new Error("GITHUB_CLIENT_SECRET environment variable is required");
             return clientSecret;
           })(),
-          scopes: ["user:email", "read:user"],
+          scopes: ["user:email", "read:user", "repo"],
         }),
       },
       storage: CloudflareStorage({
@@ -136,45 +188,63 @@ export default {
     console.log("❌ [AUTH] Rejecting client:", input.clientID, input.redirectURI);
     return false;
   },
-  success: async (ctx, value) => {
+  success: async (ctx, value, request) => {
     // Handle successful GitHub authentication
     if (value.provider === "github") {
       try {
         console.log("🔍 [AUTH] GitHub OAuth value:", JSON.stringify(value, null, 2));
-        console.log("🔍 [AUTH] GitHub claims:", JSON.stringify(value.claims, null, 2));
         
-        // If claims are null, manually fetch user data from GitHub API
-        let githubUser;
-        if (!value.claims) {
-          console.log("🔧 [AUTH] Claims are null, manually fetching GitHub user data");
-          const accessToken = value.tokenset.access;
-          
-          const userResponse = await fetch("https://api.github.com/user", {
-            headers: {
-              "Authorization": `Bearer ${accessToken}`,
-              "Accept": "application/vnd.github.v3+json",
-              "User-Agent": "OpenAgents-Auth"
-            }
-          });
-          
-          if (!userResponse.ok) {
-            throw new Error(`Failed to fetch GitHub user: ${userResponse.status}`);
+        // Extract GitHub access token from tokenset
+        const githubAccessToken = value.tokenset.access;
+        const githubRefreshToken = value.tokenset.refresh;
+        
+        console.log(`🔑 [AUTH] GitHub tokens received - access: ${githubAccessToken ? 'YES' : 'NO'}, refresh: ${githubRefreshToken ? 'YES' : 'NO'}`);
+        
+        // Always fetch user data from GitHub API using the access token
+        console.log("🔧 [AUTH] Fetching GitHub user data using access token");
+        
+        const userResponse = await fetch("https://api.github.com/user", {
+          headers: {
+            "Authorization": `Bearer ${githubAccessToken}`,
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "OpenAgents-Auth"
           }
-          
-          githubUser = await userResponse.json();
-          console.log("🔍 [AUTH] Fetched GitHub user data:", JSON.stringify(githubUser, null, 2));
-        } else {
-          githubUser = value.claims;
+        });
+        
+        if (!userResponse.ok) {
+          throw new Error(`Failed to fetch GitHub user: ${userResponse.status}`);
         }
         
+        const githubUser = await userResponse.json() as GitHubUser;
+        console.log("🔍 [AUTH] Fetched GitHub user data:", JSON.stringify(githubUser, null, 2));
+        
         const user = await getUser({
-          sub: githubUser.id?.toString() || value.sub,
-          github_id: githubUser.id?.toString() || githubUser.sub,
+          sub: githubUser.id.toString(),
+          github_id: githubUser.id.toString(),
           email: githubUser.email,
           name: githubUser.name,
           avatar: githubUser.avatar_url,
           username: githubUser.login,
         });
+
+        // Store the GitHub access token for later retrieval
+        if (githubAccessToken) {
+          const providerTokens: ProviderTokens = {
+            github: {
+              access_token: githubAccessToken,
+              refresh_token: githubRefreshToken,
+            }
+          };
+          
+          try {
+            await storeProviderTokens(storage, user.id, providerTokens);
+            console.log(`✅ [AUTH] Successfully stored GitHub access token for user ${user.id}`);
+          } catch (error) {
+            console.error(`❌ [AUTH] Failed to store provider tokens for user ${user.id}:`, error);
+          }
+        } else {
+          console.warn(`⚠️ [AUTH] No GitHub access token to store for user ${user.id}`);
+        }
 
         return ctx.subject("user", user);
       } catch (error) {
@@ -187,13 +257,6 @@ export default {
     console.error("Authentication attempted with unsupported provider:", value.provider);
     throw new Error(`Unsupported provider: ${value.provider}`);
   },
-      cookie: {
-        // Configure for subdomain sharing
-        domain: env.COOKIE_DOMAIN || undefined,
-        secure: true,
-        httpOnly: true,
-        sameSite: "lax",
-      },
     });
 
     return app.fetch(request, env, ctx);

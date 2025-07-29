@@ -2,6 +2,7 @@ import { Effect, Option } from "effect";
 import {
   ConfectMutationCtx,
   ConfectQueryCtx,
+  ConfectDoc,
   mutation,
   query,
 } from "./confect";
@@ -28,7 +29,7 @@ export const createClaudeSession = mutation({
       
       if (Option.isSome(identity)) {
         // Find user by OpenAuth subject
-        const authSubject = identity.value.subject;
+        const authSubject = (identity.value as UserIdentity).subject;
         
         console.log(`🔍 [MOBILE_SYNC] Looking for user with OpenAuth subject: ${authSubject}`);
         
@@ -38,7 +39,7 @@ export const createClaudeSession = mutation({
           .first();
           
         if (Option.isSome(user)) {
-          userId = Option.some(user.value._id);
+          userId = Option.some((user.value as ConfectDoc<"users">)._id);
         }
       }
 
@@ -51,13 +52,13 @@ export const createClaudeSession = mutation({
       return yield* Option.match(existingSession, {
         onSome: (session) =>
           // Update existing session
-          db.patch(session._id, {
+          db.patch((session as ConfectDoc<"claudeSessions">)._id, {
             title,
             status: "active" as const,
             lastActivity: Date.now(),
             metadata,
             ...(Option.isSome(userId) ? { userId: userId.value as Id<"users"> } : {}),
-          }).pipe(Effect.as(session._id)),
+          }).pipe(Effect.as((session as ConfectDoc<"claudeSessions">)._id)),
         
         onNone: () =>
           Effect.gen(function* () {
@@ -98,7 +99,7 @@ export const updateSessionStatus = mutation({
 
       yield* Option.match(session, {
         onSome: (s) =>
-          db.patch(s._id, {
+          db.patch((s as ConfectDoc<"claudeSessions">)._id, {
             status,
             lastActivity: Date.now(),
           }),
