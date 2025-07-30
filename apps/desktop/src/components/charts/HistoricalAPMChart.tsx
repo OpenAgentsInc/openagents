@@ -121,7 +121,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
       case 'weekly':
         // Convert 2025-W04 to Week 4
         const weekMatch = period.match(/(\d{4})-W(\d{2})/);
-        return weekMatch ? `Week ${parseInt(weekMatch[2])}` : period;
+        return weekMatch && weekMatch[2] ? `Week ${parseInt(weekMatch[2])}` : period;
       case 'monthly':
         // Convert 2025-01 to Jan 2025
         const monthDate = new Date(period + '-01');
@@ -227,7 +227,7 @@ export const HistoricalAPMChart: React.FC<HistoricalAPMChartProps> = ({
     }>;
     label?: string;
   }) => {
-    if (active && payload && payload.length) {
+    if (active && payload && payload.length && payload[0]) {
       const data = payload[0].payload;
       return (
         <div className="bg-card border border-border rounded-lg p-3 shadow-lg">

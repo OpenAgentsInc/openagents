@@ -245,7 +245,7 @@ export const login = (config: AuthConfig = getDefaultAuthConfig()) =>
     yield* Effect.log("🔐 [AUTH] Starting OAuth login flow...");
     
     // Start OAuth flow based on platform
-    const { code, state } = yield* (
+    const oauthResult = yield* (
       isReactNative()
         ? startMobileOAuthFlow(config)
         : startDesktopOAuthFlow(config)
@@ -258,10 +258,22 @@ export const login = (config: AuthConfig = getDefaultAuthConfig()) =>
       Effect.timeout(Duration.minutes(5))
     );
     
+    const { code, state } = oauthResult;
+    
     yield* Effect.log("🔐 [AUTH] OAuth authorization received, exchanging for token...");
     
+    // Validate parameters with explicit runtime checks
+    if (!code || !state) {
+      yield* Effect.fail(new AuthNetworkError({
+        operation: "login",
+        message: "Missing code or state parameter from OAuth flow",
+        retryable: false
+      }));
+    }
+    
     // Exchange code for token with retry on retryable network errors
-    const tokenResponse = yield* exchangeCodeForToken(config, code, state).pipe(
+    // Using non-null assertion since we've validated above
+    const tokenResponse = yield* exchangeCodeForToken(config, code!, state!).pipe(
       Effect.retry(
         Schedule.exponential(Duration.seconds(2)).pipe(
           Schedule.intersect(Schedule.recurs(3)),

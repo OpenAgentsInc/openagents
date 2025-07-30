@@ -372,9 +372,12 @@ describe('Performance Tests', () => {
       const firstResult = performanceResults[0];
       const lastResult = performanceResults[performanceResults.length - 1];
       
+      expect(firstResult).toBeDefined();
+      expect(lastResult).toBeDefined();
+      
       // Performance degradation should be reasonable (not exponential)
-      const performanceRatio = lastResult.duration / firstResult.duration;
-      const sizeRatio = lastResult.size / firstResult.size;
+      const performanceRatio = lastResult!.duration / firstResult!.duration;
+      const sizeRatio = lastResult!.size / firstResult!.size;
       
       // Performance should scale reasonably with data size
       expect(performanceRatio).toBeLessThan(sizeRatio * 2); // Allow some overhead but not exponential

@@ -334,6 +334,8 @@ export const usePaneStore = create<PaneStore>()(
 
           // Commander's exact logic: move pane to end and update isActive flags
           const paneToActivate = state.panes[paneIndex];
+          if (!paneToActivate) return state; // Guard against undefined pane
+          
           const otherPanes = state.panes.filter((p) => p.id !== id);
           const updatedPanes = otherPanes.map((p) => p.isActive ? { ...p, isActive: false } : p);
           const newPanes = [...updatedPanes, { ...paneToActivate, isActive: true }];
@@ -521,7 +523,8 @@ export const usePaneStore = create<PaneStore>()(
           
           // Reset active pane ID if it was pointing to a chat pane
           if (state.activePaneId && !state.panes.find(p => p.id === state.activePaneId)) {
-            state.activePaneId = state.panes.length > 0 ? state.panes[0].id : null;
+            const firstPane = state.panes[0];
+            state.activePaneId = state.panes.length > 0 && firstPane ? firstPane.id : null;
           }
 
           // Ensure all panes are visible on current screen

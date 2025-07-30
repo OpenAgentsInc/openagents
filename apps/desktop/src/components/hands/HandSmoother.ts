@@ -51,6 +51,9 @@ export class HandSmoother {
     // Apply smoothing with velocity estimation
     const result = smoothed.map((smooth, i) => {
       const raw = rawLandmarks[i];
+      if (!raw) {
+        return smooth; // Return existing smooth data if raw data is missing
+      }
       
       // Calculate raw velocity
       const rawVx = (raw.x - smooth.x) / Math.max(deltaTime, 0.016); // 60fps minimum
