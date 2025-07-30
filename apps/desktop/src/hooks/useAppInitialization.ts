@@ -42,7 +42,7 @@ export const useAppInitialization = () => {
         console.log('🚀 [APP-INIT] Initial timeout reached, starting initialization');
         initializeApp();
       }
-    }, 100);
+    }, 100) as unknown as NodeJS.Timeout;
 
     return () => {
       if (initializationTimeoutRef.current) {

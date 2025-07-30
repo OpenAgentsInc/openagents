@@ -1,4 +1,4 @@
-import { Effect, Option, Data, Schedule, Duration } from "effect";
+import { Effect, Data, Schedule, Duration } from "effect";
 import { ConvexReactClient } from "convex/react";
 import type { 
   AuthUser, 
@@ -117,7 +117,7 @@ const getAppVersion = (): Effect.Effect<string, never, never> =>
 export const syncUserToConfect = (
   client: ConvexReactClient, 
   user: AuthUser, 
-  token: string
+  _token: string
 ) =>
   Effect.gen(function* () {
     yield* Effect.logInfo(`🔐 [CONFECT] Syncing user to backend: ${user.githubUsername}`);
@@ -149,7 +149,7 @@ export const syncUserToConfect = (
 export const syncAPMDataToConfect = (
   client: ConvexReactClient,
   sessionData: APMSessionData,
-  userId?: string
+  _userId?: string
 ) =>
   Effect.gen(function* () {
     yield* Effect.logInfo(`📊 [CONFECT] Syncing APM data for device: ${sessionData.deviceId}`);
@@ -297,8 +297,8 @@ export const getUserAPMStatsFromConfect = (
 
 // Subscribe to real-time session updates
 export const subscribeToSessionUpdates = (
-  client: ConvexReactClient,
-  onSessionUpdate: (sessions: any[]) => void
+  _client: ConvexReactClient,
+  _onSessionUpdate: (sessions: any[]) => void
 ) =>
   Effect.sync(() => {
     // This would be implemented with Convex's real-time subscriptions

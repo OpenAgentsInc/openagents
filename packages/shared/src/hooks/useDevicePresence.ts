@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Effect, Runtime, Option } from 'effect';
+// import { Effect, Runtime } from 'effect';
 
 // Platform detection utilities (we'll need to implement these)
 interface PlatformInfo {
@@ -174,7 +174,7 @@ export function useDevicePresence(config: UseDevicePresenceConfig = {}): UseDevi
       ] as DeviceConnection[];
     },
 
-    sendHeartbeat: async (deviceId: string, sessionToken: string) => {
+    sendHeartbeat: async (deviceId: string, _sessionToken: string) => {
       console.log('💓 [DEVICE-PRESENCE] Sending heartbeat for:', deviceId);
       await new Promise(resolve => setTimeout(resolve, 100));
       return null;
@@ -278,7 +278,7 @@ export function useDevicePresence(config: UseDevicePresenceConfig = {}): UseDevi
     if (sessionInfo && isConnectedRef.current) {
       heartbeatIntervalRef.current = setInterval(() => {
         sendHeartbeat();
-      }, heartbeatInterval);
+      }, heartbeatInterval) as unknown as NodeJS.Timeout;
 
       console.log(`⏰ [DEVICE-PRESENCE] Heartbeat started (${heartbeatInterval}ms interval)`);
 
@@ -290,12 +290,20 @@ export function useDevicePresence(config: UseDevicePresenceConfig = {}): UseDevi
         }
       };
     }
+    
+    // Return cleanup function even if condition is false
+    return () => {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+    };
   }, [sessionInfo, heartbeatInterval, sendHeartbeat]);
 
   // Set up app state monitoring (for mobile apps)
   useEffect(() => {
     if (!enableAppStateMonitoring || !platformInfo.isReactNative) {
-      return;
+      return () => {}; // Return empty cleanup function
     }
 
     const setupAppStateMonitoring = async () => {
@@ -344,6 +352,9 @@ export function useDevicePresence(config: UseDevicePresenceConfig = {}): UseDevi
       
       return () => clearInterval(refreshInterval);
     }
+    
+    // Return empty cleanup function if no userId
+    return () => {};
   }, [userId, refreshDevices]);
 
   // Cleanup on unmount

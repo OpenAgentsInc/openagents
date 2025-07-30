@@ -367,7 +367,7 @@ export const useMobileSessionSync = (
       };
 
       processMobileSessions();
-    }, 200);
+    }, 200) as unknown as NodeJS.Timeout;
 
     return () => {
       if (processingTimeoutRef.current) {
