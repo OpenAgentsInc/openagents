@@ -30,7 +30,7 @@ import {
   CreateSessionParams,
   SessionData,
   SessionStatus,
-} from "@openagentsinc/shared";
+} from "../../../packages/shared/src";
 
 // Constants with defaults from environment
 const DEFAULT_PROJECT_PATH = "/Users/testuser/projects/openagents";
@@ -282,11 +282,16 @@ export function ClaudeCodeMobileServiceExample() {
         title="Claude Code (Service Layer)"
         onNewChat={handleNewChat}
         sessions={sessions.map(s => ({
+          _id: s.sessionId,
+          sessionId: s.sessionId,
+          projectPath: s.projectPath,
           id: s.sessionId,
           title: s.title,
-          messages: [], // Would be loaded separately
-          createdAt: s.createdAt,
-          updatedAt: s.lastActivity,
+          status: (s.status === "offline" ? "inactive" : s.status) as "active" | "inactive" | "error" | "processed",
+          createdBy: s.createdBy,
+          lastActivity: s.lastActivity,
+          metadata: s.metadata,
+          updatedAt: new Date(s.lastActivity),
         }))}
         onSessionSelect={(id) => handleSessionSelect(id)}
         currentSessionId={selectedSessionId}
