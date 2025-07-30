@@ -140,11 +140,26 @@ function mergeOverlappingIntervals(intervals: Array<{ start: number; end: number
   
   // Sort intervals by start time
   const sorted = intervals.slice().sort((a, b) => a.start - b.start);
-  const merged = [{ start: sorted[0].start, end: sorted[0].end }];
+  
+  // Guard against empty array
+  if (sorted.length === 0) {
+    return [];
+  }
+  
+  const firstInterval = sorted[0];
+  if (!firstInterval) {
+    return [];
+  }
+  
+  const merged = [{ start: firstInterval.start, end: firstInterval.end }];
   
   for (let i = 1; i < sorted.length; i++) {
     const current = sorted[i];
     const lastMerged = merged[merged.length - 1];
+    
+    if (!current || !lastMerged) {
+      continue;
+    }
     
     if (current.start <= lastMerged.end) {
       // Overlapping intervals, merge them
@@ -554,7 +569,7 @@ export const getRealtimeAPM = query({
         // Calculate trend
         if (history.length > 1) {
           const previousAPM = history[1]; // Second most recent (index 0 is current)
-          if (previousAPM > 0) {
+          if (previousAPM && previousAPM > 0) {
             trendPercentage = ((currentAPM - previousAPM) / previousAPM) * 100;
             if (Math.abs(trendPercentage) >= 10) { // 10% threshold
               trend = trendPercentage > 0 ? "up" : "down";
@@ -601,21 +616,38 @@ export const updateRealtimeAPM = mutation({
 
       if (Option.isSome(existingSession)) {
         // Update existing session
-        yield* db.patch(existingSession.value._id, {
-          sessionPeriods: [
-            ...existingSession.value.sessionPeriods.slice(0, -1), // Keep all but last
-            {
-              ...existingSession.value.sessionPeriods[existingSession.value.sessionPeriods.length - 1],
+        const lastPeriod = existingSession.value.sessionPeriods[existingSession.value.sessionPeriods.length - 1];
+        if (!lastPeriod) {
+          // If no periods exist, create a new one
+          yield* db.patch(existingSession.value._id, {
+            sessionPeriods: [{
+              start: now,
               end: isActive ? undefined : now,
-            }
-          ],
-          actionsCount: {
-            messages: totalActions,
-            toolUses: 0,
-            githubEvents: 0,
-          },
-          lastActivity: now,
-        });
+            }],
+            actionsCount: {
+              messages: totalActions,
+              toolUses: 0,
+              githubEvents: 0,
+            },
+            lastActivity: now,
+          });
+        } else {
+          yield* db.patch(existingSession.value._id, {
+            sessionPeriods: [
+              ...existingSession.value.sessionPeriods.slice(0, -1), // Keep all but last
+              {
+                ...lastPeriod,
+                end: isActive ? undefined : now,
+              }
+            ],
+            actionsCount: {
+              messages: totalActions,
+              toolUses: 0,
+              githubEvents: 0,
+            },
+            lastActivity: now,
+          });
+        }
       } else {
         // Create new session
         yield* db.insert("userDeviceSessions", {
@@ -669,33 +701,39 @@ export const trackRealtimeAction = mutation({
         
         // Get the most recent session period
         const lastPeriod = session.sessionPeriods[session.sessionPeriods.length - 1];
-        const currentActionsTotal = session.actionsCount.messages + session.actionsCount.toolUses + (session.actionsCount.githubEvents || 0);
-        const updatedActionsCount = currentActionsTotal + 1;
-        totalActions = updatedActionsCount;
-        
-        // Calculate new APM
-        const sessionStart = lastPeriod.start;
-        const duration = now - sessionStart;
-        newAPM = duration > 0 ? (updatedActionsCount / (duration / 60000)) : 0;
-        
-        // Update the session
-        const updatedPeriods = [
-          ...session.sessionPeriods.slice(0, -1),
-          {
-            ...lastPeriod,
-            end: undefined, // Keep session active
-          }
-        ];
+        if (!lastPeriod) {
+          // If no periods exist, create a new session instead
+          totalActions = 1;
+          newAPM = 60; // 1 action in 1 second = 60 APM initially
+        } else {
+          const currentActionsTotal = session.actionsCount.messages + session.actionsCount.toolUses + (session.actionsCount.githubEvents || 0);
+          const updatedActionsCount = currentActionsTotal + 1;
+          totalActions = updatedActionsCount;
+          
+          // Calculate new APM
+          const sessionStart = lastPeriod.start;
+          const duration = now - sessionStart;
+          newAPM = duration > 0 ? (updatedActionsCount / (duration / 60000)) : 0;
+          
+          // Update the session
+          const updatedPeriods = [
+            ...session.sessionPeriods.slice(0, -1),
+            {
+              ...lastPeriod,
+              end: undefined, // Keep session active
+            }
+          ];
 
-        yield* db.patch(session._id, {
-          sessionPeriods: updatedPeriods,
-          actionsCount: {
-            messages: updatedActionsCount,
-            toolUses: 0,
-            githubEvents: 0,
-          },
-          lastActivity: now,
-        });
+          yield* db.patch(session._id, {
+            sessionPeriods: updatedPeriods,
+            actionsCount: {
+              messages: updatedActionsCount,
+              toolUses: 0,
+              githubEvents: 0,
+            },
+            lastActivity: now,
+          });
+        }
       } else {
         // Create new session with first action
         totalActions = 1;
