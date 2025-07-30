@@ -4,7 +4,7 @@ import { ClaudeStreamingService, ClaudeStreamingServiceLive, StreamingSession, M
 import { TauriEventServiceLive } from '../services/TauriEventService';
 import { invoke } from '@tauri-apps/api/core';
 import { useMutation, useQuery } from 'convex/react';
-import { api } from '../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 
 interface UseClaudeStreamingOptions {
   sessionId: string; // Claude Code session ID for streaming

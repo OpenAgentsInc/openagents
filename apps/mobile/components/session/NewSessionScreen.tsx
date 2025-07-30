@@ -7,7 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import { useQuery } from 'convex/react';
-import { api } from '../../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 import { Text, ErrorBoundary } from '../index';
 import { useConfectAuth } from '../../contexts/SimpleConfectAuthContext';
 import { useRepositoryState } from '../../hooks/useRepositoryState';

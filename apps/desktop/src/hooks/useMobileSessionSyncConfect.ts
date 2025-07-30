@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useQuery, useMutation } from 'convex/react';
-import { api } from '../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 import { usePaneStore } from '@/stores/pane';
 import { Effect, Schedule, Duration, Exit, Runtime } from 'effect';
 

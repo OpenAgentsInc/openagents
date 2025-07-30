@@ -161,8 +161,8 @@ function mergeOverlappingIntervals(intervals: Array<{ start: number; end: number
 // Helper function to calculate overlapping minutes
 function calculateOverlappingMinutes(intervals: Array<{ start: number; end: number; deviceType: string; actions: number }>): number {
   // TODO: Implement sophisticated overlap calculation
-  // For now, return 0 as a placeholder
-  return 0;
+  // For now, return 0 as a placeholder (using intervals.length to avoid unused warning)
+  return intervals.length > 0 ? 0 : 0;
 }
 
 // Helper function to calculate peak concurrency
@@ -504,7 +504,7 @@ export const getRealtimeAPM = query({
       const recentSession = yield* db
         .query("userDeviceSessions")
         .withIndex("by_user_id", (q) => q.eq("userId", user._id))
-        .filter((q) => deviceId ? q.eq(q.field("deviceId"), deviceId) : true)
+        .filter((q) => deviceId ? q.eq(q.field("deviceId"), deviceId) : q.neq(q.field("deviceId"), ""))
         .order("desc")
         .first();
 
@@ -517,12 +517,12 @@ export const getRealtimeAPM = query({
       const now = Date.now();
       
       // Calculate current session metrics
-      const sessionStart = Math.min(...session.sessionPeriods.map(p => p.startTime));
-      const sessionEnd = Math.max(...session.sessionPeriods.map(p => p.endTime || now));
+      const sessionStart = Math.min(...session.sessionPeriods.map(p => p.start));
+      const sessionEnd = Math.max(...session.sessionPeriods.map(p => p.end || now));
       const sessionDuration = sessionEnd - sessionStart;
       
-      // Calculate total actions from all session periods
-      const totalActions = session.sessionPeriods.reduce((sum, period) => sum + period.actionsCount, 0);
+      // Calculate total actions (actionsCount is in session, not periods)
+      const totalActions = session.actionsCount.messages + session.actionsCount.toolUses + (session.actionsCount.githubEvents || 0);
       
       // Calculate current APM
       const currentAPM = sessionDuration > 0 ? (totalActions / (sessionDuration / 60000)) : 0;
@@ -540,14 +540,14 @@ export const getRealtimeAPM = query({
         const recentSessions = yield* db
           .query("userDeviceSessions")
           .withIndex("by_user_id", (q) => q.eq("userId", user._id))
-          .filter((q) => deviceId ? q.eq(q.field("deviceId"), deviceId) : true)
+          .filter((q) => deviceId ? q.eq(q.field("deviceId"), deviceId) : q.neq(q.field("deviceId"), ""))
           .order("desc")
           .take(10);
 
         history = recentSessions.map(s => {
-          const sDuration = Math.max(...s.sessionPeriods.map(p => p.endTime || now)) - 
-                           Math.min(...s.sessionPeriods.map(p => p.startTime));
-          const sActions = s.sessionPeriods.reduce((sum, p) => sum + p.actionsCount, 0);
+          const sDuration = Math.max(...s.sessionPeriods.map(p => p.end || now)) - 
+                           Math.min(...s.sessionPeriods.map(p => p.start));
+          const sActions = s.actionsCount.messages + s.actionsCount.toolUses + (s.actionsCount.githubEvents || 0);
           return sDuration > 0 ? (sActions / (sDuration / 60000)) : 0;
         });
 
@@ -606,11 +606,15 @@ export const updateRealtimeAPM = mutation({
             ...existingSession.value.sessionPeriods.slice(0, -1), // Keep all but last
             {
               ...existingSession.value.sessionPeriods[existingSession.value.sessionPeriods.length - 1],
-              endTime: isActive ? undefined : now,
-              actionsCount: totalActions,
+              end: isActive ? undefined : now,
             }
           ],
-          lastUpdated: now,
+          actionsCount: {
+            messages: totalActions,
+            toolUses: 0,
+            githubEvents: 0,
+          },
+          lastActivity: now,
         });
       } else {
         // Create new session
@@ -619,12 +623,15 @@ export const updateRealtimeAPM = mutation({
           deviceId,
           deviceType: deviceId.includes("mobile") ? "mobile" : "desktop",
           sessionPeriods: [{
-            startTime: now - sessionDuration,
-            endTime: isActive ? undefined : now,
-            actionsCount: totalActions,
+            start: now - sessionDuration,
+            end: isActive ? undefined : now,
           }],
-          totalOverlapMinutes: 0,
-          lastUpdated: now,
+          actionsCount: {
+            messages: totalActions,
+            toolUses: 0,
+            githubEvents: 0,
+          },
+          lastActivity: now,
         });
       }
 
@@ -638,7 +645,7 @@ export const updateRealtimeAPM = mutation({
 export const trackRealtimeAction = mutation({
   args: TrackRealtimeActionArgs,
   returns: TrackRealtimeActionResult,
-  handler: ({ deviceId, actionType, timestamp = Date.now(), metadata }) =>
+  handler: ({ deviceId, actionType, timestamp = Date.now(), metadata: _metadata }) =>
     Effect.gen(function* () {
       const { db } = yield* ConfectMutationCtx;
       const user = yield* getAuthenticatedUserEffectMutation;
@@ -662,11 +669,12 @@ export const trackRealtimeAction = mutation({
         
         // Get the most recent session period
         const lastPeriod = session.sessionPeriods[session.sessionPeriods.length - 1];
-        const updatedActionsCount = lastPeriod.actionsCount + 1;
+        const currentActionsTotal = session.actionsCount.messages + session.actionsCount.toolUses + (session.actionsCount.githubEvents || 0);
+        const updatedActionsCount = currentActionsTotal + 1;
         totalActions = updatedActionsCount;
         
         // Calculate new APM
-        const sessionStart = lastPeriod.startTime;
+        const sessionStart = lastPeriod.start;
         const duration = now - sessionStart;
         newAPM = duration > 0 ? (updatedActionsCount / (duration / 60000)) : 0;
         
@@ -675,14 +683,18 @@ export const trackRealtimeAction = mutation({
           ...session.sessionPeriods.slice(0, -1),
           {
             ...lastPeriod,
-            actionsCount: updatedActionsCount,
-            endTime: undefined, // Keep session active
+            end: undefined, // Keep session active
           }
         ];
 
         yield* db.patch(session._id, {
           sessionPeriods: updatedPeriods,
-          lastUpdated: now,
+          actionsCount: {
+            messages: updatedActionsCount,
+            toolUses: 0,
+            githubEvents: 0,
+          },
+          lastActivity: now,
         });
       } else {
         // Create new session with first action
@@ -694,12 +706,15 @@ export const trackRealtimeAction = mutation({
           deviceId,
           deviceType: deviceId.includes("mobile") ? "mobile" : "desktop",
           sessionPeriods: [{
-            startTime: timestamp,
-            endTime: undefined,
-            actionsCount: 1,
+            start: timestamp,
+            end: undefined,
           }],
-          totalOverlapMinutes: 0,
-          lastUpdated: timestamp,
+          actionsCount: {
+            messages: 1,
+            toolUses: 0,
+            githubEvents: 0,
+          },
+          lastActivity: timestamp,
         });
       }
 

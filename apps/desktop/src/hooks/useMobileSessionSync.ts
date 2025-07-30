@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useQuery, useMutation, useConvex } from 'convex/react';
-import { api } from '../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 import { usePaneStore } from '@/stores/pane';
 
 interface CommandResult<T> {
@@ -174,7 +174,7 @@ export const useMobileSessionSync = (
           console.log('📋 [MOBILE-SYNC] Found messages in mobile session:', mobileMessages.length);
           
           // Find the last user message to trigger Claude Code response
-          const lastUserMessage = mobileMessages?.reverse().find((msg: any) => msg.messageType === 'user');
+          const lastUserMessage = mobileMessages ? [...mobileMessages].reverse().find((msg: any) => msg.messageType === 'user') : undefined;
           
           if (lastUserMessage) {
             console.log('🚀 [MOBILE-SYNC] Sending existing message to Claude Code to trigger response');

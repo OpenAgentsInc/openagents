@@ -1,6 +1,5 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
 
 // GitHub webhook event types we want to track for APM
 const TRACKED_GITHUB_EVENTS = [

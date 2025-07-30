@@ -15,7 +15,7 @@ import { useHandTracking } from "@/hooks/useHandTracking";
 import { useAppInitialization } from "@/hooks/useAppInitialization";
 import { usePaneStore } from "@/stores/pane";
 import { useMutation } from 'convex/react';
-import { api } from './convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 
 interface Message {
   id: string;

@@ -16,7 +16,6 @@ import {
   GetUserRepositoriesResult,
   UpdateGitHubMetadataArgs,
   UpdateGitHubMetadataResult,
-  GitHubRepositorySchema,
   GitHubAPIError,
   GitHubRateLimitError,
   GitHubAuthError,

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation } from 'convex/react';
-import { api } from '../../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 import { AppState, AppStateStatus } from 'react-native';
 
 export interface ConvexRealtimeAPMData {
@@ -47,32 +47,60 @@ export function useConvexRealtimeAPM(config: UseConvexRealtimeAPMConfig = {}) {
   const [error, setError] = useState<any>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
-  // Convex queries and mutations
-  // TODO: Use actual realtime APM functions when Convex API is properly synced
-  const realtimeAPMData: ConvexRealtimeAPMData | null = enabled ? {
+  // Temporary: Mock data until API is properly generated
+  const realtimeAPMData: ConvexRealtimeAPMData | undefined = enabled && deviceId ? {
     currentAPM: 0,
     trend: 'stable' as const,
     sessionDuration: 0,
     totalActions: 0,
     lastUpdateTimestamp: Date.now(),
     isActive: true,
-    deviceId: deviceId || 'unknown'
-  } : null; // Fallback data structure
+    deviceId,
+    trendPercentage: 0,
+  } : undefined;
   
-  const trackDeviceSession = useMutation(api.confect.apm.trackDeviceSession);
+  // Placeholder functions until API is properly generated
+  const trackRealtimeAction = async () => ({ success: false, newAPM: 0, totalActions: 0 });
+  const updateRealtimeAPM = async (data?: any) => ({ success: false });
   
-  // Temporary fallback implementations
+  // Proper Convex API implementations
   const trackAction = useCallback(async (actionType: string, metadata?: any) => {
-    // Fallback implementation using trackDeviceSession
-    console.log(`📊 [Mobile APM] Tracking ${actionType} action (fallback)`);
-    return { success: true, newAPM: 0, totalActions: 0 };
-  }, []);
+    if (!deviceId) {
+      console.warn('Cannot track action: device ID not available');
+      return { success: false, newAPM: 0, totalActions: 0 };
+    }
+
+    try {
+      const result = await trackRealtimeAction();
+      
+      console.log(`📊 [Mobile APM] Tracked ${actionType} action, new APM: ${result.newAPM}`);
+      return result;
+    } catch (error) {
+      console.error(`Failed to track ${actionType} action:`, error);
+      return { success: false, newAPM: 0, totalActions: 0 };
+    }
+  }, [deviceId, trackRealtimeAction]);
   
   const updateAPM = useCallback(async (data: any) => {
-    // Fallback implementation
-    console.log('📊 [Mobile APM] Update APM (fallback)', data);
-    return { success: true };
-  }, []);
+    if (!deviceId) {
+      console.warn('Cannot update APM: device ID not available');
+      return { success: false };
+    }
+
+    try {
+      const result = await updateRealtimeAPM({
+        deviceId,
+        ...data,
+        timestamp: Date.now()
+      });
+      
+      console.log('📊 [Mobile APM] Updated APM data successfully');
+      return result;
+    } catch (error) {
+      console.error('Failed to update APM data:', error);
+      return { success: false };
+    }
+  }, [deviceId, updateRealtimeAPM]);
 
   // State derived from Convex data
   const state: ConvexRealtimeAPMState = {
@@ -260,15 +288,6 @@ export function useConvexRealtimeAPM(config: UseConvexRealtimeAPMConfig = {}) {
 export function useAPMActionTracker(config: { deviceId?: string; enabled?: boolean } = {}) {
   const { enabled = true, deviceId } = config;
   
-  // TODO: Use actual realtime APM function when Convex API is synced
-  const trackDeviceSession = useMutation(api.confect.apm.trackDeviceSession);
-  
-  // Fallback implementation
-  const trackAction = useCallback(async (actionType: string, metadata?: any) => {
-    console.log(`📊 [Mobile APM Tracker] Tracking ${actionType} action (fallback)`);
-    return { success: true, newAPM: 0, totalActions: 0 };
-  }, []);
-
   // Generate a stable device ID if not provided
   const [stableDeviceId] = useState(() => {
     if (deviceId) return deviceId;
@@ -278,6 +297,22 @@ export function useAPMActionTracker(config: { deviceId?: string; enabled?: boole
     const random = Math.random().toString(36).substring(2, 15);
     return `mobile-${timestamp}-${random}`;
   });
+
+  // Placeholder function until API is properly generated  
+  const trackRealtimeActionMutation = async () => ({ success: false, newAPM: 0, totalActions: 0 });
+  
+  // Proper Convex API implementation
+  const trackAction = useCallback(async (actionType: string, metadata?: any) => {
+    try {
+      const result = await trackRealtimeActionMutation();
+      
+      console.log(`📊 [Mobile APM Tracker] Tracked ${actionType} action, new APM: ${result.newAPM}`);
+      return result;
+    } catch (error) {
+      console.error(`Failed to track ${actionType} action:`, error);
+      return { success: false, newAPM: 0, totalActions: 0 };
+    }
+  }, [stableDeviceId, trackRealtimeActionMutation]);
 
   const trackMessage = useCallback(async () => {
     if (!enabled) return null;

@@ -58,38 +58,6 @@ const getAuthenticatedUserEffectMutation = Effect.gen(function* () {
   });
 });
 
-// Helper function to get authenticated user with Effect-TS patterns (for queries)
-const getAuthenticatedUserEffectQuery = Effect.gen(function* () {
-  const { db, auth } = yield* ConfectQueryCtx;
-  
-  const identity = yield* auth.getUserIdentity();
-  if (Option.isNone(identity)) {
-    return yield* Effect.fail(new Error("Not authenticated"));
-  }
-
-  const authSubject = identity.value.subject;
-  
-  const user = yield* db
-    .query("users")
-    .withIndex("by_openauth_subject", (q) => q.eq("openAuthSubject", authSubject))
-    .first();
-
-  return yield* Option.match(user, {
-    onSome: (u) => Effect.succeed(u),
-    onNone: () => 
-      Effect.gen(function* () {
-        const fallbackUser = yield* db
-          .query("users")
-          .withIndex("by_github_id", (q) => q.eq("githubId", authSubject))
-          .first();
-        
-        return yield* Option.match(fallbackUser, {
-          onSome: (u) => Effect.succeed(u),
-          onNone: () => Effect.fail(new Error("User not found"))
-        });
-      })
-  });
-});
 
 // Connect device to user's presence room
 export const connectDevice = mutation({
@@ -132,7 +100,7 @@ export const connectDevice = mutation({
       }
 
       // Create device connection record
-      const connectionId = yield* db.insert("deviceConnections", {
+      yield* db.insert("deviceConnections", {
         deviceId,
         userId: user._id,
         deviceType: deviceInfo.deviceType,

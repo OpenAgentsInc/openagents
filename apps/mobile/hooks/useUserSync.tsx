@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation } from 'convex/react';
 import * as SecureStore from 'expo-secure-store';
-import { api } from '../convex/_generated/api';
+import { api } from '@openagentsinc/convex';
 import { useConfectAuth } from '../contexts/SimpleConfectAuthContext';
 
 /**
