@@ -22,6 +22,7 @@ use commands::{
     },
     history::{get_history, get_unified_history},
     system::{greet, get_project_directory},
+    oauth::{start_oauth_server, wait_for_oauth_callback, exchange_oauth_code, get_user_info},
 };
 
 // Import Convex commands
@@ -42,6 +43,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_oauth::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -60,6 +62,11 @@ pub fn run() {
             analyze_combined_conversations,
             get_historical_apm_data,
             get_user_apm_stats,
+            // OAuth commands
+            start_oauth_server,
+            wait_for_oauth_callback,
+            exchange_oauth_code,
+            get_user_info,
             // Convex commands
             test_convex_connection,
             get_sessions,

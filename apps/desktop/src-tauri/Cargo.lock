@@ -4470,6 +4470,7 @@ dependencies = [
  "sha2",
  "tauri 2.7.0",
  "tauri-build",
+ "tauri-plugin-oauth",
  "tauri-plugin-opener",
  "tauri-plugin-store",
  "tempfile",
@@ -4477,6 +4478,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-test",
+ "url",
  "uuid",
  "wiremock",
  "zeroize",
@@ -4610,6 +4612,21 @@ dependencies = [
  "tauri-utils",
  "toml 0.8.23",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-oauth"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eda564acdb23185caf700f89dd6e5d4540225d6a991516b2cad0cbcf27e4dcd3"
+dependencies = [
+ "httparse",
+ "log",
+ "serde",
+ "tauri 2.7.0",
+ "tauri-plugin",
+ "thiserror 1.0.69",
+ "url",
 ]
 
 [[package]]

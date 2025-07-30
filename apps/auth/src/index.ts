@@ -179,10 +179,10 @@ export default {
       return true;
     }
 
-    // Allow desktop client (localhost callback)
+    // Allow desktop client (localhost callback with any port)
     if (input.clientID === 'desktop' && 
         input.redirectURI.startsWith('http://localhost:') && 
-        input.redirectURI.includes('/auth/callback')) {
+        input.redirectURI.includes('callback')) {
       console.log("✅ [AUTH] Allowing desktop client:", input.clientID, input.redirectURI);
       return true;
     }

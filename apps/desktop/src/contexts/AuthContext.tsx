@@ -68,21 +68,85 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       
-      // Redirect to OpenAuth server with desktop client configuration
-      const authUrl = import.meta.env.VITE_OPENAUTH_URL || 'https://auth.openagents.com';
-      const redirectUri = 'http://localhost:8080/auth/callback'; // Desktop uses localhost callback
+      // Import Tauri API for invoking backend commands and events
+      const { invoke } = await import('@tauri-apps/api/core');
+      const { openUrl } = await import('@tauri-apps/plugin-opener');
+      const { listen } = await import('@tauri-apps/api/event');
       
+      console.log('🔐 Starting OAuth server...');
+      
+      // Start OAuth server and get the port
+      const port = await invoke('start_oauth_server') as number;
+      console.log('🌐 OAuth server started on port:', port);
+      
+      // Build OAuth URL with the actual port
+      const authUrl = import.meta.env.VITE_OPENAUTH_URL || 'https://auth.openagents.com';
+      const redirectUri = `http://localhost:${port}/callback`;
       const loginUrl = `${authUrl}/authorize?provider=github&client_id=desktop&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code`;
       
-      // Open external URL using Tauri opener plugin
-      const { openUrl } = await import('@tauri-apps/plugin-opener');
+      console.log('🌐 Opening OAuth URL:', loginUrl);
+      
+      // Set up event listener for OAuth success
+      const oauthPromise = new Promise<{ code: string; state?: string }>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('OAuth flow timed out'));
+        }, 300000); // 5 minutes timeout
+        
+        // Listen for OAuth success event
+        listen('oauth_success', (event) => {
+          clearTimeout(timeout);
+          console.log('✅ OAuth success event received:', event.payload);
+          resolve(event.payload as { code: string; state?: string });
+        });
+        
+        // Listen for OAuth error event
+        listen('oauth_error', (event) => {
+          clearTimeout(timeout);
+          console.error('❌ OAuth error event received:', event.payload);
+          reject(new Error(`OAuth failed: ${event.payload}`));
+        });
+      });
+      
+      // Open OAuth URL in browser
       await openUrl(loginUrl);
       
-      // TODO: Set up localhost server to handle callback
-      // For now, the callback will need to be handled by a temporary server
+      // Wait for OAuth callback
+      const oauthResult = await oauthPromise;
+      
+      if (oauthResult?.code) {
+        console.log('✅ OAuth code received, exchanging for tokens...');
+        
+        // Exchange code for access token
+        const tokens = await invoke('exchange_oauth_code', {
+          code: oauthResult.code,
+          clientId: 'desktop'
+        }) as { access_token: string; token_type: string };
+        
+        if (tokens?.access_token) {
+          console.log('✅ Access token received, fetching user info...');
+          
+          // Get user info using access token
+          const userInfo = await invoke('get_user_info', {
+            accessToken: tokens.access_token
+          }) as User;
+          
+          // Store tokens and user info
+          localStorage.setItem('openauth_token', tokens.access_token);
+          localStorage.setItem('openauth_user', JSON.stringify(userInfo));
+          
+          setToken(tokens.access_token);
+          setUser(userInfo);
+          
+          console.log('🎉 Authentication successful!');
+        } else {
+          throw new Error('No access token received');
+        }
+      } else {
+        throw new Error('No authorization code received');
+      }
       
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('❌ Login failed:', error);
       throw error;
     } finally {
       setIsLoading(false);
