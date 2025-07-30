@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Effect, Runtime } from 'effect';
+// import { Effect, Runtime } from 'effect';
 
 // Platform detection utilities (we'll need to implement these)
 interface PlatformInfo {
@@ -174,7 +174,7 @@ export function useDevicePresence(config: UseDevicePresenceConfig = {}): UseDevi
       ] as DeviceConnection[];
     },
 
-    sendHeartbeat: async (deviceId: string, sessionToken: string) => {
+    sendHeartbeat: async (deviceId: string, _sessionToken: string) => {
       console.log('💓 [DEVICE-PRESENCE] Sending heartbeat for:', deviceId);
       await new Promise(resolve => setTimeout(resolve, 100));
       return null;
