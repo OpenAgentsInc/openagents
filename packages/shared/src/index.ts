@@ -7,6 +7,11 @@ export * from './services/SimpleStorageService';
 export * from './services/SimpleAPMService';
 export * from './services/SimpleAuthService';
 
+// Dedicated Effect-TS Service Layer (Issue #1286)
+export * from './types/session-service-types';
+export * from './services/ClaudeSessionServiceSimple';
+export * from './services/SessionResilienceServiceSimple';
+
 // Effect-TS React hooks (Simple versions using basic Effect patterns)
 export * from './hooks/useSimpleAPM';
 export * from './hooks/useSimpleAuth';
