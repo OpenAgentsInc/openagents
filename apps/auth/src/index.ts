@@ -179,6 +179,14 @@ export default {
       return true;
     }
 
+    // Allow desktop client (localhost callback)
+    if (input.clientID === 'desktop' && 
+        input.redirectURI.startsWith('http://localhost:') && 
+        input.redirectURI.includes('/auth/callback')) {
+      console.log("✅ [AUTH] Allowing desktop client:", input.clientID, input.redirectURI);
+      return true;
+    }
+
     // Allow localhost redirects (for development)
     if (input.redirectURI.includes('localhost')) {
       console.log("✅ [AUTH] Allowing localhost redirect:", input.redirectURI);
