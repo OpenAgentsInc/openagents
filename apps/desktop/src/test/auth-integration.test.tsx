@@ -80,8 +80,10 @@ describe('Authentication Integration - Logic Tests', () => {
       handleAuthEvent(mobileEvent)
 
       expect(events).toHaveLength(2)
-      expect(events[0].source).toBe('desktop')
-      expect(events[1].source).toBe('mobile')
+      expect(events[0]).toBeDefined()
+      expect(events[1]).toBeDefined()
+      expect(events[0]!.source).toBe('desktop')
+      expect(events[1]!.source).toBe('mobile')
     })
   })
 

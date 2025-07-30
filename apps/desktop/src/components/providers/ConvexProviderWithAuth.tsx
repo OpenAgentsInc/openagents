@@ -34,18 +34,21 @@ export const ConvexProviderWithAuth: React.FC<ConvexProviderWithAuthProps> = ({ 
       
       // Decode JWT to check its contents (for debugging)
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        console.log('🔍 [CONVEX] JWT payload:', {
-          iss: payload.iss,
-          aud: payload.aud,
-          sub: payload.sub,
-          exp: payload.exp,
-          iat: payload.iat
-        });
-        
-        // Check if JWT has required fields
-        if (!payload.iat) {
-          console.warn('⚠️ [CONVEX] JWT missing iat field - this may cause auth issues');
+        const tokenParts = token.split('.');
+        if (tokenParts.length >= 2 && tokenParts[1]) {
+          const payload = JSON.parse(atob(tokenParts[1]));
+          console.log('🔍 [CONVEX] JWT payload:', {
+            iss: payload.iss,
+            aud: payload.aud,
+            sub: payload.sub,
+            exp: payload.exp,
+            iat: payload.iat
+          });
+          
+          // Check if JWT has required fields
+          if (!payload.iat) {
+            console.warn('⚠️ [CONVEX] JWT missing iat field - this may cause auth issues');
+          }
         }
       } catch (e) {
         console.error('❌ [CONVEX] Failed to decode JWT:', e);

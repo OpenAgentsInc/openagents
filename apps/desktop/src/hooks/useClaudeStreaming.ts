@@ -297,8 +297,9 @@ export function useClaudeStreaming({
     // Find the last user message from Convex efficiently
     let lastUserMessage: typeof convexMessages[0] | null = null;
     for (let i = convexMessages.length - 1; i >= 0; i--) {
-      if (convexMessages[i].messageType === 'user') {
-        lastUserMessage = convexMessages[i];
+      const message = convexMessages[i];
+      if (message && message.messageType === 'user') {
+        lastUserMessage = message;
         break;
       }
     }

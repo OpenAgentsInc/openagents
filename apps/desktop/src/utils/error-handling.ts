@@ -273,8 +273,13 @@ export const withRateLimit = (
       const now = Date.now()
       
       // Clean old requests
-      while (requests.length > 0 && requests[0] < now - windowMs) {
-        requests.shift()
+      while (requests.length > 0) {
+        const firstRequest = requests[0];
+        if (firstRequest && firstRequest < now - windowMs) {
+          requests.shift();
+        } else {
+          break;
+        }
       }
       
       if (requests.length >= maxRequests) {

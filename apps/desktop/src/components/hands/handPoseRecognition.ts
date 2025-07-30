@@ -64,6 +64,11 @@ function isFingerCurled(
 function isPinchClosed(landmarks: HandLandmarks): boolean {
   const thumbTip = landmarks[LandmarkIndex.THUMB_TIP];
   const indexTip = landmarks[LandmarkIndex.INDEX_FINGER_TIP];
+  
+  if (!thumbTip || !indexTip) {
+    return false; // Cannot determine pinch without required landmarks
+  }
+  
   const pinchDist = distance(thumbTip, indexTip);
   const pinchThreshold = 0.1;
   const closeFingers = pinchDist < pinchThreshold;
@@ -74,31 +79,41 @@ function isPinchClosed(landmarks: HandLandmarks): boolean {
 
 function isFist(landmarks: HandLandmarks): boolean {
   const wrist = landmarks[LandmarkIndex.WRIST];
+  if (!wrist) return false;
+
+  // Check index finger
+  const indexTip = landmarks[LandmarkIndex.INDEX_FINGER_TIP];
+  const indexPip = landmarks[LandmarkIndex.INDEX_FINGER_PIP];
+  const indexMcp = landmarks[LandmarkIndex.INDEX_FINGER_MCP];
+  
+  // Check middle finger
+  const middleTip = landmarks[LandmarkIndex.MIDDLE_FINGER_TIP];
+  const middlePip = landmarks[LandmarkIndex.MIDDLE_FINGER_PIP];
+  const middleMcp = landmarks[LandmarkIndex.MIDDLE_FINGER_MCP];
+  
+  // Check ring finger
+  const ringTip = landmarks[LandmarkIndex.RING_FINGER_TIP];
+  const ringPip = landmarks[LandmarkIndex.RING_FINGER_PIP];
+  const ringMcp = landmarks[LandmarkIndex.RING_FINGER_MCP];
+  
+  // Check pinky
+  const pinkyTip = landmarks[LandmarkIndex.PINKY_TIP];
+  const pinkyPip = landmarks[LandmarkIndex.PINKY_PIP];
+  const pinkyMcp = landmarks[LandmarkIndex.PINKY_MCP];
+
+  // Return false if any required landmarks are missing
+  if (!indexTip || !indexPip || !indexMcp ||
+      !middleTip || !middlePip || !middleMcp ||
+      !ringTip || !ringPip || !ringMcp ||
+      !pinkyTip || !pinkyPip || !pinkyMcp) {
+    return false;
+  }
+
   const fingersCurled =
-    isFingerCurled(
-      landmarks[LandmarkIndex.INDEX_FINGER_TIP],
-      landmarks[LandmarkIndex.INDEX_FINGER_PIP],
-      landmarks[LandmarkIndex.INDEX_FINGER_MCP],
-      wrist,
-    ) &&
-    isFingerCurled(
-      landmarks[LandmarkIndex.MIDDLE_FINGER_TIP],
-      landmarks[LandmarkIndex.MIDDLE_FINGER_PIP],
-      landmarks[LandmarkIndex.MIDDLE_FINGER_MCP],
-      wrist,
-    ) &&
-    isFingerCurled(
-      landmarks[LandmarkIndex.RING_FINGER_TIP],
-      landmarks[LandmarkIndex.RING_FINGER_PIP],
-      landmarks[LandmarkIndex.RING_FINGER_MCP],
-      wrist,
-    ) &&
-    isFingerCurled(
-      landmarks[LandmarkIndex.PINKY_TIP],
-      landmarks[LandmarkIndex.PINKY_PIP],
-      landmarks[LandmarkIndex.PINKY_MCP],
-      wrist,
-    );
+    isFingerCurled(indexTip, indexPip, indexMcp, wrist) &&
+    isFingerCurled(middleTip, middlePip, middleMcp, wrist) &&
+    isFingerCurled(ringTip, ringPip, ringMcp, wrist) &&
+    isFingerCurled(pinkyTip, pinkyPip, pinkyMcp, wrist);
 
   if (!fingersCurled) return false;
 
@@ -106,45 +121,55 @@ function isFist(landmarks: HandLandmarks): boolean {
   const thumbMcp = landmarks[LandmarkIndex.THUMB_MCP];
   const thumbPip = landmarks[LandmarkIndex.INDEX_FINGER_PIP];
 
+  if (!thumbTip || !thumbMcp || !thumbPip) {
+    return false; // Cannot determine thumb position without required landmarks
+  }
+
   const thumbCurledOrAcross =
     thumbTip.y > thumbMcp.y ||
     distance(thumbTip, thumbPip) <
-      distance(
-        landmarks[LandmarkIndex.WRIST],
-        landmarks[LandmarkIndex.THUMB_MCP],
-      ) *
-        0.8;
+      distance(wrist, thumbMcp) * 0.8; // wrist already checked above
 
   return thumbCurledOrAcross;
 }
 
 function areAllFingersExtended(landmarks: HandLandmarks): boolean {
+  // Get all required landmarks
+  const indexTip = landmarks[LandmarkIndex.INDEX_FINGER_TIP];
+  const indexPip = landmarks[LandmarkIndex.INDEX_FINGER_PIP];
+  const indexMcp = landmarks[LandmarkIndex.INDEX_FINGER_MCP];
+  
+  const middleTip = landmarks[LandmarkIndex.MIDDLE_FINGER_TIP];
+  const middlePip = landmarks[LandmarkIndex.MIDDLE_FINGER_PIP];
+  const middleMcp = landmarks[LandmarkIndex.MIDDLE_FINGER_MCP];
+  
+  const ringTip = landmarks[LandmarkIndex.RING_FINGER_TIP];
+  const ringPip = landmarks[LandmarkIndex.RING_FINGER_PIP];
+  const ringMcp = landmarks[LandmarkIndex.RING_FINGER_MCP];
+  
+  const pinkyTip = landmarks[LandmarkIndex.PINKY_TIP];
+  const pinkyPip = landmarks[LandmarkIndex.PINKY_PIP];
+  const pinkyMcp = landmarks[LandmarkIndex.PINKY_MCP];
+  
+  const thumbTip = landmarks[LandmarkIndex.THUMB_TIP];
+  const thumbIp = landmarks[LandmarkIndex.THUMB_IP];
+  const thumbMcp = landmarks[LandmarkIndex.THUMB_MCP];
+
+  // Return false if any required landmarks are missing
+  if (!indexTip || !indexPip || !indexMcp ||
+      !middleTip || !middlePip || !middleMcp ||
+      !ringTip || !ringPip || !ringMcp ||
+      !pinkyTip || !pinkyPip || !pinkyMcp ||
+      !thumbTip || !thumbIp || !thumbMcp) {
+    return false;
+  }
+
   return (
-    isFingerExtended(
-      landmarks[LandmarkIndex.INDEX_FINGER_TIP],
-      landmarks[LandmarkIndex.INDEX_FINGER_PIP],
-      landmarks[LandmarkIndex.INDEX_FINGER_MCP],
-    ) &&
-    isFingerExtended(
-      landmarks[LandmarkIndex.MIDDLE_FINGER_TIP],
-      landmarks[LandmarkIndex.MIDDLE_FINGER_PIP],
-      landmarks[LandmarkIndex.MIDDLE_FINGER_MCP],
-    ) &&
-    isFingerExtended(
-      landmarks[LandmarkIndex.RING_FINGER_TIP],
-      landmarks[LandmarkIndex.RING_FINGER_PIP],
-      landmarks[LandmarkIndex.RING_FINGER_MCP],
-    ) &&
-    isFingerExtended(
-      landmarks[LandmarkIndex.PINKY_TIP],
-      landmarks[LandmarkIndex.PINKY_PIP],
-      landmarks[LandmarkIndex.PINKY_MCP],
-    ) &&
-    isFingerExtended(
-      landmarks[LandmarkIndex.THUMB_TIP],
-      landmarks[LandmarkIndex.THUMB_IP],
-      landmarks[LandmarkIndex.THUMB_MCP],
-    )
+    isFingerExtended(indexTip, indexPip, indexMcp) &&
+    isFingerExtended(middleTip, middlePip, middleMcp) &&
+    isFingerExtended(ringTip, ringPip, ringMcp) &&
+    isFingerExtended(pinkyTip, pinkyPip, pinkyMcp) &&
+    isFingerExtended(thumbTip, thumbIp, thumbMcp)
   );
 }
 
@@ -157,6 +182,10 @@ function isFlatHand(landmarks: HandLandmarks): boolean {
   const pinkyTip = landmarks[LandmarkIndex.PINKY_TIP];
   const indexMcp = landmarks[LandmarkIndex.INDEX_FINGER_MCP];
   const pinkyMcp = landmarks[LandmarkIndex.PINKY_MCP];
+
+  if (!indexTip || !pinkyTip || !indexMcp || !pinkyMcp) {
+    return false; // Cannot determine hand spread without required landmarks
+  }
 
   const tipSpread = distance(indexTip, pinkyTip);
   const mcpSpread = distance(indexMcp, pinkyMcp);
@@ -174,6 +203,10 @@ function isOpenHand(landmarks: HandLandmarks): boolean {
   const indexMcp = landmarks[LandmarkIndex.INDEX_FINGER_MCP];
   const pinkyMcp = landmarks[LandmarkIndex.PINKY_MCP];
 
+  if (!indexTip || !pinkyTip || !indexMcp || !pinkyMcp) {
+    return false; // Cannot determine hand spread without required landmarks
+  }
+
   const tipSpread = distance(indexTip, pinkyTip);
   const mcpSpread = distance(indexMcp, pinkyMcp);
 
@@ -182,38 +215,39 @@ function isOpenHand(landmarks: HandLandmarks): boolean {
 
 function isTwoFingerV(landmarks: HandLandmarks): boolean {
   const wrist = landmarks[LandmarkIndex.WRIST];
-  const indexExtended = isFingerExtended(
-    landmarks[LandmarkIndex.INDEX_FINGER_TIP],
-    landmarks[LandmarkIndex.INDEX_FINGER_PIP],
-    landmarks[LandmarkIndex.INDEX_FINGER_MCP],
-  );
-  const middleExtended = isFingerExtended(
-    landmarks[LandmarkIndex.MIDDLE_FINGER_TIP],
-    landmarks[LandmarkIndex.MIDDLE_FINGER_PIP],
-    landmarks[LandmarkIndex.MIDDLE_FINGER_MCP],
-  );
+  
+  // Get all required landmarks
+  const indexTip = landmarks[LandmarkIndex.INDEX_FINGER_TIP];
+  const indexPip = landmarks[LandmarkIndex.INDEX_FINGER_PIP];
+  const indexMcp = landmarks[LandmarkIndex.INDEX_FINGER_MCP];
+  
+  const middleTip = landmarks[LandmarkIndex.MIDDLE_FINGER_TIP];
+  const middlePip = landmarks[LandmarkIndex.MIDDLE_FINGER_PIP];
+  const middleMcp = landmarks[LandmarkIndex.MIDDLE_FINGER_MCP];
+  
+  const ringTip = landmarks[LandmarkIndex.RING_FINGER_TIP];
+  const ringPip = landmarks[LandmarkIndex.RING_FINGER_PIP];
+  const ringMcp = landmarks[LandmarkIndex.RING_FINGER_MCP];
+  
+  const pinkyTip = landmarks[LandmarkIndex.PINKY_TIP];
+  const pinkyPip = landmarks[LandmarkIndex.PINKY_PIP];
+  const pinkyMcp = landmarks[LandmarkIndex.PINKY_MCP];
 
-  const ringCurled = isFingerCurled(
-    landmarks[LandmarkIndex.RING_FINGER_TIP],
-    landmarks[LandmarkIndex.RING_FINGER_PIP],
-    landmarks[LandmarkIndex.RING_FINGER_MCP],
-    wrist,
-  );
-  const pinkyCurled = isFingerCurled(
-    landmarks[LandmarkIndex.PINKY_TIP],
-    landmarks[LandmarkIndex.PINKY_PIP],
-    landmarks[LandmarkIndex.PINKY_MCP],
-    wrist,
-  );
+  // Check if required landmarks exist
+  if (!wrist || !indexTip || !indexPip || !indexMcp ||
+      !middleTip || !middlePip || !middleMcp ||
+      !ringTip || !ringPip || !ringMcp ||
+      !pinkyTip || !pinkyPip || !pinkyMcp) {
+    return false;
+  }
+
+  const indexExtended = isFingerExtended(indexTip, indexPip, indexMcp);
+  const middleExtended = isFingerExtended(middleTip, middlePip, middleMcp);
+  const ringCurled = isFingerCurled(ringTip, ringPip, ringMcp, wrist);
+  const pinkyCurled = isFingerCurled(pinkyTip, pinkyPip, pinkyMcp, wrist);
 
   if (indexExtended && middleExtended && ringCurled && pinkyCurled) {
-    const indexTip = landmarks[LandmarkIndex.INDEX_FINGER_TIP];
-    const middleTip = landmarks[LandmarkIndex.MIDDLE_FINGER_TIP];
-    const wristToIndexMcp = distance(
-      landmarks[LandmarkIndex.WRIST],
-      landmarks[LandmarkIndex.INDEX_FINGER_MCP],
-    );
-
+    const wristToIndexMcp = distance(wrist, indexMcp);
     const vSpreadThreshold = wristToIndexMcp * 0.3;
     return distance(indexTip, middleTip) > vSpreadThreshold;
   }

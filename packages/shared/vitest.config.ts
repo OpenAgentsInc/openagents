@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
+    environmentMatchGlobs: [
+      ['**/hooks/**', 'jsdom'], // React hooks need DOM environment
+    ],
     globals: true,
     coverage: {
       provider: 'v8',

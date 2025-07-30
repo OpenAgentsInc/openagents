@@ -67,6 +67,8 @@ export const useHandTracking = () => {
       if (!draggingPaneId) {
         for (let i = panes.length - 1; i >= 0; i--) {
           const pane = panes[i];
+          if (!pane) continue; // Skip if pane is undefined
+          
           if (
             pinchMidpoint.x >= pane.x &&
             pinchMidpoint.x <= pane.x + pane.width &&

@@ -22,7 +22,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
-    // "noUncheckedIndexedAccess": true, // TODO: Enable with targeted fixes for 40+ errors
+    "noUncheckedIndexedAccess": true, // Enable to check for potential type errors
 
     /* Path mapping */
     "baseUrl": ".",

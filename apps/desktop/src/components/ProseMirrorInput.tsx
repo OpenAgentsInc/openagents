@@ -87,7 +87,7 @@ export const ProseMirrorInput = forwardRef<ProseMirrorInputRef, ProseMirrorInput
         }),
         keymap({
           'Shift-Enter': (state: EditorState, dispatch: any) => {
-            if (dispatch) {
+            if (dispatch && state.schema.nodes.hard_break) {
               const br = state.schema.nodes.hard_break.create();
               const tr = state.tr.replaceSelectionWith(br);
               dispatch(tr);

@@ -80,6 +80,7 @@ export function useHandTracking({ enabled }: UseHandTrackingOptions) {
           index++
         ) {
           const classification = results.multiHandedness[index];
+          if (!classification) continue; // Skip if classification is missing
           const handedness = classification.label;
           const rawLandmarks = results.multiHandLandmarks[index] as HandLandmarks;
           
@@ -127,10 +128,12 @@ export function useHandTracking({ enabled }: UseHandTrackingOptions) {
           if (index === 0) {
             if (landmarks.length > 8) {
               const indexFingerTip = landmarks[8];
-              setHandPosition({
-                x: indexFingerTip.x,
-                y: indexFingerTip.y,
-              });
+              if (indexFingerTip) {
+                setHandPosition({
+                  x: indexFingerTip.x,
+                  y: indexFingerTip.y,
+                });
+              }
             }
           }
 

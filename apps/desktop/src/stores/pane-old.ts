@@ -197,6 +197,7 @@ export const usePaneStore = create<PaneStore>()(
 
           const newPanes = [...state.panes];
           const [pane] = newPanes.splice(paneIndex, 1);
+          if (!pane) return state; // Guard against undefined pane
           newPanes.push(pane);
 
           return {
@@ -374,7 +375,8 @@ export const usePaneStore = create<PaneStore>()(
           
           // Reset active pane ID if it was pointing to a chat pane
           if (state.activePaneId && !state.panes.find(p => p.id === state.activePaneId)) {
-            state.activePaneId = state.panes.length > 0 ? state.panes[0].id : null;
+            const firstPane = state.panes[0];
+            state.activePaneId = state.panes.length > 0 && firstPane ? firstPane.id : null;
           }
         }
       },
