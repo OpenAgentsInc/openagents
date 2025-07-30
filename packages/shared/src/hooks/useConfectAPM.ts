@@ -14,11 +14,11 @@ import {
 } from '../services/SimpleAPMService';
 import type { AuthState } from '../services/SimpleAuthService';
 // Import types only to avoid runtime dependency issues
-interface ConfectIntegrationConfig {
-  convexUrl: string;
-  enableRealTimeSync?: boolean;
-  debugMode?: boolean;
-}
+// interface ConfectIntegrationConfig {
+//   convexUrl: string;
+//   enableRealTimeSync?: boolean;
+//   debugMode?: boolean;
+// }
 
 interface UseConfectAPMConfig extends APMTrackingOptions {
   convexUrl: string;
@@ -95,21 +95,21 @@ export function useConfectAPM(config: UseConfectAPMConfig): UseConfectAPMReturn 
           });
           
           // Start periodic sync with enhanced backend integration
-          const enhancedFlushData = (sessionDataRef: Ref.Ref<APMSessionData>, isActive: boolean) =>
-            Effect.gen(function* () {
-              const sessionData = yield* Ref.get(sessionDataRef);
-              
-              // Use enhanced backend sync that includes user association
-              yield* confectServices.syncAPMData(sessionData, config.authState);
-              
-              // Reset counters after successful sync
-              yield* Ref.update(sessionDataRef, data => ({
-                ...data,
-                sessionStart: Date.now(),
-                messagesSent: 0,
-                sessionsCreated: 0,
-              }));
-            });
+          // const _enhancedFlushData = (sessionDataRef: Ref.Ref<APMSessionData>, _isActive: boolean) =>
+          //   Effect.gen(function* () {
+          //     const sessionData = yield* Ref.get(sessionDataRef);
+          //     
+          //     // Use enhanced backend sync that includes user association
+          //     yield* confectServices.syncAPMData(sessionData, config.authState);
+          //     
+          //     // Reset counters after successful sync
+          //     yield* Ref.update(sessionDataRef, data => ({
+          //       ...data,
+          //       sessionStart: Date.now(),
+          //       messagesSent: 0,
+          //       sessionsCreated: 0,
+          //     }));
+          //   });
           
           const periodicSyncFiber = yield* startPeriodicSync(
             sessionDataRefValue,
