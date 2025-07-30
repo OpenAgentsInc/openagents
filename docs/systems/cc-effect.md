@@ -16,8 +16,9 @@ Claude Code sessions in this system are **not implemented as a dedicated Effect-
 6. [Error Handling & Type Safety](#error-handling--type-safety)
 7. [Performance & Scalability](#performance--scalability)
 8. [Integration with React](#integration-with-react)
-9. [Testing Patterns](#testing-patterns)
-10. [Future Enhancements](#future-enhancements)
+9. [Mobile UI Interaction Flow](#mobile-ui-interaction-flow)
+10. [Testing Patterns](#testing-patterns)
+11. [Future Enhancements](#future-enhancements)
 
 ## Architecture Overview
 
@@ -775,6 +776,578 @@ const useEffectService = () => {
   return { runEffect };
 };
 ```
+
+## Mobile UI Interaction Flow
+
+This section provides a comprehensive analysis of how the mobile UI interacts with the Effect-TS session system, including the complete flow from user button clicks to real-time session updates.
+
+### UI Component Architecture
+
+The mobile app uses a layered component architecture that integrates seamlessly with Effect-TS session operations:
+
+```mermaid
+graph TB
+    subgraph "Mobile UI Layer"
+        CC[ClaudeCodeMobile.tsx]
+        SWS[ScreenWithSidebar.tsx]  
+        SC[SidebarContent.tsx]
+        CL[ChatList.tsx]
+    end
+    
+    subgraph "State Management"
+        CH[Convex Hooks]
+        APM[APM Tracking]
+        AUTH[Auth Context]
+    end
+    
+    subgraph "Effect Operations"
+        CCS[createClaudeSession]
+        ACM[addClaudeMessage]
+        USS[updateSessionStatus]
+        GPS[getPendingMobileSessions]
+    end
+    
+    subgraph "Real-time Updates"
+        UQ[useQuery - Live Sessions]
+        UM[useMutation - Session Ops]
+        RT[Real-time Subscriptions]
+    end
+    
+    CC --> CH
+    CC --> APM
+    CC --> AUTH
+    SWS --> CC
+    SC --> SWS
+    CH --> CCS
+    CH --> ACM
+    CH --> USS
+    CH --> GPS
+    CH --> UQ
+    CH --> UM
+    UQ --> RT
+    UM --> RT
+    
+    style CC fill:#e1f5fe
+    style CH fill:#f3e5f5
+    style CCS fill:#e8f5e8
+    style RT fill:#fff3e0
+```
+
+### Session Creation Flow: Complete User Journey
+
+When a user clicks the "Create Session" button, the following comprehensive flow is triggered:
+
+#### 1. UI Button Interactions
+
+**Two Entry Points for Session Creation:**
+
+1. **Header Plus Button** (`ScreenWithSidebar.tsx` line 126):
+   ```typescript
+   <Pressable
+     onPress={() => onNewChat?.()}
+     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+   >
+     <IconPlus />
+   </Pressable>
+   ```
+
+2. **Sidebar New Chat Button** (`ScreenWithSidebar.tsx` line 97):
+   ```typescript
+   <SidebarContent
+     onNewChat={handleNewChatFromSidebar}
+     // ... other props
+   />
+   ```
+
+Both buttons trigger the same `handleNewChat` function in `ClaudeCodeMobile.tsx`:
+
+```typescript
+const handleNewChat = () => {
+  setShowCreateModal(true);  // Opens the session creation modal
+};
+```
+
+#### 2. Modal Interaction & Form State
+
+The create session modal presents three input fields with Effect-TS-friendly validation:
+
+```typescript
+// Session creation state with defaults from environment
+const [newProjectPath, setNewProjectPath] = useState(DEFAULT_PROJECT_PATH);
+const [newSessionTitle, setNewSessionTitle] = useState(`Testing ${generateRandomString()}`);
+const [initialMessage, setInitialMessage] = useState(DEFAULT_INITIAL_MESSAGE);
+
+// Form validation before Effect-TS operations
+const handleCreateSession = async () => {
+  if (!newProjectPath.trim()) {
+    Alert.alert("Error", "Please enter a project path");
+    return;  // Prevent invalid Effect operations
+  }
+  // ... Effect-TS session creation continues
+};
+```
+
+#### 3. Effect-TS Session Creation Pipeline
+
+When the user clicks "Create Session" in the modal, a comprehensive Effect-TS pipeline is triggered:
+
+```typescript
+// Step 1: Call Confect mutation with Effect Schema validation
+const sessionId = await requestDesktopSession({
+  sessionId: `mobile-${Date.now()}`,              // Mobile-specific ID format
+  projectPath: newProjectPath.trim(),
+  createdBy: "mobile" as const,                   // Platform identifier
+  title: newSessionTitle.trim() || undefined,    // Optional title with fallback
+  metadata: {
+    workingDirectory: newProjectPath.trim(),
+    originalMobileSessionId: `mobile-${Date.now()}`,
+  },
+});
+```
+
+This triggers the Effect-TS mutation in `packages/convex/confect/mobile_sync.ts`:
+
+```typescript
+export const requestDesktopSession = mutation({
+  args: RequestDesktopSessionArgs,  // Effect Schema validation
+  returns: RequestDesktopSessionResult,
+  handler: ({ projectPath, initialMessage, title }) =>
+    Effect.gen(function* () {
+      const { db } = yield* ConfectMutationCtx;
+      const user = yield* getAuthenticatedUserEffectMutation;  // Auth check
+
+      const sessionId = `mobile-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+
+      yield* Effect.logInfo(`📱 [CONFECT] requestDesktopSession creating session:`, {
+        sessionId, projectPath, title,
+      });
+
+      // Database insertion with Effect error handling
+      yield* db.insert("claudeSessions", {
+        sessionId,
+        projectPath,
+        title: title ?? `Mobile Session - ${new Date().toLocaleString()}`,
+        status: "active" as const,
+        createdBy: "mobile" as const,
+        lastActivity: Date.now(),
+        userId: user._id,
+      });
+
+      // Initialize sync status for cross-platform coordination
+      yield* db.insert("syncStatus", {
+        sessionId,
+      });
+
+      return sessionId;  // Return to UI layer
+    }),
+});
+```
+
+#### 4. APM Tracking Integration
+
+Immediately after successful session creation, APM tracking is triggered:
+
+```typescript
+// Track session creation for APM (useAPMTracking hook)
+trackSessionCreated();
+
+// APM tracking calls Effect-TS operations:
+const trackDeviceSession = useMutation(api.confect.apm.trackDeviceSession);
+
+// This updates the userDeviceSessions table with Effect patterns
+```
+
+#### 5. UI State Updates & User Feedback
+
+After successful Effect-TS operations, the UI provides immediate feedback:
+
+```typescript
+Alert.alert(
+  "Session Created",
+  `New Claude Code session created! Session ID: ${sessionId}\n\nThe desktop app will automatically start this session.`,
+  [
+    {
+      text: "View Session",
+      onPress: () => {
+        console.log('📱 [MOBILE] User selected to view session:', sessionId);
+        setSelectedSessionId(sessionId);  // Triggers real-time queries
+        setShowCreateModal(false);
+      },
+    },
+    { 
+      text: "OK",
+      onPress: () => setShowCreateModal(false),
+    },
+  ]
+);
+```
+
+#### 6. Real-time Session List Updates
+
+The session list updates automatically through Convex real-time subscriptions:
+
+```typescript
+// Real-time query automatically updates when new sessions are created
+const sessions = useQuery(
+  api.confect.mobile_sync.getPendingMobileSessions, 
+  authReady ? {} : "skip"
+) || [];
+```
+
+This query triggers the Effect-TS operation:
+
+```typescript
+export const getPendingMobileSessions = query({
+  handler: () =>
+    Effect.gen(function* () {
+      const { db } = yield* ConfectQueryCtx;
+
+      const results = yield* db
+        .query("claudeSessions")
+        .withIndex("by_status", (q) => q.eq("status", "active"))
+        .filter((q) => q.eq(q.field("createdBy"), "mobile"))
+        .order("desc")
+        .take(10);
+
+      yield* Effect.logInfo(`🔍 [CONFECT] getPendingMobileSessions query returned: ${results.length} sessions`);
+      
+      return results;  // Automatically triggers UI re-render
+    }),
+});
+```
+
+### Message Sending Flow
+
+When a user types a message and clicks "Send", another Effect-TS pipeline is triggered:
+
+#### 1. Message Input Validation
+
+```typescript
+const handleSendMessage = async (sessionId: string, content: string) => {
+  if (!content.trim()) return;  // Client-side validation
+
+  console.log('💬 [MOBILE] Sending message to session:', {
+    sessionId,
+    contentLength: content.trim().length,
+  });
+  // ... Effect-TS operations continue
+};
+```
+
+#### 2. Effect-TS Message Creation
+
+```typescript
+const messageId = `mobile-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+
+// Confect mutation with Effect error handling
+await addMessage({
+  sessionId,
+  messageId,
+  messageType: "user",
+  content: content.trim(),
+  timestamp: new Date().toISOString(),
+  metadata: { source: "mobile" },
+});
+```
+
+This triggers the Effect-TS operation in `addClaudeMessage`:
+
+```typescript
+export const addClaudeMessage = mutation({
+  handler: ({ sessionId, messageId, messageType, content, timestamp, metadata }) =>
+    Effect.gen(function* () {
+      const { db } = yield* ConfectMutationCtx;
+      const user = yield* getAuthenticatedUserEffectMutation;
+
+      // Duplicate check using Option patterns
+      const existingMessage = yield* db
+        .query("claudeMessages")
+        .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
+        .filter((q) => q.eq(q.field("messageId"), messageId))
+        .first();
+
+      return yield* Option.match(existingMessage, {
+        onSome: (msg) => {
+          yield* Effect.logWarning('⚠️ [CONFECT] Message already exists, skipping duplicate:', messageId);
+          return Effect.succeed(msg._id);
+        },
+        onNone: () =>
+          Effect.gen(function* () {
+            // Insert message with full metadata
+            const messageDoc = yield* db.insert("claudeMessages", {
+              sessionId, messageId, messageType, content, timestamp, metadata,
+            });
+            
+            // Update session activity timestamp
+            const session = yield* db
+              .query("claudeSessions")
+              .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
+              .first();
+
+            yield* Option.match(session, {
+              onSome: (s) => db.patch(s._id, { lastActivity: Date.now() }),
+              onNone: () => Effect.void,
+            });
+
+            return messageDoc;
+          })
+      });
+    }),
+});
+```
+
+#### 3. APM Tracking & Status Updates
+
+```typescript
+// Track message sent for APM
+trackMessageSent();
+
+// Update session status to ensure desktop processing
+await updateSyncStatus({
+  sessionId,
+  status: "active",
+});
+```
+
+### Real-time Message Updates
+
+The mobile app receives real-time message updates through Convex subscriptions integrated with Effect-TS:
+
+#### 1. Live Message Query
+
+```typescript
+const selectedSessionMessages = useQuery(
+  api.confect.mobile_sync.getSessionMessages, 
+  authReady && selectedSessionId ? { sessionId: selectedSessionId } : "skip"
+) || [];
+```
+
+#### 2. Effect-TS Message Retrieval
+
+```typescript
+export const getSessionMessages = query({
+  handler: ({ sessionId, limit }) =>
+    Effect.gen(function* () {
+      const { db, auth } = yield* ConfectQueryCtx;
+      
+      // Authentication check
+      const identity = yield* auth.getUserIdentity();
+      if (Option.isNone(identity)) {
+        return yield* Effect.fail(new Error("Not authenticated"));
+      }
+
+      // Session ownership verification
+      const session = yield* db
+        .query("claudeSessions")
+        .withIndex("by_session_id", (q) => q.eq("sessionId", sessionId))
+        .first();
+
+      if (Option.isNone(session)) {
+        return yield* Effect.fail(new Error("Session not found"));
+      }
+
+      // Retrieve messages with ordering
+      const results = limit 
+        ? yield* queryBuilder.take(limit)
+        : yield* queryBuilder.take(1000);
+
+      yield* Effect.logInfo(`📋 [CONFECT] getSessionMessages returned ${results.length} messages for session ${sessionId}`);
+
+      return results;  // Triggers automatic UI updates
+    }),
+});
+```
+
+### Component State Management
+
+The mobile UI maintains several layers of state that integrate with Effect-TS operations:
+
+#### 1. Authentication State
+
+```typescript
+const { isAuthenticated, user } = useConfectAuth();
+const { isSynced } = useUserSync();
+
+// Authentication is ready when user is authenticated AND synced to Convex
+// This prevents race conditions where queries execute before user sync completes
+const authReady = isAuthenticated && isSynced;
+```
+
+#### 2. Session Selection State
+
+```typescript
+const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+// Session selection triggers new Effect-TS queries
+const handleSessionSelect = (sessionId: string) => {
+  setSelectedSessionId(sessionId);  // Triggers useQuery re-execution
+};
+```
+
+#### 3. Modal State Management
+
+```typescript
+const [showCreateModal, setShowCreateModal] = useState(false);
+
+// Modal state controls when Effect-TS operations can be triggered
+const handleNewChat = () => {
+  setShowCreateModal(true);
+};
+```
+
+### Error Handling in UI Layer
+
+The mobile UI includes comprehensive error handling that integrates with Effect-TS error patterns:
+
+#### 1. Session Creation Errors
+
+```typescript
+try {
+  const sessionId = await requestDesktopSession({...});
+  // Success path
+} catch (error) {
+  console.error("❌ [MOBILE] Failed to create session:", error);
+  Alert.alert("Error", "Failed to create session. Please try again.");
+}
+```
+
+#### 2. Message Sending Errors
+
+```typescript
+try {
+  await addMessage({...});
+  trackMessageSent();
+} catch (error) {
+  console.error("❌ [MOBILE] Failed to send message:", error);
+  Alert.alert("Error", "Failed to send message. Please try again.");
+}
+```
+
+#### 3. Component-Level Error Boundaries
+
+```typescript
+<ErrorBoundary
+  onError={(error, errorInfo) => {
+    const timestamp = new Date().toISOString();
+    console.error(`❌ [CLAUDE_CODE_MOBILE] ${timestamp} Component error:`, {
+      error: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+      user: user?.githubUsername,
+      isAuthenticated,
+      selectedSessionId
+    });
+    // TODO: Report to crash analytics service
+  }}
+>
+  {/* UI components */}
+</ErrorBoundary>
+```
+
+### Session Object Updates & Real-time Sync
+
+The session object is updated through several mechanisms that integrate with Effect-TS:
+
+#### 1. Automatic Query Re-execution
+
+When Effect-TS mutations modify session data, Convex automatically triggers query re-execution:
+
+```typescript
+// Any mutation that modifies claudeSessions table triggers this query to re-run
+const sessions = useQuery(api.confect.mobile_sync.getPendingMobileSessions, {});
+```
+
+#### 2. Last Activity Tracking
+
+Every user interaction updates the session's `lastActivity` timestamp through Effect-TS operations:
+
+```typescript
+// In addClaudeMessage mutation
+yield* db.patch(session.value._id, {
+  lastActivity: Date.now(),  // Triggers real-time updates
+});
+```
+
+#### 3. Status Synchronization
+
+Session status is synchronized across platforms through Effect-TS status updates:
+
+```typescript
+await updateSyncStatus({
+  sessionId,
+  status: "active",  // Desktop will pick up this change
+});
+```
+
+### Performance Optimizations
+
+The mobile UI includes several performance optimizations that work with Effect-TS:
+
+#### 1. Conditional Query Execution
+
+```typescript
+// Queries only execute when authentication is complete
+const sessions = useQuery(
+  api.confect.mobile_sync.getPendingMobileSessions, 
+  authReady ? {} : "skip"  // Prevents unnecessary Effect operations
+) || [];
+```
+
+#### 2. Message Input Debouncing
+
+```typescript
+// Clear message input when switching sessions to prevent cross-session confusion
+useEffect(() => {
+  setNewMessage("");
+}, [selectedSessionId]);
+```
+
+#### 3. Efficient List Rendering
+
+```typescript
+<FlatList
+  data={selectedSessionMessages}
+  keyExtractor={(item) => item._id}  // Stable keys for React optimization
+  renderItem={renderMessageItem}
+  inverted  // New messages appear at bottom
+  showsVerticalScrollIndicator={false}
+/>
+```
+
+### Development & Debugging Features
+
+The mobile UI includes extensive logging that integrates with Effect-TS logging patterns:
+
+#### 1. Session Creation Logging
+
+```typescript
+console.log('📱 [MOBILE] Creating new Claude Code session with:', {
+  projectPath: newProjectPath.trim(),
+  title: newSessionTitle.trim() || undefined,
+  hasInitialMessage: !!initialMessage.trim()
+});
+```
+
+#### 2. Message Flow Logging
+
+```typescript
+console.log('💬 [MOBILE] Sending message to session:', {
+  sessionId,
+  contentLength: content.trim().length,
+  content: content.trim().substring(0, 100) + (content.trim().length > 100 ? '...' : '')
+});
+```
+
+#### 3. Effect-TS Operation Logging
+
+```typescript
+// In Effect-TS operations
+yield* Effect.logInfo(`📱 [CONFECT] requestDesktopSession creating session:`, {
+  sessionId, projectPath, title,
+});
+```
+
+This comprehensive mobile UI interaction flow demonstrates how the Effect-TS session system integrates seamlessly with React Native components, providing type-safe, error-handled, and real-time session management across the entire user experience.
 
 ## Testing Patterns
 
