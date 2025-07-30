@@ -95,12 +95,13 @@ pub async fn wait_for_oauth_callback() -> Result<OAuthResult, String> {
     Err("Use event-based approach instead".to_string())
 }
 
-/// Exchange OAuth code for access token
+/// Exchange OAuth code for access token and user info
 #[command]
 pub async fn exchange_oauth_code(
     code: String,
     client_id: String,
-) -> Result<AuthTokens, String> {
+    redirect_uri: String,
+) -> Result<serde_json::Value, String> {
     info!("🔄 [OAUTH] Exchanging authorization code for access token");
     
     // Create HTTP client
@@ -110,7 +111,7 @@ pub async fn exchange_oauth_code(
     let mut params = HashMap::new();
     params.insert("client_id", client_id);
     params.insert("code", code);
-    params.insert("redirect_uri", "http://localhost:8080/auth/callback".to_string());
+    params.insert("redirect_uri", redirect_uri);
     
     // Make token exchange request to auth service
     let auth_url = std::env::var("VITE_OPENAUTH_URL")
@@ -127,10 +128,10 @@ pub async fn exchange_oauth_code(
     {
         Ok(response) => {
             if response.status().is_success() {
-                match response.json::<AuthTokens>().await {
-                    Ok(tokens) => {
-                        info!("✅ [OAUTH] Successfully exchanged code for tokens");
-                        Ok(tokens)
+                match response.json::<serde_json::Value>().await {
+                    Ok(token_response) => {
+                        info!("✅ [OAUTH] Successfully exchanged code for tokens and user info");
+                        Ok(token_response)
                     }
                     Err(err) => {
                         error!("❌ [OAUTH] Failed to parse token response: {}", err);

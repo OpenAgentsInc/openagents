@@ -141,6 +141,185 @@ export default {
         return new Response('Internal server error', { status: 500 });
       }
     }
+
+    // Handle /token endpoint for OAuth code exchange
+    if (url.pathname === '/token' && request.method === 'POST') {
+      try {
+        const formData = await request.formData();
+        const clientId = formData.get('client_id') as string;
+        const code = formData.get('code') as string;
+        const redirectUri = formData.get('redirect_uri') as string;
+
+        console.log(`🔄 [AUTH] Token exchange request - clientId: ${clientId}, redirectUri: ${redirectUri}`);
+
+        if (!clientId || !code || !redirectUri) {
+          return new Response(JSON.stringify({
+            error: "invalid_request",
+            error_description: "Missing required parameters: client_id, code, redirect_uri"
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Validate client and redirect URI
+        const isAllowed = await (async (input: any, req: any) => {
+          console.log("🔍 [AUTH] Allow check - clientID:", input.clientID, "redirectURI:", input.redirectURI);
+          
+          // Allow mobile app with custom URL scheme (GitHub OAuth App)
+          if (input.clientID === 'Ov23lirHI1DWTzZ1zT1u' && 
+              input.redirectURI === 'openagents://auth/callback') {
+            console.log("✅ [AUTH] Allowing mobile client:", input.clientID, input.redirectURI);
+            return true;
+          }
+
+          // Allow dashboard client (dashboard.openagents.com)
+          if (input.clientID === 'dashboard' && 
+              input.redirectURI === 'https://dashboard.openagents.com/api/callback') {
+            console.log("✅ [AUTH] Allowing dashboard client:", input.clientID, input.redirectURI);
+            return true;
+          }
+
+          // Allow desktop client (localhost callback with any port)
+          if (input.clientID === 'desktop' && 
+              input.redirectURI.startsWith('http://localhost:') && 
+              input.redirectURI.includes('callback')) {
+            console.log("✅ [AUTH] Allowing desktop client:", input.clientID, input.redirectURI);
+            return true;
+          }
+
+          // Allow localhost redirects (for development)
+          if (input.redirectURI.includes('localhost')) {
+            console.log("✅ [AUTH] Allowing localhost redirect:", input.redirectURI);
+            return true;
+          }
+
+          console.log("❌ [AUTH] Rejecting client:", input.clientID, input.redirectURI);
+          return false;
+        })({ clientID: clientId, redirectURI: redirectUri }, request);
+
+        if (!isAllowed) {
+          return new Response(JSON.stringify({
+            error: "unauthorized_client",
+            error_description: "Client not authorized for this redirect URI"
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Exchange code for GitHub access token
+        const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            client_id: env.GITHUB_CLIENT_ID,
+            client_secret: env.GITHUB_CLIENT_SECRET,
+            code: code,
+            redirect_uri: redirectUri,
+          }).toString(),
+        });
+
+        if (!tokenResponse.ok) {
+          console.error(`❌ [AUTH] GitHub token exchange failed: ${tokenResponse.status}`);
+          return new Response(JSON.stringify({
+            error: "server_error",
+            error_description: "Failed to exchange code for access token"
+          }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const githubTokenData = await tokenResponse.json() as any;
+        
+        if (githubTokenData.error) {
+          console.error(`❌ [AUTH] GitHub OAuth error:`, githubTokenData);
+          return new Response(JSON.stringify({
+            error: "invalid_grant",
+            error_description: githubTokenData.error_description || "Invalid authorization code"
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const githubAccessToken = githubTokenData.access_token;
+        
+        // Get user info from GitHub
+        const userResponse = await fetch("https://api.github.com/user", {
+          headers: {
+            "Authorization": `Bearer ${githubAccessToken}`,
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "OpenAgents-Auth"
+          }
+        });
+
+        if (!userResponse.ok) {
+          console.error(`❌ [AUTH] Failed to fetch GitHub user: ${userResponse.status}`);
+          return new Response(JSON.stringify({
+            error: "server_error", 
+            error_description: "Failed to fetch user information"
+          }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const githubUser = await userResponse.json() as any;
+        console.log("✅ [AUTH] Successfully fetched GitHub user data for token exchange");
+
+        // Create user object
+        const user = await getUser({
+          sub: githubUser.id.toString(),
+          github_id: githubUser.id.toString(),
+          email: githubUser.email,
+          name: githubUser.name,
+          avatar: githubUser.avatar_url,
+          username: githubUser.login,
+        });
+
+        // Store provider tokens
+        if (githubAccessToken) {
+          const providerTokens = {
+            github: {
+              access_token: githubAccessToken,
+              refresh_token: githubTokenData.refresh_token,
+            }
+          };
+          
+          try {
+            await storeProviderTokens(storage, user.id, providerTokens);
+            console.log(`✅ [AUTH] Successfully stored GitHub access token for user ${user.id}`);
+          } catch (error) {
+            console.error(`❌ [AUTH] Failed to store provider tokens for user ${user.id}:`, error);
+          }
+        }
+
+        // Return access token (this would be a JWT in a real implementation)
+        return new Response(JSON.stringify({
+          access_token: githubAccessToken,
+          token_type: "bearer",
+          scope: githubTokenData.scope,
+          user: user
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+      } catch (error) {
+        console.error(`❌ [AUTH] Error in /token endpoint:`, error);
+        return new Response(JSON.stringify({
+          error: "server_error",
+          error_description: "Internal server error"
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
     
     const app = issuer({
       providers: {

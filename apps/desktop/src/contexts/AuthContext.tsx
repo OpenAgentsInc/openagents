@@ -116,30 +116,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (oauthResult?.code) {
         console.log('✅ OAuth code received, exchanging for tokens...');
         
-        // Exchange code for access token
-        const tokens = await invoke('exchange_oauth_code', {
+        // Exchange code for access token and user info in one call
+        const tokenResponse = await invoke('exchange_oauth_code', {
           code: oauthResult.code,
-          clientId: 'desktop'
-        }) as { access_token: string; token_type: string };
+          clientId: 'desktop',
+          redirectUri: redirectUri
+        }) as { access_token: string; token_type: string; user: User };
         
-        if (tokens?.access_token) {
-          console.log('✅ Access token received, fetching user info...');
-          
-          // Get user info using access token
-          const userInfo = await invoke('get_user_info', {
-            accessToken: tokens.access_token
-          }) as User;
+        if (tokenResponse?.access_token && tokenResponse?.user) {
+          console.log('✅ Access token and user info received!');
           
           // Store tokens and user info
-          localStorage.setItem('openauth_token', tokens.access_token);
-          localStorage.setItem('openauth_user', JSON.stringify(userInfo));
+          localStorage.setItem('openauth_token', tokenResponse.access_token);
+          localStorage.setItem('openauth_user', JSON.stringify(tokenResponse.user));
           
-          setToken(tokens.access_token);
-          setUser(userInfo);
+          setToken(tokenResponse.access_token);
+          setUser(tokenResponse.user);
           
           console.log('🎉 Authentication successful!');
         } else {
-          throw new Error('No access token received');
+          throw new Error('No access token or user info received');
         }
       } else {
         throw new Error('No authorization code received');
