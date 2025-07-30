@@ -68,18 +68,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       
-      // Redirect to OpenAuth server
-      const authUrl = import.meta.env.VITE_OPENAUTH_URL || 'http://localhost:8787';
-      const redirectUri = 'openagents://auth/callback';
+      // Redirect to OpenAuth server with desktop client configuration
+      const authUrl = import.meta.env.VITE_OPENAUTH_URL || 'https://auth.openagents.com';
+      const redirectUri = 'http://localhost:8080/auth/callback'; // Desktop uses localhost callback
       
-      const loginUrl = `${authUrl}/authorize?provider=github&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code`;
+      const loginUrl = `${authUrl}/authorize?provider=github&client_id=desktop&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code`;
       
       // Open external URL using Tauri opener plugin
       const { openUrl } = await import('@tauri-apps/plugin-opener');
       await openUrl(loginUrl);
       
-      // The callback will be handled by the Tauri backend
-      // which will store the tokens and user info
+      // TODO: Set up localhost server to handle callback
+      // For now, the callback will need to be handled by a temporary server
       
     } catch (error) {
       console.error('Login failed:', error);
