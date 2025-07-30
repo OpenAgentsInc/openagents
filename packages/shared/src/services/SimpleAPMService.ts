@@ -1,4 +1,4 @@
-import { Effect, Data, Ref, Schedule, Duration, Runtime } from "effect";
+import { Effect, Data, Ref, Schedule, Duration } from "effect";
 import { getStoredJson, setStoredJson } from "./SimpleStorageService";
 import { isReactNative, getPlatformId } from '../utils/platform';
 
