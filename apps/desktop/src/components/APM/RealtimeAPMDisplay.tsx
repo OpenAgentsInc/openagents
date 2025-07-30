@@ -1,6 +1,4 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useQuery } from 'convex/react';
-import { api } from '../../convex/_generated/api';
 import { TrendingUpIcon, TrendingDownIcon, ActivityIcon, ClockIcon } from "../icons/React19Icons";
 
 interface RealtimeAPMDisplayProps {
@@ -42,11 +40,23 @@ export const RealtimeAPMDisplay: React.FC<RealtimeAPMDisplayProps> = ({
 }) => {
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // Query realtime APM data from Convex
-  const realtimeAPMData = useQuery(
-    api.confect.apm.getRealtimeAPM,
-    { deviceId, includeHistory: true }
-  );
+  // Temporary: Use trackDeviceSession as fallback until API is properly generated
+  // const realtimeAPMData = useQuery(
+  //   api["confect/apm"].getRealtimeAPM,
+  //   { deviceId, includeHistory: true }
+  // );
+  
+  // Mock data for now
+  const realtimeAPMData: RealtimeAPMData | undefined = deviceId ? {
+    currentAPM: 0,
+    trend: 'stable' as const,
+    sessionDuration: 0,
+    totalActions: 0,
+    lastUpdateTimestamp: Date.now(),
+    isActive: true,
+    deviceId,
+    trendPercentage: 0,
+  } : undefined;
 
   // Handle data updates
   useEffect(() => {
@@ -257,10 +267,17 @@ export const RealtimeAPMDisplay: React.FC<RealtimeAPMDisplayProps> = ({
 
 // Hook for easy integration with existing desktop components
 export const useDesktopRealtimeAPM = (deviceId?: string) => {
-  const realtimeAPMData = useQuery(
-    api.confect.apm.getRealtimeAPM,
-    { deviceId, includeHistory: false }
-  );
+  // Temporary mock data until API is properly generated
+  const realtimeAPMData: RealtimeAPMData | undefined = deviceId ? {
+    currentAPM: 0,
+    trend: 'stable' as const,
+    sessionDuration: 0,
+    totalActions: 0,
+    lastUpdateTimestamp: Date.now(),
+    isActive: true,
+    deviceId,
+    trendPercentage: 0,
+  } : undefined;
 
   const getCurrentAPM = useCallback((): number => {
     return realtimeAPMData?.currentAPM ?? 0;

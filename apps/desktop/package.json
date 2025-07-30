@@ -26,6 +26,7 @@
     "@mediapipe/camera_utils": "^0.3.1675466862",
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/hands": "^0.4.1675469240",
+    "@openagentsinc/convex": "workspace:*",
     "@openauthjs/openauth": "^0.4.3",
     "@playwright/test": "^1.54.1",
     "@radix-ui/react-dialog": "^1.1.14",
