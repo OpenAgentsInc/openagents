@@ -157,6 +157,7 @@ pub fn App() -> impl IntoView {
     // Recent chats
     let chats: RwSignal<Vec<UiChatSummary>> = RwSignal::new(vec![]);
     let chats_open: RwSignal<bool> = RwSignal::new(true);
+    let chat_title: RwSignal<String> = RwSignal::new("New chat".to_string());
 
     // Install event listener once (on mount)
     {
@@ -322,8 +323,9 @@ pub fn App() -> impl IntoView {
                                                             v
                                                         });
                                                     });
+                                                    chat_title.set(title.clone());
                                                 }>
-                                            <div class="truncate text-[12px]">{title}</div>
+                                            <div class="truncate text-[12px]">{title.clone()}</div>
                                             <div class="text-[11px] opacity-70 truncate">{started}</div>
                                         </button>
                                     }.into_any()
@@ -335,6 +337,16 @@ pub fn App() -> impl IntoView {
             </div>
 
             <div class="pl-80 pt-6 pb-36 h-full overflow-auto">
+                <div class="mx-auto w-full max-w-[768px] px-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="text-sm opacity-90 truncate">{move || chat_title.get()}</div>
+                        <button class="text-xs underline text-white/80 hover:text-white cursor-pointer"
+                                on:click=move |_| {
+                                    items.set(Vec::new());
+                                    chat_title.set("New chat".to_string());
+                                }>"New chat"</button>
+                    </div>
+                </div>
                 <div class="mx-auto w-full max-w-[768px] px-4 space-y-3 text-[13px]">
                     {move || items.get().into_iter().map(|item| match item {
                         ChatItem::User { text } => {
