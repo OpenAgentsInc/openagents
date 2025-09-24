@@ -220,20 +220,20 @@ pub fn App() -> impl IntoView {
                 } else { view! { <div class="mt-2 flex-1"></div> }.into_any() }}
             </div>
 
-            <div class="pl-80 pr-[26rem] pt-4 pb-28 h-full overflow-auto">
-                <div class="space-y-3 text-[13px]">
+            <div class="pl-80 pt-6 pb-28 h-full overflow-auto">
+                <div class="mx-auto w-full max-w-[768px] px-4 space-y-3 text-[13px]">
                     {move || items.get().into_iter().map(|item| match item {
-                        ChatItem::User { text } => view! { <div class="max-w-3xl p-3 border border-white/50 bg-black/20">{text}</div> }.into_any(),
+                        ChatItem::User { text } => view! { <div class="w-full p-3 border border-white/50 bg-black/20">{text}</div> }.into_any(),
                         ChatItem::Reasoning { text } => {
                             let html = md_to_html(&text);
-                            view! { <div class="max-w-3xl text-[12px] italic opacity-85 px-3 reasoning-md" inner_html=html></div> }.into_any()
+                            view! { <div class="w-full text-[12px] italic opacity-85 px-3 reasoning-md" inner_html=html></div> }.into_any()
                         }
                         ChatItem::Assistant { text, streaming } => {
                             let html = md_to_html(&text);
-                            view! { <div class="max-w-3xl p-3 border border-white/40 bg-white/10"><div class="assistant-md" inner_html=html></div>{if streaming { " ▌" } else { "" }.to_string()}</div> }.into_any()
+                            view! { <div class="w-full p-3 border border-white/40 bg-white/10"><div class="assistant-md" inner_html=html></div>{if streaming { " ▌" } else { "" }.to_string()}</div> }.into_any()
                         }
                         ChatItem::Tool { call_id: _, title, segments, done } => view! {
-                            <div class="max-w-3xl p-3 border border-white/30 bg-black/40">
+                            <div class="w-full p-3 border border-white/30 bg-black/40">
                                 <div class="text-xs opacity-80 mb-1">{format!("{} {}", title, if done {"(done)"} else {"(running)"})}</div>
                                 <pre class="whitespace-pre-wrap text-sm">
                                     {move || segments.iter().map(|(t, is_err)| {
