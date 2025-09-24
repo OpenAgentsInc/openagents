@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "openagents",
+        "title": "OpenAgents",
         "width": 800,
         "height": 600
       }
