@@ -420,14 +420,46 @@ async fn collect_rollout_files(limit_scan: usize) -> anyhow::Result<Vec<std::pat
         if files.len() >= limit_scan { break; }
     }
     let mut year_dirs: Vec<std::path::PathBuf> = Vec::new();
+    // Fallback: if nothing found in structured dirs, scan entire CODEX_HOME recursively for any .jsonl
+    if files.is_empty() {
+        let mut any_jsonl: Vec<std::path::PathBuf> = Vec::new();
+        let mut stack: Vec<std::path::PathBuf> = vec![home.clone()];
+        while let Some(dir) = stack.pop() {
+            let rd = match std::fs::read_dir(&dir) { Ok(d) => d, Err(_) => continue };
+            for ent in rd.flatten() {
+                let path = ent.path();
+                if path.is_dir() {
+                    // Skip obvious heavy or hidden dirs under home to keep it snappy
+                    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                        if name.starts_with('.') { continue; }
+                        if name == "node_modules" || name == "target" || name == "dist" { continue; }
+                    }
+                    stack.push(path);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                    any_jsonl.push(path);
+                    if any_jsonl.len() >= limit_scan { break; }
+                }
+            }
+            if any_jsonl.len() >= limit_scan { break; }
+        }
+        // Sort by mtime desc
+        any_jsonl.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+        any_jsonl.reverse();
+        files = any_jsonl;
+    }
     Ok(files)
 }
 
 fn parse_summary_title_from_head(head: &[serde_json::Value]) -> Option<String> {
     for v in head.iter() {
-        let t = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+        // Support both flattened and nested { item: { type, payload } } forms
+        let (t, p) = if let Some(t) = v.get("type").and_then(|s| s.as_str()) {
+            (t, v.get("payload"))
+        } else if let Some(item) = v.get("item") {
+            (item.get("type").and_then(|s| s.as_str()).unwrap_or(""), item.get("payload"))
+        } else { ("", None) };
         if t == "event_msg" {
-            if let Some(p) = v.get("payload") {
+            if let Some(p) = p {
                 if p.get("type").and_then(|s| s.as_str()) == Some("user_message") {
                     if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
                         return Some(msg.to_string());
@@ -435,7 +467,7 @@ fn parse_summary_title_from_head(head: &[serde_json::Value]) -> Option<String> {
                 }
             }
         } else if t == "response_item" {
-            if let Some(p) = v.get("payload") {
+            if let Some(p) = p {
                 if p.get("type").and_then(|s| s.as_str()) == Some("message") {
                     let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
                     if role == "user" {
@@ -455,10 +487,10 @@ fn parse_summary_title_from_head(head: &[serde_json::Value]) -> Option<String> {
 #[tauri::command]
 async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
     let limit = limit.unwrap_or(20);
-    let files = collect_rollout_files(200).await.map_err(|e| e.to_string())?;
+    let files = collect_rollout_files(2000).await.map_err(|e| e.to_string())?;
     let mut out: Vec<UiChatSummary> = Vec::new();
     for f in files.into_iter().take(200) {
-        // Read the first ~40 lines for meta + title
+        // Read the first ~120 lines for meta + title (accommodate older formats)
         let file = match tokio_fs::File::open(&f).await { Ok(x) => x, Err(_) => continue };
         let mut reader = tokio::io::BufReader::new(file).lines();
         let mut head: Vec<serde_json::Value> = Vec::new();
@@ -467,15 +499,20 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
         let mut cwd: Option<String> = None;
         let mut title: Option<String> = None;
         let mut read_count = 0usize;
-        while read_count < 40 {
+        while read_count < 120 {
             match reader.next_line().await { Ok(Some(line)) => {
                 read_count += 1;
                 if line.trim().is_empty() { continue; }
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
                     head.push(v.clone());
-                    let t = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+                    // Support both flattened and nested forms for meta
+                    let (t, p) = if let Some(t) = v.get("type").and_then(|s| s.as_str()) {
+                        (t, v.get("payload"))
+                    } else if let Some(item) = v.get("item") {
+                        (item.get("type").and_then(|s| s.as_str()).unwrap_or(""), item.get("payload"))
+                    } else { ("", None) };
                     if t == "session_meta" {
-                        if let Some(p) = v.get("payload") {
+                        if let Some(p) = p {
                             if let Some(meta) = p.get("meta") {
                                 meta_id = meta.get("id").and_then(|s| s.as_str()).map(|s| s.to_string());
                                 started_at = meta.get("timestamp").and_then(|s| s.as_str()).map(|s| s.to_string());
@@ -488,11 +525,10 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
             }
             Ok(None) | Err(_) => break,
         }
-        }
-        let id = meta_id.unwrap_or_else(|| "".into());
-        if id.is_empty() { continue; }
+        let id = meta_id.unwrap_or_else(|| f.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string());
         let started_at = started_at.unwrap_or_else(|| "".into());
-        let title = title.unwrap_or_else(|| "(no title)".into());
+        let mut title = title.unwrap_or_else(|| "(no title)".into());
+        if title.is_empty() { title = f.file_name().and_then(|s| s.to_str()).unwrap_or("(untitled)").to_string(); }
         out.push(UiChatSummary { id, path: f.display().to_string(), started_at, title, cwd });
         if out.len() >= limit { break; }
     }
