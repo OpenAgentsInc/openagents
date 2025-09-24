@@ -81,6 +81,7 @@ enum UiStreamEvent {
     ReasoningBreak {},
     ToolBegin { call_id: String, title: String },
     ToolEnd { call_id: String, #[serde(rename = "exit_code")] _exit_code: Option<i64> },
+    SessionConfigured { session_id: String, rollout_path: Option<String> },
 }
 
 #[allow(dead_code)]
@@ -168,6 +169,7 @@ pub fn App() -> impl IntoView {
         let items_setter = items.write_only();
         let token_setter = token_usage_sig.write_only();
         let raw_setter = raw_events.write_only();
+        let chats_setter = chats.write_only();
         spawn_local(async move {
             let cb = Closure::wrap(Box::new(move |evt: JsValue| {
                 let payload = js_sys::Reflect::get(&evt, &JsValue::from_str("payload")).unwrap_or(JsValue::NULL);
@@ -176,6 +178,11 @@ pub fn App() -> impl IntoView {
                 if let Ok(ev) = parsed {
                     if let UiStreamEvent::Raw { json } = &ev {
                         raw_setter.update(|v| v.push(json.clone()));
+                    }
+                    if let UiStreamEvent::SessionConfigured { .. } = &ev {
+                        // Refresh recent chats when a new session starts
+                        let chats_setter = chats_setter.clone();
+                        spawn_local(async move { chats_setter.set(fetch_recent_chats(30).await); });
                     }
                     items_setter.update(|list| {
                         match ev {
@@ -218,6 +225,7 @@ pub fn App() -> impl IntoView {
                                     list.push(ChatItem::Reasoning { text });
                                 }
                             }
+                            UiStreamEvent::SessionConfigured { .. } => { /* handled above */ }
                         }
                     });
                 }

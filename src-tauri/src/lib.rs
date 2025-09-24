@@ -347,6 +347,7 @@ pub enum UiStreamEvent {
     ReasoningBreak {},
     ToolBegin { call_id: String, title: String },
     ToolEnd { call_id: String, exit_code: Option<i64> },
+    SessionConfigured { session_id: String, rollout_path: Option<String> },
 }
 
 // ---- Chat listing and loading ----
@@ -504,8 +505,17 @@ fn sanitize_title(mut s: String) -> String {
     }
     let line = s.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
     let mut t = line.to_string();
+    // Drop markdown heading markers
+    if t.starts_with('#') {
+        t = t.trim_start_matches('#').trim().to_string();
+    }
     if t.len() > 80 { t.truncate(80); }
     t
+}
+
+fn is_bad_title_candidate(s: &str) -> bool {
+    let lower = s.to_lowercase();
+    lower.starts_with("#") || lower.starts_with("repository guidelines") || lower.starts_with("<cwd>") || lower.is_empty()
 }
 
 #[tauri::command]
@@ -554,7 +564,8 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
                                 if !text.trim().is_empty() {
                                     has_message = true;
                                     if role == "user" && title.is_none() && !text_has_instruction_wrappers(&text) {
-                                        title = Some(text.clone());
+                                        let cand = sanitize_title(text.clone());
+                                        if !is_bad_title_candidate(&cand) { title = Some(cand); }
                                     }
                                 }
                             }
@@ -565,7 +576,13 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
                                 "user_message" => {
                                     if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
                                         let is_instruction = p.get("payload").and_then(|x| x.get("kind")).and_then(|k| k.as_str()).map(|k| k=="user_instructions" || k=="environment_context").unwrap_or(false);
-                                        if !msg.trim().is_empty() { has_message = true; if title.is_none() && !is_instruction { title = Some(msg.to_string()); } }
+                                        if !msg.trim().is_empty() {
+                                            has_message = true;
+                                            if title.is_none() && !is_instruction {
+                                                let cand = sanitize_title(msg.to_string());
+                                                if !is_bad_title_candidate(&cand) { title = Some(cand); }
+                                            }
+                                        }
                                     }
                                 }
                                 "agent_message" => {
@@ -953,6 +970,11 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                 if let Some(text) = msg.get("text").and_then(|d| d.as_str()) {
                     let _ = win.emit("codex:stream", &UiStreamEvent::ReasoningSummary { text: text.to_string() });
                 }
+            }
+            "session_configured" => {
+                let session_id = msg.get("session_id").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                let rollout_path = msg.get("rollout_path").and_then(|p| p.as_str()).map(|s| s.to_string());
+                let _ = win.emit("codex:stream", &UiStreamEvent::SessionConfigured { session_id, rollout_path });
             }
             "agent_reasoning_section_break" => {
                 let _ = win.emit("codex:stream", &UiStreamEvent::ReasoningBreak {});
