@@ -585,15 +585,16 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
 }
 
 fn content_vec_to_text(arr: &serde_json::Value) -> String {
-    let mut s = String::new();
+    let mut out = String::new();
     if let Some(a) = arr.as_array() {
         for it in a {
-            if let Some(t) = it.get("text").and_then(|s| s.as_str()) {
-                if !s.is_empty() { if !s.is_empty() { s.push_str(t); } else { s.push_str(t); } }
+            if let Some(t) = it.get("text").and_then(|v| v.as_str()) {
+                if !out.is_empty() { out.push('\n'); }
+                out.push_str(t);
             }
         }
     }
-    s
+    out
 }
 
 #[tauri::command]
