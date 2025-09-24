@@ -310,10 +310,12 @@ pub fn App() -> impl IntoView {
                 <div class="w-full max-w-[600px] px-4 flex gap-2">
                     { // input state
                         let msg: RwSignal<String> = RwSignal::new(String::new());
+                        let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
                         let send = {
                             let items = items.write_only();
                             let msg_get = msg.read_only();
                             let reasoning_streamed = reasoning_streamed;
+                            let input_ref = input_ref.clone();
                             move || {
                                 let text = msg_get.get();
                                 if !text.is_empty() {
@@ -323,11 +325,14 @@ pub fn App() -> impl IntoView {
                                     let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "prompt": text })).unwrap_or(JsValue::UNDEFINED);
                                     let _ = tauri_invoke("submit_chat", args);
                                     msg.set(String::new());
+                                    if let Some(el) = input_ref.get() { let _ = el.focus(); }
                                 }
                             }
                         };
                         view! {
                             <input
+                                node_ref=input_ref
+                                prop:autofocus=true
                                 class="flex-1 px-3 py-2 border border-white bg-transparent text-white placeholder-white/50 focus:outline-none"
                                 type="text"
                                 placeholder="Type a command or message…"
