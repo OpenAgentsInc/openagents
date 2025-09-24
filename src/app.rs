@@ -276,6 +276,10 @@ pub fn App() -> impl IntoView {
         <div class="h-screen w-full">
             <div class="fixed top-0 left-0 bottom-0 w-80 p-3 border-r border-white bg-white/5 flex flex-col overflow-hidden">
                 <div class="text-lg mb-2">"OpenAgents"</div>
+                <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start mb-2"
+                        on:click=move |_| { items.set(Vec::new()); chat_title.set("New chat".to_string()); }>
+                    "New chat"
+                </button>
                 <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start mb-1"
                         on:click=move |_| status_open.update(|v| *v = !*v)>
                     {move || if status_open.get() { "Hide status".to_string() } else { "Show status".to_string() }}
@@ -407,11 +411,6 @@ pub fn App() -> impl IntoView {
                                     </select>
                                 }
                             }
-                            <button class="text-xs underline text-white/80 hover:text-white cursor-pointer"
-                                    on:click=move |_| {
-                                        items.set(Vec::new());
-                                        chat_title.set("New chat".to_string());
-                                    }>"New chat"</button>
                         </div>
                     </div>
                 </div>
