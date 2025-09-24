@@ -160,6 +160,7 @@ pub fn App() -> impl IntoView {
     let chat_title: RwSignal<String> = RwSignal::new("New chat".to_string());
     let reasoning: RwSignal<String> = RwSignal::new("High".to_string());
     let bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
+    let raw_bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
 
     // Install event listener once (on mount)
     {
@@ -245,6 +246,22 @@ pub fn App() -> impl IntoView {
             }
         });
     }
+    {
+        let raw_bottom = raw_bottom_ref.clone();
+        let raw_ro = raw_events.read_only();
+        let raw_open_ro = raw_open.read_only();
+        create_effect(move |_| {
+            let _ = raw_ro.get().len();
+            let open = raw_open_ro.get();
+            if open {
+                if let Some(el) = raw_bottom.get() {
+                    use wasm_bindgen::JsCast;
+                    let e: web_sys::Element = el.unchecked_into();
+                    e.scroll_into_view();
+                }
+            }
+        });
+    }
 
     view! {
         <div class="h-screen w-full">
@@ -300,6 +317,7 @@ pub fn App() -> impl IntoView {
                     view! {
                         <div class="mt-2 flex-1 overflow-auto border border-white/20 bg-black/50 p-2">
                             <pre class="text-[11px] leading-4 whitespace-pre-wrap">{raw_events.get().join("\n")}</pre>
+                            <div node_ref=raw_bottom_ref class="h-0"></div>
                         </div>
                     }.into_any()
                 } else { view! { <div class="mt-2"></div> }.into_any() }}
