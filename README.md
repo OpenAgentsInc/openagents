@@ -8,6 +8,43 @@ A desktop app to command OpenAI Codex and other agents. Work in progress.
 - Tauri
 - Leptos 
 
+## Local Development
+
+To run the app locally, you'll need to set up a few dependencies:
+
+### Prerequisites
+
+1. **Install Rust** (if not already installed):
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   source ~/.cargo/env
+   ```
+
+2. **Install Tauri CLI**:
+   ```bash
+   cargo install tauri-cli
+   ```
+
+3. **Install Trunk** (for WebAssembly frontend builds):
+   ```bash
+   cargo install trunk
+   ```
+
+4. **Add WebAssembly target**:
+   ```bash
+   rustup target add wasm32-unknown-unknown
+   ```
+
+### Running the App
+
+Once you have all dependencies installed, you can run the development server:
+
+```bash
+cargo tauri dev
+```
+
+This will start both the Rust backend and the Leptos frontend with hot reload enabled.
+
 ## Documentation
 
 - Overview of Codex systems docs: [docs/codex/README.md](docs/codex/README.md)
