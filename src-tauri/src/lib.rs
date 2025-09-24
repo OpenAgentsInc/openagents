@@ -33,8 +33,6 @@ struct AuthJson {
 #[derive(Deserialize)]
 struct AuthTokens {
     id_token: String,
-    access_token: String,
-    refresh_token: String,
 }
 
 #[derive(Deserialize)]
@@ -298,12 +296,7 @@ fn model_status_defaults() -> ModelStatus {
     }
 }
 
-fn client_status() -> ClientStatus {
-    // Read version from codex-rs workspace package if available.
-    // Fallback to 0.0.0
-    let version = Some("0.0.0".to_string());
-    ClientStatus { cli_version: version }
-}
+// client_status removed; version comes from session meta where available.
 
 #[tauri::command]
 async fn get_full_status() -> FullStatus {
