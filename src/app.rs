@@ -277,7 +277,11 @@ pub fn App() -> impl IntoView {
             <div class="fixed top-0 left-0 bottom-0 w-80 p-3 border-r border-white bg-white/5 flex flex-col overflow-hidden">
                 <div class="text-lg mb-2">"OpenAgents"</div>
                 <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start mb-2"
-                        on:click=move |_| { items.set(Vec::new()); chat_title.set("New chat".to_string()); }>
+                        on:click=move |_| {
+                            items.set(Vec::new());
+                            chat_title.set("New chat".to_string());
+                            let _ = tauri_invoke("new_chat_session", JsValue::UNDEFINED);
+                        }>
                     "New chat"
                 </button>
                 <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start mb-1"

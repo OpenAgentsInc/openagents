@@ -15,6 +15,8 @@ use std::io::{BufRead, BufReader as StdBufReader};
 use tokio::fs as tokio_fs;
 use tokio::io::AsyncBufReadExt as _;
 use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::io::Write as _;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -518,6 +520,184 @@ fn is_bad_title_candidate(s: &str) -> bool {
     lower.starts_with("#") || lower.starts_with("repository guidelines") || lower.starts_with("<cwd>") || lower.is_empty()
 }
 
+fn strip_code_fences(s: &str) -> String {
+    let mut out = String::new();
+    let mut in_fence = false;
+    for line in s.lines() {
+        let l = line.trim();
+        if l.starts_with("```") { in_fence = !in_fence; continue; }
+        if !in_fence { out.push_str(line); out.push('\n'); }
+    }
+    if out.ends_with('\n') { out.pop(); }
+    out
+}
+
+fn first_sentence(s: &str) -> String {
+    let mut end = s.find(['.', '!', '?']).unwrap_or_else(|| s.find('\n').unwrap_or(s.len()));
+    if end < s.len() && matches!(s.as_bytes()[end], b'.' | b'!' | b'?') { end += 1; }
+    s[..end].trim().to_string()
+}
+
+fn limit_words(s: &str, max_words: usize) -> String {
+    let mut out = String::new();
+    for (i, w) in s.split_whitespace().enumerate() {
+        if i >= max_words { break; }
+        if !out.is_empty() { out.push(' '); }
+        out.push_str(w);
+    }
+    out
+}
+
+fn looks_like_filepath(tok: &str) -> bool {
+    let has_slash = tok.contains('/');
+    let has_dot = tok.split('/').last().map(|t| t.contains('.')).unwrap_or(false);
+    has_slash || has_dot
+}
+
+fn extract_filename_hint(s: &str) -> Option<String> {
+    for tok in s.split_whitespace() {
+        let t = tok.trim_matches(|c: char| c == ',' || c == ':' || c == ';' || c == ')' || c == '(' || c == '`' || c == '"');
+        if looks_like_filepath(t) {
+            let name = std::path::Path::new(t).file_name().and_then(OsStr::to_str).unwrap_or(t);
+            if !name.is_empty() { return Some(name.to_string()); }
+        }
+    }
+    None
+}
+
+fn simple_title_case(s: &str) -> String {
+    let mut out = String::new();
+    for (i, w) in s.split_whitespace().enumerate() {
+        let mut chars = w.chars();
+        let cw = match chars.next() {
+            Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        };
+        if i > 0 { out.push(' '); }
+        out.push_str(&cw);
+    }
+    out
+}
+
+fn smart_title_from_texts(user: &str, assistant: Option<&str>) -> String {
+    let mut base = strip_code_fences(user);
+    base = sanitize_title(base);
+    if base.len() > 240 { base = first_sentence(&base); }
+    let lower = base.to_lowercase();
+    let imperative_starts = [
+        "fix ", "add ", "create ", "update ", "remove ", "refactor ", "implement ", "investigate ",
+        "optimize ", "improve ", "build ", "write ", "document ", "explain ",
+    ];
+    let question_starts = ["how ", "how to ", "what ", "why ", "can ", "does ", "is ", "are "];
+
+    let mut title = if imperative_starts.iter().any(|p| lower.starts_with(p)) {
+        simple_title_case(&limit_words(&base, 10))
+    } else if question_starts.iter().any(|p| lower.starts_with(p)) {
+        let sent = first_sentence(&base);
+        limit_words(&sent, 12)
+    } else {
+        limit_words(&first_sentence(&base), 10)
+    };
+
+    if let Some(name) = extract_filename_hint(user) {
+        if !title.to_lowercase().contains(&name.to_lowercase()) {
+            if title.len() + name.len() + 3 <= 80 {
+                title.push_str(" (");
+                title.push_str(&name);
+                title.push(')');
+            }
+        }
+    }
+
+    if title.ends_with('.') { title.pop(); }
+    if title.len() > 80 { title.truncate(80); }
+    title
+}
+
+fn derive_title_from_head(head: &[serde_json::Value]) -> Option<String> {
+    let mut user_text: Option<String> = None;
+    let mut assistant_text: Option<String> = None;
+    for v in head.iter() {
+        let (t, p) = if let Some(t) = v.get("type").and_then(|s| s.as_str()) {
+            (t, v.get("payload"))
+        } else if let Some(item) = v.get("item") {
+            (item.get("type").and_then(|s| s.as_str()).unwrap_or(""), item.get("payload"))
+        } else { ("", None) };
+
+        if user_text.is_none() {
+            if t == "event_msg" {
+                if let Some(p) = p {
+                    if p.get("type").and_then(|s| s.as_str()) == Some("user_message") {
+                        let is_instruction = p.get("payload").and_then(|x| x.get("kind")).and_then(|k| k.as_str()).map(|k| k=="user_instructions" || k=="environment_context").unwrap_or(false);
+                        if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
+                            if !is_instruction { user_text = Some(msg.to_string()); }
+                        }
+                    }
+                }
+            } else if t == "response_item" {
+                if let Some(p) = p {
+                    if p.get("type").and_then(|s| s.as_str()) == Some("message") {
+                        let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
+                        if role == "user" {
+                            let text = content_vec_to_text(p.get("content").unwrap_or(&serde_json::Value::Null));
+                            if !text_has_instruction_wrappers(&text) && !text.trim().is_empty() {
+                                user_text = Some(text);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if assistant_text.is_none() {
+            if t == "response_item" {
+                if let Some(p) = p {
+                    if p.get("type").and_then(|s| s.as_str()) == Some("message") {
+                        let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
+                        if role == "assistant" {
+                            let text = content_vec_to_text(p.get("content").unwrap_or(&serde_json::Value::Null));
+                            if !text.trim().is_empty() { assistant_text = Some(text); }
+                        }
+                    }
+                }
+            } else if t == "event_msg" {
+                if let Some(p) = p {
+                    if p.get("type").and_then(|s| s.as_str()) == Some("agent_message") {
+                        if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
+                            if !msg.trim().is_empty() { assistant_text = Some(msg.to_string()); }
+                        }
+                    }
+                }
+            }
+        }
+        if user_text.is_some() && assistant_text.is_some() { break; }
+    }
+
+    if let Some(user) = user_text {
+        Some(smart_title_from_texts(&user, assistant_text.as_deref()))
+    } else {
+        None
+    }
+}
+
+fn sidecar_title_path(path: &std::path::Path) -> std::path::PathBuf {
+    let mut s = path.as_os_str().to_string_lossy().to_string();
+    s.push_str(".title");
+    std::path::PathBuf::from(s)
+}
+
+fn read_sidecar_title(path: &std::path::Path) -> Option<String> {
+    let p = sidecar_title_path(path);
+    match std::fs::read_to_string(&p) { Ok(s) => Some(s.trim().to_string()).filter(|t| !t.is_empty()), Err(_) => None }
+}
+
+fn write_sidecar_title(path: &std::path::Path, title: &str) -> anyhow::Result<()> {
+    let p = sidecar_title_path(path);
+    let mut f = std::fs::File::create(p)?;
+    f.write_all(title.as_bytes())?;
+    Ok(())
+}
+
 #[tauri::command]
 async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
     let limit = limit.unwrap_or(20);
@@ -564,7 +744,7 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
                                 if !text.trim().is_empty() {
                                     has_message = true;
                                     if role == "user" && title.is_none() && !text_has_instruction_wrappers(&text) {
-                                        let cand = sanitize_title(text.clone());
+                                        let cand = smart_title_from_texts(&text, None);
                                         if !is_bad_title_candidate(&cand) { title = Some(cand); }
                                     }
                                 }
@@ -579,7 +759,7 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
                                         if !msg.trim().is_empty() {
                                             has_message = true;
                                             if title.is_none() && !is_instruction {
-                                                let cand = sanitize_title(msg.to_string());
+                                                let cand = smart_title_from_texts(msg, None);
                                                 if !is_bad_title_candidate(&cand) { title = Some(cand); }
                                             }
                                         }
@@ -594,7 +774,7 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
                             }
                         }
                     }
-                    if title.is_none() { title = parse_summary_title_from_head(&[v]); }
+                    if title.is_none() { title = derive_title_from_head(&[v]); }
                 }
             }
             Ok(None) | Err(_) => break,
@@ -605,7 +785,7 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
         if !has_message { continue; }
         let id = meta_id.unwrap_or_else(|| f.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string());
         let started_at = started_at.unwrap_or_else(|| "".into());
-        let mut title = title.unwrap_or_else(|| "(no title)".into());
+        let mut title = read_sidecar_title(&f).or(title).unwrap_or_else(|| "(no title)".into());
         if title.is_empty() { title = f.file_name().and_then(|s| s.to_str()).unwrap_or("(untitled)").to_string(); }
         title = sanitize_title(title);
         out.push(UiChatSummary { id, path: f.display().to_string(), started_at, title, cwd });
@@ -625,6 +805,37 @@ fn content_vec_to_text(arr: &serde_json::Value) -> String {
         }
     }
     out
+}
+
+#[tauri::command]
+async fn generate_titles_for_all(force: Option<bool>) -> Result<usize, String> {
+    let force = force.unwrap_or(false);
+    let files = collect_rollout_files(5000).await.map_err(|e| e.to_string())?;
+    let mut updated = 0usize;
+    for f in files {
+        if !force {
+            if let Some(existing) = read_sidecar_title(&f) {
+                if !existing.trim().is_empty() { continue; }
+            }
+        }
+        let file = match tokio_fs::File::open(&f).await { Ok(x) => x, Err(_) => continue };
+        let mut reader = tokio::io::BufReader::new(file).lines();
+        let mut head: Vec<serde_json::Value> = Vec::new();
+        let mut count = 0usize;
+        while count < 150 {
+            match reader.next_line().await { Ok(Some(line)) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) { head.push(v); }
+                count += 1;
+            } Ok(None) | Err(_) => break }
+        }
+        if let Some(mut title) = derive_title_from_head(&head).or_else(|| parse_summary_title_from_head(&head)) {
+            title = sanitize_title(title);
+            if title.is_empty() { continue; }
+            if let Err(e) = write_sidecar_title(&f, &title) { eprintln!("write title sidecar failed: {}", e); continue; }
+            updated += 1;
+        }
+    }
+    Ok(updated)
 }
 
 #[tauri::command]
@@ -722,6 +933,21 @@ async fn load_chat(path: String) -> Result<Vec<UiDisplayItem>, String> {
         }
     }
     Ok(out)
+}
+
+#[tauri::command]
+async fn new_chat_session(window: tauri::Window) -> Result<(), String> {
+    let state = window.state::<Arc<Mutex<McpState>>>();
+    let shared_arc = { state.inner().clone() };
+    {
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        if let Some(mut child) = guard.child.take() {
+            let _ = child.kill();
+        }
+        // Restart proto which emits session_configured and creates new rollout file
+        guard.start(&window, shared_arc.clone()).map_err(|e| format!("start proto: {e}"))?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1074,7 +1300,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Mutex::new(McpState::default())))
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
