@@ -164,7 +164,7 @@ pub fn App() -> impl IntoView {
                 {move || if panel_open.get() { "Hide status".to_string() } else { "Show status".to_string() }}
             </button>
 
-            <div class=move || if panel_open.get() { "fixed top-12 right-3 bottom-3 w-96 overflow-auto p-3 border border-white rounded-none bg-white/5 text-white text-[0.95rem] leading-6 z-50".to_string() } else { "hidden".to_string() }>
+            <div class=move || if panel_open.get() { "fixed top-12 right-3 bottom-3 w-96 overflow-auto p-3 border border-white rounded-none bg-black text-white text-[0.95rem] leading-6 z-50".to_string() } else { "hidden".to_string() }>
                 <div class="space-y-1.5 mb-3">
                     <div class="font-semibold mb-1 opacity-95">"📂 Workspace"</div>
                     <div class="ml-2 opacity-90">{move || format!("• Path: {}", full.get().workspace.path.unwrap_or_else(|| "(unknown)".into()))}</div>
