@@ -473,7 +473,7 @@ pub fn App() -> impl IntoView {
 
             // Chat bar
             <div class="fixed bottom-0 left-80 right-0 z-50">
-                <div class="w-full bg-black/80 border-t border-white/20">
+                <div class="w-full bg-black border-t border-white/20">
                     <div class="mx-auto w-full max-w-[768px] px-4 py-3 flex gap-2">
                     { // input state
                         let msg: RwSignal<String> = RwSignal::new(String::new());
@@ -500,7 +500,7 @@ pub fn App() -> impl IntoView {
                             <input
                                 node_ref=input_ref
                                 prop:autofocus=true
-                                class="flex-1 px-3 py-2 border border-white bg-white/10 text-white placeholder-white/60 focus:outline-none"
+                                class="flex-1 px-3 py-2 border border-white bg-black text-white placeholder-white/60 focus:outline-none"
                                 type="text"
                                 placeholder="Type a command or message…"
                                 prop:value=move || msg.get()
@@ -512,7 +512,7 @@ pub fn App() -> impl IntoView {
                                 on:keydown=move |ev| { if ev.key() == "Enter" { send(); } }
                             />
                             <button
-                                class="px-3 py-2 border border-white bg-white/10 hover:bg-white/20 cursor-pointer"
+                                class="px-3 py-2 border border-white bg-black hover:bg-black cursor-pointer"
                                 on:click=move |_| send()
                                 type="button"
                             >"Send"</button>
