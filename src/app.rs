@@ -171,6 +171,7 @@ pub fn App() -> impl IntoView {
     let reasoning: RwSignal<String> = RwSignal::new("High".to_string());
     let bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
     let raw_bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
+    let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
 
     // Install event listener once (on mount)
     {
@@ -289,6 +290,7 @@ pub fn App() -> impl IntoView {
                             items.set(Vec::new());
                             chat_title.set("New chat".to_string());
                             let _ = tauri_invoke("new_chat_session", JsValue::UNDEFINED);
+                            if let Some(el) = input_ref.get() { let _ = el.focus(); }
                         }>
                     "New chat"
                 </button>
@@ -477,7 +479,6 @@ pub fn App() -> impl IntoView {
                     <div class="mx-auto w-full max-w-[768px] px-4 py-3 flex gap-2">
                     { // input state
                         let msg: RwSignal<String> = RwSignal::new(String::new());
-                        let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
                         let send = {
                             let items = items.write_only();
                             let msg_get = msg.read_only();
