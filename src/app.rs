@@ -213,7 +213,7 @@ pub fn App() -> impl IntoView {
                 </button>
                 {move || if status_open.get() {
                     view! {
-                        <div class="mb-2 max-h-56 overflow-auto border border-white/20 bg-black/30 p-2 text-[12px] leading-5">
+                        <div class="mb-2 max-h-112 overflow-auto border border-white/20 bg-black/30 p-2 text-[12px] leading-5">
                             <div class="font-semibold mb-1 opacity-95">"📂 Workspace"</div>
                             <div class="ml-2 opacity-90">{move || format!("• Path: {}", full.get().workspace.path.clone().unwrap_or_else(|| "(unknown)".into()))}</div>
                             <div class="ml-2 opacity-90">{move || format!("• Approval Mode: {}", full.get().workspace.approval_mode.clone().unwrap_or_else(|| "(default)".into()))}</div>
