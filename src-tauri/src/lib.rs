@@ -486,6 +486,25 @@ fn parse_summary_title_from_head(head: &[serde_json::Value]) -> Option<String> {
             }
         }
     }
+    // Fallback: try assistant text
+    for v in head.iter() {
+        let (t, p) = if let Some(t) = v.get("type").and_then(|s| s.as_str()) {
+            (t, v.get("payload"))
+        } else if let Some(item) = v.get("item") { (item.get("type").and_then(|s| s.as_str()).unwrap_or(""), item.get("payload")) } else { ("", None) };
+        if t == "event_msg" {
+            if let Some(p) = p { if p.get("type").and_then(|s| s.as_str()) == Some("agent_message") {
+                if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) { return Some(msg.to_string()); }
+            } }
+        } else if t == "response_item" {
+            if let Some(p) = p { if p.get("type").and_then(|s| s.as_str()) == Some("message") {
+                if p.get("role").and_then(|s| s.as_str()) == Some("assistant") {
+                    if let Some(arr) = p.get("content").and_then(|c| c.as_array()) {
+                        for c in arr { if let Some(txt) = c.get("text").and_then(|s| s.as_str()) { return Some(txt.to_string()); } }
+                    }
+                }
+            } }
+        }
+    }
     None
 }
 
