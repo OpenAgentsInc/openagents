@@ -2544,6 +2544,130 @@ async fn handle_function_call(
             .await
         }
         "update_plan" => handle_update_plan(sess, arguments, sub_id, call_id).await,
+        "figma_find_nodes" => {
+            #[derive(serde::Deserialize)]
+            struct FigmaArgs {
+                figma_url: String,
+                #[serde(default)]
+                query: Option<String>,
+                #[serde(default)]
+                mode: Option<String>,
+                #[serde(default)]
+                node_types: Option<Vec<String>>,
+                #[serde(default)]
+                limit: Option<u32>,
+            }
+
+            let args = match serde_json::from_str::<FigmaArgs>(&arguments) {
+                Ok(v) => v,
+                Err(e) => {
+                    return ResponseInputItem::FunctionCallOutput {
+                        call_id,
+                        output: FunctionCallOutputPayload {
+                            content: format!("failed to parse function arguments: {e}"),
+                            success: Some(false),
+                        },
+                    };
+                }
+            };
+
+            let result = crate::figma_tools::handle_find_nodes(crate::figma_tools::FindNodesArgs {
+                figma_url: args.figma_url,
+                query: args.query,
+                mode: args.mode,
+                node_types: args.node_types,
+                limit: args.limit,
+            }, Some(&turn_context.cwd))
+            .await;
+
+            let (content, success) = match result {
+                Ok(val) => (serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string()), Some(true)),
+                Err(err) => (err.to_string(), Some(false)),
+            };
+
+            ResponseInputItem::FunctionCallOutput {
+                call_id,
+                output: FunctionCallOutputPayload { content, success },
+            }
+        }
+        "figma_export_images" => {
+            #[derive(serde::Deserialize)]
+            struct Args {
+                figma_url: String,
+                node_ids: Vec<String>,
+                format: String,
+                #[serde(default)]
+                scale: Option<u32>,
+            }
+            let args = match serde_json::from_str::<Args>(&arguments) {
+                Ok(v) => v,
+                Err(e) => {
+                    return ResponseInputItem::FunctionCallOutput {
+                        call_id,
+                        output: FunctionCallOutputPayload {
+                            content: format!("failed to parse function arguments: {e}"),
+                            success: Some(false),
+                        },
+                    };
+                }
+            };
+            let result = crate::figma_tools::handle_export_images(crate::figma_tools::ExportImagesArgs {
+                figma_url: args.figma_url,
+                node_ids: args.node_ids,
+                format: args.format,
+                scale: args.scale,
+            }, Some(&turn_context.cwd))
+            .await;
+            let (content, success) = match result {
+                Ok(val) => (serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string()), Some(true)),
+                Err(err) => (err.to_string(), Some(false)),
+            };
+            ResponseInputItem::FunctionCallOutput { call_id, output: FunctionCallOutputPayload { content, success } }
+        }
+        "figma_get_nodes" => {
+            #[derive(serde::Deserialize)]
+            struct Args { figma_url: String, node_ids: Vec<String> }
+            let args = match serde_json::from_str::<Args>(&arguments) {
+                Ok(v) => v,
+                Err(e) => {
+                    return ResponseInputItem::FunctionCallOutput {
+                        call_id,
+                        output: FunctionCallOutputPayload { content: format!("failed to parse function arguments: {e}"), success: Some(false) },
+                    };
+                }
+            };
+            let result = crate::figma_tools::handle_get_nodes(
+                crate::figma_tools::GetNodesArgs { figma_url: args.figma_url, node_ids: args.node_ids },
+                Some(&turn_context.cwd)
+            ).await;
+            let (content, success) = match result {
+                Ok(val) => (serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string()), Some(true)),
+                Err(err) => (err.to_string(), Some(false)),
+            };
+            ResponseInputItem::FunctionCallOutput { call_id, output: FunctionCallOutputPayload { content, success } }
+        }
+        "figma_extract_tokens" => {
+            #[derive(serde::Deserialize)]
+            struct Args { figma_url: String }
+            let args = match serde_json::from_str::<Args>(&arguments) {
+                Ok(v) => v,
+                Err(e) => {
+                    return ResponseInputItem::FunctionCallOutput {
+                        call_id,
+                        output: FunctionCallOutputPayload { content: format!("failed to parse function arguments: {e}"), success: Some(false) },
+                    };
+                }
+            };
+            let result = crate::figma_tools::handle_extract_tokens(
+                crate::figma_tools::ExtractTokensArgs { figma_url: args.figma_url },
+                Some(&turn_context.cwd)
+            ).await;
+            let (content, success) = match result {
+                Ok(val) => (serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string()), Some(true)),
+                Err(err) => (err.to_string(), Some(false)),
+            };
+            ResponseInputItem::FunctionCallOutput { call_id, output: FunctionCallOutputPayload { content, success } }
+        }
         EXEC_COMMAND_TOOL_NAME => {
             // TODO(mbolin): Sandbox check.
             let exec_params = match serde_json::from_str::<ExecCommandParams>(&arguments) {

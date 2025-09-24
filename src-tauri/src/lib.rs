@@ -18,6 +18,8 @@ use std::collections::HashMap;
 use tokio::sync::oneshot;
 use std::ffi::OsStr;
 use std::io::Write as _;
+mod tasks;
+use tasks::*;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -351,6 +353,7 @@ pub enum UiStreamEvent {
     ToolBegin { call_id: String, title: String },
     ToolEnd { call_id: String, exit_code: Option<i64> },
     SessionConfigured { session_id: String, rollout_path: Option<String> },
+    TaskUpdate { task_id: String, status: String, message: Option<String> },
 }
 
 // ---- Chat listing and loading ----
@@ -1246,6 +1249,68 @@ async fn summarize_titles_via_proto(window: &tauri::Window, titles: Vec<String>)
     Ok(out)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskPlanArgs { pub id: String, pub goal: String }
+
+fn fallback_plan_from_goal(goal: &str) -> Vec<Subtask> {
+    let mut out = Vec::new();
+    let sentences: Vec<&str> = goal
+        .split(|c| c == '.' || c == '\n' || c == ';')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    for (i, s) in sentences.into_iter().take(10).enumerate() {
+        out.push(Subtask { id: format!("s{:02}", i + 1), title: s.to_string(), status: SubtaskStatus::Pending, inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None });
+    }
+    if out.is_empty() {
+        out.push(Subtask { id: "s01".into(), title: goal.trim().to_string(), status: SubtaskStatus::Pending, inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None });
+    }
+    out
+}
+
+#[tauri::command]
+async fn task_plan_cmd(window: tauri::Window, args: TaskPlanArgs) -> Result<Task, String> {
+    // Emit start
+    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: args.id.clone(), status: "planning".into(), message: Some("Planning subtasks".into()) });
+    let mut task = task_get(&args.id).map_err(|e| e.to_string())?;
+    // Try off-record planning
+    let prompt = format!("Break the following goal into 8–15 atomic steps. Return JSON array of objects: {{id,title,inputs}}.\nGoal:\n{}", args.goal);
+    let rx = {
+        let state = window.state::<Arc<Mutex<McpState>>>();
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        if guard.child.is_none() {
+            let shared = state.inner().clone();
+            guard.start(&window, shared).map_err(|e| e.to_string())?;
+        }
+        guard.send_offrecord(&prompt).map_err(|e| e.to_string())?
+    };
+    let mut planned: Vec<Subtask> = Vec::new();
+    match tokio::time::timeout(std::time::Duration::from_secs(25), rx).await {
+        Ok(Ok(text)) => {
+            // Try to parse JSON
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(arr) = v.as_array() {
+                    for (i, item) in arr.iter().enumerate() {
+                        let title = item.get("title").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                        let id = item.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("s{:02}", i+1));
+                        let inputs = item.get("inputs").cloned().unwrap_or(serde_json::json!({}));
+                        if !title.trim().is_empty() {
+                            planned.push(Subtask { id, title, status: SubtaskStatus::Pending, inputs, session_id: None, rollout_path: None, last_error: None });
+                        }
+                    }
+                }
+            }
+            if planned.is_empty() { planned = fallback_plan_from_goal(&args.goal); }
+        }
+        _ => { planned = fallback_plan_from_goal(&args.goal); }
+    }
+    task.queue = planned;
+    task.status = TaskStatus::Planned;
+    let task = task_update(task).map_err(|e| e.to_string())?;
+    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: task.id.clone(), status: "planned".into(), message: Some(format!("{} subtasks", task.queue.len())) });
+    Ok(task)
+}
+
 fn normalize_effort(e: &str) -> Option<&'static str> {
     match e.to_lowercase().as_str() {
         // Codex expects: minimal | low | medium | high
@@ -1425,7 +1490,63 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Mutex::new(McpState::default())))
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+async fn tasks_list_cmd() -> Result<Vec<TaskMeta>, String> { tasks_list().map_err(|e| e.to_string()) }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateTaskArgs { pub name: String, pub approvals: String, pub sandbox: String, pub max_turns: Option<u32>, pub max_tokens: Option<u32>, pub max_minutes: Option<u32> }
+
+#[tauri::command]
+async fn task_create_cmd(args: CreateTaskArgs) -> Result<Task, String> {
+    task_create(&args.name, AutonomyBudget { approvals: args.approvals, sandbox: args.sandbox, max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn task_get_cmd(id: String) -> Result<Task, String> { task_get(&id).map_err(|e| e.to_string()) }
+
+#[tauri::command]
+async fn task_update_cmd(task: Task) -> Result<Task, String> { task_update(task).map_err(|e| e.to_string()) }
+
+#[tauri::command]
+async fn task_delete_cmd(id: String) -> Result<(), String> { task_delete(&id).map_err(|e| e.to_string()) }
+
+#[tauri::command]
+async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String> {
+    let mut task = task_get(&id).map_err(|e| e.to_string())?;
+    if let Some(i) = next_pending_index(&task) {
+        task = start_subtask(task, i);
+        let task = task_update(task).map_err(|e| e.to_string())?;
+        let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "running".into(), message: Some(format!("Starting {}", task.queue[i].title)) });
+        let mut task = task;
+        task = complete_subtask(task, i);
+        let task = task_update(task).map_err(|e| e.to_string())?;
+        let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "advanced".into(), message: Some(format!("Completed {}", task.queue[i].title)) });
+        Ok(task)
+    } else {
+        let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "completed".into(), message: None });
+        task_get(&id).map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+async fn task_pause_cmd(window: tauri::Window, id: String) -> Result<Task, String> {
+    let mut task = task_get(&id).map_err(|e| e.to_string())?;
+    task.status = TaskStatus::Paused;
+    let task = task_update(task).map_err(|e| e.to_string())?;
+    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id, status: "paused".into(), message: None });
+    Ok(task)
+}
+
+#[tauri::command]
+async fn task_cancel_cmd(window: tauri::Window, id: String) -> Result<Task, String> {
+    let mut task = task_get(&id).map_err(|e| e.to_string())?;
+    task.status = TaskStatus::Canceled;
+    let task = task_update(task).map_err(|e| e.to_string())?;
+    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id, status: "canceled".into(), message: None });
+    Ok(task)
 }

@@ -57,6 +57,7 @@ pub mod default_client;
 pub mod model_family;
 mod openai_model_info;
 mod openai_tools;
+mod figma_tools;
 pub mod plan_tool;
 pub mod project_doc;
 mod rollout;

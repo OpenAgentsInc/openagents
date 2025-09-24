@@ -10,6 +10,8 @@ use crate::plan_tool::PLAN_TOOL;
 use crate::tool_apply_patch::ApplyPatchToolType;
 use crate::tool_apply_patch::create_apply_patch_freeform_tool;
 use crate::tool_apply_patch::create_apply_patch_json_tool;
+use std::env;
+use crate::figma_tools::get_figma_token;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ResponsesApiTool {
@@ -271,6 +273,134 @@ fn create_view_image_tool() -> OpenAiTool {
         parameters: JsonSchema::Object {
             properties,
             required: Some(vec!["path".to_string()]),
+            additional_properties: Some(false),
+        },
+    })
+}
+
+fn create_figma_find_nodes_tool() -> OpenAiTool {
+    // Minimal JSON schema describing the Figma find-nodes request
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "figma_url".to_string(),
+        JsonSchema::String {
+            description: Some("Figma file or proto URL (e.g. https://www.figma.com/file/abc123/…)".to_string()),
+        },
+    );
+    properties.insert(
+        "query".to_string(),
+        JsonSchema::String {
+            description: Some("Search text (substring or regex depending on mode)".to_string()),
+        },
+    );
+    properties.insert(
+        "mode".to_string(),
+        JsonSchema::String {
+            description: Some("Match strategy: contains | name_regex | node_id".to_string()),
+        },
+    );
+    properties.insert(
+        "node_types".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::String {
+                description: Some("Allowed: FRAME, COMPONENT, INSTANCE, SECTION".to_string()),
+            }),
+            description: Some("Optional list of node types to filter".to_string()),
+        },
+    );
+    properties.insert(
+        "limit".to_string(),
+        JsonSchema::Number {
+            description: Some("Max nodes to return (<=25, default 10)".to_string()),
+        },
+    );
+
+    OpenAiTool::Function(ResponsesApiTool {
+        name: "figma_find_nodes".to_string(),
+        description: "Find Figma nodes (frames/components) by name or regex in a given file URL.".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["figma_url".to_string()]),
+            additional_properties: Some(false),
+        },
+    })
+}
+
+fn create_figma_export_images_tool() -> OpenAiTool {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "figma_url".to_string(),
+        JsonSchema::String { description: Some("Figma file/proto URL".to_string()) },
+    );
+    properties.insert(
+        "node_ids".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::String { description: Some("Figma node id (e.g. 1:2)".to_string()) }),
+            description: Some("Array of node IDs to export".to_string()),
+        },
+    );
+    properties.insert(
+        "format".to_string(),
+        JsonSchema::String { description: Some("png | jpg | svg".to_string()) },
+    );
+    properties.insert(
+        "scale".to_string(),
+        JsonSchema::Number { description: Some("Scale factor (1-4, default 1)".to_string()) },
+    );
+
+    OpenAiTool::Function(ResponsesApiTool {
+        name: "figma_export_images".to_string(),
+        description: "Export PNG/JPG/SVG image URLs for the specified Figma node IDs".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["figma_url".to_string(), "node_ids".to_string(), "format".to_string()]),
+            additional_properties: Some(false),
+        },
+    })
+}
+
+fn create_figma_get_nodes_tool() -> OpenAiTool {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "figma_url".to_string(),
+        JsonSchema::String { description: Some("Figma file/proto URL".to_string()) },
+    );
+    properties.insert(
+        "node_ids".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::String { description: Some("Figma node id (e.g. 1:2)".to_string()) }),
+            description: Some("Array of node IDs to fetch".to_string()),
+        },
+    );
+
+    OpenAiTool::Function(ResponsesApiTool {
+        name: "figma_get_nodes".to_string(),
+        description: "Fetch node details for the specified Figma node IDs".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["figma_url".to_string(), "node_ids".to_string()]),
+            additional_properties: Some(false),
+        },
+    })
+}
+
+fn create_figma_extract_tokens_tool() -> OpenAiTool {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "figma_url".to_string(),
+        JsonSchema::String { description: Some("Figma file/proto URL".to_string()) },
+    );
+
+    OpenAiTool::Function(ResponsesApiTool {
+        name: "figma_extract_tokens".to_string(),
+        description: "List basic style metadata (colors/text/effects) from the Figma file".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["figma_url".to_string()]),
             additional_properties: Some(false),
         },
     })
@@ -539,6 +669,15 @@ pub(crate) fn get_openai_tools(
                 }
             }
         }
+    }
+
+    // Optional: include experimental Figma tool when explicitly enabled via env.
+    // Enable Figma tools when explicitly requested OR when a token is discoverable locally.
+    if env::var("CODEX_ENABLE_FIGMA_TOOLS").is_ok() || get_figma_token(None).is_ok() {
+        tools.push(create_figma_find_nodes_tool());
+        tools.push(create_figma_export_images_tool());
+        tools.push(create_figma_get_nodes_tool());
+        tools.push(create_figma_extract_tokens_tool());
     }
 
     tools
