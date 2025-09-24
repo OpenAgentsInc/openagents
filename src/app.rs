@@ -359,7 +359,7 @@ pub fn App() -> impl IntoView {
                             { // selector
                                 let reasoning = reasoning;
                                 view! {
-                                    <select class="text-xs bg-black/20 border border-white/40 px-2 py-1 cursor-pointer"
+                                    <select class="text-xs text-white bg-black border border-white rounded-none px-2 py-1 cursor-pointer appearance-none focus:outline-none"
                                             prop:value=move || reasoning.get()
                                             on:change=move |ev| {
                                                 if let Some(sel) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlSelectElement>().ok()) {
