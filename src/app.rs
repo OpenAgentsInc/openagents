@@ -27,33 +27,86 @@ async fn fetch_auth_status() -> UiAuthStatus {
     }
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+struct WorkspaceStatus { path: Option<String>, approval_mode: Option<String>, sandbox: Option<String>, agents_files: Vec<String> }
+#[derive(Clone, Debug, Default, Deserialize)]
+struct AccountStatus { signed_in_with: Option<String>, login: Option<String>, plan: Option<String> }
+#[derive(Clone, Debug, Default, Deserialize)]
+struct ModelStatus { name: Option<String>, provider: Option<String>, reasoning_effort: Option<String>, reasoning_summaries: Option<String> }
+#[derive(Clone, Debug, Default, Deserialize)]
+struct ClientStatus { cli_version: Option<String> }
+#[derive(Clone, Debug, Default, Deserialize)]
+struct TokenUsageStatus { session_id: Option<String>, input: Option<u64>, output: Option<u64>, total: Option<u64> }
+#[derive(Clone, Debug, Default, Deserialize)]
+struct UsageLimitsStatus { note: Option<String> }
+#[derive(Clone, Debug, Default, Deserialize)]
+struct FullStatus { workspace: WorkspaceStatus, account: AccountStatus, model: ModelStatus, client: ClientStatus, token_usage: TokenUsageStatus, usage_limits: UsageLimitsStatus }
+
+async fn fetch_full_status() -> FullStatus {
+    let args = js_sys::Object::new();
+    let promise = tauri_invoke("get_full_status", JsValue::from(args));
+    match JsFuture::from(promise).await {
+        Ok(val) => serde_wasm_bindgen::from_value::<FullStatus>(val).unwrap_or_default(),
+        Err(_) => FullStatus::default(),
+    }
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     // Load auth status on mount
     let status: RwSignal<UiAuthStatus> = RwSignal::new(Default::default());
     let status_setter = status.write_only();
+    let full: RwSignal<FullStatus> = RwSignal::new(Default::default());
+    let full_setter = full.write_only();
     spawn_local(async move {
         let s = fetch_auth_status().await;
         status_setter.set(s);
+        let f = fetch_full_status().await;
+        full_setter.set(f);
     });
 
     view! {
         <div class="container">
             <div class="title">"OpenAgents"</div>
-            <div style="margin-top: 0.75rem; font-size: 0.95rem; opacity: 0.9;">
-                {move || {
-                    let s = status.get();
-                    let method = s.method.unwrap_or_else(|| "Not logged in".to_string());
-                    let email = s.email.unwrap_or_default();
-                    let plan = s.plan.unwrap_or_default();
-                    let extra = match (email.is_empty(), plan.is_empty()) {
-                        (true, true) => String::new(),
-                        (false, true) => format!(" · {}", email),
-                        (true, false) => format!(" · {}", plan),
-                        (false, false) => format!(" · {} · {}", email, plan),
-                    };
-                    format!("Auth: {}{}", method, extra)
-                }}
+            <div class="side-panel">
+                <div class="panel-section">
+                    <div class="panel-title">"📂 Workspace"</div>
+                    <div class="panel-item">{move || format!("• Path: {}", full.get().workspace.path.unwrap_or_else(|| "(unknown)".into()))}</div>
+                    <div class="panel-item">{move || format!("• Approval Mode: {}", full.get().workspace.approval_mode.unwrap_or_else(|| "(default)".into()))}</div>
+                    <div class="panel-item">{move || format!("• Sandbox: {}", full.get().workspace.sandbox.unwrap_or_else(|| "(default)".into()))}</div>
+                    <div class="panel-item">{move || {
+                        let files = full.get().workspace.agents_files;
+                        if files.is_empty() { "• AGENTS files: none".to_string() } else { format!("• AGENTS files: {}", files.join(", ")) }
+                    }}</div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">"👤 Account"</div>
+                    <div class="panel-item">{move || format!("• Signed in with {}", full.get().account.signed_in_with.unwrap_or_else(|| "Not logged in".into()))}</div>
+                    <div class="panel-item">{move || format!("• Login: {}", full.get().account.login.unwrap_or_default())}</div>
+                    <div class="panel-item">{move || format!("• Plan: {}", full.get().account.plan.unwrap_or_default())}</div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">"🧠 Model"</div>
+                    <div class="panel-item">{move || format!("• Name: {}", full.get().model.name.unwrap_or_else(|| "gpt-5".into()))}</div>
+                    <div class="panel-item">{move || format!("• Provider: {}", full.get().model.provider.unwrap_or_else(|| "OpenAI".into()))}</div>
+                    <div class="panel-item">{move || format!("• Reasoning Effort: {}", full.get().model.reasoning_effort.unwrap_or_else(|| "Medium".into()))}</div>
+                    <div class="panel-item">{move || format!("• Reasoning Summaries: {}", full.get().model.reasoning_summaries.unwrap_or_else(|| "Auto".into()))}</div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">"💻 Client"</div>
+                    <div class="panel-item">{move || format!("• CLI Version: {}", full.get().client.cli_version.unwrap_or_else(|| "0.0.0".into()))}</div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">"📊 Token Usage"</div>
+                    <div class="panel-item">{move || format!("• Session ID: {}", full.get().token_usage.session_id.unwrap_or_else(|| "(not started)".into()))}</div>
+                    <div class="panel-item">{move || format!("• Input: {}", full.get().token_usage.input.unwrap_or(0))}</div>
+                    <div class="panel-item">{move || format!("• Output: {}", full.get().token_usage.output.unwrap_or(0))}</div>
+                    <div class="panel-item">{move || format!("• Total: {}", full.get().token_usage.total.unwrap_or(0))}</div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">"⏱️ Usage Limits"</div>
+                    <div class="panel-item">{move || format!("• {}", full.get().usage_limits.note.unwrap_or_else(|| "Rate limit data not available yet.".into()))}</div>
+                </div>
             </div>
         </div>
     }
