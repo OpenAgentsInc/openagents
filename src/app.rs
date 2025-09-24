@@ -49,7 +49,7 @@ pub fn App() -> impl IntoView {
         <div class="h-screen w-full flex items-center justify-center">
             <div class="text-2xl font-normal">"OpenAgents"</div>
 
-            <div class="fixed top-3 right-3 bottom-3 w-96 overflow-auto p-3 border border-white rounded-lg bg-white/5 text-white text-[0.95rem] leading-6">
+            <div class="fixed top-3 right-3 bottom-3 w-96 overflow-auto p-3 border border-white rounded-none bg-white/5 text-white text-[0.95rem] leading-6">
                 <div class="space-y-1.5 mb-3">
                     <div class="font-semibold mb-1 opacity-95">"📂 Workspace"</div>
                     <div class="ml-2 opacity-90">{move || format!("• Path: {}", full.get().workspace.path.unwrap_or_else(|| "(unknown)".into()))}</div>
