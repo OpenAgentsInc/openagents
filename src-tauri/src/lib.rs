@@ -856,7 +856,9 @@ fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> a
 
 fn normalize_effort(e: &str) -> Option<&'static str> {
     match e.to_lowercase().as_str() {
-        "none" | "off" => Some("none"),
+        // Codex expects: minimal | low | medium | high
+        // Treat "none"/"off" as "minimal"
+        "none" | "off" => Some("minimal"),
         "low" => Some("low"),
         "medium" | "med" => Some("medium"),
         "high" => Some("high"),
