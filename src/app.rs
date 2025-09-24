@@ -262,7 +262,7 @@ pub fn App() -> impl IntoView {
                 } else { view! { <div class="mt-2 flex-1"></div> }.into_any() }}
             </div>
 
-            <div class="pl-80 pt-6 pb-28 h-full overflow-auto">
+            <div class="pl-80 pt-6 pb-36 h-full overflow-auto">
                 <div class="mx-auto w-full max-w-[768px] px-4 space-y-3 text-[13px]">
                     {move || items.get().into_iter().map(|item| match item {
                         ChatItem::User { text } => view! { <div class="w-full p-3 border border-white/50 bg-black/20">{text}</div> }.into_any(),
@@ -292,8 +292,9 @@ pub fn App() -> impl IntoView {
             </div>
 
             // Chat bar
-            <div class="fixed bottom-0 left-80 right-0 flex justify-center pb-4 z-10">
-                <div class="w-full max-w-[768px] px-4 flex gap-2">
+            <div class="fixed bottom-0 left-80 right-0 z-50">
+                <div class="w-full bg-black/80 border-t border-white/20">
+                    <div class="mx-auto w-full max-w-[768px] px-4 py-3 flex gap-2">
                     { // input state
                         let msg: RwSignal<String> = RwSignal::new(String::new());
                         let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
@@ -319,7 +320,7 @@ pub fn App() -> impl IntoView {
                             <input
                                 node_ref=input_ref
                                 prop:autofocus=true
-                                class="flex-1 px-3 py-2 border border-white bg-transparent text-white placeholder-white/50 focus:outline-none"
+                                class="flex-1 px-3 py-2 border border-white bg-white/10 text-white placeholder-white/60 focus:outline-none"
                                 type="text"
                                 placeholder="Type a command or message…"
                                 prop:value=move || msg.get()
@@ -337,6 +338,7 @@ pub fn App() -> impl IntoView {
                             >"Send"</button>
                         }
                     }
+                    </div>
                 </div>
             </div>
         </div>
