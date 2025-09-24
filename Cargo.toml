@@ -12,7 +12,7 @@ js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 serde_json = "1"
-web-sys = { version = "0.3", features = ["HtmlInputElement", "EventTarget", "Window", "Document", "HtmlElement"] }
+web-sys = { version = "0.3", features = ["HtmlInputElement", "HtmlSelectElement", "EventTarget", "Window", "Document", "HtmlElement"] }
 pulldown-cmark = "0.10"
 console_error_panic_hook = "0.1.7"
 
