@@ -130,6 +130,8 @@ pub fn App() -> impl IntoView {
     let items: RwSignal<Vec<ChatItem>> = RwSignal::new(vec![]);
     let token_usage_sig: RwSignal<Option<TokenUsageLite>> = RwSignal::new(None);
     let raw_events: RwSignal<Vec<String>> = RwSignal::new(vec![]);
+    // Tracks if we have streamed any reasoning deltas for the current turn
+    let reasoning_streamed: RwSignal<bool> = RwSignal::new(false);
     let raw_open: RwSignal<bool> = RwSignal::new(true);
 
     // Install event listener once (on mount)
@@ -176,13 +178,16 @@ pub fn App() -> impl IntoView {
                             UiStreamEvent::SystemNote { .. } => { /* do not render in transcript */ }
                             UiStreamEvent::ReasoningDelta { text } => {
                                 append_to_reasoning(list, &text);
+                                reasoning_streamed.set(true);
                             }
                             UiStreamEvent::ReasoningBreak { .. } => {
                                 list.push(ChatItem::Reasoning { text: String::new() });
                             }
                             UiStreamEvent::ReasoningSummary { text } => {
-                                // Always add a separate summary block; never collapse earlier blocks
-                                list.push(ChatItem::Reasoning { text });
+                                // Suppress end-of-turn summary if deltas already streamed this turn
+                                if !reasoning_streamed.get() {
+                                    list.push(ChatItem::Reasoning { text });
+                                }
                             }
                         }
                     });
@@ -308,10 +313,13 @@ pub fn App() -> impl IntoView {
                         let send = {
                             let items = items.write_only();
                             let msg_get = msg.read_only();
+                            let reasoning_streamed = reasoning_streamed;
                             move || {
                                 let text = msg_get.get();
                                 if !text.is_empty() {
                                     items.update(|list| list.push(ChatItem::User { text: text.clone() }));
+                                    // New turn: reset reasoning streamed flag
+                                    reasoning_streamed.set(false);
                                     let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "prompt": text })).unwrap_or(JsValue::UNDEFINED);
                                     let _ = tauri_invoke("submit_chat", args);
                                     msg.set(String::new());
