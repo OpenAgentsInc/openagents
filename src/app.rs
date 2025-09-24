@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
+use pulldown_cmark::{Parser, Options, html};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{JsFuture, spawn_local};
@@ -43,27 +44,36 @@ async fn fetch_full_status() -> FullStatus {
 }
 
 // ---- Streaming UI types ----
+#[allow(dead_code)]
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(tag = "kind")]
 enum UiStreamEvent {
     #[default]
     Created,
     OutputTextDelta { text: String },
-    ToolDelta { call_id: String, chunk: String },
+    ToolDelta { call_id: String, chunk: String, is_stderr: bool },
     OutputItemDoneMessage { text: String },
-    Completed { response_id: Option<String>, token_usage: Option<TokenUsageLite> },
+    Completed { #[serde(rename = "response_id")] _response_id: Option<String>, token_usage: Option<TokenUsageLite> },
     Raw { json: String },
-    SystemNote { text: String },
+    SystemNote { #[serde(rename = "text")] _text: String },
+    ReasoningDelta { text: String },
+    ReasoningSummary { text: String },
+    ReasoningBreak {},
+    ToolBegin { call_id: String, title: String },
+    ToolEnd { call_id: String, #[serde(rename = "exit_code")] _exit_code: Option<i64> },
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Default, Deserialize)]
 struct TokenUsageLite { input: u64, output: u64, total: u64 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 enum ChatItem {
     User { text: String },
+    Reasoning { text: String },
     Assistant { text: String, streaming: bool },
-    Tool { call_id: String, output: String, done: bool },
+    Tool { call_id: String, title: String, segments: Vec<(String, bool)>, done: bool },
     System { text: String },
 }
 
@@ -74,12 +84,38 @@ fn append_to_assistant(list: &mut Vec<ChatItem>, s: &str) {
     list.push(ChatItem::Assistant { text: s.to_string(), streaming: true });
 }
 
-fn append_tool_chunk(list: &mut Vec<ChatItem>, call_id: &str, chunk: &str) {
-    if let Some(ChatItem::Tool { output, .. }) = list.iter_mut().rev().find(|i| matches!(i, ChatItem::Tool { call_id: id, .. } if id == call_id )) {
-        output.push_str(chunk);
+fn append_tool_chunk(list: &mut Vec<ChatItem>, call_id: &str, chunk: &str, is_stderr: bool) {
+    if let Some(ChatItem::Tool { segments, .. }) = list.iter_mut().rev().find(|i| matches!(i, ChatItem::Tool { call_id: id, .. } if id == call_id )) {
+        if let Some((last_text, last_err)) = segments.last_mut() {
+            if *last_err == is_stderr {
+                last_text.push_str(chunk);
+                return;
+            }
+        }
+        segments.push((chunk.to_string(), is_stderr));
     } else {
-        list.push(ChatItem::Tool { call_id: call_id.to_string(), output: chunk.to_string(), done: false });
+        list.push(ChatItem::Tool { call_id: call_id.to_string(), title: "exec".to_string(), segments: vec![(chunk.to_string(), is_stderr)], done: false });
     }
+}
+
+fn append_to_reasoning(list: &mut Vec<ChatItem>, s: &str) {
+    if let Some(last) = list.last_mut() {
+        if let ChatItem::Reasoning { text } = last {
+            text.push_str(s);
+            return;
+        }
+    }
+    list.push(ChatItem::Reasoning { text: s.to_string() });
+}
+
+fn md_to_html(md: &str) -> String {
+    let mut opts = Options::empty();
+    opts.insert(Options::ENABLE_STRIKETHROUGH);
+    opts.insert(Options::ENABLE_TABLES);
+    let parser = Parser::new_ext(md, opts);
+    let mut out = String::new();
+    html::push_html(&mut out, parser);
+    out
 }
 
 #[component]
@@ -94,7 +130,7 @@ pub fn App() -> impl IntoView {
     let items: RwSignal<Vec<ChatItem>> = RwSignal::new(vec![]);
     let token_usage_sig: RwSignal<Option<TokenUsageLite>> = RwSignal::new(None);
     let raw_events: RwSignal<Vec<String>> = RwSignal::new(vec![]);
-    let raw_open: RwSignal<bool> = RwSignal::new(false);
+    let raw_open: RwSignal<bool> = RwSignal::new(true);
 
     // Install event listener once (on mount)
     {
@@ -112,28 +148,42 @@ pub fn App() -> impl IntoView {
                     }
                     items_setter.update(|list| {
                         match ev {
-                            UiStreamEvent::Created => {
-                                list.push(ChatItem::System { text: "Turn started".into() });
-                            }
+                            UiStreamEvent::Created => {}
                             UiStreamEvent::OutputTextDelta { text } => {
                                 append_to_assistant(list, &text);
                             }
-                            UiStreamEvent::ToolDelta { call_id, chunk } => {
-                                append_tool_chunk(list, &call_id, &chunk);
+                            UiStreamEvent::ToolDelta { call_id, chunk, is_stderr } => {
+                                append_tool_chunk(list, &call_id, &chunk, is_stderr);
+                            }
+                            UiStreamEvent::ToolBegin { call_id, title } => {
+                                list.push(ChatItem::Tool { call_id, title, segments: Vec::new(), done: false });
+                            }
+                            UiStreamEvent::ToolEnd { call_id, _exit_code: _ } => {
+                                if let Some(ChatItem::Tool { done, .. }) = list.iter_mut().rev().find(|i| matches!(i, ChatItem::Tool { call_id: id, .. } if *id == call_id )) {
+                                    *done = true;
+                                }
                             }
                             UiStreamEvent::OutputItemDoneMessage { text } => {
                                 append_to_assistant(list, &format!("\n{}", text));
                                 if let Some(ChatItem::Assistant { streaming, .. }) = list.last_mut() { *streaming = false; }
                             }
-                            UiStreamEvent::Completed { response_id, token_usage } => {
+                            UiStreamEvent::Completed { _response_id: _, token_usage } => {
                                 if let Some(ChatItem::Assistant { streaming, .. }) = list.last_mut() { *streaming = false; }
                                 if let Some(ChatItem::Tool { done, .. }) = list.iter_mut().rev().find(|i| matches!(i, ChatItem::Tool { .. })) { *done = true; }
-                                if let Some(tu) = token_usage.clone() { token_setter.set(Some(tu)); }
-                                if let Some(id) = response_id { list.push(ChatItem::System { text: format!("Completed: {id}") }); }
-                                if let Some(tu) = token_usage { list.push(ChatItem::System { text: format!("Tokens in/out/total: {} / {} / {}", tu.input, tu.output, tu.total) }); }
+                                if let Some(tu) = token_usage { token_setter.set(Some(tu)); }
                             }
                             UiStreamEvent::Raw { .. } => {}
-                            UiStreamEvent::SystemNote { text } => { list.push(ChatItem::System { text }); }
+                            UiStreamEvent::SystemNote { .. } => { /* do not render in transcript */ }
+                            UiStreamEvent::ReasoningDelta { text } => {
+                                append_to_reasoning(list, &text);
+                            }
+                            UiStreamEvent::ReasoningBreak { .. } => {
+                                list.push(ChatItem::Reasoning { text: String::new() });
+                            }
+                            UiStreamEvent::ReasoningSummary { text } => {
+                                // Always add a separate summary block; never collapse earlier blocks
+                                list.push(ChatItem::Reasoning { text });
+                            }
                         }
                     });
                 }
@@ -150,27 +200,48 @@ pub fn App() -> impl IntoView {
 
     view! {
         <div class="h-screen w-full">
-            <div class="fixed top-0 left-0 bottom-0 w-56 p-3 border-r border-white bg-white/5">
+            <div class="fixed top-0 left-0 bottom-0 w-80 p-3 border-r border-white bg-white/5 flex flex-col">
                 <div class="text-lg mb-2">"OpenAgents"</div>
+                <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start"
+                        on:click=move |_| raw_open.update(|v| *v = !*v)>
+                    {move || if raw_open.get() { "Hide event log".to_string() } else { "Show event log".to_string() }}
+                </button>
+                {move || if raw_open.get() {
+                    view! {
+                        <div class="mt-2 flex-1 overflow-auto border border-white/20 bg-black/50 p-2">
+                            <pre class="text-[11px] leading-4 whitespace-pre-wrap">{raw_events.get().join("\n")}</pre>
+                        </div>
+                    }.into_any()
+                } else { view! { <div class="mt-2 flex-1"></div> }.into_any() }}
             </div>
 
-            <div class="pl-56 pr-[26rem] pt-4 pb-28 h-full overflow-auto">
+            <div class="pl-80 pr-[26rem] pt-4 pb-28 h-full overflow-auto">
                 <div class="space-y-3 text-[13px]">
                     {move || items.get().into_iter().map(|item| match item {
                         ChatItem::User { text } => view! { <div class="max-w-3xl p-3 border border-white/50 bg-black/20">{text}</div> }.into_any(),
-                        ChatItem::Assistant { text, streaming } => view! { <div class="max-w-3xl p-3 border border-white/40 bg-white/10">{text}{if streaming { " ▌" } else { "" }.to_string()}</div> }.into_any(),
-                        ChatItem::Tool { call_id, output, done } => view! { <div class="max-w-3xl p-3 border border-white/30 bg-black/40"><div class="text-xs opacity-70 mb-1">{format!("Tool {call_id} {}", if done {"(done)"} else {"(running)"})}</div><pre class="whitespace-pre-wrap text-sm">{output}</pre></div> }.into_any(),
+                        ChatItem::Reasoning { text } => {
+                            let html = md_to_html(&text);
+                            view! { <div class="max-w-3xl text-[12px] italic opacity-85 px-3 reasoning-md" inner_html=html></div> }.into_any()
+                        }
+                        ChatItem::Assistant { text, streaming } => {
+                            let html = md_to_html(&text);
+                            view! { <div class="max-w-3xl p-3 border border-white/40 bg-white/10"><div class="assistant-md" inner_html=html></div>{if streaming { " ▌" } else { "" }.to_string()}</div> }.into_any()
+                        }
+                        ChatItem::Tool { call_id: _, title, segments, done } => view! {
+                            <div class="max-w-3xl p-3 border border-white/30 bg-black/40">
+                                <div class="text-xs opacity-80 mb-1">{format!("{} {}", title, if done {"(done)"} else {"(running)"})}</div>
+                                <pre class="whitespace-pre-wrap text-sm">
+                                    {move || segments.iter().map(|(t, is_err)| {
+                                        let cls = if *is_err { "text-red-400" } else { "text-white" };
+                                        view!{ <span class={cls}>{t.clone()}</span> }.into_any()
+                                    }).collect_view()}
+                                </pre>
+                            </div>
+                        }.into_any(),
                         ChatItem::System { text } => view! { <div class="text-xs opacity-60">{text}</div> }.into_any(),
                     }).collect_view()}
                 </div>
-                <div class="mt-4 max-w-3xl">
-                    <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click=move |_| raw_open.update(|v| *v = !*v)>
-                        {move || if raw_open.get() { "Hide raw event log".to_string() } else { "Show raw event log".to_string() }}
-                    </button>
-                    {move || if raw_open.get() {
-                        view!{ <pre class="mt-2 max-h-72 overflow-auto text-[11px] leading-4 whitespace-pre-wrap border border-white/20 p-2 bg-black/50">{raw_events.get().join("\n")}</pre> }.into_any()
-                    } else { view!{ <div></div> }.into_any() }}
-                </div>
+                
             </div>
 
             <button
@@ -241,7 +312,6 @@ pub fn App() -> impl IntoView {
                                 let text = msg_get.get();
                                 if !text.is_empty() {
                                     items.update(|list| list.push(ChatItem::User { text: text.clone() }));
-                                    items.update(|list| list.push(ChatItem::Assistant { text: String::new(), streaming: true }));
                                     let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "prompt": text })).unwrap_or(JsValue::UNDEFINED);
                                     let _ = tauri_invoke("submit_chat", args);
                                     msg.set(String::new());

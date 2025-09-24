@@ -334,11 +334,16 @@ pub enum UiStreamEvent {
     #[default]
     Created,
     OutputTextDelta { text: String },
-    ToolDelta { call_id: String, chunk: String },
+    ToolDelta { call_id: String, chunk: String, is_stderr: bool },
     OutputItemDoneMessage { text: String },
     Completed { response_id: Option<String>, token_usage: Option<TokenUsageLite> },
     Raw { json: String },
     SystemNote { text: String },
+    ReasoningDelta { text: String },
+    ReasoningSummary { text: String },
+    ReasoningBreak {},
+    ToolBegin { call_id: String, title: String },
+    ToolEnd { call_id: String, exit_code: Option<i64> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -350,13 +355,6 @@ pub struct TokenUsageLite {
 
 #[tauri::command]
 async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String> {
-    // Immediate feedback in UI
-    let _ = window.emit("codex:stream", &UiStreamEvent::Created);
-    let _ = window.emit(
-        "codex:stream",
-        &UiStreamEvent::SystemNote { text: format!("Submitting prompt ({} chars) …", prompt.len()) },
-    );
-
     // Ensure Protocol streamer is running; then send the prompt.
     let state = window.state::<Arc<Mutex<McpState>>>();
     // Clone the Arc for passing into the reader task
@@ -368,10 +366,7 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
     {
         let mut guard = state.lock().map_err(|e| e.to_string())?;
         if guard.child.is_none() {
-            let _ = window.emit(
-                "codex:stream",
-                &UiStreamEvent::SystemNote { text: "Starting Codex (proto) — first build may take a minute…".into() },
-            );
+            // (quietly start proto; stderr is forwarded to raw log if present)
             guard.start(&window, shared_arc.clone()).map_err(|e| format!("start proto: {e}"))?;
         }
         // Protocol path does not require an explicit newConversation
@@ -414,11 +409,21 @@ impl McpState {
         let mut cmd;
         if codex_dir.join("Cargo.toml").exists() {
             cmd = Command::new("cargo");
-            cmd.arg("run").arg("-q").arg("-p").arg("codex-cli").arg("--").arg("proto")
+            cmd.arg("run").arg("-q").arg("-p").arg("codex-cli").arg("--")
+                .arg("proto")
+                // Bust out of sandbox: approval never + danger-full-access, and set model/effort
+                .arg("-c").arg("approval_policy=never")
+                .arg("-c").arg("sandbox_mode=danger-full-access")
+                .arg("-c").arg("model=gpt-5")
+                .arg("-c").arg("model_reasoning_effort=high")
                 .current_dir(&codex_dir);
         } else {
             cmd = Command::new("codex");
-            cmd.arg("proto");
+            cmd.arg("proto")
+                .arg("-c").arg("approval_policy=never")
+                .arg("-c").arg("sandbox_mode=danger-full-access")
+                .arg("-c").arg("model=gpt-5")
+                .arg("-c").arg("model_reasoning_effort=high");
         }
         cmd
             .stdin(std::process::Stdio::piped())
@@ -511,6 +516,30 @@ fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> a
     tx.send(buf).map_err(|e| anyhow::anyhow!("send stdin: {e}"))
 }
 
+fn guess_filename_from_command(cmd: &str) -> Option<String> {
+    // Strip quotes to simplify tokenization
+    let cleaned = cmd.replace('\"', " ").replace('\'', " ");
+    let mut candidate: Option<String> = None;
+    for tok in cleaned.split_whitespace() {
+        let t = tok.trim_matches(|c: char| c == ';' || c == ')' || c == '(');
+        if t.starts_with('-') || t == "cd" || t == "&&" || t == "sed" || t == "-n" || t == "cat" || t == "head" || t == "tail" {
+            continue;
+        }
+        let looks_like_path = t.contains('/') || t.contains('.') && !t.ends_with('.') && !t.starts_with(".");
+        if looks_like_path {
+            candidate = Some(t.to_string());
+        }
+    }
+    candidate.map(|s| {
+        // Keep only the filename for readability
+        std::path::Path::new(&s)
+            .file_name()
+            .and_then(|os| os.to_str())
+            .unwrap_or(&s)
+            .to_string()
+    })
+}
+
 fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
     if let Some(msg) = event.get("msg") {
         let typ = msg.get("type").and_then(|t| t.as_str()).unwrap_or("");
@@ -520,15 +549,102 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                     let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: delta.to_string() });
                 }
             }
+            "agent_reasoning_delta" => {
+                if let Some(delta) = msg.get("delta").and_then(|d| d.as_str()) {
+                    let _ = win.emit("codex:stream", &UiStreamEvent::ReasoningDelta { text: delta.to_string() });
+                }
+            }
+            "agent_reasoning_raw_content_delta" => {
+                if let Some(delta) = msg.get("delta").and_then(|d| d.as_str()) {
+                    let _ = win.emit("codex:stream", &UiStreamEvent::ReasoningDelta { text: delta.to_string() });
+                }
+            }
+            "agent_reasoning" => {
+                if let Some(text) = msg.get("text").and_then(|d| d.as_str()) {
+                    let _ = win.emit("codex:stream", &UiStreamEvent::ReasoningSummary { text: text.to_string() });
+                }
+            }
+            "agent_reasoning_section_break" => {
+                let _ = win.emit("codex:stream", &UiStreamEvent::ReasoningBreak {});
+            }
             "exec_command_output_delta" => {
                 let call_id = msg.get("call_id").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                let is_stderr = matches!(msg.get("stream").and_then(|s| s.as_str()), Some("stderr"));
                 if let Some(chunk_b64) = msg.get("chunk").and_then(|d| d.as_str()) {
                     if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(chunk_b64) {
                         if let Ok(text) = String::from_utf8(bytes) {
-                            let _ = win.emit("codex:stream", &UiStreamEvent::ToolDelta { call_id, chunk: text });
+                            let _ = win.emit("codex:stream", &UiStreamEvent::ToolDelta { call_id, chunk: text, is_stderr });
                         }
                     }
                 }
+            }
+            "exec_command_begin" => {
+                let call_id = msg.get("call_id").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                // Derive a friendly title with details (e.g., Read architecture.md, List docs, Search docs)
+                let mut parts: Vec<String> = Vec::new();
+                if let Some(arr) = msg.get("parsed_cmd").and_then(|v| v.as_array()) {
+                    for el in arr.iter() {
+                        if let Some(obj) = el.as_object() {
+                            if let Some((k, vsub)) = obj.iter().next() {
+                                if k == "Unknown" { continue; }
+                                let title_part = match k.as_str() {
+                                    "Read" => {
+                                        let mut name = vsub.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                                        if name.is_empty() {
+                                            let cmd_str = msg
+                                                .get("command")
+                                                .and_then(|c| c.as_array())
+                                                .map(|a| a.iter().filter_map(|s| s.as_str()).collect::<Vec<_>>().join(" "))
+                                                .unwrap_or_default();
+                                            if let Some(n) = guess_filename_from_command(&cmd_str) { name = n; }
+                                        }
+                                        if name.is_empty() { "Read".to_string() } else { format!("Read {}", name) }
+                                    }
+                                    "ListFiles" => {
+                                        let path = vsub.get("path").and_then(|s| s.as_str()).unwrap_or("");
+                                        if !path.is_empty() { format!("List {}", path) } else { "ListFiles".to_string() }
+                                    }
+                                    "Search" => {
+                                        let path = vsub.get("path").and_then(|s| s.as_str()).unwrap_or("");
+                                        if !path.is_empty() { format!("Search {}", path) } else { "Search".to_string() }
+                                    }
+                                    other => other.to_string(),
+                                };
+                                parts.push(title_part);
+                            }
+                        }
+                    }
+                }
+                // Remove duplicates while preserving order
+                let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+                parts.retain(|p| seen.insert(p.clone()));
+
+                if parts.is_empty() {
+                    // Heuristic from the command string
+                    let cmd_str = msg
+                        .get("command")
+                        .and_then(|c| c.as_array())
+                        .map(|a| a.iter().filter_map(|s| s.as_str()).collect::<Vec<_>>().join(" "))
+                        .unwrap_or_default();
+                    let mut guess = String::new();
+                    if cmd_str.contains("rg ") || cmd_str.contains("find ") {
+                        guess = "Search".into();
+                    } else if cmd_str.contains("ls ") {
+                        guess = "ListFiles".into();
+                    } else if cmd_str.contains("sed -n") || cmd_str.contains("cat ") || cmd_str.contains("head ") {
+                        guess = "Read".into();
+                    }
+                    if guess.is_empty() { guess = "exec".into(); }
+                    parts.push(guess);
+                }
+
+                let title = parts.join(" → ");
+                let _ = win.emit("codex:stream", &UiStreamEvent::ToolBegin { call_id, title });
+            }
+            "exec_command_end" => {
+                let call_id = msg.get("call_id").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                let exit_code = msg.get("exit_code").and_then(|c| c.as_i64());
+                let _ = win.emit("codex:stream", &UiStreamEvent::ToolEnd { call_id, exit_code });
             }
             "token_count" => {
                 let input = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
