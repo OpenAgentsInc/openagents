@@ -3,6 +3,7 @@ use serde::Serialize;
 use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
+use base64::Engine as _;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
