@@ -306,8 +306,8 @@ pub fn App() -> impl IntoView {
             </div>
 
             // Chat bar
-            <div class="fixed bottom-0 left-0 right-0 flex justify-center pb-4 z-10">
-                <div class="w-full max-w-[600px] px-4 flex gap-2">
+            <div class="fixed bottom-0 left-80 right-0 flex justify-center pb-4 z-10">
+                <div class="w-full max-w-[768px] px-4 flex gap-2">
                     { // input state
                         let msg: RwSignal<String> = RwSignal::new(String::new());
                         let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
