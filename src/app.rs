@@ -123,8 +123,7 @@ pub fn App() -> impl IntoView {
     // Load auth status on mount
     let full: RwSignal<FullStatus> = RwSignal::new(Default::default());
     let full_setter = full.write_only();
-    // Default hidden
-    let panel_open: RwSignal<bool> = RwSignal::new(false);
+    // Sidebar toggles
 
     // Chat state
     let items: RwSignal<Vec<ChatItem>> = RwSignal::new(vec![]);
@@ -133,6 +132,7 @@ pub fn App() -> impl IntoView {
     // Tracks if we have streamed any reasoning deltas for the current turn
     let reasoning_streamed: RwSignal<bool> = RwSignal::new(false);
     let raw_open: RwSignal<bool> = RwSignal::new(true);
+    let status_open: RwSignal<bool> = RwSignal::new(false);
 
     // Install event listener once (on mount)
     {
@@ -205,8 +205,50 @@ pub fn App() -> impl IntoView {
 
     view! {
         <div class="h-screen w-full">
-            <div class="fixed top-0 left-0 bottom-0 w-80 p-3 border-r border-white bg-white/5 flex flex-col">
+            <div class="fixed top-0 left-0 bottom-0 w-80 p-3 border-r border-white bg-white/5 flex flex-col overflow-hidden">
                 <div class="text-lg mb-2">"OpenAgents"</div>
+                <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start mb-1"
+                        on:click=move |_| status_open.update(|v| *v = !*v)>
+                    {move || if status_open.get() { "Hide status".to_string() } else { "Show status".to_string() }}
+                </button>
+                {move || if status_open.get() {
+                    view! {
+                        <div class="mb-2 max-h-56 overflow-auto border border-white/20 bg-black/30 p-2 text-[12px] leading-5">
+                            <div class="font-semibold mb-1 opacity-95">"📂 Workspace"</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Path: {}", full.get().workspace.path.clone().unwrap_or_else(|| "(unknown)".into()))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Approval Mode: {}", full.get().workspace.approval_mode.clone().unwrap_or_else(|| "(default)".into()))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Sandbox: {}", full.get().workspace.sandbox.clone().unwrap_or_else(|| "(default)".into()))}</div>
+                            <div class="ml-2 opacity-90">{move || {
+                                let files = full.get().workspace.agents_files.clone();
+                                if files.is_empty() { "• AGENTS files: none".to_string() } else { format!("• AGENTS files: {}", files.join(", ")) }
+                            }}</div>
+
+                            <div class="font-semibold mt-2 mb-1 opacity-95">"👤 Account"</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Signed in with {}", full.get().account.signed_in_with.clone().unwrap_or_else(|| "Not logged in".into()))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Login: {}", full.get().account.login.clone().unwrap_or_default())}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Plan: {}", full.get().account.plan.clone().unwrap_or_default())}</div>
+
+                            <div class="font-semibold mt-2 mb-1 opacity-95">"🧠 Model"</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Name: {}", full.get().model.name.clone().unwrap_or_else(|| "gpt-5".into()))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Provider: {}", full.get().model.provider.clone().unwrap_or_else(|| "OpenAI".into()))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Reasoning Effort: {}", full.get().model.reasoning_effort.clone().unwrap_or_else(|| "Medium".into()))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Reasoning Summaries: {}", full.get().model.reasoning_summaries.clone().unwrap_or_else(|| "Auto".into()))}</div>
+
+                            <div class="font-semibold mt-2 mb-1 opacity-95">"💻 Client"</div>
+                            <div class="ml-2 opacity-90">{move || format!("• CLI Version: {}", full.get().client.cli_version.clone().unwrap_or_else(|| "0.0.0".into()))}</div>
+
+                            <div class="font-semibold mt-2 mb-1 opacity-95">"📊 Token Usage"</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Session ID: {}", full.get().token_usage.session_id.clone().unwrap_or_else(|| "(not started)".into()))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Input: {}", full.get().token_usage.input.unwrap_or(0))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Output: {}", full.get().token_usage.output.unwrap_or(0))}</div>
+                            <div class="ml-2 opacity-90">{move || format!("• Total: {}", full.get().token_usage.total.unwrap_or(0))}</div>
+
+                            <div class="font-semibold mt-2 mb-1 opacity-95">"⏱️ Usage Limits"</div>
+                            <div class="ml-2 opacity-90">{move || format!("• {}", full.get().usage_limits.note.clone().unwrap_or_else(|| "Rate limit data not available yet.".into()))}</div>
+                        </div>
+                    }.into_any()
+                } else { view!{ <div></div> }.into_any() }}
+
                 <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start"
                         on:click=move |_| raw_open.update(|v| *v = !*v)>
                     {move || if raw_open.get() { "Hide event log".to_string() } else { "Show event log".to_string() }}
@@ -247,62 +289,6 @@ pub fn App() -> impl IntoView {
                     }).collect_view()}
                 </div>
                 
-            </div>
-
-            <button
-                class="fixed top-2 right-3 z-10 text-sm underline text-white/80 hover:text-white cursor-pointer focus:outline-none"
-                on:click=move |_| {
-                    panel_open.update(|v| *v = !*v);
-                }
-                type="button"
-            >
-                {move || if panel_open.get() { "Hide status".to_string() } else { "Show status".to_string() }}
-            </button>
-
-            <div class=move || if panel_open.get() { "fixed top-12 right-3 bottom-3 w-96 overflow-auto p-3 border border-white rounded-none bg-black text-white text-[0.95rem] leading-6 z-50".to_string() } else { "hidden".to_string() }>
-                <div class="space-y-1.5 mb-3">
-                    <div class="font-semibold mb-1 opacity-95">"📂 Workspace"</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Path: {}", full.get().workspace.path.unwrap_or_else(|| "(unknown)".into()))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Approval Mode: {}", full.get().workspace.approval_mode.unwrap_or_else(|| "(default)".into()))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Sandbox: {}", full.get().workspace.sandbox.unwrap_or_else(|| "(default)".into()))}</div>
-                    <div class="ml-2 opacity-90">{move || {
-                        let files = full.get().workspace.agents_files;
-                        if files.is_empty() { "• AGENTS files: none".to_string() } else { format!("• AGENTS files: {}", files.join(", ")) }
-                    }}</div>
-                </div>
-
-                <div class="space-y-1.5 mb-3">
-                    <div class="font-semibold mb-1 opacity-95">"👤 Account"</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Signed in with {}", full.get().account.signed_in_with.unwrap_or_else(|| "Not logged in".into()))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Login: {}", full.get().account.login.unwrap_or_default())}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Plan: {}", full.get().account.plan.unwrap_or_default())}</div>
-                </div>
-
-                <div class="space-y-1.5 mb-3">
-                    <div class="font-semibold mb-1 opacity-95">"🧠 Model"</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Name: {}", full.get().model.name.unwrap_or_else(|| "gpt-5".into()))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Provider: {}", full.get().model.provider.unwrap_or_else(|| "OpenAI".into()))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Reasoning Effort: {}", full.get().model.reasoning_effort.unwrap_or_else(|| "Medium".into()))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Reasoning Summaries: {}", full.get().model.reasoning_summaries.unwrap_or_else(|| "Auto".into()))}</div>
-                </div>
-
-                <div class="space-y-1.5 mb-3">
-                    <div class="font-semibold mb-1 opacity-95">"💻 Client"</div>
-                    <div class="ml-2 opacity-90">{move || format!("• CLI Version: {}", full.get().client.cli_version.unwrap_or_else(|| "0.0.0".into()))}</div>
-                </div>
-
-                <div class="space-y-1.5 mb-3">
-                    <div class="font-semibold mb-1 opacity-95">"📊 Token Usage"</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Session ID: {}", full.get().token_usage.session_id.unwrap_or_else(|| "(not started)".into()))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Input: {}", full.get().token_usage.input.unwrap_or(0))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Output: {}", full.get().token_usage.output.unwrap_or(0))}</div>
-                    <div class="ml-2 opacity-90">{move || format!("• Total: {}", full.get().token_usage.total.unwrap_or(0))}</div>
-                </div>
-
-                <div class="space-y-1.5 mb-1">
-                    <div class="font-semibold mb-1 opacity-95">"⏱️ Usage Limits"</div>
-                    <div class="ml-2 opacity-90">{move || format!("• {}", full.get().usage_limits.note.unwrap_or_else(|| "Rate limit data not available yet.".into()))}</div>
-                </div>
             </div>
 
             // Chat bar
