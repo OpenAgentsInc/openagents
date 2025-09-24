@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
 use base64::Engine as _;
+use tauri::Emitter;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -320,11 +321,55 @@ async fn get_full_status() -> FullStatus {
     }
 }
 
+// ---- Streaming UI plumbing (stub events for now) ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(tag = "kind")]
+pub enum UiStreamEvent {
+    #[default]
+    Created,
+    OutputTextDelta { text: String },
+    ToolDelta { call_id: String, chunk: String },
+    OutputItemDoneMessage { text: String },
+    Completed { response_id: Option<String>, token_usage: Option<TokenUsageLite> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TokenUsageLite {
+    pub input: u64,
+    pub output: u64,
+    pub total: u64,
+}
+
+#[tauri::command]
+async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String> {
+    // For now, emit a stub stream that simulates a Codex turn so the UI can hook up plumbing.
+    // Integration can later map real Codex ResponseEvents → UiStreamEvent.
+    window.emit("codex:stream", &UiStreamEvent::Created).map_err(|e| e.to_string())?;
+
+    let win = window.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: format!("Thinking about: {}", prompt) });
+        let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: "… parsing request".into() });
+        // Simulate a tool call streaming output
+        let _ = win.emit("codex:stream", &UiStreamEvent::ToolDelta { call_id: "exec-1".into(), chunk: "$ ls -la\n".into() });
+        let _ = win.emit("codex:stream", &UiStreamEvent::ToolDelta { call_id: "exec-1".into(), chunk: "README.md\nCargo.toml\n".into() });
+        let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: "… applying changes".into() });
+        let _ = win.emit("codex:stream", &UiStreamEvent::OutputItemDoneMessage { text: "All set. Anything else?".into() });
+        let _ = win.emit("codex:stream", &UiStreamEvent::Completed {
+            response_id: Some("resp_123".into()),
+            token_usage: Some(TokenUsageLite { input: 10, output: 25, total: 35 }),
+        });
+    });
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
