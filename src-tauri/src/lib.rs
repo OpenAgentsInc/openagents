@@ -380,40 +380,46 @@ fn file_is_rollout(path: &std::path::Path) -> bool {
 async fn collect_rollout_files(limit_scan: usize) -> anyhow::Result<Vec<std::path::PathBuf>> {
     let mut files: Vec<std::path::PathBuf> = Vec::new();
     let home = default_codex_home().ok_or_else(|| anyhow::anyhow!("no CODEX_HOME"))?;
-    let mut root = home.clone();
-    root.push("sessions");
-    if !root.exists() { return Ok(files); }
 
-    // Traverse YYYY/MM/DD shallowly (no need to be fancy here)
-    let mut years = tokio_fs::read_dir(&root).await?;
-    let mut year_dirs: Vec<std::path::PathBuf> = Vec::new();
-    while let Some(ent) = years.next_entry().await? { if ent.file_type().await?.is_dir() { year_dirs.push(ent.path()) } }
-    // Sort desc by name
-    year_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
-    'outer:
-    for y in year_dirs {
-        let mut months = tokio_fs::read_dir(&y).await?;
-        let mut month_dirs: Vec<std::path::PathBuf> = Vec::new();
-        while let Some(ent) = months.next_entry().await? { if ent.file_type().await?.is_dir() { month_dirs.push(ent.path()) } }
-        month_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
-        for m in month_dirs {
-            let mut days = tokio_fs::read_dir(&m).await?;
-            let mut day_dirs: Vec<std::path::PathBuf> = Vec::new();
-            while let Some(ent) = days.next_entry().await? { if ent.file_type().await?.is_dir() { day_dirs.push(ent.path()) } }
-            day_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
-            for d in day_dirs {
-                let mut rd = tokio_fs::read_dir(&d).await?;
-                let mut day_files: Vec<std::path::PathBuf> = Vec::new();
-                while let Some(ent) = rd.next_entry().await? {
-                    if ent.file_type().await?.is_file() && file_is_rollout(&ent.path()) { day_files.push(ent.path()); }
+    // Search both active and archived sessions
+    for sub in ["sessions", "archived_sessions"] {
+        let mut root = home.clone();
+        root.push(sub);
+        if !root.exists() { continue; }
+
+        // Traverse YYYY/MM/DD shallowly
+        let mut years = match tokio_fs::read_dir(&root).await { Ok(d) => d, Err(_) => continue };
+        let mut year_dirs: Vec<std::path::PathBuf> = Vec::new();
+        while let Some(ent) = years.next_entry().await? { if ent.file_type().await?.is_dir() { year_dirs.push(ent.path()) } }
+        // Sort desc by name
+        year_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
+        'outer:
+        for y in year_dirs {
+            let mut months = tokio_fs::read_dir(&y).await?;
+            let mut month_dirs: Vec<std::path::PathBuf> = Vec::new();
+            while let Some(ent) = months.next_entry().await? { if ent.file_type().await?.is_dir() { month_dirs.push(ent.path()) } }
+            month_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
+            for m in month_dirs {
+                let mut days = tokio_fs::read_dir(&m).await?;
+                let mut day_dirs: Vec<std::path::PathBuf> = Vec::new();
+                while let Some(ent) = days.next_entry().await? { if ent.file_type().await?.is_dir() { day_dirs.push(ent.path()) } }
+                day_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
+                for d in day_dirs {
+                    let mut rd = tokio_fs::read_dir(&d).await?;
+                    let mut day_files: Vec<std::path::PathBuf> = Vec::new();
+                    while let Some(ent) = rd.next_entry().await? {
+                        if ent.file_type().await?.is_file() && file_is_rollout(&ent.path()) { day_files.push(ent.path()); }
+                    }
+                    // Sort by mtime desc
+                    day_files.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+                    day_files.reverse();
+                    for f in day_files { files.push(f); if files.len() >= limit_scan { break 'outer; } }
                 }
-                // Sort by mtime desc
-                day_files.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
-                day_files.reverse();
-                for f in day_files { files.push(f); if files.len() >= limit_scan { break 'outer; } }
             }
         }
+        if files.len() >= limit_scan { break; }
     }
+    let mut year_dirs: Vec<std::path::PathBuf> = Vec::new();
     Ok(files)
 }
 
