@@ -1,14 +1,21 @@
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{JsFuture, spawn_local};
 use wasm_bindgen::JsValue;
+use wasm_bindgen::closure::Closure;
+use js_sys::Function as JsFunction;
 
 #[wasm_bindgen]
 extern "C" {
     // Tauri v2 global API
     #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = invoke)]
     fn tauri_invoke(cmd: &str, args: JsValue) -> js_sys::Promise;
+
+    // Tauri v2 event listen
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "event"], js_name = listen)]
+    fn tauri_event_listen(event: &str, cb: &JsFunction) -> js_sys::Promise;
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -35,6 +42,44 @@ async fn fetch_full_status() -> FullStatus {
     }
 }
 
+// ---- Streaming UI types ----
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(tag = "kind")]
+enum UiStreamEvent {
+    #[default]
+    Created,
+    OutputTextDelta { text: String },
+    ToolDelta { call_id: String, chunk: String },
+    OutputItemDoneMessage { text: String },
+    Completed { response_id: Option<String>, token_usage: Option<TokenUsageLite> },
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct TokenUsageLite { input: u64, output: u64, total: u64 }
+
+#[derive(Clone, Debug)]
+enum ChatItem {
+    User { text: String },
+    Assistant { text: String, streaming: bool },
+    Tool { call_id: String, output: String, done: bool },
+    System { text: String },
+}
+
+fn append_to_assistant(list: &mut Vec<ChatItem>, s: &str) {
+    if let Some(last) = list.last_mut() {
+        if let ChatItem::Assistant { text, .. } = last { text.push_str(s); return; }
+    }
+    list.push(ChatItem::Assistant { text: s.to_string(), streaming: true });
+}
+
+fn append_tool_chunk(list: &mut Vec<ChatItem>, call_id: &str, chunk: &str) {
+    if let Some(ChatItem::Tool { output, .. }) = list.iter_mut().rev().find(|i| matches!(i, ChatItem::Tool { call_id: id, .. } if id == call_id )) {
+        output.push_str(chunk);
+    } else {
+        list.push(ChatItem::Tool { call_id: call_id.to_string(), output: chunk.to_string(), done: false });
+    }
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     // Load auth status on mount
@@ -42,14 +87,73 @@ pub fn App() -> impl IntoView {
     let full_setter = full.write_only();
     // Default hidden
     let panel_open: RwSignal<bool> = RwSignal::new(false);
+
+    // Chat state
+    let items: RwSignal<Vec<ChatItem>> = RwSignal::new(vec![]);
+    let token_usage_sig: RwSignal<Option<TokenUsageLite>> = RwSignal::new(None);
+
+    // Install event listener once (on mount)
+    {
+        let items_setter = items.write_only();
+        let token_setter = token_usage_sig.write_only();
+        spawn_local(async move {
+            let cb = Closure::wrap(Box::new(move |evt: JsValue| {
+                let payload = js_sys::Reflect::get(&evt, &JsValue::from_str("payload")).unwrap_or(JsValue::NULL);
+                if payload.is_null() || payload.is_undefined() { return; }
+                let parsed: Result<UiStreamEvent, _> = serde_wasm_bindgen::from_value(payload);
+                if let Ok(ev) = parsed {
+                    items_setter.update(|list| {
+                        match ev {
+                            UiStreamEvent::Created => {
+                                list.push(ChatItem::System { text: "Turn started".into() });
+                            }
+                            UiStreamEvent::OutputTextDelta { text } => {
+                                append_to_assistant(list, &text);
+                            }
+                            UiStreamEvent::ToolDelta { call_id, chunk } => {
+                                append_tool_chunk(list, &call_id, &chunk);
+                            }
+                            UiStreamEvent::OutputItemDoneMessage { text } => {
+                                append_to_assistant(list, &format!("\n{}", text));
+                                if let Some(ChatItem::Assistant { streaming, .. }) = list.last_mut() { *streaming = false; }
+                            }
+                            UiStreamEvent::Completed { response_id: _, token_usage } => {
+                                if let Some(ChatItem::Assistant { streaming, .. }) = list.last_mut() { *streaming = false; }
+                                if let Some(ChatItem::Tool { done, .. }) = list.iter_mut().rev().find(|i| matches!(i, ChatItem::Tool { .. })) { *done = true; }
+                                if let Some(tu) = token_usage { token_setter.set(Some(tu)); }
+                                list.push(ChatItem::System { text: "Turn complete".into() });
+                            }
+                        }
+                    });
+                }
+            }) as Box<dyn FnMut(JsValue)>);
+
+            let _ = JsFuture::from(tauri_event_listen("codex:stream", cb.as_ref().unchecked_ref())).await;
+            cb.forget(); // keep listener for the app lifetime
+        });
+    }
     spawn_local(async move {
         let f = fetch_full_status().await;
         full_setter.set(f);
     });
 
     view! {
-        <div class="h-screen w-full flex items-center justify-center">
-            <div class="text-2xl font-normal">"OpenAgents"</div>
+        <div class="h-screen w-full">
+            <div class="fixed top-0 left-0 bottom-0 w-56 p-3 border-r border-white bg-white/5">
+                <div class="text-lg mb-2">"OpenAgents"</div>
+                <div class="text-sm opacity-80">"Sidebar"</div>
+            </div>
+
+            <div class="pl-56 pr-[26rem] pt-4 pb-20 h-full overflow-auto">
+                <div class="space-y-3">
+                    {move || items.get().into_iter().map(|item| match item {
+                        ChatItem::User { text } => view! { <div class="max-w-3xl p-3 border border-white">{text}</div> }.into_any(),
+                        ChatItem::Assistant { text, streaming } => view! { <div class="max-w-3xl p-3 border border-white/60 bg-white/5">{text}{if streaming { "▌" } else { "" }.to_string()}</div> }.into_any(),
+                        ChatItem::Tool { call_id, output, done } => view! { <div class="max-w-3xl p-3 border border-white/40 bg-black/40"><div class="text-xs opacity-70">{format!("Tool {call_id} {}", if done {"(done)"} else {"(running)"})}</div><pre class="whitespace-pre-wrap text-sm">{output}</pre></div> }.into_any(),
+                        ChatItem::System { text } => view! { <div class="text-xs opacity-60">{text}</div> }.into_any(),
+                    }).collect_view()}
+                </div>
+            </div>
 
             <button
                 class="fixed top-2 right-3 z-10 text-sm underline text-white/80 hover:text-white cursor-pointer focus:outline-none"
@@ -104,6 +208,48 @@ pub fn App() -> impl IntoView {
                 <div class="space-y-1.5 mb-1">
                     <div class="font-semibold mb-1 opacity-95">"⏱️ Usage Limits"</div>
                     <div class="ml-2 opacity-90">{move || format!("• {}", full.get().usage_limits.note.unwrap_or_else(|| "Rate limit data not available yet.".into()))}</div>
+                </div>
+            </div>
+
+            // Chat bar
+            <div class="fixed bottom-0 left-0 right-0 flex justify-center pb-4">
+                <div class="w-full max-w-[600px] px-4 flex gap-2">
+                    { // input state
+                        let msg: RwSignal<String> = RwSignal::new(String::new());
+                        let send = {
+                            let items = items.write_only();
+                            let msg_get = msg.read_only();
+                            move || {
+                                let text = msg_get.get();
+                                if !text.is_empty() {
+                                    items.update(|list| list.push(ChatItem::User { text: text.clone() }));
+                                    items.update(|list| list.push(ChatItem::Assistant { text: String::new(), streaming: true }));
+                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "prompt": text })).unwrap_or(JsValue::UNDEFINED);
+                                    let _ = tauri_invoke("submit_chat", args);
+                                    msg.set(String::new());
+                                }
+                            }
+                        };
+                        view! {
+                            <input
+                                class="flex-1 px-3 py-2 border border-white bg-transparent text-white placeholder-white/50 focus:outline-none"
+                                type="text"
+                                placeholder="Type a command or message…"
+                                prop:value=move || msg.get()
+                                on:input=move |ev| {
+                                    if let Some(t) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) {
+                                        msg.set(t.value())
+                                    }
+                                }
+                                on:keydown=move |ev| { if ev.key() == "Enter" { send(); } }
+                            />
+                            <button
+                                class="px-3 py-2 border border-white bg-white/10 hover:bg-white/20 cursor-pointer"
+                                on:click=move |_| send()
+                                type="button"
+                            >"Send"</button>
+                        }
+                    }
                 </div>
             </div>
         </div>
