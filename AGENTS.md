@@ -2,9 +2,10 @@
 
 ## Project Structure & Module Organization
 - `src/` — Leptos (CSR) UI; entry points `src/main.rs`, `src/app.rs`. Add UI modules under `src/components/` or `src/pages/`.
-- `index.html`, `styles.css` — Trunk entry and global styles; static assets in `public/` (copied to `dist/`).
+- `index.html` — Trunk entry; Tailwind (Play CDN) and Berkeley Mono font-face. Static assets in `public/` (copied to `dist/`).
+- `public/fonts/` — Berkeley Mono TTFs used globally.
 - `src-tauri/` — Tauri desktop app (`src-tauri/src/lib.rs`, `src-tauri/src/main.rs`), config in `src-tauri/tauri.conf.json`.
-- `Cargo.toml` (workspace) and `Trunk.toml` — build configuration. Release assets output to `dist/`.
+- `Cargo.toml` (workspace) and `Trunk.toml` — build configuration. Release assets to `dist/`.
 
 ## Build, Test, and Development Commands
 Prereqs: `rustup target add wasm32-unknown-unknown`; `cargo install trunk tauri-cli`.
@@ -17,6 +18,7 @@ Prereqs: `rustup target add wasm32-unknown-unknown`; `cargo install trunk tauri-
 ## Coding Style & Naming Conventions
 - Format: `cargo fmt --all`; Lint: `cargo clippy --all -- -D warnings`.
 - Rust naming: modules `snake_case`, types/traits/components `PascalCase`, fns/vars `snake_case`, consts `SCREAMING_SNAKE_CASE`.
+- Styling: Tailwind via Play CDN only (no standalone CSS). Berkeley Mono is the site-wide font; prefer utility classes.
 - Leptos: components use `#[component]` and `PascalCase` (e.g., `pub fn Sidebar()`); prefer small, focused modules.
 - Tauri: commands annotated with `#[tauri::command]` in `src-tauri/src/lib.rs` and wired via `invoke_handler`.
 
