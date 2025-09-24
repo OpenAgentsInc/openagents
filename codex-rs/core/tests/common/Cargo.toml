@@ -1,0 +1,14 @@
+[package]
+name = "core_test_support"
+version = { workspace = true }
+edition = "2024"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+codex-core = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+wiremock = { workspace = true }
