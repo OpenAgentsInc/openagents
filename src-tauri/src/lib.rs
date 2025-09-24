@@ -516,6 +516,7 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
         let mut cwd: Option<String> = None;
         let mut title: Option<String> = None;
         let mut read_count = 0usize;
+        let mut has_message = false;
         while read_count < 120 {
             match reader.next_line().await { Ok(Some(line)) => {
                 read_count += 1;
@@ -537,6 +538,32 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
                             }
                         }
                     }
+                    // Derive title and detect presence of messages
+                    if t == "response_item" {
+                        if let Some(p) = p {
+                            if p.get("type").and_then(|s| s.as_str()) == Some("message") {
+                                let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
+                                let text = content_vec_to_text(p.get("content").unwrap_or(&serde_json::Value::Null));
+                                if !text.trim().is_empty() { has_message = true; if role == "user" && title.is_none() { title = Some(text.clone()); } }
+                            }
+                        }
+                    } else if t == "event_msg" {
+                        if let Some(p) = p {
+                            match p.get("type").and_then(|s| s.as_str()).unwrap_or("") {
+                                "user_message" => {
+                                    if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
+                                        if !msg.trim().is_empty() { has_message = true; if title.is_none() { title = Some(msg.to_string()); } }
+                                    }
+                                }
+                                "agent_message" => {
+                                    if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
+                                        if !msg.trim().is_empty() { has_message = true; }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                     if title.is_none() { title = parse_summary_title_from_head(&[v]); }
                 }
             }
@@ -544,6 +571,8 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
         }
         }
         // end while read_count
+        // Skip files with no visible messages at all
+        if !has_message { continue; }
         let id = meta_id.unwrap_or_else(|| f.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string());
         let started_at = started_at.unwrap_or_else(|| "".into());
         let mut title = title.unwrap_or_else(|| "(no title)".into());
