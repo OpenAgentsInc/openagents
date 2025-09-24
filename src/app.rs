@@ -158,6 +158,8 @@ pub fn App() -> impl IntoView {
     let chats: RwSignal<Vec<UiChatSummary>> = RwSignal::new(vec![]);
     let chats_open: RwSignal<bool> = RwSignal::new(true);
     let chat_title: RwSignal<String> = RwSignal::new("New chat".to_string());
+    let reasoning: RwSignal<String> = RwSignal::new("High".to_string());
+    let bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
 
     // Install event listener once (on mount)
     {
@@ -230,6 +232,18 @@ pub fn App() -> impl IntoView {
     {
         let chats_setter = chats.write_only();
         spawn_local(async move { chats_setter.set(fetch_recent_chats(30).await); });
+    }
+    {
+        let bottom = bottom_ref.clone();
+        let items_ro = items.read_only();
+        create_effect(move |_| {
+            let _ = items_ro.get().len();
+            if let Some(el) = bottom.get() {
+                use wasm_bindgen::JsCast;
+                let e: web_sys::Element = el.unchecked_into();
+                e.scroll_into_view();
+            }
+        });
     }
 
     view! {
@@ -338,13 +352,36 @@ pub fn App() -> impl IntoView {
 
             <div class="pl-80 pt-6 pb-36 h-full overflow-auto">
                 <div class="mx-auto w-full max-w-[768px] px-4">
-                    <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center justify-between gap-3 mb-4">
                         <div class="text-sm opacity-90 truncate">{move || chat_title.get()}</div>
-                        <button class="text-xs underline text-white/80 hover:text-white cursor-pointer"
-                                on:click=move |_| {
-                                    items.set(Vec::new());
-                                    chat_title.set("New chat".to_string());
-                                }>"New chat"</button>
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs opacity-80">"Reasoning"</label>
+                            { // selector
+                                let reasoning = reasoning;
+                                view! {
+                                    <select class="text-xs bg-black/20 border border-white/40 px-2 py-1 cursor-pointer"
+                                            prop:value=move || reasoning.get()
+                                            on:change=move |ev| {
+                                                if let Some(sel) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlSelectElement>().ok()) {
+                                                    let val = sel.value();
+                                                    reasoning.set(val.clone());
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "effort": val.to_lowercase() })).unwrap_or(JsValue::UNDEFINED);
+                                                    let _ = tauri_invoke("set_reasoning_effort", args);
+                                                }
+                                            }>
+                                        <option>None</option>
+                                        <option>Low</option>
+                                        <option>Medium</option>
+                                        <option>High</option>
+                                    </select>
+                                }
+                            }
+                            <button class="text-xs underline text-white/80 hover:text-white cursor-pointer"
+                                    on:click=move |_| {
+                                        items.set(Vec::new());
+                                        chat_title.set("New chat".to_string());
+                                    }>"New chat"</button>
+                        </div>
                     </div>
                 </div>
                 <div class="mx-auto w-full max-w-[768px] px-4 space-y-3 text-[13px]">
@@ -374,6 +411,7 @@ pub fn App() -> impl IntoView {
                         }.into_any(),
                         ChatItem::System { text } => view! { <div class="text-xs opacity-60">{text}</div> }.into_any(),
                     }).collect_view()}
+                    <div node_ref=bottom_ref class="h-0"></div>
                 </div>
                 
             </div>

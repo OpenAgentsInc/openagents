@@ -730,11 +730,12 @@ struct McpState {
     next_id: AtomicU64,
     conversation_id: Option<String>,
     tx: Option<UnboundedSender<Vec<u8>>>,
+    config_reasoning_effort: String,
 }
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, tx: None }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, tx: None, config_reasoning_effort: "high".to_string() }
     }
 }
 
@@ -752,7 +753,7 @@ impl McpState {
                 .arg("-c").arg("approval_policy=never")
                 .arg("-c").arg("sandbox_mode=danger-full-access")
                 .arg("-c").arg("model=gpt-5")
-                .arg("-c").arg("model_reasoning_effort=high")
+                .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort))
                 .current_dir(&codex_dir);
         } else {
             cmd = Command::new("codex");
@@ -760,7 +761,7 @@ impl McpState {
                 .arg("-c").arg("approval_policy=never")
                 .arg("-c").arg("sandbox_mode=danger-full-access")
                 .arg("-c").arg("model=gpt-5")
-                .arg("-c").arg("model_reasoning_effort=high");
+                .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort));
         }
         cmd
             .stdin(std::process::Stdio::piped())
@@ -851,6 +852,32 @@ fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> a
     let mut buf = serde_json::to_vec(value)?;
     buf.push(b'\n');
     tx.send(buf).map_err(|e| anyhow::anyhow!("send stdin: {e}"))
+}
+
+fn normalize_effort(e: &str) -> Option<&'static str> {
+    match e.to_lowercase().as_str() {
+        "none" | "off" => Some("none"),
+        "low" => Some("low"),
+        "medium" | "med" => Some("medium"),
+        "high" => Some("high"),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+async fn set_reasoning_effort(window: tauri::Window, effort: String) -> Result<(), String> {
+    let Some(eff) = normalize_effort(&effort) else { return Err(format!("invalid effort: {effort}")); };
+    let state = window.state::<Arc<Mutex<McpState>>>();
+    // Clone the Arc for passing into start
+    let shared_arc = { state.inner().clone() };
+    {
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        guard.config_reasoning_effort = eff.to_string();
+        if let Some(mut child) = guard.child.take() { let _ = child.kill(); }
+        // Restart with new effort
+        guard.start(&window, shared_arc.clone()).map_err(|e| format!("restart proto: {e}"))?;
+    }
+    Ok(())
 }
 
 fn guess_filename_from_command(cmd: &str) -> Option<String> {
@@ -999,7 +1026,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Mutex::new(McpState::default())))
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
