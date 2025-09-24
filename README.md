@@ -11,6 +11,7 @@ A desktop app to command OpenAI Codex and other agents. Work in progress.
 ## Documentation
 
 - Overview of Codex systems docs: [docs/codex/README.md](docs/codex/README.md)
+- Building a Chat UI with streaming: [docs/codex-chat-ui.md](docs/codex-chat-ui.md)
 - Architecture: [docs/codex/architecture.md](docs/codex/architecture.md)
 - Authentication: [docs/codex/authentication.md](docs/codex/authentication.md)
 - Protocol overview: [docs/codex/protocol-overview.md](docs/codex/protocol-overview.md)
