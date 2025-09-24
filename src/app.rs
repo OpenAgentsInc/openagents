@@ -49,7 +49,7 @@ struct UiChatSummary { id: String, path: String, started_at: String, title: Stri
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(tag = "kind")]
-enum UiDisplayItem { #[default] Empty, User { text: String }, Assistant { text: String }, Reasoning { text: String }, Tool { title: String, text: String } }
+enum UiDisplayItem { #[default] Empty, User { text: String }, Assistant { text: String }, Reasoning { text: String }, Tool { title: String, text: String }, Instructions { ikind: String, text: String } }
 
 async fn fetch_recent_chats(limit: usize) -> Vec<UiChatSummary> {
     let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "limit": limit })).unwrap_or(JsValue::UNDEFINED);
@@ -95,6 +95,7 @@ enum ChatItem {
     Assistant { text: String, streaming: bool },
     Tool { call_id: String, title: String, segments: Vec<(String, bool)>, done: bool },
     System { text: String },
+    Collapsible { label: String, text: String },
 }
 
 fn append_to_assistant(list: &mut Vec<ChatItem>, s: &str) {
@@ -349,6 +350,10 @@ pub fn App() -> impl IntoView {
                                                                     UiDisplayItem::Assistant { text } => v.push(ChatItem::Assistant { text, streaming: false }),
                                                                     UiDisplayItem::Reasoning { text } => v.push(ChatItem::Reasoning { text }),
                                                                     UiDisplayItem::Tool { title, text } => v.push(ChatItem::Tool { call_id: String::new(), title, segments: vec![(text, false)], done: true }),
+                                                                    UiDisplayItem::Instructions { ikind, text } => {
+                                                                        let label = if ikind == "environment_context" { "context".to_string() } else { "instructions".to_string() };
+                                                                        v.push(ChatItem::Collapsible { label, text });
+                                                                    }
                                                                     UiDisplayItem::Empty => {}
                                                                 }
                                                             }
@@ -415,6 +420,19 @@ pub fn App() -> impl IntoView {
                         ChatItem::Assistant { text, streaming } => {
                             let html = md_to_html(&text);
                             view! { <div class="w-full p-3 border border-white/40 bg-white/10"><div class="assistant-md" inner_html=html></div>{if streaming { " ▌" } else { "" }.to_string()}</div> }.into_any()
+                        }
+                        ChatItem::Collapsible { label, text } => {
+                            let open: RwSignal<bool> = RwSignal::new(false);
+                            let html = md_to_html(&text);
+                            view! {
+                                <div class="w-full p-3 border border-white/30 bg-black/20">
+                                    <button class="text-xs underline text-white/80 hover:text-white cursor-pointer"
+                                            on:click=move |_| open.update(|v| *v = !*v)>
+                                        {move || if open.get() { format!("Hide {}", label) } else { format!("Show {}", label) }}
+                                    </button>
+                                    {move || if open.get() { view!{ <div class="mt-2 assistant-md" inner_html=html.clone()></div> }.into_any() } else { view!{ <div></div> }.into_any() }}
+                                </div>
+                            }.into_any()
                         }
                         ChatItem::Tool { call_id: _, title, segments, done } => view! {
                             <div class="w-full p-3 border border-white/30 bg-black/40">
