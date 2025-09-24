@@ -43,6 +43,26 @@ async fn fetch_full_status() -> FullStatus {
     }
 }
 
+// ---- Chats API ----
+#[derive(Clone, Debug, Default, Deserialize)]
+struct UiChatSummary { id: String, path: String, started_at: String, title: String, cwd: Option<String> }
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(tag = "kind")]
+enum UiDisplayItem { #[default] Empty, User { text: String }, Assistant { text: String }, Reasoning { text: String }, Tool { title: String, text: String } }
+
+async fn fetch_recent_chats(limit: usize) -> Vec<UiChatSummary> {
+    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "limit": limit })).unwrap_or(JsValue::UNDEFINED);
+    let promise = tauri_invoke("list_recent_chats", args);
+    match JsFuture::from(promise).await { Ok(val) => serde_wasm_bindgen::from_value::<Vec<UiChatSummary>>(val).unwrap_or_default(), Err(_) => vec![] }
+}
+
+async fn fetch_chat_items(path: String) -> Vec<UiDisplayItem> {
+    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "path": path })).unwrap_or(JsValue::UNDEFINED);
+    let promise = tauri_invoke("load_chat", args);
+    match JsFuture::from(promise).await { Ok(val) => serde_wasm_bindgen::from_value::<Vec<UiDisplayItem>>(val).unwrap_or_default(), Err(_) => vec![] }
+}
+
 // ---- Streaming UI types ----
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -131,8 +151,12 @@ pub fn App() -> impl IntoView {
     let raw_events: RwSignal<Vec<String>> = RwSignal::new(vec![]);
     // Tracks if we have streamed any reasoning deltas for the current turn
     let reasoning_streamed: RwSignal<bool> = RwSignal::new(false);
-    let raw_open: RwSignal<bool> = RwSignal::new(true);
+    let raw_open: RwSignal<bool> = RwSignal::new(false);
     let status_open: RwSignal<bool> = RwSignal::new(false);
+
+    // Recent chats
+    let chats: RwSignal<Vec<UiChatSummary>> = RwSignal::new(vec![]);
+    let chats_open: RwSignal<bool> = RwSignal::new(true);
 
     // Install event listener once (on mount)
     {
@@ -202,6 +226,10 @@ pub fn App() -> impl IntoView {
         let f = fetch_full_status().await;
         full_setter.set(f);
     });
+    {
+        let chats_setter = chats.write_only();
+        spawn_local(async move { chats_setter.set(fetch_recent_chats(30).await); });
+    }
 
     view! {
         <div class="h-screen w-full">
@@ -259,7 +287,51 @@ pub fn App() -> impl IntoView {
                             <pre class="text-[11px] leading-4 whitespace-pre-wrap">{raw_events.get().join("\n")}</pre>
                         </div>
                     }.into_any()
-                } else { view! { <div class="mt-2 flex-1"></div> }.into_any() }}
+                } else { view! { <div class="mt-2"></div> }.into_any() }}
+
+                <div class="mt-2 overflow-hidden flex-1 flex flex-col">
+                    <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start mb-1"
+                            on:click=move |_| chats_open.update(|v| *v = !*v)>
+                        {move || if chats_open.get() { "Hide chats".to_string() } else { "Show chats".to_string() }}
+                    </button>
+                    {move || if chats_open.get() {
+                        view! {
+                            <div class="flex-1 overflow-auto border border-white/20 bg-black/30">
+                                {move || chats.get().iter().map(|c| {
+                                    let path = c.path.clone();
+                                    let title = c.title.clone();
+                                    let started = c.started_at.clone();
+                                    view!{
+                                        <button class="w-full text-left px-2 py-1 border-b border-white/10 hover:bg-white/10 cursor-pointer"
+                                                on:click=move |_| {
+                                                    let items_setter = items.write_only();
+                                                    let path_clone = path.clone();
+                                                    spawn_local(async move {
+                                                        let loaded = fetch_chat_items(path_clone.clone()).await;
+                                                        items_setter.set({
+                                                            let mut v: Vec<ChatItem> = Vec::new();
+                                                            for it in loaded.into_iter() {
+                                                                match it {
+                                                                    UiDisplayItem::User { text } => v.push(ChatItem::User { text }),
+                                                                    UiDisplayItem::Assistant { text } => v.push(ChatItem::Assistant { text, streaming: false }),
+                                                                    UiDisplayItem::Reasoning { text } => v.push(ChatItem::Reasoning { text }),
+                                                                    UiDisplayItem::Tool { title, text } => v.push(ChatItem::Tool { call_id: String::new(), title, segments: vec![(text, false)], done: true }),
+                                                                    UiDisplayItem::Empty => {}
+                                                                }
+                                                            }
+                                                            v
+                                                        });
+                                                    });
+                                                }>
+                                            <div class="truncate text-[12px]">{title}</div>
+                                            <div class="text-[11px] opacity-70 truncate">{started}</div>
+                                        </button>
+                                    }.into_any()
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    } else { view!{ <div></div> }.into_any() }}
+                </div>
             </div>
 
             <div class="pl-80 pt-6 pb-36 h-full overflow-auto">
