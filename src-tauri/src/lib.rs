@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::fs::File;
 use std::io::{BufRead, BufReader as StdBufReader};
+use tokio::fs as tokio_fs;
+use tokio::io::AsyncBufReadExt as _;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -346,6 +348,208 @@ pub enum UiStreamEvent {
     ToolEnd { call_id: String, exit_code: Option<i64> },
 }
 
+// ---- Chat listing and loading ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UiChatSummary {
+    pub id: String,
+    pub path: String,
+    pub started_at: String,
+    pub title: String,
+    pub cwd: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(tag = "kind")]
+pub enum UiDisplayItem {
+    #[default]
+    Empty,
+    User { text: String },
+    Assistant { text: String },
+    Reasoning { text: String },
+    Tool { title: String, text: String },
+}
+
+fn file_is_rollout(path: &std::path::Path) -> bool {
+    match (path.file_name().and_then(|s| s.to_str()), path.extension().and_then(|s| s.to_str())) {
+        (Some(name), Some("jsonl")) => name.starts_with("rollout-"),
+        _ => false,
+    }
+}
+
+async fn collect_rollout_files(limit_scan: usize) -> anyhow::Result<Vec<std::path::PathBuf>> {
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    let home = default_codex_home().ok_or_else(|| anyhow::anyhow!("no CODEX_HOME"))?;
+    let mut root = home.clone();
+    root.push("sessions");
+    if !root.exists() { return Ok(files); }
+
+    // Traverse YYYY/MM/DD shallowly (no need to be fancy here)
+    let mut years = tokio_fs::read_dir(&root).await?;
+    let mut year_dirs: Vec<std::path::PathBuf> = Vec::new();
+    while let Some(ent) = years.next_entry().await? { if ent.file_type().await?.is_dir() { year_dirs.push(ent.path()) } }
+    // Sort desc by name
+    year_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
+    'outer:
+    for y in year_dirs {
+        let mut months = tokio_fs::read_dir(&y).await?;
+        let mut month_dirs: Vec<std::path::PathBuf> = Vec::new();
+        while let Some(ent) = months.next_entry().await? { if ent.file_type().await?.is_dir() { month_dirs.push(ent.path()) } }
+        month_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
+        for m in month_dirs {
+            let mut days = tokio_fs::read_dir(&m).await?;
+            let mut day_dirs: Vec<std::path::PathBuf> = Vec::new();
+            while let Some(ent) = days.next_entry().await? { if ent.file_type().await?.is_dir() { day_dirs.push(ent.path()) } }
+            day_dirs.sort_by(|a,b| b.file_name().cmp(&a.file_name()));
+            for d in day_dirs {
+                let mut rd = tokio_fs::read_dir(&d).await?;
+                let mut day_files: Vec<std::path::PathBuf> = Vec::new();
+                while let Some(ent) = rd.next_entry().await? {
+                    if ent.file_type().await?.is_file() && file_is_rollout(&ent.path()) { day_files.push(ent.path()); }
+                }
+                // Sort by mtime desc
+                day_files.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+                day_files.reverse();
+                for f in day_files { files.push(f); if files.len() >= limit_scan { break 'outer; } }
+            }
+        }
+    }
+    Ok(files)
+}
+
+fn parse_summary_title_from_head(head: &[serde_json::Value]) -> Option<String> {
+    for v in head.iter() {
+        let t = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+        if t == "event_msg" {
+            if let Some(p) = v.get("payload") {
+                if p.get("type").and_then(|s| s.as_str()) == Some("user_message") {
+                    if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
+                        return Some(msg.to_string());
+                    }
+                }
+            }
+        } else if t == "response_item" {
+            if let Some(p) = v.get("payload") {
+                if p.get("type").and_then(|s| s.as_str()) == Some("message") {
+                    let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
+                    if role == "user" {
+                        if let Some(arr) = p.get("content").and_then(|c| c.as_array()) {
+                            for c in arr {
+                                if let Some(txt) = c.get("text").and_then(|s| s.as_str()) { return Some(txt.to_string()); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
+    let limit = limit.unwrap_or(20);
+    let files = collect_rollout_files(200).await.map_err(|e| e.to_string())?;
+    let mut out: Vec<UiChatSummary> = Vec::new();
+    for f in files.into_iter().take(200) {
+        // Read the first ~40 lines for meta + title
+        let file = match tokio_fs::File::open(&f).await { Ok(x) => x, Err(_) => continue };
+        let mut reader = tokio::io::BufReader::new(file).lines();
+        let mut head: Vec<serde_json::Value> = Vec::new();
+        let mut meta_id: Option<String> = None;
+        let mut started_at: Option<String> = None;
+        let mut cwd: Option<String> = None;
+        let mut title: Option<String> = None;
+        let mut read_count = 0usize;
+        while read_count < 40 {
+            match reader.next_line().await { Ok(Some(line)) => {
+                read_count += 1;
+                if line.trim().is_empty() { continue; }
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                    head.push(v.clone());
+                    let t = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+                    if t == "session_meta" {
+                        if let Some(p) = v.get("payload") {
+                            if let Some(meta) = p.get("meta") {
+                                meta_id = meta.get("id").and_then(|s| s.as_str()).map(|s| s.to_string());
+                                started_at = meta.get("timestamp").and_then(|s| s.as_str()).map(|s| s.to_string());
+                                cwd = meta.get("cwd").and_then(|s| s.as_str()).map(|s| s.to_string());
+                            }
+                        }
+                    }
+                    if title.is_none() { title = parse_summary_title_from_head(&[v]); }
+                }
+            }
+            Ok(None) | Err(_) => break,
+        }
+        }
+        let id = meta_id.unwrap_or_else(|| "".into());
+        if id.is_empty() { continue; }
+        let started_at = started_at.unwrap_or_else(|| "".into());
+        let title = title.unwrap_or_else(|| "(no title)".into());
+        out.push(UiChatSummary { id, path: f.display().to_string(), started_at, title, cwd });
+        if out.len() >= limit { break; }
+    }
+    Ok(out)
+}
+
+fn content_vec_to_text(arr: &serde_json::Value) -> String {
+    let mut s = String::new();
+    if let Some(a) = arr.as_array() {
+        for it in a {
+            if let Some(t) = it.get("text").and_then(|s| s.as_str()) {
+                if !s.is_empty() { if !s.is_empty() { s.push_str(t); } else { s.push_str(t); } }
+            }
+        }
+    }
+    s
+}
+
+#[tauri::command]
+async fn load_chat(path: String) -> Result<Vec<UiDisplayItem>, String> {
+    let text = tokio_fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
+    let mut out: Vec<UiDisplayItem> = Vec::new();
+    for line in text.lines() {
+        if line.trim().is_empty() { continue; }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let t = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+        if t == "response_item" {
+            if let Some(p) = v.get("payload") {
+                match p.get("type").and_then(|s| s.as_str()).unwrap_or("") {
+                    "message" => {
+                        let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
+                        let text = content_vec_to_text(p.get("content").unwrap_or(&serde_json::Value::Null));
+                        if role == "user" { out.push(UiDisplayItem::User { text }); }
+                        else if role == "assistant" { out.push(UiDisplayItem::Assistant { text }); }
+                    }
+                    "reasoning" => {
+                        // Show summaries concatenated
+                        if let Some(arr) = p.get("summary").and_then(|x| x.as_array()) {
+                            let mut s = String::new();
+                            for it in arr { if let Some(t) = it.get("text").and_then(|s| s.as_str()) { if !s.is_empty() { s.push('\n'); } s.push_str(t); } }
+                            if !s.is_empty() { out.push(UiDisplayItem::Reasoning { text: s }); }
+                        }
+                    }
+                    "function_call_output" => {
+                        let call_id = p.get("call_id").and_then(|s| s.as_str()).unwrap_or("");
+                        let content = p.get("output").and_then(|o| o.get("content")).and_then(|s| s.as_str()).unwrap_or("");
+                        let title = if call_id.is_empty() { "Function output".to_string() } else { format!("Function {call_id}") };
+                        out.push(UiDisplayItem::Tool { title, text: content.to_string() });
+                    }
+                    "custom_tool_call_output" => {
+                        let call_id = p.get("call_id").and_then(|s| s.as_str()).unwrap_or("");
+                        let content = p.get("output").and_then(|s| s.as_str()).unwrap_or("");
+                        let title = if call_id.is_empty() { "Tool output".to_string() } else { format!("Tool {call_id}") };
+                        out.push(UiDisplayItem::Tool { title, text: content.to_string() });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TokenUsageLite {
     pub input: u64,
@@ -662,7 +866,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Mutex::new(McpState::default())))
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
