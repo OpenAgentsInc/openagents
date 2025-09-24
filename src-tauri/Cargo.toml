@@ -28,3 +28,8 @@ base64 = "0.22"
 dirs = "6"
 tokio = { version = "1", features = ["process", "fs", "io-std", "io-util", "rt-multi-thread", "macros", "sync", "time"] }
 anyhow = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde", "clock"] }
+
+[dev-dependencies]
+tempfile = "3"

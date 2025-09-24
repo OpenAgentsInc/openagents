@@ -71,6 +71,54 @@ async fn fetch_chat_items(path: String) -> Vec<UiDisplayItem> {
     match JsFuture::from(promise).await { Ok(val) => serde_wasm_bindgen::from_value::<Vec<UiDisplayItem>>(val).unwrap_or_default(), Err(_) => vec![] }
 }
 
+// ---- Master Task API ----
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, Deserialize)]
+struct TaskMeta { id: String, name: String, status: String, #[allow(dead_code)] updated_at: String }
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, Deserialize)]
+struct AutonomyBudget { approvals: String, sandbox: String, max_turns: Option<u32>, max_tokens: Option<u32>, max_minutes: Option<u32> }
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, Deserialize)]
+struct StopConditions { #[allow(dead_code)] done_regex: Option<String> }
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, Deserialize)]
+struct Metrics { #[allow(dead_code)] turns: u64, #[allow(dead_code)] tokens_in: u64, #[allow(dead_code)] tokens_out: u64, #[allow(dead_code)] wall_clock_minutes: u64 }
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, Deserialize)]
+struct Subtask { id: String, title: String, status: String }
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, Deserialize)]
+struct Task { version: u8, id: String, name: String, status: String, #[allow(dead_code)] created_at: String, updated_at: String, autonomy_budget: AutonomyBudget, stop_conditions: StopConditions, queue: Vec<Subtask>, metrics: Metrics }
+
+async fn tasks_list() -> Vec<TaskMeta> {
+    let promise = tauri_invoke("tasks_list_cmd", JsValue::UNDEFINED);
+    match JsFuture::from(promise).await { Ok(v) => serde_wasm_bindgen::from_value::<Vec<TaskMeta>>(v).unwrap_or_default(), Err(_) => vec![] }
+}
+
+async fn task_get(id: &str) -> Option<Task> {
+    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id })).unwrap_or(JsValue::UNDEFINED);
+    match JsFuture::from(tauri_invoke("task_get_cmd", args)).await { Ok(v) => serde_wasm_bindgen::from_value::<Task>(v).ok(), Err(_) => None }
+}
+
+async fn task_create(name: &str) -> Option<Task> {
+    let args = serde_wasm_bindgen::to_value(&serde_json::json!({
+        "name": name, "approvals":"never","sandbox":"danger-full-access","max_turns": 200u32
+    })).unwrap_or(JsValue::UNDEFINED);
+    match JsFuture::from(tauri_invoke("task_create_cmd", args)).await { Ok(v) => serde_wasm_bindgen::from_value::<Task>(v).ok(), Err(_) => None }
+}
+
+#[allow(dead_code)]
+async fn task_delete(id: &str) -> bool {
+    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id })).unwrap_or(JsValue::UNDEFINED);
+    JsFuture::from(tauri_invoke("task_delete_cmd", args)).await.is_ok()
+}
+
 // ---- Streaming UI types ----
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -90,6 +138,7 @@ enum UiStreamEvent {
     ToolBegin { call_id: String, title: String },
     ToolEnd { call_id: String, #[serde(rename = "exit_code")] _exit_code: Option<i64> },
     SessionConfigured { session_id: String, rollout_path: Option<String> },
+    TaskUpdate { task_id: String, status: String, message: Option<String> },
 }
 
 #[allow(dead_code)]
@@ -172,6 +221,11 @@ pub fn App() -> impl IntoView {
     let bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
     let raw_bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
     let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+    // Master tasks
+    let tasks: RwSignal<Vec<TaskMeta>> = RwSignal::new(vec![]);
+    let _tasks_open: RwSignal<bool> = RwSignal::new(true);
+    let selected_task: RwSignal<Option<String>> = RwSignal::new(None);
+    let selected_task_detail: RwSignal<Option<Task>> = RwSignal::new(None);
 
     // Install event listener once (on mount)
     {
@@ -179,6 +233,9 @@ pub fn App() -> impl IntoView {
         let token_setter = token_usage_sig.write_only();
         let raw_setter = raw_events.write_only();
         let chats_setter = chats.write_only();
+        let tasks_setter = tasks.write_only();
+        let sel_task_ro = selected_task.read_only();
+        let sel_task_detail_setter = selected_task_detail.write_only();
         spawn_local(async move {
             let cb = Closure::wrap(Box::new(move |evt: JsValue| {
                 let payload = js_sys::Reflect::get(&evt, &JsValue::from_str("payload")).unwrap_or(JsValue::NULL);
@@ -192,6 +249,16 @@ pub fn App() -> impl IntoView {
                         // Refresh recent chats when a new session starts
                         let chats_setter = chats_setter.clone();
                         spawn_local(async move { chats_setter.set(fetch_recent_chats(30).await); });
+                    }
+                    if let UiStreamEvent::TaskUpdate { .. } = &ev {
+                        // Refresh master task list and selected detail
+                        let tasks_setter = tasks_setter.clone();
+                        let sel_task_ro = sel_task_ro.clone();
+                        let sel_task_detail_setter = sel_task_detail_setter.clone();
+                        spawn_local(async move {
+                            tasks_setter.set(tasks_list().await);
+                            if let Some(id) = sel_task_ro.get() { sel_task_detail_setter.set(task_get(&id).await); }
+                        });
                     }
                     items_setter.update(|list| {
                         match ev {
@@ -235,6 +302,7 @@ pub fn App() -> impl IntoView {
                                 }
                             }
                             UiStreamEvent::SessionConfigured { .. } => { /* handled above */ }
+                            UiStreamEvent::TaskUpdate { .. } => { /* future: reflect in master task panel */ }
                         }
                     });
                 }
@@ -251,6 +319,10 @@ pub fn App() -> impl IntoView {
     {
         let chats_setter = chats.write_only();
         spawn_local(async move { chats_setter.set(fetch_recent_chats(30).await); });
+    }
+    {
+        let tasks_setter = tasks.write_only();
+        spawn_local(async move { tasks_setter.set(tasks_list().await); });
     }
     {
         let bottom = bottom_ref.clone();
@@ -350,6 +422,57 @@ pub fn App() -> impl IntoView {
                 } else { view! { <div class="mt-2"></div> }.into_any() }}
 
                 <div class="mt-2 overflow-hidden flex-1 flex flex-col">
+                    <div class="mb-2">
+                        <div class="text-sm opacity-90 mb-1">"Master Tasks"</div>
+                        <div class="flex items-center gap-2 mb-2">
+                            { // new task inline
+                                let tasks_setter = tasks.write_only();
+                                let sel_setter = selected_task.write_only();
+                                let sel_detail = selected_task_detail.write_only();
+                                view!{
+                                    <button class="text-xs underline text-white/80 hover:text-white cursor-pointer"
+                                            on:click=move |_| {
+                                                let tasks_setter = tasks_setter.clone();
+                                                let sel_setter = sel_setter.clone();
+                                                let sel_detail = sel_detail.clone();
+                                                spawn_local(async move {
+                                                    if let Some(t) = task_create("New Master Task").await {
+                                                        sel_setter.set(Some(t.id.clone()));
+                                                        sel_detail.set(Some(t.clone()));
+                                                        tasks_setter.set(tasks_list().await);
+                                                    }
+                                                });
+                                            }>"New task"</button>
+                                }
+                            }
+                        </div>
+                        { // task list
+                            let tasks_ro = tasks.read_only();
+                            let sel_setter = selected_task.write_only();
+                            let sel_detail = selected_task_detail.write_only();
+                            view!{
+                                <div class="max-h-52 overflow-auto border border-zinc-700 bg-black/30">
+                                    {move || tasks_ro.get().iter().map(|m| {
+                                        let id = m.id.clone();
+                                        let name = m.name.clone();
+                                        let status = m.status.clone();
+                                        view!{ <button class="w-full text-left px-2 py-1 border-b border-white/10 hover:bg-white/10 cursor-pointer"
+                                            on:click=move |_| {
+                                                let id2 = id.clone();
+                                                let sel_setter = sel_setter.clone();
+                                                let sel_detail = sel_detail.clone();
+                                                spawn_local(async move {
+                                                    sel_setter.set(Some(id2.clone()));
+                                                    sel_detail.set(task_get(&id2).await);
+                                                });
+                                            }>
+                                            <span class="text-[12px] truncate">{name}</span>
+                                            <span class="text-[10px] opacity-70 float-right">{status}</span>
+                                        </button> }.into_any() }).collect_view()}
+                                </div>
+                            }
+                        }
+                    </div>
                     <button class="text-xs underline text-white/80 hover:text-white cursor-pointer self-start mb-1"
                             on:click=move |_| chats_open.update(|v| *v = !*v)>
                         {move || if chats_open.get() { "Hide chats".to_string() } else { "Show chats".to_string() }}
@@ -429,6 +552,68 @@ pub fn App() -> impl IntoView {
                     </div>
                 </div>
                 <div class="mx-auto w-full max-w-[768px] px-4 space-y-3 text-[13px]">
+                    { // master task detail header + controls
+                        let detail = selected_task_detail.get();
+                        match detail {
+                            Some(t) => {
+                                let id = t.id.clone();
+                                let id_run = id.clone();
+                                let id_pause = id.clone();
+                                let id_cancel = id.clone();
+                                view!{ <div class="w-full p-3 border border-zinc-700 bg-black/20 mb-3">
+                                    <div class="flex items-center justify-between">
+                                        <div class="text-sm opacity-90">{format!("{} [{}]", t.name, t.status)}</div>
+                                        <div class="text-xs opacity-70">{format!("Updated: {}", t.updated_at)}</div>
+                                    </div>
+                                    <div class="flex items-center gap-3 mt-2">
+                                        <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
+                                            let id_capture = id_run.clone();
+                                            move |_| {
+                                            let id2 = id_capture.clone();
+                                            let sel_task_detail = selected_task_detail.write_only();
+                                            let tasks_setter = tasks.write_only();
+                                            spawn_local(async move {
+                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                if let Ok(v) = JsFuture::from(tauri_invoke("task_run_cmd", args)).await { if let Ok(task) = serde_wasm_bindgen::from_value::<Task>(v) { sel_task_detail.set(Some(task)); tasks_setter.set(tasks_list().await); } }
+                                            });
+                                        }}>
+                                            "Run next"
+                                        </button>
+                                        <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
+                                            let id_capture = id_pause.clone();
+                                            move |_| {
+                                            let id2 = id_capture.clone();
+                                            let sel_task_detail = selected_task_detail.write_only();
+                                            let value = id_capture.clone();
+                                            spawn_local(async move {
+                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
+                                                // refetch
+                                                if let Some(t) = task_get(&value).await { sel_task_detail.set(Some(t)); }
+                                            });
+                                        }}>
+                                            "Pause"
+                                        </button>
+                                        <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
+                                            let id_capture = id_cancel.clone();
+                                            move |_| {
+                                            let id2 = id_capture.clone();
+                                            let sel_task_detail = selected_task_detail.write_only();
+                                            let value = id_capture.clone();
+                                            spawn_local(async move {
+                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                let _ = JsFuture::from(tauri_invoke("task_cancel_cmd", args)).await;
+                                                if let Some(t) = task_get(&value).await { sel_task_detail.set(Some(t)); }
+                                            });
+                                        }}>
+                                            "Cancel"
+                                        </button>
+                                    </div>
+                                </div> }.into_any()
+                            }
+                            None => view!{ <div></div> }.into_any(),
+                        }
+                    }
                     {move || items.get().into_iter().map(|item| match item {
                         ChatItem::User { text } => {
                             let html = md_to_html(&text);
