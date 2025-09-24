@@ -141,7 +141,6 @@ pub fn App() -> impl IntoView {
         <div class="h-screen w-full">
             <div class="fixed top-0 left-0 bottom-0 w-56 p-3 border-r border-white bg-white/5">
                 <div class="text-lg mb-2">"OpenAgents"</div>
-                <div class="text-sm opacity-80">"Sidebar"</div>
             </div>
 
             <div class="pl-56 pr-[26rem] pt-4 pb-20 h-full overflow-auto">
@@ -165,7 +164,7 @@ pub fn App() -> impl IntoView {
                 {move || if panel_open.get() { "Hide status".to_string() } else { "Show status".to_string() }}
             </button>
 
-            <div class=move || if panel_open.get() { "fixed top-12 right-3 bottom-3 w-96 overflow-auto p-3 border border-white rounded-none bg-white/5 text-white text-[0.95rem] leading-6".to_string() } else { "hidden".to_string() }>
+            <div class=move || if panel_open.get() { "fixed top-12 right-3 bottom-3 w-96 overflow-auto p-3 border border-white rounded-none bg-white/5 text-white text-[0.95rem] leading-6 z-50".to_string() } else { "hidden".to_string() }>
                 <div class="space-y-1.5 mb-3">
                     <div class="font-semibold mb-1 opacity-95">"📂 Workspace"</div>
                     <div class="ml-2 opacity-90">{move || format!("• Path: {}", full.get().workspace.path.unwrap_or_else(|| "(unknown)".into()))}</div>
@@ -212,7 +211,7 @@ pub fn App() -> impl IntoView {
             </div>
 
             // Chat bar
-            <div class="fixed bottom-0 left-0 right-0 flex justify-center pb-4">
+            <div class="fixed bottom-0 left-0 right-0 flex justify-center pb-4 z-10">
                 <div class="w-full max-w-[600px] px-4 flex gap-2">
                     { // input state
                         let msg: RwSignal<String> = RwSignal::new(String::new());
