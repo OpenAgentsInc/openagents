@@ -369,7 +369,7 @@ pub fn App() -> impl IntoView {
                                                     let _ = tauri_invoke("set_reasoning_effort", args);
                                                 }
                                             }>
-                                        <option>None</option>
+                                        <option>Minimal</option>
                                         <option>Low</option>
                                         <option>Medium</option>
                                         <option>High</option>
