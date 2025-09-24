@@ -369,6 +369,7 @@ pub enum UiDisplayItem {
     Assistant { text: String },
     Reasoning { text: String },
     Tool { title: String, text: String },
+    Instructions { ikind: String, text: String },
 }
 
 fn file_is_rollout(path: &std::path::Path) -> bool {
@@ -485,6 +486,12 @@ fn parse_summary_title_from_head(head: &[serde_json::Value]) -> Option<String> {
     None
 }
 
+fn text_has_instruction_wrappers(s: &str) -> bool {
+    let lower = s.to_lowercase();
+    lower.contains("<user_instructions>") || lower.contains("</user_instructions>") ||
+    lower.contains("<environment_context>") || lower.contains("</environment_context>")
+}
+
 fn sanitize_title(mut s: String) -> String {
     // Strip common XML-ish wrappers and trim
     for (open, close) in [
@@ -544,7 +551,12 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
                             if p.get("type").and_then(|s| s.as_str()) == Some("message") {
                                 let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
                                 let text = content_vec_to_text(p.get("content").unwrap_or(&serde_json::Value::Null));
-                                if !text.trim().is_empty() { has_message = true; if role == "user" && title.is_none() { title = Some(text.clone()); } }
+                                if !text.trim().is_empty() {
+                                    has_message = true;
+                                    if role == "user" && title.is_none() && !text_has_instruction_wrappers(&text) {
+                                        title = Some(text.clone());
+                                    }
+                                }
                             }
                         }
                     } else if t == "event_msg" {
@@ -552,7 +564,8 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
                             match p.get("type").and_then(|s| s.as_str()).unwrap_or("") {
                                 "user_message" => {
                                     if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
-                                        if !msg.trim().is_empty() { has_message = true; if title.is_none() { title = Some(msg.to_string()); } }
+                                        let is_instruction = p.get("payload").and_then(|x| x.get("kind")).and_then(|k| k.as_str()).map(|k| k=="user_instructions" || k=="environment_context").unwrap_or(false);
+                                        if !msg.trim().is_empty() { has_message = true; if title.is_none() && !is_instruction { title = Some(msg.to_string()); } }
                                     }
                                 }
                                 "agent_message" => {
@@ -620,7 +633,11 @@ async fn load_chat(path: String) -> Result<Vec<UiDisplayItem>, String> {
                         let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
                         let text = content_vec_to_text(p.get("content").unwrap_or(&serde_json::Value::Null));
                         let trimmed = text.trim();
-                        if trimmed.is_empty() { /* skip empty */ } else if role == "user" { out.push(UiDisplayItem::User { text }); }
+                        if trimmed.is_empty() { /* skip empty */ }
+                        else if role == "user" {
+                            if text_has_instruction_wrappers(&text) { out.push(UiDisplayItem::Instructions { ikind: "user_instructions".to_string(), text }); }
+                            else { out.push(UiDisplayItem::User { text }); }
+                        }
                         else if role == "assistant" { out.push(UiDisplayItem::Assistant { text }); }
                     }
                     "reasoning" => {
@@ -668,7 +685,13 @@ async fn load_chat(path: String) -> Result<Vec<UiDisplayItem>, String> {
             if let Some(p) = p {
                 match p.get("type").and_then(|s| s.as_str()).unwrap_or("") {
                     "user_message" => {
-                        if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) { if !msg.trim().is_empty() { out.push(UiDisplayItem::User { text: msg.to_string() }); } }
+                        if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) {
+                            let kind = p.get("payload").and_then(|x| x.get("kind")).and_then(|k| k.as_str()).unwrap_or("").to_string();
+                            if !msg.trim().is_empty() {
+                                if kind == "user_instructions" || kind == "environment_context" { out.push(UiDisplayItem::Instructions { ikind: kind, text: msg.to_string() }); }
+                                else { out.push(UiDisplayItem::User { text: msg.to_string() }); }
+                            }
+                        }
                     }
                     "agent_message" => {
                         if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) { if !msg.trim().is_empty() { out.push(UiDisplayItem::Assistant { text: msg.to_string() }); } }
