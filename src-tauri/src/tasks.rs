@@ -105,11 +105,17 @@ pub fn task_create(name: &str, settings: AutonomyBudget) -> anyhow::Result<Task>
 mod tests {
   use super::*;
   use tempfile::TempDir;
+  use std::thread;
+  use std::time::Duration;
+  use std::sync::OnceLock;
+
+  static ENV_LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
 
   #[test]
   fn create_list_load_delete() {
+    let _guard = ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
     let td = TempDir::new().unwrap();
-    std::env::set_var("CODEX_HOME", td.path());
+    std::env::set_var("CODEX_HOME", td.path().display().to_string());
     let a = task_create("Test Task", AutonomyBudget { approvals:"never".into(), sandbox:"danger-full-access".into(), max_turns:Some(10), max_tokens:None, max_minutes:None }).unwrap();
     assert!(!a.id.is_empty());
     let list = tasks_list().unwrap();
@@ -122,5 +128,25 @@ mod tests {
     assert_eq!(task_get(&a.id).unwrap().name, "Renamed");
     task_delete(&a.id).unwrap();
     assert!(tasks_list().unwrap().is_empty());
+  }
+
+  #[test]
+  fn list_sorts_by_updated_desc() {
+    let _guard = ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
+    let td = TempDir::new().unwrap();
+    std::env::set_var("CODEX_HOME", td.path().display().to_string());
+    let a = task_create("A", AutonomyBudget::default()).unwrap();
+    // ensure distinct timestamps
+    thread::sleep(Duration::from_millis(5));
+    let b = task_create("B", AutonomyBudget::default()).unwrap();
+    // touch A to be newest
+    let mut a2 = task_get(&a.id).unwrap();
+    a2.name = "A2".into();
+    let _ = task_update(a2).unwrap();
+    let list = tasks_list().unwrap();
+    assert_eq!(list.len(), 2);
+    // A2 should be first (newest)
+    assert_eq!(list[0].id, a.id);
+    assert_eq!(list[1].id, b.id);
   }
 }
