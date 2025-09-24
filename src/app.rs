@@ -45,7 +45,15 @@ async fn fetch_full_status() -> FullStatus {
 
 // ---- Chats API ----
 #[derive(Clone, Debug, Default, Deserialize)]
-struct UiChatSummary { id: String, path: String, started_at: String, title: String, cwd: Option<String> }
+struct UiChatSummary {
+    #[allow(dead_code)]
+    id: String,
+    path: String,
+    started_at: String,
+    title: String,
+    #[allow(dead_code)]
+    cwd: Option<String>,
+}
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(tag = "kind")]
@@ -246,7 +254,7 @@ pub fn App() -> impl IntoView {
     {
         let bottom = bottom_ref.clone();
         let items_ro = items.read_only();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             let _ = items_ro.get().len();
             if let Some(el) = bottom.get() {
                 use wasm_bindgen::JsCast;
@@ -259,7 +267,7 @@ pub fn App() -> impl IntoView {
         let raw_bottom = raw_bottom_ref.clone();
         let raw_ro = raw_events.read_only();
         let raw_open_ro = raw_open.read_only();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             let _ = raw_ro.get().len();
             let open = raw_open_ro.get();
             if open {
