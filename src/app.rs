@@ -12,22 +12,6 @@ extern "C" {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-struct UiAuthStatus {
-    method: Option<String>,
-    email: Option<String>,
-    plan: Option<String>,
-}
-
-async fn fetch_auth_status() -> UiAuthStatus {
-    let args = js_sys::Object::new();
-    let promise = tauri_invoke("get_auth_status", JsValue::from(args));
-    match JsFuture::from(promise).await {
-        Ok(val) => serde_wasm_bindgen::from_value::<UiAuthStatus>(val).unwrap_or_default(),
-        Err(_) => UiAuthStatus::default(),
-    }
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
 struct WorkspaceStatus { path: Option<String>, approval_mode: Option<String>, sandbox: Option<String>, agents_files: Vec<String> }
 #[derive(Clone, Debug, Default, Deserialize)]
 struct AccountStatus { signed_in_with: Option<String>, login: Option<String>, plan: Option<String> }
@@ -54,13 +38,9 @@ async fn fetch_full_status() -> FullStatus {
 #[component]
 pub fn App() -> impl IntoView {
     // Load auth status on mount
-    let status: RwSignal<UiAuthStatus> = RwSignal::new(Default::default());
-    let status_setter = status.write_only();
     let full: RwSignal<FullStatus> = RwSignal::new(Default::default());
     let full_setter = full.write_only();
     spawn_local(async move {
-        let s = fetch_auth_status().await;
-        status_setter.set(s);
         let f = fetch_full_status().await;
         full_setter.set(f);
     });

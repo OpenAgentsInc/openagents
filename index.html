@@ -6,6 +6,37 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link data-trunk rel="copy-dir" href="public" />
     <link data-trunk rel="rust" data-wasm-opt="z" />
+    <style>
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: url('/fonts/BerkeleyMono-Regular.ttf') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: url('/fonts/BerkeleyMono-Bold.ttf') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: url('/fonts/BerkeleyMono-Italic.ttf') format('truetype');
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: url('/fonts/BerkeleyMono-BoldItalic.ttf') format('truetype');
+        font-weight: 700;
+        font-style: italic;
+        font-display: swap;
+      }
+      * { font-family: 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace !important; }
+    </style>
   </head>
   <body class="min-h-screen bg-black text-white antialiased"></body>
 </html>
