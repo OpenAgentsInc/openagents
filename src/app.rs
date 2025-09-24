@@ -40,7 +40,8 @@ pub fn App() -> impl IntoView {
     // Load auth status on mount
     let full: RwSignal<FullStatus> = RwSignal::new(Default::default());
     let full_setter = full.write_only();
-    let panel_open: RwSignal<bool> = RwSignal::new(true);
+    // Default hidden
+    let panel_open: RwSignal<bool> = RwSignal::new(false);
     spawn_local(async move {
         let f = fetch_full_status().await;
         full_setter.set(f);
