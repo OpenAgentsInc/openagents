@@ -1,0 +1,42 @@
+name: Master Task Feature Issue
+description: Plan/implement a part of long-running master task orchestration
+title: "[MasterTask] <short title>"
+labels: ["master-task", "feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read docs/master-task-orchestration.md for context, then fill in the details below.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What needs to be built and why
+      placeholder: One short paragraph
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Concrete, verifiable outcomes
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: tech-notes
+    attributes:
+      label: Tech Notes
+      description: Files, functions, events to touch
+      placeholder: "- src-tauri/src/lib.rs:..."
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: What must ship before this? What ships after?
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: Test Plan
+      description: Manual verification steps; include edge cases
+
