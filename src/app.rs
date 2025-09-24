@@ -6,7 +6,8 @@ use wasm_bindgen::JsValue;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_namespace = ["__TAURI__", "tauri"], js_name = invoke)]
+    // Tauri v2 global API
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = invoke)]
     fn tauri_invoke(cmd: &str, args: JsValue) -> js_sys::Promise;
 }
 
