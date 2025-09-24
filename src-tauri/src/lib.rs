@@ -13,8 +13,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::fs::File;
 use std::io::{BufRead, BufReader as StdBufReader};
 use tokio::fs as tokio_fs;
-use tokio::io::AsyncBufReadExt as _;
+// use tokio::io::AsyncBufReadExt as _; // redundant; already imported via TokioBufReader above
 use std::collections::HashMap;
+use tokio::sync::oneshot;
 use std::ffi::OsStr;
 use std::io::Write as _;
 
@@ -424,7 +425,7 @@ async fn collect_rollout_files(limit_scan: usize) -> anyhow::Result<Vec<std::pat
         }
         if files.len() >= limit_scan { break; }
     }
-    let mut year_dirs: Vec<std::path::PathBuf> = Vec::new();
+    // (no-op) leftover variable removed
     // Fallback: if nothing found in structured dirs, scan entire CODEX_HOME recursively for any .jsonl
     if files.is_empty() {
         let mut any_jsonl: Vec<std::path::PathBuf> = Vec::new();
@@ -598,7 +599,7 @@ fn simple_title_case(s: &str) -> String {
     out
 }
 
-fn smart_title_from_texts(user: &str, assistant: Option<&str>) -> String {
+fn smart_title_from_texts(user: &str, _assistant: Option<&str>) -> String {
     let mut base = strip_code_fences(user);
     base = sanitize_title(base);
     if base.len() > 240 { base = first_sentence(&base); }
@@ -718,10 +719,12 @@ fn write_sidecar_title(path: &std::path::Path, title: &str) -> anyhow::Result<()
 }
 
 #[tauri::command]
-async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
+async fn list_recent_chats(window: tauri::Window, limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
     let limit = limit.unwrap_or(20);
     let files = collect_rollout_files(2000).await.map_err(|e| e.to_string())?;
     let mut out: Vec<UiChatSummary> = Vec::new();
+    let mut candidates: Vec<(usize, std::path::PathBuf)> = Vec::new();
+    let mut raw_titles: Vec<String> = Vec::new();
     for f in files.into_iter().take(200) {
         // Read the first ~120 lines for meta + title (accommodate older formats)
         let file = match tokio_fs::File::open(&f).await { Ok(x) => x, Err(_) => continue };
@@ -807,8 +810,23 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
         let mut title = read_sidecar_title(&f).or(title).unwrap_or_else(|| "(no title)".into());
         if title.is_empty() { title = f.file_name().and_then(|s| s.to_str()).unwrap_or("(untitled)").to_string(); }
         title = sanitize_title(title);
+        let idx = out.len();
+        candidates.push((idx, f.clone()));
+        raw_titles.push(title.clone());
         out.push(UiChatSummary { id, path: f.display().to_string(), started_at, title, cwd });
         if out.len() >= limit { break; }
+    }
+    // Summarize via existing proto (off-record). If summarization fails, keep current titles.
+    if !raw_titles.is_empty() {
+        if let Ok(summaries) = summarize_titles_via_proto(&window, raw_titles.clone()).await {
+            for (i, (idx, path)) in candidates.iter().enumerate() {
+                if let Some(sum) = summaries.get(i) {
+                    if let Some(item) = out.get_mut(*idx) { item.title = sum.clone(); }
+                    // Persist sidecar for future loads
+                    let _ = write_sidecar_title(path, summaries[i].as_str());
+                }
+            }
+        }
     }
     Ok(out)
 }
@@ -1017,11 +1035,13 @@ struct McpState {
     conversation_id: Option<String>,
     tx: Option<UnboundedSender<Vec<u8>>>,
     config_reasoning_effort: String,
+    summarize_wait: HashMap<String, oneshot::Sender<String>>,
+    summarize_buf: HashMap<String, String>,
 }
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, tx: None, config_reasoning_effort: "high".to_string() }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new() }
     }
 }
 
@@ -1075,13 +1095,39 @@ impl McpState {
         if let Some(out) = self.stdout.take() {
             let reader = TokioBufReader::new(out);
             let win = window.clone();
-            let tx_clone = self.tx.clone();
+            // no-op
             let shared_state = shared.clone();
             tauri::async_runtime::spawn(async move {
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     if line.trim().is_empty() { continue; }
                     let v: serde_json::Value = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
+                    let id_str = v.get("id").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                    if !id_str.is_empty() {
+                        // Check if this belongs to an off-record summarize request
+                        if let Ok(mut guard) = shared_state.lock() {
+                            if guard.summarize_wait.contains_key(&id_str) {
+                                if let Some(msg) = v.get("msg") {
+                                    let typ = msg.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                                    match typ {
+                                        "agent_message_delta" => {
+                                            if let Some(delta) = msg.get("delta").and_then(|d| d.as_str()) {
+                                                let entry = guard.summarize_buf.entry(id_str.clone()).or_default();
+                                                entry.push_str(delta);
+                                            }
+                                        }
+                                        "agent_message" => {
+                                            let mut text = msg.get("message").and_then(|d| d.as_str()).unwrap_or("").to_string();
+                                            if text.is_empty() { if let Some(buf) = guard.summarize_buf.remove(&id_str) { text = buf; } }
+                                            if let Some(tx) = guard.summarize_wait.remove(&id_str) { let _ = tx.send(text); }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                continue; // do not forward to UI
+                            }
+                        }
+                    }
                     // Forward raw message for visibility
                     let _ = win.emit("codex:stream", &UiStreamEvent::Raw { json: line.clone() });
 
@@ -1102,7 +1148,7 @@ impl McpState {
             });
         }
         // Also forward stderr lines (build logs) so first-time builds are visible.
-        if let Some(mut err) = self.child.as_mut().and_then(|c| c.stderr.take()) {
+        if let Some(err) = self.child.as_mut().and_then(|c| c.stderr.take()) {
             let win2 = window.clone();
             tauri::async_runtime::spawn(async move {
                 use tokio::io::AsyncBufReadExt;
@@ -1122,7 +1168,7 @@ impl McpState {
 
     fn next_request_id(&self) -> u64 { self.next_id.fetch_add(1, Ordering::SeqCst) }
 
-    fn new_conversation(&mut self) -> anyhow::Result<()> { Ok(()) }
+    // removed; not used
 
     fn send_user_message(&self, prompt: &str) -> anyhow::Result<()> {
         let id = format!("{}", self.next_request_id());
@@ -1132,12 +1178,62 @@ impl McpState {
         });
         self.send_json(&submission)
     }
+
+    fn send_offrecord(&mut self, prompt: &str) -> anyhow::Result<oneshot::Receiver<String>> {
+        let id = format!("{}", self.next_request_id());
+        let (tx, rx) = oneshot::channel();
+        self.summarize_wait.insert(id.clone(), tx);
+        let submission = serde_json::json!({
+            "id": id,
+            "op": { "type": "user_input", "items": [ { "type": "text", "text": prompt } ] }
+        });
+        self.send_json(&submission)?;
+        Ok(rx)
+    }
 }
 
 fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> anyhow::Result<()> {
     let mut buf = serde_json::to_vec(value)?;
     buf.push(b'\n');
     tx.send(buf).map_err(|e| anyhow::anyhow!("send stdin: {e}"))
+}
+
+async fn summarize_titles_via_proto(window: &tauri::Window, titles: Vec<String>) -> anyhow::Result<Vec<String>> {
+    if titles.is_empty() { return Ok(vec![]); }
+    let state = window.state::<Arc<Mutex<McpState>>>();
+    // Ensure proto running
+    {
+        let mut guard = state.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        if guard.child.is_none() {
+            let shared = state.inner().clone();
+            guard.start(window, shared)?;
+        }
+    }
+    // Build prompt
+    let mut lines = String::new();
+    for t in titles.iter() { lines.push_str("- "); lines.push_str(t); lines.push('\n'); }
+    let prompt = format!("Summarize each item below into 3–5 concise words. Return exactly one line per item, no numbering or bullets, no quotes.\n{}", lines);
+    // Send off-record
+    let rx = {
+        let mut guard = state.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        guard.send_offrecord(&prompt)?
+    };
+    let text = match tokio::time::timeout(std::time::Duration::from_secs(25), rx).await {
+        Ok(Ok(s)) => s,
+        _ => return Ok(titles),
+    };
+    let mut out: Vec<String> = text
+        .lines()
+        .map(|l| l.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c=='-' || c=='.').trim())
+        .filter(|l| !l.is_empty())
+        .map(|s| {
+            let mut s = s.to_string();
+            if s.ends_with('.') { s.pop(); }
+            s
+        })
+        .collect();
+    if out.len() != titles.len() { out = titles; }
+    Ok(out)
 }
 
 fn normalize_effort(e: &str) -> Option<&'static str> {
@@ -1319,7 +1415,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Mutex::new(McpState::default())))
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
