@@ -52,6 +52,8 @@ enum UiStreamEvent {
     ToolDelta { call_id: String, chunk: String },
     OutputItemDoneMessage { text: String },
     Completed { response_id: Option<String>, token_usage: Option<TokenUsageLite> },
+    Raw { json: String },
+    SystemNote { text: String },
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -91,17 +93,22 @@ pub fn App() -> impl IntoView {
     // Chat state
     let items: RwSignal<Vec<ChatItem>> = RwSignal::new(vec![]);
     let token_usage_sig: RwSignal<Option<TokenUsageLite>> = RwSignal::new(None);
+    let raw_events: RwSignal<Vec<String>> = RwSignal::new(vec![]);
 
     // Install event listener once (on mount)
     {
         let items_setter = items.write_only();
         let token_setter = token_usage_sig.write_only();
+        let raw_setter = raw_events.write_only();
         spawn_local(async move {
             let cb = Closure::wrap(Box::new(move |evt: JsValue| {
                 let payload = js_sys::Reflect::get(&evt, &JsValue::from_str("payload")).unwrap_or(JsValue::NULL);
                 if payload.is_null() || payload.is_undefined() { return; }
                 let parsed: Result<UiStreamEvent, _> = serde_wasm_bindgen::from_value(payload);
                 if let Ok(ev) = parsed {
+                    if let UiStreamEvent::Raw { json } = &ev {
+                        raw_setter.update(|v| v.push(json.clone()));
+                    }
                     items_setter.update(|list| {
                         match ev {
                             UiStreamEvent::Created => {
@@ -117,12 +124,15 @@ pub fn App() -> impl IntoView {
                                 append_to_assistant(list, &format!("\n{}", text));
                                 if let Some(ChatItem::Assistant { streaming, .. }) = list.last_mut() { *streaming = false; }
                             }
-                            UiStreamEvent::Completed { response_id: _, token_usage } => {
+                            UiStreamEvent::Completed { response_id, token_usage } => {
                                 if let Some(ChatItem::Assistant { streaming, .. }) = list.last_mut() { *streaming = false; }
                                 if let Some(ChatItem::Tool { done, .. }) = list.iter_mut().rev().find(|i| matches!(i, ChatItem::Tool { .. })) { *done = true; }
-                                if let Some(tu) = token_usage { token_setter.set(Some(tu)); }
-                                list.push(ChatItem::System { text: "Turn complete".into() });
+                                if let Some(tu) = token_usage.clone() { token_setter.set(Some(tu)); }
+                                if let Some(id) = response_id { list.push(ChatItem::System { text: format!("Completed: {id}") }); }
+                                if let Some(tu) = token_usage { list.push(ChatItem::System { text: format!("Tokens in/out/total: {} / {} / {}", tu.input, tu.output, tu.total) }); }
                             }
+                            UiStreamEvent::Raw { .. } => {}
+                            UiStreamEvent::SystemNote { text } => { list.push(ChatItem::System { text }); }
                         }
                     });
                 }
@@ -144,13 +154,17 @@ pub fn App() -> impl IntoView {
             </div>
 
             <div class="pl-56 pr-[26rem] pt-4 pb-20 h-full overflow-auto">
-                <div class="space-y-3">
+                <div class="space-y-3 text-[13px]">
                     {move || items.get().into_iter().map(|item| match item {
                         ChatItem::User { text } => view! { <div class="max-w-3xl p-3 border border-white">{text}</div> }.into_any(),
                         ChatItem::Assistant { text, streaming } => view! { <div class="max-w-3xl p-3 border border-white/60 bg-white/5">{text}{if streaming { "▌" } else { "" }.to_string()}</div> }.into_any(),
                         ChatItem::Tool { call_id, output, done } => view! { <div class="max-w-3xl p-3 border border-white/40 bg-black/40"><div class="text-xs opacity-70">{format!("Tool {call_id} {}", if done {"(done)"} else {"(running)"})}</div><pre class="whitespace-pre-wrap text-sm">{output}</pre></div> }.into_any(),
                         ChatItem::System { text } => view! { <div class="text-xs opacity-60">{text}</div> }.into_any(),
                     }).collect_view()}
+                </div>
+                <div class="mt-4 max-w-3xl">
+                    <div class="text-xs opacity-70 mb-1">"Raw event log (all data):"</div>
+                    <pre class="text-[11px] leading-4 whitespace-pre-wrap border border-white/20 p-2 bg-black/50">{move || raw_events.get().join("\n")}</pre>
                 </div>
             </div>
 
