@@ -1128,6 +1128,16 @@ impl McpState {
                             }
                         }
                     }
+                    // Update conversation_id on session_configured
+                    if let Some(msg) = v.get("msg") {
+                        if msg.get("type").and_then(|t| t.as_str()) == Some("session_configured") {
+                            if let Some(sid) = msg.get("session_id").and_then(|s| s.as_str()) {
+                                if let Ok(mut guard) = shared_state.lock() {
+                                    guard.conversation_id = Some(sid.to_string());
+                                }
+                            }
+                        }
+                    }
                     // Forward raw message for visibility
                     let _ = win.emit("codex:stream", &UiStreamEvent::Raw { json: line.clone() });
 
