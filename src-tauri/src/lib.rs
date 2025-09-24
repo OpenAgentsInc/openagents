@@ -4,9 +4,14 @@ use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
 use base64::Engine as _;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, BufReader as TokioBufReader};
+use tokio::process::{Child, ChildStdout, Command};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender, UnboundedReceiver};
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader as StdBufReader};
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -133,7 +138,7 @@ fn parse_between<'a>(text: &'a str, start: &str, end: &str) -> Option<&'a str> {
 fn read_session_info() -> Option<(WorkspaceStatus, ClientStatus, TokenUsageStatus)> {
     let path = read_latest_session_file()?;
     let file = File::open(&path).ok()?;
-    let reader = BufReader::new(file);
+    let reader = StdBufReader::new(file);
     let mut session_id: Option<String> = None;
     let mut cwd: Option<String> = None;
     let mut cli_version: Option<String> = None;
@@ -332,6 +337,8 @@ pub enum UiStreamEvent {
     ToolDelta { call_id: String, chunk: String },
     OutputItemDoneMessage { text: String },
     Completed { response_id: Option<String>, token_usage: Option<TokenUsageLite> },
+    Raw { json: String },
+    SystemNote { text: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -343,32 +350,180 @@ pub struct TokenUsageLite {
 
 #[tauri::command]
 async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String> {
-    // For now, emit a stub stream that simulates a Codex turn so the UI can hook up plumbing.
-    // Integration can later map real Codex ResponseEvents → UiStreamEvent.
-    window.emit("codex:stream", &UiStreamEvent::Created).map_err(|e| e.to_string())?;
+    // Ensure MCP server is running and a conversation exists; then send the prompt.
+    let state = window.state::<Arc<Mutex<McpState>>>();
+    {
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        if guard.child.is_none() {
+            guard.start(&window).map_err(|e| format!("start mcp: {e}"))?;
+        }
+        if guard.conversation_id.is_none() {
+            guard.new_conversation().map_err(|e| format!("newConversation: {e}"))?;
+        }
+        guard.send_user_message(&prompt).map_err(|e| format!("sendUserMessage: {e}"))
+    }
+}
 
-    let win = window.clone();
-    tauri::async_runtime::spawn(async move {
-        let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: format!("Thinking about: {}", prompt) });
-        let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: "… parsing request".into() });
-        // Simulate a tool call streaming output
-        let _ = win.emit("codex:stream", &UiStreamEvent::ToolDelta { call_id: "exec-1".into(), chunk: "$ ls -la\n".into() });
-        let _ = win.emit("codex:stream", &UiStreamEvent::ToolDelta { call_id: "exec-1".into(), chunk: "README.md\nCargo.toml\n".into() });
-        let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: "… applying changes".into() });
-        let _ = win.emit("codex:stream", &UiStreamEvent::OutputItemDoneMessage { text: "All set. Anything else?".into() });
-        let _ = win.emit("codex:stream", &UiStreamEvent::Completed {
-            response_id: Some("resp_123".into()),
-            token_usage: Some(TokenUsageLite { input: 10, output: 25, total: 35 }),
+// Minimal MCP client state
+struct McpState {
+    child: Option<Child>,
+    stdout: Option<ChildStdout>,
+    next_id: AtomicU64,
+    conversation_id: Option<String>,
+    tx: Option<UnboundedSender<Vec<u8>>>,
+}
+
+impl Default for McpState {
+    fn default() -> Self {
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, tx: None }
+    }
+}
+
+impl McpState {
+    fn start(&mut self, window: &tauri::Window) -> anyhow::Result<()> {
+        let mut cmd = Command::new("cargo");
+        cmd.arg("run").arg("-p").arg("mcp-server").arg("--quiet")
+            .current_dir(std::env::current_dir()?)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+        let mut child = cmd.spawn()?;
+        let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
+        let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?;
+        self.stdout = Some(stdout);
+        self.child = Some(child);
+
+        // Spawn writer task owning stdin and receiving lines to write.
+        let (tx, mut rx): (UnboundedSender<Vec<u8>>, UnboundedReceiver<Vec<u8>>) = unbounded_channel();
+        self.tx = Some(tx);
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            while let Some(buf) = rx.recv().await {
+                let _ = stdin.write_all(&buf).await;
+                let _ = stdin.flush().await;
+            }
         });
-    });
 
-    Ok(())
+        // Spawn reader loop to translate MCP notifications → UI events
+        if let Some(out) = self.stdout.take() {
+            let reader = TokioBufReader::new(out);
+            let win = window.clone();
+            let tx_clone = self.tx.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if line.trim().is_empty() { continue; }
+                    let v: serde_json::Value = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
+                    // Forward raw message for visibility
+                    let _ = win.emit("codex:stream", &UiStreamEvent::Raw { json: line.clone() });
+
+                    // Handle notifications & approval requests
+                    if let Some(method) = v.get("method").and_then(|m| m.as_str()) {
+                        match method {
+                            "codex/event" => {
+                                if let Some(params) = v.get("params") {
+                                    handle_codex_event(&win, params);
+                                }
+                            }
+                            "execCommandApproval" | "applyPatchApproval" => {
+                                // Auto-allow for now
+                                if let Some(id) = v.get("id") {
+                                    let resp = serde_json::json!({
+                                        "jsonrpc": "2.0",
+                                        "id": id,
+                                        "result": { "decision": "allow" }
+                                    });
+                                    if let Some(tx) = &tx_clone { let _ = send_json_line(tx, &resp); }
+                                }
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+                    // Responses: capture conversationId when present
+                    if let Some(res) = v.get("result") {
+                        if let Some(conv) = res.get("conversationId").and_then(|x| x.as_str()) {
+                            let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("conversationId: {}", conv) });
+                        }
+                    }
+                }
+            });
+        }
+        Ok(())
+    }
+
+    fn send_json(&self, value: &serde_json::Value) -> anyhow::Result<()> {
+        let tx = self.tx.as_ref().ok_or_else(|| anyhow::anyhow!("stdin tx missing"))?;
+        send_json_line(tx, value)
+    }
+
+    fn next_request_id(&self) -> u64 { self.next_id.fetch_add(1, Ordering::SeqCst) }
+
+    fn new_conversation(&mut self) -> anyhow::Result<()> {
+        let id = self.next_request_id();
+        let req = serde_json::json!({
+            "jsonrpc": "2.0", "id": id, "method": "newConversation", "params": {
+                "approvalPolicy": "never",
+                "sandbox": "danger-full-access"
+            }
+        });
+        self.send_json(&req)?;
+        Ok(())
+    }
+
+    fn send_user_message(&self, prompt: &str) -> anyhow::Result<()> {
+        let id = self.next_request_id();
+        let req = serde_json::json!({
+            "jsonrpc": "2.0", "id": id, "method": "sendUserMessage", "params": {
+                "items": [{ "type": "text", "text": prompt }]
+            }
+        });
+        self.send_json(&req)
+    }
+}
+
+fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> anyhow::Result<()> {
+    let mut buf = serde_json::to_vec(value)?;
+    buf.push(b'\n');
+    tx.send(buf).map_err(|e| anyhow::anyhow!("send stdin: {e}"))
+}
+
+fn handle_codex_event(win: &tauri::Window, params: &serde_json::Value) {
+    // Try to extract msg.type and handle popular streaming events; always emit raw JSON as well.
+    if let Some(msg) = params.get("msg") {
+        let typ = msg.get("type").and_then(|t| t.as_str()).unwrap_or("");
+        match typ {
+            "agent_message_delta" => {
+                if let Some(delta) = msg.get("delta").and_then(|d| d.as_str()) {
+                    let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: delta.to_string() });
+                }
+            }
+            "exec_command_output_delta" => {
+                let call_id = msg.get("call_id").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                if let Some(chunk_b64) = msg.get("chunk").and_then(|d| d.as_str()) {
+                    if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(chunk_b64) {
+                        if let Ok(text) = String::from_utf8(bytes) {
+                            let _ = win.emit("codex:stream", &UiStreamEvent::ToolDelta { call_id, chunk: text });
+                        }
+                    }
+                }
+            }
+            "token_count" => {
+                let input = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
+                let output = msg.get("usage").and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
+                let total = input + output;
+                let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: Some(TokenUsageLite { input, output, total }) });
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(Arc::new(Mutex::new(McpState::default())))
         .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
