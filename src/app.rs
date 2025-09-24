@@ -94,6 +94,7 @@ pub fn App() -> impl IntoView {
     let items: RwSignal<Vec<ChatItem>> = RwSignal::new(vec![]);
     let token_usage_sig: RwSignal<Option<TokenUsageLite>> = RwSignal::new(None);
     let raw_events: RwSignal<Vec<String>> = RwSignal::new(vec![]);
+    let raw_open: RwSignal<bool> = RwSignal::new(false);
 
     // Install event listener once (on mount)
     {
@@ -153,18 +154,22 @@ pub fn App() -> impl IntoView {
                 <div class="text-lg mb-2">"OpenAgents"</div>
             </div>
 
-            <div class="pl-56 pr-[26rem] pt-4 pb-20 h-full overflow-auto">
+            <div class="pl-56 pr-[26rem] pt-4 pb-28 h-full overflow-auto">
                 <div class="space-y-3 text-[13px]">
                     {move || items.get().into_iter().map(|item| match item {
-                        ChatItem::User { text } => view! { <div class="max-w-3xl p-3 border border-white">{text}</div> }.into_any(),
-                        ChatItem::Assistant { text, streaming } => view! { <div class="max-w-3xl p-3 border border-white/60 bg-white/5">{text}{if streaming { "▌" } else { "" }.to_string()}</div> }.into_any(),
-                        ChatItem::Tool { call_id, output, done } => view! { <div class="max-w-3xl p-3 border border-white/40 bg-black/40"><div class="text-xs opacity-70">{format!("Tool {call_id} {}", if done {"(done)"} else {"(running)"})}</div><pre class="whitespace-pre-wrap text-sm">{output}</pre></div> }.into_any(),
+                        ChatItem::User { text } => view! { <div class="max-w-3xl p-3 border border-white/50 bg-black/20">{text}</div> }.into_any(),
+                        ChatItem::Assistant { text, streaming } => view! { <div class="max-w-3xl p-3 border border-white/40 bg-white/10">{text}{if streaming { " ▌" } else { "" }.to_string()}</div> }.into_any(),
+                        ChatItem::Tool { call_id, output, done } => view! { <div class="max-w-3xl p-3 border border-white/30 bg-black/40"><div class="text-xs opacity-70 mb-1">{format!("Tool {call_id} {}", if done {"(done)"} else {"(running)"})}</div><pre class="whitespace-pre-wrap text-sm">{output}</pre></div> }.into_any(),
                         ChatItem::System { text } => view! { <div class="text-xs opacity-60">{text}</div> }.into_any(),
                     }).collect_view()}
                 </div>
                 <div class="mt-4 max-w-3xl">
-                    <div class="text-xs opacity-70 mb-1">"Raw event log (all data):"</div>
-                    <pre class="text-[11px] leading-4 whitespace-pre-wrap border border-white/20 p-2 bg-black/50">{move || raw_events.get().join("\n")}</pre>
+                    <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click=move |_| raw_open.update(|v| *v = !*v)>
+                        {move || if raw_open.get() { "Hide raw event log".to_string() } else { "Show raw event log".to_string() }}
+                    </button>
+                    {move || if raw_open.get() {
+                        view!{ <pre class="mt-2 max-h-72 overflow-auto text-[11px] leading-4 whitespace-pre-wrap border border-white/20 p-2 bg-black/50">{raw_events.get().join("\n")}</pre> }.into_any()
+                    } else { view!{ <div></div> }.into_any() }}
                 </div>
             </div>
 

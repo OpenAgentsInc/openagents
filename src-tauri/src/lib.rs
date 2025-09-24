@@ -350,16 +350,43 @@ pub struct TokenUsageLite {
 
 #[tauri::command]
 async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String> {
-    // Ensure MCP server is running and a conversation exists; then send the prompt.
+    // Immediate feedback in UI
+    let _ = window.emit("codex:stream", &UiStreamEvent::Created);
+    let _ = window.emit(
+        "codex:stream",
+        &UiStreamEvent::SystemNote { text: format!("Submitting prompt ({} chars) …", prompt.len()) },
+    );
+
+    // Ensure Protocol streamer is running; then send the prompt.
     let state = window.state::<Arc<Mutex<McpState>>>();
+    // Clone the Arc for passing into the reader task
+    let shared_arc = {
+        let s = window.state::<Arc<Mutex<McpState>>>();
+        s.inner().clone()
+    };
+
     {
         let mut guard = state.lock().map_err(|e| e.to_string())?;
         if guard.child.is_none() {
-            guard.start(&window).map_err(|e| format!("start mcp: {e}"))?;
+            let _ = window.emit(
+                "codex:stream",
+                &UiStreamEvent::SystemNote { text: "Starting Codex (proto) — first build may take a minute…".into() },
+            );
+            guard.start(&window, shared_arc.clone()).map_err(|e| format!("start proto: {e}"))?;
         }
-        if guard.conversation_id.is_none() {
-            guard.new_conversation().map_err(|e| format!("newConversation: {e}"))?;
+        // Protocol path does not require an explicit newConversation
+    }
+
+    // Wait briefly for conversationId to come back from MCP server
+    for _ in 0..100u32 {
+        if let Ok(guard) = state.lock() {
+            if guard.conversation_id.is_some() { break; }
         }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    {
+        let guard = state.lock().map_err(|e| e.to_string())?;
         guard.send_user_message(&prompt).map_err(|e| format!("sendUserMessage: {e}"))
     }
 }
@@ -380,16 +407,27 @@ impl Default for McpState {
 }
 
 impl McpState {
-    fn start(&mut self, window: &tauri::Window) -> anyhow::Result<()> {
-        let mut cmd = Command::new("cargo");
-        cmd.arg("run").arg("-p").arg("mcp-server").arg("--quiet")
-            .current_dir(std::env::current_dir()?)
+    fn start(&mut self, window: &tauri::Window, shared: Arc<Mutex<McpState>>) -> anyhow::Result<()> {
+        // Prefer running from codex-rs workspace; run Protocol stream (codex proto).
+        let cwd = std::env::current_dir()?;
+        let codex_dir = cwd.join("codex-rs");
+        let mut cmd;
+        if codex_dir.join("Cargo.toml").exists() {
+            cmd = Command::new("cargo");
+            cmd.arg("run").arg("-q").arg("-p").arg("codex-cli").arg("--").arg("proto")
+                .current_dir(&codex_dir);
+        } else {
+            cmd = Command::new("codex");
+            cmd.arg("proto");
+        }
+        cmd
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null());
+            .stderr(std::process::Stdio::piped());
         let mut child = cmd.spawn()?;
         let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?;
+        let stderr = child.stderr.take();
         self.stdout = Some(stdout);
         self.child = Some(child);
 
@@ -404,11 +442,12 @@ impl McpState {
             }
         });
 
-        // Spawn reader loop to translate MCP notifications → UI events
+        // Spawn reader loop to translate Protocol stream → UI events
         if let Some(out) = self.stdout.take() {
             let reader = TokioBufReader::new(out);
             let win = window.clone();
             let tx_clone = self.tx.clone();
+            let shared_state = shared.clone();
             tauri::async_runtime::spawn(async move {
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
@@ -417,35 +456,30 @@ impl McpState {
                     // Forward raw message for visibility
                     let _ = win.emit("codex:stream", &UiStreamEvent::Raw { json: line.clone() });
 
-                    // Handle notifications & approval requests
-                    if let Some(method) = v.get("method").and_then(|m| m.as_str()) {
-                        match method {
-                            "codex/event" => {
-                                if let Some(params) = v.get("params") {
-                                    handle_codex_event(&win, params);
-                                }
-                            }
-                            "execCommandApproval" | "applyPatchApproval" => {
-                                // Auto-allow for now
-                                if let Some(id) = v.get("id") {
-                                    let resp = serde_json::json!({
-                                        "jsonrpc": "2.0",
-                                        "id": id,
-                                        "result": { "decision": "allow" }
-                                    });
-                                    if let Some(tx) = &tx_clone { let _ = send_json_line(tx, &resp); }
-                                }
-                            }
-                            _ => {}
-                        }
-                        continue;
-                    }
-                    // Responses: capture conversationId when present
-                    if let Some(res) = v.get("result") {
-                        if let Some(conv) = res.get("conversationId").and_then(|x| x.as_str()) {
-                            let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("conversationId: {}", conv) });
-                        }
-                    }
+                    // Protocol stream line -> map to UI events
+                    handle_proto_event(&win, &v);
+                }
+            });
+        }
+        // Also forward stderr (build logs) to UI raw pane
+        if let Some(err) = stderr {
+            let win2 = window.clone();
+            tauri::async_runtime::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let mut lines = TokioBufReader::new(err).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let _ = win2.emit("codex:stream", &UiStreamEvent::Raw { json: format!("[stderr] {}", line) });
+                }
+            });
+        }
+        // Also forward stderr lines (build logs) so first-time builds are visible.
+        if let Some(mut err) = self.child.as_mut().and_then(|c| c.stderr.take()) {
+            let win2 = window.clone();
+            tauri::async_runtime::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let mut lines = TokioBufReader::new(err).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let _ = win2.emit("codex:stream", &UiStreamEvent::Raw { json: format!("[stderr] {}", line) });
                 }
             });
         }
@@ -459,26 +493,15 @@ impl McpState {
 
     fn next_request_id(&self) -> u64 { self.next_id.fetch_add(1, Ordering::SeqCst) }
 
-    fn new_conversation(&mut self) -> anyhow::Result<()> {
-        let id = self.next_request_id();
-        let req = serde_json::json!({
-            "jsonrpc": "2.0", "id": id, "method": "newConversation", "params": {
-                "approvalPolicy": "never",
-                "sandbox": "danger-full-access"
-            }
-        });
-        self.send_json(&req)?;
-        Ok(())
-    }
+    fn new_conversation(&mut self) -> anyhow::Result<()> { Ok(()) }
 
     fn send_user_message(&self, prompt: &str) -> anyhow::Result<()> {
-        let id = self.next_request_id();
-        let req = serde_json::json!({
-            "jsonrpc": "2.0", "id": id, "method": "sendUserMessage", "params": {
-                "items": [{ "type": "text", "text": prompt }]
-            }
+        let id = format!("{}", self.next_request_id());
+        let submission = serde_json::json!({
+            "id": id,
+            "op": { "type": "user_input", "items": [ { "type": "text", "text": prompt } ] }
         });
-        self.send_json(&req)
+        self.send_json(&submission)
     }
 }
 
@@ -488,9 +511,8 @@ fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> a
     tx.send(buf).map_err(|e| anyhow::anyhow!("send stdin: {e}"))
 }
 
-fn handle_codex_event(win: &tauri::Window, params: &serde_json::Value) {
-    // Try to extract msg.type and handle popular streaming events; always emit raw JSON as well.
-    if let Some(msg) = params.get("msg") {
+fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
+    if let Some(msg) = event.get("msg") {
         let typ = msg.get("type").and_then(|t| t.as_str()).unwrap_or("");
         match typ {
             "agent_message_delta" => {
