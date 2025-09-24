@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
+use wasm_bindgen_futures::{JsFuture, spawn_local};
 use wasm_bindgen::JsValue;
 
 #[wasm_bindgen]
@@ -29,26 +29,29 @@ async fn fetch_auth_status() -> UiAuthStatus {
 #[component]
 pub fn App() -> impl IntoView {
     // Load auth status on mount
-    let status = create_resource(|| (), |_| async { fetch_auth_status().await });
+    let status: RwSignal<UiAuthStatus> = RwSignal::new(Default::default());
+    let status_setter = status.write_only();
+    spawn_local(async move {
+        let s = fetch_auth_status().await;
+        status_setter.set(s);
+    });
 
     view! {
         <div class="container">
             <div class="title">"OpenAgents"</div>
             <div style="margin-top: 0.75rem; font-size: 0.95rem; opacity: 0.9;">
-                {move || match status.get() {
-                    Some(s) => {
-                        let method = s.method.unwrap_or_else(|| "Not logged in".to_string());
-                        let email = s.email.unwrap_or_default();
-                        let plan = s.plan.unwrap_or_default();
-                        let extra = match (email.is_empty(), plan.is_empty()) {
-                            (true, true) => String::new(),
-                            (false, true) => format!(" · {}", email),
-                            (true, false) => format!(" · {}", plan),
-                            (false, false) => format!(" · {} · {}", email, plan),
-                        };
-                        format!("Auth: {}{}", method, extra)
-                    }
-                    None => "Auth: Loading…".to_string()
+                {move || {
+                    let s = status.get();
+                    let method = s.method.unwrap_or_else(|| "Not logged in".to_string());
+                    let email = s.email.unwrap_or_default();
+                    let plan = s.plan.unwrap_or_default();
+                    let extra = match (email.is_empty(), plan.is_empty()) {
+                        (true, true) => String::new(),
+                        (false, true) => format!(" · {}", email),
+                        (true, false) => format!(" · {}", plan),
+                        (false, false) => format!(" · {} · {}", email, plan),
+                    };
+                    format!("Auth: {}{}", method, extra)
                 }}
             </div>
         </div>

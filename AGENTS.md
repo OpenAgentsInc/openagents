@@ -32,3 +32,9 @@ Prereqs: `rustup target add wasm32-unknown-unknown`; `cargo install trunk tauri-
 ## Security & Configuration Tips
 - Tauri CSP is `null` for dev; restrict before release if loading remote content. Avoid embedding secrets; prefer environment or OS keychain.
 - `frontendDist` points to `../dist`; ensure `trunk build` precedes packaging.
+
+## Build Health (Required)
+- Do not leave the repository in a broken state. All changes must compile:
+  - UI: `cargo check --target wasm32-unknown-unknown`
+  - Tauri: `cd src-tauri && cargo check`
+  - Optional: `trunk build` and `cargo tauri build` for end-to-end validation.
