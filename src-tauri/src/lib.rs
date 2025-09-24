@@ -14,6 +14,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader as StdBufReader};
 use tokio::fs as tokio_fs;
 use tokio::io::AsyncBufReadExt as _;
+use std::collections::HashMap;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -484,6 +485,22 @@ fn parse_summary_title_from_head(head: &[serde_json::Value]) -> Option<String> {
     None
 }
 
+fn sanitize_title(mut s: String) -> String {
+    // Strip common XML-ish wrappers and trim
+    for (open, close) in [
+        ("<user_instructions>", "</user_instructions>"),
+        ("<environment_context>", "</environment_context>"),
+    ] {
+        if s.contains(open) && s.contains(close) {
+            if let Some(start) = s.find(open) { if let Some(end) = s.find(close) { s = s[start+open.len()..end].to_string(); } }
+        }
+    }
+    let line = s.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+    let mut t = line.to_string();
+    if t.len() > 80 { t.truncate(80); }
+    t
+}
+
 #[tauri::command]
 async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
     let limit = limit.unwrap_or(20);
@@ -531,6 +548,7 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
         let started_at = started_at.unwrap_or_else(|| "".into());
         let mut title = title.unwrap_or_else(|| "(no title)".into());
         if title.is_empty() { title = f.file_name().and_then(|s| s.to_str()).unwrap_or("(untitled)").to_string(); }
+        title = sanitize_title(title);
         out.push(UiChatSummary { id, path: f.display().to_string(), started_at, title, cwd });
         if out.len() >= limit { break; }
     }
@@ -553,17 +571,26 @@ fn content_vec_to_text(arr: &serde_json::Value) -> String {
 async fn load_chat(path: String) -> Result<Vec<UiDisplayItem>, String> {
     let text = tokio_fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
     let mut out: Vec<UiDisplayItem> = Vec::new();
+    let mut func_names: HashMap<String, String> = HashMap::new();
+    let mut custom_names: HashMap<String, String> = HashMap::new();
     for line in text.lines() {
         if line.trim().is_empty() { continue; }
         let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-        let t = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+        // Support flattened and nested shapes
+        let (t, p) = if let Some(t) = v.get("type").and_then(|s| s.as_str()) {
+            (t, v.get("payload"))
+        } else if let Some(item) = v.get("item") {
+            (item.get("type").and_then(|s| s.as_str()).unwrap_or(""), item.get("payload"))
+        } else { ("", None) };
+
         if t == "response_item" {
-            if let Some(p) = v.get("payload") {
+            if let Some(p) = p {
                 match p.get("type").and_then(|s| s.as_str()).unwrap_or("") {
                     "message" => {
                         let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
                         let text = content_vec_to_text(p.get("content").unwrap_or(&serde_json::Value::Null));
-                        if role == "user" { out.push(UiDisplayItem::User { text }); }
+                        let trimmed = text.trim();
+                        if trimmed.is_empty() { /* skip empty */ } else if role == "user" { out.push(UiDisplayItem::User { text }); }
                         else if role == "assistant" { out.push(UiDisplayItem::Assistant { text }); }
                     }
                     "reasoning" => {
@@ -574,17 +601,50 @@ async fn load_chat(path: String) -> Result<Vec<UiDisplayItem>, String> {
                             if !s.is_empty() { out.push(UiDisplayItem::Reasoning { text: s }); }
                         }
                     }
+                    "function_call" => {
+                        let call_id = p.get("call_id").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                        let name = p.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                        if !call_id.is_empty() && !name.is_empty() { func_names.insert(call_id, name); }
+                    }
                     "function_call_output" => {
                         let call_id = p.get("call_id").and_then(|s| s.as_str()).unwrap_or("");
                         let content = p.get("output").and_then(|o| o.get("content")).and_then(|s| s.as_str()).unwrap_or("");
-                        let title = if call_id.is_empty() { "Function output".to_string() } else { format!("Function {call_id}") };
+                        let title = if let Some(name) = func_names.get(call_id) { format!("Function: {}", name) } else if call_id.is_empty() { "Function output".to_string() } else { format!("Function {call_id}") };
                         out.push(UiDisplayItem::Tool { title, text: content.to_string() });
+                    }
+                    "custom_tool_call" => {
+                        let call_id = p.get("call_id").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                        let name = p.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                        if !call_id.is_empty() && !name.is_empty() { custom_names.insert(call_id, name); }
                     }
                     "custom_tool_call_output" => {
                         let call_id = p.get("call_id").and_then(|s| s.as_str()).unwrap_or("");
                         let content = p.get("output").and_then(|s| s.as_str()).unwrap_or("");
-                        let title = if call_id.is_empty() { "Tool output".to_string() } else { format!("Tool {call_id}") };
+                        let title = if let Some(name) = custom_names.get(call_id) { format!("Tool: {}", name) } else if call_id.is_empty() { "Tool output".to_string() } else { format!("Tool {call_id}") };
                         out.push(UiDisplayItem::Tool { title, text: content.to_string() });
+                    }
+                    "local_shell_call" => {
+                        let mut title = "Shell".to_string();
+                        if let Some(action) = p.get("action") { if let Some(cmd) = action.get("command").and_then(|a| a.as_array()) {
+                            let joined = cmd.iter().filter_map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+                            if !joined.is_empty() { title = format!("Shell: {}", joined); }
+                        } }
+                        out.push(UiDisplayItem::Tool { title, text: String::new() });
+                    }
+                    _ => {}
+                }
+            }
+        } else if t == "event_msg" {
+            if let Some(p) = p {
+                match p.get("type").and_then(|s| s.as_str()).unwrap_or("") {
+                    "user_message" => {
+                        if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) { if !msg.trim().is_empty() { out.push(UiDisplayItem::User { text: msg.to_string() }); } }
+                    }
+                    "agent_message" => {
+                        if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) { if !msg.trim().is_empty() { out.push(UiDisplayItem::Assistant { text: msg.to_string() }); } }
+                    }
+                    "agent_reasoning" => {
+                        if let Some(msg) = p.get("payload").and_then(|x| x.get("message")).and_then(|s| s.as_str()) { if !msg.trim().is_empty() { out.push(UiDisplayItem::Reasoning { text: msg.to_string() }); } }
                     }
                     _ => {}
                 }

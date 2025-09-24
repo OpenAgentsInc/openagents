@@ -337,7 +337,10 @@ pub fn App() -> impl IntoView {
             <div class="pl-80 pt-6 pb-36 h-full overflow-auto">
                 <div class="mx-auto w-full max-w-[768px] px-4 space-y-3 text-[13px]">
                     {move || items.get().into_iter().map(|item| match item {
-                        ChatItem::User { text } => view! { <div class="w-full p-3 border border-white/50 bg-black/20">{text}</div> }.into_any(),
+                        ChatItem::User { text } => {
+                            let html = md_to_html(&text);
+                            view! { <div class="w-full p-3 border border-white/50 bg-black/20"><div class="assistant-md" inner_html=html></div></div> }.into_any()
+                        }
                         ChatItem::Reasoning { text } => {
                             let html = md_to_html(&text);
                             view! { <div class="w-full text-[12px] italic opacity-85 px-3 reasoning-md" inner_html=html></div> }.into_any()
