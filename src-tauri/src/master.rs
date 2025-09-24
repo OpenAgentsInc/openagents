@@ -4,13 +4,13 @@ pub fn next_pending_index(task: &Task) -> Option<usize> {
     task.queue.iter().position(|s| matches!(s.status, SubtaskStatus::Pending))
 }
 
-pub fn start_subtask(mut task: Task, i: usize) -> Task {
+pub fn start_subtask(task: Task, i: usize) -> Task {
     let mut t = task; // take ownership
     if let Some(s) = t.queue.get_mut(i) { s.status = SubtaskStatus::Running; }
     t
 }
 
-pub fn complete_subtask(mut task: Task, i: usize) -> Task {
+pub fn complete_subtask(task: Task, i: usize) -> Task {
     let mut t = task;
     if let Some(s) = t.queue.get_mut(i) { s.status = SubtaskStatus::Done; }
     if next_pending_index(&t).is_none() { t.status = TaskStatus::Completed; }
@@ -43,4 +43,3 @@ mod tests {
         assert!(matches!(t.status, TaskStatus::Completed));
     }
 }
-

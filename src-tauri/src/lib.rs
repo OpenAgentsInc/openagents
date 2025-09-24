@@ -20,6 +20,8 @@ use std::ffi::OsStr;
 use std::io::Write as _;
 mod tasks;
 use tasks::*;
+mod master;
+use master::*;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -1361,6 +1363,65 @@ fn guess_filename_from_command(cmd: &str) -> Option<String> {
             .unwrap_or(&s)
             .to_string()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn sanitize_and_sentence_helpers() {
+        let s = "<user_instructions>\n# Repository Guidelines\nMore text\n</user_instructions>".to_string();
+        let out = sanitize_title(s);
+        assert_eq!(out, "Repository Guidelines");
+
+        let fs = first_sentence("One. Two. Three");
+        assert_eq!(fs, "One.");
+
+        let lw = limit_words("a b c d e", 3);
+        assert_eq!(lw, "a b c");
+    }
+
+    #[test]
+    fn filename_extraction() {
+        let hint = extract_filename_hint("Please open src/app.rs and edit");
+        assert_eq!(hint.as_deref(), Some("app.rs"));
+
+        let g1 = guess_filename_from_command("bash -lc sed -n '1,200p' src-tauri/src/lib.rs");
+        assert_eq!(g1.as_deref(), Some("lib.rs"));
+
+        let g2 = guess_filename_from_command("bash -lc cat README.md");
+        assert_eq!(g2.as_deref(), Some("README.md"));
+    }
+
+    #[test]
+    fn title_casing_and_smart_title() {
+        let cased = simple_title_case("fix bug in parser");
+        assert_eq!(cased, "Fix Bug In Parser");
+
+        let title = smart_title_from_texts("fix panic in src/lib.rs when parsing", None);
+        assert!(title.to_lowercase().starts_with("fix panic in src/lib.rs"));
+        // Title already includes lib.rs; ensure filename hint present somewhere (either included in path or appended)
+        assert!(title.to_lowercase().contains("lib.rs"));
+    }
+
+    #[test]
+    fn content_and_title_from_head() {
+        let content = json!([ {"text":"Hello"}, {"text":"World"} ]);
+        let joined = content_vec_to_text(&content);
+        assert_eq!(joined, "Hello\nWorld");
+
+        // Build a small head with a user event
+        let head = vec![
+            json!({
+                "type":"event_msg",
+                "payload": { "type":"user_message", "payload": { "message":"add dark mode" } }
+            })
+        ];
+        let t = derive_title_from_head(&head).unwrap();
+        assert!(t.to_lowercase().contains("add dark mode"));
+    }
 }
 
 fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
