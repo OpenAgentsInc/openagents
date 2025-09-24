@@ -525,6 +525,8 @@ async fn list_recent_chats(limit: Option<usize>) -> Result<Vec<UiChatSummary>, S
             }
             Ok(None) | Err(_) => break,
         }
+        }
+        // end while read_count
         let id = meta_id.unwrap_or_else(|| f.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string());
         let started_at = started_at.unwrap_or_else(|| "".into());
         let mut title = title.unwrap_or_else(|| "(no title)".into());
