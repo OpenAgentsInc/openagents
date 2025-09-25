@@ -31,9 +31,10 @@ fn append_log(p: &PathBuf, line: &str) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Label comes from args or default
+    // Args: <label> [max_seconds]
     let mut args = std::env::args().skip(1);
     let label = args.next().unwrap_or_else(|| "default".to_string());
+    let max_secs: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(60);
     let logf = log_path(&label);
     append_log(&logf, "live run starting")?;
 
@@ -41,20 +42,22 @@ async fn main() -> Result<()> {
     let cwd = std::env::current_dir()?;
     let codex_dir = cwd.join("codex-rs");
     let mut cmd;
+    // Resolve model from env if provided (fallback to a widely-available one)
+    let model = std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
     if codex_dir.join("Cargo.toml").exists() {
         cmd = Command::new("cargo");
         cmd.arg("run").arg("-q").arg("-p").arg("codex-cli").arg("--")
             .arg("proto")
             .arg("-c").arg("approval_policy=never")
             .arg("-c").arg("sandbox_mode=read-only")
-            .arg("-c").arg("model=gpt-5")
+            .arg("-c").arg(format!("model={}", model))
             .current_dir(&codex_dir);
     } else {
         cmd = Command::new("codex");
         cmd.arg("proto")
             .arg("-c").arg("approval_policy=never")
             .arg("-c").arg("sandbox_mode=read-only")
-            .arg("-c").arg("model=gpt-5");
+            .arg("-c").arg(format!("model={}", model));
     }
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -74,7 +77,11 @@ async fn main() -> Result<()> {
         }
     });
 
-    append_log(&logf, "waiting for session_configured")?;
+    let ch = codex_home();
+    append_log(&logf, &format!("waiting for session_configured; CODEX_HOME={}; model={}", ch.display(), model))?;
+    // Best-effort check for auth.json presence
+    let auth = ch.join("auth.json");
+    if !auth.exists() { append_log(&logf, "warning: auth.json not found; authentication may fail")?; }
     let start_wait = std::time::Instant::now();
     let mut session_ready = false;
     let mut prompts_sent = 0usize;
@@ -82,7 +89,7 @@ async fn main() -> Result<()> {
     let mut token_out: u64 = 0;
 
     // Reader loop with a timebox
-    let max_total = std::time::Duration::from_secs(120);
+    let max_total = std::time::Duration::from_secs(max_secs);
     while start_wait.elapsed() < max_total {
         let remain = max_total.saturating_sub(start_wait.elapsed());
         // Poll the next line with a short timeout so we don't block past the deadline.

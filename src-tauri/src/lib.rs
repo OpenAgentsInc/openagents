@@ -143,6 +143,10 @@ fn read_latest_session_file() -> Option<PathBuf> {
     latest_path
 }
 
+fn env_default_model() -> String {
+    std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string())
+}
+
 fn parse_between<'a>(text: &'a str, start: &str, end: &str) -> Option<&'a str> {
     let s = text.find(start)? + start.len();
     let e = text[s..].find(end)? + s;
@@ -1069,7 +1073,7 @@ impl McpState {
                 // Bust out of sandbox: approval never + danger-full-access, and set model/effort
                 .arg("-c").arg("approval_policy=never")
                 .arg("-c").arg("sandbox_mode=danger-full-access")
-                .arg("-c").arg("model=gpt-5")
+                .arg("-c").arg(format!("model={}", env_default_model()))
                 .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort))
                 .current_dir(&codex_dir);
         } else {
@@ -1077,7 +1081,7 @@ impl McpState {
             cmd.arg("proto")
                 .arg("-c").arg("approval_policy=never")
                 .arg("-c").arg("sandbox_mode=danger-full-access")
-                .arg("-c").arg("model=gpt-5")
+                .arg("-c").arg(format!("model={}", env_default_model()))
                 .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort));
         }
         cmd
