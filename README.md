@@ -121,6 +121,7 @@ Useful commands (from repo root):
 Notes:
 - Headless mode uses a fallback planner and a simulated runner turn that enforces budgets and updates metrics without contacting the protocol.
 - Real protocol-driven runs and UI streaming remain available via the desktop app.
+- Logs: headless operations append to `$(CODEX_HOME)/master-tasks/<task_id>.log` with timestamps (plan start/done, run starts/completions, metrics deltas, next pending index).
 
 See also:
 - QA scenarios: `docs/qa/master-task-qa.md`
