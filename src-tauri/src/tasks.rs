@@ -28,7 +28,14 @@ pub struct StopConditions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Metrics { pub turns: u64, pub tokens_in: u64, pub tokens_out: u64, pub wall_clock_minutes: u64 }
+pub struct Metrics {
+  pub turns: u64,
+  pub tokens_in: u64,
+  pub tokens_out: u64,
+  pub wall_clock_minutes: u64,
+  #[serde(default)]
+  pub retries: u64,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Subtask {
@@ -40,6 +47,8 @@ pub struct Subtask {
   pub session_id: Option<String>,
   pub rollout_path: Option<String>,
   pub last_error: Option<String>,
+  #[serde(default)]
+  pub retries: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

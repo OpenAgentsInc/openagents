@@ -19,9 +19,13 @@ use tokio::sync::oneshot;
 use std::ffi::OsStr;
 use std::io::Write as _;
 mod tasks;
-use tasks::*;
 mod master;
 use master::*;
+pub mod headless;
+
+// Re-export core task types and helpers for integration tests / headless flows.
+pub use tasks::*;
+pub use master::next_pending_index;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -1038,15 +1042,17 @@ struct McpState {
     stdout: Option<ChildStdout>,
     next_id: AtomicU64,
     conversation_id: Option<String>,
+    last_rollout_path: Option<String>,
     tx: Option<UnboundedSender<Vec<u8>>>,
     config_reasoning_effort: String,
     summarize_wait: HashMap<String, oneshot::Sender<String>>,
     summarize_buf: HashMap<String, String>,
+    last_token_usage: Option<TokenUsageLite>,
 }
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new() }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None }
     }
 }
 
@@ -1136,10 +1142,11 @@ impl McpState {
                     // Update conversation_id on session_configured
                     if let Some(msg) = v.get("msg") {
                         if msg.get("type").and_then(|t| t.as_str()) == Some("session_configured") {
-                            if let Some(sid) = msg.get("session_id").and_then(|s| s.as_str()) {
-                                if let Ok(mut guard) = shared_state.lock() {
-                                    guard.conversation_id = Some(sid.to_string());
-                                }
+                            let sid = msg.get("session_id").and_then(|s| s.as_str()).map(|s| s.to_string());
+                            let rpath = msg.get("rollout_path").and_then(|p| p.as_str()).map(|s| s.to_string());
+                            if let Ok(mut guard) = shared_state.lock() {
+                                if let Some(sid) = sid { guard.conversation_id = Some(sid); }
+                                guard.last_rollout_path = rpath;
                             }
                         }
                     }
@@ -1147,6 +1154,16 @@ impl McpState {
                     let _ = win.emit("codex:stream", &UiStreamEvent::Raw { json: line.clone() });
 
                     // Protocol stream line -> map to UI events
+                    // Also capture token usage metrics for budget enforcement.
+                    if let Some(msg) = v.get("msg") {
+                        if msg.get("type").and_then(|t| t.as_str()) == Some("token_count") {
+                            let input = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
+                            let output = msg.get("usage").and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
+                            if let Ok(mut guard) = shared_state.lock() {
+                                guard.last_token_usage = Some(TokenUsageLite { input, output, total: input + output });
+                            }
+                        }
+                    }
                     handle_proto_event(&win, &v);
                 }
             });
@@ -1262,12 +1279,24 @@ fn fallback_plan_from_goal(goal: &str) -> Vec<Subtask> {
         .filter(|s| !s.is_empty())
         .collect();
     for (i, s) in sentences.into_iter().take(10).enumerate() {
-        out.push(Subtask { id: format!("s{:02}", i + 1), title: s.to_string(), status: SubtaskStatus::Pending, inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None });
+        out.push(Subtask { id: format!("s{:02}", i + 1), title: s.to_string(), status: SubtaskStatus::Pending, inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None, retries: 0 });
     }
     if out.is_empty() {
-        out.push(Subtask { id: "s01".into(), title: goal.trim().to_string(), status: SubtaskStatus::Pending, inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None });
+        out.push(Subtask { id: "s01".into(), title: goal.trim().to_string(), status: SubtaskStatus::Pending, inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None, retries: 0 });
     }
     out
+}
+
+fn build_control_prompt(title: &str, inputs: &serde_json::Value, sandbox: &str) -> String {
+    let mut prompt = format!("Master Task – run subtask: {}\n", title);
+    if !inputs.is_null() {
+        if let Ok(js) = serde_json::to_string_pretty(inputs) {
+            if js != "null" { prompt.push_str(&format!("Inputs:\n{}\n", js)); }
+        }
+    }
+    let s = sandbox.to_lowercase();
+    if s == "read-only" || s == "readonly" || s == "read_only" { prompt.push_str("Constraints: operate in read-only mode; do not modify files.\n"); }
+    prompt
 }
 
 #[tauri::command]
@@ -1297,7 +1326,7 @@ async fn task_plan_cmd(window: tauri::Window, args: TaskPlanArgs) -> Result<Task
                         let id = item.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("s{:02}", i+1));
                         let inputs = item.get("inputs").cloned().unwrap_or(serde_json::json!({}));
                         if !title.trim().is_empty() {
-                            planned.push(Subtask { id, title, status: SubtaskStatus::Pending, inputs, session_id: None, rollout_path: None, last_error: None });
+                            planned.push(Subtask { id, title, status: SubtaskStatus::Pending, inputs, session_id: None, rollout_path: None, last_error: None, retries: 0 });
                         }
                     }
                 }
@@ -1421,6 +1450,15 @@ mod tests {
         ];
         let t = derive_title_from_head(&head).unwrap();
         assert!(t.to_lowercase().contains("add dark mode"));
+    }
+
+    #[test]
+    fn control_prompt_includes_readonly_constraint() {
+        let inputs = json!({"path":"/repo"});
+        let p1 = build_control_prompt("List files", &inputs, "read-only");
+        assert!(p1.contains("operate in read-only"));
+        let p2 = build_control_prompt("List files", &inputs, "danger-full-access");
+        assert!(!p2.contains("operate in read-only"));
     }
 }
 
@@ -1551,6 +1589,29 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(Mutex::new(McpState::default())))
+        .setup(|app| {
+            // On app startup, attempt to resume any in-progress master tasks.
+            if let Some(win) = app.get_webview_window("main") {
+                let win = win.clone();
+                tauri::async_runtime::spawn(async move {
+                    // Best-effort: list tasks and resume ones marked Running or with a running subtask.
+                    if let Ok(list) = tasks_list() {
+                        for meta in list {
+                            if let Ok(task) = task_get(&meta.id) {
+                                let needs_resume = matches!(task.status, TaskStatus::Running) || current_running_index(&task).is_some();
+                                if needs_resume {
+                                    // Small stagger to avoid bursting the proto at launch.
+                                    let js = format!("window.__TAURI__.core.invoke('task_run_cmd', {{ id: '{}' }})", task.id);
+                                    let _ = win.eval(&js);
+                                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1579,11 +1640,131 @@ async fn task_delete_cmd(id: String) -> Result<(), String> { task_delete(&id).ma
 #[tauri::command]
 async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String> {
     let mut task = task_get(&id).map_err(|e| e.to_string())?;
-    if let Some(i) = next_pending_index(&task) {
-        task = start_subtask(task, i);
+    // Prefer continuing a running subtask; otherwise start the next pending one.
+    let idx_running = current_running_index(&task);
+    let idx_pending = next_pending_index(&task);
+    if let Some(i) = idx_running.or(idx_pending) {
+        // Ensure protocol session running and capture session metadata
+        let (session_id, rollout_path) = {
+            use std::time::{Duration, Instant};
+            let state = window.state::<Arc<Mutex<McpState>>>();
+            // Start if needed
+            {
+                let mut guard = state.lock().map_err(|e| e.to_string())?;
+                if guard.child.is_none() {
+                    let shared = state.inner().clone();
+                    guard.start(&window, shared).map_err(|e| e.to_string())?;
+                }
+            }
+            // Wait briefly for session_configured
+            let start = Instant::now();
+            let mut sid: Option<String> = None;
+            let mut path: Option<String> = None;
+            loop {
+                if let Ok(guard) = state.lock() {
+                    sid = guard.conversation_id.clone();
+                    path = guard.last_rollout_path.clone();
+                }
+                if sid.is_some() || start.elapsed() > Duration::from_secs(4) { break; }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            (sid, path)
+        };
+
+        // Ensure subtask marked running and attach session metadata if available
+        if idx_running.is_none() { task = start_subtask(task, i); }
+        if let Some(sid) = session_id.clone() {
+            task = attach_session(task, i, sid, rollout_path);
+        }
         let task = task_update(task).map_err(|e| e.to_string())?;
         let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "running".into(), message: Some(format!("Starting {}", task.queue[i].title)) });
+
+        // Budgeted turn loop MVP: bounded by autonomy_budget (turns/tokens/minutes).
+        // We attribute token usage using the protocol's last_token_usage snapshot.
+        use std::time::{Duration, Instant};
+        let start_time = Instant::now();
         let mut task = task;
+        let mut turns_done: u32 = 0;
+        // Track deltas from protocol snapshots
+        let mut prev_in: u64 = 0;
+        let mut prev_out: u64 = 0;
+        // Initialize from current snapshot if present
+        {
+            let state = window.state::<Arc<Mutex<McpState>>>();
+            if let Ok(guard) = state.lock() {
+                if let Some(tu) = &guard.last_token_usage { prev_in = tu.input; prev_out = tu.output; }
+            };
+        }
+        loop {
+            // Check budgets before sending another turn
+            if let Some(reason) = budget_hit(&task.autonomy_budget, &task.metrics, turns_done, 0, 0, start_time.elapsed()) {
+                let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "paused".into(), message: Some(format!("Budget hit: {}", reason)) });
+                break;
+            }
+
+            // Send control prompt for this turn with retry/backoff on transient send errors
+            {
+                let state = window.state::<Arc<Mutex<McpState>>>();
+                let mut attempt: u32 = 0;
+                let max_retries: u32 = 3;
+                loop {
+                    let send_res = if let Ok(guard) = state.lock() {
+                        let prompt = build_control_prompt(&task.queue[i].title, &task.queue[i].inputs, &task.autonomy_budget.sandbox);
+                        guard.send_user_message(&prompt)
+                    } else { Err(anyhow::anyhow!("lock state failed")) };
+
+                    match send_res {
+                        Ok(()) => break, // Success; proceed with turn
+                        Err(e) => {
+                            // Record failure metrics and set subtask error
+                            task.metrics.retries = task.metrics.retries.saturating_add(1);
+                            if let Some(s) = task.queue.get_mut(i) { s.retries = s.retries.saturating_add(1); s.last_error = Some(format!("send failed: {}", e)); }
+                            if attempt >= max_retries {
+                                // Pause task on repeated failure
+                                let mut paused = task.clone();
+                                paused.status = TaskStatus::Paused;
+                                let paused = task_update(paused).map_err(|e| e.to_string())?;
+                                let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "error".into(), message: Some("Repeated send failure; task paused".into()) });
+                                return Ok(paused);
+                            }
+                            let delay = compute_backoff_delay(attempt);
+                            attempt = attempt.saturating_add(1);
+                            tokio::time::sleep(delay).await;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Give the protocol a moment to emit token_count; then snapshot
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            let (cur_in, cur_out) = {
+                let state = window.state::<Arc<Mutex<McpState>>>();
+                let res = if let Ok(guard) = state.lock() {
+                    if let Some(tu) = &guard.last_token_usage { (tu.input, tu.output) } else { (prev_in, prev_out) }
+                } else { (prev_in, prev_out) };
+                res
+            };
+            let din = cur_in.saturating_sub(prev_in);
+            let dout = cur_out.saturating_sub(prev_out);
+            prev_in = cur_in; prev_out = cur_out;
+
+            // Update metrics incrementally for this turn
+            task.metrics.tokens_in = task.metrics.tokens_in.saturating_add(din);
+            task.metrics.tokens_out = task.metrics.tokens_out.saturating_add(dout);
+            turns_done = turns_done.saturating_add(1);
+
+            // Stop if we hit any budget after this turn
+            if let Some(_reason) = budget_hit(&task.autonomy_budget, &task.metrics, turns_done, 0, 0, start_time.elapsed()) {
+                break;
+            }
+
+            // For MVP: run exactly one turn unless max_turns allows more; keep loop bounded to small count
+            if turns_done >= task.autonomy_budget.max_turns.unwrap_or(1) { break; }
+        }
+
+        // Mark subtask complete and persist metrics (including elapsed time)
+        task.metrics.wall_clock_minutes = task.metrics.wall_clock_minutes.saturating_add((start_time.elapsed().as_secs()/60) as u64);
         task = complete_subtask(task, i);
         let task = task_update(task).map_err(|e| e.to_string())?;
         let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "advanced".into(), message: Some(format!("Completed {}", task.queue[i].title)) });

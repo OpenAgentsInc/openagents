@@ -97,3 +97,31 @@ This will start both the Rust backend and the Leptos frontend with hot reload en
 Run these checks before committing:
 - UI: `cargo check --target wasm32-unknown-unknown`
 - Tauri: `cd src-tauri && cargo check`
+# OpenAgents – Tauri + Leptos
+## Headless Master Task (no desktop app)
+
+You can exercise the Master Task flow without launching the desktop app using a small CLI that ships with the Tauri crate.
+
+Prereqs:
+- Rust toolchain installed
+
+Useful commands (from repo root):
+- Create a task (read-only sandbox):
+  `cargo run -p openagents_lib --bin master_headless -- create "Readonly – Flow Test" read-only`
+- Plan with a simple goal (fallback planner):
+  `cargo run -p openagents_lib --bin master_headless -- plan <task_id> "List top-level files; Summarize crates"`
+- Run one budgeted turn:
+  `cargo run -p openagents_lib --bin master_headless -- run-once <task_id>`
+- Run until done (cap to N steps):
+  `cargo run -p openagents_lib --bin master_headless -- run-until-done <task_id> 10`
+- List / Show:
+  `cargo run -p openagents_lib --bin master_headless -- list`
+  `cargo run -p openagents_lib --bin master_headless -- show <task_id>`
+
+Notes:
+- Headless mode uses a fallback planner and a simulated runner turn that enforces budgets and updates metrics without contacting the protocol.
+- Real protocol-driven runs and UI streaming remain available via the desktop app.
+
+See also:
+- QA scenarios: `docs/qa/master-task-qa.md`
+- Sample read-only config idea: `docs/samples/master-task.json`
