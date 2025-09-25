@@ -30,6 +30,7 @@ tokio = { version = "1", features = ["process", "fs", "io-std", "io-util", "rt-m
 anyhow = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
+regex = "1"
 
 [dev-dependencies]
 tempfile = "3"

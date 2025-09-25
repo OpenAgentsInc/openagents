@@ -1,0 +1,19 @@
+{
+  "name": "Readonly – Repo Survey",
+  "autonomy_budget": {
+    "approvals": "never",
+    "sandbox": "read-only",
+    "max_turns": 1,
+    "max_tokens": 2000,
+    "max_minutes": 1
+  },
+  "stop_conditions": {
+    "done_regex": null
+  },
+  "queue": [
+    { "id": "s01", "title": "List top-level files", "status": "pending", "inputs": {}, "session_id": null, "rollout_path": null, "last_error": null, "retries": 0 },
+    { "id": "s02", "title": "Summarize Rust crates (no writes)", "status": "pending", "inputs": {}, "session_id": null, "rollout_path": null, "last_error": null, "retries": 0 }
+  ],
+  "metrics": { "turns": 0, "tokens_in": 0, "tokens_out": 0, "wall_clock_minutes": 0, "retries": 0 }
+}
+
