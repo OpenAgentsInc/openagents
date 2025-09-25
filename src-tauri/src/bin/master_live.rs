@@ -29,6 +29,37 @@ fn append_log(p: &PathBuf, line: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+struct AuthJson {
+    #[serde(rename = "OPENAI_API_KEY")]
+    openai_api_key: Option<String>,
+    #[serde(default)]
+    tokens: Option<AuthTokens>,
+}
+
+#[derive(serde::Deserialize)]
+struct AuthTokens { id_token: String }
+
+fn preflight_auth_log(logf: &PathBuf, ch: &PathBuf) -> Result<()> {
+    let auth = ch.join("auth.json");
+    if !auth.exists() {
+        append_log(logf, "auth: auth.json not found; will likely 401")?;
+        println!("auth: missing at {}", auth.display());
+        return Ok(());
+    }
+    let text = std::fs::read_to_string(&auth).unwrap_or_default();
+    let parsed: AuthJson = serde_json::from_str(&text).unwrap_or(AuthJson { openai_api_key: None, tokens: None });
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(k) = parsed.openai_api_key {
+        if !k.is_empty() { parts.push(format!("api_key=len{}", k.len())); }
+    }
+    if let Some(t) = parsed.tokens { if !t.id_token.is_empty() { parts.push(format!("id_token=len{}", t.id_token.len())); } }
+    if parts.is_empty() { parts.push("none".into()); }
+    let line = format!("auth: present [{}]", parts.join(", "));
+    append_log(logf, &line)?; println!("{} (from {})", line, auth.display());
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Args: <label> [max_seconds]
@@ -79,9 +110,8 @@ async fn main() -> Result<()> {
 
     let ch = codex_home();
     append_log(&logf, &format!("waiting for session_configured; CODEX_HOME={}; model={}", ch.display(), model))?;
-    // Best-effort check for auth.json presence
-    let auth = ch.join("auth.json");
-    if !auth.exists() { append_log(&logf, "warning: auth.json not found; authentication may fail")?; }
+    // Best-effort auth preflight
+    let _ = preflight_auth_log(&logf, &ch);
     let start_wait = std::time::Instant::now();
     let mut session_ready = false;
     let mut prompts_sent = 0usize;
