@@ -2668,6 +2668,25 @@ async fn handle_function_call(
             };
             ResponseInputItem::FunctionCallOutput { call_id, output: FunctionCallOutputPayload { content, success } }
         }
+        "figma_list_subnodes" => {
+            #[derive(serde::Deserialize)]
+            struct Args { figma_url: String, node_id: String, #[serde(default)] max_depth: Option<u32>, #[serde(default)] max_total: Option<usize> }
+            let args = match serde_json::from_str::<Args>(&arguments) {
+                Ok(v) => v,
+                Err(e) => {
+                    return ResponseInputItem::FunctionCallOutput { call_id, output: FunctionCallOutputPayload { content: format!("failed to parse function arguments: {e}"), success: Some(false) } };
+                }
+            };
+            let result = crate::figma_tools::handle_list_subnodes(
+                crate::figma_tools::ListSubnodesArgs { figma_url: args.figma_url, node_id: args.node_id, max_depth: args.max_depth, max_total: args.max_total },
+                Some(&turn_context.cwd)
+            ).await;
+            let (content, success) = match result {
+                Ok(val) => (serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string()), Some(true)),
+                Err(err) => (err.to_string(), Some(false)),
+            };
+            ResponseInputItem::FunctionCallOutput { call_id, output: FunctionCallOutputPayload { content, success } }
+        }
         EXEC_COMMAND_TOOL_NAME => {
             // TODO(mbolin): Sandbox check.
             let exec_params = match serde_json::from_str::<ExecCommandParams>(&arguments) {

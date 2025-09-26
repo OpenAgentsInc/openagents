@@ -405,6 +405,38 @@ fn create_figma_extract_tokens_tool() -> OpenAiTool {
         },
     })
 }
+
+fn create_figma_list_subnodes_tool() -> OpenAiTool {
+    use crate::openai_tools::JsonSchema as JS;
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "figma_url".to_string(),
+        JS::String { description: Some("Figma file/proto/design URL".to_string()) },
+    );
+    properties.insert(
+        "node_id".to_string(),
+        JS::String { description: Some("Root node id (use colon form, e.g. 1562:23253)".to_string()) },
+    );
+    properties.insert(
+        "max_depth".to_string(),
+        JS::Number { description: Some("How deep to traverse (default 10)".to_string()) },
+    );
+    properties.insert(
+        "max_total".to_string(),
+        JS::Number { description: Some("Max nodes to collect (default 10000)".to_string()) },
+    );
+
+    OpenAiTool::Function(ResponsesApiTool {
+        name: "figma_list_subnodes".to_string(),
+        description: "Traverse a Figma node and list all descendant nodes with id, name, type, parent, depth.".to_string(),
+        strict: false,
+        parameters: JS::Object {
+            properties,
+            required: Some(vec!["figma_url".to_string(), "node_id".to_string()]),
+            additional_properties: Some(false),
+        },
+    })
+}
 /// TODO(dylan): deprecate once we get rid of json tool
 #[derive(Serialize, Deserialize)]
 pub(crate) struct ApplyPatchToolArgs {
@@ -678,6 +710,7 @@ pub(crate) fn get_openai_tools(
         tools.push(create_figma_export_images_tool());
         tools.push(create_figma_get_nodes_tool());
         tools.push(create_figma_extract_tokens_tool());
+        tools.push(create_figma_list_subnodes_tool());
     }
 
     tools
