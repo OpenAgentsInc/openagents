@@ -62,10 +62,24 @@ fn preflight_auth_log(logf: &PathBuf, ch: &PathBuf) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Args: <label> [max_seconds]
-    let mut args = std::env::args().skip(1);
-    let label = args.next().unwrap_or_else(|| "default".to_string());
-    let max_secs: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(60);
+    // Args: <label> [max_seconds] [--prompt "..."] [--path "/abs/path"]
+    let mut args_iter = std::env::args().skip(1);
+    let label = args_iter.next().unwrap_or_else(|| "default".to_string());
+    let mut max_secs: u64 = 60;
+    let mut custom_prompt: Option<String> = None;
+    let mut abs_path: Option<String> = None;
+    let mut rest: Vec<String> = Vec::new();
+    if let Some(next) = args_iter.next() {
+        if let Ok(n) = next.parse::<u64>() { max_secs = n; rest.extend(args_iter); } else { rest.push(next); rest.extend(args_iter); }
+    }
+    let mut i = 0usize;
+    while i < rest.len() {
+        match rest[i].as_str() {
+            "--prompt" => { if i+1 < rest.len() { custom_prompt = Some(rest[i+1].clone()); i += 2; } else { i += 1; } }
+            "--path" => { if i+1 < rest.len() { abs_path = Some(rest[i+1].clone()); i += 2; } else { i += 1; } }
+            _ => { i += 1; }
+        }
+    }
     let logf = log_path(&label);
     append_log(&logf, "live run starting")?;
 
@@ -73,8 +87,8 @@ async fn main() -> Result<()> {
     let cwd = std::env::current_dir()?;
     let codex_dir = cwd.join("codex-rs");
     let mut cmd;
-    // Resolve model from env if provided (fallback to a widely-available one)
-    let model = std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+    // Resolve model from env if provided; compiled default is gpt-5
+    let model = std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-5".to_string());
     if codex_dir.join("Cargo.toml").exists() {
         cmd = Command::new("cargo");
         cmd.arg("run").arg("-q").arg("-p").arg("codex-cli").arg("--")
@@ -136,7 +150,13 @@ async fn main() -> Result<()> {
                         append_log(&logf, "event: session_configured")?;
                         // Send a user prompt once
                         if prompts_sent == 0 {
-                            let prompt = "List top-level files; summarize crates. Constraints: read-only";
+                            let base = custom_prompt.clone().unwrap_or_else(|| "List top-level files; summarize crates".to_string());
+                            let pth = abs_path.clone().unwrap_or_default();
+                            let prompt = if pth.is_empty() {
+                                format!("{}\nConstraints: read-only", base)
+                            } else {
+                                format!("{}\nConstraints: read-only. Operate on this absolute path only: {}", base, pth)
+                            };
                             let id = "1";
                             let payload = serde_json::json!({
                                 "id": id,

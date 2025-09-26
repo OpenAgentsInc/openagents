@@ -144,7 +144,8 @@ fn read_latest_session_file() -> Option<PathBuf> {
 }
 
 fn env_default_model() -> String {
-    std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string())
+    // Compiled default aligns with Codex proto default and your environment
+    std::env::var("CODEX_MODEL").unwrap_or_else(|_| "gpt-5".to_string())
 }
 
 fn parse_between<'a>(text: &'a str, start: &str, end: &str) -> Option<&'a str> {
