@@ -1035,13 +1035,7 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
-    // Prefer an explicit user_turn so we don't rely on any prior task context.
-    // This makes the first turn work reliably even if no task is active.
-    let (effort, model) = {
-        let g = state.lock().map_err(|e| e.to_string())?;
-        (g.config_reasoning_effort.clone(), env_default_model())
-    };
-    let cwd = std::env::current_dir().map_err(|e| e.to_string())?.display().to_string();
+    // Send a basic user_input turn compatible with older protocol versions.
     let id = {
         let g = state.lock().map_err(|e| e.to_string())?;
         format!("{}", g.next_request_id())
@@ -1049,14 +1043,8 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
     let submission = serde_json::json!({
         "id": id,
         "op": {
-            "type": "user_turn",
-            "items": [ { "type": "text", "text": prompt } ],
-            "cwd": cwd,
-            "approval_policy": "never",
-            "sandbox_policy": { "mode": "danger-full-access" },
-            "model": model,
-            "effort": effort,
-            "summary": "auto"
+            "type": "user_input",
+            "items": [ { "type": "text", "text": prompt } ]
         }
     });
     // Emit a debug line so the UI raw log reflects the submission
