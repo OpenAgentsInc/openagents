@@ -1535,12 +1535,8 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                 let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: "Task started".into() });
             }
             "task_complete" => {
-                // Some versions include a final message here
-                if let Some(text) = msg.get("last_agent_message").and_then(|d| d.as_str()) {
-                    if !text.trim().is_empty() {
-                        let _ = win.emit("codex:stream", &UiStreamEvent::OutputItemDoneMessage { text: text.to_string() });
-                    }
-                }
+                // Do not synthesize a transcript message from last_agent_message here to avoid
+                // showing stale text from previous turns. Just mark the turn complete.
                 let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: None });
             }
             "error" => {
