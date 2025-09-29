@@ -10,6 +10,7 @@ use tokio::process::{Child, ChildStdout, Command};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender, UnboundedReceiver};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 use std::fs::File;
 use std::io::{BufRead, BufReader as StdBufReader};
 use tokio::fs as tokio_fs;
@@ -18,6 +19,7 @@ use std::collections::HashMap;
 use tokio::sync::oneshot;
 use std::ffi::OsStr;
 use std::io::Write as _;
+use chrono::Utc;
 mod tasks;
 mod master;
 use master::*;
@@ -26,6 +28,11 @@ pub mod headless;
 // Re-export core task types and helpers for integration tests / headless flows.
 pub use tasks::*;
 pub use master::next_pending_index;
+
+fn server_log(msg: &str) {
+    let ts = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    eprintln!("[openagents-tauri {}] {}", ts, msg);
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -733,7 +740,7 @@ fn write_sidecar_title(path: &std::path::Path, title: &str) -> anyhow::Result<()
 }
 
 #[tauri::command]
-async fn list_recent_chats(window: tauri::Window, limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
+async fn list_recent_chats(_window: tauri::Window, limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
     let limit = limit.unwrap_or(20);
     let files = collect_rollout_files(2000).await.map_err(|e| e.to_string())?;
     let mut out: Vec<UiChatSummary> = Vec::new();
@@ -830,18 +837,8 @@ async fn list_recent_chats(window: tauri::Window, limit: Option<usize>) -> Resul
         out.push(UiChatSummary { id, path: f.display().to_string(), started_at, title, cwd });
         if out.len() >= limit { break; }
     }
-    // Summarize via existing proto (off-record). If summarization fails, keep current titles.
-    if !raw_titles.is_empty() {
-        if let Ok(summaries) = summarize_titles_via_proto(&window, raw_titles.clone()).await {
-            for (i, (idx, path)) in candidates.iter().enumerate() {
-                if let Some(sum) = summaries.get(i) {
-                    if let Some(item) = out.get_mut(*idx) { item.title = sum.clone(); }
-                    // Persist sidecar for future loads
-                    let _ = write_sidecar_title(path, summaries[i].as_str());
-                }
-            }
-        }
-    }
+    // Avoid triggering model traffic on startup: do not auto-summarize titles here.
+    // Users can invoke explicit summarization via the generate_titles_for_all command.
     Ok(out)
 }
 
@@ -1035,10 +1032,72 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
-    {
-        let guard = state.lock().map_err(|e| e.to_string())?;
-        guard.send_user_message(&prompt).map_err(|e| format!("sendUserMessage: {e}"))
+    // Preflight: surface missing auth to the UI immediately
+    let auth = get_auth_status().await;
+    if auth.method.is_none() {
+        let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: "No Codex credentials found. Run 'cd codex-rs && cargo run -p codex-cli -- login' or add OPENAI_API_KEY to ~/.codex/auth.json".into() });
     }
+
+    // Send a basic user_input turn compatible with older protocol versions.
+    let id = {
+        let g = state.lock().map_err(|e| e.to_string())?;
+        format!("{}", g.next_request_id())
+    };
+    // If Chat mode is active, inject explicit user_instructions wrapper to force
+    // a plain assistant response for this turn and avoid project task context.
+    let decorated_text = {
+        if let Ok(guard) = state.lock() {
+            if let Some(ui) = &guard.user_instructions_override {
+                format!("<user_instructions>\n{}\n</user_instructions>\n## My request for Codex:\n{}", ui, prompt)
+            } else { prompt.clone() }
+        } else { prompt.clone() }
+    };
+    let submission = serde_json::json!({
+        "id": id,
+        "op": {
+            "type": "user_input",
+            "items": [ { "type": "text", "text": decorated_text } ]
+        }
+    });
+    // Emit a debug line so the UI raw log reflects the submission
+    let _ = window.emit("codex:stream", &UiStreamEvent::Raw { json: format!("submit_chat: {}", submission) });
+    {
+        let g = state.lock().map_err(|e| e.to_string())?;
+        let bytes_len = serde_json::to_vec(&submission).map(|mut v| { v.push(b'\n'); v.len() }).unwrap_or(0);
+        g.send_json(&submission).map_err(|e| format!("send turn: {e}"))?;
+        let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Submit ok ({} bytes)", bytes_len) });
+    }
+    // Emit a timeout note if we don't see any new events soon after this send
+    let state_arc = { let s = window.state::<Arc<Mutex<McpState>>>(); s.inner().clone() };
+    let win2 = window.clone();
+    let send_mark = Instant::now();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+        let stale = if let Ok(guard) = state_arc.lock() {
+            match guard.last_event_at { Some(t) => t <= send_mark, None => true }
+        } else { true };
+        if stale {
+            let _ = win2.emit("codex:stream", &UiStreamEvent::SystemNote { text: "No response from Codex after 8s. Check API key/network; see logs.".into() });
+            server_log("watchdog: no events within 8s after submit");
+        }
+    });
+    // Debug: send a GetPath after 2 seconds to verify IO; ignore errors.
+    let state_arc2 = { let s = window.state::<Arc<Mutex<McpState>>>(); s.inner().clone() };
+    let win3 = window.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        if let Ok(guard) = state_arc2.lock() {
+            let id = format!("{}", guard.next_request_id());
+            drop(guard);
+            let sub = serde_json::json!({ "id": id, "op": { "type": "add_to_history", "text": "debug: ping" } });
+            let len = serde_json::to_vec(&sub).map(|mut v| { v.push(b'\n'); v.len() }).unwrap_or(0);
+            let _ = win3.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Debug: sending add_to_history ({} bytes)", len) });
+            if let Ok(guard2) = state_arc2.lock() {
+                let _ = guard2.send_json(&sub);
+            }
+        }
+    });
+    Ok(())
 }
 
 // Minimal MCP client state
@@ -1053,11 +1112,14 @@ struct McpState {
     summarize_wait: HashMap<String, oneshot::Sender<String>>,
     summarize_buf: HashMap<String, String>,
     last_token_usage: Option<TokenUsageLite>,
+    last_event_at: Option<Instant>,
+    history_persistence: String,
+    user_instructions_override: Option<String>,
 }
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save-all".to_string(), user_instructions_override: None }
     }
 }
 
@@ -1076,19 +1138,31 @@ impl McpState {
                 .arg("-c").arg("sandbox_mode=danger-full-access")
                 .arg("-c").arg(format!("model={}", env_default_model()))
                 .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort))
+                .arg("-c").arg(format!("history.persistence={}", self.history_persistence))
+                .arg("-c").arg(format!("cwd={}", cwd.display()))
+                // Optional: override user_instructions for Chat mode
                 .current_dir(&codex_dir);
+            if let Some(ui) = &self.user_instructions_override {
+                cmd.arg("-c").arg(format!("user_instructions={}", ui));
+            }
         } else {
             cmd = Command::new("codex");
             cmd.arg("proto")
                 .arg("-c").arg("approval_policy=never")
                 .arg("-c").arg("sandbox_mode=danger-full-access")
                 .arg("-c").arg(format!("model={}", env_default_model()))
-                .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort));
+                .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort))
+                .arg("-c").arg(format!("history.persistence={}", self.history_persistence))
+                .arg("-c").arg(format!("cwd={}", cwd.display()));
+            if let Some(ui) = &self.user_instructions_override {
+                cmd.arg("-c").arg(format!("user_instructions={}", ui));
+            }
         }
         cmd
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        server_log(&format!("proto: spawning process (cwd override={})", cwd.display()));
         let mut child = cmd.spawn()?;
         let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?;
@@ -1102,6 +1176,7 @@ impl McpState {
         tauri::async_runtime::spawn(async move {
             use tokio::io::AsyncWriteExt;
             while let Some(buf) = rx.recv().await {
+                if let Ok(s) = std::str::from_utf8(&buf) { server_log(&format!("proto >> {}", s.trim_end())); }
                 let _ = stdin.write_all(&buf).await;
                 let _ = stdin.flush().await;
             }
@@ -1117,6 +1192,7 @@ impl McpState {
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     if line.trim().is_empty() { continue; }
+                    server_log(&format!("proto << {}", line));
                     let v: serde_json::Value = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
                     let id_str = v.get("id").and_then(|s| s.as_str()).unwrap_or("").to_string();
                     if !id_str.is_empty() {
@@ -1235,43 +1311,8 @@ fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> a
     tx.send(buf).map_err(|e| anyhow::anyhow!("send stdin: {e}"))
 }
 
-async fn summarize_titles_via_proto(window: &tauri::Window, titles: Vec<String>) -> anyhow::Result<Vec<String>> {
-    if titles.is_empty() { return Ok(vec![]); }
-    let state = window.state::<Arc<Mutex<McpState>>>();
-    // Ensure proto running
-    {
-        let mut guard = state.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
-        if guard.child.is_none() {
-            let shared = state.inner().clone();
-            guard.start(window, shared)?;
-        }
-    }
-    // Build prompt
-    let mut lines = String::new();
-    for t in titles.iter() { lines.push_str("- "); lines.push_str(t); lines.push('\n'); }
-    let prompt = format!("Summarize each item below into 3–5 concise words. Return exactly one line per item, no numbering or bullets, no quotes.\n{}", lines);
-    // Send off-record
-    let rx = {
-        let mut guard = state.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
-        guard.send_offrecord(&prompt)?
-    };
-    let text = match tokio::time::timeout(std::time::Duration::from_secs(25), rx).await {
-        Ok(Ok(s)) => s,
-        _ => return Ok(titles),
-    };
-    let mut out: Vec<String> = text
-        .lines()
-        .map(|l| l.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c=='-' || c=='.').trim())
-        .filter(|l| !l.is_empty())
-        .map(|s| {
-            let mut s = s.to_string();
-            if s.ends_with('.') { s.pop(); }
-            s
-        })
-        .collect();
-    if out.len() != titles.len() { out = titles; }
-    Ok(out)
-}
+// summarize_titles_via_proto removed from startup flow; keep functionality out to avoid
+// accidental model traffic during app load.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskPlanArgs { pub id: String, pub goal: String }
@@ -1471,6 +1512,30 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
     if let Some(msg) = event.get("msg") {
         let typ = msg.get("type").and_then(|t| t.as_str()).unwrap_or("");
         match typ {
+            "agent_message" => {
+                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
+                    // Non-streaming single assistant message
+                    let _ = win.emit("codex:stream", &UiStreamEvent::OutputItemDoneMessage { text: text.to_string() });
+                }
+            }
+            "task_started" => {
+                let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: "Task started".into() });
+            }
+            "task_complete" => {
+                // Do not synthesize a transcript message from last_agent_message here to avoid
+                // showing stale text from previous turns. Just mark the turn complete.
+                let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: None });
+            }
+            "error" => {
+                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
+                    let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Error: {}", text) });
+                }
+            }
+            "stream_error" => {
+                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
+                    let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Stream error: {}", text) });
+                }
+            }
             "agent_message_delta" => {
                 if let Some(delta) = msg.get("delta").and_then(|d| d.as_str()) {
                     let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: delta.to_string() });
@@ -1579,8 +1644,21 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                 let _ = win.emit("codex:stream", &UiStreamEvent::ToolEnd { call_id, exit_code });
             }
             "token_count" => {
-                let input = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
-                let output = msg.get("usage").and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
+                // Support both legacy { usage: { input_tokens, output_tokens } } and new { info: {...} } shapes
+                let (mut input, mut output) = (0u64, 0u64);
+                if let Some(u) = msg.get("usage") {
+                    input = u.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                    output = u.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                } else if let Some(info) = msg.get("info") {
+                    if let Some(last) = info.get("last_token_usage") {
+                        input = last.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                        output = last.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                    }
+                } else {
+                    // Older/other shape: fields at top level
+                    input = msg.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                    output = msg.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                }
                 let total = input + output;
                 let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: Some(TokenUsageLite { input, output, total }) });
             }
@@ -1617,7 +1695,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -1629,8 +1707,10 @@ async fn tasks_list_cmd() -> Result<Vec<TaskMeta>, String> { tasks_list().map_er
 pub struct CreateTaskArgs { pub name: String, pub approvals: String, pub sandbox: String, pub max_turns: Option<u32>, pub max_tokens: Option<u32>, pub max_minutes: Option<u32> }
 
 #[tauri::command]
-async fn task_create_cmd(args: CreateTaskArgs) -> Result<Task, String> {
-    task_create(&args.name, AutonomyBudget { approvals: args.approvals, sandbox: args.sandbox, max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }).map_err(|e| e.to_string())
+async fn task_create_cmd(window: tauri::Window, args: CreateTaskArgs) -> Result<Task, String> {
+    let task = task_create(&args.name, AutonomyBudget { approvals: args.approvals, sandbox: args.sandbox, max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }).map_err(|e| e.to_string())?;
+    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: task.id.clone(), status: "created".into(), message: Some("Task created".into()) });
+    Ok(task)
 }
 
 #[tauri::command]
@@ -1796,4 +1876,20 @@ async fn task_cancel_cmd(window: tauri::Window, id: String) -> Result<Task, Stri
     let task = task_update(task).map_err(|e| e.to_string())?;
     let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id, status: "canceled".into(), message: None });
     Ok(task)
+}
+#[tauri::command]
+async fn configure_session_mode(window: tauri::Window, mode: String) -> Result<(), String> {
+    let state = window.state::<Arc<Mutex<McpState>>>();
+    let val = if mode.to_lowercase() == "chat" { "none" } else { "save-all" };
+    if let Ok(mut guard) = state.lock() {
+        guard.history_persistence = val.to_string();
+        if mode.to_lowercase() == "chat" {
+            guard.user_instructions_override = Some("You are a concise, helpful assistant. Answer plainly and do not reference prior tasks.".to_string());
+        } else {
+            guard.user_instructions_override = None;
+        }
+    }
+    server_log(&format!("configure_session_mode: mode={}, history.persistence={}", mode, val));
+    let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Session history.persistence={}", val) });
+    Ok(())
 }

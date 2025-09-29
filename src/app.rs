@@ -210,7 +210,7 @@ pub fn App() -> impl IntoView {
     let raw_events: RwSignal<Vec<String>> = RwSignal::new(vec![]);
     // Tracks if we have streamed any reasoning deltas for the current turn
     let reasoning_streamed: RwSignal<bool> = RwSignal::new(false);
-    let raw_open: RwSignal<bool> = RwSignal::new(false);
+    let raw_open: RwSignal<bool> = RwSignal::new(true);
     let status_open: RwSignal<bool> = RwSignal::new(false);
 
     // Recent chats
@@ -221,6 +221,8 @@ pub fn App() -> impl IntoView {
     let bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
     let raw_bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
     let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+    // Session mode: Chat (default) vs Task (routes send() into master task flow)
+    let session_mode: RwSignal<String> = RwSignal::new("Chat".to_string());
     // Master tasks
     let tasks: RwSignal<Vec<TaskMeta>> = RwSignal::new(vec![]);
     let _tasks_open: RwSignal<bool> = RwSignal::new(true);
@@ -361,7 +363,11 @@ pub fn App() -> impl IntoView {
                         on:click=move |_| {
                             items.set(Vec::new());
                             chat_title.set("New chat".to_string());
-                            let _ = tauri_invoke("new_chat_session", JsValue::UNDEFINED);
+                            let mode = session_mode.get();
+                            spawn_local(async move {
+                                let _ = JsFuture::from(tauri_invoke("configure_session_mode", serde_wasm_bindgen::to_value(&serde_json::json!({ "mode": mode })).unwrap_or(JsValue::UNDEFINED))).await;
+                                let _ = JsFuture::from(tauri_invoke("new_chat_session", JsValue::UNDEFINED)).await;
+                            });
                             if let Some(el) = input_ref.get() { let _ = el.focus(); }
                         }>
                     "New chat"
@@ -435,11 +441,17 @@ pub fn App() -> impl IntoView {
                                                 let tasks_setter = tasks_setter.clone();
                                                 let sel_setter = sel_setter.clone();
                                                 let sel_detail = sel_detail.clone();
+                                                let items = items.write_only();
                                                 spawn_local(async move {
-                                                    if let Some(t) = task_create("New Master Task").await {
-                                                        sel_setter.set(Some(t.id.clone()));
-                                                        sel_detail.set(Some(t.clone()));
-                                                        tasks_setter.set(tasks_list().await);
+                                                    match task_create("New Master Task").await {
+                                                        Some(t) => {
+                                                            sel_setter.set(Some(t.id.clone()));
+                                                            sel_detail.set(Some(t.clone()));
+                                                            tasks_setter.set(tasks_list().await);
+                                                        }
+                                                        None => {
+                                                            items.update(|list| list.push(ChatItem::System { text: "Failed to create task. Check ~/.codex/master-tasks and permissions.".into() }));
+                                                        }
                                                     }
                                                 });
                                             }>"New task"</button>
@@ -526,7 +538,7 @@ pub fn App() -> impl IntoView {
                 <div class="mx-auto w-full max-w-[768px] px-4">
                     <div class="flex items-center justify-between gap-3 mb-4">
                         <div class="text-sm opacity-90 truncate">{move || chat_title.get()}</div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-3">
                             <label class="text-xs opacity-80">"Reasoning"</label>
                             { // selector
                                 let reasoning = reasoning;
@@ -548,71 +560,95 @@ pub fn App() -> impl IntoView {
                                     </select>
                                 }
                             }
+                            <label class="text-xs opacity-80">"Mode"</label>
+                            { // mode selector
+                                let session_mode = session_mode;
+                                view! {
+                                    <select class="text-xs text-white bg-black border border-white rounded-none px-2 py-1 cursor-pointer appearance-none focus:outline-none"
+                                            prop:value=move || session_mode.get()
+                                            on:change=move |ev| {
+                                                if let Some(sel) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlSelectElement>().ok()) {
+                                                    session_mode.set(sel.value());
+                                                }
+                                            }>
+                                        <option>Chat</option>
+                                        <option>Task</option>
+                                    </select>
+                                }
+                            }
                         </div>
                     </div>
                 </div>
                 <div class="mx-auto w-full max-w-[768px] px-4 space-y-3 text-[13px]">
-                    { // master task detail header + controls
-                        let detail = selected_task_detail.get();
-                        match detail {
+                    { // master task detail header + controls (reactive)
+                        let selected_task_detail = selected_task_detail.clone();
+                        let tasks = tasks.clone();
+                        { move || match selected_task_detail.get() {
                             Some(t) => {
                                 let id = t.id.clone();
+                                let name = t.name.clone();
+                                let status = t.status.clone();
+                                let updated = t.updated_at.clone();
                                 let id_run = id.clone();
                                 let id_pause = id.clone();
                                 let id_cancel = id.clone();
+                                let sel_detail_sig = selected_task_detail.write_only();
+                                let tasks_setter = tasks.write_only();
                                 view!{ <div class="w-full p-3 border border-zinc-700 bg-black/20 mb-3">
                                     <div class="flex items-center justify-between">
-                                        <div class="text-sm opacity-90">{format!("{} [{}]", t.name, t.status)}</div>
-                                        <div class="text-xs opacity-70">{format!("Updated: {}", t.updated_at)}</div>
+                                        <div class="text-sm opacity-90">{format!("{} [{}]", name, status)}</div>
+                                        <div class="text-xs opacity-70">{format!("Updated: {}", updated)}</div>
                                     </div>
                                     <div class="flex items-center gap-3 mt-2">
                                         <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
                                             let id_capture = id_run.clone();
+                                            let sel_task_detail = sel_detail_sig.clone();
+                                            let tasks_setter = tasks_setter.clone();
                                             move |_| {
-                                            let id2 = id_capture.clone();
-                                            let sel_task_detail = selected_task_detail.write_only();
-                                            let tasks_setter = tasks.write_only();
-                                            spawn_local(async move {
-                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
-                                                if let Ok(v) = JsFuture::from(tauri_invoke("task_run_cmd", args)).await { if let Ok(task) = serde_wasm_bindgen::from_value::<Task>(v) { sel_task_detail.set(Some(task)); tasks_setter.set(tasks_list().await); } }
-                                            });
-                                        }}>
+                                                let id2 = id_capture.clone();
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                    if let Ok(v) = JsFuture::from(tauri_invoke("task_run_cmd", args)).await {
+                                                        if let Ok(task) = serde_wasm_bindgen::from_value::<Task>(v) {
+                                                            sel_task_detail.set(Some(task));
+                                                            tasks_setter.set(tasks_list().await);
+                                                        }
+                                                    }
+                                                });
+                                            }}>
                                             "Run next"
                                         </button>
                                         <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
                                             let id_capture = id_pause.clone();
+                                            let sel_task_detail = sel_detail_sig.clone();
                                             move |_| {
-                                            let id2 = id_capture.clone();
-                                            let sel_task_detail = selected_task_detail.write_only();
-                                            let value = id_capture.clone();
-                                            spawn_local(async move {
-                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
-                                                let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
-                                                // refetch
-                                                if let Some(t) = task_get(&value).await { sel_task_detail.set(Some(t)); }
-                                            });
-                                        }}>
+                                                let id2 = id_capture.clone();
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                    let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
+                                                    if let Some(t) = task_get(&id2).await { sel_task_detail.set(Some(t)); }
+                                                });
+                                            }}>
                                             "Pause"
                                         </button>
                                         <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
                                             let id_capture = id_cancel.clone();
+                                            let sel_task_detail = sel_detail_sig.clone();
                                             move |_| {
-                                            let id2 = id_capture.clone();
-                                            let sel_task_detail = selected_task_detail.write_only();
-                                            let value = id_capture.clone();
-                                            spawn_local(async move {
-                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
-                                                let _ = JsFuture::from(tauri_invoke("task_cancel_cmd", args)).await;
-                                                if let Some(t) = task_get(&value).await { sel_task_detail.set(Some(t)); }
-                                            });
-                                        }}>
+                                                let id2 = id_capture.clone();
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                    let _ = JsFuture::from(tauri_invoke("task_cancel_cmd", args)).await;
+                                                    if let Some(t) = task_get(&id2).await { sel_task_detail.set(Some(t)); }
+                                                });
+                                            }}>
                                             "Cancel"
                                         </button>
                                     </div>
                                 </div> }.into_any()
                             }
                             None => view!{ <div></div> }.into_any(),
-                        }
+                        } }
                     }
                     {move || items.get().into_iter().map(|item| match item {
                         ChatItem::User { text } => {
@@ -669,17 +705,55 @@ pub fn App() -> impl IntoView {
                             let msg_get = msg.read_only();
                             let reasoning_streamed = reasoning_streamed;
                             let input_ref = input_ref.clone();
+                            let session_mode = session_mode.read_only();
+                            let tasks_setter = tasks.write_only();
+                            let sel_setter = selected_task.write_only();
+                            let sel_detail = selected_task_detail.write_only();
                             move || {
                                 let text = msg_get.get();
-                                if !text.is_empty() {
+                                if text.is_empty() { return; }
+                                if session_mode.get() == "Task" {
+                                    // Route to Master Task: create + plan + run
+                                    let items2 = items.clone();
+                                    let goal = text.clone();
+                                    spawn_local(async move {
+                                        // Create a quick task
+                                        match task_create(&format!("Quick: {}", goal)).await {
+                                            Some(t) => {
+                                                let id = t.id.clone();
+                                                sel_setter.set(Some(id.clone()));
+                                                sel_detail.set(Some(t));
+                                                // Plan subtasks from goal
+                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id.clone(), "goal": goal })).unwrap_or(JsValue::UNDEFINED);
+                                                let _ = JsFuture::from(tauri_invoke("task_plan_cmd", args)).await;
+                                                // Run first pending
+                                                let args2 = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id.clone() })).unwrap_or(JsValue::UNDEFINED);
+                                                let _ = JsFuture::from(tauri_invoke("task_run_cmd", args2)).await;
+                                                tasks_setter.set(tasks_list().await);
+                                            }
+                                            None => {
+                                                items2.update(|list| list.push(ChatItem::System { text: "Failed to create task".into() }));
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    // Standard chat
                                     items.update(|list| list.push(ChatItem::User { text: text.clone() }));
-                                    // New turn: reset reasoning streamed flag
                                     reasoning_streamed.set(false);
-                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "prompt": text })).unwrap_or(JsValue::UNDEFINED);
-                                    let _ = tauri_invoke("submit_chat", args);
-                                    msg.set(String::new());
-                                    if let Some(el) = input_ref.get() { let _ = el.focus(); }
+                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "prompt": text.clone() })).unwrap_or(JsValue::UNDEFINED);
+                                    let items2 = items.clone();
+                                    spawn_local(async move {
+                                        match JsFuture::from(tauri_invoke("submit_chat", args)).await {
+                                            Ok(_) => {}
+                                            Err(e) => {
+                                                let err = js_sys::JSON::stringify(&e).ok().and_then(|v| v.as_string()).unwrap_or_else(|| "invoke error".into());
+                                                items2.update(|list| list.push(ChatItem::System { text: format!("submit_chat failed: {}", err) }));
+                                            }
+                                        }
+                                    });
                                 }
+                                msg.set(String::new());
+                                if let Some(el) = input_ref.get() { let _ = el.focus(); }
                             }
                         };
                         view! {

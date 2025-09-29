@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.openagents.desktop",
   "build": {
-    "beforeDevCommand": "trunk serve",
+    "beforeDevCommand": "bash dev.sh",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "trunk build",
     "frontendDist": "../dist"
@@ -14,8 +14,10 @@
     "windows": [
       {
         "title": "OpenAgents",
-        "width": 800,
-        "height": 600
+        "width": 1280,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 720
       }
     ],
     "security": {
