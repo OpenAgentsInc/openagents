@@ -1535,6 +1535,12 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                 let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: "Task started".into() });
             }
             "task_complete" => {
+                // Some versions include a final message here
+                if let Some(text) = msg.get("last_agent_message").and_then(|d| d.as_str()) {
+                    if !text.trim().is_empty() {
+                        let _ = win.emit("codex:stream", &UiStreamEvent::OutputItemDoneMessage { text: text.to_string() });
+                    }
+                }
                 let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: None });
             }
             "error" => {
@@ -1665,6 +1671,10 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                         input = last.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
                         output = last.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
                     }
+                } else {
+                    // Older/other shape: fields at top level
+                    input = msg.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                    output = msg.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
                 }
                 let total = input + output;
                 let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: Some(TokenUsageLite { input, output, total }) });
