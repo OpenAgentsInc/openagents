@@ -363,7 +363,11 @@ pub fn App() -> impl IntoView {
                         on:click=move |_| {
                             items.set(Vec::new());
                             chat_title.set("New chat".to_string());
-                            let _ = tauri_invoke("new_chat_session", JsValue::UNDEFINED);
+                            let mode = session_mode.get();
+                            spawn_local(async move {
+                                let _ = JsFuture::from(tauri_invoke("configure_session_mode", serde_wasm_bindgen::to_value(&serde_json::json!({ "mode": mode })).unwrap_or(JsValue::UNDEFINED))).await;
+                                let _ = JsFuture::from(tauri_invoke("new_chat_session", JsValue::UNDEFINED)).await;
+                            });
                             if let Some(el) = input_ref.get() { let _ = el.focus(); }
                         }>
                     "New chat"
