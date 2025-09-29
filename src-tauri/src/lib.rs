@@ -1759,6 +1759,50 @@ async fn task_set_sandbox_cmd(id: String, sandbox: String) -> Result<Task, Strin
 #[tauri::command]
 async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String> {
     let mut task = task_get(&id).map_err(|e| e.to_string())?;
+    // Ensure we have at least one pending subtask; if none, derive a plan from the task name
+    // for Quick tasks (name prefix "Quick:") or nudge the user to plan.
+    if current_running_index(&task).is_none() && next_pending_index(&task).is_none() {
+        let mut planned: Vec<Subtask> = Vec::new();
+        let mut goal: Option<String> = None;
+        if let Some(rest) = task.name.strip_prefix("Quick:") { goal = Some(rest.trim().to_string()); }
+        if goal.is_none() && !task.name.trim().is_empty() { goal = Some(task.name.trim().to_string()); }
+        if let Some(g) = goal {
+            // Try an off-record plan using the MCP stream; fallback to a naive sentence split
+            let rx = {
+                let state = window.state::<Arc<Mutex<McpState>>>();
+                let mut guard = state.lock().map_err(|e| e.to_string())?;
+                if guard.child.is_none() {
+                    let shared = state.inner().clone();
+                    guard.start(&window, shared).map_err(|e| e.to_string())?;
+                }
+                let prompt = format!("Break the following goal into 6–12 atomic steps. Return JSON array of objects: {{id,title,inputs}}.\\nGoal:\\n{}", g);
+                guard.send_offrecord(&prompt).map_err(|e| e.to_string())?
+            };
+            match tokio::time::timeout(std::time::Duration::from_secs(20), rx).await {
+                Ok(Ok(text)) => {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(arr) = v.as_array() {
+                            for (i, item) in arr.iter().enumerate() {
+                                let title = item.get("title").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                                let idv = item.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("s{:02}", i+1));
+                                let inputs = item.get("inputs").cloned().unwrap_or(serde_json::json!({}));
+                                if !title.trim().is_empty() { planned.push(Subtask { id: idv, title, status: SubtaskStatus::Pending, inputs, session_id: None, rollout_path: None, last_error: None, retries: 0 }); }
+                            }
+                        }
+                    }
+                }
+                _ => { /* fallthrough to naive fallback */ }
+            }
+            if planned.is_empty() { planned = fallback_plan_from_goal(&g); }
+            if !planned.is_empty() {
+                task.queue = planned;
+                task.status = TaskStatus::Planned;
+                task = task_update(task).map_err(|e| e.to_string())?;
+                let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "planned".into(), message: Some(format!("{} subtasks", task.queue.len())) });
+            }
+        }
+    }
+
     // Prefer continuing a running subtask; otherwise start the next pending one.
     let idx_running = current_running_index(&task);
     let idx_pending = next_pending_index(&task);
