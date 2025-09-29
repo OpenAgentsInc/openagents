@@ -1035,9 +1035,35 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
+    // Prefer an explicit user_turn so we don't rely on any prior task context.
+    // This makes the first turn work reliably even if no task is active.
+    let (effort, model) = {
+        let g = state.lock().map_err(|e| e.to_string())?;
+        (g.config_reasoning_effort.clone(), env_default_model())
+    };
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?.display().to_string();
+    let id = {
+        let g = state.lock().map_err(|e| e.to_string())?;
+        format!("{}", g.next_request_id())
+    };
+    let submission = serde_json::json!({
+        "id": id,
+        "op": {
+            "type": "user_turn",
+            "items": [ { "type": "text", "text": prompt } ],
+            "cwd": cwd,
+            "approval_policy": "never",
+            "sandbox_policy": { "mode": "danger-full-access" },
+            "model": model,
+            "effort": effort,
+            "summary": "auto"
+        }
+    });
+    // Emit a debug line so the UI raw log reflects the submission
+    let _ = window.emit("codex:stream", &UiStreamEvent::Raw { json: format!("submit_chat: {}", submission) });
     {
-        let guard = state.lock().map_err(|e| e.to_string())?;
-        guard.send_user_message(&prompt).map_err(|e| format!("sendUserMessage: {e}"))
+        let g = state.lock().map_err(|e| e.to_string())?;
+        g.send_json(&submission).map_err(|e| format!("send turn: {e}"))
     }
 }
 
@@ -1471,6 +1497,17 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
     if let Some(msg) = event.get("msg") {
         let typ = msg.get("type").and_then(|t| t.as_str()).unwrap_or("");
         match typ {
+            "agent_message" => {
+                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
+                    // Non-streaming single assistant message
+                    let _ = win.emit("codex:stream", &UiStreamEvent::OutputItemDoneMessage { text: text.to_string() });
+                }
+            }
+            "error" => {
+                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
+                    let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Error: {}", text) });
+                }
+            }
             "agent_message_delta" => {
                 if let Some(delta) = msg.get("delta").and_then(|d| d.as_str()) {
                     let _ = win.emit("codex:stream", &UiStreamEvent::OutputTextDelta { text: delta.to_string() });
