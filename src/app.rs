@@ -558,67 +558,75 @@ pub fn App() -> impl IntoView {
                     </div>
                 </div>
                 <div class="mx-auto w-full max-w-[768px] px-4 space-y-3 text-[13px]">
-                    { // master task detail header + controls
-                        let detail = selected_task_detail.get();
-                        match detail {
+                    { // master task detail header + controls (reactive)
+                        let selected_task_detail = selected_task_detail.clone();
+                        let tasks = tasks.clone();
+                        { move || match selected_task_detail.get() {
                             Some(t) => {
                                 let id = t.id.clone();
+                                let name = t.name.clone();
+                                let status = t.status.clone();
+                                let updated = t.updated_at.clone();
                                 let id_run = id.clone();
                                 let id_pause = id.clone();
                                 let id_cancel = id.clone();
+                                let sel_detail_sig = selected_task_detail.write_only();
+                                let tasks_setter = tasks.write_only();
                                 view!{ <div class="w-full p-3 border border-zinc-700 bg-black/20 mb-3">
                                     <div class="flex items-center justify-between">
-                                        <div class="text-sm opacity-90">{format!("{} [{}]", t.name, t.status)}</div>
-                                        <div class="text-xs opacity-70">{format!("Updated: {}", t.updated_at)}</div>
+                                        <div class="text-sm opacity-90">{format!("{} [{}]", name, status)}</div>
+                                        <div class="text-xs opacity-70">{format!("Updated: {}", updated)}</div>
                                     </div>
                                     <div class="flex items-center gap-3 mt-2">
                                         <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
                                             let id_capture = id_run.clone();
+                                            let sel_task_detail = sel_detail_sig.clone();
+                                            let tasks_setter = tasks_setter.clone();
                                             move |_| {
-                                            let id2 = id_capture.clone();
-                                            let sel_task_detail = selected_task_detail.write_only();
-                                            let tasks_setter = tasks.write_only();
-                                            spawn_local(async move {
-                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
-                                                if let Ok(v) = JsFuture::from(tauri_invoke("task_run_cmd", args)).await { if let Ok(task) = serde_wasm_bindgen::from_value::<Task>(v) { sel_task_detail.set(Some(task)); tasks_setter.set(tasks_list().await); } }
-                                            });
-                                        }}>
+                                                let id2 = id_capture.clone();
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                    if let Ok(v) = JsFuture::from(tauri_invoke("task_run_cmd", args)).await {
+                                                        if let Ok(task) = serde_wasm_bindgen::from_value::<Task>(v) {
+                                                            sel_task_detail.set(Some(task));
+                                                            tasks_setter.set(tasks_list().await);
+                                                        }
+                                                    }
+                                                });
+                                            }}>
                                             "Run next"
                                         </button>
                                         <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
                                             let id_capture = id_pause.clone();
+                                            let sel_task_detail = sel_detail_sig.clone();
                                             move |_| {
-                                            let id2 = id_capture.clone();
-                                            let sel_task_detail = selected_task_detail.write_only();
-                                            let value = id_capture.clone();
-                                            spawn_local(async move {
-                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
-                                                let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
-                                                // refetch
-                                                if let Some(t) = task_get(&value).await { sel_task_detail.set(Some(t)); }
-                                            });
-                                        }}>
+                                                let id2 = id_capture.clone();
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                    let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
+                                                    if let Some(t) = task_get(&id2).await { sel_task_detail.set(Some(t)); }
+                                                });
+                                            }}>
                                             "Pause"
                                         </button>
                                         <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
                                             let id_capture = id_cancel.clone();
+                                            let sel_task_detail = sel_detail_sig.clone();
                                             move |_| {
-                                            let id2 = id_capture.clone();
-                                            let sel_task_detail = selected_task_detail.write_only();
-                                            let value = id_capture.clone();
-                                            spawn_local(async move {
-                                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
-                                                let _ = JsFuture::from(tauri_invoke("task_cancel_cmd", args)).await;
-                                                if let Some(t) = task_get(&value).await { sel_task_detail.set(Some(t)); }
-                                            });
-                                        }}>
+                                                let id2 = id_capture.clone();
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
+                                                    let _ = JsFuture::from(tauri_invoke("task_cancel_cmd", args)).await;
+                                                    if let Some(t) = task_get(&id2).await { sel_task_detail.set(Some(t)); }
+                                                });
+                                            }}>
                                             "Cancel"
                                         </button>
                                     </div>
                                 </div> }.into_any()
                             }
                             None => view!{ <div></div> }.into_any(),
-                        }
+                        } }
                     }
                     {move || items.get().into_iter().map(|item| match item {
                         ChatItem::User { text } => {
