@@ -2014,7 +2014,9 @@ async fn task_cancel_cmd(window: tauri::Window, id: String) -> Result<Task, Stri
 #[tauri::command]
 async fn configure_session_mode(window: tauri::Window, mode: String) -> Result<(), String> {
     let state = window.state::<Arc<Mutex<McpState>>>();
-    let val = if mode.to_lowercase() == "chat" { "none" } else { "save-all" };
+    // Persist history for both Chat and Task so transcripts load on app open.
+    // Chat still overrides user_instructions so answers are plain, but we no longer drop history.
+    let val = "save-all";
     if let Ok(mut guard) = state.lock() {
         guard.history_persistence = val.to_string();
         if mode.to_lowercase() == "chat" {
