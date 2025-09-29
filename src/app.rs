@@ -232,6 +232,10 @@ pub fn App() -> impl IntoView {
     let reasoning: RwSignal<String> = RwSignal::new("High".to_string());
     let bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
     let raw_bottom_ref: NodeRef<leptos::html::Div> = NodeRef::new();
+    // Scroll management
+    let chat_scroll_ref: NodeRef<leptos::html::Div> = NodeRef::new();
+    let chat_at_bottom: RwSignal<bool> = RwSignal::new(true);
+    let raw_at_bottom: RwSignal<bool> = RwSignal::new(true);
     let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
     // Session mode: Chat (default) vs Task (routes send() into master task flow)
     let session_mode: RwSignal<String> = RwSignal::new("Chat".to_string());
@@ -382,10 +386,13 @@ pub fn App() -> impl IntoView {
         spawn_local(async move { tasks_setter.set(tasks_list().await); });
     }
     {
+        // Auto-scroll chat only if user is at (or near) bottom
         let bottom = bottom_ref.clone();
         let items_ro = items.read_only();
+        let at_bottom = chat_at_bottom.read_only();
         Effect::new(move |_| {
             let _ = items_ro.get().len();
+            if !at_bottom.get() { return; }
             if let Some(el) = bottom.get() {
                 use wasm_bindgen::JsCast;
                 let e: web_sys::Element = el.unchecked_into();
@@ -394,16 +401,17 @@ pub fn App() -> impl IntoView {
         });
     }
     {
+        // Auto-scroll logs only if user is at (or near) bottom
         let raw_bottom = raw_bottom_ref.clone();
         let raw_ro = raw_events.read_only();
         let compact_ro = compact_logs.read_only();
-        let show_raw_ro = show_raw_json.read_only();
         let raw_open_ro = raw_open.read_only();
+        let at_bottom = raw_at_bottom.read_only();
         Effect::new(move |_| {
             let _ = raw_ro.get().len();
             let _ = compact_ro.get().len();
             let open = raw_open_ro.get();
-            if open {
+            if open && at_bottom.get() {
                 if let Some(el) = raw_bottom.get() {
                     use wasm_bindgen::JsCast;
                     let e: web_sys::Element = el.unchecked_into();
@@ -491,7 +499,15 @@ pub fn App() -> impl IntoView {
                                     <div node_ref=raw_bottom_ref class="h-0"></div>
                                 </div> }.into_any()
                             } else {
-                                view!{ <div class="flex-1 overflow-auto border border-white/20 bg-black/50 p-2">
+                                view!{ <div class="flex-1 overflow-auto border border-white/20 bg-black/50 p-2" on:scroll=move |ev| {
+                                        if let Some(t) = ev.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) {
+                                            let scroll_top = t.dyn_ref::<web_sys::HtmlElement>().map(|h| h.scroll_top()).unwrap_or(0);
+                                            let sh = t.scroll_height();
+                                            let ch = t.client_height();
+                                            let near_bottom = (sh - (scroll_top + ch)) <= 24;
+                                            raw_at_bottom.set(near_bottom);
+                                        }
+                                    }>
                                     <pre class="text-[11px] leading-4 whitespace-pre-wrap">{compact_logs.get().join("\n")}</pre>
                                     <div node_ref=raw_bottom_ref class="h-0"></div>
                                 </div> }.into_any()
@@ -607,7 +623,15 @@ pub fn App() -> impl IntoView {
                 </div>
             </div>
 
-            <div class="pl-80 pt-6 pb-36 h-full overflow-auto">
+            <div class="pl-80 pt-6 pb-36 h-full overflow-auto" node_ref=chat_scroll_ref on:scroll=move |ev| {
+                if let Some(t) = ev.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) {
+                    let scroll_top = t.dyn_ref::<web_sys::HtmlElement>().map(|h| h.scroll_top()).unwrap_or(0);
+                    let sh = t.scroll_height();
+                    let ch = t.client_height();
+                    let near_bottom = (sh - (scroll_top + ch)) <= 24;
+                    chat_at_bottom.set(near_bottom);
+                }
+            }>
                 <div class="mx-auto w-full max-w-[768px] px-4">
                     <div class="flex items-center justify-between gap-3 mb-4">
                         <div class="text-sm opacity-90 truncate">{move || chat_title.get()}</div>
