@@ -1035,6 +1035,12 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
+    // Preflight: surface missing auth to the UI immediately
+    let auth = get_auth_status().await;
+    if auth.method.is_none() {
+        let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: "No Codex credentials found. Run 'cd codex-rs && cargo run -p codex-cli -- login' or add OPENAI_API_KEY to ~/.codex/auth.json".into() });
+    }
+
     // Send a basic user_input turn compatible with older protocol versions.
     let id = {
         let g = state.lock().map_err(|e| e.to_string())?;
@@ -1604,8 +1610,17 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                 let _ = win.emit("codex:stream", &UiStreamEvent::ToolEnd { call_id, exit_code });
             }
             "token_count" => {
-                let input = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
-                let output = msg.get("usage").and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
+                // Support both legacy { usage: { input_tokens, output_tokens } } and new { info: {...} } shapes
+                let (mut input, mut output) = (0u64, 0u64);
+                if let Some(u) = msg.get("usage") {
+                    input = u.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                    output = u.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                } else if let Some(info) = msg.get("info") {
+                    if let Some(last) = info.get("last_token_usage") {
+                        input = last.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                        output = last.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                    }
+                }
                 let total = input + output;
                 let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: Some(TokenUsageLite { input, output, total }) });
             }
@@ -1654,8 +1669,10 @@ async fn tasks_list_cmd() -> Result<Vec<TaskMeta>, String> { tasks_list().map_er
 pub struct CreateTaskArgs { pub name: String, pub approvals: String, pub sandbox: String, pub max_turns: Option<u32>, pub max_tokens: Option<u32>, pub max_minutes: Option<u32> }
 
 #[tauri::command]
-async fn task_create_cmd(args: CreateTaskArgs) -> Result<Task, String> {
-    task_create(&args.name, AutonomyBudget { approvals: args.approvals, sandbox: args.sandbox, max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }).map_err(|e| e.to_string())
+async fn task_create_cmd(window: tauri::Window, args: CreateTaskArgs) -> Result<Task, String> {
+    let task = task_create(&args.name, AutonomyBudget { approvals: args.approvals, sandbox: args.sandbox, max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }).map_err(|e| e.to_string())?;
+    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: task.id.clone(), status: "created".into(), message: Some("Task created".into()) });
+    Ok(task)
 }
 
 #[tauri::command]
