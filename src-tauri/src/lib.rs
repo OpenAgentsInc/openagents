@@ -1047,11 +1047,20 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
         let g = state.lock().map_err(|e| e.to_string())?;
         format!("{}", g.next_request_id())
     };
+    // If Chat mode is active, inject explicit user_instructions wrapper to force
+    // a plain assistant response for this turn and avoid project task context.
+    let decorated_text = {
+        if let Ok(guard) = state.lock() {
+            if let Some(ui) = &guard.user_instructions_override {
+                format!("<user_instructions>\n{}\n</user_instructions>\n## My request for Codex:\n{}", ui, prompt)
+            } else { prompt.clone() }
+        } else { prompt.clone() }
+    };
     let submission = serde_json::json!({
         "id": id,
         "op": {
             "type": "user_input",
-            "items": [ { "type": "text", "text": prompt } ]
+            "items": [ { "type": "text", "text": decorated_text } ]
         }
     });
     // Emit a debug line so the UI raw log reflects the submission
