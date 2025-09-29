@@ -107,8 +107,9 @@ async fn task_get(id: &str) -> Option<Task> {
 }
 
 async fn task_create(name: &str) -> Option<Task> {
+    // Default Master Task to read-only to prevent accidental writes.
     let args = serde_wasm_bindgen::to_value(&serde_json::json!({
-        "name": name, "approvals":"never","sandbox":"danger-full-access","max_turns": 200u32
+        "name": name, "approvals":"never","sandbox":"read-only","max_turns": 50u32
     })).unwrap_or(JsValue::UNDEFINED);
     match JsFuture::from(tauri_invoke("task_create_cmd", args)).await { Ok(v) => serde_wasm_bindgen::from_value::<Task>(v).ok(), Err(_) => None }
 }
