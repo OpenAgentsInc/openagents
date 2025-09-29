@@ -90,7 +90,7 @@ struct Metrics { #[allow(dead_code)] turns: u64, #[allow(dead_code)] tokens_in: 
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default, Deserialize)]
-struct Subtask { id: String, title: String, status: String }
+struct Subtask { id: String, title: String, status: String, #[allow(dead_code)] rollout_path: Option<String> }
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -770,9 +770,49 @@ pub fn App() -> impl IntoView {
                                             "Cancel"
                                         </button>
                                     </div>
-                                    { // queue list (simple static snapshot)
+                                    { // queue list (simple static snapshot) + view log button
                                         let text = t.queue.iter().map(|s| format!("[{}] {} — {}", s.status, s.id, s.title)).collect::<Vec<_>>().join("\n");
-                                        view!{ <pre class="mt-3 p-2 text-xs border border-white/15 bg-black/20 max-h-56 overflow-auto whitespace-pre-wrap">{text}</pre> }.into_any()
+                                        // Pick running rollout path or last available
+                                        let mut roll_path: Option<String> = None;
+                                        if let Some(s) = t.queue.iter().find(|s| s.status.to_lowercase()=="running") { roll_path = s.rollout_path.clone(); }
+                                        if roll_path.is_none() {
+                                            roll_path = t.queue.iter().rev().find_map(|s| s.rollout_path.clone());
+                                        }
+                                        let has_log = roll_path.is_some();
+                                        let items_setter = items.write_only();
+                                        let path_opt = roll_path.clone();
+                                        view!{
+                                            <div class="mt-3 border border-white/15 bg-black/20 max-h-56 overflow-auto whitespace-pre-wrap p-2">
+                                                <pre class="text-xs">{text}</pre>
+                                            </div>
+                                            {move || if has_log {
+                                                let items_setter = items_setter.clone();
+                                                let p = path_opt.clone().unwrap_or_default();
+                                                view!{ <button class="mt-1 text-xs underline" on:click=move |_| {
+                                                    let items_setter = items_setter.clone(); let p2 = p.clone();
+                                                    spawn_local(async move {
+                                                        let loaded = fetch_chat_items(p2).await;
+                                                        items_setter.set({
+                                                            let mut v: Vec<ChatItem> = Vec::new();
+                                                            for it in loaded.into_iter() {
+                                                                match it {
+                                                                    UiDisplayItem::User { text } => v.push(ChatItem::User { text }),
+                                                                    UiDisplayItem::Assistant { text } => v.push(ChatItem::Assistant { text, streaming: false }),
+                                                                    UiDisplayItem::Reasoning { text } => v.push(ChatItem::Reasoning { text }),
+                                                                    UiDisplayItem::Tool { title, text } => v.push(ChatItem::Tool { call_id: String::new(), title, segments: vec![(text, false)], done: true }),
+                                                                    UiDisplayItem::Instructions { ikind, text } => {
+                                                                        let label = if ikind == "environment_context" { "context".to_string() } else { "instructions".to_string() };
+                                                                        v.push(ChatItem::Collapsible { label, text });
+                                                                    }
+                                                                    UiDisplayItem::Empty => {}
+                                                                }
+                                                            }
+                                                            v
+                                                        });
+                                                    });
+                                                } >"View log"</button> }.into_any()
+                                            } else { view!{ <div></div> }.into_any() }}
+                                        }.into_any()
                                     }
                                 </div> }.into_any()
                             }
