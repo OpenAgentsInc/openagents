@@ -680,6 +680,10 @@ pub fn App() -> impl IntoView {
                                             "Cancel"
                                         </button>
                                     </div>
+                                    { // queue list (simple static snapshot)
+                                        let text = t.queue.iter().map(|s| format!("[{}] {} — {}", s.status, s.id, s.title)).collect::<Vec<_>>().join("\n");
+                                        view!{ <pre class="mt-3 p-2 text-xs border border-white/15 bg-black/20 max-h-56 overflow-auto whitespace-pre-wrap">{text}</pre> }.into_any()
+                                    }
                                 </div> }.into_any()
                             }
                             None => view!{ <div></div> }.into_any(),
