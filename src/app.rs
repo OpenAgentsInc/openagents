@@ -435,11 +435,17 @@ pub fn App() -> impl IntoView {
                                                 let tasks_setter = tasks_setter.clone();
                                                 let sel_setter = sel_setter.clone();
                                                 let sel_detail = sel_detail.clone();
+                                                let items = items.write_only();
                                                 spawn_local(async move {
-                                                    if let Some(t) = task_create("New Master Task").await {
-                                                        sel_setter.set(Some(t.id.clone()));
-                                                        sel_detail.set(Some(t.clone()));
-                                                        tasks_setter.set(tasks_list().await);
+                                                    match task_create("New Master Task").await {
+                                                        Some(t) => {
+                                                            sel_setter.set(Some(t.id.clone()));
+                                                            sel_detail.set(Some(t.clone()));
+                                                            tasks_setter.set(tasks_list().await);
+                                                        }
+                                                        None => {
+                                                            items.update(|list| list.push(ChatItem::System { text: "Failed to create task. Check ~/.codex/master-tasks and permissions.".into() }));
+                                                        }
                                                     }
                                                 });
                                             }>"New task"</button>
@@ -671,15 +677,23 @@ pub fn App() -> impl IntoView {
                             let input_ref = input_ref.clone();
                             move || {
                                 let text = msg_get.get();
-                                if !text.is_empty() {
-                                    items.update(|list| list.push(ChatItem::User { text: text.clone() }));
-                                    // New turn: reset reasoning streamed flag
-                                    reasoning_streamed.set(false);
-                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "prompt": text })).unwrap_or(JsValue::UNDEFINED);
-                                    let _ = tauri_invoke("submit_chat", args);
-                                    msg.set(String::new());
-                                    if let Some(el) = input_ref.get() { let _ = el.focus(); }
-                                }
+                                if text.is_empty() { return; }
+                                items.update(|list| list.push(ChatItem::User { text: text.clone() }));
+                                // New turn: reset reasoning streamed flag
+                                reasoning_streamed.set(false);
+                                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "prompt": text.clone() })).unwrap_or(JsValue::UNDEFINED);
+                                let items2 = items.clone();
+                                spawn_local(async move {
+                                    match JsFuture::from(tauri_invoke("submit_chat", args)).await {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            let err = js_sys::JSON::stringify(&e).ok().and_then(|v| v.as_string()).unwrap_or_else(|| "invoke error".into());
+                                            items2.update(|list| list.push(ChatItem::System { text: format!("submit_chat failed: {}", err) }));
+                                        }
+                                    }
+                                });
+                                msg.set(String::new());
+                                if let Some(el) = input_ref.get() { let _ = el.focus(); }
                             }
                         };
                         view! {
