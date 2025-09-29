@@ -740,7 +740,7 @@ fn write_sidecar_title(path: &std::path::Path, title: &str) -> anyhow::Result<()
 }
 
 #[tauri::command]
-async fn list_recent_chats(window: tauri::Window, limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
+async fn list_recent_chats(_window: tauri::Window, limit: Option<usize>) -> Result<Vec<UiChatSummary>, String> {
     let limit = limit.unwrap_or(20);
     let files = collect_rollout_files(2000).await.map_err(|e| e.to_string())?;
     let mut out: Vec<UiChatSummary> = Vec::new();
@@ -1311,43 +1311,8 @@ fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> a
     tx.send(buf).map_err(|e| anyhow::anyhow!("send stdin: {e}"))
 }
 
-async fn summarize_titles_via_proto(window: &tauri::Window, titles: Vec<String>) -> anyhow::Result<Vec<String>> {
-    if titles.is_empty() { return Ok(vec![]); }
-    let state = window.state::<Arc<Mutex<McpState>>>();
-    // Ensure proto running
-    {
-        let mut guard = state.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
-        if guard.child.is_none() {
-            let shared = state.inner().clone();
-            guard.start(window, shared)?;
-        }
-    }
-    // Build prompt
-    let mut lines = String::new();
-    for t in titles.iter() { lines.push_str("- "); lines.push_str(t); lines.push('\n'); }
-    let prompt = format!("Summarize each item below into 3–5 concise words. Return exactly one line per item, no numbering or bullets, no quotes.\n{}", lines);
-    // Send off-record
-    let rx = {
-        let mut guard = state.lock().map_err(|e| anyhow::anyhow!(e.to_string()))?;
-        guard.send_offrecord(&prompt)?
-    };
-    let text = match tokio::time::timeout(std::time::Duration::from_secs(25), rx).await {
-        Ok(Ok(s)) => s,
-        _ => return Ok(titles),
-    };
-    let mut out: Vec<String> = text
-        .lines()
-        .map(|l| l.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c=='-' || c=='.').trim())
-        .filter(|l| !l.is_empty())
-        .map(|s| {
-            let mut s = s.to_string();
-            if s.ends_with('.') { s.pop(); }
-            s
-        })
-        .collect();
-    if out.len() != titles.len() { out = titles; }
-    Ok(out)
-}
+// summarize_titles_via_proto removed from startup flow; keep functionality out to avoid
+// accidental model traffic during app load.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskPlanArgs { pub id: String, pub goal: String }
