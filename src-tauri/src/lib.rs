@@ -1149,6 +1149,7 @@ impl McpState {
                 .arg("-c").arg(format!("model={}", env_default_model()))
                 .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort))
                 .arg("-c").arg(format!("history.persistence={}", self.history_persistence))
+                .arg("-c").arg(format!("cwd={}", cwd.display()))
                 // Optional: override user_instructions for Chat mode
                 .current_dir(&codex_dir);
             if let Some(ui) = &self.user_instructions_override {
@@ -1161,7 +1162,8 @@ impl McpState {
                 .arg("-c").arg("sandbox_mode=danger-full-access")
                 .arg("-c").arg(format!("model={}", env_default_model()))
                 .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort))
-                .arg("-c").arg(format!("history.persistence={}", self.history_persistence));
+                .arg("-c").arg(format!("history.persistence={}", self.history_persistence))
+                .arg("-c").arg(format!("cwd={}", cwd.display()));
             if let Some(ui) = &self.user_instructions_override {
                 cmd.arg("-c").arg(format!("user_instructions={}", ui));
             }
@@ -1170,7 +1172,7 @@ impl McpState {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        server_log("proto: spawning process");
+        server_log(&format!("proto: spawning process (cwd override={})", cwd.display()));
         let mut child = cmd.spawn()?;
         let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?;
