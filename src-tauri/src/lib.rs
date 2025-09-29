@@ -1108,11 +1108,12 @@ struct McpState {
     last_token_usage: Option<TokenUsageLite>,
     last_event_at: Option<Instant>,
     history_persistence: String,
+    user_instructions_override: Option<String>,
 }
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save-all".to_string() }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save-all".to_string(), user_instructions_override: None }
     }
 }
 
@@ -1132,7 +1133,11 @@ impl McpState {
                 .arg("-c").arg(format!("model={}", env_default_model()))
                 .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort))
                 .arg("-c").arg(format!("history.persistence={}", self.history_persistence))
+                // Optional: override user_instructions for Chat mode
                 .current_dir(&codex_dir);
+            if let Some(ui) = &self.user_instructions_override {
+                cmd.arg("-c").arg(format!("user_instructions={}", ui));
+            }
         } else {
             cmd = Command::new("codex");
             cmd.arg("proto")
@@ -1141,6 +1146,9 @@ impl McpState {
                 .arg("-c").arg(format!("model={}", env_default_model()))
                 .arg("-c").arg(format!("model_reasoning_effort={}", self.config_reasoning_effort))
                 .arg("-c").arg(format!("history.persistence={}", self.history_persistence));
+            if let Some(ui) = &self.user_instructions_override {
+                cmd.arg("-c").arg(format!("user_instructions={}", ui));
+            }
         }
         cmd
             .stdin(std::process::Stdio::piped())
@@ -1897,7 +1905,14 @@ async fn task_cancel_cmd(window: tauri::Window, id: String) -> Result<Task, Stri
 async fn configure_session_mode(window: tauri::Window, mode: String) -> Result<(), String> {
     let state = window.state::<Arc<Mutex<McpState>>>();
     let val = if mode.to_lowercase() == "chat" { "none" } else { "save-all" };
-    if let Ok(mut guard) = state.lock() { guard.history_persistence = val.to_string(); }
+    if let Ok(mut guard) = state.lock() {
+        guard.history_persistence = val.to_string();
+        if mode.to_lowercase() == "chat" {
+            guard.user_instructions_override = Some("You are a concise, helpful assistant. Answer plainly and do not reference prior tasks.".to_string());
+        } else {
+            guard.user_instructions_override = None;
+        }
+    }
     let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Session history.persistence={}", val) });
     Ok(())
 }
