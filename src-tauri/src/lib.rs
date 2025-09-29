@@ -1734,7 +1734,9 @@ pub fn run() {
                     if let Ok(list) = tasks_list() {
                         for meta in list {
                             if let Ok(task) = task_get(&meta.id) {
-                                let needs_resume = matches!(task.status, TaskStatus::Running) || current_running_index(&task).is_some();
+                                // Only resume tasks explicitly marked Running.
+                                // Do not resume if user paused (status=Paused), even if a subtask was left Running.
+                                let needs_resume = matches!(task.status, TaskStatus::Running);
                                 if needs_resume {
                                     // Small stagger to avoid bursting the proto at launch.
                                     let js = format!("window.__TAURI__.core.invoke('task_run_cmd', {{ id: '{}' }})", task.id);
@@ -1912,6 +1914,16 @@ async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String>
             };
         }
         loop {
+            // Respect pause/cancel between turns by reloading latest task status
+            if let Ok(latest) = task_get(&id) {
+                if matches!(latest.status, TaskStatus::Paused | TaskStatus::Canceled) {
+                    task = latest;
+                    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate {
+                        task_id: id.clone(), status: "paused".into(), message: Some("Paused by user".into())
+                    });
+                    break;
+                }
+            }
             // Check budgets before sending another turn
             if let Some(reason) = budget_hit(&task.autonomy_budget, &task.metrics, turns_done, 0, 0, start_time.elapsed()) {
                 let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id.clone(), status: "paused".into(), message: Some(format!("Budget hit: {}", reason)) });
