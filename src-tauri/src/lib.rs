@@ -837,18 +837,8 @@ async fn list_recent_chats(window: tauri::Window, limit: Option<usize>) -> Resul
         out.push(UiChatSummary { id, path: f.display().to_string(), started_at, title, cwd });
         if out.len() >= limit { break; }
     }
-    // Summarize via existing proto (off-record). If summarization fails, keep current titles.
-    if !raw_titles.is_empty() {
-        if let Ok(summaries) = summarize_titles_via_proto(&window, raw_titles.clone()).await {
-            for (i, (idx, path)) in candidates.iter().enumerate() {
-                if let Some(sum) = summaries.get(i) {
-                    if let Some(item) = out.get_mut(*idx) { item.title = sum.clone(); }
-                    // Persist sidecar for future loads
-                    let _ = write_sidecar_title(path, summaries[i].as_str());
-                }
-            }
-        }
-    }
+    // Avoid triggering model traffic on startup: do not auto-summarize titles here.
+    // Users can invoke explicit summarization via the generate_titles_for_all command.
     Ok(out)
 }
 
