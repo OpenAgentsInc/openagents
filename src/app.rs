@@ -638,11 +638,15 @@ pub fn App() -> impl IntoView {
                                                 let sel_setter = sel_setter.clone();
                                                 let sel_detail = sel_detail.clone();
                                                 let items = items.write_only();
+                                                let chat_title_setter = chat_title.write_only();
                                                 spawn_local(async move {
                                                     match task_create("New Master Task").await {
                                                         Ok(t) => {
                                                             sel_setter.set(Some(t.id.clone()));
                                                             sel_detail.set(Some(t.clone()));
+                                                            // Clear previous transcript and set title to the new task
+                                                            items.set(Vec::new());
+                                                            chat_title_setter.set(t.name.clone());
                                                             tasks_setter.set(tasks_list().await);
                                                         }
                                                         Err(err) => {
@@ -1037,6 +1041,9 @@ pub fn App() -> impl IntoView {
                                                 let id = t.id.clone();
                                                 sel_setter.set(Some(id.clone()));
                                                 sel_detail.set(Some(t));
+                                                // Clear previous transcript and set title to the new task name
+                                                items2.set(Vec::new());
+                                                chat_title.set(format!("Quick: {}", goal));
                                                 // Plan subtasks from goal
                                                 let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id.clone(), "goal": goal })).unwrap_or(JsValue::UNDEFINED);
                                                 let _ = JsFuture::from(tauri_invoke("task_plan_cmd", args)).await;
