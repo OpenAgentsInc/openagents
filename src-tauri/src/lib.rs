@@ -1115,11 +1115,12 @@ struct McpState {
     last_event_at: Option<Instant>,
     history_persistence: String,
     user_instructions_override: Option<String>,
+    turn_inflight: bool,
 }
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save-all".to_string(), user_instructions_override: None }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save-all".to_string(), user_instructions_override: None, turn_inflight: false }
     }
 }
 
@@ -1273,6 +1274,9 @@ impl McpState {
                                 if let Some(sid) = sid { guard.conversation_id = Some(sid); }
                                 guard.last_rollout_path = rpath;
                             }
+                        }
+                        if msg.get("type").and_then(|t| t.as_str()) == Some("task_complete") {
+                            if let Ok(mut guard) = shared_state.lock() { guard.turn_inflight = false; }
                         }
                     }
                     // Forward raw message for visibility
@@ -1920,9 +1924,12 @@ async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String>
                 let mut attempt: u32 = 0;
                 let max_retries: u32 = 3;
                 loop {
-            let send_res = if let Ok(guard) = state.lock() {
+            let send_res = if let Ok(mut guard) = state.lock() {
+                if guard.turn_inflight { return Ok(task.clone()); }
                 let prompt = build_control_prompt(&task.queue[i].title, &task.queue[i].inputs, &task.autonomy_budget.sandbox, &task.name);
-                guard.send_user_message(&prompt)
+                let res = guard.send_user_message(&prompt);
+                if res.is_ok() { guard.turn_inflight = true; }
+                res
             } else { Err(anyhow::anyhow!("lock state failed")) };
 
                     match send_res {
