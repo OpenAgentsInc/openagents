@@ -10,6 +10,7 @@ use tokio::process::{Child, ChildStdout, Command};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender, UnboundedReceiver};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 use std::fs::File;
 use std::io::{BufRead, BufReader as StdBufReader};
 use tokio::fs as tokio_fs;
@@ -1057,8 +1058,22 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
     let _ = window.emit("codex:stream", &UiStreamEvent::Raw { json: format!("submit_chat: {}", submission) });
     {
         let g = state.lock().map_err(|e| e.to_string())?;
-        g.send_json(&submission).map_err(|e| format!("send turn: {e}"))
+        g.send_json(&submission).map_err(|e| format!("send turn: {e}"))?;
     }
+    // Emit a timeout note if we don't see any new events soon after this send
+    let state_arc = { let s = window.state::<Arc<Mutex<McpState>>>(); s.inner().clone() };
+    let win2 = window.clone();
+    let send_mark = Instant::now();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+        let stale = if let Ok(guard) = state_arc.lock() {
+            match guard.last_event_at { Some(t) => t <= send_mark, None => true }
+        } else { true };
+        if stale {
+            let _ = win2.emit("codex:stream", &UiStreamEvent::SystemNote { text: "No response from Codex after 8s. Check API key/network; see logs.".into() });
+        }
+    });
+    Ok(())
 }
 
 // Minimal MCP client state
@@ -1073,11 +1088,12 @@ struct McpState {
     summarize_wait: HashMap<String, oneshot::Sender<String>>,
     summarize_buf: HashMap<String, String>,
     last_token_usage: Option<TokenUsageLite>,
+    last_event_at: Option<Instant>,
 }
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None }
     }
 }
 
@@ -1497,9 +1513,20 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                     let _ = win.emit("codex:stream", &UiStreamEvent::OutputItemDoneMessage { text: text.to_string() });
                 }
             }
+            "task_started" => {
+                let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: "Task started".into() });
+            }
+            "task_complete" => {
+                let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: None });
+            }
             "error" => {
                 if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
                     let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Error: {}", text) });
+                }
+            }
+            "stream_error" => {
+                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
+                    let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Stream error: {}", text) });
                 }
             }
             "agent_message_delta" => {
