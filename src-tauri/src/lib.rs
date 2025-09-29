@@ -1058,7 +1058,9 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
     let _ = window.emit("codex:stream", &UiStreamEvent::Raw { json: format!("submit_chat: {}", submission) });
     {
         let g = state.lock().map_err(|e| e.to_string())?;
+        let bytes_len = serde_json::to_vec(&submission).map(|mut v| { v.push(b'\n'); v.len() }).unwrap_or(0);
         g.send_json(&submission).map_err(|e| format!("send turn: {e}"))?;
+        let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Submit ok ({} bytes)", bytes_len) });
     }
     // Emit a timeout note if we don't see any new events soon after this send
     let state_arc = { let s = window.state::<Arc<Mutex<McpState>>>(); s.inner().clone() };
@@ -1071,6 +1073,22 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
         } else { true };
         if stale {
             let _ = win2.emit("codex:stream", &UiStreamEvent::SystemNote { text: "No response from Codex after 8s. Check API key/network; see logs.".into() });
+        }
+    });
+    // Debug: send a GetPath after 2 seconds to verify IO; ignore errors.
+    let state_arc2 = { let s = window.state::<Arc<Mutex<McpState>>>(); s.inner().clone() };
+    let win3 = window.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        if let Ok(guard) = state_arc2.lock() {
+            let id = format!("{}", guard.next_request_id());
+            drop(guard);
+            let sub = serde_json::json!({ "id": id, "op": { "type": "get_path" } });
+            let len = serde_json::to_vec(&sub).map(|mut v| { v.push(b'\n'); v.len() }).unwrap_or(0);
+            let _ = win3.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Debug: sending get_path ({} bytes)", len) });
+            if let Ok(guard2) = state_arc2.lock() {
+                let _ = guard2.send_json(&sub);
+            }
         }
     });
     Ok(())
