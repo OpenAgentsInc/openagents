@@ -12,6 +12,10 @@ PORT="${TRUNK_PORT:-1420}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$ROOT_DIR"
 
+# Ensure optional watch-ignore directories exist so Trunk can canonicalize them
+# (Trunk 0.21.14 errors if an ignore path doesn't exist).
+mkdir -p .codex-dev/master-tasks dist >/dev/null 2>&1 || true
+
 # Preflight compile once to surface real errors early instead of a silent reuse.
 echo "[dev.sh] Preflight UI build (trunk build)" >&2
 if ! trunk build >/dev/null 2>&1; then
