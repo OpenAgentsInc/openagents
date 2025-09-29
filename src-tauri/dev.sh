@@ -8,6 +8,16 @@ set -euo pipefail
 #   with a clear message so Tauri fails fast instead of flapping.
 
 PORT="${TRUNK_PORT:-1420}"
+# Always run from repo root so Trunk sees Trunk.toml and index.html
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
+cd "$ROOT_DIR"
+
+# Preflight compile once to surface real errors early instead of a silent reuse.
+echo "[dev.sh] Preflight UI build (trunk build)" >&2
+if ! trunk build >/dev/null 2>&1; then
+  echo "[dev.sh] Trunk build failed. Showing verbose error:" >&2
+  trunk build -v || exit 1
+fi
 
 is_trunk_pid() {
   local pid="$1"
