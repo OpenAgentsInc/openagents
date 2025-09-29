@@ -251,7 +251,7 @@ pub fn App() -> impl IntoView {
         let token_setter = token_usage_sig.write_only();
         let raw_setter = raw_events.write_only();
         let compact_setter = compact_logs.write_only();
-        let show_tokens = show_token_logs.read_only();
+        let _show_tokens = show_token_logs.read_only();
         let show_deltas = show_delta_logs.read_only();
         let show_raw = show_raw_json.read_only();
         let chats_setter = chats.write_only();
@@ -789,8 +789,28 @@ pub fn App() -> impl IntoView {
                             view! { <div class="w-full text-[12px] italic opacity-85 px-3 reasoning-md" inner_html=html></div> }.into_any()
                         }
                         ChatItem::Assistant { text, streaming } => {
-                            let html = md_to_html(&text);
-                            view! { <div class="w-full p-3 border border-white/40 bg-white/10"><div class="assistant-md" inner_html=html></div>{if streaming { " ▌" } else { "" }.to_string()}</div> }.into_any()
+                            // Collapse long assistant messages by default; expand on demand.
+                            let open: RwSignal<bool> = RwSignal::new(false);
+                            let mut preview = text.clone();
+                            let max_chars = 1200usize;
+                            if preview.len() > max_chars { preview.truncate(max_chars); preview.push_str("…"); }
+                            let html_full = md_to_html(&text);
+                            let html_preview = md_to_html(&preview);
+                            view! {
+                                <div class="w-full p-3 border border-white/40 bg-white/10">
+                                    {move || if open.get() {
+                                        view!{ <div class="assistant-md" inner_html=html_full.clone()></div> }.into_any()
+                                    } else {
+                                        view!{ <div class="assistant-md" inner_html=html_preview.clone()></div> }.into_any()
+                                    }}
+                                    <div class="mt-1 text-xs opacity-70">
+                                        <button class="underline" on:click=move |_| open.update(|v| *v = !*v)>
+                                            {move || if open.get() { "Show less".to_string() } else { "Show more".to_string() }}
+                                        </button>
+                                        {if streaming { " ▌" } else { "" }.to_string()}
+                                    </div>
+                                </div>
+                            }.into_any()
                         }
                         ChatItem::Collapsible { label, text } => {
                             let open: RwSignal<bool> = RwSignal::new(false);
@@ -805,17 +825,31 @@ pub fn App() -> impl IntoView {
                                 </div>
                             }.into_any()
                         }
-                        ChatItem::Tool { call_id: _, title, segments, done } => view! {
-                            <div class="w-full p-3 border border-white/30 bg-black/40">
-                                <div class="text-xs opacity-80 mb-1">{format!("{} {}", title, if done {"(done)"} else {"(running)"})}</div>
-                                <pre class="whitespace-pre-wrap text-sm">
-                                    {move || segments.iter().map(|(t, is_err)| {
-                                        let cls = if *is_err { "text-red-400" } else { "text-white" };
-                                        view!{ <span class={cls}>{t.clone()}</span> }.into_any()
-                                    }).collect_view()}
-                                </pre>
-                            </div>
-                        }.into_any(),
+                        ChatItem::Tool { call_id: _, title, segments, done } => {
+                            let open: RwSignal<bool> = RwSignal::new(false);
+                            // Build a one-line preview from the first segment
+                            let mut preview = String::new();
+                            if let Some((t,_)) = segments.get(0) {
+                                preview = t.lines().next().unwrap_or("").to_string();
+                                if preview.len() > 160 { preview.truncate(160); preview.push_str("…"); }
+                            }
+                            view! {
+                                <div class="w-full p-3 border border-white/30 bg-black/40">
+                                    <div class="text-xs opacity-80 mb-1 flex items-center justify-between">
+                                        <div>{format!("{} {}", title, if done {"(done)"} else {"(running)"})}</div>
+                                        <button class="underline" on:click=move |_| open.update(|v| *v = !*v)>{move || if open.get() { "Hide" } else { "Show" }}</button>
+                                    </div>
+                                    {move || if open.get() {
+                                        view!{ <pre class="whitespace-pre-wrap text-sm">{segments.iter().map(|(t,is_err)| {
+                                            let cls = if *is_err { "text-red-400" } else { "text-white" };
+                                            view!{ <span class={cls}>{t.clone()}</span> }.into_any()
+                                        }).collect_view()}</pre> }.into_any()
+                                    } else {
+                                        view!{ <div class="text-xs opacity-75">{preview.clone()}</div> }.into_any()
+                                    }}
+                                </div>
+                            }.into_any()
+                        }
                         ChatItem::System { text } => view! { <div class="text-xs opacity-60">{text}</div> }.into_any(),
                     }).collect_view()}
                     <div node_ref=bottom_ref class="h-0"></div>
