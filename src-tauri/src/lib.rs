@@ -1193,8 +1193,51 @@ impl McpState {
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     if line.trim().is_empty() { continue; }
-                    server_log(&format!("proto << {}", line));
                     let v: serde_json::Value = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
+                    // Server log: suppress streaming deltas; log only full responses and concise summaries
+                    if let Some(msg) = v.get("msg") {
+                        let typ = msg.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                        match typ {
+                            "agent_message" => {
+                                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
+                                    let mut t = text.to_string(); if t.len() > 240 { t.truncate(240); t.push_str("…"); }
+                                    server_log(&format!("assistant: {}", t));
+                                }
+                            }
+                            "token_count" => {
+                                // Summarize once per turn
+                                let (mut input, mut output) = (0u64, 0u64);
+                                if let Some(u) = msg.get("usage") {
+                                    input = u.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                                    output = u.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                                } else if let Some(info) = msg.get("info") {
+                                    if let Some(last) = info.get("last_token_usage") {
+                                        input = last.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                                        output = last.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                                    }
+                                } else {
+                                    input = msg.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                                    output = msg.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+                                }
+                                server_log(&format!("completed: in={} out={} total={}", input, output, input+output));
+                            }
+                            "session_configured" => {
+                                let sid = msg.get("session_id").and_then(|s| s.as_str()).unwrap_or("");
+                                server_log(&format!("session_configured: {}", sid));
+                            }
+                            "exec_command_begin" => { server_log("tool: begin exec"); }
+                            "exec_command_end" => { server_log("tool: end exec"); }
+                            "error" => {
+                                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) { server_log(&format!("error: {}", text)); }
+                            }
+                            "stream_error" => {
+                                if let Some(text) = msg.get("message").and_then(|d| d.as_str()) { server_log(&format!("stream_error: {}", text)); }
+                            }
+                            // Skip noisy per-token deltas in server logs
+                            "agent_message_delta" | "agent_reasoning_delta" | "agent_reasoning_raw_content_delta" | "exec_command_output_delta" => {}
+                            _ => {}
+                        }
+                    }
                     let id_str = v.get("id").and_then(|s| s.as_str()).unwrap_or("").to_string();
                     if !id_str.is_empty() {
                         // Check if this belongs to an off-record summarize request
