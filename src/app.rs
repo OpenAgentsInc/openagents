@@ -214,7 +214,12 @@ pub fn App() -> impl IntoView {
     // Chat state
     let items: RwSignal<Vec<ChatItem>> = RwSignal::new(vec![]);
     let token_usage_sig: RwSignal<Option<TokenUsageLite>> = RwSignal::new(None);
+    // Logs
     let raw_events: RwSignal<Vec<String>> = RwSignal::new(vec![]);
+    let compact_logs: RwSignal<Vec<String>> = RwSignal::new(vec![]);
+    let show_raw_json: RwSignal<bool> = RwSignal::new(false);
+    let show_token_logs: RwSignal<bool> = RwSignal::new(false);
+    let show_delta_logs: RwSignal<bool> = RwSignal::new(false);
     // Tracks if we have streamed any reasoning deltas for the current turn
     let reasoning_streamed: RwSignal<bool> = RwSignal::new(false);
     let raw_open: RwSignal<bool> = RwSignal::new(true);
@@ -241,6 +246,10 @@ pub fn App() -> impl IntoView {
         let items_setter = items.write_only();
         let token_setter = token_usage_sig.write_only();
         let raw_setter = raw_events.write_only();
+        let compact_setter = compact_logs.write_only();
+        let show_tokens = show_token_logs.read_only();
+        let show_deltas = show_delta_logs.read_only();
+        let show_raw = show_raw_json.read_only();
         let chats_setter = chats.write_only();
         let tasks_setter = tasks.write_only();
         let sel_task_ro = selected_task.read_only();
@@ -251,8 +260,47 @@ pub fn App() -> impl IntoView {
                 if payload.is_null() || payload.is_undefined() { return; }
                 let parsed: Result<UiStreamEvent, _> = serde_wasm_bindgen::from_value(payload);
                 if let Ok(ev) = parsed {
-                    if let UiStreamEvent::Raw { json } = &ev {
-                        raw_setter.update(|v| v.push(json.clone()));
+                    // Write formatted/filtered logs
+                    match &ev {
+                        UiStreamEvent::Raw { json } => {
+                            if show_raw.get() {
+                                raw_setter.update(|v| v.push(json.clone()));
+                            }
+                        }
+                        UiStreamEvent::SessionConfigured { session_id, .. } => {
+                            compact_setter.update(|v| v.push(format!("session_configured: {}", session_id)));
+                        }
+                        UiStreamEvent::TaskUpdate { task_id, status, message } => {
+                            let m = message.clone().unwrap_or_default();
+                            compact_setter.update(|v| v.push(format!("task[{}]: {} {}", task_id, status, m)));
+                        }
+                        UiStreamEvent::ToolBegin { title, .. } => {
+                            compact_setter.update(|v| v.push(format!("tool: begin {}", title)));
+                        }
+                        UiStreamEvent::ToolEnd { call_id, .. } => {
+                            compact_setter.update(|v| v.push(format!("tool: end {}", call_id)));
+                        }
+                        UiStreamEvent::OutputItemDoneMessage { text } => {
+                            let mut t = text.clone(); if t.len() > 200 { t.truncate(200); t.push_str("…"); }
+                            compact_setter.update(|v| v.push(format!("assistant: {}", t)));
+                        }
+                        UiStreamEvent::Completed { token_usage, .. } => {
+                            if let Some(tu) = token_usage.clone() {
+                                compact_setter.update(|v| v.push(format!("completed: in={} out={} total={}", tu.input, tu.output, tu.total)));
+                            } else {
+                                compact_setter.update(|v| v.push("completed".to_string()));
+                            }
+                        }
+                        UiStreamEvent::ReasoningDelta { text } => {
+                            if show_deltas.get() {
+                                let mut t = text.clone(); if t.len() > 160 { t.truncate(160); t.push_str("…"); }
+                                compact_setter.update(|v| v.push(format!("reasoning: {}", t)));
+                            }
+                        }
+                        UiStreamEvent::SystemNote { _text } => {
+                            compact_setter.update(|v| v.push("note: (see UI)".to_string()));
+                        }
+                        _ => {}
                     }
                     if let UiStreamEvent::SessionConfigured { .. } = &ev {
                         // Refresh recent chats when a new session starts
@@ -348,9 +396,12 @@ pub fn App() -> impl IntoView {
     {
         let raw_bottom = raw_bottom_ref.clone();
         let raw_ro = raw_events.read_only();
+        let compact_ro = compact_logs.read_only();
+        let show_raw_ro = show_raw_json.read_only();
         let raw_open_ro = raw_open.read_only();
         Effect::new(move |_| {
             let _ = raw_ro.get().len();
+            let _ = compact_ro.get().len();
             let open = raw_open_ro.get();
             if open {
                 if let Some(el) = raw_bottom.get() {
@@ -427,9 +478,24 @@ pub fn App() -> impl IntoView {
                 </button>
                 {move || if raw_open.get() {
                     view! {
-                        <div class="mt-2 flex-1 overflow-auto border border-white/20 bg-black/50 p-2">
-                            <pre class="text-[11px] leading-4 whitespace-pre-wrap">{raw_events.get().join("\n")}</pre>
-                            <div node_ref=raw_bottom_ref class="h-0"></div>
+                        <div class="mt-2 flex flex-col gap-2">
+                            <div class="flex items-center gap-3 text-xs">
+                                <label class="flex items-center gap-1"><input type="checkbox" prop:checked=move || show_raw_json.get() on:change=move |ev| { if let Some(i) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) { show_raw_json.set(i.checked()); } }/>"Raw JSON"</label>
+                                <label class="flex items-center gap-1"><input type="checkbox" prop:checked=move || show_delta_logs.get() on:change=move |ev| { if let Some(i) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) { show_delta_logs.set(i.checked()); } }/>"Reasoning deltas"</label>
+                                <label class="flex items-center gap-1"><input type="checkbox" prop:checked=move || show_token_logs.get() on:change=move |ev| { if let Some(i) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) { show_token_logs.set(i.checked()); } } disabled/>"Token counts"</label>
+                                <button class="underline" on:click=move |_| { raw_events.set(vec![]); compact_logs.set(vec![]); } >"Clear"</button>
+                            </div>
+                            {if show_raw_json.get() {
+                                view!{ <div class="flex-1 overflow-auto border border-white/20 bg-black/50 p-2">
+                                    <pre class="text-[11px] leading-4 whitespace-pre-wrap">{raw_events.get().join("\n")}</pre>
+                                    <div node_ref=raw_bottom_ref class="h-0"></div>
+                                </div> }.into_any()
+                            } else {
+                                view!{ <div class="flex-1 overflow-auto border border-white/20 bg-black/50 p-2">
+                                    <pre class="text-[11px] leading-4 whitespace-pre-wrap">{compact_logs.get().join("\n")}</pre>
+                                    <div node_ref=raw_bottom_ref class="h-0"></div>
+                                </div> }.into_any()
+                            }}
                         </div>
                     }.into_any()
                 } else { view! { <div class="mt-2"></div> }.into_any() }}
