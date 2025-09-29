@@ -1708,9 +1708,28 @@ pub struct CreateTaskArgs { pub name: String, pub approvals: String, pub sandbox
 
 #[tauri::command]
 async fn task_create_cmd(window: tauri::Window, args: CreateTaskArgs) -> Result<Task, String> {
-    let task = task_create(&args.name, AutonomyBudget { approvals: args.approvals, sandbox: args.sandbox, max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }).map_err(|e| e.to_string())?;
-    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: task.id.clone(), status: "created".into(), message: Some("Task created".into()) });
-    Ok(task)
+    match task_create(&args.name, AutonomyBudget { approvals: args.approvals.clone(), sandbox: args.sandbox.clone(), max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }) {
+        Ok(task) => {
+            let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: task.id.clone(), status: "created".into(), message: Some("Task created".into()) });
+            Ok(task)
+        }
+        Err(e) => {
+            // Fallback: set CODEX_HOME to workspace-local and retry
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let fallback_root = if cwd.ends_with("src-tauri") { cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd) } else { cwd.clone() };
+            let fallback = fallback_root.join(".codex-dev");
+            let _ = std::fs::create_dir_all(&fallback);
+            std::env::set_var("CODEX_HOME", &fallback);
+            server_log(&format!("task_create: initial write failed: {}; retry with CODEX_HOME={}", e, fallback.display()));
+            match task_create(&args.name, AutonomyBudget { approvals: args.approvals, sandbox: args.sandbox, max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }) {
+                Ok(task2) => {
+                    let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: task2.id.clone(), status: "created".into(), message: Some(format!("Task created (CODEX_HOME={})", fallback.display())) });
+                    Ok(task2)
+                }
+                Err(e2) => Err(format!("task_create failed: {}; fallback CODEX_HOME={}", e2, fallback.display()))
+            }
+        }
+    }
 }
 
 #[tauri::command]
