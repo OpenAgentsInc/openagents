@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use tokio::sync::oneshot;
 use std::ffi::OsStr;
 use std::io::Write as _;
+use chrono::Utc;
 mod tasks;
 mod master;
 use master::*;
@@ -27,6 +28,11 @@ pub mod headless;
 // Re-export core task types and helpers for integration tests / headless flows.
 pub use tasks::*;
 pub use master::next_pending_index;
+
+fn server_log(msg: &str) {
+    let ts = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    eprintln!("[openagents-tauri {}] {}", ts, msg);
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -1082,6 +1088,7 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
         } else { true };
         if stale {
             let _ = win2.emit("codex:stream", &UiStreamEvent::SystemNote { text: "No response from Codex after 8s. Check API key/network; see logs.".into() });
+            server_log("watchdog: no events within 8s after submit");
         }
     });
     // Debug: send a GetPath after 2 seconds to verify IO; ignore errors.
@@ -1163,6 +1170,7 @@ impl McpState {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        server_log("proto: spawning process");
         let mut child = cmd.spawn()?;
         let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?;
@@ -1176,6 +1184,7 @@ impl McpState {
         tauri::async_runtime::spawn(async move {
             use tokio::io::AsyncWriteExt;
             while let Some(buf) = rx.recv().await {
+                if let Ok(s) = std::str::from_utf8(&buf) { server_log(&format!("proto >> {}", s.trim_end())); }
                 let _ = stdin.write_all(&buf).await;
                 let _ = stdin.flush().await;
             }
@@ -1191,6 +1200,7 @@ impl McpState {
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     if line.trim().is_empty() { continue; }
+                    server_log(&format!("proto << {}", line));
                     let v: serde_json::Value = match serde_json::from_str(&line) { Ok(v) => v, Err(_) => continue };
                     let id_str = v.get("id").and_then(|s| s.as_str()).unwrap_or("").to_string();
                     if !id_str.is_empty() {
@@ -1922,6 +1932,7 @@ async fn configure_session_mode(window: tauri::Window, mode: String) -> Result<(
             guard.user_instructions_override = None;
         }
     }
+    server_log(&format!("configure_session_mode: mode={}, history.persistence={}", mode, val));
     let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Session history.persistence={}", val) });
     Ok(())
 }
