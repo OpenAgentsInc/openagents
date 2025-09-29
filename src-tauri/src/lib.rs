@@ -1707,8 +1707,16 @@ async fn tasks_list_cmd() -> Result<Vec<TaskMeta>, String> { tasks_list().map_er
 pub struct CreateTaskArgs { pub name: String, pub approvals: String, pub sandbox: String, pub max_turns: Option<u32>, pub max_tokens: Option<u32>, pub max_minutes: Option<u32> }
 
 #[tauri::command]
-async fn task_create_cmd(window: tauri::Window, args: CreateTaskArgs) -> Result<Task, String> {
-    match task_create(&args.name, AutonomyBudget { approvals: args.approvals.clone(), sandbox: args.sandbox.clone(), max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }) {
+async fn task_create_cmd(
+    window: tauri::Window,
+    name: String,
+    approvals: String,
+    sandbox: String,
+    max_turns: Option<u32>,
+    max_tokens: Option<u32>,
+    max_minutes: Option<u32>,
+) -> Result<Task, String> {
+    match task_create(&name, AutonomyBudget { approvals: approvals.clone(), sandbox: sandbox.clone(), max_turns, max_tokens, max_minutes }) {
         Ok(task) => {
             let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: task.id.clone(), status: "created".into(), message: Some("Task created".into()) });
             Ok(task)
@@ -1721,7 +1729,7 @@ async fn task_create_cmd(window: tauri::Window, args: CreateTaskArgs) -> Result<
             let _ = std::fs::create_dir_all(&fallback);
             std::env::set_var("CODEX_HOME", &fallback);
             server_log(&format!("task_create: initial write failed: {}; retry with CODEX_HOME={}", e, fallback.display()));
-            match task_create(&args.name, AutonomyBudget { approvals: args.approvals, sandbox: args.sandbox, max_turns: args.max_turns, max_tokens: args.max_tokens, max_minutes: args.max_minutes }) {
+            match task_create(&name, AutonomyBudget { approvals, sandbox, max_turns, max_tokens, max_minutes }) {
                 Ok(task2) => {
                     let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: task2.id.clone(), status: "created".into(), message: Some(format!("Task created (CODEX_HOME={})", fallback.display())) });
                     Ok(task2)
