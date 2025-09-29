@@ -594,6 +594,7 @@ pub fn App() -> impl IntoView {
                                                         let loaded = fetch_chat_items(path_clone.clone()).await;
                                                         items_setter.set({
                                                             let mut v: Vec<ChatItem> = Vec::new();
+                                                            let mut seen_instr: std::collections::HashSet<String> = std::collections::HashSet::new();
                                                             for it in loaded.into_iter() {
                                                                 match it {
                                                                     UiDisplayItem::User { text } => v.push(ChatItem::User { text }),
@@ -601,6 +602,7 @@ pub fn App() -> impl IntoView {
                                                                     UiDisplayItem::Reasoning { text } => v.push(ChatItem::Reasoning { text }),
                                                                     UiDisplayItem::Tool { title, text } => v.push(ChatItem::Tool { call_id: String::new(), title, segments: vec![(text, false)], done: true }),
                                                                     UiDisplayItem::Instructions { ikind, text } => {
+                                                                        if !seen_instr.insert(ikind.clone()) { continue; }
                                                                         let label = if ikind == "environment_context" { "context".to_string() } else { "instructions".to_string() };
                                                                         v.push(ChatItem::Collapsible { label, text });
                                                                     }
@@ -794,6 +796,7 @@ pub fn App() -> impl IntoView {
                                                         let loaded = fetch_chat_items(p2).await;
                                                         items_setter.set({
                                                             let mut v: Vec<ChatItem> = Vec::new();
+                                                            let mut seen_instr: std::collections::HashSet<String> = std::collections::HashSet::new();
                                                             for it in loaded.into_iter() {
                                                                 match it {
                                                                     UiDisplayItem::User { text } => v.push(ChatItem::User { text }),
@@ -801,6 +804,7 @@ pub fn App() -> impl IntoView {
                                                                     UiDisplayItem::Reasoning { text } => v.push(ChatItem::Reasoning { text }),
                                                                     UiDisplayItem::Tool { title, text } => v.push(ChatItem::Tool { call_id: String::new(), title, segments: vec![(text, false)], done: true }),
                                                                     UiDisplayItem::Instructions { ikind, text } => {
+                                                                        if !seen_instr.insert(ikind.clone()) { continue; }
                                                                         let label = if ikind == "environment_context" { "context".to_string() } else { "instructions".to_string() };
                                                                         v.push(ChatItem::Collapsible { label, text });
                                                                     }
