@@ -1334,8 +1334,12 @@ fn fallback_plan_from_goal(goal: &str) -> Vec<Subtask> {
     out
 }
 
-fn build_control_prompt(title: &str, inputs: &serde_json::Value, sandbox: &str) -> String {
-    let mut prompt = format!("Master Task – run subtask: {}\n", title);
+fn build_control_prompt(title: &str, inputs: &serde_json::Value, sandbox: &str, goal: &str) -> String {
+    let mut prompt = String::new();
+    if !goal.trim().is_empty() {
+        prompt.push_str(&format!("Task Goal: {}\n", goal.trim()));
+    }
+    prompt.push_str(&format!("Current Step: {}\n", title));
     if !inputs.is_null() {
         if let Ok(js) = serde_json::to_string_pretty(inputs) {
             if js != "null" { prompt.push_str(&format!("Inputs:\n{}\n", js)); }
@@ -1343,6 +1347,7 @@ fn build_control_prompt(title: &str, inputs: &serde_json::Value, sandbox: &str) 
     }
     let s = sandbox.to_lowercase();
     if s == "read-only" || s == "readonly" || s == "read_only" { prompt.push_str("Constraints: operate in read-only mode; do not modify files.\n"); }
+    prompt.push_str("Notes:\n- Use the provided Inputs and repo cwd; do not ask for 'Subtask 1' spec files.\n- If a path is not explicit, search under cwd and proceed read-only.\n");
     prompt
 }
 
@@ -1872,10 +1877,10 @@ async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String>
                 let mut attempt: u32 = 0;
                 let max_retries: u32 = 3;
                 loop {
-                    let send_res = if let Ok(guard) = state.lock() {
-                        let prompt = build_control_prompt(&task.queue[i].title, &task.queue[i].inputs, &task.autonomy_budget.sandbox);
-                        guard.send_user_message(&prompt)
-                    } else { Err(anyhow::anyhow!("lock state failed")) };
+            let send_res = if let Ok(guard) = state.lock() {
+                let prompt = build_control_prompt(&task.queue[i].title, &task.queue[i].inputs, &task.autonomy_budget.sandbox, &task.name);
+                guard.send_user_message(&prompt)
+            } else { Err(anyhow::anyhow!("lock state failed")) };
 
                     match send_res {
                         Ok(()) => break, // Success; proceed with turn
