@@ -1083,9 +1083,9 @@ async fn submit_chat(window: tauri::Window, prompt: String) -> Result<(), String
         if let Ok(guard) = state_arc2.lock() {
             let id = format!("{}", guard.next_request_id());
             drop(guard);
-            let sub = serde_json::json!({ "id": id, "op": { "type": "get_path" } });
+            let sub = serde_json::json!({ "id": id, "op": { "type": "add_to_history", "text": "debug: ping" } });
             let len = serde_json::to_vec(&sub).map(|mut v| { v.push(b'\n'); v.len() }).unwrap_or(0);
-            let _ = win3.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Debug: sending get_path ({} bytes)", len) });
+            let _ = win3.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Debug: sending add_to_history ({} bytes)", len) });
             if let Ok(guard2) = state_arc2.lock() {
                 let _ = guard2.send_json(&sub);
             }
