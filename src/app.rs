@@ -106,12 +106,18 @@ async fn task_get(id: &str) -> Option<Task> {
     match JsFuture::from(tauri_invoke("task_get_cmd", args)).await { Ok(v) => serde_wasm_bindgen::from_value::<Task>(v).ok(), Err(_) => None }
 }
 
-async fn task_create(name: &str) -> Option<Task> {
+async fn task_create(name: &str) -> Result<Task, String> {
     // Default Master Task to read-only to prevent accidental writes.
     let args = serde_wasm_bindgen::to_value(&serde_json::json!({
         "name": name, "approvals":"never","sandbox":"read-only","max_turns": 50u32
     })).unwrap_or(JsValue::UNDEFINED);
-    match JsFuture::from(tauri_invoke("task_create_cmd", args)).await { Ok(v) => serde_wasm_bindgen::from_value::<Task>(v).ok(), Err(_) => None }
+    match JsFuture::from(tauri_invoke("task_create_cmd", args)).await {
+        Ok(v) => serde_wasm_bindgen::from_value::<Task>(v).map_err(|e| format!("decode task: {}", e)),
+        Err(e) => {
+            let msg = js_sys::JSON::stringify(&e).ok().and_then(|v| v.as_string()).unwrap_or_else(|| "invoke error".into());
+            Err(msg)
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -445,13 +451,13 @@ pub fn App() -> impl IntoView {
                                                 let items = items.write_only();
                                                 spawn_local(async move {
                                                     match task_create("New Master Task").await {
-                                                        Some(t) => {
+                                                        Ok(t) => {
                                                             sel_setter.set(Some(t.id.clone()));
                                                             sel_detail.set(Some(t.clone()));
                                                             tasks_setter.set(tasks_list().await);
                                                         }
-                                                        None => {
-                                                            items.update(|list| list.push(ChatItem::System { text: "Failed to create task. Check ~/.codex/master-tasks and permissions.".into() }));
+                                                        Err(err) => {
+                                                            items.update(|list| list.push(ChatItem::System { text: format!("Failed to create task: {}", err) }));
                                                         }
                                                     }
                                                 });
@@ -748,7 +754,7 @@ pub fn App() -> impl IntoView {
                                     spawn_local(async move {
                                         // Create a quick task
                                         match task_create(&format!("Quick: {}", goal)).await {
-                                            Some(t) => {
+                                            Ok(t) => {
                                                 let id = t.id.clone();
                                                 sel_setter.set(Some(id.clone()));
                                                 sel_detail.set(Some(t));
@@ -760,9 +766,7 @@ pub fn App() -> impl IntoView {
                                                 let _ = JsFuture::from(tauri_invoke("task_run_cmd", args2)).await;
                                                 tasks_setter.set(tasks_list().await);
                                             }
-                                            None => {
-                                                items2.update(|list| list.push(ChatItem::System { text: "Failed to create task".into() }));
-                                            }
+                                            Err(err) => { items2.update(|list| list.push(ChatItem::System { text: format!("Failed to create task: {}", err) })); }
                                         }
                                     });
                                 } else {
