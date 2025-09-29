@@ -1112,7 +1112,7 @@ struct McpState {
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save_all".to_string() }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save-all".to_string() }
     }
 }
 
@@ -1896,7 +1896,7 @@ async fn task_cancel_cmd(window: tauri::Window, id: String) -> Result<Task, Stri
 #[tauri::command]
 async fn configure_session_mode(window: tauri::Window, mode: String) -> Result<(), String> {
     let state = window.state::<Arc<Mutex<McpState>>>();
-    let val = if mode.to_lowercase() == "chat" { "none" } else { "save_all" };
+    let val = if mode.to_lowercase() == "chat" { "none" } else { "save-all" };
     if let Ok(mut guard) = state.lock() { guard.history_persistence = val.to_string(); }
     let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Session history.persistence={}", val) });
     Ok(())
