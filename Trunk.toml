@@ -2,7 +2,15 @@
 target = "./index.html"
 
 [watch]
-ignore = ["./src-tauri"]
+# Ignore backend and build artifacts that flap during desktop dev so Trunk
+# doesn’t trigger extra rebuilds/hot reloads ("applying new distribution").
+ignore = [
+  "./src-tauri",      # managed by Tauri/cargo
+  "./target",         # workspace target from cargo builds
+  "./codex-rs",       # Codex workspace (cargo run/build writes to codex-rs/target)
+  "./.codex-dev",     # workspace-local master-task state during dev
+  "./dist"            # Trunk output directory
+]
 
 [serve]
 port = 1420
