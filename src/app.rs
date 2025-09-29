@@ -373,6 +373,113 @@ pub fn App() -> impl IntoView {
             cb.forget(); // keep listener for the app lifetime
         });
     }
+
+    // On first mount: configure Chat mode (persist history), load status, list recent chats,
+    // and auto-load the most recent transcript so history appears immediately.
+    {
+        let full_setter = full_setter.clone();
+        let chats_setter = chats.write_only();
+        let items_setter = items.write_only();
+        let chat_title_setter = chat_title.write_only();
+        let tasks_init_setter = tasks.write_only();
+        let sel_task_setter = selected_task.write_only();
+        let sel_task_detail_setter2 = selected_task_detail.write_only();
+        spawn_local(async move {
+            // Ensure backend uses Chat mode defaults with history saved
+            let _ = JsFuture::from(tauri_invoke(
+                "configure_session_mode",
+                serde_wasm_bindgen::to_value(&serde_json::json!({ "mode": "Chat" })).unwrap_or(JsValue::UNDEFINED),
+            ))
+            .await;
+
+            // Load status summaries
+            full_setter.set(fetch_full_status().await);
+
+            // Load recent chats list
+            let recents = fetch_recent_chats(30).await;
+            chats_setter.set(recents.clone());
+
+            // Load latest task (if any) and show its last rollout; otherwise fall back to latest chat transcript
+            let tlist = tasks_list().await;
+            tasks_init_setter.set(tlist.clone());
+            if let Some(meta) = tlist.first() {
+                // Select and display task detail
+                let tid = meta.id.clone();
+                if let Some(detail) = task_get(&tid).await {
+                    sel_task_setter.set(Some(tid.clone()));
+                    sel_task_detail_setter2.set(Some(detail.clone()));
+                    // Prefer running subtask rollout; else last available
+                    let mut roll_path: Option<String> = None;
+                    if let Some(s) = detail.queue.iter().find(|s| s.status.to_lowercase()=="running") { roll_path = s.rollout_path.clone(); }
+                    if roll_path.is_none() { roll_path = detail.queue.iter().rev().find_map(|s| s.rollout_path.clone()); }
+                    // If we have a rollout, load it into the chat view now
+                    if let Some(p) = roll_path {
+                        let loaded = fetch_chat_items(p).await;
+                        let mut v: Vec<ChatItem> = Vec::new();
+                        let mut seen_instr: std::collections::HashSet<String> = std::collections::HashSet::new();
+                        for it in loaded.into_iter() {
+                            match it {
+                                UiDisplayItem::User { text } => v.push(ChatItem::User { text }),
+                                UiDisplayItem::Assistant { text } => v.push(ChatItem::Assistant { text, streaming: false }),
+                                UiDisplayItem::Reasoning { text } => v.push(ChatItem::Reasoning { text }),
+                                UiDisplayItem::Tool { title, text } => v.push(ChatItem::Tool { call_id: String::new(), title, segments: vec![(text, false)], done: true }),
+                                UiDisplayItem::Instructions { ikind, text } => {
+                                    if !seen_instr.insert(ikind.clone()) { continue; }
+                                    let label = if ikind == "environment_context" { "context".to_string() } else { "instructions".to_string() };
+                                    v.push(ChatItem::Collapsible { label, text });
+                                }
+                                UiDisplayItem::Empty => {}
+                            }
+                        }
+                        items_setter.set(v);
+                        chat_title_setter.set(detail.name.clone());
+                    } else if let Some(first) = recents.first() {
+                        // Fallback to latest chat transcript
+                        let loaded = fetch_chat_items(first.path.clone()).await;
+                        let mut v: Vec<ChatItem> = Vec::new();
+                        let mut seen_instr: std::collections::HashSet<String> = std::collections::HashSet::new();
+                        for it in loaded.into_iter() {
+                            match it {
+                                UiDisplayItem::User { text } => v.push(ChatItem::User { text }),
+                                UiDisplayItem::Assistant { text } => v.push(ChatItem::Assistant { text, streaming: false }),
+                                UiDisplayItem::Reasoning { text } => v.push(ChatItem::Reasoning { text }),
+                                UiDisplayItem::Tool { title, text } => v.push(ChatItem::Tool { call_id: String::new(), title, segments: vec![(text, false)], done: true }),
+                                UiDisplayItem::Instructions { ikind, text } => {
+                                    if !seen_instr.insert(ikind.clone()) { continue; }
+                                    let label = if ikind == "environment_context" { "context".to_string() } else { "instructions".to_string() };
+                                    v.push(ChatItem::Collapsible { label, text });
+                                }
+                                UiDisplayItem::Empty => {}
+                            }
+                        }
+                        items_setter.set(v);
+                        chat_title_setter.set(first.title.clone());
+                    }
+                }
+            } else if let Some(first) = recents.first() {
+                // No tasks yet; just show the latest chat transcript
+                let loaded = fetch_chat_items(first.path.clone()).await;
+                let mut v: Vec<ChatItem> = Vec::new();
+                let mut seen_instr: std::collections::HashSet<String> = std::collections::HashSet::new();
+                for it in loaded.into_iter() {
+                    match it {
+                        UiDisplayItem::User { text } => v.push(ChatItem::User { text }),
+                        UiDisplayItem::Assistant { text } => v.push(ChatItem::Assistant { text, streaming: false }),
+                        UiDisplayItem::Reasoning { text } => v.push(ChatItem::Reasoning { text }),
+                        UiDisplayItem::Tool { title, text } => v.push(ChatItem::Tool { call_id: String::new(), title, segments: vec![(text, false)], done: true }),
+                        UiDisplayItem::Instructions { ikind, text } => {
+                            if !seen_instr.insert(ikind.clone()) { continue; }
+                            let label = if ikind == "environment_context" { "context".to_string() } else { "instructions".to_string() };
+                            v.push(ChatItem::Collapsible { label, text });
+                        }
+                        UiDisplayItem::Empty => {}
+                    }
+                }
+                items_setter.set(v);
+                chat_title_setter.set(first.title.clone());
+            }
+        });
+    }
     spawn_local(async move {
         let f = fetch_full_status().await;
         full_setter.set(f);

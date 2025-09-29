@@ -77,17 +77,49 @@ fn codex_home() -> PathBuf {
 
 fn tasks_root() -> PathBuf { let mut p = codex_home(); p.push("master-tasks"); p }
 
-fn task_path(id: &str) -> PathBuf { let mut p = tasks_root(); p.push(format!("{}.task.json", id)); p }
+// Workspace-local fallback used by the Tauri command on create failures.
+fn workspace_fallback_tasks_root() -> Option<PathBuf> {
+  let cwd = std::env::current_dir().ok()?;
+  let run_root = if cwd.ends_with("src-tauri") { cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd) } else { cwd };
+  Some(run_root.join(".codex-dev").join("master-tasks"))
+}
+
+fn task_path(id: &str) -> PathBuf {
+  // Prefer existing file under default root; else fallback; else default location for new tasks
+  let mut p_def = tasks_root();
+  p_def.push(format!("{}.task.json", id));
+  if p_def.exists() { return p_def; }
+  if let Some(mut fb) = workspace_fallback_tasks_root() {
+    fb.push(format!("{}.task.json", id));
+    if fb.exists() { return fb; }
+  }
+  p_def
+}
 
 pub fn tasks_list() -> anyhow::Result<Vec<TaskMeta>> {
-  let root = tasks_root();
-  let mut out = Vec::new();
-  if !root.exists() { return Ok(out); }
-  for ent in fs::read_dir(root)? { let ent = ent?; if ent.file_type()?.is_file() {
-      if let Ok(text) = fs::read_to_string(ent.path()) { if let Ok(task) = serde_json::from_str::<Task>(&text) {
-          out.push(TaskMeta { id: task.id.clone(), name: task.name.clone(), status: task.status.clone(), updated_at: task.updated_at });
-      }}
-  }}
+  use std::collections::HashMap;
+  let mut by_id: HashMap<String, TaskMeta> = HashMap::new();
+  // Search default root first, then workspace fallback
+  let mut roots: Vec<PathBuf> = vec![tasks_root()];
+  if let Some(fb) = workspace_fallback_tasks_root() { roots.push(fb); }
+  for root in roots {
+    if !root.exists() { continue; }
+    for ent in fs::read_dir(root)? {
+      let ent = ent?;
+      if ent.file_type()?.is_file() {
+        if let Ok(text) = fs::read_to_string(ent.path()) {
+          if let Ok(task) = serde_json::from_str::<Task>(&text) {
+            let meta = TaskMeta { id: task.id.clone(), name: task.name.clone(), status: task.status.clone(), updated_at: task.updated_at };
+            match by_id.get(&meta.id) {
+              Some(old) if old.updated_at >= meta.updated_at => {}
+              _ => { by_id.insert(meta.id.clone(), meta); }
+            }
+          }
+        }
+      }
+    }
+  }
+  let mut out: Vec<TaskMeta> = by_id.into_values().collect();
   out.sort_by_key(|m| std::cmp::Reverse(m.updated_at));
   Ok(out)
 }
