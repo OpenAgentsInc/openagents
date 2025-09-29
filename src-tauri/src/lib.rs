@@ -1695,7 +1695,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_set_sandbox_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -1721,6 +1721,13 @@ async fn task_update_cmd(task: Task) -> Result<Task, String> { task_update(task)
 
 #[tauri::command]
 async fn task_delete_cmd(id: String) -> Result<(), String> { task_delete(&id).map_err(|e| e.to_string()) }
+
+#[tauri::command]
+async fn task_set_sandbox_cmd(id: String, sandbox: String) -> Result<Task, String> {
+    let mut t = task_get(&id).map_err(|e| e.to_string())?;
+    t.autonomy_budget.sandbox = sandbox;
+    task_update(t).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String> {

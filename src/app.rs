@@ -600,6 +600,34 @@ pub fn App() -> impl IntoView {
                                         <div class="text-sm opacity-90">{format!("{} [{}]", name, status)}</div>
                                         <div class="text-xs opacity-70">{format!("Updated: {}", updated)}</div>
                                     </div>
+                                    <div class="flex items-center gap-3 mt-2 text-xs">
+                                        <div class="opacity-80">"Allow writes"</div>
+                                        {
+                                            let id_toggle = id.clone();
+                                            let sel_task_detail = sel_detail_sig.clone();
+                                            let tasks_setter2 = tasks_setter.clone();
+                                            let is_writable = t.autonomy_budget.sandbox.to_lowercase() != "read-only";
+                                            view!{
+                                                <input type="checkbox" prop:checked=is_writable on:change=move |ev| {
+                                                    let checked = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()).map(|i| i.checked()).unwrap_or(false);
+                                                    let id2 = id_toggle.clone();
+                                                    let sel_task_detail = sel_task_detail.clone();
+                                                    let tasks_setter2 = tasks_setter2.clone();
+                                                    spawn_local(async move {
+                                                        let sandbox = if checked { "danger-full-access" } else { "read-only" };
+                                                        let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2, "sandbox": sandbox })).unwrap_or(JsValue::UNDEFINED);
+                                                        if let Ok(v) = JsFuture::from(tauri_invoke("task_set_sandbox_cmd", args)).await {
+                                                            if let Ok(task) = serde_wasm_bindgen::from_value::<Task>(v) {
+                                                                sel_task_detail.set(Some(task));
+                                                                tasks_setter2.set(tasks_list().await);
+                                                            }
+                                                        }
+                                                    });
+                                                } />
+                                            }
+                                        }
+                                        <div class="opacity-60">{format!("Sandbox: {}", t.autonomy_budget.sandbox)}</div>
+                                    </div>
                                     <div class="flex items-center gap-3 mt-2">
                                         <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
                                             let id_capture = id_run.clone();
