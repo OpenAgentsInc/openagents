@@ -1433,7 +1433,11 @@ fn build_control_prompt(title: &str, inputs: &serde_json::Value, sandbox: &str, 
     }
     let s = sandbox.to_lowercase();
     if s == "read-only" || s == "readonly" || s == "read_only" { prompt.push_str("Constraints: operate in read-only mode; do not modify files.\n"); }
-    prompt.push_str("Notes:\n- Use the provided Inputs and repo cwd; do not ask for 'Subtask 1' spec files.\n- If a path is not explicit, search under cwd and proceed read-only.\n");
+    prompt.push_str("Notes:\n");
+    prompt.push_str("- Use the provided Inputs and repo cwd; do not ask for 'Subtask 1' spec files.\n");
+    prompt.push_str("- If a path is not explicit, search under cwd and proceed read-only.\n");
+    prompt.push_str("- Do NOT ask for confirmation like 'Should I continue?'. Assume approvals are granted (approval_policy=never) and proceed autonomously within budgets.\n");
+    prompt.push_str("- When you outline next steps, immediately start executing them in this same turn or the next; avoid rhetorical questions.\n");
     prompt
 }
 
