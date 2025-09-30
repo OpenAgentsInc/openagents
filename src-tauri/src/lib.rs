@@ -1366,19 +1366,55 @@ fn send_json_line(tx: &UnboundedSender<Vec<u8>>, value: &serde_json::Value) -> a
 pub struct TaskPlanArgs { pub id: String, pub goal: String }
 
 fn fallback_plan_from_goal(goal: &str) -> Vec<Subtask> {
-    let mut out = Vec::new();
-    let sentences: Vec<&str> = goal
-        .split(|c| c == '.' || c == '\n' || c == ';')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
+    // Heuristic splitter that avoids breaking on version numbers and filenames.
+    // Strategy:
+    //  - Prefer explicit separators (newlines, semicolons, cue phrases like "Start by", "Then", "Next", "Finally").
+    //  - Do NOT split on periods — avoids v5.2.1 and file extensions.
+    //  - Strip bullet markers and numbering; drop fragments that are too short or look like leftovers (e.g., just "2").
+    let mut text = goal.replace('\r', "\n");
+    for sep in [";", "\n", " then ", " Then ", " next ", " Next ", " start by ", " Start by ", " finally ", " Finally ", " continue ", " Continue ", " and then ", " And then "] {
+        text = text.replace(sep, "\n");
+    }
+
+    fn clean_line(mut s: &str) -> Option<String> {
+        s = s.trim();
+        if s.is_empty() { return None; }
+        // Strip bullets / numbering
+        if s.starts_with(['-', '*', '•', '–', '—']) { s = s[1..].trim_start(); }
+        // Strip leading numeric like "1.", "2)"
+        let bytes = s.as_bytes();
+        let mut idx = 0usize;
+        while idx < bytes.len() && bytes[idx].is_ascii_digit() { idx += 1; }
+        if idx > 0 && idx < bytes.len() && (bytes[idx] == b'.' || bytes[idx] == b')') {
+            s = s[idx+1..].trim_start();
+        }
+        let s = s.trim();
+        if s.len() < 6 { return None; }
+        let low = s.to_lowercase();
+        let bad_prefixes = ["and ", "or ", "with ", "per ", "e.g", "i.e", "etc", "so on"]; 
+        for p in bad_prefixes {
+            if low.starts_with(p) { return None; }
+        }
+        // Trim trailing punctuation-only
+        let s = s.trim_matches(|c: char| c == ';' || c == ',' || c == ' ');
+        if s.chars().all(|c| c.is_ascii_digit()) { return None; }
+        Some(s.to_string())
+    }
+
+    let mut items: Vec<String> = text
+        .lines()
+        .filter_map(clean_line)
         .collect();
-    for (i, s) in sentences.into_iter().take(10).enumerate() {
-        out.push(Subtask { id: format!("s{:02}", i + 1), title: s.to_string(), status: SubtaskStatus::Pending, inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None, retries: 0 });
-    }
-    if out.is_empty() {
-        out.push(Subtask { id: "s01".into(), title: goal.trim().to_string(), status: SubtaskStatus::Pending, inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None, retries: 0 });
-    }
-    out
+
+    // If we failed to derive multiple steps, keep a single coarse step.
+    if items.is_empty() { items.push(goal.trim().to_string()); }
+
+    // Cap and build subtasks
+    items.truncate(12);
+    items.into_iter().enumerate().map(|(i, title)| Subtask {
+        id: format!("s{:02}", i + 1), title, status: SubtaskStatus::Pending,
+        inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None, retries: 0
+    }).collect()
 }
 
 fn build_control_prompt(title: &str, inputs: &serde_json::Value, sandbox: &str, goal: &str) -> String {
