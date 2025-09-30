@@ -204,6 +204,11 @@ fn read_session_info() -> Option<(WorkspaceStatus, ClientStatus, TokenUsageStatu
                                 sandbox_mode = Some(val.to_string());
                             }
                         }
+                        if cwd.is_none() {
+                            if let Some(val) = parse_between(text, "<cwd>", "</cwd>") {
+                                cwd = Some(val.to_string());
+                            }
+                        }
                     }
                 }
             }
@@ -331,9 +336,9 @@ fn model_status_defaults() -> ModelStatus {
 // client_status removed; version comes from session meta where available.
 
 #[tauri::command]
-async fn get_full_status() -> FullStatus {
+async fn get_full_status(window: tauri::Window) -> FullStatus {
     let auth = get_auth_status().await;
-    let (workspace, client, token_usage) = read_session_info().unwrap_or_else(|| {
+    let (mut workspace, client, token_usage) = read_session_info().unwrap_or_else(|| {
         let cwd = std::env::current_dir().ok().map(|p| p.display().to_string());
         (
             WorkspaceStatus { path: cwd, approval_mode: None, sandbox: None, agents_files: Vec::new() },
@@ -341,6 +346,15 @@ async fn get_full_status() -> FullStatus {
             TokenUsageStatus { session_id: None, input: Some(0), output: Some(0), total: Some(0) },
         )
     });
+    // If we failed to resolve cwd from the session file, fall back to the live override
+    if workspace.path.is_none() {
+        if let Ok(guard) = window.state::<Arc<Mutex<McpState>>>().lock() {
+            if let Some(cwd) = &guard.cwd_override { workspace.path = Some(cwd.clone()); }
+        }
+        if workspace.path.is_none() {
+            workspace.path = std::env::current_dir().ok().map(|p| p.display().to_string());
+        }
+    }
 
     FullStatus {
         workspace,

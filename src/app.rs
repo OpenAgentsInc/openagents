@@ -267,7 +267,7 @@ pub fn App() -> impl IntoView {
                     // Write formatted/filtered logs
                     match &ev {
                         UiStreamEvent::Raw { json } => {
-                            if show_raw.get() {
+                            if show_raw.get_untracked() {
                                 raw_setter.update(|v| v.push(json.clone()));
                             }
                         }
@@ -296,7 +296,7 @@ pub fn App() -> impl IntoView {
                             }
                         }
                         UiStreamEvent::ReasoningDelta { text } => {
-                            if show_deltas.get() {
+                            if show_deltas.get_untracked() {
                                 let mut t = text.clone(); if t.len() > 160 { t.truncate(160); t.push_str("…"); }
                                 compact_setter.update(|v| v.push(format!("reasoning: {}", t)));
                             }
