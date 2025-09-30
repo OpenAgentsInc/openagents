@@ -24,6 +24,7 @@ pub fn complete_subtask(task: Task, i: usize) -> Task {
     // Detailed token/time metrics will be populated by the streaming hook.
     t.metrics.turns = t.metrics.turns.saturating_add(1);
     if next_pending_index(&t).is_none() { t.status = TaskStatus::Completed; }
+    else { t.status = TaskStatus::Planned; }
     t
 }
 
