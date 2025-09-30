@@ -1981,8 +1981,19 @@ async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String>
                 let mut attempt: u32 = 0;
                 let max_retries: u32 = 3;
                 loop {
+            // Wait for any in-flight turn to complete before sending the next one
+            {
+                let mut waited = 0u32;
+                loop {
+                    let inflight = state.lock().map(|g| g.turn_inflight).unwrap_or(false);
+                    if !inflight { break; }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    waited = waited.saturating_add(1);
+                    if waited > 600 { break; } // ~60s max wait
+                }
+            }
             let send_res = if let Ok(mut guard) = state.lock() {
-                if guard.turn_inflight { return Ok(task.clone()); }
+                guard.turn_inflight = false;
                 let prompt = build_control_prompt(&task.queue[i].title, &task.queue[i].inputs, &task.autonomy_budget.sandbox, &task.name);
                 let res = guard.send_user_message(&prompt);
                 if res.is_ok() { guard.turn_inflight = true; }
