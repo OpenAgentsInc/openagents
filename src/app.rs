@@ -569,6 +569,21 @@ pub fn App() -> impl IntoView {
                                     }
                                 }>"Set"</button>
                             </div>
+                            <div class="ml-2 mt-1">
+                                <button class="text-[11px] underline opacity-80 hover:opacity-100" on:click=move |_| {
+                                    if let Some(w) = web_sys::window() {
+                                        if let Ok(Some(path)) = w.prompt_with_message("Workspace path (cwd):") {
+                                            let path = path.trim().to_string();
+                                            if !path.is_empty() {
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "cwd": path })).unwrap_or(JsValue::UNDEFINED);
+                                                    let _ = JsFuture::from(tauri_invoke("set_workspace_cwd_cmd", args)).await;
+                                                });
+                                            }
+                                        }
+                                    }
+                                }>"Change path…"</button>
+                            </div>
                             <div class="ml-2 opacity-90">{move || format!("• Approval Mode: {}", full.get().workspace.approval_mode.clone().unwrap_or_else(|| "(default)".into()))}</div>
                             <div class="ml-2 opacity-90">{move || format!("• Sandbox: {}", full.get().workspace.sandbox.clone().unwrap_or_else(|| "(default)".into()))}</div>
                             <div class="ml-2 opacity-90">{move || {
