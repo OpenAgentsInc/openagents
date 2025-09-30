@@ -1443,6 +1443,34 @@ fn build_control_prompt(title: &str, inputs: &serde_json::Value, sandbox: &str, 
     prompt
 }
 
+fn read_last_assistant_from_rollout(path: &str) -> Option<String> {
+    use std::fs;
+    let text = fs::read_to_string(path).ok()?;
+    let mut last: Option<String> = None;
+    for line in text.lines().rev() {
+        if line.trim().is_empty() { continue; }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        // Support flattened and nested shapes
+        let (t, p) = if let Some(t) = v.get("type").and_then(|s| s.as_str()) {
+            (t, v.get("payload"))
+        } else if let Some(item) = v.get("item") {
+            (item.get("type").and_then(|s| s.as_str()).unwrap_or(""), item.get("payload"))
+        } else { ("", None) };
+        if t == "response_item" {
+            if let Some(p) = p {
+                if p.get("type").and_then(|s| s.as_str()) == Some("message") {
+                    let role = p.get("role").and_then(|s| s.as_str()).unwrap_or("");
+                    if role == "assistant" {
+                        let text = content_vec_to_text(p.get("content").unwrap_or(&serde_json::Value::Null));
+                        if !text.trim().is_empty() { last = Some(text); break; }
+                    }
+                }
+            }
+        }
+    }
+    last
+}
+
 #[tauri::command]
 async fn task_plan_cmd(window: tauri::Window, args: TaskPlanArgs) -> Result<Task, String> {
     // Emit start
@@ -1992,9 +2020,23 @@ async fn task_run_cmd(window: tauri::Window, id: String) -> Result<Task, String>
                     if waited > 600 { break; } // ~60s max wait
                 }
             }
+            // Build prompt with optional context from prior rollout (if any)
+            let mut prompt = build_control_prompt(&task.queue[i].title, &task.queue[i].inputs, &task.autonomy_budget.sandbox, &task.name);
+            if let Some(prev_path) = task.queue.get(i).and_then(|s| s.rollout_path.clone()) {
+                if let Some(ctx) = read_last_assistant_from_rollout(&prev_path) {
+                    let mut c = ctx.trim().to_string();
+                    if c.len() > 2000 { c.truncate(2000); c.push_str("…"); }
+                    let mut with = String::new();
+                    with.push_str("Context (last assistant message):\n");
+                    with.push_str(&c);
+                    with.push_str("\n\n");
+                    with.push_str(&prompt);
+                    prompt = with;
+                }
+            }
+
             let send_res = if let Ok(mut guard) = state.lock() {
                 guard.turn_inflight = false;
-                let prompt = build_control_prompt(&task.queue[i].title, &task.queue[i].inputs, &task.autonomy_budget.sandbox, &task.name);
                 let res = guard.send_user_message(&prompt);
                 if res.is_ok() { guard.turn_inflight = true; }
                 res
