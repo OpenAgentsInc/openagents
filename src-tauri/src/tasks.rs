@@ -85,15 +85,22 @@ fn workspace_fallback_tasks_root() -> Option<PathBuf> {
 }
 
 fn task_path(id: &str) -> PathBuf {
-  // Prefer existing file under default root; else fallback; else default location for new tasks
+  // Choose the newest copy between default root and workspace fallback.
   let mut p_def = tasks_root();
   p_def.push(format!("{}.task.json", id));
-  if p_def.exists() { return p_def; }
+  let mut cand_def: Option<(std::path::PathBuf, std::time::SystemTime)> = None;
+  if let Ok(meta) = std::fs::metadata(&p_def) { if let Ok(m) = meta.modified() { cand_def = Some((p_def.clone(), m)); } }
+  let mut cand_fb: Option<(std::path::PathBuf, std::time::SystemTime)> = None;
   if let Some(mut fb) = workspace_fallback_tasks_root() {
     fb.push(format!("{}.task.json", id));
-    if fb.exists() { return fb; }
+    if let Ok(meta) = std::fs::metadata(&fb) { if let Ok(m) = meta.modified() { cand_fb = Some((fb.clone(), m)); } }
   }
-  p_def
+  match (cand_def, cand_fb) {
+    (Some((p1, t1)), Some((p2, t2))) => if t2 > t1 { p2 } else { p1 },
+    (Some((p, _)), None) => p,
+    (None, Some((p, _))) => p,
+    _ => p_def,
+  }
 }
 
 pub fn tasks_list() -> anyhow::Result<Vec<TaskMeta>> {
