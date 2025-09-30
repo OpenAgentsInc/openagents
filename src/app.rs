@@ -956,6 +956,23 @@ pub fn App() -> impl IntoView {
                                             "Run next"
                                         </button>
                                         <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
+                                            let id_capture = id.clone();
+                                            let name_capture = name.clone();
+                                            let sel_task_detail = sel_detail_sig.clone();
+                                            let tasks_setter = tasks_setter.clone();
+                                            move |_| {
+                                                let id2 = id_capture.clone();
+                                                let goal = name_capture.clone();
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2.clone(), "goal": goal })).unwrap_or(JsValue::UNDEFINED);
+                                                    let _ = JsFuture::from(tauri_invoke("task_plan_cmd", args)).await;
+                                                    if let Some(t) = task_get(&id2).await { sel_task_detail.set(Some(t)); }
+                                                    tasks_setter.set(tasks_list().await);
+                                                });
+                                            }}>
+                                            "Replan"
+                                        </button>
+                                        <button class="text-xs underline text-white/80 hover:text-white cursor-pointer" on:click={
                                             let id_capture = id_pause.clone();
                                             let sel_task_detail = sel_detail_sig.clone();
                                             move |_| {
