@@ -1311,6 +1311,9 @@ impl McpState {
                                 guard.turn_inflight = false;
                             }
                         }
+                        if msg.get("type").and_then(|t| t.as_str()) == Some("turn_aborted") {
+                            if let Ok(mut guard) = shared_state.lock() { guard.turn_inflight = false; }
+                        }
                     }
                     handle_proto_event(&win, &v);
                 }
@@ -1369,6 +1372,12 @@ impl McpState {
         });
         self.send_json(&submission)?;
         Ok(rx)
+    }
+
+    fn interrupt_now(&self) -> anyhow::Result<()> {
+        let id = format!("{}", self.next_request_id());
+        let submission = serde_json::json!({ "id": id, "op": { "type": "interrupt" } });
+        self.send_json(&submission)
     }
 }
 
@@ -1687,6 +1696,10 @@ fn handle_proto_event(win: &tauri::Window, event: &serde_json::Value) {
                 // showing stale text from previous turns. Just mark the turn complete.
                 let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: None });
             }
+            "turn_aborted" => {
+                // User interrupted; mark the turn complete so UI finalizes state.
+                let _ = win.emit("codex:stream", &UiStreamEvent::Completed { response_id: None, token_usage: None });
+            }
             "error" => {
                 if let Some(text) = msg.get("message").and_then(|d| d.as_str()) {
                     let _ = win.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Error: {}", text) });
@@ -1858,7 +1871,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, cancel_proto_cmd, set_workspace_cwd_cmd, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_set_sandbox_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, cancel_proto_cmd, set_workspace_cwd_cmd, interrupt_now_cmd, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_set_sandbox_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -2168,6 +2181,17 @@ async fn cancel_proto_cmd(window: tauri::Window) -> Result<(), String> {
         guard.turn_inflight = false;
     }
     server_log("cancel_proto: killed Codex proto process and cleared state");
+    Ok(())
+}
+
+#[tauri::command]
+async fn interrupt_now_cmd(window: tauri::Window) -> Result<(), String> {
+    let state = window.state::<Arc<Mutex<McpState>>>();
+    if let Ok(guard) = state.lock() {
+        // If there's no child, nothing to interrupt
+        if guard.child.is_none() { return Ok(()); }
+        let _ = guard.interrupt_now();
+    }
     Ok(())
 }
 

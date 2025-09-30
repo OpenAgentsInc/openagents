@@ -727,6 +727,8 @@ pub fn App() -> impl IntoView {
                                                             let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
                                                         }
                                                     }
+                                                    // Interrupt mid-turn once
+                                                    let _ = JsFuture::from(tauri_invoke("interrupt_now_cmd", JsValue::UNDEFINED)).await;
                                                     tasks_setter.set(tasks_list().await);
                                                 });
                                             }>"Pause all"</button>
@@ -961,6 +963,8 @@ pub fn App() -> impl IntoView {
                                                 spawn_local(async move {
                                                     let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
                                                     let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
+                                                    // Interrupt the running turn immediately to pause mid-turn
+                                                    let _ = JsFuture::from(tauri_invoke("interrupt_now_cmd", JsValue::UNDEFINED)).await;
                                                     if let Some(t) = task_get(&id2).await { sel_task_detail.set(Some(t)); }
                                                 });
                                             }}>
