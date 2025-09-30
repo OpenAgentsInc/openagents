@@ -631,6 +631,7 @@ pub fn App() -> impl IntoView {
                                 let tasks_setter = tasks.write_only();
                                 let sel_setter = selected_task.write_only();
                                 let sel_detail = selected_task_detail.write_only();
+                                let session_mode_set = session_mode.write_only();
                                 view!{
                                     <button class="text-xs underline text-white/80 hover:text-white cursor-pointer"
                                             on:click=move |_| {
@@ -639,6 +640,7 @@ pub fn App() -> impl IntoView {
                                                 let sel_detail = sel_detail.clone();
                                                 let items = items.write_only();
                                                 let chat_title_setter = chat_title.write_only();
+                                                let session_mode_set = session_mode_set.clone();
                                                 spawn_local(async move {
                                                     match task_create("New Master Task").await {
                                                         Ok(t) => {
@@ -647,6 +649,12 @@ pub fn App() -> impl IntoView {
                                                             // Clear previous transcript and set title to the new task
                                                             items.set(Vec::new());
                                                             chat_title_setter.set(t.name.clone());
+                                                            // Switch global mode to Task and configure backend
+                                                            session_mode_set.set("Task".into());
+                                                            let _ = JsFuture::from(tauri_invoke(
+                                                                "configure_session_mode",
+                                                                serde_wasm_bindgen::to_value(&serde_json::json!({ "mode": "Task" })).unwrap_or(JsValue::UNDEFINED),
+                                                            )).await;
                                                             // Pause any other running tasks (do not let prior tasks keep running)
                                                             let list = tasks_list().await;
                                                             for m in list.iter() {
@@ -684,6 +692,7 @@ pub fn App() -> impl IntoView {
                             let tasks_ro = tasks.read_only();
                             let sel_setter = selected_task.write_only();
                             let sel_detail = selected_task_detail.write_only();
+                            let session_mode_set = session_mode.write_only();
                             view!{
                                 <div class="max-h-52 overflow-auto border border-zinc-700 bg-black/30">
                                     {move || tasks_ro.get().iter().map(|m| {
@@ -695,9 +704,16 @@ pub fn App() -> impl IntoView {
                                                 let id2 = id.clone();
                                                 let sel_setter = sel_setter.clone();
                                                 let sel_detail = sel_detail.clone();
+                                                let session_mode_set = session_mode_set.clone();
                                                 spawn_local(async move {
                                                     sel_setter.set(Some(id2.clone()));
                                                     sel_detail.set(task_get(&id2).await);
+                                                    // Switch to Task mode when opening a task
+                                                    session_mode_set.set("Task".into());
+                                                    let _ = JsFuture::from(tauri_invoke(
+                                                        "configure_session_mode",
+                                                        serde_wasm_bindgen::to_value(&serde_json::json!({ "mode": "Task" })).unwrap_or(JsValue::UNDEFINED),
+                                                    )).await;
                                                 });
                                             }>
                                             <span class="text-[12px] truncate">{name}</span>
@@ -864,9 +880,16 @@ pub fn App() -> impl IntoView {
                                             let id_capture = id_run.clone();
                                             let sel_task_detail = sel_detail_sig.clone();
                                             let tasks_setter = tasks_setter.clone();
+                                            let session_mode_set = session_mode.write_only();
                                             move |_| {
                                                 let id2 = id_capture.clone();
                                                 spawn_local(async move {
+                                                    // Ensure Task mode for running
+                                                    session_mode_set.set("Task".into());
+                                                    let _ = JsFuture::from(tauri_invoke(
+                                                        "configure_session_mode",
+                                                        serde_wasm_bindgen::to_value(&serde_json::json!({ "mode": "Task" })).unwrap_or(JsValue::UNDEFINED),
+                                                    )).await;
                                                     let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id2 })).unwrap_or(JsValue::UNDEFINED);
                                                     if let Ok(v) = JsFuture::from(tauri_invoke("task_run_cmd", args)).await {
                                                         if let Ok(task) = serde_wasm_bindgen::from_value::<Task>(v) {
