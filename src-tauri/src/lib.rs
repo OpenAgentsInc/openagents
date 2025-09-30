@@ -1396,13 +1396,22 @@ fn fallback_plan_from_goal(goal: &str) -> Vec<Subtask> {
         let s = s.trim();
         if s.len() < 6 { return None; }
         let low = s.to_lowercase();
-        let bad_prefixes = ["and ", "or ", "with ", "per ", "e.g", "i.e", "etc", "so on"]; 
+        // Drop meta/fragments
+        let bad_prefixes = ["and ", "or ", "with ", "per ", "e.g", "i.e", "etc", "so on", "we started", "there are ", "that process", "this process"]; 
         for p in bad_prefixes {
             if low.starts_with(p) { return None; }
         }
         // Trim trailing punctuation-only
         let s = s.trim_matches(|c: char| c == ';' || c == ',' || c == ' ');
         if s.chars().all(|c| c.is_ascii_digit()) { return None; }
+        // Keep lines that look like imperative step titles (heuristic)
+        let good_verbs = [
+            "convert", "extract", "split", "organize", "update", "read", "scan",
+            "create", "generate", "normalize", "scaffold", "refactor", "summarize",
+            "plan", "rename", "move", "index", "write", "build"
+        ];
+        let is_verbish = good_verbs.iter().any(|v| low.starts_with(v));
+        if !is_verbish && s.len() < 16 { return None; }
         Some(s.to_string())
     }
 
@@ -1420,6 +1429,28 @@ fn fallback_plan_from_goal(goal: &str) -> Vec<Subtask> {
         id: format!("s{:02}", i + 1), title, status: SubtaskStatus::Pending,
         inputs: serde_json::json!({}), session_id: None, rollout_path: None, last_error: None, retries: 0
     }).collect()
+}
+
+fn parse_jsonish_steps(text: &str) -> Vec<Subtask> {
+    // Try to extract a JSON array even if wrapped in code fences or surrounded by text.
+    let mut payload = text.trim();
+    if let Some(start) = payload.find("```") {
+        if let Some(end) = payload[start+3..].find("```") { payload = &payload[start+3..start+3+end]; }
+    }
+    let start_idx = payload.find('[').unwrap_or(0);
+    let end_idx = payload.rfind(']').unwrap_or(payload.len());
+    let slice = &payload[start_idx..end_idx.min(payload.len())];
+    let mut out: Vec<Subtask> = Vec::new();
+    if let Ok(serde_json::Value::Array(arr)) = serde_json::from_str::<serde_json::Value>(slice) {
+        for (i, item) in arr.iter().enumerate() {
+            let title = item.get("title").and_then(|s| s.as_str()).unwrap_or("").trim();
+            if title.is_empty() { continue; }
+            let id = item.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("s{:02}", i+1));
+            let inputs = item.get("inputs").cloned().unwrap_or(serde_json::json!({}));
+            out.push(Subtask { id, title: title.to_string(), status: SubtaskStatus::Pending, inputs, session_id: None, rollout_path: None, last_error: None, retries: 0 });
+        }
+    }
+    out
 }
 
 fn build_control_prompt(title: &str, inputs: &serde_json::Value, sandbox: &str, goal: &str) -> String {
@@ -1490,19 +1521,9 @@ async fn task_plan_cmd(window: tauri::Window, args: TaskPlanArgs) -> Result<Task
     let mut planned: Vec<Subtask> = Vec::new();
     match tokio::time::timeout(std::time::Duration::from_secs(25), rx).await {
         Ok(Ok(text)) => {
-            // Try to parse JSON
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(arr) = v.as_array() {
-                    for (i, item) in arr.iter().enumerate() {
-                        let title = item.get("title").and_then(|s| s.as_str()).unwrap_or("").to_string();
-                        let id = item.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("s{:02}", i+1));
-                        let inputs = item.get("inputs").cloned().unwrap_or(serde_json::json!({}));
-                        if !title.trim().is_empty() {
-                            planned.push(Subtask { id, title, status: SubtaskStatus::Pending, inputs, session_id: None, rollout_path: None, last_error: None, retries: 0 });
-                        }
-                    }
-                }
-            }
+            // Try to parse JSON or a JSON‑ish fenced block
+            let mut from_jsonish = parse_jsonish_steps(&text);
+            planned.append(&mut from_jsonish);
             if planned.is_empty() { planned = fallback_plan_from_goal(&args.goal); }
         }
         _ => { planned = fallback_plan_from_goal(&args.goal); }
