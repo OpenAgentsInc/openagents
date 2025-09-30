@@ -1116,11 +1116,13 @@ struct McpState {
     history_persistence: String,
     user_instructions_override: Option<String>,
     turn_inflight: bool,
+    /// Optional workspace cwd override for Codex/tools
+    cwd_override: Option<String>,
 }
 
 impl Default for McpState {
     fn default() -> Self {
-        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save-all".to_string(), user_instructions_override: None, turn_inflight: false }
+        Self { child: None, stdout: None, next_id: AtomicU64::new(1), conversation_id: None, last_rollout_path: None, tx: None, config_reasoning_effort: "high".to_string(), summarize_wait: HashMap::new(), summarize_buf: HashMap::new(), last_token_usage: None, last_event_at: None, history_persistence: "save-all".to_string(), user_instructions_override: None, turn_inflight: false, cwd_override: None }
     }
 }
 
@@ -1128,7 +1130,8 @@ impl McpState {
     fn start(&mut self, window: &tauri::Window, shared: Arc<Mutex<McpState>>) -> anyhow::Result<()> {
         // Prefer running from codex-rs workspace; run Protocol stream (codex proto).
         let cwd = std::env::current_dir()?;
-        let run_root = if cwd.ends_with("src-tauri") { cwd.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| cwd.clone()) } else { cwd.clone() };
+        let mut run_root = if cwd.ends_with("src-tauri") { cwd.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| cwd.clone()) } else { cwd.clone() };
+        if let Some(ov) = &self.cwd_override { if !ov.is_empty() { run_root = std::path::PathBuf::from(ov); } }
         let codex_dir = run_root.join("codex-rs");
         let mut cmd;
         if codex_dir.join("Cargo.toml").exists() {
@@ -1786,7 +1789,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, cancel_proto_cmd, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_set_sandbox_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, cancel_proto_cmd, set_workspace_cwd_cmd, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_set_sandbox_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -2071,6 +2074,25 @@ async fn cancel_proto_cmd(window: tauri::Window) -> Result<(), String> {
         guard.turn_inflight = false;
     }
     server_log("cancel_proto: killed Codex proto process and cleared state");
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_workspace_cwd_cmd(window: tauri::Window, cwd: String) -> Result<(), String> {
+    use std::path::PathBuf;
+    let path = PathBuf::from(cwd);
+    let canon = path.canonicalize().map_err(|e| format!("invalid path: {}", e))?;
+    if !canon.is_dir() { return Err("path is not a directory".into()); }
+    let state = window.state::<Arc<Mutex<McpState>>>();
+    let shared = { state.inner().clone() };
+    {
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        guard.cwd_override = Some(canon.display().to_string());
+        // Restart proto so new cwd takes effect
+        if let Some(mut child) = guard.child.take() { let _ = child.kill(); }
+        guard.start(&window, shared.clone()).map_err(|e| format!("restart proto: {e}"))?;
+    }
+    server_log("workspace cwd updated and proto restarted");
     Ok(())
 }
 #[tauri::command]

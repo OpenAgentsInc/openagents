@@ -553,7 +553,22 @@ pub fn App() -> impl IntoView {
                     view! {
                         <div class="mb-2 max-h-112 overflow-auto border border-white/20 bg-black/30 p-2 text-[12px] leading-5">
                             <div class="font-semibold mb-1 opacity-95">"📂 Workspace"</div>
-                            <div class="ml-2 opacity-90">{move || format!("• Path: {}", full.get().workspace.path.clone().unwrap_or_else(|| "(unknown)".into()))}</div>
+                            <div class="ml-2 opacity-90 flex items-center gap-2">
+                                <div>{move || format!("• Path: {}", full.get().workspace.path.clone().unwrap_or_else(|| "(unknown)".into()))}</div>
+                                <button class="text-[11px] underline opacity-80 hover:opacity-100" on:click=move |_| {
+                                    if let Some(w) = web_sys::window() {
+                                        if let Ok(Some(path)) = w.prompt_with_message("Set workspace path (cwd) for Codex/tools:") {
+                                            let path = path.trim().to_string();
+                                            if !path.is_empty() {
+                                                spawn_local(async move {
+                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "cwd": path })).unwrap_or(JsValue::UNDEFINED);
+                                                    let _ = JsFuture::from(tauri_invoke("set_workspace_cwd_cmd", args)).await;
+                                                });
+                                            }
+                                        }
+                                    }
+                                }>"Set"</button>
+                            </div>
                             <div class="ml-2 opacity-90">{move || format!("• Approval Mode: {}", full.get().workspace.approval_mode.clone().unwrap_or_else(|| "(default)".into()))}</div>
                             <div class="ml-2 opacity-90">{move || format!("• Sandbox: {}", full.get().workspace.sandbox.clone().unwrap_or_else(|| "(default)".into()))}</div>
                             <div class="ml-2 opacity-90">{move || {
