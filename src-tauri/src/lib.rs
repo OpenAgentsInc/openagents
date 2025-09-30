@@ -2160,9 +2160,18 @@ async fn cancel_proto_cmd(window: tauri::Window) -> Result<(), String> {
 #[tauri::command]
 async fn set_workspace_cwd_cmd(window: tauri::Window, cwd: String) -> Result<(), String> {
     use std::path::PathBuf;
-    let path = PathBuf::from(cwd);
-    let canon = path.canonicalize().map_err(|e| format!("invalid path: {}", e))?;
-    if !canon.is_dir() { return Err("path is not a directory".into()); }
+    let path = PathBuf::from(&cwd);
+    // Be forgiving: if canonicalize fails, try raw path; validate directory exists
+    let canon = path.canonicalize().unwrap_or(path.clone());
+    match std::fs::metadata(&canon) {
+        Ok(meta) if meta.is_dir() => {}
+        _ => {
+            let msg = format!("Workspace path is not a directory: {}", canon.display());
+            server_log(&format!("set_workspace_cwd_cmd: {}", msg));
+            let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: msg.clone() });
+            return Err(msg);
+        }
+    }
     let state = window.state::<Arc<Mutex<McpState>>>();
     let shared = { state.inner().clone() };
     {
@@ -2172,7 +2181,8 @@ async fn set_workspace_cwd_cmd(window: tauri::Window, cwd: String) -> Result<(),
         if let Some(mut child) = guard.child.take() { let _ = child.kill(); }
         guard.start(&window, shared.clone()).map_err(|e| format!("restart proto: {e}"))?;
     }
-    server_log("workspace cwd updated and proto restarted");
+    server_log(&format!("workspace cwd updated and proto restarted -> {}", canon.display()));
+    let _ = window.emit("codex:stream", &UiStreamEvent::SystemNote { text: format!("Workspace path set: {}", canon.display()) });
     Ok(())
 }
 #[tauri::command]
