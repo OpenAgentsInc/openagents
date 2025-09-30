@@ -1750,7 +1750,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_set_sandbox_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
+        .invoke_handler(tauri::generate_handler![greet, get_auth_status, get_full_status, submit_chat, list_recent_chats, load_chat, set_reasoning_effort, generate_titles_for_all, new_chat_session, configure_session_mode, cancel_proto_cmd, tasks_list_cmd, task_create_cmd, task_get_cmd, task_update_cmd, task_delete_cmd, task_set_sandbox_cmd, task_plan_cmd, task_run_cmd, task_pause_cmd, task_cancel_cmd])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -2022,6 +2022,20 @@ async fn task_cancel_cmd(window: tauri::Window, id: String) -> Result<Task, Stri
     let task = task_update(task).map_err(|e| e.to_string())?;
     let _ = window.emit("codex:stream", &UiStreamEvent::TaskUpdate { task_id: id, status: "canceled".into(), message: None });
     Ok(task)
+}
+
+#[tauri::command]
+async fn cancel_proto_cmd(window: tauri::Window) -> Result<(), String> {
+    let state = window.state::<Arc<Mutex<McpState>>>();
+    if let Ok(mut guard) = state.lock() {
+        if let Some(mut child) = guard.child.take() { let _ = child.kill(); }
+        guard.stdout = None;
+        guard.tx = None;
+        guard.conversation_id = None;
+        guard.turn_inflight = false;
+    }
+    server_log("cancel_proto: killed Codex proto process and cleared state");
+    Ok(())
 }
 #[tauri::command]
 async fn configure_session_mode(window: tauri::Window, mode: String) -> Result<(), String> {
