@@ -1293,6 +1293,8 @@ impl McpState {
                             let output = msg.get("usage").and_then(|u| u.get("output_tokens")).and_then(|x| x.as_u64()).unwrap_or(0);
                             if let Ok(mut guard) = shared_state.lock() {
                                 guard.last_token_usage = Some(TokenUsageLite { input, output, total: input + output });
+                                // Treat token_count as end-of-turn signal; allow orchestrator to send next turn
+                                guard.turn_inflight = false;
                             }
                         }
                     }
