@@ -553,37 +553,52 @@ pub fn App() -> impl IntoView {
                     view! {
                         <div class="mb-2 max-h-112 overflow-auto border border-white/20 bg-black/30 p-2 text-[12px] leading-5">
                             <div class="font-semibold mb-1 opacity-95">"📂 Workspace"</div>
-                            <div class="ml-2 opacity-90 flex items-center gap-2">
-                                <div>{move || format!("• Path: {}", full.get().workspace.path.clone().unwrap_or_else(|| "(unknown)".into()))}</div>
-                                <button class="text-[11px] underline opacity-80 hover:opacity-100" on:click=move |_| {
-                                    if let Some(w) = web_sys::window() {
-                                        if let Ok(Some(path)) = w.prompt_with_message("Set workspace path (cwd) for Codex/tools:") {
-                                            let path = path.trim().to_string();
-                                            if !path.is_empty() {
-                                                spawn_local(async move {
-                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "cwd": path })).unwrap_or(JsValue::UNDEFINED);
-                                                    let _ = JsFuture::from(tauri_invoke("set_workspace_cwd_cmd", args)).await;
-                                                });
-                                            }
-                                        }
-                                    }
-                                }>"Set"</button>
-                            </div>
-                            <div class="ml-2 mt-1">
-                                <button class="text-[11px] underline opacity-80 hover:opacity-100" on:click=move |_| {
-                                    if let Some(w) = web_sys::window() {
-                                        if let Ok(Some(path)) = w.prompt_with_message("Workspace path (cwd):") {
-                                            let path = path.trim().to_string();
-                                            if !path.is_empty() {
-                                                spawn_local(async move {
-                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "cwd": path })).unwrap_or(JsValue::UNDEFINED);
-                                                    let _ = JsFuture::from(tauri_invoke("set_workspace_cwd_cmd", args)).await;
-                                                });
-                                            }
-                                        }
-                                    }
-                                }>"Change path…"</button>
-                            </div>
+                            { // Workspace path display + inline editor
+                                let editing = RwSignal::new(false);
+                                let cwd_input = RwSignal::new(String::new());
+                                let full_setter2 = full_setter.clone();
+                                view!{
+                                    <div class="ml-2 opacity-90">
+                                        <div class="flex items-center gap-2">
+                                            <div>{move || format!("• Path: {}", full.get().workspace.path.clone().unwrap_or_else(|| "(unknown)".into()))}</div>
+                                            <button class="text-[11px] underline opacity-80 hover:opacity-100" on:click=move |_| {
+                                                // Toggle inline editor and prefill with current path
+                                                let cur = full.get().workspace.path.clone().unwrap_or_default();
+                                                cwd_input.set(cur);
+                                                editing.update(|e| *e = !*e);
+                                            }>"Change path…"</button>
+                                        </div>
+                                        {move || if editing.get() {
+                                            let cwd_input_ro = cwd_input.read_only();
+                                            let cwd_input_set = cwd_input.write_only();
+                                            let editing_set = editing.write_only();
+                                            let full_setter3 = full_setter2.clone();
+                                            view!{ <div class="mt-1 flex items-center gap-2">
+                                                <input class="text-[12px] bg-black border border-white/30 px-2 py-1 w-full"
+                                                       prop:value=move || cwd_input_ro.get()
+                                                       on:input=move |ev| {
+                                                           if let Some(i) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) {
+                                                               cwd_input_set.set(i.value());
+                                                           }
+                                                       } />
+                                                <button class="text-[11px] underline opacity-80 hover:opacity-100" on:click=move |_| {
+                                                    let path = cwd_input_ro.get();
+                                                    if path.trim().is_empty() { return; }
+                                                    let full_setter4 = full_setter3.clone();
+                                                    let editing_set2 = editing_set.clone();
+                                                    spawn_local(async move {
+                                                        let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "cwd": path })).unwrap_or(JsValue::UNDEFINED);
+                                                        let _ = JsFuture::from(tauri_invoke("set_workspace_cwd_cmd", args)).await;
+                                                        // Refresh status and hide editor
+                                                        full_setter4.set(fetch_full_status().await);
+                                                        editing_set2.set(false);
+                                                    });
+                                                }>"Apply"</button>
+                                            </div> }.into_any()
+                                        } else { view!{ <div></div> }.into_any() }}
+                                    </div>
+                                }
+                            }
                             <div class="ml-2 opacity-90">{move || format!("• Approval Mode: {}", full.get().workspace.approval_mode.clone().unwrap_or_else(|| "(default)".into()))}</div>
                             <div class="ml-2 opacity-90">{move || format!("• Sandbox: {}", full.get().workspace.sandbox.clone().unwrap_or_else(|| "(default)".into()))}</div>
                             <div class="ml-2 opacity-90">{move || {
