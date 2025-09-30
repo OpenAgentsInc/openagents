@@ -647,6 +647,14 @@ pub fn App() -> impl IntoView {
                                                             // Clear previous transcript and set title to the new task
                                                             items.set(Vec::new());
                                                             chat_title_setter.set(t.name.clone());
+                                                            // Pause any other running tasks (do not let prior tasks keep running)
+                                                            let list = tasks_list().await;
+                                                            for m in list.iter() {
+                                                                if m.status.to_lowercase() == "running" && m.id != t.id {
+                                                                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": m.id })).unwrap_or(JsValue::UNDEFINED);
+                                                                    let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
+                                                                }
+                                                            }
                                                             tasks_setter.set(tasks_list().await);
                                                         }
                                                         Err(err) => {
@@ -655,6 +663,20 @@ pub fn App() -> impl IntoView {
                                                     }
                                                 });
                                             }>"New task"</button>
+                                    <button class="text-xs underline text-white/60 hover:text-white/90 cursor-pointer ml-3"
+                                            on:click=move |_| {
+                                                let tasks_setter = tasks.write_only();
+                                                spawn_local(async move {
+                                                    let list = tasks_list().await;
+                                                    for m in list.iter() {
+                                                        if m.status.to_lowercase() == "running" {
+                                                            let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": m.id })).unwrap_or(JsValue::UNDEFINED);
+                                                            let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
+                                                        }
+                                                    }
+                                                    tasks_setter.set(tasks_list().await);
+                                                });
+                                            }>"Pause all"</button>
                                 }
                             }
                         </div>
@@ -1044,6 +1066,14 @@ pub fn App() -> impl IntoView {
                                                 // Clear previous transcript and set title to the new task name
                                                 items2.set(Vec::new());
                                                 chat_title.set(format!("Quick: {}", goal));
+                                                // Pause any other running tasks before starting
+                                                let list = tasks_list().await;
+                                                for m in list.iter() {
+                                                    if m.status.to_lowercase() == "running" && m.id != id {
+                                                        let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": m.id })).unwrap_or(JsValue::UNDEFINED);
+                                                        let _ = JsFuture::from(tauri_invoke("task_pause_cmd", args)).await;
+                                                    }
+                                                }
                                                 // Plan subtasks from goal
                                                 let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "id": id.clone(), "goal": goal })).unwrap_or(JsValue::UNDEFINED);
                                                 let _ = JsFuture::from(tauri_invoke("task_plan_cmd", args)).await;
