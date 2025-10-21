@@ -1,3 +1,9 @@
-# OpenAgents
+# OpenAgents: Project Tricoder
 
-wip
+A cross-platform command center for your coding agents.
+
+## Tech stack
+
+- React Native Expo
+- TypeScript
+- Rust
