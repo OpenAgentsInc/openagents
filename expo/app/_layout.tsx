@@ -13,14 +13,7 @@ export default function RootLayout() {
     <ThemeProvider value={NavigationTheme}>
       <StatusBar style="light" />
       <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background } }}>
-        <Stack.Screen
-          name="index"
-          options={{
-            title: 'Home',
-            headerTitleStyle: { fontFamily: Typography.bold },
-            headerBackVisible: false,
-          }}
-        />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
   );
