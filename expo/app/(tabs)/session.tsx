@@ -260,7 +260,7 @@ Important policy overrides:
               if (isReason) {
                 const full = e.text.slice('::reason::'.length)
                 return (
-                  <View key={e.id} style={{ paddingLeft: indent }}>
+                  <View key={e.id} style={{ paddingLeft: indent, marginTop: 8 }}>
                     <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, full)}>
                       <ReasoningHeadline text={full} />
                       {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
