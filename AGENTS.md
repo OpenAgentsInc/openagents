@@ -34,6 +34,16 @@
 - Do not hand-pin versions in `package.json`. Let the installer choose compatible versions and commit the updated `bun.lock`.
 - If Expo warns about mismatches, run: `cd expo && bunx expo install` to align to expected versions.
 
+## OTA Updates (iOS)
+- EAS Update is configured with channel `v0.1.0` (see `expo/eas.json`). Runtime version comes from remote app version.
+- Scripts (see `expo/package.json`):
+  - `update:ios`: `eas update --channel v0.1.0 --environment production --platform ios --message`
+  - `update:android`: same for Android; `update:both`: both platforms.
+- To publish an iOS OTA update:
+  - `cd expo && bun run update:ios -- "<short message>"`
+  - Keep messages concise (what changed). Assets are deduped; make sure fonts/images are committed.
+- When bumping native runtime (breaking changes), increment the app version in `expo/app.json` and coordinate store builds; otherwise OTA won’t apply across runtimes.
+
 ## Testing Guidelines
 - Currently no test suite. When adding tests:
   - Frameworks: Jest + `@testing-library/react-native`.
