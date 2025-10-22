@@ -12,7 +12,7 @@ Coding agent CLIs like Codex are good enough to handle most day-to-day coding su
 
 The only reason we're still glued to our computers most the time is because there's no good way to code on your phone.
 
-Remote terminals are not good enough. The labs' bolted-on "Code" are underpowered afterthoughts.
+Remote terminals are not good enough. The labs' bolted-on "Code" features are underpowered afterthoughts.
 
 We want unrestricted Codex running async, keeping us just updated enough to nudge them along when needed.
 
