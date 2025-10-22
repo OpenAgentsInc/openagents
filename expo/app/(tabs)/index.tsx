@@ -51,7 +51,8 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
         if (!trimmed) continue
         const parsed = parseCodexLine(trimmed)
         if (parsed.kind === 'delta') {
-          append(parsed.summary, false)
+          // Delta summaries should be deemphasized like raw data
+          append(parsed.summary, true)
         } else if (parsed.kind === 'md') {
           // Render markdown-only message for agent_message
           append(`::md::${parsed.markdown}`, false)
