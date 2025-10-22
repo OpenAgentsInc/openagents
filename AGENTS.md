@@ -1,5 +1,47 @@
 # Repository Guidelines
 
+## Codebase Summary
+- Purpose: mobile command center for coding agents. Expo app drives agent sessions over a local WebSocket bridge to the OpenAI Codex CLI; Rust service spawns/streams the CLI; docs capture JSONL schema and operational notes.
+- Architecture: two layers
+  - App (`expo/`): Expo Router tabs — Session (live feed + input), History (persisted entries), Library (UI component samples), Settings (bridge URL + permissions). Parses Codex JSONL into typed UI rows and cards.
+  - Bridge (`crates/codex-bridge/`): Axum WebSocket server on `--bind` (default `0.0.0.0:8787`) that launches `codex exec --json` (auto‑adds `resume --last` when supported) and forwards stdout/stderr lines to all clients; each prompt is written to the child’s stdin then closed to signal EOF.
+- Key App Modules:
+  - Routing: `expo/app/` with group `expo/app/(tabs)/` and message detail at `expo/app/message/[id].tsx`.
+  - Session UI: `expo/app/(tabs)/session.tsx` renders a streaming feed. Incoming lines are parsed by `expo/lib/codex-events.ts` into kinds like `md`, `reason`, `exec_begin`, `file_change`, `web_search`, `mcp_call`, `todo_list`, `cmd_item`, `err`, `turn`, `thread`, `item_lifecycle`.
+  - Components: JSONL renderers in `expo/components/jsonl/*` (e.g., `MarkdownBlock`, `ReasoningHeadline`, `ExecBeginRow`, `FileChangeCard`, `CommandExecutionCard`). A `HapticTab` adds iOS haptics for the tab bar.
+  - State & storage: lightweight log store in `expo/lib/log-store.ts` (AsyncStorage backed) powers History and Message detail views.
+  - Connection/permissions: `expo/providers/ws.tsx` manages the WebSocket connection, exposes `readOnly`, `networkEnabled`, `approvals`, and `attachPreface` toggles (persisted). The header shows a green/red dot for connection.
+  - Theming/typography: Dark theme in `expo/constants/theme.ts`; global mono font + defaults via `expo/constants/typography.ts` (Berkeley Mono; splash hidden after fonts load).
+  - OTA: `expo/hooks/use-auto-update.ts` checks for `expo-updates` when not in dev; EAS configured for channel `v0.1.0` with runtimeVersion `appVersion` in `expo/app.json` and `expo/eas.json`.
+- Bridge Details:
+  - Entry: `crates/codex-bridge/src/main.rs`. Dependencies: `axum` (ws), `tokio`, `clap`, `tracing`.
+  - CLI flags injected (unless provided): `--dangerously-bypass-approvals-and-sandbox`, `-s danger-full-access`, and config `sandbox_permissions=["disk-full-access"]`, `sandbox_mode="danger-full-access"`, `approval_policy="never"`, plus `-m gpt-5` and `-c model_reasoning_effort="high"`.
+  - Resilience: if stdin is consumed after one prompt, the bridge respawns the child process for the next message. Large `exec_command_output_delta` payloads are summarized for console logs.
+  - Repo root detection: runs Codex from the repository root (heuristic checks for both `expo/` and `crates/`).
+- Docs:
+  - JSONL schema and mappings: `docs/exec-jsonl-schema.md`.
+  - Resume behavior: `docs/exec-resume-json.md`.
+  - Permissions model and recommended setups: `docs/permissions.md`.
+- Tooling & Scripts:
+  - Expo scripts in `expo/package.json` (start, platform targets, typecheck, lint, EAS build/submit/update).
+  - `expo/scripts/copy-sources-to-clipboard.js`: copies key sources (Expo and Rust bridge) to clipboard for sharing/debugging.
+- Repository Layout:
+  - `expo/`: app sources, assets, config (`app.json`, `eas.json`, `eslint.config.js`).
+  - `crates/codex-bridge/`: Rust WebSocket bridge crate.
+  - `docs/`: developer docs and logs.
+  - Root `Cargo.toml` and `Cargo.lock`: Cargo workspace anchor (lockfile at root by design).
+- Development Flow:
+  - App: `cd expo && bun install && bun run start` (then `bun run ios|android|web`). Type‑check with `bun run typecheck`; lint with `bun run lint`.
+  - Bridge: from repo root `cargo run -p codex-bridge -- --bind 0.0.0.0:8787`. App default WS URL is `ws://localhost:8787/ws` (configurable in Settings).
+  - Agent prompts: Session screen optionally prefixes a one‑line JSON config indicating sandbox/approvals to match the bridge.
+- Conventions & Policies (highlights):
+  - TypeScript strict, 2‑space indent, imports grouped React/external → internal. Expo Router filename conventions.
+  - Expo installs: use `bunx expo install` for RN/Expo packages; `bun add` for generic libs. Don’t pin versions manually; commit `bun.lock`.
+  - OTA iOS default: prefer `bun run update:ios -- "<msg>"` unless Android explicitly requested.
+  - Rust deps: add via `cargo add` without versions; let Cargo lock at root.
+  - Security: no secrets; iOS bundle id `com.openagents.app`.
+  - Gotchas: shell quoting for paths with parentheses like `expo/app/(tabs)/...` when scripting.
+
 ## Project Structure & Module Organization
 - Mobile app: `expo/` (Expo Router in `expo/app/`, assets in `expo/assets/`).
 - Rust (planned): `crates/` (e.g., `crates/codex-bridge/`; workspace config will be added as crates mature).
