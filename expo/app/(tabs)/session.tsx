@@ -8,6 +8,9 @@ import { parseCodexLine } from '@/lib/codex-events'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
+import { FileChangeCard } from '@/components/jsonl/FileChangeCard'
+import { WebSearchRow } from '@/components/jsonl/WebSearchRow'
+import { McpToolCallRow } from '@/components/jsonl/McpToolCallRow'
 import { useWs } from '@/providers/ws'
 import { useHeaderHeight } from '@react-navigation/elements'
 import { putLog, loadLogs, saveLogs, clearLogs as clearLogsStore } from '@/lib/log-store'
@@ -35,7 +38,7 @@ export default function SessionScreen() {
     rafRef.current = requestAnimationFrame(() => { lastHeightRef.current = clamped; setInputHeight(clamped) })
   }, [])
 
-  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'; deemphasize?: boolean; detailId?: number }
+  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
@@ -44,7 +47,7 @@ export default function SessionScreen() {
   const append = (
     text: string,
     deemphasize?: boolean,
-    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec' = 'text',
+    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp' = 'text',
     detailRaw?: string,
   ) => {
     let detailId: number | undefined = undefined
@@ -101,6 +104,18 @@ Important policy overrides:
         else if (parsed.kind === 'exec_begin') {
           const payload = JSON.stringify({ command: parsed.command, cwd: parsed.cwd, parsed: parsed.parsed })
           append(payload, false, 'exec', trimmed)
+        }
+        else if (parsed.kind === 'file_change') {
+          const payload = JSON.stringify({ status: parsed.status, changes: parsed.changes })
+          append(payload, false, 'file', trimmed)
+        }
+        else if (parsed.kind === 'web_search') {
+          const payload = JSON.stringify({ query: parsed.query })
+          append(payload, false, 'search', trimmed)
+        }
+        else if (parsed.kind === 'mcp_call') {
+          const payload = JSON.stringify({ server: parsed.server, tool: parsed.tool, status: parsed.status })
+          append(payload, false, 'mcp', trimmed)
         }
         else if (parsed.kind === 'summary') append(parsed.text, true, 'summary', trimmed)
         else if (parsed.kind === 'json') append(parsed.raw, true, 'json')
@@ -169,6 +184,36 @@ Important policy overrides:
                   return (
                     <Pressable key={e.id} onPress={onPressOpen}>
                       <ExecBeginRow payload={obj} />
+                    </Pressable>
+                  )
+                } catch {}
+              }
+              if (e.kind === 'file') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <Pressable key={e.id} onPress={onPressOpen}>
+                      <FileChangeCard changes={obj.changes ?? []} status={obj.status} />
+                    </Pressable>
+                  )
+                } catch {}
+              }
+              if (e.kind === 'search') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <Pressable key={e.id} onPress={onPressOpen}>
+                      <WebSearchRow query={obj.query ?? ''} />
+                    </Pressable>
+                  )
+                } catch {}
+              }
+              if (e.kind === 'mcp') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <Pressable key={e.id} onPress={onPressOpen}>
+                      <McpToolCallRow server={obj.server ?? ''} tool={obj.tool ?? ''} status={obj.status} />
                     </Pressable>
                   )
                 } catch {}
