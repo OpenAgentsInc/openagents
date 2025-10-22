@@ -9,6 +9,7 @@ import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
 import { FileChangeCard } from '@/components/jsonl/FileChangeCard'
 import { WebSearchRow } from '@/components/jsonl/WebSearchRow'
 import { McpToolCallRow } from '@/components/jsonl/McpToolCallRow'
+import { TodoListCard } from '@/components/jsonl/TodoListCard'
 
 export default function ComponentLibraryScreen() {
   const samples = {
@@ -18,6 +19,11 @@ export default function ComponentLibraryScreen() {
     file_change: { status: 'completed', changes: [{ path: 'src/main.rs', kind: 'update' }, { path: 'README.md', kind: 'add' }] } as const,
     web_search: { query: 'expo updates runtimeVersion' } as const,
     mcp_call: { server: 'search', tool: 'web.search', status: 'completed' } as const,
+    todo_list: { status: 'updated', items: [
+      { text: 'Scan repo structure', completed: true },
+      { text: 'List important files', completed: true },
+      { text: 'Summarize key configs', completed: false },
+    ] } as const,
   }
 
   return (
@@ -60,6 +66,11 @@ export default function ComponentLibraryScreen() {
       <View style={{ gap: 8 }}>
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>mcp_tool_call</Text>
         <McpToolCallRow server={samples.mcp_call.server} tool={samples.mcp_call.tool} status={samples.mcp_call.status} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>todo_list</Text>
+        <TodoListCard items={samples.todo_list.items} status={samples.todo_list.status} />
       </View>
     </ScrollView>
   )
