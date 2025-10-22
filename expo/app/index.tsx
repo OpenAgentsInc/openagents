@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Platform,
   ScrollView,
@@ -6,9 +6,39 @@ import {
   TextInput,
   View,
   Pressable,
+  SafeAreaView,
 } from "react-native";
+import { Stack } from "expo-router";
 
 export default function Index() {
+  const isDark = true; // keep it sleek; could wire to useColorScheme()
+  const c = useMemo(
+    () =>
+      isDark
+        ? {
+            bg: "#0B0B0F",
+            text: "#E5E7EB",
+            sub: "#9CA3AF",
+            card: "#111318",
+            input: "#0F1217",
+            border: "#272C35",
+            primary: "#3B82F6",
+            primaryText: "#FFFFFF",
+            success: "#22C55E",
+          }
+        : {
+            bg: "#FFFFFF",
+            text: "#0F172A",
+            sub: "#475569",
+            card: "#F8FAFC",
+            input: "#FFFFFF",
+            border: "#E2E8F0",
+            primary: "#2563EB",
+            primaryText: "#FFFFFF",
+            success: "#16A34A",
+          },
+    [isDark]
+  );
   const [wsUrl, setWsUrl] = useState("ws://localhost:8787/ws");
   const [prompt, setPrompt] = useState("");
   const [log, setLog] = useState("");
@@ -66,9 +96,11 @@ export default function Index() {
   }, []);
 
   return (
-    <View style={{ flex: 1, paddingTop: 48, paddingHorizontal: 12, gap: 12 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
+      <Stack.Screen options={{ title: "Tricoder", headerTitleStyle: { fontWeight: "700" } }} />
+      <View style={{ flex: 1, padding: 16, gap: 14 }}>
       <View style={{ gap: 8 }}>
-        <Text style={{ fontSize: 12, opacity: 0.8 }}>WebSocket URL</Text>
+        <Text style={{ fontSize: 12, color: c.sub, fontWeight: "600" }}>WebSocket URL</Text>
         <TextInput
           value={wsUrl}
           onChangeText={setWsUrl}
@@ -77,23 +109,27 @@ export default function Index() {
           placeholder="ws://localhost:8787/ws"
           style={{
             borderWidth: 1,
-            borderColor: "#ccc",
-            padding: 10,
-            borderRadius: 8,
+            borderColor: c.border,
+            padding: 12,
+            borderRadius: 12,
+            backgroundColor: c.input,
+            color: c.text,
           }}
+          placeholderTextColor={c.sub}
         />
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           {!connected ? (
-            <Button title="Connect" onPress={connect} />
+            <Button title="Connect" onPress={connect} color={c.primary} textColor={c.primaryText} />
           ) : (
-            <Button title="Disconnect" onPress={disconnect} />
+            <Button title="Disconnect" onPress={disconnect} color="#EF4444" textColor="#FFF" />
           )}
-          <Button title="Clear" onPress={() => setLog("")} />
+          <Button title="Clear" onPress={() => setLog("")} color={c.card} textColor={c.text} />
+          <StatusPill connected={connected} color={c} />
         </View>
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ fontSize: 12, opacity: 0.8 }}>Prompt (raw; sent as-is)</Text>
+        <Text style={{ fontSize: 12, color: c.sub, fontWeight: "600" }}>Prompt (raw; sent as-is)</Text>
         <TextInput
           value={prompt}
           onChangeText={setPrompt}
@@ -103,26 +139,46 @@ export default function Index() {
           multiline
           style={{
             borderWidth: 1,
-            borderColor: "#ccc",
-            padding: 10,
-            borderRadius: 8,
-            minHeight: 80,
+            borderColor: c.border,
+            padding: 12,
+            borderRadius: 12,
+            minHeight: 120,
+            backgroundColor: c.input,
+            color: c.text,
+            fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+            fontSize: 13,
           }}
+          placeholderTextColor={c.sub}
         />
-        <Button title="Send" onPress={send} disabled={!connected || !prompt.trim()} />
+        <Button
+          title="Send"
+          onPress={send}
+          disabled={!connected || !prompt.trim()}
+          color={connected && prompt.trim() ? c.primary : c.border}
+          textColor={c.primaryText}
+        />
       </View>
 
-      <View style={{ flex: 1, borderWidth: 1, borderColor: "#ddd", borderRadius: 8 }}>
+      <View
+        style={{
+          flex: 1,
+          borderWidth: 1,
+          borderColor: c.border,
+          borderRadius: 12,
+          backgroundColor: c.card,
+        }}
+      >
         <ScrollView
           ref={scrollRef}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-          contentContainerStyle={{ padding: 10 }}
+          contentContainerStyle={{ padding: 12 }}
         >
           <Text
             selectable
             style={{
               fontSize: 12,
               lineHeight: 16,
+              color: c.text,
               fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
             }}
           >
@@ -130,22 +186,54 @@ export default function Index() {
           </Text>
         </ScrollView>
       </View>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
-function Button({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {
+function Button({
+  title,
+  onPress,
+  disabled,
+  color = "#111",
+  textColor = "#fff",
+}: {
+  title: string;
+  onPress: () => void;
+  disabled?: boolean;
+  color?: string;
+  textColor?: string;
+}) {
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
       style={{
-        backgroundColor: disabled ? "#ccc" : "#111",
+        backgroundColor: disabled ? "#9CA3AF" : color,
         paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 8,
+        paddingVertical: 12,
+        borderRadius: 10,
       }}
     >
-      <Text style={{ color: "white", fontWeight: "600" }}>{title}</Text>
+      <Text style={{ color: textColor, fontWeight: "700" }}>{title}</Text>
     </Pressable>
+  );
+}
+
+function StatusPill({ connected, color: c }: { connected: boolean; color: any }) {
+  return (
+    <View
+      style={{
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: connected ? c.success : c.border,
+        backgroundColor: connected ? "rgba(34,197,94,0.1)" : c.card,
+      }}
+    >
+      <Text style={{ color: connected ? c.success : c.sub, fontSize: 12, fontWeight: "600" }}>
+        {connected ? "Connected" : "Disconnected"}
+      </Text>
+    </View>
   );
 }
