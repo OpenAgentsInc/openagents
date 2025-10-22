@@ -2,6 +2,8 @@
 
 A mobile command center for your coding agents.
 
+<img width="600" height="431" alt="tricoder" src="https://github.com/user-attachments/assets/a125680d-0c3e-4703-83ac-510385b43e3e" />
+
 ## Why
 
 There is no good mobile app for managing coding agents while AFK.
