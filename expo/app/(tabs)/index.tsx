@@ -12,7 +12,7 @@ export default function ConsoleScreen() {
     [isDark]
   );
   const [wsUrl, setWsUrl] = useState("ws://localhost:8787/ws");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState("Summarize the current repo. Use a maximum of 4 tool calls.");
   const [log, setLog] = useState("");
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -114,4 +114,3 @@ function StatusPill({ connected, color: c }: { connected: boolean; color: any })
     </View>
   );
 }
-
