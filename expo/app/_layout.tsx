@@ -1,29 +1,26 @@
 import { Stack } from 'expo-router';
 import { ThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useTypographySetup, applyTypographyGlobals } from '@/constants/typography';
+import { useTypographySetup, applyTypographyGlobals, Typography } from '@/constants/typography';
 import { Colors, NavigationTheme } from '@/constants/theme';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
 export default function RootLayout() {
-  // Load fonts and apply global typography
   const fontsLoaded = useTypographySetup();
-
-  if (!fontsLoaded) {
-    return null;
-  }
-
-  // Ensure default fonts are applied before rendering any screens
+  if (!fontsLoaded) return null;
   applyTypographyGlobals();
 
   return (
     <ThemeProvider value={NavigationTheme}>
       <StatusBar style="light" />
       <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background } }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            headerTitleStyle: { fontFamily: Typography.bold },
+            headerBackVisible: false,
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );

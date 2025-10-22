@@ -8,7 +8,6 @@ import {
   Pressable,
   SafeAreaView,
 } from "react-native";
-import { Stack } from "expo-router";
 import { Typography } from "@/constants/typography";
 
 export default function Index() {
@@ -96,7 +95,6 @@ export default function Index() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
-      <Stack.Screen options={{ title: "Tricoder", headerTitleStyle: { fontFamily: Typography.bold } }} />
       <View style={{ flex: 1, padding: 16, gap: 14 }}>
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>WebSocket URL</Text>
