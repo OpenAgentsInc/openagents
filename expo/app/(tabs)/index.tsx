@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native"
 import Markdown from 'react-native-markdown-display'
 import { Typography } from "@/constants/typography"
@@ -23,6 +23,18 @@ export default function ConsoleScreen() {
   const MIN_HEIGHT = LINE_HEIGHT * MIN_LINES + PADDING_V * 2;
   const MAX_HEIGHT = LINE_HEIGHT * MAX_LINES + PADDING_V * 2;
   const [inputHeight, setInputHeight] = useState(MIN_HEIGHT);
+  const lastHeightRef = useRef(MIN_HEIGHT);
+  const rafRef = useRef<number | null>(null);
+
+  const setHeightStable = useCallback((target: number) => {
+    const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(target)));
+    if (Math.abs(clamped - lastHeightRef.current) <= 2) return; // ignore tiny diffs to prevent bounce
+    if (rafRef.current) cancelAnimationFrame(rafRef.current as any);
+    rafRef.current = requestAnimationFrame(() => {
+      lastHeightRef.current = clamped;
+      setInputHeight(clamped);
+    });
+  }, []);
   type Entry = { id: number; text: string; deemphasize?: boolean }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
@@ -89,7 +101,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
       <View style={{ flex: 1, padding: 16, gap: 14 }}>
         {/* Header status moved to headerRight (dot). Clear Log moved to Settings. */}
 
-        <View style={{ flex: 1, borderWidth: 1, borderColor: c.border }}>
+        <View style={{ flex: 1 }}>
           <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
             {log.map((e) => {
               const isMd = e.text.startsWith('::md::')
@@ -150,10 +162,9 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
               multiline
               numberOfLines={MIN_LINES}
               onContentSizeChange={(e) => {
-                const raw = (e.nativeEvent.contentSize?.height ?? LINE_HEIGHT) + PADDING_V * 2;
-                const next = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.ceil(raw)));
-                // Only update if height changed meaningfully to avoid bounce
-                if (Math.abs(next - inputHeight) > 1) setInputHeight(next);
+                const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT;
+                const target = contentH + PADDING_V * 2;
+                setHeightStable(target);
               }}
               scrollEnabled={inputHeight >= MAX_HEIGHT - 1}
               textAlignVertical="top"
