@@ -83,6 +83,21 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, wsUrl]);
 
+  // Auto-reconnect loop: every 3s when disconnected, try to connect.
+  useEffect(() => {
+    if (!hydrated) return;
+    const interval = setInterval(() => {
+      try {
+        const ws = wsRef.current;
+        if (connected) return;
+        // Don't stomp an in-flight connection
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+        connect();
+      } catch {}
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [connected, connect, hydrated, wsUrl]);
+
   const disconnect = useCallback(() => {
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;
