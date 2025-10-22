@@ -2,7 +2,7 @@ import React from 'react';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { getLog } from '@/lib/log-store';
-import Markdown from 'react-native-markdown-display';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock';
 import { ReasoningCard } from '@/components/jsonl/ReasoningCard';
 import { Colors } from '@/constants/theme';
@@ -12,6 +12,7 @@ export default function MessageDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const num = Number(id);
   const detail = getLog(num);
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -23,7 +24,13 @@ export default function MessageDetail() {
           headerBackButtonDisplayMode: 'minimal',
         }}
       />
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: 16,
+          paddingHorizontal: 16,
+          paddingBottom: 32 + insets.bottom,
+        }}
+      >
         {!detail && (
           <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Message not found.</Text>
         )}
