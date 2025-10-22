@@ -15,12 +15,14 @@ export default function ConsoleScreen() {
     [isDark]
   );
   const [prompt, setPrompt] = useState("Summarize the current repo. Use a maximum of 4 tool calls.");
-  // Auto-growing composer sizing
+  // Auto-growing composer sizing (stable, jitter-resistant)
   const LINE_HEIGHT = 18;
   const MIN_LINES = 1;
   const MAX_LINES = 10;
   const PADDING_V = 10; // must match TextInput paddingVertical
-  const [inputHeight, setInputHeight] = useState(LINE_HEIGHT * MIN_LINES + PADDING_V * 2);
+  const MIN_HEIGHT = LINE_HEIGHT * MIN_LINES + PADDING_V * 2;
+  const MAX_HEIGHT = LINE_HEIGHT * MAX_LINES + PADDING_V * 2;
+  const [inputHeight, setInputHeight] = useState(MIN_HEIGHT);
   type Entry = { id: number; text: string; deemphasize?: boolean }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
@@ -148,12 +150,12 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
               multiline
               numberOfLines={MIN_LINES}
               onContentSizeChange={(e) => {
-                const h = e.nativeEvent.contentSize.height || LINE_HEIGHT;
-                const lines = Math.max(MIN_LINES, Math.round(h / LINE_HEIGHT));
-                const clamped = Math.min(MAX_LINES, lines);
-                setInputHeight(clamped * LINE_HEIGHT + PADDING_V * 2);
+                const raw = (e.nativeEvent.contentSize?.height ?? LINE_HEIGHT) + PADDING_V * 2;
+                const next = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.ceil(raw)));
+                // Only update if height changed meaningfully to avoid bounce
+                if (Math.abs(next - inputHeight) > 1) setInputHeight(next);
               }}
-              scrollEnabled={inputHeight >= MAX_LINES * LINE_HEIGHT + PADDING_V * 2}
+              scrollEnabled={inputHeight >= MAX_HEIGHT - 1}
               textAlignVertical="top"
               style={{ flex: 1, borderWidth: 1, borderColor: c.border, padding: PADDING_V, height: inputHeight, backgroundColor: c.input, color: c.text, fontSize: 13, lineHeight: LINE_HEIGHT, fontFamily: Typography.primary, borderRadius: 0 }}
               placeholderTextColor={c.sub}
