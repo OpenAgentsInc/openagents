@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { useWs } from '@/providers/ws';
 import React from 'react';
 import { Typography } from '@/constants/typography';
+import { HapticTab } from '@/components/haptic-tab';
 
 export default function TabLayout() {
   const ConnectionDot = () => {
@@ -27,6 +28,7 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarActiveTintColor: Colors.tabBarActive,
         tabBarInactiveTintColor: Colors.tabBarInactive,
+        tabBarButton: HapticTab,
         tabBarStyle: {
           backgroundColor: Colors.tabBarBackground,
           borderTopColor: Colors.border,
