@@ -79,7 +79,7 @@ export function ExecBeginRow({ payload }: { payload: ExecBeginPayload }) {
     return (
       <View style={{ paddingVertical: 2 }}>
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
-          <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{pretty.action}</Text>
+          <Text style={{ color: Colors.textPrimary, fontFamily: Typography.primary }}>{pretty.action}</Text>
           {shownPath ? (
             <Text>
               {' '}
