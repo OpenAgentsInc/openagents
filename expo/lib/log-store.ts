@@ -8,6 +8,8 @@ export type LogDetail = {
   kind: LogKind;
   deemphasize?: boolean;
   ts?: number;
+  // Optional pointer: for summary/preview items, link to the full JSON/detail entry.
+  detailId?: number;
 };
 
 const store = new Map<number, LogDetail>();

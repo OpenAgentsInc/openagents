@@ -150,8 +150,11 @@ function summarizeExec(evt: any): string {
     return `[exec out] stream=${stream} ~${byteLen}B`;
   }
   if (t === 'exec_command_begin') {
-    const cmd = Array.isArray(evt?.command) ? evt.command.join(' ') : (evt?.command ?? 'cmd');
-    return `[exec begin] ${cmd}`;
+    const raw = Array.isArray(evt?.command) ? evt.command : String(evt?.command ?? '').split(/\s+/);
+    const tokens = (raw as string[]).filter(Boolean);
+    const short = tokens.slice(0, Math.min(tokens.length, 2)).join(' ').trim();
+    const label = short || 'cmd';
+    return `[exec] ${truncate(label, 40)}`;
   }
   if (t === 'exec_command_end') {
     const code = evt?.exit_code ?? evt?.code ?? evt?.status ?? 0;
