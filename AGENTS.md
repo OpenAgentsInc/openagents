@@ -12,6 +12,7 @@
 - Lint TypeScript/TSX: `bun run lint`.
 - iOS production build: `bun run build:ios:prod`.
 - Submit iOS build: `bun run submit:ios`.
+- Run bridge (Rust): from repo root `cargo run -p codex-bridge -- --bind 0.0.0.0:8787`.
 
 ## Coding Style & Naming Conventions
 - Language: TypeScript (strict mode) for app code.
@@ -19,6 +20,11 @@
 - Indentation: 2 spaces; keep imports sorted logically (react/external → internal).
 - Files: kebab-case for components (e.g., `themed-text.tsx`); Expo Router uses `index.tsx`, `_layout.tsx`.
 - Rust (when added): crates kebab-case; modules snake_case; prefer `clippy` defaults.
+
+## Rust Workspace & Dependencies
+- Workspace: root `Cargo.toml` manages members (e.g., `crates/codex-bridge`).
+- Dependencies: always use `cargo add` to modify dependencies; do not edit `Cargo.toml` by hand (except workspace structure/members).
+- Versions: when adding, do not pass version constraints (`@x.y`, `@*`, or explicit ranges). Let `cargo add` select and pin the latest compatible version.
 
 ## Testing Guidelines
 - Currently no test suite. When adding tests:

@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "crates/codex-bridge",
+]
+resolver = "2"
