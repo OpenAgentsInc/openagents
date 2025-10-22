@@ -38,15 +38,22 @@ export interface ErrorEvent extends BaseEvent {
   error?: unknown;
 }
 
+export interface AgentMessageEvent extends BaseEvent {
+  type: 'agent_message';
+  message?: string; // markdown string
+}
+
 export type CodexEvent =
   | DeltaEvent
   | MessageEvent
   | ToolCallEvent
   | ErrorEvent
+  | AgentMessageEvent
   | BaseEvent; // fallback for unknown shapes
 
 export type ParsedLine =
   | { kind: 'delta'; summary: string }
+  | { kind: 'md'; markdown: string }
   | { kind: 'json'; raw: string }
   | { kind: 'text'; raw: string };
 
@@ -78,6 +85,9 @@ export function parseCodexLine(line: string): ParsedLine {
   if (s.startsWith('{') && s.endsWith('}')) {
     try {
       const obj: CodexEvent | { delta?: any } = JSON.parse(s);
+      if ((obj as any)?.type === 'agent_message' && typeof (obj as any).message === 'string') {
+        return { kind: 'md', markdown: (obj as any).message as string };
+      }
       if (isDeltaLike(obj)) {
         const payload = (obj as any).delta ?? obj;
         return { kind: 'delta', summary: summarizeDelta(payload) };
@@ -104,4 +114,3 @@ function roughSize(x: unknown): number {
     return 0;
   }
 }
-

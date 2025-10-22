@@ -10,7 +10,7 @@ export default function SettingsScreen() {
     base: {
       paddingVertical: 8,
       paddingHorizontal: 12,
-      borderRadius: 8,
+      borderRadius: 0,
       borderWidth: 1,
       borderColor: Colors.border,
       backgroundColor: Colors.card,
@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     backgroundColor: Colors.card,
     color: Colors.textPrimary,
     fontFamily: Typography.primary,
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
 
 function Button({ title, onPress }: { title: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={{ backgroundColor: '#3F3F46', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10 }}>
+    <Pressable onPress={onPress} style={{ backgroundColor: '#3F3F46', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}>
       <Text style={{ color: '#fff', fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
