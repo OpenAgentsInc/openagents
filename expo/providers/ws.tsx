@@ -37,8 +37,8 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   const clearLogHandlerRef = useRef<(() => void) | null>(null);
 
   // Simple in-memory preferences (could persist with AsyncStorage)
-  const [readOnly, setReadOnly] = useState(true);
-  const [networkEnabled, setNetworkEnabled] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
+  const [networkEnabled, setNetworkEnabled] = useState(true);
   const [approvals, setApprovals] = useState<Approvals>('never');
   const [attachPreface, setAttachPreface] = useState(true);
 
