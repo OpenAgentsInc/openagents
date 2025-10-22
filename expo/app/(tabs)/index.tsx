@@ -25,6 +25,7 @@ export default function ConsoleScreen() {
   const [inputHeight, setInputHeight] = useState(MIN_HEIGHT);
   const lastHeightRef = useRef(MIN_HEIGHT);
   const rafRef = useRef<number | null>(null);
+  const [growActive, setGrowActive] = useState(false);
 
   const setHeightStable = useCallback((target: number, { allowShrink = false }: { allowShrink?: boolean } = {}) => {
     const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(target)));
@@ -67,6 +68,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
     // Reset height after send to avoid lingering tall composer
     lastHeightRef.current = MIN_HEIGHT;
     setInputHeight(MIN_HEIGHT);
+    setGrowActive(false);
   };
 
   useEffect(() => {
@@ -161,13 +163,14 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
             <TextInput
               value={prompt}
-              onChangeText={setPrompt}
+              onChangeText={(t) => { if (!growActive) setGrowActive(true); setPrompt(t); }}
               autoCapitalize="none"
               autoCorrect={false}
               placeholder="Hello, world"
               multiline
               numberOfLines={MIN_LINES}
               onContentSizeChange={(e) => {
+                if (!growActive) return;
                 const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT;
                 const target = contentH + PADDING_V * 2;
                 setHeightStable(target, { allowShrink: false });
@@ -176,6 +179,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
               textAlignVertical="top"
               style={{ flex: 1, borderWidth: 1, borderColor: c.border, padding: PADDING_V, height: inputHeight, backgroundColor: c.input, color: c.text, fontSize: 13, lineHeight: LINE_HEIGHT, fontFamily: Typography.primary, borderRadius: 0 }}
               placeholderTextColor={c.sub}
+              onFocus={() => setGrowActive(true)}
             />
             <Button title="Send" onPress={send} disabled={!connected || !prompt.trim()} color={connected && prompt.trim() ? c.primary : c.border} textColor={c.primaryText} />
           </View>
