@@ -116,6 +116,11 @@ Important policy overrides:
         const skippingRef = (SessionScreen as any)._skipExecRef || ((SessionScreen as any)._skipExecRef = { current: false })
         if (skippingRef.current) { if (trimmed.includes(']}') || trimmed.endsWith(']') || trimmed.includes('}}')) { skippingRef.current = false } continue }
         if (trimmed.includes('exec_command_output_delta')) { skippingRef.current = true; continue }
+        // Drop multiline JSON blocks that start with `{ "id": ... "msg":` and often
+        // contain exec_command_end payloads; skip until closing braces.
+        const skipJsonBlockRef = (SessionScreen as any)._skipJsonBlockRef || ((SessionScreen as any)._skipJsonBlockRef = { current: false })
+        if (skipJsonBlockRef.current) { if (trimmed.includes('}}') || trimmed.endsWith('}')) { skipJsonBlockRef.current = false } continue }
+        if (/^\{\s*"id"\s*:\s*\d+/.test(trimmed) && trimmed.includes('"msg"') && trimmed.endsWith(':')) { skipJsonBlockRef.current = true; continue }
         // Filter out noisy CLI status lines we don't want in the feed
         if (/^Reading prompt from stdin/i.test(trimmed)) {
           continue
