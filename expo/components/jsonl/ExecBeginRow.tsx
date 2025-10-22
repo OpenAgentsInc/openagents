@@ -16,6 +16,37 @@ export function ExecBeginRow({ payload }: { payload: ExecBeginPayload }) {
   // Try to pretty-print parsed command, e.g., [{ "ListFiles": { path: "docs" } }]
   let pretty: { action?: string; path?: string } | null = null
   const addSlash = (p: string) => (p.endsWith('/') ? p : p + '/')
+  const labelFor = (k: string) => {
+    const map: Record<string, string> = {
+      ReadFile: 'Read',
+      Read: 'Read',
+      WriteFile: 'Write',
+      Write: 'Write',
+      OpenFile: 'Open',
+      ListFiles: 'ListFiles',
+      Search: 'Search',
+    }
+    return map[k] ?? k
+  }
+  const pickPath = (v: any): string | undefined => {
+    if (!v) return undefined
+    if (typeof v === 'string') return v
+    if (typeof v.path === 'string') return v.path
+    if (typeof v.name === 'string') return v.name
+    if (typeof v.file === 'string') return v.file
+    if (typeof v.filename === 'string') return v.filename
+    if (Array.isArray(v.files) && typeof v.files[0] === 'string') return v.files[0]
+    return undefined
+  }
+  const shorten = (p?: string): string | undefined => {
+    if (!p) return p
+    // Prefer repo-relative subpaths if present
+    for (const marker of ['/openagents/', '/expo/', '/crates/', '/docs/']) {
+      const idx = p.indexOf(marker)
+      if (idx >= 0) return p.slice(idx + (marker === '/openagents/' ? '/openagents/'.length : 0))
+    }
+    return p
+  }
   try {
     const parsed = (payload as any)?.parsed
     if (Array.isArray(parsed) && parsed.length > 0 && parsed[0] && typeof parsed[0] === 'object') {
@@ -24,8 +55,8 @@ export function ExecBeginRow({ payload }: { payload: ExecBeginPayload }) {
       if (keys.length === 1) {
         const k = keys[0]
         const v = first[k] ?? {}
-        const p = typeof v?.path === 'string' ? v.path : undefined
-        pretty = { action: k, path: p }
+        const p = pickPath(v)
+        pretty = { action: labelFor(k), path: shorten(p) }
       }
     }
   } catch {}
@@ -35,7 +66,12 @@ export function ExecBeginRow({ payload }: { payload: ExecBeginPayload }) {
       <View style={{ paddingVertical: 2 }}>
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
           <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{pretty.action}</Text>
-          {pretty.path ? <Text> {addSlash(pretty.path)}</Text> : null}
+          {pretty.path ? (
+            <Text>
+              {' '}
+              {pretty.action === 'ListFiles' ? addSlash(pretty.path) : pretty.path}
+            </Text>
+          ) : null}
         </Text>
       </View>
     )
