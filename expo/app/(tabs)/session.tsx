@@ -179,6 +179,11 @@ Important policy overrides:
           }
           append(parsed.text, true, 'summary', trimmed)
         }
+        else if (parsed.kind === 'text') {
+          const raw = String(parsed.raw ?? '').trim()
+          if (!raw) { continue }
+          append(raw, true, 'text')
+        }
         else if (parsed.kind === 'json') append(parsed.raw, true, 'json')
         else append(trimmed, true, 'text')
       }
