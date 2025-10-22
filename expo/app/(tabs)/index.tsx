@@ -8,9 +8,12 @@ import { Typography } from "@/constants/typography"
 import { parseCodexLine } from "@/lib/codex-events"
 import { useWs } from "@/providers/ws"
 import { useHeaderHeight } from "@react-navigation/elements"
+import { useRouter } from "expo-router"
+import { loadLogs, saveLogs, putLog, clearLogs as clearLogsStore } from "@/lib/log-store"
 
 export default function ConsoleScreen() {
   const headerHeight = useHeaderHeight();
+  const router = useRouter();
   const isDark = true;
   const c = useMemo(
     () =>
@@ -51,7 +54,12 @@ export default function ConsoleScreen() {
   const scrollRef = useRef<ScrollView | null>(null);
   const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler } = useWs();
 
-  const append = (text: string, deemphasize?: boolean) => setLog((prev) => [...prev, { id: idRef.current++, text, deemphasize }])
+  const append = (text: string, deemphasize?: boolean, kind: 'md'|'reason'|'text'|'json'|'summary'|'delta' = 'text') => {
+    const id = idRef.current++
+    putLog({ id, text, kind, deemphasize, ts: Date.now() })
+    setLog((prev) => [...prev, { id, text, deemphasize }])
+    saveLogs()
+  }
 
   const buildPreface = () => {
     return `You are a coding agent running in the Codex CLI.
@@ -120,9 +128,20 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
 
   useEffect(() => {
     // Allow Settings → Clear Log to wipe this feed
-    setClearLogHandler(() => setLog([]))
+    setClearLogHandler(() => { setLog([]); clearLogsStore(); })
     return () => setClearLogHandler(null)
   }, [setClearLogHandler])
+
+  useEffect(() => {
+    // Hydrate history on mount
+    (async () => {
+      const items = await loadLogs();
+      if (items.length) {
+        setLog(items.map(({ id, text, deemphasize }) => ({ id, text, deemphasize })) )
+        idRef.current = Math.max(...items.map(i => i.id)) + 1
+      }
+    })();
+  }, [])
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
@@ -177,7 +196,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
               const isLong = lines.length > 8
               const preview = isLong ? lines.slice(0, 8).join('\n') + '\n…' : e.text
               return (
-                <Pressable key={e.id} onPress={() => { if (isLong) router.push(`/(tabs)/message/${e.id}`) }}>
+                <Pressable key={e.id} onPress={() => { if (isLong) router.push(`/message/${e.id}`) }}>
                   <Text selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>
                     {preview}
                   </Text>
