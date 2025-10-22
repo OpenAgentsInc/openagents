@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type MsgHandler = ((text: string) => void) | null;
 
@@ -36,6 +37,33 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   const [networkEnabled, setNetworkEnabled] = useState(false);
   const [approvals, setApprovals] = useState<Approvals>('never');
   const [attachPreface, setAttachPreface] = useState(true);
+
+  // Persist & hydrate settings
+  const SETTINGS_KEY = '@openagents/ws-settings';
+  const hydratedRef = useRef(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+        if (raw) {
+          const s = JSON.parse(raw);
+          if (typeof s.wsUrl === 'string') setWsUrl(s.wsUrl);
+          if (typeof s.readOnly === 'boolean') setReadOnly(s.readOnly);
+          if (typeof s.networkEnabled === 'boolean') setNetworkEnabled(s.networkEnabled);
+          if (s.approvals === 'never' || s.approvals === 'on-request' || s.approvals === 'on-failure') setApprovals(s.approvals);
+          if (typeof s.attachPreface === 'boolean') setAttachPreface(s.attachPreface);
+        }
+      } catch {}
+      hydratedRef.current = true;
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    const payload = JSON.stringify({ wsUrl, readOnly, networkEnabled, approvals, attachPreface });
+    AsyncStorage.setItem(SETTINGS_KEY, payload).catch(() => {});
+  }, [wsUrl, readOnly, networkEnabled, approvals, attachPreface]);
 
   const disconnect = useCallback(() => {
     try { wsRef.current?.close(); } catch {}
