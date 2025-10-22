@@ -172,10 +172,16 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
                   </Markdown>
                 )
               }
+              // Collapsible for long plain entries
+              const lines = e.text.split(/\r?\n/)
+              const isLong = lines.length > 8
+              const preview = isLong ? lines.slice(0, 8).join('\n') + '\n…' : e.text
               return (
-                <Text key={e.id} selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>
-                  {e.text}
-                </Text>
+                <Pressable key={e.id} onPress={() => { if (isLong) router.push(`/(tabs)/message/${e.id}`) }}>
+                  <Text selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>
+                    {preview}
+                  </Text>
+                </Pressable>
               )
             })}
           </ScrollView>
