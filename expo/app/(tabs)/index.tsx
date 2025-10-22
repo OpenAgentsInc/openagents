@@ -173,7 +173,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
                 )
               }
               return (
-                <Text key={e.id} selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.2 : 1 }}>
+                <Text key={e.id} selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>
                   {e.text}
                 </Text>
               )
