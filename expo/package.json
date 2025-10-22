@@ -8,7 +8,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:ios:prod": "eas build --profile production --platform ios"
+    "build:ios:prod": "eas build --profile production --platform ios",
+    "submit:ios": "eas submit -p ios"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
