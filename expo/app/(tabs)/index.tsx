@@ -126,7 +126,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ flex: 1, padding: 16, gap: 14 }}>
+      <View style={{ flex: 1, paddingTop: 0, paddingBottom: 14, paddingHorizontal: 8, gap: 14 }}>
         {/* Header status moved to headerRight (dot). Clear Log moved to Settings. */}
 
         <View style={{ flex: 1 }}>
