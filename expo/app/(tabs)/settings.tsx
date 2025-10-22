@@ -1,10 +1,10 @@
 import { StyleSheet, View, Text } from 'react-native';
 
-export default function ExploreScreen() {
+export default function SettingsScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Explore</Text>
-      <Text>Second tab content goes here.</Text>
+      <Text style={styles.title}>Settings</Text>
+      <Text>Adjust your preferences here.</Text>
     </View>
   );
 }
@@ -22,4 +22,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
