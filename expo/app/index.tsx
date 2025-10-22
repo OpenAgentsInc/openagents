@@ -9,6 +9,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { Stack } from "expo-router";
+import { Typography } from "@/constants/typography";
 
 export default function Index() {
   const isDark = true; // keep it sleek; could wire to useColorScheme()
@@ -95,10 +96,10 @@ export default function Index() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
-      <Stack.Screen options={{ title: "Tricoder", headerTitleStyle: { fontWeight: "700" } }} />
+      <Stack.Screen options={{ title: "Tricoder", headerTitleStyle: { fontFamily: Typography.bold } }} />
       <View style={{ flex: 1, padding: 16, gap: 14 }}>
       <View style={{ gap: 8 }}>
-        <Text style={{ fontSize: 12, color: c.sub, fontWeight: "600" }}>WebSocket URL</Text>
+        <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>WebSocket URL</Text>
         <TextInput
           value={wsUrl}
           onChangeText={setWsUrl}
@@ -127,7 +128,7 @@ export default function Index() {
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ fontSize: 12, color: c.sub, fontWeight: "600" }}>Prompt (raw; sent as-is)</Text>
+        <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>Prompt (raw; sent as-is)</Text>
         <TextInput
           value={prompt}
           onChangeText={setPrompt}
@@ -143,7 +144,6 @@ export default function Index() {
             minHeight: 120,
             backgroundColor: c.input,
             color: c.text,
-            fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
             fontSize: 13,
           }}
           placeholderTextColor={c.sub}
@@ -177,7 +177,6 @@ export default function Index() {
               fontSize: 12,
               lineHeight: 16,
               color: c.text,
-              fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
             }}
           >
             {log}
@@ -212,7 +211,7 @@ function Button({
         borderRadius: 10,
       }}
     >
-      <Text style={{ color: textColor, fontWeight: "700" }}>{title}</Text>
+      <Text style={{ color: textColor, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
 }
@@ -229,7 +228,7 @@ function StatusPill({ connected, color: c }: { connected: boolean; color: any })
         backgroundColor: connected ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.02)",
       }}
     >
-      <Text style={{ color: connected ? "#D4D4D8" : c.sub, fontSize: 12, fontWeight: "600" }}>
+      <Text style={{ color: connected ? "#D4D4D8" : c.sub, fontSize: 12, fontFamily: Typography.bold }}>
         {connected ? "Connected" : "Disconnected"}
       </Text>
     </View>
