@@ -1,26 +1,31 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native'
-import { router } from 'expo-router'
-import Markdown from 'react-native-markdown-display'
-import * as Clipboard from 'expo-clipboard'
-import { Typography } from '@/constants/typography'
-import { Colors } from '@/constants/theme'
-import { parseCodexLine } from '@/lib/codex-events'
-import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
-import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
-import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
-import { FileChangeCard } from '@/components/jsonl/FileChangeCard'
-import { WebSearchRow } from '@/components/jsonl/WebSearchRow'
-import { McpToolCallRow } from '@/components/jsonl/McpToolCallRow'
-import { TodoListCard } from '@/components/jsonl/TodoListCard'
-import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
-import { ErrorRow } from '@/components/jsonl/ErrorRow'
-import { TurnEventRow } from '@/components/jsonl/TurnEventRow'
-import { ThreadStartedRow } from '@/components/jsonl/ThreadStartedRow'
-import { ItemLifecycleRow } from '@/components/jsonl/ItemLifecycleRow'
-import { useWs } from '@/providers/ws'
-import { useHeaderHeight } from '@react-navigation/elements'
-import { putLog, loadLogs, saveLogs, clearLogs as clearLogsStore } from '@/lib/log-store'
+import * as Clipboard from "expo-clipboard"
+import { router } from "expo-router"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+    KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text,
+    TextInput, View
+} from "react-native"
+import Markdown from "react-native-markdown-display"
+import { CommandExecutionCard } from "@/components/jsonl/CommandExecutionCard"
+import { ErrorRow } from "@/components/jsonl/ErrorRow"
+import { ExecBeginRow } from "@/components/jsonl/ExecBeginRow"
+import { FileChangeCard } from "@/components/jsonl/FileChangeCard"
+import { ItemLifecycleRow } from "@/components/jsonl/ItemLifecycleRow"
+import { MarkdownBlock } from "@/components/jsonl/MarkdownBlock"
+import { McpToolCallRow } from "@/components/jsonl/McpToolCallRow"
+import { ReasoningHeadline } from "@/components/jsonl/ReasoningHeadline"
+import { ThreadStartedRow } from "@/components/jsonl/ThreadStartedRow"
+import { TodoListCard } from "@/components/jsonl/TodoListCard"
+import { TurnEventRow } from "@/components/jsonl/TurnEventRow"
+import { WebSearchRow } from "@/components/jsonl/WebSearchRow"
+import { Colors } from "@/constants/theme"
+import { Typography } from "@/constants/typography"
+import { parseCodexLine } from "@/lib/codex-events"
+import {
+    clearLogs as clearLogsStore, loadLogs, putLog, saveLogs
+} from "@/lib/log-store"
+import { useWs } from "@/providers/ws"
+import { useHeaderHeight } from "@react-navigation/elements"
 
 export default function SessionScreen() {
   const headerHeight = useHeaderHeight()
@@ -232,7 +237,7 @@ Important policy overrides:
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
-      <View style={{ flex: 1, paddingTop: 0, paddingBottom: 14, paddingHorizontal: 8, gap: 14 }}>
+      <View style={{ flex: 1, paddingTop: 0, paddingBottom: 4, paddingHorizontal: 8, gap: 0 }}>
         <View style={{ flex: 1 }}>
           <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ paddingTop: 0, paddingBottom: 6, paddingHorizontal: 8 }}>
             {log.filter((e) => e.kind !== 'json').map((e) => {
