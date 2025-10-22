@@ -41,6 +41,8 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   // Persist & hydrate settings
   const SETTINGS_KEY = '@openagents/ws-settings';
   const hydratedRef = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
+  const autoTriedRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -56,6 +58,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
       hydratedRef.current = true;
+      setHydrated(true);
     })();
   }, []);
 
@@ -64,6 +67,17 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
     const payload = JSON.stringify({ wsUrl, readOnly, networkEnabled, approvals, attachPreface });
     AsyncStorage.setItem(SETTINGS_KEY, payload).catch(() => {});
   }, [wsUrl, readOnly, networkEnabled, approvals, attachPreface]);
+
+  // Try a single auto-connect after hydration using the saved URL.
+  useEffect(() => {
+    if (!hydrated) return;
+    if (autoTriedRef.current) return;
+    if (connected || wsRef.current) return;
+    autoTriedRef.current = true;
+    // Best-effort: ignore errors; UI still has manual Connect.
+    connect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, wsUrl]);
 
   const disconnect = useCallback(() => {
     try { wsRef.current?.close(); } catch {}
