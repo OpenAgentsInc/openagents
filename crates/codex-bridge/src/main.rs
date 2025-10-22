@@ -5,7 +5,7 @@ use axum::{extract::State, extract::WebSocketUpgrade, response::IntoResponse, ro
 use axum::extract::ws::{Message, WebSocket};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
-use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader}, process::Command, sync::{broadcast, Mutex}};
+use tokio::{io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader}, process::Command, sync::{broadcast, Mutex}};
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
@@ -31,7 +31,7 @@ struct Opts {
 
 struct AppState {
     tx: broadcast::Sender<String>,
-    child_stdin: Mutex<tokio::process::ChildStdin>,
+    child_stdin: Mutex<Option<tokio::process::ChildStdin>>, // drop after first write to signal EOF
 }
 
 #[tokio::main]
@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     let (mut child, tx) = spawn_codex(&opts).await?;
     let state = Arc::new(AppState {
         tx,
-        child_stdin: Mutex::new(child.stdin.take().context("child stdin missing")?),
+        child_stdin: Mutex::new(Some(child.stdin.take().context("child stdin missing")?)),
     });
 
     // Start readers for stdout/stderr → broadcast + console
@@ -95,19 +95,33 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         while let Some(Ok(msg)) = stream.next().await {
             match msg {
                 Message::Text(t) => {
-                    let mut stdin = stdin_state.child_stdin.lock().await;
-                    let mut data = t.to_string();
-                    if !data.ends_with('\n') { data.push('\n'); }
-                    if let Err(e) = stdin.write_all(data.as_bytes()).await { 
-                        error!(?e, "failed to write to codex stdin");
-                        break;
+                    info!("msg" = "ws text received", size = t.len());
+                    let mut guard = stdin_state.child_stdin.lock().await;
+                    if let Some(mut stdin) = guard.take() {
+                        let mut data = t.to_string();
+                        if !data.ends_with('\n') { data.push('\n'); }
+                        if let Err(e) = stdin.write_all(data.as_bytes()).await { 
+                            error!(?e, "failed to write to codex stdin");
+                            break;
+                        }
+                        let _ = stdin.flush().await;
+                        drop(stdin); // close to send EOF
+                    } else {
+                        error!("stdin already closed; ignoring input");
                     }
                 }
                 Message::Binary(b) => {
-                    let mut stdin = stdin_state.child_stdin.lock().await;
-                    if let Err(e) = stdin.write_all(&b).await { 
-                        error!(?e, "failed to write binary to codex stdin");
-                        break;
+                    info!("msg" = "ws binary received", size = b.len());
+                    let mut guard = stdin_state.child_stdin.lock().await;
+                    if let Some(mut stdin) = guard.take() {
+                        if let Err(e) = stdin.write_all(&b).await { 
+                            error!(?e, "failed to write binary to codex stdin");
+                            break;
+                        }
+                        let _ = stdin.flush().await;
+                        drop(stdin);
+                    } else {
+                        error!("stdin already closed; ignoring binary");
                     }
                 }
                 Message::Close(_) => break,
@@ -145,6 +159,33 @@ async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<Stri
     };
     if !opts.extra.is_empty() { args.extend(opts.extra.clone()); }
 
+    // Always pass these defaults to codex unless already specified.
+    // -m gpt-5 -c model_reasoning_effort="high" --dangerously-bypass-approvals-and-sandbox
+    fn contains_flag(args: &[String], short: &str, long: &str) -> bool {
+        args.iter().any(|a| a == short || a == long || a.starts_with(&format!("{short}=")) || a.starts_with(&format!("{long}=")))
+    }
+    fn contains_substring(args: &[String], needle: &str) -> bool {
+        args.iter().any(|a| a.contains(needle))
+    }
+
+    let mut pre_flags: Vec<String> = Vec::new();
+    if !contains_flag(&args, "-m", "--model") {
+        pre_flags.push("-m".into());
+        pre_flags.push("gpt-5".into());
+    }
+    if !contains_substring(&args, "model_reasoning_effort=") {
+        pre_flags.push("-c".into());
+        pre_flags.push("model_reasoning_effort=\"high\"".into());
+    }
+    if !args.iter().any(|a| a == "--dangerously-bypass-approvals-and-sandbox") {
+        pre_flags.push("--dangerously-bypass-approvals-and-sandbox".into());
+    }
+    if !pre_flags.is_empty() {
+        let mut updated = pre_flags;
+        updated.extend(args);
+        args = updated;
+    }
+
     info!("bin" = %bin.display(), "args" = ?args, "msg" = "spawning codex");
     let mut child = Command::new(bin)
         .args(args)
@@ -178,22 +219,36 @@ async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<
 
     let tx_out = tx.clone();
     tokio::spawn(async move {
-        let reader = BufReader::new(stdout);
-        let mut lines = reader.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            println!("{}", line);
-            let _ = tx_out.send(line);
+        let mut reader = BufReader::new(stdout);
+        let mut buf = vec![0u8; 4096];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                    print!("{}", chunk);
+                    let _ = tx_out.send(chunk);
+                }
+                Err(e) => { eprintln!("stdout read error: {}", e); break; }
+            }
         }
         info!("msg" = "stdout stream ended");
     });
 
     let tx_err = tx.clone();
     tokio::spawn(async move {
-        let reader = BufReader::new(stderr);
-        let mut lines = reader.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            eprintln!("{}", line);
-            let _ = tx_err.send(line);
+        let mut reader = BufReader::new(stderr);
+        let mut buf = vec![0u8; 4096];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                    eprint!("{}", chunk);
+                    let _ = tx_err.send(chunk);
+                }
+                Err(e) => { eprintln!("stderr read error: {}", e); break; }
+            }
         }
         info!("msg" = "stderr stream ended");
     });
