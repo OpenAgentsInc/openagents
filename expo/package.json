@@ -7,6 +7,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "lint": "expo lint",
     "build:ios:prod": "eas build --profile production --platform ios",
     "submit:ios": "eas submit -p ios"

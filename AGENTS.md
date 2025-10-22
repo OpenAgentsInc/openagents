@@ -6,9 +6,10 @@
 - Docs: `docs/` (build/run notes in `docs/logs/`).
 
 ## Build, Test, and Development Commands
-- Install deps: `cd expo && bun install` (or `npm install`).
-- Run locally (Metro): `bun run start` (or `npm run start`).
+- Install deps: `cd expo && bun install`.
+- Run locally (Metro): `bun run start`.
   - Platform targets: `bun run ios`, `bun run android`, `bun run web`.
+- Type-check TypeScript: `bun run typecheck`.
 - Lint TypeScript/TSX: `bun run lint`.
 - iOS production build: `bun run build:ios:prod`.
 - Submit iOS build: `bun run submit:ios`.
@@ -37,6 +38,10 @@
 - Commits: imperative, concise subject (≤50 chars), e.g., "Add splash screen asset"; include a brief body when needed.
 - PRs: clear description, link issues, note scope, and include screenshots/GIFs for UI changes.
 - Checks: lint passes, app boots via `bun run start`, docs updated when behavior changes.
+
+## Agent Workflow Requirements (Expo TypeScript)
+- If you touch TypeScript/TSX under `expo/`, run the type checker via `bun run typecheck`.
+- Do not finish work until the typecheck passes with no warnings.
 
 ## Security & Configuration Tips
 - Do not commit credentials or secrets. Use EAS for managed credentials (see `expo/eas.json`).
