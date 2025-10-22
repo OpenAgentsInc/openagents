@@ -1,5 +1,6 @@
 import { StyleSheet, View, Text } from 'react-native';
 import { Colors } from '@/constants/theme';
+import { Typography } from '@/constants/typography';
 
 export default function SettingsScreen() {
   return (
@@ -20,7 +21,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '600',
+    fontFamily: Typography.bold,
     color: Colors.textPrimary,
   },
   body: {
