@@ -22,9 +22,8 @@ export default function Index() {
             card: "#111318",
             input: "#0F1217",
             border: "#272C35",
-            primary: "#3B82F6",
+            primary: "#3F3F46", // gray-700
             primaryText: "#FFFFFF",
-            success: "#22C55E",
           }
         : {
             bg: "#FFFFFF",
@@ -33,9 +32,8 @@ export default function Index() {
             card: "#F8FAFC",
             input: "#FFFFFF",
             border: "#E2E8F0",
-            primary: "#2563EB",
+            primary: "#525252", // gray-600
             primaryText: "#FFFFFF",
-            success: "#16A34A",
           },
     [isDark]
   );
@@ -121,7 +119,7 @@ export default function Index() {
           {!connected ? (
             <Button title="Connect" onPress={connect} color={c.primary} textColor={c.primaryText} />
           ) : (
-            <Button title="Disconnect" onPress={disconnect} color="#EF4444" textColor="#FFF" />
+            <Button title="Disconnect" onPress={disconnect} color="#4B5563" textColor="#FFFFFF" />
           )}
           <Button title="Clear" onPress={() => setLog("")} color={c.card} textColor={c.text} />
           <StatusPill connected={connected} color={c} />
@@ -227,11 +225,11 @@ function StatusPill({ connected, color: c }: { connected: boolean; color: any })
         paddingVertical: 6,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: connected ? c.success : c.border,
-        backgroundColor: connected ? "rgba(34,197,94,0.1)" : c.card,
+        borderColor: connected ? "#A3A3A3" : c.border,
+        backgroundColor: connected ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.02)",
       }}
     >
-      <Text style={{ color: connected ? c.success : c.sub, fontSize: 12, fontWeight: "600" }}>
+      <Text style={{ color: connected ? "#D4D4D8" : c.sub, fontSize: 12, fontWeight: "600" }}>
         {connected ? "Connected" : "Disconnected"}
       </Text>
     </View>
