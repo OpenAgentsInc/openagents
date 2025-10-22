@@ -98,7 +98,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         while let Some(Ok(msg)) = stream.next().await {
             match msg {
                 Message::Text(t) => {
-                    info!("msg" = "ws text received", size = t.len());
+                    let preview = if t.len() > 180 { format!("{}…", &t[..180].replace('\n', "\\n")) } else { t.replace('\n', "\\n") };
+                    info!("msg" = "ws text received", size = t.len(), preview = preview);
                     // Ensure we have a live codex stdin; respawn if needed
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn {
@@ -124,6 +125,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     if let Some(mut stdin) = guard.take() {
                         let mut data = t.to_string();
                         if !data.ends_with('\n') { data.push('\n'); }
+                        let write_preview = if data.len() > 160 { format!("{}…", &data[..160].replace('\n', "\\n")) } else { data.replace('\n', "\\n") };
+                        info!("msg" = "writing to child stdin", bytes = write_preview.len(), preview = write_preview);
                         if let Err(e) = stdin.write_all(data.as_bytes()).await { 
                             error!(?e, "failed to write to codex stdin");
                             break;
@@ -259,6 +262,12 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     } else {
         vec!["exec".into(), "--json".into()]
     };
+    // Ensure we resume the most recent session instead of starting fresh each time,
+    // but only if the installed CLI supports the `resume` subcommand.
+    if !args.iter().any(|a| a == "resume") && cli_supports_resume(&bin) {
+        args.push("resume".into());
+        args.push("--last".into());
+    }
     if !opts.extra.is_empty() { args.extend(opts.extra.clone()); }
 
     fn contains_flag(args: &[String], short: &str, long: &str) -> bool {
@@ -286,6 +295,20 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
         pre_flags.push("danger-full-access".into());
     }
     // Do not add explicit approvals when using bypass; the bypass implies no approvals
+    // Strongly hint full disk access and override default preset via config
+    if !contains_substring(&args, "sandbox_permissions=") {
+        pre_flags.push("-c".into());
+        pre_flags.push(r#"sandbox_permissions=["disk-full-access"]"#.into());
+    }
+    if !contains_substring(&args, "sandbox_mode=") {
+        pre_flags.push("-c".into());
+        pre_flags.push(r#"sandbox_mode="danger-full-access""#.into());
+    }
+    if !contains_substring(&args, "approval_policy=") {
+        pre_flags.push("-c".into());
+        pre_flags.push(r#"approval_policy="never""#.into());
+    }
+
     if !pre_flags.is_empty() {
         let mut updated = pre_flags;
         updated.extend(args);
@@ -293,6 +316,19 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     }
 
     Ok((bin, args))
+}
+
+fn cli_supports_resume(bin: &PathBuf) -> bool {
+    let out = std::process::Command::new(bin)
+        .args(["exec", "--help"])
+        .output();
+    match out {
+        Ok(o) => {
+            let help = String::from_utf8_lossy(&o.stdout);
+            help.contains("Resume") || help.contains("resume --last") || help.contains("resume")
+        }
+        Err(_) => false,
+    }
 }
 
 async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<String>) -> Result<()> {
@@ -306,6 +342,9 @@ async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<
         while let Ok(Some(line)) = lines.next_line().await {
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
             println!("{}", log);
+            if line.contains("\"sandbox\"") || line.contains("sandbox") {
+                info!("msg" = "observed sandbox string from stdout", raw = %line);
+            }
             let _ = tx_out.send(line);
         }
         info!("msg" = "stdout stream ended");
@@ -318,6 +357,9 @@ async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<
         while let Ok(Some(line)) = lines.next_line().await {
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
             eprintln!("{}", log);
+            if line.contains("\"sandbox\"") || line.contains("sandbox") {
+                info!("msg" = "observed sandbox string from stderr", raw = %line);
+            }
             let _ = tx_err.send(line);
         }
         info!("msg" = "stderr stream ended");
