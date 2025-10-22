@@ -113,7 +113,11 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
         {/* Header status moved to headerRight (dot). Clear Log moved to Settings. */}
 
         <View style={{ flex: 1 }}>
-          <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
+          <ScrollView
+            ref={scrollRef}
+            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            contentContainerStyle={{ paddingTop: 0, paddingBottom: 6, paddingHorizontal: 8 }}
+          >
             {log.map((e) => {
               const isMd = e.text.startsWith('::md::')
               if (isMd) {
