@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Stdio, sync::Arc};
+use std::{path::{Path, PathBuf}, process::Stdio, sync::Arc};
 
 use anyhow::{anyhow, Context, Result};
 use axum::{extract::State, extract::WebSocketUpgrade, response::IntoResponse, routing::get, Router};
@@ -187,8 +187,15 @@ struct ChildWithIo {
 
 async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<String>)> {
     let (bin, args) = build_bin_and_args(opts)?;
-    info!("bin" = %bin.display(), "args" = ?args, "msg" = "spawning codex");
+    let workdir = detect_repo_root(None);
+    info!(
+        "bin" = %bin.display(),
+        "args" = ?args,
+        "workdir" = %workdir.display(),
+        "msg" = "spawning codex"
+    );
     let mut child = Command::new(bin)
+        .current_dir(&workdir)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -214,8 +221,15 @@ async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<Stri
 
 async fn spawn_codex_child_only(opts: &Opts) -> Result<ChildWithIo> {
     let (bin, args) = build_bin_and_args(opts)?;
-    info!("bin" = %bin.display(), "args" = ?args, "msg" = "respawn codex for new prompt");
+    let workdir = detect_repo_root(None);
+    info!(
+        "bin" = %bin.display(),
+        "args" = ?args,
+        "workdir" = %workdir.display(),
+        "msg" = "respawn codex for new prompt"
+    );
     let mut child = Command::new(bin)
+        .current_dir(&workdir)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -346,4 +360,25 @@ fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
     }
 
     Some(match serde_json::to_string(&root) { Ok(s) => s, Err(_) => return None })
+}
+
+/// Detect the repository root directory so Codex runs from the right place.
+/// Heuristics:
+/// - Prefer the nearest ancestor that contains both `expo/` and `crates/` directories.
+/// - If not found, fall back to the process current_dir.
+fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
+    fn is_repo_root(p: &Path) -> bool {
+        p.join("expo").is_dir() && p.join("crates").is_dir()
+    }
+
+    let mut cur = start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let original = cur.clone();
+    loop {
+        if is_repo_root(&cur) {
+            return cur;
+        }
+        if !cur.pop() { // reached filesystem root
+            return original;
+        }
+    }
 }
