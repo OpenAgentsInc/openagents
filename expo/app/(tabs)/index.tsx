@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, Text, TextInput, View, Pressable, SafeAreaView } from "react-native";
-import { Typography } from "@/constants/typography";
-import { useWs } from "@/providers/ws";
+import React, { useEffect, useMemo, useRef, useState } from "react"
+import {
+    Pressable, SafeAreaView, ScrollView, Text, TextInput, View
+} from "react-native"
+import { Typography } from "@/constants/typography"
+import { useWs } from "@/providers/ws"
 
 export default function ConsoleScreen() {
   const isDark = true;
@@ -65,18 +67,20 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
             placeholderTextColor={c.sub}
           />
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ color: c.sub, fontSize: 12 }}>Sends raw text to Codex (newline auto‑appended)</Text>
             <Button title="Send" onPress={send} disabled={!connected || !prompt.trim()} color={connected && prompt.trim() ? c.primary : c.border} textColor={c.primaryText} />
           </View>
         </View>
 
-        <View style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.card }}>
-          <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
-            <Text selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary }}>
-              {log}
-            </Text>
-          </ScrollView>
-        </View>
+        {log.length > 0 ?? (
+          <View style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.card }}>
+            <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
+              <Text selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary }}>
+                {log}
+              </Text>
+            </ScrollView>
+          </View>
+        )}
+
       </View>
     </SafeAreaView>
   );

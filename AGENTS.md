@@ -6,7 +6,7 @@
 - Docs: `docs/` (build/run notes in `docs/logs/`).
 
 ## Build, Test, and Development Commands
-- Install deps: `cd expo && bun install`.
+- Install deps: `cd expo && bun install` (aka `bun i`).
 - Run locally (Metro): `bun run start`.
   - Platform targets: `bun run ios`, `bun run android`, `bun run web`.
 - Type-check TypeScript: `bun run typecheck`.
@@ -26,6 +26,13 @@
 - Workspace: root `Cargo.toml` manages members (e.g., `crates/codex-bridge`).
 - Dependencies: always use `cargo add` to modify dependencies; do not edit `Cargo.toml` by hand (except workspace structure/members).
 - Versions: when adding, do not pass version constraints (`@x.y`, `@*`, or explicit ranges). Let `cargo add` select and pin the latest compatible version.
+
+## JS/Expo Dependencies
+- Use Expo-aware installs so versions match the SDK:
+  - React Native libs: `cd expo && bunx expo install <package>` (no versions).
+  - Generic libs: `cd expo && bun add <package>` (no versions).
+- Do not hand-pin versions in `package.json`. Let the installer choose compatible versions and commit the updated `bun.lock`.
+- If Expo warns about mismatches, run: `cd expo && bunx expo install` to align to expected versions.
 
 ## Testing Guidelines
 - Currently no test suite. When adding tests:
