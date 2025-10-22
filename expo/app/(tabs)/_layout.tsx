@@ -11,7 +11,7 @@ export default function TabLayout() {
         headerTitleStyle: { fontFamily: Typography.bold },
         headerStyle: { backgroundColor: Colors.background },
         headerTintColor: Colors.textPrimary,
-        tabBarShowLabel: true,
+        tabBarShowLabel: false,
         tabBarActiveTintColor: Colors.tabBarActive,
         tabBarInactiveTintColor: Colors.tabBarInactive,
         tabBarStyle: {
@@ -25,7 +25,7 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="terminal" size={size} color={color} />
+            <Ionicons name="home" size={size} color={color} />
           ),
         }}
       />
