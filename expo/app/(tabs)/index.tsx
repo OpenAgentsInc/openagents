@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, ScrollView, Text, TextInput, View, Pressable, SafeAreaView } from "react-native";
+import { ScrollView, Text, TextInput, View, Pressable, SafeAreaView } from "react-native";
 import { Typography } from "@/constants/typography";
+import { useWs } from "@/providers/ws";
 
 export default function ConsoleScreen() {
   const isDark = true;
@@ -11,62 +12,31 @@ export default function ConsoleScreen() {
         : { bg: "#FFFFFF", text: "#0F172A", sub: "#475569", card: "#F8FAFC", input: "#FFFFFF", border: "#E2E8F0", primary: "#525252", primaryText: "#FFFFFF" },
     [isDark]
   );
-  const [wsUrl, setWsUrl] = useState("ws://localhost:8787/ws");
   const [prompt, setPrompt] = useState("Summarize the current repo. Use a maximum of 4 tool calls.");
   const [log, setLog] = useState("");
-  const [connected, setConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
+  const { connected, send: sendWs, setOnMessage } = useWs();
 
   const append = (line: string) => setLog((prev) => (prev ? prev + "\n" + line : line));
 
-  const connect = () => {
-    try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      ws.onopen = () => { setConnected(true); append(`Connected → ${wsUrl}`); };
-      ws.onmessage = (evt) => { append(typeof evt.data === "string" ? evt.data : String(evt.data)); };
-      ws.onerror = (evt: any) => { append(`WS error: ${evt?.message ?? "unknown"}`); };
-      ws.onclose = () => { setConnected(false); append("Disconnected"); };
-    } catch (e: any) { append(`Failed to connect: ${e?.message ?? e}`); }
-  };
-
-  const disconnect = () => { wsRef.current?.close(); wsRef.current = null; };
-
   const send = () => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) { append("Not connected"); return; }
     const payload = prompt.endsWith("\n") ? prompt : prompt + "\n";
-    ws.send(payload);
+    if (!sendWs(payload)) { append("Not connected"); return; }
     append(`>> ${prompt}`);
     setPrompt("");
   };
 
-  useEffect(() => () => { wsRef.current?.close(); }, []);
+  useEffect(() => {
+    setOnMessage((s) => setLog((prev) => (prev ? prev + "\n" + s : s)));
+    return () => setOnMessage(null);
+  }, [setOnMessage]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flex: 1, padding: 16, gap: 14 }}>
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>WebSocket URL</Text>
-          <TextInput
-            value={wsUrl}
-            onChangeText={setWsUrl}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="ws://localhost:8787/ws"
-            style={{ borderWidth: 1, borderColor: c.border, padding: 12, borderRadius: 12, backgroundColor: c.input, color: c.text, fontFamily: Typography.primary, fontSize: 13 }}
-            placeholderTextColor={c.sub}
-          />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            {!connected ? (
-              <Button title="Connect" onPress={connect} color={c.primary} textColor={c.primaryText} />
-            ) : (
-              <Button title="Disconnect" onPress={disconnect} color="#4B5563" textColor="#FFFFFF" />
-            )}
-            <Button title="Clear" onPress={() => setLog("")} color={c.card} textColor={c.text} />
-            <StatusPill connected={connected} color={c} />
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <StatusPill connected={connected} color={c} />
+          <Button title="Clear Log" onPress={() => setLog("")} color={c.card} textColor={c.text} />
         </View>
 
         <View style={{ gap: 8 }}>

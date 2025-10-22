@@ -3,6 +3,7 @@ import { ThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useTypographySetup, applyTypographyGlobals, Typography } from '@/constants/typography';
 import { Colors, NavigationTheme } from '@/constants/theme';
+import { WsProvider } from '@/providers/ws';
 import { useAutoUpdate } from '@/app/hooks/useAutoUpdate';
 
 export default function RootLayout() {
@@ -13,10 +14,12 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={NavigationTheme}>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background } }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
+      <WsProvider>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background } }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        </Stack>
+      </WsProvider>
     </ThemeProvider>
   );
 }
