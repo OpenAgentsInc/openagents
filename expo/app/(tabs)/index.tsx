@@ -81,25 +81,43 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
       <View style={{ flex: 1, padding: 16, gap: 14 }}>
         {/* Header status moved to headerRight (dot). Clear Log moved to Settings. */}
 
-        <View style={{ flex: 1, borderWidth: 1, borderColor: c.border, backgroundColor: c.card }}>
+        <View style={{ flex: 1, borderWidth: 1, borderColor: c.border }}>
           <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
             {log.map((e) => {
               const isMd = e.text.startsWith('::md::')
               if (isMd) {
                 const md = e.text.slice('::md::'.length)
                 return (
-                  <Markdown key={e.id} style={{ body: { color: c.text, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 } }}>
+                  <Markdown
+                    key={e.id}
+                    style={{
+                      body: { color: c.text, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 },
+                      paragraph: { color: c.text },
+                      code_inline: { backgroundColor: '#0F1217', color: c.text, borderWidth: 1, borderColor: c.border, paddingHorizontal: 4, paddingVertical: 2 },
+                      code_block: { backgroundColor: '#0F1217', color: c.text, borderWidth: 1, borderColor: c.border, padding: 8 },
+                      fence: { backgroundColor: '#0F1217', color: c.text, borderWidth: 1, borderColor: c.border, padding: 8 },
+                    }}
+                  >
                     {md}
                   </Markdown>
                 )
               }
               const isReason = e.text.startsWith('::reason::')
               if (isReason) {
-                const reason = e.text.slice('::reason::'.length)
+                const md = e.text.slice('::reason::'.length)
                 return (
-                  <Text key={e.id} style={{ color: c.sub, fontFamily: Typography.primary, fontSize: 12, lineHeight: 18 }}>
-                    {reason}
-                  </Text>
+                  <Markdown
+                    key={e.id}
+                    style={{
+                      body: { color: c.sub, fontFamily: Typography.primary, fontSize: 12, lineHeight: 18 },
+                      paragraph: { color: c.sub },
+                      code_inline: { backgroundColor: '#0F1217', color: c.sub, borderWidth: 1, borderColor: c.border, paddingHorizontal: 4, paddingVertical: 2 },
+                      code_block: { backgroundColor: '#0F1217', color: c.sub, borderWidth: 1, borderColor: c.border, padding: 8 },
+                      fence: { backgroundColor: '#0F1217', color: c.sub, borderWidth: 1, borderColor: c.border, padding: 8 },
+                    }}
+                  >
+                    {md}
+                  </Markdown>
                 )
               }
               return (
