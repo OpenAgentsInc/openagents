@@ -19,10 +19,11 @@ export default function SessionScreen() {
   const PADDING_V = 10
   const MIN_HEIGHT = LINE_HEIGHT * MIN_LINES + PADDING_V * 2
   const MAX_HEIGHT = LINE_HEIGHT * MAX_LINES + PADDING_V * 2
-  const [inputHeight, setInputHeight] = useState(MIN_HEIGHT)
+  // Start at exactly one line tall.
+  const [inputHeight, setInputHeight] = useState<number>(MIN_HEIGHT)
   const lastHeightRef = useRef(MIN_HEIGHT)
   const rafRef = useRef<number | null>(null)
-  const [growActive, setGrowActive] = useState(() => !!prompt && (prompt.includes('\n') || prompt.length > 0))
+  const [growActive, setGrowActive] = useState(false)
   const setHeightStable = useCallback((target: number, { allowShrink = false }: { allowShrink?: boolean } = {}) => {
     const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(target)))
     if (!allowShrink && clamped <= lastHeightRef.current) return
@@ -30,16 +31,27 @@ export default function SessionScreen() {
     rafRef.current = requestAnimationFrame(() => { lastHeightRef.current = clamped; setInputHeight(clamped) })
   }, [])
 
-  type Entry = { id: number; text: string; deemphasize?: boolean }
+  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
   const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler } = useWs()
 
-  const append = (text: string, deemphasize?: boolean, kind: 'md'|'reason'|'text'|'json'|'summary'|'delta' = 'text') => {
+  const append = (
+    text: string,
+    deemphasize?: boolean,
+    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta' = 'text',
+    detailRaw?: string,
+  ) => {
+    let detailId: number | undefined = undefined
+    // If provided, persist a hidden detail record (usually full JSON/meta)
+    if (typeof detailRaw === 'string') {
+      detailId = idRef.current++
+      putLog({ id: detailId, text: detailRaw, kind: 'json', deemphasize: true, ts: Date.now() })
+    }
     const id = idRef.current++
-    putLog({ id, text, kind, deemphasize, ts: Date.now() })
-    setLog((prev) => [...prev, { id, text, deemphasize }])
+    putLog({ id, text, kind, deemphasize, ts: Date.now(), detailId })
+    setLog((prev) => [...prev, { id, text, kind, deemphasize, detailId }])
     saveLogs()
   }
 
@@ -64,7 +76,10 @@ Important policy overrides:
     if (!sendWs(payload)) { append('Not connected'); return }
     append(`> ${base}`)
     setPrompt('')
-    lastHeightRef.current = MIN_HEIGHT; setInputHeight(MIN_HEIGHT); setGrowActive(false)
+    // After sending, collapse back to a single line.
+    lastHeightRef.current = MIN_HEIGHT
+    setInputHeight(MIN_HEIGHT)
+    setGrowActive(false)
   }
 
   useEffect(() => {
@@ -76,10 +91,10 @@ Important policy overrides:
         if (skippingRef.current) { if (trimmed.includes(']}') || trimmed.endsWith(']') || trimmed.includes('}}')) { skippingRef.current = false } continue }
         if (trimmed.includes('exec_command_output_delta')) { skippingRef.current = true; continue }
         const parsed = parseCodexLine(trimmed)
-        if (parsed.kind === 'delta') append(parsed.summary, true, 'summary')
+        if (parsed.kind === 'delta') append(parsed.summary, true, 'summary', trimmed)
         else if (parsed.kind === 'md') append(`::md::${parsed.markdown}`, false, 'md')
         else if (parsed.kind === 'reason') append(`::reason::${parsed.text}`, false, 'reason')
-        else if (parsed.kind === 'summary') append(parsed.text, true, 'summary')
+        else if (parsed.kind === 'summary') append(parsed.text, true, 'summary', trimmed)
         else if (parsed.kind === 'json') append(parsed.raw, true, 'json')
         else append(parsed.raw, true, 'text')
       }
@@ -88,37 +103,81 @@ Important policy overrides:
   }, [setOnMessage])
 
   useEffect(() => { setClearLogHandler(() => { setLog([]); clearLogsStore(); }); return () => setClearLogHandler(null) }, [setClearLogHandler])
-  useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,deemphasize})=>({id,text,deemphasize}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
+  useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
+
+  // If the prompt becomes empty for any reason, force the height back to 1 line.
+  useEffect(() => {
+    if (prompt.length === 0) {
+      lastHeightRef.current = MIN_HEIGHT
+      setInputHeight(MIN_HEIGHT)
+      setGrowActive(false)
+    }
+  }, [prompt])
+
+  // Helper to update height strictly based on content, ignoring placeholder/initial events.
+  const handleContentSizeChange = useCallback((h: number) => {
+    // Ignore spurious "large" initial measurements while there's no user content.
+    if (!growActive && prompt.length === 0) {
+      lastHeightRef.current = MIN_HEIGHT
+      setInputHeight(MIN_HEIGHT)
+      return
+    }
+    const target = h + PADDING_V * 2
+    // Allow shrinking when user deletes text.
+    setHeightStable(target, { allowShrink: true })
+  }, [growActive, prompt, setHeightStable])
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
       <View style={{ flex: 1, paddingTop: 0, paddingBottom: 14, paddingHorizontal: 8, gap: 14 }}>
         <View style={{ flex: 1 }}>
           <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ paddingTop: 0, paddingBottom: 6, paddingHorizontal: 8 }}>
-            {log.map((e) => {
+            {log.filter((e) => e.kind !== 'json').map((e) => {
+              const onPressOpen = () => {
+                const idToOpen = e.detailId ?? e.id
+                try { require('expo-router').router.push(`/message/${idToOpen}`); } catch {}
+              };
               const isMd = e.text.startsWith('::md::')
               if (isMd) {
                 const md = e.text.slice('::md::'.length)
                 return (
-                  <Markdown key={e.id} style={{ body: { color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 }, paragraph: { color: Colors.textPrimary }, code_inline: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 }, code_block: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, padding: 8 }, fence: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, padding: 8 }, }}>
-                    {md}
-                  </Markdown>
+                  <Pressable key={e.id} onPress={onPressOpen}>
+                    <Markdown style={{ body: { color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 }, paragraph: { color: Colors.textPrimary }, code_inline: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 }, code_block: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, padding: 8 }, fence: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, padding: 8 }, }}>
+                      {md}
+                    </Markdown>
+                  </Pressable>
                 )
               }
               const isReason = e.text.startsWith('::reason::')
               if (isReason) {
-                const md = e.text.slice('::reason::'.length)
+                const full = e.text.slice('::reason::'.length)
+                // Extract only the first bold headline (e.g., **Title**) for the chat preview.
+                let headline: string | null = null
+                const first = full.indexOf('**')
+                if (first >= 0) {
+                  const second = full.indexOf('**', first + 2)
+                  if (second > first + 2) headline = full.slice(first, second + 2)
+                }
+                if (!headline) {
+                  // Fallback: first non-empty line
+                  const firstLine = full.split(/\r?\n/).find((ln) => ln.trim().length > 0) ?? ''
+                  headline = firstLine.trim().length ? firstLine.trim() : '**Reasoning**'
+                }
                 return (
-                  <Markdown key={e.id} style={{ body: { color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 18 }, paragraph: { color: Colors.textSecondary }, code_inline: { backgroundColor: '#0F1217', color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 }, code_block: { backgroundColor: '#0F1217', color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, padding: 8 }, fence: { backgroundColor: '#0F1217', color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, padding: 8 }, }}>
-                    {md}
-                  </Markdown>
+                  <Pressable key={e.id} onPress={onPressOpen}>
+                    <Markdown style={{ body: { color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 18 }, paragraph: { color: Colors.textSecondary }, code_inline: { backgroundColor: '#0F1217', color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 }, code_block: { backgroundColor: '#0F1217', color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, padding: 8 }, fence: { backgroundColor: '#0F1217', color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, padding: 8 }, }}>
+                      {headline}
+                    </Markdown>
+                  </Pressable>
                 )
               }
               const lines = e.text.split(/\r?\n/)
               const isLong = lines.length > 8
               const preview = isLong ? lines.slice(0, 8).join('\n') + '\n…' : e.text
               return (
-                <Text key={e.id} selectable style={{ fontSize: 12, lineHeight: 16, color: Colors.textPrimary, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
+                <Pressable key={e.id} onPress={onPressOpen}>
+                  <Text selectable style={{ fontSize: 12, lineHeight: 16, color: Colors.textPrimary, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
+                </Pressable>
               )
             })}
           </ScrollView>
@@ -129,20 +188,38 @@ Important policy overrides:
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
               <TextInput
                 value={prompt}
-                onChangeText={(t) => { if (!growActive) setGrowActive(true); setPrompt(t); }}
+                onChangeText={(t) => {
+                  if (t.length > 0 && !growActive) setGrowActive(true)
+                  setPrompt(t)
+                  if (t.length === 0) {
+                    // Collapse instantly when cleared.
+                    lastHeightRef.current = MIN_HEIGHT
+                    setInputHeight(MIN_HEIGHT)
+                    setGrowActive(false)
+                  }
+                }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 placeholder="Type a message"
                 multiline
                 numberOfLines={MIN_LINES}
-                onContentSizeChange={(e) => { const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT; const target = contentH + PADDING_V * 2; setHeightStable(target, { allowShrink: false }); }}
+                onContentSizeChange={(e) => {
+                  const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT
+                  handleContentSizeChange(contentH)
+                }}
                 scrollEnabled={inputHeight >= MAX_HEIGHT - 1}
                 textAlignVertical="top"
                 style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, padding: PADDING_V, height: inputHeight, backgroundColor: '#0F1217', color: Colors.textPrimary, fontSize: 13, lineHeight: LINE_HEIGHT, fontFamily: Typography.primary, borderRadius: 0 }}
                 placeholderTextColor={Colors.textSecondary}
                 onFocus={() => setGrowActive(true)}
               />
-              <Pressable onPress={send} disabled={!connected || !prompt.trim()} style={{ backgroundColor: !connected || !prompt.trim() ? Colors.border : ui.button, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0, alignSelf: 'flex-start' }} accessibilityRole="button">
+              {/* Keep Send pinned to the bottom by inheriting the row's alignItems:'flex-end' */}
+              <Pressable
+                onPress={send}
+                disabled={!connected || !prompt.trim()}
+                style={{ backgroundColor: !connected || !prompt.trim() ? Colors.border : ui.button, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}
+                accessibilityRole="button"
+              >
                 <Text style={{ color: '#fff', fontFamily: Typography.bold }}>Send</Text>
               </Pressable>
             </View>
@@ -152,4 +229,3 @@ Important policy overrides:
     </SafeAreaView>
   )
 }
-
