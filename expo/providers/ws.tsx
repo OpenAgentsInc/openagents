@@ -61,21 +61,20 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       wsRef.current = ws;
       ws.onopen = () => {
         setConnected(true);
-        onMessageRef.current?.(`Connected → ${wsUrl}`);
+        // Suppress noisy connection status logs in the session feed.
       };
       ws.onmessage = (evt) => {
         const data = typeof evt.data === 'string' ? evt.data : String(evt.data);
         onMessageRef.current?.(data);
       };
       ws.onerror = (evt: any) => {
-        onMessageRef.current?.(`WS error: ${evt?.message ?? 'unknown'}`);
+        // Keep errors out of the session feed; rely on header dot and dev console
       };
       ws.onclose = () => {
         setConnected(false);
-        onMessageRef.current?.('Disconnected');
       };
     } catch (e: any) {
-      onMessageRef.current?.(`Failed to connect: ${e?.message ?? e}`);
+      // Suppress connection error logs in the feed.
     }
   }, [wsUrl]);
 
