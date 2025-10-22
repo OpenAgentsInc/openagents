@@ -1,5 +1,8 @@
 import { Stack } from 'expo-router';
+import { ThemeProvider } from '@react-navigation/native';
+import { StatusBar } from 'expo-status-bar';
 import { useTypographySetup } from '@/constants/typography';
+import { Colors, NavigationTheme } from '@/constants/theme';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -14,8 +17,11 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-    </Stack>
+    <ThemeProvider value={NavigationTheme}>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background } }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      </Stack>
+    </ThemeProvider>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Text, TextInput } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import { Colors } from '@/constants/theme';
 
 export const Typography = {
   primary: 'BerkeleyMono',
@@ -30,7 +31,7 @@ export function useTypographySetup() {
     if ((Text as any).defaultProps == null) (Text as any).defaultProps = {};
     if ((TextInput as any).defaultProps == null) (TextInput as any).defaultProps = {};
 
-    const baseTextStyle = { fontFamily: Typography.primary } as const;
+    const baseTextStyle = { fontFamily: Typography.primary, color: Colors.textPrimary } as const;
     (Text as any).defaultProps.style = [
       (Text as any).defaultProps.style,
       baseTextStyle,
@@ -46,4 +47,3 @@ export function useTypographySetup() {
 
   return fontsLoaded;
 }
-
