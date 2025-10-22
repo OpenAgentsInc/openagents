@@ -26,9 +26,12 @@ export default function ConsoleScreen() {
   const lastHeightRef = useRef(MIN_HEIGHT);
   const rafRef = useRef<number | null>(null);
 
-  const setHeightStable = useCallback((target: number) => {
+  const setHeightStable = useCallback((target: number, { allowShrink = false }: { allowShrink?: boolean } = {}) => {
     const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(target)));
-    if (Math.abs(clamped - lastHeightRef.current) <= 2) return; // ignore tiny diffs to prevent bounce
+    const delta = clamped - lastHeightRef.current;
+    // Only grow during typing; shrinking causes bounce. We'll shrink on send/clear.
+    if (!allowShrink && delta <= 2) return;
+    if (Math.abs(delta) <= 2) return;
     if (rafRef.current) cancelAnimationFrame(rafRef.current as any);
     rafRef.current = requestAnimationFrame(() => {
       lastHeightRef.current = clamped;
@@ -61,6 +64,9 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
     if (!sendWs(payload)) { append("Not connected"); return; }
     append(`>> ${base}`);
     setPrompt("");
+    // Reset height after send to avoid lingering tall composer
+    lastHeightRef.current = MIN_HEIGHT;
+    setInputHeight(MIN_HEIGHT);
   };
 
   useEffect(() => {
@@ -164,7 +170,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
               onContentSizeChange={(e) => {
                 const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT;
                 const target = contentH + PADDING_V * 2;
-                setHeightStable(target);
+                setHeightStable(target, { allowShrink: false });
               }}
               scrollEnabled={inputHeight >= MAX_HEIGHT - 1}
               textAlignVertical="top"
