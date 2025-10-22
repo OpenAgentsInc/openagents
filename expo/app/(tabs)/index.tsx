@@ -77,6 +77,19 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
       for (const line of lines) {
         const trimmed = line.trim()
         if (!trimmed) continue
+        // Skip exec_command_output_delta entire JSON blob (header + chunk rows)
+        const skippingRef = (ConsoleScreen as any)._skipExecRef || ((ConsoleScreen as any)._skipExecRef = { current: false })
+        if (skippingRef.current) {
+          // End skip when closing brackets likely appear
+          if (trimmed.includes(']}') || trimmed.endsWith(']') || trimmed.includes('}}')) {
+            skippingRef.current = false
+          }
+          continue
+        }
+        if (trimmed.includes('exec_command_output_delta')) {
+          skippingRef.current = true
+          continue
+        }
         const parsed = parseCodexLine(trimmed)
         if (parsed.kind === 'delta') {
           // Delta summaries should be deemphasized like raw data
