@@ -15,7 +15,14 @@ export default function MessageDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
-      <Stack.Screen options={{ title: `Message ${id}`, headerTitleStyle: { fontFamily: Typography.bold }, headerBackTitle: '' }} />
+      <Stack.Screen
+        options={{
+          title: `Message ${id}`,
+          headerTitleStyle: { fontFamily: Typography.bold },
+          headerBackTitle: '',
+          headerBackButtonDisplayMode: 'minimal',
+        }}
+      />
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         {!detail && (
           <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Message not found.</Text>
