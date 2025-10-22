@@ -12,6 +12,9 @@ import { FileChangeCard } from '@/components/jsonl/FileChangeCard'
 import { WebSearchRow } from '@/components/jsonl/WebSearchRow'
 import { McpToolCallRow } from '@/components/jsonl/McpToolCallRow'
 import { TodoListCard } from '@/components/jsonl/TodoListCard'
+import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
+import { ErrorRow } from '@/components/jsonl/ErrorRow'
+import { TurnEventRow } from '@/components/jsonl/TurnEventRow'
 import { useWs } from '@/providers/ws'
 import { useHeaderHeight } from '@react-navigation/elements'
 import { putLog, loadLogs, saveLogs, clearLogs as clearLogsStore } from '@/lib/log-store'
@@ -39,7 +42,7 @@ export default function SessionScreen() {
     rafRef.current = requestAnimationFrame(() => { lastHeightRef.current = clamped; setInputHeight(clamped) })
   }, [])
 
-  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'; deemphasize?: boolean; detailId?: number }
+  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
@@ -48,7 +51,7 @@ export default function SessionScreen() {
   const append = (
     text: string,
     deemphasize?: boolean,
-    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo' = 'text',
+    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn' = 'text',
     detailRaw?: string,
   ) => {
     let detailId: number | undefined = undefined
@@ -130,6 +133,18 @@ Important policy overrides:
         else if (parsed.kind === 'todo_list') {
           const payload = JSON.stringify({ status: parsed.status, items: parsed.items })
           append(payload, false, 'todo', trimmed)
+        }
+        else if (parsed.kind === 'cmd_item') {
+          const payload = JSON.stringify({ command: parsed.command, status: parsed.status, exit_code: parsed.exit_code, sample: parsed.sample, output_len: parsed.output_len })
+          append(payload, false, 'cmd', trimmed)
+        }
+        else if (parsed.kind === 'err') {
+          const payload = JSON.stringify({ message: parsed.message })
+          append(payload, false, 'err', trimmed)
+        }
+        else if (parsed.kind === 'turn') {
+          const payload = JSON.stringify({ phase: parsed.phase, usage: parsed.usage, message: parsed.message })
+          append(payload, false, 'turn', trimmed)
         }
         else if (parsed.kind === 'summary') append(parsed.text, true, 'summary', trimmed)
         else if (parsed.kind === 'json') append(parsed.raw, true, 'json')
@@ -238,6 +253,36 @@ Important policy overrides:
                   return (
                     <Pressable key={e.id} onPress={onPressOpen}>
                       <TodoListCard items={obj.items ?? []} status={obj.status} />
+                    </Pressable>
+                  )
+                } catch {}
+              }
+              if (e.kind === 'cmd') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <Pressable key={e.id} onPress={onPressOpen}>
+                      <CommandExecutionCard command={obj.command ?? ''} status={obj.status} exitCode={obj.exit_code} sample={obj.sample} outputLen={obj.output_len} />
+                    </Pressable>
+                  )
+                } catch {}
+              }
+              if (e.kind === 'err') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <Pressable key={e.id} onPress={onPressOpen}>
+                      <ErrorRow message={obj.message ?? ''} />
+                    </Pressable>
+                  )
+                } catch {}
+              }
+              if (e.kind === 'turn') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <Pressable key={e.id} onPress={onPressOpen}>
+                      <TurnEventRow phase={obj.phase ?? 'started'} usage={obj.usage} message={obj.message} />
                     </Pressable>
                   )
                 } catch {}

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type LogKind = 'md' | 'reason' | 'text' | 'json' | 'summary' | 'delta' | 'exec' | 'file' | 'search' | 'mcp' | 'todo';
+export type LogKind = 'md' | 'reason' | 'text' | 'json' | 'summary' | 'delta' | 'exec' | 'file' | 'search' | 'mcp' | 'todo' | 'cmd' | 'err' | 'turn';
 
 export type LogDetail = {
   id: number;

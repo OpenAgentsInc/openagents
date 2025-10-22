@@ -10,6 +10,9 @@ import { FileChangeCard } from '@/components/jsonl/FileChangeCard'
 import { WebSearchRow } from '@/components/jsonl/WebSearchRow'
 import { McpToolCallRow } from '@/components/jsonl/McpToolCallRow'
 import { TodoListCard } from '@/components/jsonl/TodoListCard'
+import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
+import { ErrorRow } from '@/components/jsonl/ErrorRow'
+import { TurnEventRow } from '@/components/jsonl/TurnEventRow'
 
 export default function ComponentLibraryScreen() {
   const samples = {
@@ -24,6 +27,9 @@ export default function ComponentLibraryScreen() {
       { text: 'List important files', completed: true },
       { text: 'Summarize key configs', completed: false },
     ] } as const,
+    cmd_item: { command: 'ls -la', status: 'completed', exit_code: 0, sample: 'README.md\nexpo\ncrates', output_len: 24 } as const,
+    err: { message: 'Something went wrong' } as const,
+    turn_complete: { phase: 'completed' as const, usage: { input_tokens: 123, cached_input_tokens: 0, output_tokens: 45 } },
   }
 
   return (
@@ -71,6 +77,21 @@ export default function ComponentLibraryScreen() {
       <View style={{ gap: 8 }}>
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>todo_list</Text>
         <TodoListCard items={samples.todo_list.items} status={samples.todo_list.status} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>command_execution</Text>
+        <CommandExecutionCard command={samples.cmd_item.command} status={samples.cmd_item.status} exitCode={samples.cmd_item.exit_code} sample={samples.cmd_item.sample} outputLen={samples.cmd_item.output_len} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>error</Text>
+        <ErrorRow message={samples.err.message} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>turn.completed</Text>
+        <TurnEventRow phase={samples.turn_complete.phase} usage={samples.turn_complete.usage} />
       </View>
     </ScrollView>
   )
