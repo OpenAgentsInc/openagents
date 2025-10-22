@@ -15,7 +15,7 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "v0.1.0"
     }
   },
   "submit": {
