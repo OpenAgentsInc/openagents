@@ -11,9 +11,18 @@ export function ReasoningHeadline({ text }: { text: string }) {
     const second = text.indexOf('**', first + 2)
     if (second > first + 2) headline = text.slice(first, second + 2)
   }
+  const sanitize = (s: string) => {
+    const core = s.replace(/^\*\*|\*\*$/g, '').replace(/^`|`$/g, '').trim().toLowerCase()
+    if (core === 'unknown' || core === 'n/a' || core === 'none' || core === 'null') return '**Reasoning**'
+    return s
+  }
+
   if (!headline) {
     const firstLine = text.split(/\r?\n/).find((ln) => ln.trim().length > 0) ?? ''
-    headline = firstLine.trim().length ? firstLine.trim() : '**Reasoning**'
+    const base = firstLine.trim().length ? firstLine.trim() : '**Reasoning**'
+    headline = sanitize(base)
+  } else {
+    headline = sanitize(headline)
   }
 
   return (
@@ -30,4 +39,3 @@ export function ReasoningHeadline({ text }: { text: string }) {
     </Markdown>
   )
 }
-

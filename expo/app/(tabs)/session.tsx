@@ -103,7 +103,12 @@ Important policy overrides:
         }
         const parsed = parseCodexLine(trimmed)
         if (parsed.kind === 'delta') append(parsed.summary, true, 'summary', trimmed)
-        else if (parsed.kind === 'md') append(`::md::${parsed.markdown}`, false, 'md')
+        else if (parsed.kind === 'md') {
+          const raw = String(parsed.markdown ?? '').trim()
+          const core = raw.replace(/^\*\*|\*\*$/g, '').replace(/^`|`$/g, '').trim().toLowerCase()
+          const isBland = core === 'unknown' || core === 'n/a' || core === 'none' || core === 'null'
+          if (!isBland) append(`::md::${parsed.markdown}`, false, 'md')
+        }
         else if (parsed.kind === 'reason') append(`::reason::${parsed.text}`, false, 'reason')
         else if (parsed.kind === 'exec_begin') {
           const payload = JSON.stringify({ command: parsed.command, cwd: parsed.cwd, parsed: parsed.parsed })
