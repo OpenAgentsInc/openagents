@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native"
+import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native"
 import Markdown from 'react-native-markdown-display'
 import { Typography } from "@/constants/typography"
 import { useWs } from "@/providers/ws"
 import { parseCodexLine } from "@/lib/codex-events"
+import { useHeaderHeight } from '@react-navigation/elements'
 
 export default function ConsoleScreen() {
+  const headerHeight = useHeaderHeight();
   const isDark = true;
   const c = useMemo(
     () =>
@@ -157,33 +159,37 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
           </ScrollView>
         </View>
 
-        {/* Composer under the feed */}
-        <View style={{ gap: 6 }}>
-          <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>Prompt</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
-            <TextInput
-              value={prompt}
-              onChangeText={(t) => { if (!growActive) setGrowActive(true); setPrompt(t); }}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="Hello, world"
-              multiline
-              numberOfLines={MIN_LINES}
-              onContentSizeChange={(e) => {
-                if (!growActive) return;
-                const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT;
-                const target = contentH + PADDING_V * 2;
-                setHeightStable(target, { allowShrink: false });
-              }}
-              scrollEnabled={inputHeight >= MAX_HEIGHT - 1}
-              textAlignVertical="top"
-              style={{ flex: 1, borderWidth: 1, borderColor: c.border, padding: PADDING_V, height: inputHeight, backgroundColor: c.input, color: c.text, fontSize: 13, lineHeight: LINE_HEIGHT, fontFamily: Typography.primary, borderRadius: 0 }}
-              placeholderTextColor={c.sub}
-              onFocus={() => setGrowActive(true)}
-            />
-            <Button title="Send" onPress={send} disabled={!connected || !prompt.trim()} color={connected && prompt.trim() ? c.primary : c.border} textColor={c.primaryText} />
+        {/* Composer under the feed, keyboard-safe */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={headerHeight + 8}
+        >
+          <View style={{ gap: 6, paddingBottom: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+              <TextInput
+                value={prompt}
+                onChangeText={(t) => { if (!growActive) setGrowActive(true); setPrompt(t); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="Hello, world"
+                multiline
+                numberOfLines={MIN_LINES}
+                onContentSizeChange={(e) => {
+                  if (!growActive) return;
+                  const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT;
+                  const target = contentH + PADDING_V * 2;
+                  setHeightStable(target, { allowShrink: false });
+                }}
+                scrollEnabled={inputHeight >= MAX_HEIGHT - 1}
+                textAlignVertical="top"
+                style={{ flex: 1, borderWidth: 1, borderColor: c.border, padding: PADDING_V, height: inputHeight, backgroundColor: c.input, color: c.text, fontSize: 13, lineHeight: LINE_HEIGHT, fontFamily: Typography.primary, borderRadius: 0 }}
+                placeholderTextColor={c.sub}
+                onFocus={() => setGrowActive(true)}
+              />
+              <Button title="Send" onPress={send} disabled={!connected || !prompt.trim()} color={connected && prompt.trim() ? c.primary : c.border} textColor={c.primaryText} />
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
 
       </View>
     </SafeAreaView>
