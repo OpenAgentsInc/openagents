@@ -55,6 +55,10 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
         } else if (parsed.kind === 'md') {
           // Render markdown-only message for agent_message
           append(`::md::${parsed.markdown}`, false)
+        } else if (parsed.kind === 'reason') {
+          append(`::reason::${parsed.text}`, false)
+        } else if (parsed.kind === 'summary') {
+          append(parsed.text, true) // exec_* summaries should be deemphasized
         } else if (parsed.kind === 'json') {
           append(parsed.raw, true) // deemphasize full JSON
         } else {
@@ -83,6 +87,15 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
                   <Markdown key={e.id} style={{ body: { color: c.text, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 } }}>
                     {md}
                   </Markdown>
+                )
+              }
+              const isReason = e.text.startsWith('::reason::')
+              if (isReason) {
+                const reason = e.text.slice('::reason::'.length)
+                return (
+                  <Text key={e.id} style={{ color: c.sub, fontFamily: Typography.primary, fontSize: 12, lineHeight: 18 }}>
+                    {reason}
+                  </Text>
                 )
               }
               return (
