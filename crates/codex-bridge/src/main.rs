@@ -280,6 +280,12 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     if !args.iter().any(|a| a == "--dangerously-bypass-approvals-and-sandbox") {
         pre_flags.push("--dangerously-bypass-approvals-and-sandbox".into());
     }
+    // Ensure explicit sandbox + approvals flags so the CLI reports the correct state
+    if !contains_flag(&args, "-s", "--sandbox") {
+        pre_flags.push("-s".into());
+        pre_flags.push("danger-full-access".into());
+    }
+    // Do not add explicit approvals when using bypass; the bypass implies no approvals
     if !pre_flags.is_empty() {
         let mut updated = pre_flags;
         updated.extend(args);
