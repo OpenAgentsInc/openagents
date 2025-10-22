@@ -13,6 +13,9 @@ type WsContextValue = {
   disconnect: () => void;
   send: (payload: string | ArrayBuffer | Blob) => boolean;
   setOnMessage: (fn: MsgHandler) => void;
+  // Log controls (Console registers a handler; Settings can trigger)
+  setClearLogHandler: (fn: (() => void) | null) => void;
+  clearLog: () => void;
   // Permissions/preferences exposed to UI and sender
   readOnly: boolean;
   setReadOnly: (v: boolean) => void;
@@ -31,6 +34,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<MsgHandler>(null);
+  const clearLogHandlerRef = useRef<(() => void) | null>(null);
 
   // Simple in-memory preferences (could persist with AsyncStorage)
   const [readOnly, setReadOnly] = useState(true);
@@ -123,6 +127,14 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
     onMessageRef.current = fn;
   }, []);
 
+  const setClearLogHandler = useCallback((fn: (() => void) | null) => {
+    clearLogHandlerRef.current = fn;
+  }, []);
+
+  const clearLog = useCallback(() => {
+    try { clearLogHandlerRef.current?.(); } catch {}
+  }, []);
+
   const value = useMemo(
     () => ({
       wsUrl,
@@ -132,6 +144,8 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       disconnect,
       send,
       setOnMessage,
+      setClearLogHandler,
+      clearLog,
       readOnly,
       setReadOnly,
       networkEnabled,

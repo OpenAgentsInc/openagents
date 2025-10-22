@@ -5,7 +5,7 @@ import { useWs } from '@/providers/ws';
 import { useMemo } from 'react';
 
 export default function SettingsScreen() {
-  const { wsUrl, setWsUrl, connected, connect, disconnect, readOnly, setReadOnly, networkEnabled, setNetworkEnabled, approvals, setApprovals, attachPreface, setAttachPreface } = useWs();
+  const { wsUrl, setWsUrl, connected, connect, disconnect, readOnly, setReadOnly, networkEnabled, setNetworkEnabled, approvals, setApprovals, attachPreface, setAttachPreface, clearLog } = useWs();
   const seg = useMemo(() => ({
     base: {
       paddingVertical: 8,
@@ -40,6 +40,9 @@ export default function SettingsScreen() {
         )}
         <StatusPill connected={connected} />
       </View>
+
+      <View style={{ height: 8 }} />
+      <Button title="Clear Log" onPress={clearLog} />
 
       <View style={{ height: 16 }} />
       <Text style={styles.title}>Permissions</Text>

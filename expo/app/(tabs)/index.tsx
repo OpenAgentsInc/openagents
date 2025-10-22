@@ -19,7 +19,7 @@ export default function ConsoleScreen() {
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null);
-  const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface } = useWs();
+  const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler } = useWs();
 
   const append = (text: string, deemphasize?: boolean) => setLog((prev) => [...prev, { id: idRef.current++, text, deemphasize }])
 
@@ -69,13 +69,16 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
     return () => setOnMessage(null)
   }, [setOnMessage])
 
+  useEffect(() => {
+    // Allow Settings → Clear Log to wipe this feed
+    setClearLogHandler(() => setLog([]))
+    return () => setClearLogHandler(null)
+  }, [setClearLogHandler])
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flex: 1, padding: 16, gap: 14 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <StatusPill connected={connected} color={c} />
-          <Button title="Clear Log" onPress={() => setLog([])} color={c.card} textColor={c.text} />
-        </View>
+        {/* Header status moved to headerRight (dot). Clear Log moved to Settings. */}
 
         <View style={{ flex: 1, borderWidth: 1, borderColor: c.border, backgroundColor: c.card }}>
           <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
