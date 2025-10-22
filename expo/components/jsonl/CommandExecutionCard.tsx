@@ -1,0 +1,30 @@
+import React from 'react'
+import { View, Text } from 'react-native'
+import { Colors } from '@/constants/theme'
+import { Typography } from '@/constants/typography'
+
+export function CommandExecutionCard({ command, status, exitCode, sample, outputLen }: { command: string; status?: string; exitCode?: number | null; sample?: string; outputLen?: number }) {
+  const badgeBg = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0) ? '#EF4444' : status === 'completed' ? '#22C55E' : '#A3A3A3'
+  return (
+    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 12, padding: 12, gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ backgroundColor: badgeBg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+          <Text style={{ color: '#000', fontFamily: Typography.bold, fontSize: 11 }}>{(status ?? 'cmd').toUpperCase()}</Text>
+        </View>
+        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{command}</Text>
+      </View>
+      {typeof exitCode === 'number' ? (
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>exit_code: {exitCode}</Text>
+      ) : null}
+      {typeof outputLen === 'number' && outputLen > 0 ? (
+        <View style={{ gap: 4 }}>
+          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>output ~{outputLen}B</Text>
+          {sample ? (
+            <Text selectable style={{ color: Colors.textPrimary, fontFamily: Typography.primary, backgroundColor: '#0F1217', borderWidth: 1, borderColor: Colors.border, padding: 8 }}>{sample}</Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  )
+}
+

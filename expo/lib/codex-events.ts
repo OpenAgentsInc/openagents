@@ -60,6 +60,9 @@ export type ParsedLine =
   | { kind: 'web_search'; query: string }
   | { kind: 'mcp_call'; server: string; tool: string; status?: string }
   | { kind: 'todo_list'; status?: string; items: Array<{ text: string; completed: boolean }> }
+  | { kind: 'cmd_item'; command: string; status?: string; exit_code?: number | null; output_len?: number; sample?: string }
+  | { kind: 'err'; message: string }
+  | { kind: 'turn'; phase: 'started' | 'completed' | 'failed'; usage?: { input_tokens: number; cached_input_tokens: number; output_tokens: number }; message?: string }
   | { kind: 'summary'; text: string }
   | { kind: 'json'; raw: string }
   | { kind: 'text'; raw: string };
@@ -116,6 +119,15 @@ export function parseCodexLine(line: string): ParsedLine {
       if (typeof evt?.type === 'string' && evt.type.startsWith('item.') && evt?.item) {
         const item: any = evt.item;
         const t = item?.type;
+        if (t === 'command_execution') {
+          const status: string | undefined = item?.status ?? evt?.type?.split('.')?.[1];
+          const command = String(item?.command ?? '');
+          const out: string = typeof item?.aggregated_output === 'string' ? item.aggregated_output : '';
+          const sample = out.slice(0, 240);
+          const output_len = out.length;
+          const exit_code = typeof item?.exit_code === 'number' ? item.exit_code : undefined;
+          return { kind: 'cmd_item', command, status, exit_code: exit_code ?? null, output_len, sample };
+        }
         if (t === 'file_change') {
           const status: string | undefined = evt?.type?.split('.')?.[1];
           const changes = Array.isArray(item?.changes) ? item.changes : [];
@@ -138,6 +150,22 @@ export function parseCodexLine(line: string): ParsedLine {
             : [];
           return { kind: 'todo_list', status, items };
         }
+      }
+
+      // Turn and error events
+      if (evt?.type === 'error' && typeof evt?.message === 'string') {
+        return { kind: 'err', message: evt.message as string };
+      }
+      if (evt?.type === 'turn.started') {
+        return { kind: 'turn', phase: 'started' };
+      }
+      if (evt?.type === 'turn.completed') {
+        const usage = evt?.usage ?? undefined;
+        return { kind: 'turn', phase: 'completed', usage };
+      }
+      if (evt?.type === 'turn.failed') {
+        const message = evt?.error?.message ?? 'Failed';
+        return { kind: 'turn', phase: 'failed', message };
       }
 
       if (isDeltaLike(evt)) {
