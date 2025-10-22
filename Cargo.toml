@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "crates/codex-bridge",
+    "crates/copy-sources",
 ]
 resolver = "2"
