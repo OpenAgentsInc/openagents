@@ -7,3 +7,5 @@ A cross-platform command center for your coding agents.
 - React Native Expo
 - TypeScript
 - Rust
+- OpenAI Codex CLI
+- Tailscale
