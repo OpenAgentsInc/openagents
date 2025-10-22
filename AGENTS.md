@@ -23,7 +23,8 @@
 - Rust (when added): crates kebab-case; modules snake_case; prefer `clippy` defaults.
 
 ## Rust Workspace & Dependencies
-- Workspace: root `Cargo.toml` manages members (e.g., `crates/codex-bridge`).
+- Workspace: root `Cargo.toml` manages members (e.g., `crates/codex-bridge`). This is intentional so Rust builds run from the repo root.
+- Lockfile: `Cargo.lock` lives at the workspace root by Cargo design. It will be regenerated at the root whenever building a workspace; do not move it into `crates/`.
 - Dependencies: always use `cargo add` to modify dependencies; do not edit `Cargo.toml` by hand (except workspace structure/members).
 - Versions: when adding, do not pass version constraints (`@x.y`, `@*`, or explicit ranges). Let `cargo add` select and pin the latest compatible version.
 
@@ -42,7 +43,12 @@
 - To publish an iOS OTA update:
   - `cd expo && bun run update:ios -- "<short message>"`
   - Keep messages concise (what changed). Assets are deduped; make sure fonts/images are committed.
-- When bumping native runtime (breaking changes), increment the app version in `expo/app.json` and coordinate store builds; otherwise OTA won’t apply across runtimes.
+  - When bumping native runtime (breaking changes), increment the app version in `expo/app.json` and coordinate store builds; otherwise OTA won’t apply across runtimes.
+
+### OTA Policy
+- Default to iOS-only updates. Do not run Android or both-platform updates unless the user explicitly requests Android or both.
+- When the user says “push an OTA update” without specifying a platform, run: `cd expo && bun run update:ios -- "<short message>"`.
+- Avoid `update:both` and `update:android` unless specifically directed; Android builds/updates are not in scope right now.
 
 ## Testing Guidelines
 - Currently no test suite. When adding tests:
