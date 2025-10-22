@@ -15,14 +15,27 @@ export default function ConsoleScreen() {
   const [prompt, setPrompt] = useState("Summarize the current repo. Use a maximum of 4 tool calls.");
   const [log, setLog] = useState("");
   const scrollRef = useRef<ScrollView | null>(null);
-  const { connected, send: sendWs, setOnMessage } = useWs();
+  const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface } = useWs();
 
   const append = (line: string) => setLog((prev) => (prev ? prev + "\n" + line : line));
 
+  const buildPreface = () => {
+    return `You are a coding agent running in the Codex CLI.
+Capabilities: read files, propose patches with apply_patch, run shell commands.
+Environment:
+- Filesystem: ${readOnly ? 'read-only' : 'write access within workspace'}
+- Network: ${networkEnabled ? 'enabled' : 'restricted'}
+- Approvals: ${approvals}
+
+When unsafe, ask for confirmation and avoid destructive actions.`;
+  };
+
   const send = () => {
-    const payload = prompt.endsWith("\n") ? prompt : prompt + "\n";
+    const base = prompt.trim();
+    const finalText = attachPreface ? `${buildPreface()}\n\n${base}` : base;
+    const payload = finalText.endsWith("\n") ? finalText : finalText + "\n";
     if (!sendWs(payload)) { append("Not connected"); return; }
-    append(`>> ${prompt}`);
+    append(`>> ${base}`);
     setPrompt("");
   };
 

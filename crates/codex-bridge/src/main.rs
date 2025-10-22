@@ -32,6 +32,7 @@ struct Opts {
 struct AppState {
     tx: broadcast::Sender<String>,
     child_stdin: Mutex<Option<tokio::process::ChildStdin>>, // drop after first write to signal EOF
+    opts: Opts,
 }
 
 #[tokio::main]
@@ -43,6 +44,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState {
         tx,
         child_stdin: Mutex::new(Some(child.stdin.take().context("child stdin missing")?)),
+        opts: opts.clone(),
     });
 
     // Start readers for stdout/stderr → broadcast + console
@@ -96,6 +98,27 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             match msg {
                 Message::Text(t) => {
                     info!("msg" = "ws text received", size = t.len());
+                    // Ensure we have a live codex stdin; respawn if needed
+                    let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
+                    if need_respawn {
+                        match spawn_codex_child_only(&stdin_state.opts).await {
+                            Ok(mut child) => {
+                                if let Some(stdin) = child.stdin.take() {
+                                    *stdin_state.child_stdin.lock().await = Some(stdin);
+                                } else {
+                                    error!("respawned codex missing stdin");
+                                }
+                                // start forwarding for new child
+                                if let Err(e) = start_stream_forwarders(child, &stdin_state.tx).await {
+                                    error!(?e, "failed starting forwarders for respawned codex");
+                                }
+                            }
+                            Err(e) => {
+                                error!(?e, "failed to respawn codex");
+                            }
+                        }
+                    }
+
                     let mut guard = stdin_state.child_stdin.lock().await;
                     if let Some(mut stdin) = guard.take() {
                         let mut data = t.to_string();
@@ -112,6 +135,23 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 }
                 Message::Binary(b) => {
                     info!("msg" = "ws binary received", size = b.len());
+                    let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
+                    if need_respawn {
+                        match spawn_codex_child_only(&stdin_state.opts).await {
+                            Ok(mut child) => {
+                                if let Some(stdin) = child.stdin.take() {
+                                    *stdin_state.child_stdin.lock().await = Some(stdin);
+                                }
+                                if let Err(e) = start_stream_forwarders(child, &stdin_state.tx).await {
+                                    error!(?e, "failed starting forwarders for respawned codex");
+                                }
+                            }
+                            Err(e) => {
+                                error!(?e, "failed to respawn codex");
+                            }
+                        }
+                    }
+
                     let mut guard = stdin_state.child_stdin.lock().await;
                     if let Some(mut stdin) = guard.take() {
                         if let Err(e) = stdin.write_all(&b).await { 
@@ -145,13 +185,60 @@ struct ChildWithIo {
 }
 
 async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<String>)> {
-    // Resolve codex binary path
+    let (bin, args) = build_bin_and_args(opts)?;
+    info!("bin" = %bin.display(), "args" = ?args, "msg" = "spawning codex");
+    let mut child = Command::new(bin)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("failed to spawn codex")?;
+
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let (tx, _rx) = broadcast::channel::<String>(1024);
+
+    tokio::spawn(async move {
+        match child.wait().await {
+            Ok(status) => info!(?status, "codex exited"),
+            Err(e) => error!(?e, "codex wait failed"),
+        }
+    });
+
+    Ok((ChildWithIo { stdin, stdout, stderr }, tx))
+}
+
+async fn spawn_codex_child_only(opts: &Opts) -> Result<ChildWithIo> {
+    let (bin, args) = build_bin_and_args(opts)?;
+    info!("bin" = %bin.display(), "args" = ?args, "msg" = "respawn codex for new prompt");
+    let mut child = Command::new(bin)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("failed to spawn codex")?;
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    tokio::spawn(async move {
+        match child.wait().await {
+            Ok(status) => info!(?status, "codex exited"),
+            Err(e) => error!(?e, "codex wait failed"),
+        }
+    });
+    Ok(ChildWithIo { stdin, stdout, stderr })
+}
+
+fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     let bin = match &opts.codex_bin {
         Some(p) => p.clone(),
         None => which::which("codex").unwrap_or_else(|_| PathBuf::from("codex")),
     };
 
-    // Build args
     let mut args: Vec<String> = if let Some(args_str) = &opts.codex_args {
         shlex::split(args_str).ok_or_else(|| anyhow!("failed to parse CODEX_ARGS"))?
     } else {
@@ -159,8 +246,6 @@ async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<Stri
     };
     if !opts.extra.is_empty() { args.extend(opts.extra.clone()); }
 
-    // Always pass these defaults to codex unless already specified.
-    // -m gpt-5 -c model_reasoning_effort="high" --dangerously-bypass-approvals-and-sandbox
     fn contains_flag(args: &[String], short: &str, long: &str) -> bool {
         args.iter().any(|a| a == short || a == long || a.starts_with(&format!("{short}=")) || a.starts_with(&format!("{long}=")))
     }
@@ -186,31 +271,7 @@ async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<Stri
         args = updated;
     }
 
-    info!("bin" = %bin.display(), "args" = ?args, "msg" = "spawning codex");
-    let mut child = Command::new(bin)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("failed to spawn codex")?;
-
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-
-    // Channel for broadcasting lines to all sockets
-    let (tx, _rx) = broadcast::channel::<String>(1024);
-
-    // Also monitor exit
-    tokio::spawn(async move {
-        match child.wait().await {
-            Ok(status) => info!(?status, "codex exited"),
-            Err(e) => error!(?e, "codex wait failed"),
-        }
-    });
-
-    Ok((ChildWithIo { stdin, stdout, stderr }, tx))
+    Ok((bin, args))
 }
 
 async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<String>) -> Result<()> {
