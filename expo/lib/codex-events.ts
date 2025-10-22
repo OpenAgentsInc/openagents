@@ -54,6 +54,8 @@ export type CodexEvent =
 export type ParsedLine =
   | { kind: 'delta'; summary: string }
   | { kind: 'md'; markdown: string }
+  | { kind: 'reason'; text: string }
+  | { kind: 'summary'; text: string }
   | { kind: 'json'; raw: string }
   | { kind: 'text'; raw: string };
 
@@ -84,12 +86,20 @@ export function parseCodexLine(line: string): ParsedLine {
   if (!s) return { kind: 'text', raw: '' };
   if (s.startsWith('{') && s.endsWith('}')) {
     try {
-      const obj: CodexEvent | { delta?: any } = JSON.parse(s);
-      if ((obj as any)?.type === 'agent_message' && typeof (obj as any).message === 'string') {
-        return { kind: 'md', markdown: (obj as any).message as string };
+      const obj: any = JSON.parse(s);
+      const evt: any = obj?.msg ?? obj; // unwrap { msg: {...} } wrapper if present
+
+      if (evt?.type === 'agent_message' && typeof evt.message === 'string') {
+        return { kind: 'md', markdown: evt.message as string };
       }
-      if (isDeltaLike(obj)) {
-        const payload = (obj as any).delta ?? obj;
+      if (evt?.type === 'agent_reasoning' && typeof (evt.reasoning ?? evt.text) === 'string') {
+        return { kind: 'reason', text: (evt.reasoning ?? evt.text) as string };
+      }
+      if (isExecType(evt?.type)) {
+        return { kind: 'summary', text: summarizeExec(evt) };
+      }
+      if (isDeltaLike(evt)) {
+        const payload = (evt as any).delta ?? evt;
         return { kind: 'delta', summary: summarizeDelta(payload) };
       }
       // Not delta → render the full JSON (UI will deemphasize)
@@ -113,4 +123,36 @@ function roughSize(x: unknown): number {
   } catch {
     return 0;
   }
+}
+
+function isExecType(t: any): boolean {
+  return typeof t === 'string' && t.startsWith('exec_command_');
+}
+
+function summarizeExec(evt: any): string {
+  const t = evt?.type as string;
+  if (t === 'exec_command_output_delta') {
+    const stream = evt?.stream ?? 'stdout';
+    // Chunk may be a string or array of bytes
+    const byteLen = Array.isArray(evt?.chunk_bytes)
+      ? evt.chunk_bytes.length
+      : typeof evt?.chunk === 'string'
+        ? evt.chunk.length
+        : typeof evt?.bytes === 'number'
+          ? evt.bytes
+          : roughSize(evt?.chunk ?? evt?.chunk_bytes);
+    return `[exec out] stream=${stream} ~${byteLen}B`;
+  }
+  if (t === 'exec_command_begin') {
+    const cmd = Array.isArray(evt?.command) ? evt.command.join(' ') : (evt?.command ?? 'cmd');
+    return `[exec begin] ${cmd}`;
+  }
+  if (t === 'exec_command_end') {
+    const code = evt?.exit_code ?? evt?.code ?? evt?.status ?? 0;
+    const so = typeof evt?.stdout === 'string' ? evt.stdout.length : 0;
+    const se = typeof evt?.stderr === 'string' ? evt.stderr.length : 0;
+    return `[exec end] code=${code} stdout~${so}B stderr~${se}B`;
+  }
+  // Fallback generic summary
+  return `[exec] ${t}`;
 }
