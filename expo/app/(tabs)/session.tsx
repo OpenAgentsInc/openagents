@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native'
 import { router } from 'expo-router'
 import Markdown from 'react-native-markdown-display'
+import * as Clipboard from 'expo-clipboard'
 import { Typography } from '@/constants/typography'
 import { Colors } from '@/constants/theme'
 import { parseCodexLine } from '@/lib/codex-events'
@@ -49,6 +50,13 @@ export default function SessionScreen() {
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
   const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler } = useWs()
+  const [copiedId, setCopiedId] = useState<number | null>(null)
+
+  const copyAndFlash = useCallback(async (id: number, text: string) => {
+    try { await Clipboard.setStringAsync(text) } catch {}
+    setCopiedId(id)
+    setTimeout(() => { setCopiedId((x) => (x === id ? null : x)) }, 800)
+  }, [])
 
   const append = (
     text: string,
@@ -221,8 +229,9 @@ Important policy overrides:
                 const md = e.text.slice('::md::'.length)
                 return (
                   <View key={e.id} style={{ paddingLeft: indent }}>
-                    <Pressable onPress={onPressOpen}>
+                    <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, md)}>
                       <MarkdownBlock markdown={md} />
+                      {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                     </Pressable>
                   </View>
                 )
@@ -232,8 +241,9 @@ Important policy overrides:
                 const full = e.text.slice('::reason::'.length)
                 return (
                   <View key={e.id} style={{ paddingLeft: indent }}>
-                    <Pressable onPress={onPressOpen}>
+                    <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, full)}>
                       <ReasoningHeadline text={full} />
+                      {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                     </Pressable>
                   </View>
                 )
@@ -243,7 +253,10 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <ThreadStartedRow threadId={obj.thread_id ?? ''} />
+                      <Pressable onLongPress={() => copyAndFlash(e.id, e.text)}>
+                        <ThreadStartedRow threadId={obj.thread_id ?? ''} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
+                      </Pressable>
                     </View>
                   )
                 } catch {}
@@ -253,7 +266,10 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <ItemLifecycleRow phase={obj.phase ?? 'updated'} id={obj.id ?? ''} itemType={obj.item_type ?? 'item'} status={obj.status} />
+                      <Pressable onLongPress={() => copyAndFlash(e.id, e.text)}>
+                        <ItemLifecycleRow phase={obj.phase ?? 'updated'} id={obj.id ?? ''} itemType={obj.item_type ?? 'item'} status={obj.status} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
+                      </Pressable>
                     </View>
                   )
                 } catch {}
@@ -263,8 +279,9 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen}>
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
                         <ExecBeginRow payload={obj} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
                   )
@@ -275,8 +292,9 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen}>
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
                         <FileChangeCard changes={obj.changes ?? []} status={obj.status} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
                   )
@@ -287,8 +305,9 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen}>
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, obj.query ?? '')}>
                         <WebSearchRow query={obj.query ?? ''} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
                   )
@@ -299,8 +318,9 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen}>
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, `${obj.server ?? ''}:${obj.tool ?? ''}${obj.status ? ` (${obj.status})` : ''}`.trim())}>
                         <McpToolCallRow server={obj.server ?? ''} tool={obj.tool ?? ''} status={obj.status} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
                   )
@@ -311,8 +331,9 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen}>
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
                         <TodoListCard items={obj.items ?? []} status={obj.status} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
                   )
@@ -323,8 +344,9 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen}>
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
                         <CommandExecutionCard command={obj.command ?? ''} status={obj.status} exitCode={obj.exit_code} sample={obj.sample} outputLen={obj.output_len} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
                   )
@@ -335,8 +357,9 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen}>
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, obj.message ?? e.text)}>
                         <ErrorRow message={obj.message ?? ''} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
                   )
@@ -347,8 +370,9 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen}>
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
                         <TurnEventRow phase={obj.phase ?? 'started'} usage={obj.usage} message={obj.message} />
+                        {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
                   )
@@ -359,8 +383,9 @@ Important policy overrides:
               const preview = isLong ? lines.slice(0, 8).join('\n') + '\n…' : e.text
               return (
                 <View key={e.id} style={{ paddingLeft: indent }}>
-                  <Pressable onPress={onPressOpen}>
+                  <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
                     <Text selectable style={{ fontSize: 12, lineHeight: 16, color: Colors.textPrimary, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
+                    {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                   </Pressable>
                 </View>
               )
