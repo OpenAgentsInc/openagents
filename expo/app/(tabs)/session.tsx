@@ -120,6 +120,11 @@ Important policy overrides:
         if (/^Reading prompt from stdin/i.test(trimmed)) {
           continue
         }
+        // Some exec end events can still slip through as partial JSON fragments.
+        // If we see an exec_command_end marker anywhere in the line, drop it.
+        if (trimmed.includes('exec_command_end')) {
+          continue
+        }
         const parsed = parseCodexLine(trimmed)
         if (parsed.kind === 'delta') {
           // Do not render streaming summaries in the feed
