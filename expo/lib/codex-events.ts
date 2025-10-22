@@ -55,6 +55,8 @@ export type ParsedLine =
   | { kind: 'delta'; summary: string }
   | { kind: 'md'; markdown: string }
   | { kind: 'reason'; text: string }
+  | { kind: 'thread'; thread_id: string }
+  | { kind: 'item_lifecycle'; phase: 'started' | 'updated' | 'completed'; id: string; item_type: string; status?: string }
   | { kind: 'exec_begin'; command: string[] | string; cwd?: string; parsed?: unknown }
   | { kind: 'file_change'; status?: string; changes: Array<{ path: string; kind: string }> }
   | { kind: 'web_search'; query: string }
@@ -100,6 +102,11 @@ export function parseCodexLine(line: string): ParsedLine {
       const obj: any = JSON.parse(s);
       const evt: any = obj?.msg ?? obj; // unwrap { msg: {...} } wrapper if present
 
+      // Top-level envelope: thread.started
+      if (evt?.type === 'thread.started' && typeof evt?.thread_id === 'string') {
+        return { kind: 'thread', thread_id: evt.thread_id };
+      }
+
       if (evt?.type === 'agent_message' && typeof evt.message === 'string') {
         return { kind: 'md', markdown: evt.message as string };
       }
@@ -123,6 +130,7 @@ export function parseCodexLine(line: string): ParsedLine {
       if (typeof evt?.type === 'string' && evt.type.startsWith('item.') && evt?.item) {
         const item: any = evt.item;
         const t = item?.type;
+        const phase = (evt.type.split('.')?.[1] ?? 'updated') as 'started' | 'updated' | 'completed';
         if (t === 'command_execution') {
           const status: string | undefined = item?.status ?? evt?.type?.split('.')?.[1];
           const command = String(item?.command ?? '');
@@ -154,6 +162,12 @@ export function parseCodexLine(line: string): ParsedLine {
             : [];
           return { kind: 'todo_list', status, items };
         }
+
+        // Fallback for any other ThreadItem variant we don't have a dedicated card for
+        const id = String(item?.id ?? '');
+        const item_type = String(t ?? 'unknown');
+        const status: string | undefined = typeof item?.status === 'string' ? item.status : undefined;
+        return { kind: 'item_lifecycle', phase, id, item_type, status };
       }
 
       // Turn and error events

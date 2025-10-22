@@ -13,6 +13,8 @@ import { TodoListCard } from '@/components/jsonl/TodoListCard'
 import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
 import { ErrorRow } from '@/components/jsonl/ErrorRow'
 import { TurnEventRow } from '@/components/jsonl/TurnEventRow'
+import { ThreadStartedRow } from '@/components/jsonl/ThreadStartedRow'
+import { ItemLifecycleRow } from '@/components/jsonl/ItemLifecycleRow'
 
 export default function ComponentLibraryScreen() {
   const samples = {
@@ -30,6 +32,8 @@ export default function ComponentLibraryScreen() {
     cmd_item: { command: 'ls -la', status: 'completed', exit_code: 0, sample: 'README.md\nexpo\ncrates', output_len: 24 } as const,
     err: { message: 'Something went wrong' } as const,
     turn_complete: { phase: 'completed' as const, usage: { input_tokens: 123, cached_input_tokens: 0, output_tokens: 45 } },
+    thread_started: { thread_id: '67e5-5044-10b1-426f-9247-bb680e5fe0c8' },
+    item_lifecycle_started: { phase: 'started' as const, id: 'item_42', item_type: 'my_custom_item', status: 'in_progress' },
   }
 
   return (
@@ -92,6 +96,16 @@ export default function ComponentLibraryScreen() {
       <View style={{ gap: 8 }}>
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>turn.completed</Text>
         <TurnEventRow phase={samples.turn_complete.phase} usage={samples.turn_complete.usage} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>thread.started</Text>
+        <ThreadStartedRow threadId={samples.thread_started.thread_id} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>item.lifecycle (fallback)</Text>
+        <ItemLifecycleRow phase={samples.item_lifecycle_started.phase} id={samples.item_lifecycle_started.id} itemType={samples.item_lifecycle_started.item_type} status={samples.item_lifecycle_started.status} />
       </View>
     </ScrollView>
   )
