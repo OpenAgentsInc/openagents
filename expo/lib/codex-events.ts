@@ -55,7 +55,7 @@ export type ParsedLine =
   | { kind: 'delta'; summary: string }
   | { kind: 'md'; markdown: string }
   | { kind: 'reason'; text: string }
-  | { kind: 'exec_begin'; command: string[] | string; cwd?: string }
+  | { kind: 'exec_begin'; command: string[] | string; cwd?: string; parsed?: unknown }
   | { kind: 'summary'; text: string }
   | { kind: 'json'; raw: string }
   | { kind: 'text'; raw: string };
@@ -103,7 +103,8 @@ export function parseCodexLine(line: string): ParsedLine {
         if (evt?.type === 'exec_command_begin') {
           const command = Array.isArray(evt?.command) ? evt.command : evt?.command ?? '';
           const cwd = typeof evt?.cwd === 'string' ? evt.cwd : undefined;
-          return { kind: 'exec_begin', command, cwd };
+          const parsed = evt?.parsed_cmd;
+          return { kind: 'exec_begin', command, cwd, parsed };
         }
         return { kind: 'summary', text: summarizeExec(evt) };
       }

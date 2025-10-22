@@ -11,7 +11,7 @@ export default function ComponentLibraryScreen() {
   const samples = {
     agent_message: { type: 'agent_message', text: 'This is a basic agent message rendered via AgentMessageCard.' } as const,
     reasoning: { type: 'reasoning', text: '**Summarizing folder structure**\n\nOnly the headline is shown inline; full trace uses a detail view.' } as const,
-    exec_begin: { command: ['bash', '-lc', 'ls -la'], cwd: '/Users/you/code/repo' } as const,
+    exec_begin: { command: ['bash', '-lc', 'ls -la'] as const, cwd: '/Users/you/code/repo', parsed: [{ ListFiles: { cmd: ['ls','-la'], path: 'docs' } }] } as const,
   }
 
   return (
