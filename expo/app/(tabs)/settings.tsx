@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TextInput, Pressable, Alert } from 'react-native';
+import { StyleSheet, View, Text, TextInput, Pressable } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 import { useWs } from '@/providers/ws';
@@ -27,13 +27,7 @@ export default function SettingsScreen() {
         <StatusPill connected={connected} />
       </View>
 
-      <View style={{ height: 16 }} />
-      <Text style={styles.title}>OTA Update Test</Text>
-      <Text style={styles.body}>Tap to verify an over‑the‑air update.</Text>
-      <Button
-        title="Show Update Alert"
-        onPress={() => Alert.alert('OTA Update', 'Hello from the latest OTA update!')}
-      />
+      {/* OTA Update test controls removed */}
     </View>
   );
 }
