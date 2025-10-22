@@ -1,12 +1,16 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
+import { Typography } from '@/constants/typography';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        headerTitleStyle: { fontFamily: Typography.bold },
+        headerStyle: { backgroundColor: Colors.background },
+        headerTintColor: Colors.textPrimary,
         tabBarShowLabel: true,
         tabBarActiveTintColor: Colors.tabBarActive,
         tabBarInactiveTintColor: Colors.tabBarInactive,
@@ -37,4 +41,3 @@ export default function TabLayout() {
     </Tabs>
   );
 }
-
