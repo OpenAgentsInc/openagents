@@ -128,13 +128,13 @@ export default function Index() {
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>Prompt (raw; sent as-is)</Text>
+        <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>Prompt</Text>
         <TextInput
           value={prompt}
           onChangeText={setPrompt}
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder='{"prompt":"Hello"}'
+          placeholder="Hello, world"
           multiline
           style={{
             borderWidth: 1,
@@ -148,13 +148,16 @@ export default function Index() {
           }}
           placeholderTextColor={c.sub}
         />
-        <Button
-          title="Send"
-          onPress={send}
-          disabled={!connected || !prompt.trim()}
-          color={connected && prompt.trim() ? c.primary : c.border}
-          textColor={c.primaryText}
-        />
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ color: c.sub, fontSize: 12 }}>Sends raw text to Codex (newline auto‑appended)</Text>
+          <Button
+            title="Send"
+            onPress={send}
+            disabled={!connected || !prompt.trim()}
+            color={connected && prompt.trim() ? c.primary : c.border}
+            textColor={c.primaryText}
+          />
+        </View>
       </View>
 
       <View
@@ -209,7 +212,10 @@ function Button({
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderRadius: 10,
+        alignSelf: "flex-start",
       }}
+      hitSlop={6}
+      accessibilityRole="button"
     >
       <Text style={{ color: textColor, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
