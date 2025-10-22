@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { ThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useTypographySetup } from '@/constants/typography';
+import { useTypographySetup, applyTypographyGlobals } from '@/constants/typography';
 import { Colors, NavigationTheme } from '@/constants/theme';
 
 export const unstable_settings = {
@@ -15,6 +15,9 @@ export default function RootLayout() {
   if (!fontsLoaded) {
     return null;
   }
+
+  // Ensure default fonts are applied before rendering any screens
+  applyTypographyGlobals();
 
   return (
     <ThemeProvider value={NavigationTheme}>
