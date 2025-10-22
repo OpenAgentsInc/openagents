@@ -6,7 +6,7 @@ import { Typography } from '@/constants/typography'
 
 export default function HomeRedirect() {
   const router = useRouter()
-  useEffect(() => { router.replace('/session/current') }, [router])
+  useEffect(() => { router.replace('/(tabs)/session') }, [router])
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -15,4 +15,3 @@ export default function HomeRedirect() {
     </SafeAreaView>
   )
 }
-
