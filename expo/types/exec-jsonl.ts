@@ -11,4 +11,4 @@ export type ReasoningItem = {
 }
 
 export type ThreadItem = AgentMessageItem | ReasoningItem
-
+export type ExecCommandBegin = { type: 'exec_command_begin'; command: string[] | string; cwd?: string }
