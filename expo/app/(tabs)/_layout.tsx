@@ -1,9 +1,20 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
+import { View } from 'react-native';
+import { useWs } from '@/providers/ws';
+import React from 'react';
 import { Typography } from '@/constants/typography';
 
 export default function TabLayout() {
+  const ConnectionDot = () => {
+    const { connected } = useWs();
+    return (
+      <View style={{ marginRight: 12 }}>
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: connected ? '#22C55E' : '#EF4444' }} />
+      </View>
+    );
+  };
   return (
     <Tabs
       screenOptions={{
@@ -11,6 +22,7 @@ export default function TabLayout() {
         headerTitleStyle: { fontFamily: Typography.bold },
         headerStyle: { backgroundColor: Colors.background },
         headerTintColor: Colors.textPrimary,
+        headerRight: () => <ConnectionDot />,
         tabBarShowLabel: false,
         tabBarActiveTintColor: Colors.tabBarActive,
         tabBarInactiveTintColor: Colors.tabBarInactive,
