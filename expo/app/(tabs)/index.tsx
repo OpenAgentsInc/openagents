@@ -93,7 +93,8 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
         } else if (parsed.kind === 'json') {
           append(parsed.raw, true) // deemphasize full JSON
         } else {
-          append(parsed.raw, false)
+          // All plain text should also be dim unless we build a custom component
+          append(parsed.raw, true)
         }
       }
     })

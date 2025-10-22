@@ -84,6 +84,9 @@ export function summarizeDelta(obj: any): string {
 export function parseCodexLine(line: string): ParsedLine {
   const s = line.trim();
   if (!s) return { kind: 'text', raw: '' };
+  // Heuristic: numeric blob from a JSON byte array (delta chunk)
+  const numericBlob = /^[\s,\d\[\]]+$/.test(s);
+  if (numericBlob) return { kind: 'json', raw: s };
   if (s.startsWith('{') && s.endsWith('}')) {
     try {
       const obj: any = JSON.parse(s);
@@ -106,7 +109,7 @@ export function parseCodexLine(line: string): ParsedLine {
       return { kind: 'json', raw: s };
     } catch {
       // Heuristic: looks like JSON fragment → treat as JSON so UI can deemphasize
-      if (s.includes('"type"') || s.includes('"msg"') || s.includes('":') || s.startsWith('{')) {
+      if (s.includes('"type"') || s.includes('"msg"') || s.includes('":') || s.startsWith('{') || s.startsWith('[')) {
         return { kind: 'json', raw: s };
       }
     }
