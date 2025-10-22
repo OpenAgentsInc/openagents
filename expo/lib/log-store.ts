@@ -16,6 +16,12 @@ const store = new Map<number, LogDetail>();
 const KEY = '@openagents/logs-v1';
 
 export function putLog(detail: LogDetail) {
+  try {
+    const txt = String(detail.text ?? '');
+    if (txt.includes('exec_command_end')) {
+      return; // hard filter noisy exec end blobs from ever entering the store
+    }
+  } catch {}
   store.set(detail.id, detail);
 }
 
