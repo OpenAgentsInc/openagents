@@ -140,8 +140,12 @@ export function parseCodexLine(line: string): ParsedLine {
           const exit_code = typeof item?.exit_code === 'number' ? item.exit_code : undefined;
           return { kind: 'cmd_item', command, status, exit_code: exit_code ?? null, output_len, sample };
         }
-        if (t === 'file_change') {
-          const status: string | undefined = evt?.type?.split('.')?.[1];
+        if (t === 'file_change' || Array.isArray(item?.changes)) {
+          // Use item.status when available ("completed" | "failed"),
+          // otherwise fall back to the envelope phase (completed/updated/started)
+          const statusItem: string | undefined = typeof item?.status === 'string' ? item.status : undefined;
+          const statusEnv: string | undefined = evt?.type?.split('.')?.[1];
+          const status: string | undefined = statusItem ?? statusEnv;
           const changes = Array.isArray(item?.changes) ? item.changes : [];
           return { kind: 'file_change', status, changes };
         }
