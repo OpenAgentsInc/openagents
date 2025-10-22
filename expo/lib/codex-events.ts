@@ -94,6 +94,8 @@ export function summarizeDelta(obj: any): string {
 export function parseCodexLine(line: string): ParsedLine {
   const s = line.trim();
   if (!s) return { kind: 'text', raw: '' };
+  // Protect against split JSON fragments that still carry exec_command_end markers
+  if (s.includes('exec_command_end')) return { kind: 'text', raw: '' };
   // Heuristic: numeric blob from a JSON byte array (delta chunk)
   const numericBlob = /^[\s,\d\[\]]+$/.test(s);
   if (numericBlob) return { kind: 'json', raw: s };
