@@ -388,7 +388,7 @@ Important policy overrides:
               const preview = isLong ? lines.slice(0, 8).join('\n') + '\n…' : e.text
               return (
                 <View key={e.id} style={{ paddingLeft: indent }}>
-                  <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text.replace(/^>\s?/, ''))}>
+                  <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text.replace(/^\s*>\s?/, ''))}>
                     <Text selectable style={{ fontSize: 12, lineHeight: 16, color: Colors.textPrimary, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
                     {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                   </Pressable>
