@@ -6,6 +6,9 @@ import { Colors } from '@/constants/theme';
 
 export const Typography = {
   primary: 'BerkeleyMono',
+  bold: 'BerkeleyMono-Bold',
+  italic: 'BerkeleyMono-Italic',
+  boldItalic: 'BerkeleyMono-BoldItalic',
   // You can add semantic roles here later (e.g., title, label),
   // but default is to use `primary` for all text.
 };
