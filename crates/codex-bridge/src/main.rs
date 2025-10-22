@@ -5,7 +5,8 @@ use axum::{extract::State, extract::WebSocketUpgrade, response::IntoResponse, ro
 use axum::extract::ws::{Message, WebSocket};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
-use tokio::{io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader}, process::Command, sync::{broadcast, Mutex}};
+use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader}, process::Command, sync::{broadcast, Mutex}};
+use serde_json::Value as JsonValue;
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
@@ -280,39 +281,69 @@ async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<
 
     let tx_out = tx.clone();
     tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout);
-        let mut buf = vec![0u8; 4096];
-        loop {
-            match reader.read(&mut buf).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
-                    print!("{}", chunk);
-                    let _ = tx_out.send(chunk);
-                }
-                Err(e) => { eprintln!("stdout read error: {}", e); break; }
-            }
+        let reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
+            println!("{}", log);
+            let _ = tx_out.send(line);
         }
         info!("msg" = "stdout stream ended");
     });
 
     let tx_err = tx.clone();
     tokio::spawn(async move {
-        let mut reader = BufReader::new(stderr);
-        let mut buf = vec![0u8; 4096];
-        loop {
-            match reader.read(&mut buf).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
-                    eprint!("{}", chunk);
-                    let _ = tx_err.send(chunk);
-                }
-                Err(e) => { eprintln!("stderr read error: {}", e); break; }
-            }
+        let reader = BufReader::new(stderr);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
+            eprintln!("{}", log);
+            let _ = tx_err.send(line);
         }
         info!("msg" = "stderr stream ended");
     });
 
     Ok(())
+}
+
+fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
+    // Try to parse line as JSON and compact large delta arrays for logging only
+    let mut root: JsonValue = match serde_json::from_str(line) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    // Helper to locate nested { msg: { type: ... } }
+    fn get_msg_mut(v: &mut JsonValue) -> Option<&mut JsonValue> {
+        if let Some(obj) = v.as_object_mut() {
+            if let Some(m) = obj.get_mut("msg") { return Some(m); }
+        }
+        None
+    }
+
+    // Check top-level and nested msg without overlapping borrows
+    let is_top = root.get("type").and_then(|t| t.as_str()) == Some("exec_command_output_delta");
+    let mut_target: Option<&mut JsonValue> = if is_top {
+        Some(&mut root)
+    } else {
+        let msg_opt = {
+            if let Some(obj) = root.as_object_mut() { obj.get_mut("msg") } else { None }
+        };
+        if let Some(m) = msg_opt {
+            if m.get("type").and_then(|t| t.as_str()) == Some("exec_command_output_delta") { Some(m) } else { None }
+        } else { None }
+    };
+    let tgt = match mut_target { Some(t) => t, None => return None };
+
+    // Replace large fields
+    if let Some(arr) = tgt.get_mut("chunk").and_then(|v| v.as_array_mut()) {
+        let len = arr.len();
+        *tgt.get_mut("chunk").unwrap() = JsonValue::String(format!("[{} elements]", len));
+    }
+    if let Some(arr) = tgt.get_mut("chunk_bytes").and_then(|v| v.as_array_mut()) {
+        let len = arr.len();
+        *tgt.get_mut("chunk_bytes").unwrap() = JsonValue::String(format!("[{} elements]", len));
+    }
+
+    Some(match serde_json::to_string(&root) { Ok(s) => s, Err(_) => return None })
 }
