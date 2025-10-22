@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native'
+import { router } from 'expo-router'
 import Markdown from 'react-native-markdown-display'
 import { Typography } from '@/constants/typography'
 import { Colors } from '@/constants/theme'
@@ -135,7 +136,7 @@ Important policy overrides:
             {log.filter((e) => e.kind !== 'json').map((e) => {
               const onPressOpen = () => {
                 const idToOpen = e.detailId ?? e.id
-                try { require('expo-router').router.push(`/message/${idToOpen}`); } catch {}
+                router.push(`/message/${idToOpen}`)
               };
               const isMd = e.text.startsWith('::md::')
               if (isMd) {

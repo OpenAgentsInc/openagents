@@ -48,6 +48,37 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const autoTriedRef = useRef(false);
 
+  const disconnect = useCallback(() => {
+    try { wsRef.current?.close(); } catch {}
+    wsRef.current = null;
+    setConnected(false);
+  }, []);
+
+  const connect = useCallback(() => {
+    try { wsRef.current?.close(); } catch {}
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      ws.onopen = () => {
+        setConnected(true);
+        onMessageRef.current?.(`Connected → ${wsUrl}`);
+      };
+      ws.onmessage = (evt) => {
+        const data = typeof evt.data === 'string' ? evt.data : String(evt.data);
+        onMessageRef.current?.(data);
+      };
+      ws.onerror = (evt: any) => {
+        onMessageRef.current?.(`WS error: ${evt?.message ?? 'unknown'}`);
+      };
+      ws.onclose = () => {
+        setConnected(false);
+        onMessageRef.current?.('Disconnected');
+      };
+    } catch (e: any) {
+      onMessageRef.current?.(`Failed to connect: ${e?.message ?? e}`);
+    }
+  }, [wsUrl]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -97,37 +128,6 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
     }, 3000);
     return () => clearInterval(interval);
   }, [connected, connect, hydrated, wsUrl]);
-
-  const disconnect = useCallback(() => {
-    try { wsRef.current?.close(); } catch {}
-    wsRef.current = null;
-    setConnected(false);
-  }, []);
-
-  const connect = useCallback(() => {
-    try { wsRef.current?.close(); } catch {}
-    try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      ws.onopen = () => {
-        setConnected(true);
-        onMessageRef.current?.(`Connected → ${wsUrl}`);
-      };
-      ws.onmessage = (evt) => {
-        const data = typeof evt.data === 'string' ? evt.data : String(evt.data);
-        onMessageRef.current?.(data);
-      };
-      ws.onerror = (evt: any) => {
-        onMessageRef.current?.(`WS error: ${evt?.message ?? 'unknown'}`);
-      };
-      ws.onclose = () => {
-        setConnected(false);
-        onMessageRef.current?.('Disconnected');
-      };
-    } catch (e: any) {
-      onMessageRef.current?.(`Failed to connect: ${e?.message ?? e}`);
-    }
-  }, [wsUrl]);
 
   useEffect(() => () => { try { wsRef.current?.close(); } catch {} }, []);
 
