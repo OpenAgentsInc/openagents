@@ -99,7 +99,7 @@ Important policy overrides:
         else if (parsed.kind === 'md') append(`::md::${parsed.markdown}`, false, 'md')
         else if (parsed.kind === 'reason') append(`::reason::${parsed.text}`, false, 'reason')
         else if (parsed.kind === 'exec_begin') {
-          const payload = JSON.stringify({ command: parsed.command, cwd: parsed.cwd })
+          const payload = JSON.stringify({ command: parsed.command, cwd: parsed.cwd, parsed: parsed.parsed })
           append(payload, false, 'exec', trimmed)
         }
         else if (parsed.kind === 'summary') append(parsed.text, true, 'summary', trimmed)
