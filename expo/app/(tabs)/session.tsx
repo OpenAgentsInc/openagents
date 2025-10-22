@@ -15,6 +15,8 @@ import { TodoListCard } from '@/components/jsonl/TodoListCard'
 import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
 import { ErrorRow } from '@/components/jsonl/ErrorRow'
 import { TurnEventRow } from '@/components/jsonl/TurnEventRow'
+import { ThreadStartedRow } from '@/components/jsonl/ThreadStartedRow'
+import { ItemLifecycleRow } from '@/components/jsonl/ItemLifecycleRow'
 import { useWs } from '@/providers/ws'
 import { useHeaderHeight } from '@react-navigation/elements'
 import { putLog, loadLogs, saveLogs, clearLogs as clearLogsStore } from '@/lib/log-store'
@@ -42,7 +44,7 @@ export default function SessionScreen() {
     rafRef.current = requestAnimationFrame(() => { lastHeightRef.current = clamped; setInputHeight(clamped) })
   }, [])
 
-  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'; deemphasize?: boolean; detailId?: number }
+  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'|'thread'|'item_lifecycle'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
@@ -51,7 +53,7 @@ export default function SessionScreen() {
   const append = (
     text: string,
     deemphasize?: boolean,
-    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn' = 'text',
+    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'|'thread'|'item_lifecycle' = 'text',
     detailRaw?: string,
   ) => {
     let detailId: number | undefined = undefined
@@ -117,6 +119,14 @@ Important policy overrides:
           if (!isBland) append(`::md::${parsed.markdown}`, false, 'md')
         }
         else if (parsed.kind === 'reason') append(`::reason::${parsed.text}`, false, 'reason')
+        else if (parsed.kind === 'thread') {
+          const payload = JSON.stringify({ thread_id: parsed.thread_id })
+          append(payload, false, 'thread', trimmed)
+        }
+        else if (parsed.kind === 'item_lifecycle') {
+          const payload = JSON.stringify({ phase: parsed.phase, id: parsed.id, item_type: parsed.item_type, status: parsed.status })
+          append(payload, true, 'item_lifecycle', trimmed)
+        }
         else if (parsed.kind === 'exec_begin') {
           const payload = JSON.stringify({ command: parsed.command, cwd: parsed.cwd, parsed: parsed.parsed })
           append(payload, false, 'exec', trimmed)
@@ -205,7 +215,7 @@ Important policy overrides:
                 e.kind === 'exec' ? 12 :
                 (e.kind === 'file' || e.kind === 'search' || e.kind === 'mcp' || e.kind === 'todo' || e.kind === 'cmd' || e.kind === 'err' || e.kind === 'summary')
                   ? 24
-                  : 0
+                  : (e.kind === 'item_lifecycle' ? 12 : 0)
               const isMd = e.text.startsWith('::md::')
               if (isMd) {
                 const md = e.text.slice('::md::'.length)
@@ -227,6 +237,26 @@ Important policy overrides:
                     </Pressable>
                   </View>
                 )
+              }
+              if (e.kind === 'thread') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <ThreadStartedRow threadId={obj.thread_id ?? ''} />
+                    </View>
+                  )
+                } catch {}
+              }
+              if (e.kind === 'item_lifecycle') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <ItemLifecycleRow phase={obj.phase ?? 'updated'} id={obj.id ?? ''} itemType={obj.item_type ?? 'item'} status={obj.status} />
+                    </View>
+                  )
+                } catch {}
               }
               if (e.kind === 'exec') {
                 try {
