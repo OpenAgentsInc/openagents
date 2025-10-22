@@ -55,7 +55,7 @@ export default function ConsoleScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             placeholder="ws://localhost:8787/ws"
-            style={{ borderWidth: 1, borderColor: c.border, padding: 12, borderRadius: 12, backgroundColor: c.input, color: c.text }}
+            style={{ borderWidth: 1, borderColor: c.border, padding: 12, borderRadius: 12, backgroundColor: c.input, color: c.text, fontFamily: Typography.primary, fontSize: 13 }}
             placeholderTextColor={c.sub}
           />
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -78,7 +78,7 @@ export default function ConsoleScreen() {
             autoCorrect={false}
             placeholder="Hello, world"
             multiline
-            style={{ borderWidth: 1, borderColor: c.border, padding: 12, borderRadius: 12, minHeight: 120, backgroundColor: c.input, color: c.text, fontSize: 13 }}
+            style={{ borderWidth: 1, borderColor: c.border, padding: 12, borderRadius: 12, minHeight: 120, backgroundColor: c.input, color: c.text, fontSize: 13, fontFamily: Typography.primary }}
             placeholderTextColor={c.sub}
           />
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -89,7 +89,7 @@ export default function ConsoleScreen() {
 
         <View style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.card }}>
           <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
-            <Text selectable style={{ fontSize: 12, lineHeight: 16, color: c.text }}>
+            <Text selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary }}>
               {log}
             </Text>
           </ScrollView>
