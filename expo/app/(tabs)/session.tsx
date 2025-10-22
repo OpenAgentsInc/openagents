@@ -97,6 +97,10 @@ Important policy overrides:
         const skippingRef = (SessionScreen as any)._skipExecRef || ((SessionScreen as any)._skipExecRef = { current: false })
         if (skippingRef.current) { if (trimmed.includes(']}') || trimmed.endsWith(']') || trimmed.includes('}}')) { skippingRef.current = false } continue }
         if (trimmed.includes('exec_command_output_delta')) { skippingRef.current = true; continue }
+        // Filter out noisy CLI status lines we don't want in the feed
+        if (/^Reading prompt from stdin/i.test(trimmed)) {
+          continue
+        }
         const parsed = parseCodexLine(trimmed)
         if (parsed.kind === 'delta') append(parsed.summary, true, 'summary', trimmed)
         else if (parsed.kind === 'md') append(`::md::${parsed.markdown}`, false, 'md')
