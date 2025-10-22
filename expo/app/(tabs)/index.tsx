@@ -15,6 +15,12 @@ export default function ConsoleScreen() {
     [isDark]
   );
   const [prompt, setPrompt] = useState("Summarize the current repo. Use a maximum of 4 tool calls.");
+  // Auto-growing composer sizing
+  const LINE_HEIGHT = 18;
+  const MIN_LINES = 1;
+  const MAX_LINES = 10;
+  const PADDING_V = 10; // must match TextInput paddingVertical
+  const [inputHeight, setInputHeight] = useState(LINE_HEIGHT * MIN_LINES + PADDING_V * 2);
   type Entry = { id: number; text: string; deemphasize?: boolean }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
@@ -132,7 +138,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
         {/* Composer under the feed */}
         <View style={{ gap: 6 }}>
           <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>Prompt</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
             <TextInput
               value={prompt}
               onChangeText={setPrompt}
@@ -140,8 +146,16 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
               autoCorrect={false}
               placeholder="Hello, world"
               multiline
-              numberOfLines={3}
-              style={{ flex: 1, borderWidth: 1, borderColor: c.border, padding: 10, minHeight: 80, backgroundColor: c.input, color: c.text, fontSize: 13, fontFamily: Typography.primary, borderRadius: 0 }}
+              numberOfLines={MIN_LINES}
+              onContentSizeChange={(e) => {
+                const h = e.nativeEvent.contentSize.height || LINE_HEIGHT;
+                const lines = Math.max(MIN_LINES, Math.round(h / LINE_HEIGHT));
+                const clamped = Math.min(MAX_LINES, lines);
+                setInputHeight(clamped * LINE_HEIGHT + PADDING_V * 2);
+              }}
+              scrollEnabled={inputHeight >= MAX_LINES * LINE_HEIGHT + PADDING_V * 2}
+              textAlignVertical="top"
+              style={{ flex: 1, borderWidth: 1, borderColor: c.border, padding: PADDING_V, height: inputHeight, backgroundColor: c.input, color: c.text, fontSize: 13, lineHeight: LINE_HEIGHT, fontFamily: Typography.primary, borderRadius: 0 }}
               placeholderTextColor={c.sub}
             />
             <Button title="Send" onPress={send} disabled={!connected || !prompt.trim()} color={connected && prompt.trim() ? c.primary : c.border} textColor={c.primaryText} />
