@@ -26,5 +26,6 @@ const styles = StyleSheet.create({
   },
   body: {
     color: Colors.textSecondary,
+    fontFamily: Typography.primary,
   },
 });
