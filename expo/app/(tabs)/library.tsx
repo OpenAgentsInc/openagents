@@ -6,12 +6,18 @@ import { AgentMessageCard } from '@/components/jsonl/AgentMessageCard'
 import { ReasoningCard } from '@/components/jsonl/ReasoningCard'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
+import { FileChangeCard } from '@/components/jsonl/FileChangeCard'
+import { WebSearchRow } from '@/components/jsonl/WebSearchRow'
+import { McpToolCallRow } from '@/components/jsonl/McpToolCallRow'
 
 export default function ComponentLibraryScreen() {
   const samples = {
     agent_message: { type: 'agent_message', text: 'This is a basic agent message rendered via AgentMessageCard.' } as const,
     reasoning: { type: 'reasoning', text: '**Summarizing folder structure**\n\nOnly the headline is shown inline; full trace uses a detail view.' } as const,
     exec_begin: { command: ['bash', '-lc', 'ls -la'] as const, cwd: '/Users/you/code/repo', parsed: [{ ListFiles: { cmd: ['ls','-la'], path: 'docs' } }] } as const,
+    file_change: { status: 'completed', changes: [{ path: 'src/main.rs', kind: 'update' }, { path: 'README.md', kind: 'add' }] } as const,
+    web_search: { query: 'expo updates runtimeVersion' } as const,
+    mcp_call: { server: 'search', tool: 'web.search', status: 'completed' } as const,
   }
 
   return (
@@ -39,6 +45,21 @@ export default function ComponentLibraryScreen() {
       <View style={{ gap: 8 }}>
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>exec_command_begin</Text>
         <ExecBeginRow payload={samples.exec_begin} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>file_change</Text>
+        <FileChangeCard changes={samples.file_change.changes} status={samples.file_change.status} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>web_search</Text>
+        <WebSearchRow query={samples.web_search.query} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>mcp_tool_call</Text>
+        <McpToolCallRow server={samples.mcp_call.server} tool={samples.mcp_call.tool} status={samples.mcp_call.status} />
       </View>
     </ScrollView>
   )

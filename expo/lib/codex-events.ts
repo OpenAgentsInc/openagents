@@ -56,6 +56,9 @@ export type ParsedLine =
   | { kind: 'md'; markdown: string }
   | { kind: 'reason'; text: string }
   | { kind: 'exec_begin'; command: string[] | string; cwd?: string; parsed?: unknown }
+  | { kind: 'file_change'; status?: string; changes: Array<{ path: string; kind: string }> }
+  | { kind: 'web_search'; query: string }
+  | { kind: 'mcp_call'; server: string; tool: string; status?: string }
   | { kind: 'summary'; text: string }
   | { kind: 'json'; raw: string }
   | { kind: 'text'; raw: string };
@@ -108,6 +111,27 @@ export function parseCodexLine(line: string): ParsedLine {
         }
         return { kind: 'summary', text: summarizeExec(evt) };
       }
+      // ThreadItem events from CLI mapper
+      if (typeof evt?.type === 'string' && evt.type.startsWith('item.') && evt?.item) {
+        const item: any = evt.item;
+        const t = item?.type;
+        if (t === 'file_change') {
+          const status: string | undefined = evt?.type?.split('.')?.[1];
+          const changes = Array.isArray(item?.changes) ? item.changes : [];
+          return { kind: 'file_change', status, changes };
+        }
+        if (t === 'web_search') {
+          const query = String(item?.query ?? '');
+          return { kind: 'web_search', query };
+        }
+        if (t === 'mcp_tool_call') {
+          const server = String(item?.server ?? '');
+          const tool = String(item?.tool ?? '');
+          const status: string | undefined = item?.status ?? evt?.type?.split('.')?.[1];
+          return { kind: 'mcp_call', server, tool, status };
+        }
+      }
+
       if (isDeltaLike(evt)) {
         const payload = (evt as any).delta ?? evt;
         return { kind: 'delta', summary: summarizeDelta(payload) };
