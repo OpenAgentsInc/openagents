@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native"
-import Markdown from 'react-native-markdown-display'
+import {
+    KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text,
+    TextInput, View
+} from "react-native"
+import Markdown from "react-native-markdown-display"
 import { Typography } from "@/constants/typography"
-import { useWs } from "@/providers/ws"
 import { parseCodexLine } from "@/lib/codex-events"
-import { useHeaderHeight } from '@react-navigation/elements'
+import { useWs } from "@/providers/ws"
+import { useHeaderHeight } from "@react-navigation/elements"
 
 export default function ConsoleScreen() {
   const headerHeight = useHeaderHeight();
@@ -27,7 +30,10 @@ export default function ConsoleScreen() {
   const [inputHeight, setInputHeight] = useState(MIN_HEIGHT);
   const lastHeightRef = useRef(MIN_HEIGHT);
   const rafRef = useRef<number | null>(null);
-  const [growActive, setGrowActive] = useState(false);
+  // If the input is prefilled (esp. with newlines), allow initial growth
+  const [growActive, setGrowActive] = useState(() => {
+    return !!prompt && (prompt.includes('\n') || prompt.length > 0);
+  });
 
   const setHeightStable = useCallback((target: number, { allowShrink = false }: { allowShrink?: boolean } = {}) => {
     const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(target)));
@@ -63,7 +69,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
     const finalText = attachPreface ? `${buildPreface()}\n\n${base}` : base;
     const payload = finalText.endsWith("\n") ? finalText : finalText + "\n";
     if (!sendWs(payload)) { append("Not connected"); return; }
-    append(`>> ${base}`);
+    append(`> ${base}`);
     setPrompt("");
     // Reset height after send to avoid lingering tall composer
     lastHeightRef.current = MIN_HEIGHT;
@@ -190,12 +196,12 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
                 placeholder="Hello, world"
                 multiline
                 numberOfLines={MIN_LINES}
-                onContentSizeChange={(e) => {
-                  if (!growActive) return;
-                  const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT;
-                  const target = contentH + PADDING_V * 2;
-                  setHeightStable(target, { allowShrink: false });
-                }}
+              onContentSizeChange={(e) => {
+                const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT;
+                const target = contentH + PADDING_V * 2;
+                // setHeightStable is already grow-only (no shrink) unless allowShrink=true
+                setHeightStable(target, { allowShrink: false });
+              }}
                 scrollEnabled={inputHeight >= MAX_HEIGHT - 1}
                 textAlignVertical="top"
                 style={{ flex: 1, borderWidth: 1, borderColor: c.border, padding: PADDING_V, height: inputHeight, backgroundColor: c.input, color: c.text, fontSize: 13, lineHeight: LINE_HEIGHT, fontFamily: Typography.primary, borderRadius: 0 }}
