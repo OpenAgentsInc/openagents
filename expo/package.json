@@ -10,7 +10,10 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "lint": "expo lint",
     "build:ios:prod": "eas build --profile production --platform ios",
-    "submit:ios": "eas submit -p ios"
+    "submit:ios": "eas submit -p ios",
+    "update:both": "eas update --channel v0.1.0 --environment production --message",
+    "update:ios": "eas update --channel v0.1.0 --environment production --platform ios --message",
+    "update:android": "eas update --channel v0.1.0 --environment production --platform android --message"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
