@@ -58,7 +58,7 @@ export default function MessageDetail() {
                 {copied ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 4 }}>Copied</Text> : null}
               </Pressable>
             ) : (
-              <Pressable onLongPress={() => copy(detail.text)}>
+              <Pressable onLongPress={() => copy(detail.text.replace(/^>\s?/, ''))}>
                 <Text selectable style={{ color: Colors.textPrimary, fontFamily: Typography.primary, lineHeight: 18 }}>{detail.text}</Text>
                 {copied ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 4 }}>Copied</Text> : null}
               </Pressable>
