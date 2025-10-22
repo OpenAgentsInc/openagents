@@ -15,6 +15,14 @@ fn is_binary_ext(p: &Path) -> bool {
     }
 }
 
+fn should_skip_file(p: &Path) -> bool {
+    if is_binary_ext(p) { return true; }
+    if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+        if name == "Cargo.lock" { return true; }
+    }
+    false
+}
+
 fn walk_filtered(root: &Path, out: &mut Vec<PathBuf>) {
     let walker = walkdir::WalkDir::new(root).into_iter();
     for entry in walker.filter_entry(|e| {
@@ -24,7 +32,7 @@ fn walk_filtered(root: &Path, out: &mut Vec<PathBuf>) {
         if let Ok(ent) = entry {
             if ent.file_type().is_file() {
                 let p = ent.path();
-                if !is_binary_ext(p) {
+                if !should_skip_file(p) {
                     out.push(p.to_path_buf());
                 }
             }
@@ -53,8 +61,9 @@ fn main() {
             let readme = p.join("README.md"); if readme.exists() { files.push(readme); }
         }
     }
-    // Workspace Cargo files
-    for f in ["Cargo.toml", "Cargo.lock"] { let p = repo_root.join(f); if p.exists() { files.push(p); } }
+    // Workspace Cargo file (exclude Cargo.lock)
+    let workspace_cargo = repo_root.join("Cargo.toml");
+    if workspace_cargo.exists() { files.push(workspace_cargo); }
 
     // expo selected folders + root configs
     for f in ["app", "components", "constants", "hooks", "lib", "providers", "types"] {
