@@ -51,6 +51,12 @@
         "projectId": "39df2bde-2c42-49ec-9cef-1567231dfe38"
       }
     },
-    "owner": "openagents-org"
+    "owner": "openagents-org",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/39df2bde-2c42-49ec-9cef-1567231dfe38"
+    }
   }
 }
