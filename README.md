@@ -1,6 +1,6 @@
 # OpenAgents: Project Tricoder
 
-A cross-platform command center for your coding agents.
+A mobile command center for your coding agents.
 
 ## Tech stack
 

@@ -18,7 +18,12 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const expoRoot = path.resolve(__dirname, '..');
-const roots = ['app', 'components', 'constants', 'hooks', 'lib', 'providers'];
+const repoRoot = path.resolve(expoRoot, '..');
+// Expo app sources we want to include
+const expoDirs = ['app', 'components', 'constants', 'hooks', 'lib', 'providers', 'types', 'scripts'];
+// Rust bridge crate sources we want to include
+const bridgeSrcDir = path.join(repoRoot, 'crates', 'codex-bridge', 'src');
+const bridgeCargoToml = path.join(repoRoot, 'crates', 'codex-bridge', 'Cargo.toml');
 
 function walkFiles(dir, out) {
   let entries;
@@ -35,17 +40,20 @@ function walkFiles(dir, out) {
 }
 
 const files = [];
-for (const r of roots) {
+for (const r of expoDirs) {
   const dir = path.join(expoRoot, r);
   if (fs.existsSync(dir)) walkFiles(dir, files);
 }
+// Include Rust crate sources
+if (fs.existsSync(bridgeSrcDir)) walkFiles(bridgeSrcDir, files);
+if (fs.existsSync(bridgeCargoToml)) files.push(bridgeCargoToml);
 
 files.sort((a, b) => a.localeCompare(b));
 
 const chunks = [];
 for (const file of files) {
-  const relFromExpo = path.relative(expoRoot, file).replace(/\\/g, '/');
-  const repoRel = `expo/${relFromExpo}`;
+  // Compute repo-relative path (root is the repository root)
+  const repoRel = path.relative(repoRoot, file).replace(/\\/g, '/');
   let content;
   try {
     content = fs.readFileSync(file, 'utf8');
@@ -99,4 +107,3 @@ if (ok) {
   console.log('No clipboard tool found. Printing to stdout so you can copy manually.');
   console.log(output);
 }
-
