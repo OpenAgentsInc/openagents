@@ -14,7 +14,7 @@ export default function ComponentLibraryScreen() {
   const samples = {
     agent_message: { type: 'agent_message', text: 'This is a basic agent message rendered via AgentMessageCard.' } as const,
     reasoning: { type: 'reasoning', text: '**Summarizing folder structure**\n\nOnly the headline is shown inline; full trace uses a detail view.' } as const,
-    exec_begin: { command: ['bash', '-lc', 'ls -la'] as const, cwd: '/Users/you/code/repo', parsed: [{ ListFiles: { cmd: ['ls','-la'], path: 'docs' } }] } as const,
+    exec_begin: { command: ['bash', '-lc', 'cat expo/lib/codex-events.ts'] as const, cwd: '/Users/you/code/repo', parsed: [{ ReadFile: { name: 'expo/lib/codex-events.ts' } }] } as const,
     file_change: { status: 'completed', changes: [{ path: 'src/main.rs', kind: 'update' }, { path: 'README.md', kind: 'add' }] } as const,
     web_search: { query: 'expo updates runtimeVersion' } as const,
     mcp_call: { server: 'search', tool: 'web.search', status: 'completed' } as const,
