@@ -4,6 +4,7 @@ import {
 } from "react-native"
 import { Typography } from "@/constants/typography"
 import { useWs } from "@/providers/ws"
+import { parseCodexLine } from "@/lib/codex-events"
 
 export default function ConsoleScreen() {
   const isDark = true;
@@ -15,11 +16,13 @@ export default function ConsoleScreen() {
     [isDark]
   );
   const [prompt, setPrompt] = useState("Summarize the current repo. Use a maximum of 4 tool calls.");
-  const [log, setLog] = useState("");
+  type Entry = { id: number; text: string; deemphasize?: boolean }
+  const [log, setLog] = useState<Entry[]>([])
+  const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null);
   const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface } = useWs();
 
-  const append = (line: string) => setLog((prev) => (prev ? prev + "\n" + line : line));
+  const append = (text: string, deemphasize?: boolean) => setLog((prev) => [...prev, { id: idRef.current++, text, deemphasize }])
 
   const buildPreface = () => {
     return `You are a coding agent running in the Codex CLI.
@@ -42,16 +45,30 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
   };
 
   useEffect(() => {
-    setOnMessage((s) => setLog((prev) => (prev ? prev + "\n" + s : s)));
-    return () => setOnMessage(null);
-  }, [setOnMessage]);
+    setOnMessage((chunk) => {
+      const lines = String(chunk).split(/\r?\n/)
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        const parsed = parseCodexLine(trimmed)
+        if (parsed.kind === 'delta') {
+          append(parsed.summary, false)
+        } else if (parsed.kind === 'json') {
+          append(parsed.raw, true) // deemphasize full JSON
+        } else {
+          append(parsed.raw, false)
+        }
+      }
+    })
+    return () => setOnMessage(null)
+  }, [setOnMessage])
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flex: 1, padding: 16, gap: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <StatusPill connected={connected} color={c} />
-          <Button title="Clear Log" onPress={() => setLog("")} color={c.card} textColor={c.text} />
+          <Button title="Clear Log" onPress={() => setLog([])} color={c.card} textColor={c.text} />
         </View>
 
         <View style={{ gap: 8 }}>
@@ -71,12 +88,14 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
           </View>
         </View>
 
-        {log.length > 0 ?? (
+        {log.length > 0 && (
           <View style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.card }}>
             <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
-              <Text selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary }}>
-                {log}
-              </Text>
+              {log.map((e) => (
+                <Text key={e.id} selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.2 : 1 }}>
+                  {e.text}
+                </Text>
+              ))}
             </ScrollView>
           </View>
         )}
