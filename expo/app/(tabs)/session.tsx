@@ -106,7 +106,10 @@ Important policy overrides:
           continue
         }
         const parsed = parseCodexLine(trimmed)
-        if (parsed.kind === 'delta') append(parsed.summary, true, 'summary', trimmed)
+        if (parsed.kind === 'delta') {
+          // Do not render streaming summaries in the feed
+          continue
+        }
         else if (parsed.kind === 'md') {
           const raw = String(parsed.markdown ?? '').trim()
           const core = raw.replace(/^\*\*|\*\*$/g, '').replace(/^`|`$/g, '').trim().toLowerCase()
@@ -146,7 +149,13 @@ Important policy overrides:
           const payload = JSON.stringify({ phase: parsed.phase, usage: parsed.usage, message: parsed.message })
           append(payload, false, 'turn', trimmed)
         }
-        else if (parsed.kind === 'summary') append(parsed.text, true, 'summary', trimmed)
+        else if (parsed.kind === 'summary') {
+          // Hide exec noise like "[exec out]" and "[exec end]" entirely
+          if (/^\[exec (out|end)\]/i.test(parsed.text)) {
+            continue
+          }
+          append(parsed.text, true, 'summary', trimmed)
+        }
         else if (parsed.kind === 'json') append(parsed.raw, true, 'json')
         else append(trimmed, true, 'text')
       }
@@ -189,31 +198,45 @@ Important policy overrides:
                 const idToOpen = e.detailId ?? e.id
                 router.push(`/message/${idToOpen}`)
               };
+              // Indentation heuristic:
+              // - top level: md, reason, turn
+              // - tool/exec/results: exec (level 1), file/search/mcp/todo/cmd/err/summary (level 2)
+              const indent =
+                e.kind === 'exec' ? 12 :
+                (e.kind === 'file' || e.kind === 'search' || e.kind === 'mcp' || e.kind === 'todo' || e.kind === 'cmd' || e.kind === 'err' || e.kind === 'summary')
+                  ? 24
+                  : 0
               const isMd = e.text.startsWith('::md::')
               if (isMd) {
                 const md = e.text.slice('::md::'.length)
                 return (
-                  <Pressable key={e.id} onPress={onPressOpen}>
-                    <MarkdownBlock markdown={md} />
-                  </Pressable>
+                  <View key={e.id} style={{ paddingLeft: indent }}>
+                    <Pressable onPress={onPressOpen}>
+                      <MarkdownBlock markdown={md} />
+                    </Pressable>
+                  </View>
                 )
               }
               const isReason = e.text.startsWith('::reason::')
               if (isReason) {
                 const full = e.text.slice('::reason::'.length)
                 return (
-                  <Pressable key={e.id} onPress={onPressOpen}>
-                    <ReasoningHeadline text={full} />
-                  </Pressable>
+                  <View key={e.id} style={{ paddingLeft: indent }}>
+                    <Pressable onPress={onPressOpen}>
+                      <ReasoningHeadline text={full} />
+                    </Pressable>
+                  </View>
                 )
               }
               if (e.kind === 'exec') {
                 try {
                   const obj = JSON.parse(e.text)
                   return (
-                    <Pressable key={e.id} onPress={onPressOpen}>
-                      <ExecBeginRow payload={obj} />
-                    </Pressable>
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <Pressable onPress={onPressOpen}>
+                        <ExecBeginRow payload={obj} />
+                      </Pressable>
+                    </View>
                   )
                 } catch {}
               }
@@ -221,9 +244,11 @@ Important policy overrides:
                 try {
                   const obj = JSON.parse(e.text)
                   return (
-                    <Pressable key={e.id} onPress={onPressOpen}>
-                      <FileChangeCard changes={obj.changes ?? []} status={obj.status} />
-                    </Pressable>
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <Pressable onPress={onPressOpen}>
+                        <FileChangeCard changes={obj.changes ?? []} status={obj.status} />
+                      </Pressable>
+                    </View>
                   )
                 } catch {}
               }
@@ -231,9 +256,11 @@ Important policy overrides:
                 try {
                   const obj = JSON.parse(e.text)
                   return (
-                    <Pressable key={e.id} onPress={onPressOpen}>
-                      <WebSearchRow query={obj.query ?? ''} />
-                    </Pressable>
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <Pressable onPress={onPressOpen}>
+                        <WebSearchRow query={obj.query ?? ''} />
+                      </Pressable>
+                    </View>
                   )
                 } catch {}
               }
@@ -241,9 +268,11 @@ Important policy overrides:
                 try {
                   const obj = JSON.parse(e.text)
                   return (
-                    <Pressable key={e.id} onPress={onPressOpen}>
-                      <McpToolCallRow server={obj.server ?? ''} tool={obj.tool ?? ''} status={obj.status} />
-                    </Pressable>
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <Pressable onPress={onPressOpen}>
+                        <McpToolCallRow server={obj.server ?? ''} tool={obj.tool ?? ''} status={obj.status} />
+                      </Pressable>
+                    </View>
                   )
                 } catch {}
               }
@@ -251,9 +280,11 @@ Important policy overrides:
                 try {
                   const obj = JSON.parse(e.text)
                   return (
-                    <Pressable key={e.id} onPress={onPressOpen}>
-                      <TodoListCard items={obj.items ?? []} status={obj.status} />
-                    </Pressable>
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <Pressable onPress={onPressOpen}>
+                        <TodoListCard items={obj.items ?? []} status={obj.status} />
+                      </Pressable>
+                    </View>
                   )
                 } catch {}
               }
@@ -261,9 +292,11 @@ Important policy overrides:
                 try {
                   const obj = JSON.parse(e.text)
                   return (
-                    <Pressable key={e.id} onPress={onPressOpen}>
-                      <CommandExecutionCard command={obj.command ?? ''} status={obj.status} exitCode={obj.exit_code} sample={obj.sample} outputLen={obj.output_len} />
-                    </Pressable>
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <Pressable onPress={onPressOpen}>
+                        <CommandExecutionCard command={obj.command ?? ''} status={obj.status} exitCode={obj.exit_code} sample={obj.sample} outputLen={obj.output_len} />
+                      </Pressable>
+                    </View>
                   )
                 } catch {}
               }
@@ -271,9 +304,11 @@ Important policy overrides:
                 try {
                   const obj = JSON.parse(e.text)
                   return (
-                    <Pressable key={e.id} onPress={onPressOpen}>
-                      <ErrorRow message={obj.message ?? ''} />
-                    </Pressable>
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <Pressable onPress={onPressOpen}>
+                        <ErrorRow message={obj.message ?? ''} />
+                      </Pressable>
+                    </View>
                   )
                 } catch {}
               }
@@ -281,9 +316,11 @@ Important policy overrides:
                 try {
                   const obj = JSON.parse(e.text)
                   return (
-                    <Pressable key={e.id} onPress={onPressOpen}>
-                      <TurnEventRow phase={obj.phase ?? 'started'} usage={obj.usage} message={obj.message} />
-                    </Pressable>
+                    <View key={e.id} style={{ paddingLeft: indent }}>
+                      <Pressable onPress={onPressOpen}>
+                        <TurnEventRow phase={obj.phase ?? 'started'} usage={obj.usage} message={obj.message} />
+                      </Pressable>
+                    </View>
                   )
                 } catch {}
               }
@@ -291,9 +328,11 @@ Important policy overrides:
               const isLong = lines.length > 8
               const preview = isLong ? lines.slice(0, 8).join('\n') + '\n…' : e.text
               return (
-                <Pressable key={e.id} onPress={onPressOpen}>
-                  <Text selectable style={{ fontSize: 12, lineHeight: 16, color: Colors.textPrimary, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
-                </Pressable>
+                <View key={e.id} style={{ paddingLeft: indent }}>
+                  <Pressable onPress={onPressOpen}>
+                    <Text selectable style={{ fontSize: 12, lineHeight: 16, color: Colors.textPrimary, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
+                  </Pressable>
+                </View>
               )
             })}
           </ScrollView>

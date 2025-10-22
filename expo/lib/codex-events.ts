@@ -113,6 +113,10 @@ export function parseCodexLine(line: string): ParsedLine {
           const parsed = evt?.parsed_cmd;
           return { kind: 'exec_begin', command, cwd, parsed };
         }
+        // Drop end/out summaries early; UI doesn’t want to show them
+        if (evt?.type === 'exec_command_end' || evt?.type === 'exec_command_output_delta') {
+          return { kind: 'text', raw: '' };
+        }
         return { kind: 'summary', text: summarizeExec(evt) };
       }
       // ThreadItem events from CLI mapper
