@@ -105,7 +105,10 @@ export function parseCodexLine(line: string): ParsedLine {
       // Not delta → render the full JSON (UI will deemphasize)
       return { kind: 'json', raw: s };
     } catch {
-      // fallthrough to text if not valid JSON
+      // Heuristic: looks like JSON fragment → treat as JSON so UI can deemphasize
+      if (s.includes('"type"') || s.includes('"msg"') || s.includes('":') || s.startsWith('{')) {
+        return { kind: 'json', raw: s };
+      }
     }
   }
   return { kind: 'text', raw: line };
