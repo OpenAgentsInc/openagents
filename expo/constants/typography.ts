@@ -11,6 +11,24 @@ export const Typography = {
 };
 
 // Load fonts and set global defaults so all <Text/> uses the primary font.
+let appliedTypographyGlobals = false;
+
+export function applyTypographyGlobals() {
+  if (appliedTypographyGlobals) return;
+  if ((Text as any).defaultProps == null) (Text as any).defaultProps = {};
+  if ((TextInput as any).defaultProps == null) (TextInput as any).defaultProps = {};
+  const baseTextStyle = { fontFamily: Typography.primary, color: Colors.textPrimary } as const;
+  (Text as any).defaultProps.style = [
+    (Text as any).defaultProps.style,
+    baseTextStyle,
+  ];
+  (TextInput as any).defaultProps.style = [
+    (TextInput as any).defaultProps.style,
+    baseTextStyle,
+  ];
+  appliedTypographyGlobals = true;
+}
+
 export function useTypographySetup() {
   const [fontsLoaded] = useFonts({
     // Family names used in `fontFamily` must match these keys
@@ -27,21 +45,7 @@ export function useTypographySetup() {
 
   useEffect(() => {
     if (!fontsLoaded) return;
-    // Set default font on core text components so styles don't have to repeat it.
-    if ((Text as any).defaultProps == null) (Text as any).defaultProps = {};
-    if ((TextInput as any).defaultProps == null) (TextInput as any).defaultProps = {};
-
-    const baseTextStyle = { fontFamily: Typography.primary, color: Colors.textPrimary } as const;
-    (Text as any).defaultProps.style = [
-      (Text as any).defaultProps.style,
-      baseTextStyle,
-    ];
-    (TextInput as any).defaultProps.style = [
-      (TextInput as any).defaultProps.style,
-      baseTextStyle,
-    ];
-
-    // Hide splash once applied
+    // Hide splash once fonts are ready
     SplashScreen.hideAsync().catch(() => {});
   }, [fontsLoaded]);
 
