@@ -56,20 +56,34 @@ export function ExecBeginRow({ payload }: { payload: ExecBeginPayload }) {
         const k = keys[0]
         const v = first[k] ?? {}
         const p = pickPath(v)
-        pretty = { action: labelFor(k), path: shorten(p) }
+        let action = labelFor(k)
+        let path = shorten(p)
+        // Avoid surfacing literal "Unknown" to users.
+        if (action === 'Unknown' || action.toLowerCase() === 'unknown') {
+          // Try to recover: show the raw shell command if available
+          const rawCmd = Array.isArray((v as any)?.cmd)
+            ? (v as any).cmd.join(' ')
+            : (typeof (v as any)?.cmd === 'string' ? (v as any).cmd : undefined)
+          action = 'Run'
+          path = shorten(rawCmd) ?? undefined
+        }
+        pretty = { action, path }
       }
     }
   } catch {}
 
   if (pretty?.action) {
+    // If ListFiles has no explicit path, show the current directory indicator
+    const isList = pretty.action === 'ListFiles'
+    const shownPath = isList ? (pretty.path ?? '.') : pretty.path
     return (
       <View style={{ paddingVertical: 2 }}>
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
           <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{pretty.action}</Text>
-          {pretty.path ? (
+          {shownPath ? (
             <Text>
               {' '}
-              {pretty.action === 'ListFiles' ? addSlash(pretty.path) : pretty.path}
+              {isList ? addSlash(shownPath) : shownPath}
             </Text>
           ) : null}
         </Text>
