@@ -4,6 +4,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { AgentMessageCard } from '@/components/jsonl/AgentMessageCard'
 import { ReasoningCard } from '@/components/jsonl/ReasoningCard'
+import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 
 export default function ComponentLibraryScreen() {
   const samples = {
@@ -24,10 +25,14 @@ export default function ComponentLibraryScreen() {
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>reasoning</Text>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>reasoning (headline preview)</Text>
+        <ReasoningHeadline text={samples.reasoning.text} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>reasoning (full)</Text>
         <ReasoningCard item={samples.reasoning} />
       </View>
     </ScrollView>
   )
 }
-
