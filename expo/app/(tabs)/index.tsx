@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import {
-    Pressable, SafeAreaView, ScrollView, Text, TextInput, View
-} from "react-native"
+import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from "react-native"
+import Markdown from 'react-native-markdown-display'
 import { Typography } from "@/constants/typography"
 import { useWs } from "@/providers/ws"
 import { parseCodexLine } from "@/lib/codex-events"
@@ -53,6 +52,9 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
         const parsed = parseCodexLine(trimmed)
         if (parsed.kind === 'delta') {
           append(parsed.summary, false)
+        } else if (parsed.kind === 'md') {
+          // Render markdown-only message for agent_message
+          append(`::md::${parsed.markdown}`, false)
         } else if (parsed.kind === 'json') {
           append(parsed.raw, true) // deemphasize full JSON
         } else {
@@ -71,34 +73,45 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
           <Button title="Clear Log" onPress={() => setLog([])} color={c.card} textColor={c.text} />
         </View>
 
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>Prompt</Text>
-          <TextInput
-            value={prompt}
-            onChangeText={setPrompt}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="Hello, world"
-            multiline
-            style={{ borderWidth: 1, borderColor: c.border, padding: 12, borderRadius: 12, minHeight: 120, backgroundColor: c.input, color: c.text, fontSize: 13, fontFamily: Typography.primary }}
-            placeholderTextColor={c.sub}
-          />
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Button title="Send" onPress={send} disabled={!connected || !prompt.trim()} color={connected && prompt.trim() ? c.primary : c.border} textColor={c.primaryText} />
-          </View>
-        </View>
-
-        {log.length > 0 && (
-          <View style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.card }}>
-            <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
-              {log.map((e) => (
+        <View style={{ flex: 1, borderWidth: 1, borderColor: c.border, backgroundColor: c.card }}>
+          <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ padding: 12 }}>
+            {log.map((e) => {
+              const isMd = e.text.startsWith('::md::')
+              if (isMd) {
+                const md = e.text.slice('::md::'.length)
+                return (
+                  <Markdown key={e.id} style={{ body: { color: c.text, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 } }}>
+                    {md}
+                  </Markdown>
+                )
+              }
+              return (
                 <Text key={e.id} selectable style={{ fontSize: 12, lineHeight: 16, color: c.text, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.2 : 1 }}>
                   {e.text}
                 </Text>
-              ))}
-            </ScrollView>
+              )
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Composer under the feed */}
+        <View style={{ gap: 6 }}>
+          <Text style={{ fontSize: 12, color: c.sub, fontFamily: Typography.bold }}>Prompt</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TextInput
+              value={prompt}
+              onChangeText={setPrompt}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="Hello, world"
+              multiline
+              numberOfLines={3}
+              style={{ flex: 1, borderWidth: 1, borderColor: c.border, padding: 10, minHeight: 80, backgroundColor: c.input, color: c.text, fontSize: 13, fontFamily: Typography.primary, borderRadius: 0 }}
+              placeholderTextColor={c.sub}
+            />
+            <Button title="Send" onPress={send} disabled={!connected || !prompt.trim()} color={connected && prompt.trim() ? c.primary : c.border} textColor={c.primaryText} />
           </View>
-        )}
+        </View>
 
       </View>
     </SafeAreaView>
@@ -107,7 +120,7 @@ When unsafe, ask for confirmation and avoid destructive actions.`;
 
 function Button({ title, onPress, disabled, color = "#111", textColor = "#fff" }: { title: string; onPress: () => void; disabled?: boolean; color?: string; textColor?: string; }) {
   return (
-    <Pressable onPress={disabled ? undefined : onPress} style={{ backgroundColor: disabled ? "#9CA3AF" : color, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, alignSelf: "flex-start" }} hitSlop={6} accessibilityRole="button">
+    <Pressable onPress={disabled ? undefined : onPress} style={{ backgroundColor: disabled ? "#9CA3AF" : color, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0, alignSelf: "flex-start" }} hitSlop={6} accessibilityRole="button">
       <Text style={{ color: textColor, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
