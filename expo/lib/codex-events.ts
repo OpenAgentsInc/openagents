@@ -59,6 +59,7 @@ export type ParsedLine =
   | { kind: 'file_change'; status?: string; changes: Array<{ path: string; kind: string }> }
   | { kind: 'web_search'; query: string }
   | { kind: 'mcp_call'; server: string; tool: string; status?: string }
+  | { kind: 'todo_list'; status?: string; items: Array<{ text: string; completed: boolean }> }
   | { kind: 'summary'; text: string }
   | { kind: 'json'; raw: string }
   | { kind: 'text'; raw: string };
@@ -129,6 +130,13 @@ export function parseCodexLine(line: string): ParsedLine {
           const tool = String(item?.tool ?? '');
           const status: string | undefined = item?.status ?? evt?.type?.split('.')?.[1];
           return { kind: 'mcp_call', server, tool, status };
+        }
+        if (t === 'todo_list') {
+          const status: string | undefined = evt?.type?.split('.')?.[1];
+          const items = Array.isArray(item?.items)
+            ? item.items.map((it: any) => ({ text: String(it?.text ?? ''), completed: Boolean(it?.completed) }))
+            : [];
+          return { kind: 'todo_list', status, items };
         }
       }
 
