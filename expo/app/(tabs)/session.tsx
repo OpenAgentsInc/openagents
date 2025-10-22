@@ -7,6 +7,7 @@ import { Colors } from '@/constants/theme'
 import { parseCodexLine } from '@/lib/codex-events'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
+import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
 import { useWs } from '@/providers/ws'
 import { useHeaderHeight } from '@react-navigation/elements'
 import { putLog, loadLogs, saveLogs, clearLogs as clearLogsStore } from '@/lib/log-store'
@@ -34,7 +35,7 @@ export default function SessionScreen() {
     rafRef.current = requestAnimationFrame(() => { lastHeightRef.current = clamped; setInputHeight(clamped) })
   }, [])
 
-  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'; deemphasize?: boolean; detailId?: number }
+  type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
@@ -43,7 +44,7 @@ export default function SessionScreen() {
   const append = (
     text: string,
     deemphasize?: boolean,
-    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta' = 'text',
+    kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec' = 'text',
     detailRaw?: string,
   ) => {
     let detailId: number | undefined = undefined
@@ -97,9 +98,13 @@ Important policy overrides:
         if (parsed.kind === 'delta') append(parsed.summary, true, 'summary', trimmed)
         else if (parsed.kind === 'md') append(`::md::${parsed.markdown}`, false, 'md')
         else if (parsed.kind === 'reason') append(`::reason::${parsed.text}`, false, 'reason')
+        else if (parsed.kind === 'exec_begin') {
+          const payload = JSON.stringify({ command: parsed.command, cwd: parsed.cwd })
+          append(payload, false, 'exec', trimmed)
+        }
         else if (parsed.kind === 'summary') append(parsed.text, true, 'summary', trimmed)
         else if (parsed.kind === 'json') append(parsed.raw, true, 'json')
-        else append(parsed.raw, true, 'text')
+        else append(trimmed, true, 'text')
       }
     })
     return () => setOnMessage(null)
@@ -157,6 +162,16 @@ Important policy overrides:
                     <ReasoningHeadline text={full} />
                   </Pressable>
                 )
+              }
+              if (e.kind === 'exec') {
+                try {
+                  const obj = JSON.parse(e.text)
+                  return (
+                    <Pressable key={e.id} onPress={onPressOpen}>
+                      <ExecBeginRow payload={obj} />
+                    </Pressable>
+                  )
+                } catch {}
               }
               const lines = e.text.split(/\r?\n/)
               const isLong = lines.length > 8

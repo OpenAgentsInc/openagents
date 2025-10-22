@@ -5,11 +5,13 @@ import { Typography } from '@/constants/typography'
 import { AgentMessageCard } from '@/components/jsonl/AgentMessageCard'
 import { ReasoningCard } from '@/components/jsonl/ReasoningCard'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
+import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
 
 export default function ComponentLibraryScreen() {
   const samples = {
     agent_message: { type: 'agent_message', text: 'This is a basic agent message rendered via AgentMessageCard.' } as const,
     reasoning: { type: 'reasoning', text: '**Summarizing folder structure**\n\nOnly the headline is shown inline; full trace uses a detail view.' } as const,
+    exec_begin: { command: ['bash', '-lc', 'ls -la'], cwd: '/Users/you/code/repo' } as const,
   }
 
   return (
@@ -32,6 +34,11 @@ export default function ComponentLibraryScreen() {
       <View style={{ gap: 8 }}>
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>reasoning (full)</Text>
         <ReasoningCard item={samples.reasoning} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>exec_command_begin</Text>
+        <ExecBeginRow payload={samples.exec_begin} />
       </View>
     </ScrollView>
   )
