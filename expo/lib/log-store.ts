@@ -38,8 +38,16 @@ export async function loadLogs(): Promise<LogDetail[]> {
     const raw = await AsyncStorage.getItem(KEY);
     if (!raw) return [];
     const arr: LogDetail[] = JSON.parse(raw);
+    // Sanitize persisted logs: drop any exec_command_end blobs that may have been
+    // saved before we added runtime filtering. This avoids showing them after
+    // rehydration without requiring users to clear the log.
+    const sanitized = arr.filter((d) => {
+      try { return !String(d.text ?? '').includes('exec_command_end'); } catch { return true }
+    });
+    // Persist the sanitized list so it stays clean across restarts.
+    try { if (sanitized.length !== arr.length) await AsyncStorage.setItem(KEY, JSON.stringify(sanitized)); } catch {}
     store.clear();
-    for (const d of arr) store.set(d.id, d);
+    for (const d of sanitized) store.set(d.id, d);
     return getAllLogs();
   } catch {
     return [];
