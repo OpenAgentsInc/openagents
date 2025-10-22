@@ -31,10 +31,8 @@ export default function ConsoleScreen() {
 
   const setHeightStable = useCallback((target: number, { allowShrink = false }: { allowShrink?: boolean } = {}) => {
     const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(target)));
-    const delta = clamped - lastHeightRef.current;
-    // Only grow during typing; shrinking causes bounce. We'll shrink on send/clear.
-    if (!allowShrink && delta <= 2) return;
-    if (Math.abs(delta) <= 2) return;
+    // Grow-only during typing; equal or smaller heights are ignored unless allowShrink
+    if (!allowShrink && clamped <= lastHeightRef.current) return;
     if (rafRef.current) cancelAnimationFrame(rafRef.current as any);
     rafRef.current = requestAnimationFrame(() => {
       lastHeightRef.current = clamped;
