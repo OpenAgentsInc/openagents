@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { ScrollView, Text, View, Pressable } from 'react-native';
-import { getAllLogs, getLog, loadLogs, subscribe } from '@/lib/log-store';
+import { useLogStore, getLog, loadLogs } from '@/lib/log-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock';
 import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard';
@@ -25,7 +25,7 @@ export default function MessageDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   useHeaderTitle(id ? `Message ${id}` : 'Message');
   const num = Number(id);
-  const logs = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
+  const logs = useLogStore((s) => s.logs);
   const [hydrating, setHydrating] = React.useState(true);
   useEffect(() => { let alive = true; loadLogs().catch(() => {}).finally(() => { if (alive) setHydrating(false); }); return () => { alive = false; }; }, []);
   const detail = useMemo(() => {

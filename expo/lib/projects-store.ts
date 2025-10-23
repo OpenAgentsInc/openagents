@@ -1,100 +1,125 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
-export type ProjectId = string;
+export type ProjectId = string
 
 export type ProjectRepo = {
-  provider?: 'github' | 'gitlab' | 'other';
-  remote?: string;  // "owner/name"
-  url?: string;     // e.g. https://github.com/owner/name
-  branch?: string;
-};
+  provider?: 'github' | 'gitlab' | 'other'
+  remote?: string // "owner/name"
+  url?: string // e.g. https://github.com/owner/name
+  branch?: string
+}
 
-export type ProjectTodo = { text: string; completed: boolean };
+export type ProjectTodo = { text: string; completed: boolean }
 
 export type Project = {
-  id: ProjectId;
-  name: string;
-  voiceAliases: string[];
-  workingDir: string;
-  repo?: ProjectRepo;
-  agentFile?: string;
-  instructions?: string;
+  id: ProjectId
+  name: string
+  voiceAliases: string[]
+  workingDir: string
+  repo?: ProjectRepo
+  agentFile?: string
+  instructions?: string
 
-  runningAgents?: number;
-  attentionCount?: number;
-  todos?: ProjectTodo[];
+  runningAgents?: number
+  attentionCount?: number
+  todos?: ProjectTodo[]
 
-  lastActivity?: number;
-  createdAt: number;
-  updatedAt: number;
+  lastActivity?: number
+  createdAt: number
+  updatedAt: number
 
-  approvals?: 'never' | 'on-request' | 'on-failure';
-  model?: string;
-  sandbox?: 'danger-full-access' | 'workspace-write' | 'read-only';
-};
+  approvals?: 'never' | 'on-request' | 'on-failure'
+  model?: string
+  sandbox?: 'danger-full-access' | 'workspace-write' | 'read-only'
+}
 
-const KEY = '@openagents/projects-v1';
-const ACTIVE_KEY = '@openagents/projects-active-v1';
+type ProjectsState = {
+  items: Record<ProjectId, Project>
+  activeId: ProjectId | null
+  list: () => Project[]
+  get: (id: ProjectId) => Project | undefined
+  getActive: () => Project | undefined
+  setActive: (id: ProjectId | null) => void
+  upsert: (p: Project) => void
+  remove: (id: ProjectId) => void
+  mergeTodos: (projectId: ProjectId, todos: ProjectTodo[]) => void
+}
 
-let mem: Record<ProjectId, Project> = {};
-let activeId: ProjectId | null = null;
+export const useProjectsStore = create<ProjectsState>()(
+  persist(
+    (set, get) => ({
+      items: {},
+      activeId: null,
+      list: () => Object.values(get().items).sort((a, b) => a.name.localeCompare(b.name)),
+      get: (id) => get().items[id],
+      getActive: () => {
+        const id = get().activeId
+        return id ? get().items[id] : undefined
+      },
+      setActive: (id) => set({ activeId: id }),
+      upsert: (p) => set(({ items }) => ({ items: { ...items, [p.id]: { ...p, updatedAt: Date.now(), createdAt: p.createdAt ?? Date.now() } } })),
+      remove: (id) => set(({ items, activeId }) => {
+        const next = { ...items }
+        delete next[id]
+        return { items: next, activeId: activeId === id ? null : activeId }
+      }),
+      mergeTodos: (projectId, todos) => set(({ items }) => {
+        const p = items[projectId]
+        if (!p) return { items }
+        const next: Project = { ...p, todos, attentionCount: todos.filter(t => !t.completed).length, updatedAt: Date.now() }
+        return { items: { ...items, [projectId]: next } }
+      }),
+    }),
+    {
+      name: '@openagents/projects-v2',
+      version: 1,
+      storage: createJSONStorage(() => AsyncStorage),
+      migrate: (persisted: any) => {
+        // Accept legacy shape: a record of projects in plain object and optional activeId
+        try {
+          if (persisted && typeof persisted === 'object' && !('items' in persisted)) {
+            // Try KEY format
+            return { items: persisted as Record<ProjectId, Project>, activeId: null }
+          }
+        } catch {}
+        return persisted
+      },
+    }
+  )
+)
 
+// Back-compat procedural API used by providers/projects and others
 export async function hydrateProjects(): Promise<void> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY);
-    mem = raw ? JSON.parse(raw) : {};
-    activeId = (await AsyncStorage.getItem(ACTIVE_KEY)) as ProjectId | null;
-  } catch {
-    mem = {};
-    activeId = null;
-  }
-}
-
-async function persist() {
-  try { await AsyncStorage.setItem(KEY, JSON.stringify(mem)); } catch {}
-}
-
-async function persistActive() {
-  try {
-    if (activeId) await AsyncStorage.setItem(ACTIVE_KEY, activeId);
-    else await AsyncStorage.removeItem(ACTIVE_KEY);
-  } catch {}
+  try { await useProjectsStore.persist.rehydrate?.() } catch {}
 }
 
 export function listProjects(): Project[] {
-  return Object.values(mem).sort((a, b) => a.name.localeCompare(b.name));
+  return useProjectsStore.getState().list()
 }
 
 export function getProject(id: ProjectId): Project | undefined {
-  return mem[id];
+  return useProjectsStore.getState().get(id)
 }
 
 export function getActiveProject(): Project | undefined {
-  return activeId ? mem[activeId] : undefined;
+  return useProjectsStore.getState().getActive()
 }
 
 export async function setActiveProject(id: ProjectId | null): Promise<void> {
-  activeId = id;
-  await persistActive();
+  useProjectsStore.getState().setActive(id)
 }
 
 export async function upsertProject(p: Project): Promise<void> {
-  mem[p.id] = { ...p, updatedAt: Date.now(), createdAt: p.createdAt ?? Date.now() };
-  await persist();
+  useProjectsStore.getState().upsert(p)
 }
 
 export async function removeProject(id: ProjectId): Promise<void> {
-  delete mem[id];
-  if (activeId === id) { activeId = null; await persistActive(); }
-  await persist();
+  useProjectsStore.getState().remove(id)
 }
 
 export async function mergeProjectTodos(projectId: ProjectId, todos: ProjectTodo[]): Promise<void> {
-  const p = mem[projectId];
-  if (!p) return;
-  p.todos = todos;
-  p.attentionCount = todos.filter(t => !t.completed).length;
-  p.updatedAt = Date.now();
-  await persist();
+  useProjectsStore.getState().mergeTodos(projectId, todos)
 }
 

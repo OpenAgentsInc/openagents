@@ -1,10 +1,10 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { appLog } from '@/lib/app-log';
+import { useSettings, type Approvals as StoreApprovals } from '@/lib/settings-store'
 
 type MsgHandler = ((text: string) => void) | null;
 
-type Approvals = 'never' | 'on-request' | 'on-failure';
+type Approvals = StoreApprovals;
 
 type BridgeContextValue = {
   bridgeHost: string; // e.g., "localhost:8787" or "100.x.x.x:8787"
@@ -40,7 +40,8 @@ type BridgeContextValue = {
 const BridgeContext = createContext<BridgeContextValue | undefined>(undefined);
 
 export function BridgeProvider({ children }: { children: React.ReactNode }) {
-  const [bridgeHost, setBridgeHost] = useState('localhost:8787');
+  const bridgeHost = useSettings((s) => s.bridgeHost)
+  const setBridgeHost = useSettings((s) => s.setBridgeHost)
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<MsgHandler>(null);
@@ -48,17 +49,19 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const subsRef = useRef<Set<MsgHandler>>(new Set());
   const clearLogHandlerRef = useRef<(() => void) | null>(null);
 
-  // Simple in-memory preferences (could persist with AsyncStorage)
-  const [readOnly, setReadOnly] = useState(false);
-  const [networkEnabled, setNetworkEnabled] = useState(true);
-  const [approvals, setApprovals] = useState<Approvals>('never');
-  const [attachPreface, setAttachPreface] = useState(true);
+  // Persisted settings via Zustand store
+  const readOnly = useSettings((s) => s.readOnly)
+  const setReadOnly = useSettings((s) => s.setReadOnly)
+  const networkEnabled = useSettings((s) => s.networkEnabled)
+  const setNetworkEnabled = useSettings((s) => s.setNetworkEnabled)
+  const approvals = useSettings((s) => s.approvals)
+  const setApprovals = useSettings((s) => s.setApprovals)
+  const attachPreface = useSettings((s) => s.attachPreface)
+  const setAttachPreface = useSettings((s) => s.setAttachPreface)
   const [resumeNextId, setResumeNextId] = useState<string | null>(null);
 
-  // Persist & hydrate settings
-  const SETTINGS_KEY = '@openagents/ws-settings';
-  const hydratedRef = useRef(false);
-  const [hydrated, setHydrated] = useState(false);
+  // Hydration is handled by the Zustand settings store; treat as ready
+  const [hydrated] = useState(true);
   const autoTriedRef = useRef(false);
 
   const disconnect = useCallback(() => {
@@ -124,54 +127,6 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       tick();
     });
   }, [connect]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-        if (raw) {
-          const s = JSON.parse(raw);
-          if (typeof s.bridgeHost === 'string') setBridgeHost(s.bridgeHost);
-          // Back-compat: migrate old wsUrl -> bridgeHost
-          if (!s.bridgeHost && typeof s.wsUrl === 'string') {
-            let migrated: string | null = null;
-            try {
-              const u = new URL(s.wsUrl);
-              if (u.host) migrated = u.host;
-            } catch {
-              // Fallback: accept raw host:port or ws://host:port[/ws]
-              try {
-                const rawUrl = String(s.wsUrl).trim();
-                const stripped = rawUrl
-                  .replace(/^ws:\/\//i, '')
-                  .replace(/^wss:\/\//i, '')
-                  .replace(/^http:\/\//i, '')
-                  .replace(/^https:\/\//i, '')
-                  .replace(/\/ws$/i, '')
-                  .replace(/\/$/, '');
-                if (stripped.includes(':') || /^[\d.]+$/.test(stripped)) {
-                  migrated = stripped;
-                }
-              } catch {}
-            }
-            if (migrated) setBridgeHost(migrated);
-          }
-          if (typeof s.readOnly === 'boolean') setReadOnly(s.readOnly);
-          if (typeof s.networkEnabled === 'boolean') setNetworkEnabled(s.networkEnabled);
-          if (s.approvals === 'never' || s.approvals === 'on-request' || s.approvals === 'on-failure') setApprovals(s.approvals);
-          if (typeof s.attachPreface === 'boolean') setAttachPreface(s.attachPreface);
-        }
-      } catch {}
-      hydratedRef.current = true;
-      setHydrated(true);
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!hydratedRef.current) return;
-    const payload = JSON.stringify({ bridgeHost, readOnly, networkEnabled, approvals, attachPreface });
-    AsyncStorage.setItem(SETTINGS_KEY, payload).catch(() => {});
-  }, [bridgeHost, readOnly, networkEnabled, approvals, attachPreface]);
 
   // Try a single auto-connect after hydration using the saved URL.
   useEffect(() => {
