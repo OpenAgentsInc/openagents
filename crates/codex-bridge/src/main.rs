@@ -52,7 +52,18 @@ async fn main() -> Result<()> {
             Some(p) => p.clone(),
             None => which::which("codex").unwrap_or_else(|_| PathBuf::from("codex")),
         };
-        cli_supports_resume(&bin)
+        let enabled = match std::env::var("BRIDGE_ENABLE_EXEC_RESUME") {
+            Ok(v) => matches!(v.as_str(), "1" | "true" | "TRUE" | "True"),
+            Err(_) => false,
+        };
+        if !enabled {
+            info!("msg" = "exec resume disabled (set BRIDGE_ENABLE_EXEC_RESUME=1 to enable)");
+            false
+        } else {
+            let ok = cli_supports_resume(&bin);
+            info!(ok, "msg" = "exec resume support (help check)");
+            ok
+        }
     };
     let (mut child, tx) = spawn_codex(&opts).await?;
     let state = Arc::new(AppState {
