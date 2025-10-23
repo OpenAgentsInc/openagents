@@ -31,7 +31,7 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState('');
   const trimmed = text.trim();
-  const resolvedPlaceholder = placeholder ?? 'Ask anything';
+  const resolvedPlaceholder = placeholder ?? 'Ask Codex';
   const canSend = connected && trimmed.length > 0;
   const canInterrupt = Boolean(onInterrupt) && connected && isRunning;
 
@@ -69,7 +69,8 @@ export function Composer({
   return (
     <View style={{ paddingBottom: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        {/* Left circular + button */}
+        {/* Left circular + button — commented out for full-width input */}
+        {/**
         <Pressable
           onPress={() => { try { console.log('composer:add'); } catch {} }}
           accessibilityRole="button"
@@ -77,6 +78,7 @@ export function Composer({
         >
           <Ionicons name="add" size={20} color={Colors.foreground} />
         </Pressable>
+        */}
 
         {/* Input pill */}
         <View style={{ flex: 1, backgroundColor: '#2A2A2A', borderRadius: 22, borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', alignItems: 'center' }}>
@@ -91,10 +93,12 @@ export function Composer({
             style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, color: Colors.foreground, fontSize: 16, fontFamily: Typography.primary }}
             placeholderTextColor={Colors.secondary}
           />
-          {/* Mic icon */}
+          {/* Mic icon — commented out for now */}
+          {/**
           <Pressable onPress={() => { try { console.log('composer:mic'); } catch {} }} accessibilityRole="button" style={{ paddingHorizontal: 10, paddingVertical: 8 }}>
             <Ionicons name="mic-outline" size={20} color={Colors.secondary} />
           </Pressable>
+          */}
           {/* Submit button */}
           <Pressable
             onPress={doSend}
@@ -102,7 +106,7 @@ export function Composer({
             accessibilityRole="button"
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canSend ? Colors.foreground : Colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
           >
-            <Ionicons name="send" size={18} color={canSend ? Colors.black : Colors.foreground} />
+            <Ionicons name="arrow-up" size={18} color={canSend ? Colors.black : Colors.foreground} />
           </Pressable>
         </View>
       </View>
