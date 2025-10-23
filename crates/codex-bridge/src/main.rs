@@ -1,5 +1,5 @@
 #[cfg(unix)]
-use std::{convert::TryInto, os::unix::process::CommandExt};
+use std::convert::TryInto;
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
@@ -305,9 +305,11 @@ async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<Stri
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(unix)]
-    {
-        command.pre_exec(|| unsafe {
-            if libc::setpgid(0, 0) != 0 {
+    unsafe {
+        command.pre_exec(|| {
+            // Put the child in its own process group so we can signal the group
+            let res = libc::setpgid(0, 0);
+            if res != 0 {
                 return Err(std::io::Error::last_os_error());
             }
             Ok(())
@@ -357,9 +359,10 @@ async fn spawn_codex_child_only(opts: &Opts) -> Result<ChildWithIo> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(unix)]
-    {
-        command.pre_exec(|| unsafe {
-            if libc::setpgid(0, 0) != 0 {
+    unsafe {
+        command.pre_exec(|| {
+            let res = libc::setpgid(0, 0);
+            if res != 0 {
                 return Err(std::io::Error::last_os_error());
             }
             Ok(())
@@ -428,9 +431,10 @@ async fn spawn_codex_child_only_with_dir(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(unix)]
-    {
-        command.pre_exec(|| unsafe {
-            if libc::setpgid(0, 0) != 0 {
+    unsafe {
+        command.pre_exec(|| {
+            let res = libc::setpgid(0, 0);
+            if res != 0 {
                 return Err(std::io::Error::last_os_error());
             }
             Ok(())
