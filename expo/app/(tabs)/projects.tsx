@@ -12,12 +12,9 @@ export default function ProjectsList() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 14 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 18 }}>Projects</Text>
-        <Pressable onPress={() => router.push('/project/new')} style={{ backgroundColor: '#3F3F46', paddingHorizontal: 12, paddingVertical: 8 }}>
-          <Text style={{ color: '#fff', fontFamily: Typography.bold }}>New</Text>
-        </Pressable>
-      </View>
+      <Pressable onPress={() => router.push('/project/new')} style={{ alignSelf: 'flex-end', backgroundColor: '#3F3F46', paddingHorizontal: 12, paddingVertical: 8 }}>
+        <Text style={{ color: '#fff', fontFamily: Typography.bold }}>New</Text>
+      </Pressable>
 
       <View style={{ gap: 10 }}>
         {projects.map(p => (
@@ -37,4 +34,3 @@ export default function ProjectsList() {
     </ScrollView>
   );
 }
-
