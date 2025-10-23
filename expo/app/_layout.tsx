@@ -74,7 +74,7 @@ function DrawerContent() {
             {!!historyError && (
               <View style={{ paddingVertical: 6 }}>
                 <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12 }}>History failed</Text>
-                <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>GET {lastUrl}</Text>
+                <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>WS: history</Text>
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Error: {historyError}</Text>
                 <Pressable onPress={() => loadHistory(() => bridge.requestHistory())} accessibilityRole="button" style={{ alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: Colors.card }}>
                   <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Retry</Text>
