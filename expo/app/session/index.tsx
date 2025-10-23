@@ -454,7 +454,7 @@ Important policy overrides:
                 <React.Fragment key={e.id}>
                   <View style={{ paddingLeft: indent }}>
                     <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, copyText)}>
-                      <Text selectable={!isUserMsg} style={{ fontSize: 12, lineHeight: 16, color: Colors.foreground, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
+                      <Text selectable={!isUserMsg} style={{ fontSize: 12, lineHeight: 16, color: Colors.foreground, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1, marginTop: isUserMsg ? 6 : 0, marginBottom: isUserMsg ? 8 : 0 }}>{preview}</Text>
                       {copiedId === e.id ? <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                     </Pressable>
                   </View>

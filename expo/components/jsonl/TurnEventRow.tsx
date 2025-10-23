@@ -9,7 +9,7 @@ export function TurnEventRow({ phase, usage, message, showUsage = true, duration
   const duration = typeof durationMs === 'number' ? ` (${(durationMs/1000).toFixed(1)}s)` : ''
   return (
     <View style={{ paddingVertical: 2 }}>
-      <Text style={{ color, fontFamily: Typography.bold }}>{titleBase}{duration}</Text>
+      <Text style={{ color, fontFamily: Typography.primary, fontSize: 12 }}>{titleBase}{duration}</Text>
       {phase === 'completed' && usage && showUsage ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
           usage: in {usage.input_tokens} (+{usage.cached_input_tokens} cached) out {usage.output_tokens}
