@@ -18,6 +18,7 @@ type ProjectsCtx = {
   save: (p: Project) => Promise<void>;
   del: (id: ProjectId) => Promise<void>;
   sendForProject: (project: Project | undefined, userText: string) => boolean;
+  resetResumeHint: () => void;
 };
 
 const Ctx = createContext<ProjectsCtx | undefined>(undefined);
@@ -89,9 +90,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     return ok;
   }, [ws, sentCount]);
 
+  const resetResumeHint = useCallback(() => setSentCount(0), []);
+
   const value = useMemo<ProjectsCtx>(() => ({
-    projects, activeProject: active, setActive, save, del, sendForProject,
-  }), [projects, active, setActive, save, del, sendForProject]);
+    projects, activeProject: active, setActive, save, del, sendForProject, resetResumeHint,
+  }), [projects, active, setActive, save, del, sendForProject, resetResumeHint]);
 
   // Always provide the context, even before hydration completes, so
   // consumers like SessionScreen can call useProjects safely.
