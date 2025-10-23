@@ -107,6 +107,24 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [bridgeHost]);
 
+  // Helper: wait until the WebSocket is OPEN (or time out)
+  const awaitConnected = useCallback(async (timeoutMs: number = 8000) => {
+    const start = Date.now();
+    // Kick a connect attempt if nothing is connected
+    try { if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) connect(); } catch {}
+    return new Promise<void>((resolve, reject) => {
+      const tick = () => {
+        try {
+          const ws = wsRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN) { resolve(); return; }
+        } catch {}
+        if (Date.now() - start >= timeoutMs) { reject(new Error('ws not connected')); return; }
+        setTimeout(tick, 150);
+      };
+      tick();
+    });
+  }, [connect]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -212,6 +230,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   // WS helpers
   const requestHistory = useCallback(async (): Promise<any[]> => {
+    await awaitConnected().catch((e) => { throw e });
     // Subscribe once
     return new Promise<any[]>((resolve, reject) => {
       let done = false;
@@ -229,9 +248,10 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       const ok = send(JSON.stringify({ control: 'history' }));
       if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
     });
-  }, [addSubscriber, send]);
+  }, [addSubscriber, send, awaitConnected]);
 
   const requestThread = useCallback(async (id: string, path?: string): Promise<any | undefined> => {
+    await awaitConnected().catch((e) => { throw e });
     return new Promise<any | undefined>((resolve, reject) => {
       let done = false;
       const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 8000);
@@ -248,7 +268,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       const ok = send(JSON.stringify({ control: 'thread', id, path }));
       if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
     });
-  }, [addSubscriber, send]);
+  }, [addSubscriber, send, awaitConnected]);
 
   const setClearLogHandler = useCallback((fn: (() => void) | null) => {
     clearLogHandlerRef.current = fn;
