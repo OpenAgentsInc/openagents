@@ -46,6 +46,8 @@ struct Opts {
     extra: Vec<String>,
 }
 
+const MAX_HISTORY_LINES: usize = 2000;
+
 struct AppState {
     tx: broadcast::Sender<String>,
     child_stdin: Mutex<Option<tokio::process::ChildStdin>>, // drop after first write to signal EOF
@@ -53,6 +55,8 @@ struct AppState {
     opts: Opts,
     // Track last seen session id so we can resume on subsequent prompts
     last_thread_id: Mutex<Option<String>>,
+    // Replay buffer for new websocket clients
+    history: Mutex<Vec<String>>,
 }
 
 #[tokio::main]
@@ -67,6 +71,7 @@ async fn main() -> Result<()> {
         child_pid: Mutex::new(Some(child.pid)),
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
+        history: Mutex::new(Vec::new()),
     });
 
     // Start readers for stdout/stderr → broadcast + console
@@ -100,7 +105,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     // Broadcast reader → socket
     let mut rx = state.tx.subscribe();
     let (mut sink, mut stream) = socket.split();
+    let history = { state.history.lock().await.clone() };
     let mut sink_task = tokio::spawn(async move {
+        for line in history {
+            if sink.send(Message::Text(line.into())).await.is_err() {
+                return;
+            }
+        }
         loop {
             match rx.recv().await {
                 Ok(line) => {
@@ -545,6 +556,14 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                 }
                 // no-op for agent_message in always-resume mode
             }
+            {
+                let mut history = state_for_stdout.history.lock().await;
+                history.push(line.clone());
+                if history.len() > MAX_HISTORY_LINES {
+                    let drop = history.len() - MAX_HISTORY_LINES;
+                    history.drain(0..drop);
+                }
+            }
             let _ = tx_out.send(line);
         }
         info!("msg" = "stdout stream ended");
@@ -559,6 +578,14 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
             eprintln!("{}", log);
             if line.contains("\"sandbox\"") || line.contains("sandbox") {
                 info!("msg" = "observed sandbox string from stderr", raw = %line);
+            }
+            {
+                let mut history = state.history.lock().await;
+                history.push(line.clone());
+                if history.len() > MAX_HISTORY_LINES {
+                    let drop = history.len() - MAX_HISTORY_LINES;
+                    history.drain(0..drop);
+                }
             }
             let _ = tx_err.send(line);
         }

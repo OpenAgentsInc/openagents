@@ -295,32 +295,15 @@ Important policy overrides:
     return () => setClearLogHandler(null)
   }, [setClearLogHandler])
   useEffect(() => {
-    if (isRunning) {
+    if (isRunning || !connected) {
       flushingFollowUpRef.current = false
       return
     }
-    if (!connected) {
-      flushingFollowUpRef.current = false
+    if (queueRef.current.length === 0) {
       return
     }
-    if (!queuedFollowUps.length) {
-      return
-    }
-    if (flushingFollowUpRef.current) {
-      return
-    }
-    const next = queuedFollowUps[0]
-    if (!next) {
-      return
-    }
-    flushingFollowUpRef.current = true
-    setQueuedFollowUps((prev) => prev.slice(1))
-    const ok = sendNowRef.current(next)
-    if (!ok) {
-      setQueuedFollowUps((prev) => [next, ...prev])
-      flushingFollowUpRef.current = false
-    }
-  }, [isRunning, queuedFollowUps, connected])
+    flushQueuedFollowUp()
+  }, [isRunning, connected, queuedFollowUps, flushQueuedFollowUp])
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
   // Update header title dynamically: "New session" when empty
