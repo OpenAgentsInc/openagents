@@ -232,8 +232,11 @@ Important policy overrides:
         else if (parsed.kind === 'turn') {
           if (parsed.phase === 'started') { 
             setIsRunning(true);
-            setAwaitingFirst(true); awaitingFirstRef.current = true;
-            setWorkingStartedAt(Date.now()); setWorkingSeconds(0);
+            // Do not reset timer if we are already awaiting first content (e.g., resuming)
+            if (!awaitingFirstRef.current) {
+              setAwaitingFirst(true); awaitingFirstRef.current = true;
+              setWorkingStartedAt(Date.now()); setWorkingSeconds(0);
+            }
             continue 
           }
           else if (parsed.phase === 'completed' || parsed.phase === 'failed') {
