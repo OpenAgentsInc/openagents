@@ -11,7 +11,7 @@ export function CommandExecutionCard({ command, status, exitCode, sample, output
         <View style={{ backgroundColor: badgeBg, borderRadius: 0, paddingHorizontal: 8, paddingVertical: 2 }}>
           <Text style={{ color: Colors.primaryForeground, fontFamily: Typography.bold, fontSize: 11 }}>{(status ?? 'cmd').toUpperCase()}</Text>
         </View>
-        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{command}</Text>
+        <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13 }}>{command}</Text>
       </View>
       {showExitCode && typeof exitCode === 'number' ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>exit_code: {exitCode}</Text>
