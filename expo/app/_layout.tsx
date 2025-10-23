@@ -57,11 +57,6 @@ function DrawerContent() {
           })}
         </View>
       </ScrollView>
-      {/* Static edge divider (avoids any fade during drawer animation) */}
-      <View
-        pointerEvents="none"
-        style={{ position: 'absolute', top: 0, bottom: 0, [isRTL ? 'left' : 'right']: 0, width: 1, backgroundColor: Colors.border }}
-      />
     </SafeAreaView>
   );
 }
@@ -100,9 +95,11 @@ function DrawerWrapper() {
       renderDrawerContent={() => <DrawerContent />}
     >
       <StatusBar style="light" />
-      <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background }, headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
+      <View style={{ flex: 1, borderLeftWidth: isRTL ? 0 : 1, borderRightWidth: isRTL ? 1 : 0, borderColor: Colors.border }}>
+        <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background }, headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        </Stack>
+      </View>
     </Drawer>
   );
 }
