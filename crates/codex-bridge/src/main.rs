@@ -143,6 +143,36 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     error!(?e, "failed to interrupt codex child");
                                 }
                             }
+                            ControlCommand::History => {
+                                // Serve history over broadcast channel
+                                let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
+                                    std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
+                                });
+                                match crate::history::scan_history(std::path::Path::new(&base), 5) {
+                                    Ok(items) => {
+                                        let line = serde_json::json!({"type":"bridge.history","items": items}).to_string();
+                                        let _ = stdin_state.tx.send(line);
+                                    }
+                                    Err(e) => {
+                                        error!(?e, "history scan failed via ws");
+                                    }
+                                }
+                            }
+                            ControlCommand::Thread { id, path } => {
+                                let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
+                                    std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
+                                });
+                                let p = crate::history::resolve_session_path(std::path::Path::new(&base), id.as_deref(), path.as_deref());
+                                if let Some(target) = p {
+                                    match crate::history::parse_thread(std::path::Path::new(&target)) {
+                                        Ok(resp) => {
+                                            let line = serde_json::json!({"type":"bridge.thread","id": id, "thread": resp}).to_string();
+                                            let _ = stdin_state.tx.send(line);
+                                        }
+                                        Err(e) => { error!(?e, "thread parse failed via ws"); }
+                                    }
+                                }
+                            }
                         }
                         continue;
                     }
@@ -653,9 +683,11 @@ fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
     })
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum ControlCommand {
     Interrupt,
+    History,
+    Thread { id: Option<String>, path: Option<String> },
 }
 
 fn parse_control_command(payload: &str) -> Option<ControlCommand> {
@@ -671,6 +703,12 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
     let control = v.get("control").and_then(|c| c.as_str())?;
     match control {
         "interrupt" => Some(ControlCommand::Interrupt),
+        "history" => Some(ControlCommand::History),
+        "thread" => {
+            let id = v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string());
+            let path = v.get("path").and_then(|x| x.as_str()).map(|s| s.to_string());
+            Some(ControlCommand::Thread { id, path })
+        }
         _ => None,
     }
 }

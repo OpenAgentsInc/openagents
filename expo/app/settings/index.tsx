@@ -13,7 +13,7 @@ export default function SettingsScreen() {
       <Text style={styles.title}>Connection</Text>
       <Text style={styles.label}>Bridge Host (host:port)</Text>
       <TextInput value={bridgeHost} onChangeText={setBridgeHost} autoCapitalize='none' autoCorrect={false} placeholder='localhost:8787' placeholderTextColor={Colors.secondary} style={styles.input} />
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>WS: {`ws://${bridgeHost}/ws`}   ·   HTTP: {`http://${bridgeHost}`}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>WS endpoint: {`ws://${bridgeHost}/ws`}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
         <StatusPill connected={connected} />
