@@ -90,7 +90,9 @@ export default function TabLayout() {
         headerLeftContainerStyle: { marginLeft: 0, paddingLeft: 0 },
         headerLeft: () => <TitleWithMenu title={titleForRoute(route.name)} />,
         headerBackground: () => (
-          <View style={{ flex: 1, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border }} />
+          <View style={{ flex: 1, backgroundColor: Colors.background }}>
+            <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: Colors.border }} />
+          </View>
         ),
         headerShadowVisible: false,
         headerTintColor: Colors.textPrimary,

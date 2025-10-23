@@ -136,6 +136,12 @@ function DrawerWrapper() {
             contentStyle: { backgroundColor: Colors.background },
             headerShown: true,
             animation: 'none',
+            headerBackground: () => (
+              <View style={{ flex: 1, backgroundColor: Colors.background }}>
+                <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: Colors.border }} />
+              </View>
+            ),
+            headerShadowVisible: false,
             headerTitle: '',
             headerTitleStyle: { fontFamily: Typography.bold },
             headerStyle: { backgroundColor: Colors.background },
