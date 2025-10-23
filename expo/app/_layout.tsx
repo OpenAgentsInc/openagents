@@ -1,21 +1,23 @@
-import React from 'react'
-import '@/utils/gestureHandler'
-import { Stack, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { ThemeProvider } from '@react-navigation/native';
-import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { Drawer } from 'react-native-drawer-layout';
-import { I18nManager, Pressable, ScrollView, Text, View } from 'react-native';
-import { useTypographySetup, applyTypographyGlobals, Typography } from '@/constants/typography';
-import { Colors, NavigationTheme } from '@/constants/theme';
-import { WsProvider, useWs } from '@/providers/ws';
-import { ProjectsProvider, useProjects } from '@/providers/projects';
-import { useAutoUpdate } from '@/hooks/use-auto-update';
-import { AppHeader } from '@/components/app-header'
-import { DrawerProvider, useDrawer } from '@/providers/drawer';
-import * as Haptics from 'expo-haptics';
-import { useThreads } from '@/lib/threads-store';
+import "@/utils/gestureHandler"
+import * as Haptics from "expo-haptics"
+import { Stack, useRouter } from "expo-router"
+import { StatusBar } from "expo-status-bar"
+import React from "react"
+import { I18nManager, Pressable, ScrollView, Text, View } from "react-native"
+import { Drawer } from "react-native-drawer-layout"
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
+import { AppHeader } from "@/components/app-header"
+import { Colors, NavigationTheme } from "@/constants/theme"
+import {
+    applyTypographyGlobals, Typography, useTypographySetup
+} from "@/constants/typography"
+import { useAutoUpdate } from "@/hooks/use-auto-update"
+import { useThreads } from "@/lib/threads-store"
+import { DrawerProvider, useDrawer } from "@/providers/drawer"
+import { ProjectsProvider, useProjects } from "@/providers/projects"
+import { useWs, WsProvider } from "@/providers/ws"
+import { Ionicons } from "@expo/vector-icons"
+import { ThemeProvider } from "@react-navigation/native"
 
 function DrawerContent() {
   const router = useRouter();
@@ -28,7 +30,7 @@ function DrawerContent() {
   React.useEffect(() => { loadHistory(httpBase).catch(() => {}); }, [loadHistory, httpBase]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.black }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.border }}>
       <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ paddingBottom: 24 }} style={{ flex: 1 }}>
           <View style={{ height: 56, justifyContent: 'center', paddingHorizontal: 16 }}>
