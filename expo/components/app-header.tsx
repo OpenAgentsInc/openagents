@@ -1,7 +1,7 @@
 import React from 'react'
 import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Ionicons } from '@expo/vector-icons'
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderStore } from '@/lib/header-store'
@@ -46,7 +46,7 @@ export function AppHeader() {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
           <Pressable onPress={onNewChat} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
-            <Ionicons name="add" size={22} color={Colors.foreground} />
+            <MaterialCommunityIcons name="comment-plus-outline" size={22} color={Colors.foreground} />
           </Pressable>
         </View>
       </View>
