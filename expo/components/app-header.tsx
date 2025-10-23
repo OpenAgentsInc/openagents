@@ -8,7 +8,7 @@ import { useHeaderStore } from '@/lib/header-store'
 import { useDrawer } from '@/providers/drawer'
 import { useWs } from '@/providers/ws'
 import * as Haptics from 'expo-haptics'
-import { router } from 'expo-router'
+import { router, usePathname } from 'expo-router'
 
 export function AppHeader() {
   const insets = useSafeAreaInsets()
@@ -16,6 +16,8 @@ export function AppHeader() {
   const setHeight = useHeaderStore((s) => s.setHeight)
   const { toggle } = useDrawer()
   const { connected, clearLog } = useWs()
+  const pathname = usePathname()
+  const showBack = React.useMemo(() => pathname?.startsWith('/message/') ?? false, [pathname])
 
   const onLayout = React.useCallback((e: any) => {
     const h = e?.nativeEvent?.layout?.height ?? 0
@@ -32,8 +34,8 @@ export function AppHeader() {
     <View onLayout={onLayout} style={{ paddingTop: insets.top, backgroundColor: Colors.background, borderBottomColor: Colors.border, borderBottomWidth: StyleSheet.hairlineWidth }}>
       <View style={{ height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable onPress={toggle} accessibilityRole="button" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
-            <Ionicons name="menu" size={22} color={Colors.foreground} />
+          <Pressable onPress={() => { showBack ? router.back() : toggle() }} accessibilityRole="button" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
+            <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
           </Pressable>
           <View style={{ marginLeft: 8 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger }} />
