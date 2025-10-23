@@ -24,13 +24,13 @@ function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
-  const { httpBase } = useBridge();
+  const bridge = useBridge();
   const history = useThreads((s) => s.history);
   const loading = useThreads((s) => s.loadingHistory);
   const loadHistory = useThreads((s) => s.loadHistory);
   const lastUrl = useThreads((s) => s.lastHistoryUrl);
   const historyError = useThreads((s) => s.historyError);
-  React.useEffect(() => { loadHistory(httpBase).catch(() => {}); }, [loadHistory, httpBase]);
+  React.useEffect(() => { loadHistory(() => bridge.requestHistory()).catch(() => {}); }, [loadHistory, bridge]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.border }}>
@@ -40,11 +40,11 @@ function DrawerContent() {
             <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>OpenAgents</Text>
           </View>
           <View style={{ paddingHorizontal: 16, gap: 8 }}>
-            <Pressable onPress={closeAnd(() => router.push('/library'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
-              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
-            </Pressable>
             <View style={{ height: 12 }} />
-            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="folder-outline" size={14} color={Colors.secondary} />
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
+            </View>
             <Pressable onPress={closeAnd(() => router.push('/projects'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See projects…</Text>
             </Pressable>
@@ -54,7 +54,10 @@ function DrawerContent() {
               </Pressable>
             ))}
             <View style={{ height: 16 }} />
-            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="time-outline" size={14} color={Colors.secondary} />
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
+            </View>
             {loading ? (
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>Loading…</Text>
             ) : history.length === 0 ? (
@@ -73,7 +76,7 @@ function DrawerContent() {
                 <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12 }}>History failed</Text>
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>GET {lastUrl}</Text>
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Error: {historyError}</Text>
-                <Pressable onPress={() => loadHistory(httpBase)} accessibilityRole="button" style={{ alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: Colors.card }}>
+                <Pressable onPress={() => loadHistory(() => bridge.requestHistory())} accessibilityRole="button" style={{ alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: Colors.card }}>
                   <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Retry</Text>
                 </Pressable>
               </View>
@@ -89,6 +92,16 @@ function DrawerContent() {
           >
             <Ionicons name="settings-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Settings</Text>
+          </Pressable>
+          <View style={{ height: 8 }} />
+          <Pressable
+            onPress={closeAnd(() => router.push('/library'))}
+            accessibilityRole="button"
+            accessibilityLabel="Open component library"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}
+          >
+            <Ionicons name="book-outline" size={18} color={Colors.foreground} />
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
           </Pressable>
           <View style={{ height: 8 }} />
           <Pressable

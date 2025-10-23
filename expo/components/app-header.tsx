@@ -57,7 +57,10 @@ export function AppHeader() {
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 14 }}>{title}</Text>
             )}
             {!!subtitle && (
-              <Text style={{ color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 12, marginTop: 1 }}>{subtitle}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 1 }}>
+                <Ionicons name="folder-outline" size={12} color={Colors.tertiary} />
+                <Text style={{ color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 12, marginLeft: 4 }}>{subtitle}</Text>
+              </View>
             )}
           </View>
         </View>

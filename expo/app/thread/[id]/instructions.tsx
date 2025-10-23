@@ -8,10 +8,10 @@ import { Typography } from '@/constants/typography'
 
 export default function ThreadInstructions() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
-  const { httpBase } = useBridge()
+  const { requestThread } = useBridge()
   const loadThread = useThreads((s) => s.loadThread)
   const thread = useThreads((s) => (id ? s.thread[id] : undefined))
-  React.useEffect(() => { if (id) loadThread(httpBase, id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, httpBase, loadThread])
+  React.useEffect(() => { if (id) loadThread((id2, p) => requestThread(id2, p), id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, requestThread, loadThread])
   const body = thread?.instructions || '(no instructions)'
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>

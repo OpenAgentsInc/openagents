@@ -16,6 +16,10 @@ type BridgeContextValue = {
   disconnect: () => void;
   send: (payload: string | ArrayBuffer | Blob) => boolean;
   setOnMessage: (fn: MsgHandler) => void;
+  addSubscriber: (fn: MsgHandler) => () => void;
+  // WS request helpers (no HTTP)
+  requestHistory: () => Promise<any[]>;
+  requestThread: (id: string, path?: string) => Promise<any | undefined>;
   // Log controls (Console registers a handler; Settings can trigger)
   setClearLogHandler: (fn: (() => void) | null) => void;
   clearLog: () => void;
@@ -41,6 +45,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<MsgHandler>(null);
   const pendingBufferRef = useRef<string[]>([]); // buffer chunks when no handler is attached
+  const subsRef = useRef<Set<MsgHandler>>(new Set());
   const clearLogHandlerRef = useRef<(() => void) | null>(null);
 
   // Simple in-memory preferences (could persist with AsyncStorage)
@@ -86,6 +91,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         } catch {}
         // Deliver to active consumer if present
         try { onMessageRef.current?.(data); } catch {}
+        // Deliver to passive subscribers
+        try { subsRef.current.forEach((fn) => { try { if (fn) fn(data) } catch {} }); } catch {}
       };
       ws.onerror = (evt: any) => {
         // Keep errors out of the session feed; rely on header dot and dev console
@@ -198,6 +205,51 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const addSubscriber = useCallback((fn: MsgHandler) => {
+    subsRef.current.add(fn);
+    return () => { try { subsRef.current.delete(fn) } catch {} };
+  }, []);
+
+  // WS helpers
+  const requestHistory = useCallback(async (): Promise<any[]> => {
+    // Subscribe once
+    return new Promise<any[]>((resolve, reject) => {
+      let done = false;
+      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 8000);
+      const unsub = addSubscriber((line) => {
+        if (done) return;
+        const s = String(line || '').trim(); if (!s.startsWith('{')) return;
+        try {
+          const obj = JSON.parse(s);
+          if (obj?.type === 'bridge.history' && Array.isArray(obj.items)) {
+            done = true; clearTimeout(timer); unsub(); resolve(obj.items);
+          }
+        } catch {}
+      });
+      const ok = send(JSON.stringify({ control: 'history' }));
+      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
+    });
+  }, [addSubscriber, send]);
+
+  const requestThread = useCallback(async (id: string, path?: string): Promise<any | undefined> => {
+    return new Promise<any | undefined>((resolve, reject) => {
+      let done = false;
+      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 8000);
+      const unsub = addSubscriber((line) => {
+        if (done) return;
+        const s = String(line || '').trim(); if (!s.startsWith('{')) return;
+        try {
+          const obj = JSON.parse(s);
+          if (obj?.type === 'bridge.thread' && obj?.thread) {
+            done = true; clearTimeout(timer); unsub(); resolve(obj.thread);
+          }
+        } catch {}
+      });
+      const ok = send(JSON.stringify({ control: 'thread', id, path }));
+      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
+    });
+  }, [addSubscriber, send]);
+
   const setClearLogHandler = useCallback((fn: (() => void) | null) => {
     clearLogHandlerRef.current = fn;
   }, []);
@@ -217,8 +269,11 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       disconnect,
       send,
       setOnMessage,
+      addSubscriber,
       setClearLogHandler,
       clearLog,
+      requestHistory,
+      requestThread,
       readOnly,
       setReadOnly,
       networkEnabled,
