@@ -19,7 +19,16 @@ export default function ThreadHistoryView() {
   React.useEffect(() => { if (id) loadThread(wsUrl, id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, wsUrl, loadThread])
   useHeaderTitle(thread?.title || 'Thread')
 
-  const items = thread?.items || []
+  const items = React.useMemo(() => {
+    const base = thread?.items || []
+    if (base.length === 0) return base
+    const first = base[0]
+    const text = String(first?.text ?? '')
+    const isUserish = first?.role === 'user' || /^\s*>/.test(text) || /^You:\s*/i.test(text)
+    const looksLikeInstructions = /<user_instructions>/i.test(text) || /#\s*Repository\s+Guidelines/i.test(text)
+    if (isUserish && looksLikeInstructions) return base.slice(1)
+    return base
+  }, [thread?.items])
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -71,4 +80,3 @@ function Row({ it }: { it: { ts: number; kind: 'message'|'reason'|'cmd'; role?: 
   }
   return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>{it.text}</Text>
 }
-
