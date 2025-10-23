@@ -104,7 +104,7 @@ function DrawerContent() {
             onPress={closeAnd(() => router.push('/dashboard' as any))}
             accessibilityRole="button"
             accessibilityLabel="Open dashboard"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
           >
             <AntDesign name="dashboard" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Dashboard</Text>
@@ -113,27 +113,25 @@ function DrawerContent() {
             onPress={closeAnd(() => router.push('/settings'))}
             accessibilityRole="button"
             accessibilityLabel="Open settings"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
           >
             <Ionicons name="settings-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Settings</Text>
           </Pressable>
-          <View style={{ height: 8 }} />
           <Pressable
             onPress={closeAnd(() => router.push('/library'))}
             accessibilityRole="button"
             accessibilityLabel="Open component library"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
           >
             <Ionicons name="book-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
           </Pressable>
-          <View style={{ height: 8 }} />
           <Pressable
             onPress={closeAnd(() => router.push('/logs'))}
             accessibilityRole="button"
             accessibilityLabel="Open logs"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
           >
             <Ionicons name="bug-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Logs</Text>
