@@ -211,7 +211,7 @@ Important policy overrides:
   }, [isRunning, connected, queuedFollowUps, flushQueuedFollowUp])
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
-  useHeaderTitle('Session')
+  useHeaderTitle('Thread')
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -432,4 +432,3 @@ Important policy overrides:
     </View>
   )
 }
-
