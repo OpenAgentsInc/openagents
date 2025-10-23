@@ -10,7 +10,7 @@ function joinCmd(cmd: string[] | ReadonlyArray<string> | string): string {
   return String(cmd)
 }
 
-export function ExecBeginRow({ payload }: { payload: ExecBeginPayload }) {
+export function ExecBeginRow({ payload, full = false }: { payload: ExecBeginPayload; full?: boolean }) {
   const cmd = joinCmd(payload.command)
   const cwd = payload.cwd
   // Try to pretty-print parsed command, e.g., [{ "ListFiles": { path: "docs" } }]
