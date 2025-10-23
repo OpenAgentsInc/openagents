@@ -3,7 +3,7 @@
 ## Overview
 - The mobile app persists every line shown in the session feed to an internal log store so users can revisit prior turns.
 - Storage lives in `expo/lib/log-store.ts` and is backed by AsyncStorage. An in-memory `Map` tracks the live session log; helpers expose `putLog`, `getAllLogs`, `subscribe`, `loadLogs`, `saveLogs`, and `clearLogs`.
-- Writers only exist in the session screen (`expo/app/(tabs)/session.tsx:63`); every parsed Codex line generates a `LogDetail` entry and immediately calls `saveLogs()` to flush the full snapshot back to AsyncStorage.
+- Writers only exist in the session screen (`expo/app/session/index.tsx`); every parsed Codex line generates a `LogDetail` entry and immediately calls `saveLogs()` to flush the full snapshot back to AsyncStorage.
 
 ## Persistence & IDs
 - Each entry is keyed by an incrementing `id` (`SessionScreen` maintains `idRef`). The store sorts by `id` to produce chronological history (`log-store.ts:43`).
@@ -12,7 +12,7 @@
 
 ## Consumers
 - **Session feed** keeps its own React state mirror for rendering, but still writes through the store for persistence (`session.tsx:63-153`). After `loadLogs()` runs on mount (`session.tsx:210`), the feed includes prior entries.
-- **History tab** uses `React.useSyncExternalStore` with `subscribe`/`getAllLogs` to stay in sync with the store (`expo/app/(tabs)/history.tsx:9`). It reverses the array to show newest-first and renders each entry as a tappable card.
+- **History (Drawer)** fetches from the bridge’s `/history` endpoint via `expo/lib/sessions-store.ts` and renders newest-first items. Tapping opens `/session/[id]`.
 - **Message detail** looks up a single log entry via `getLog(id)` (`expo/app/message/[id].tsx:6`). It does not subscribe, so deep-links depend on the store already being hydrated.
 - **Drawer sidebar** (hamburger menu) shows the last ten user-authored prompts by filtering `getAllLogs()` (`expo/app/_layout.tsx:25-57`).
 
