@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, TextInput, Pressable, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 
@@ -16,7 +17,6 @@ type ComposerProps = {
 };
 
 const BUTTON_COLOR = Colors.quaternary;
-const INTERRUPT_COLOR = Colors.danger;
 
 export function Composer({
   onSend,
@@ -31,12 +31,9 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState('');
   const trimmed = text.trim();
-  const resolvedPlaceholder = placeholder ?? (isRunning ? 'Queue a follow-up message' : 'Type a message');
+  const resolvedPlaceholder = placeholder ?? 'Ask anything';
   const canSend = connected && trimmed.length > 0;
   const canInterrupt = Boolean(onInterrupt) && connected && isRunning;
-  const sendLabel = isRunning && onQueue ? 'Queue' : 'Send';
-  const queueCount = queuedMessages.length;
-  const previewMessages = queuedMessages.slice(0, 3);
 
   React.useEffect(() => {
     if (prefill !== undefined) {
@@ -70,56 +67,44 @@ export function Composer({
   }, [canInterrupt, onInterrupt]);
 
   return (
-    <View style={{ gap: 6, paddingBottom: 6 }}>
-      {queueCount > 0 && (
-        <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.black, paddingHorizontal: 10, paddingVertical: 8, gap: 4 }}>
-          {previewMessages.map((item, idx) => (
-            <Text key={`${idx}-${item}`} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12, opacity: 0.75 }}>
-              ↳ {truncate(item, 120)}
-            </Text>
-          ))}
-          {queueCount > 3 && (
-            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
-              …and {queueCount - 3} more
-            </Text>
-          )}
-        </View>
-      )}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {isRunning && (
-          <Pressable
-            onPress={handleInterrupt}
-            disabled={!canInterrupt}
-            accessibilityRole="button"
-            style={{
-              backgroundColor: canInterrupt ? INTERRUPT_COLOR : Colors.border,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              borderRadius: 0,
-            }}
-          >
-            <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Interrupt</Text>
-          </Pressable>
-        )}
-        <TextInput
-          value={text}
-          onChangeText={handleChange}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder={resolvedPlaceholder}
-          returnKeyType="send"
-          onSubmitEditing={doSend}
-          style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: Colors.black, color: Colors.foreground, fontSize: 13, fontFamily: Typography.primary, borderRadius: 0 }}
-          placeholderTextColor={Colors.secondary}
-        />
+    <View style={{ paddingBottom: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {/* Left circular + button */}
         <Pressable
-          onPress={doSend}
-          disabled={!canSend}
-          style={{ backgroundColor: canSend ? BUTTON_COLOR : Colors.border, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}
+          onPress={() => { try { console.log('composer:add'); } catch {} }}
           accessibilityRole="button"
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' }}
         >
-          <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{sendLabel}</Text>
+          <Ionicons name="add" size={20} color={Colors.foreground} />
         </Pressable>
+
+        {/* Input pill */}
+        <View style={{ flex: 1, backgroundColor: '#2A2A2A', borderRadius: 22, borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', alignItems: 'center' }}>
+          <TextInput
+            value={text}
+            onChangeText={handleChange}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder={resolvedPlaceholder}
+            returnKeyType="send"
+            onSubmitEditing={doSend}
+            style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, color: Colors.foreground, fontSize: 16, fontFamily: Typography.primary }}
+            placeholderTextColor={Colors.secondary}
+          />
+          {/* Mic icon */}
+          <Pressable onPress={() => { try { console.log('composer:mic'); } catch {} }} accessibilityRole="button" style={{ paddingHorizontal: 10, paddingVertical: 8 }}>
+            <Ionicons name="mic-outline" size={20} color={Colors.secondary} />
+          </Pressable>
+          {/* Submit button */}
+          <Pressable
+            onPress={doSend}
+            disabled={!canSend}
+            accessibilityRole="button"
+            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canSend ? Colors.foreground : Colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
+          >
+            <Ionicons name="send" size={18} color={canSend ? Colors.black : Colors.foreground} />
+          </Pressable>
+        </View>
       </View>
     </View>
   );
