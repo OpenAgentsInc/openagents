@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { ScrollView, Text, View, Pressable } from 'react-native';
-import { getAllLogs, getLog, isHydrated, loadLogs, subscribe } from '@/lib/log-store';
+import { getAllLogs, getLog, loadLogs, subscribe } from '@/lib/log-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock';
 import { ReasoningCard } from '@/components/jsonl/ReasoningCard';
@@ -13,8 +13,8 @@ export default function MessageDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const num = Number(id);
   const logs = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
-  const hydrated = isHydrated();
-  useEffect(() => { if (!hydrated) loadLogs().catch(() => {}); }, [hydrated]);
+  const [hydrating, setHydrating] = React.useState(true);
+  useEffect(() => { let alive = true; loadLogs().catch(() => {}).finally(() => { if (alive) setHydrating(false); }); return () => { alive = false; }; }, []);
   const detail = useMemo(() => {
     if (Number.isNaN(num)) return undefined;
     return logs.find((entry) => entry.id === num) ?? getLog(num);
@@ -47,7 +47,7 @@ export default function MessageDetail() {
         }}
       >
         {!detail ? (
-          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>{hydrated ? 'Message not found.' : 'Loading message…'}</Text>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>{hydrating ? 'Loading message…' : 'Message not found.'}</Text>
         ) : (
           <View style={{ gap: 12 }}>
             <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Kind: {detail.kind}</Text>
