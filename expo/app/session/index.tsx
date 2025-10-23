@@ -281,7 +281,10 @@ Important policy overrides:
       // Ensure we don't accept stray events until the next thread starts
       currentThreadIdRef.current = null
       requireThreadStartRef.current = true
-      try { setTimeout(() => composerInputRef.current?.focus(), 0) } catch {}
+      try {
+        const alreadyFocused = !!composerInputRef.current?.isFocused?.()
+        if (!alreadyFocused) setTimeout(() => composerInputRef.current?.focus(), 0)
+      } catch {}
     })
     return () => setClearLogHandler(null)
   }, [setClearLogHandler])
@@ -320,7 +323,10 @@ Important policy overrides:
   useHeaderSubtitle(activeProject?.name ?? '')
   useEffect(() => {
     if (params?.focus) {
-      const t = setTimeout(() => composerInputRef.current?.focus(), 0)
+      const t = setTimeout(() => {
+        const alreadyFocused = !!composerInputRef.current?.isFocused?.()
+        if (!alreadyFocused) composerInputRef.current?.focus()
+      }, 0)
       return () => clearTimeout(t)
     }
   }, [params?.focus])
