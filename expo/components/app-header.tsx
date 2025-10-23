@@ -5,6 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderStore } from '@/lib/header-store'
+import { clearLogs as clearLogsStore } from '@/lib/log-store'
 import { useDrawer } from '@/providers/drawer'
 import { useWs } from '@/providers/ws'
 import * as Haptics from 'expo-haptics'
@@ -28,6 +29,8 @@ export function AppHeader() {
   const onNewChat = React.useCallback(async () => {
     try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {}
     try { setResumeNextId('new') } catch {}
+    // Persistently clear logs even if the session screen is not mounted yet
+    try { await clearLogsStore() } catch {}
     clearLog()
     router.push('/thread?focus=1')
   }, [clearLog])
