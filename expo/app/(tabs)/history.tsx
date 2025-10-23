@@ -1,19 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getAllLogs, loadLogs } from '@/lib/log-store';
+import { getAllLogs, loadLogs, subscribe } from '@/lib/log-store';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 
 export default function HistoryScreen() {
   const router = useRouter();
-  const [items, setItems] = useState(() => getAllLogs());
-  useEffect(() => { (async ()=>{ await loadLogs(); setItems(getAllLogs()) })(); }, []);
+  const items = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
+  useEffect(() => { loadLogs().catch(() => {}); }, []);
+  const data = useMemo(() => items.slice().reverse(), [items]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background, paddingHorizontal: 8, paddingTop: 8 }}>
       <FlatList
-        data={items.slice().reverse()}
+        data={data}
         keyExtractor={(it) => String(it.id)}
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         renderItem={({ item }) => (
