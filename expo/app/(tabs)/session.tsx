@@ -41,7 +41,7 @@ export default function SessionScreen() {
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
   const shouldAutoScrollRef = useRef(true)
-  const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler } = useWs()
+  const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler, resumeNextId } = useWs()
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [queuedFollowUps, setQueuedFollowUps] = useState<string[]>([])
@@ -218,6 +218,10 @@ Important policy overrides:
         }
         else if (parsed.kind === 'thread') {
           const payload = JSON.stringify({ thread_id: parsed.thread_id })
+          try {
+            const tid = String(parsed.thread_id || '').trim()
+            if (tid) setSessionShortId(tid.split('-')[0] || tid.slice(0, 6))
+          } catch {}
           append(payload, false, 'thread', trimmed)
         }
         else if (parsed.kind === 'item_lifecycle') {
@@ -347,9 +351,14 @@ Important policy overrides:
   }, [isRunning, connected, queuedFollowUps, flushQueuedFollowUp])
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
-  // Update header title dynamically: "New session" when empty
+  // Update header title dynamically using resume id or first thread event
+  const [sessionShortId, setSessionShortId] = useState<string | null>(() => {
+    const seed = typeof resumeNextId === 'string' && resumeNextId ? resumeNextId : null
+    return seed ? (seed.split('-')[0] || seed.slice(0, 6)) : null
+  })
   const isNew = log.length === 0;
-  useHeaderTitle(isNew ? 'New session' : 'Session')
+  const headerTitle = sessionShortId ? `Session ${sessionShortId}` : (isNew ? 'New session' : 'Session')
+  useHeaderTitle(headerTitle)
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
