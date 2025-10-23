@@ -60,11 +60,7 @@ function DrawerContent() {
                   <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{h.title || '(no title)'}</Text>
                   <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(h.mtime * 1000).toLocaleString()}</Text>
                 </Pressable>
-                {h.has_instructions ? (
-                  <Pressable onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(h.id)}/instructions?path=${encodeURIComponent(h.path)}`))} accessibilityRole="button">
-                    <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 11, opacity: 0.6 }}>See instructions…</Text>
-                  </Pressable>
-                ) : null}
+                {/* Intentionally omit inline instructions link in History */}
               </View>
             ))}
           </View>
