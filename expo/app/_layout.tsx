@@ -104,7 +104,7 @@ function DrawerContent() {
             onPress={closeAnd(() => router.push('/dashboard' as any))}
             accessibilityRole="button"
             accessibilityLabel="Open dashboard"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
           >
             <AntDesign name="dashboard" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Dashboard</Text>
