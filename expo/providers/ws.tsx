@@ -84,15 +84,6 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const effectiveHost = sanitizeHost(bridgeHost);
-  // If we detect a difference, persist the normalized form once
-  const normalizedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (normalizedRef.current === effectiveHost) return;
-    if (bridgeHost && bridgeHost !== effectiveHost) {
-      try { setBridgeHost(effectiveHost); } catch {}
-    }
-    normalizedRef.current = effectiveHost;
-  }, [bridgeHost, effectiveHost, setBridgeHost]);
 
   const disconnect = useCallback(() => {
     try { wsRef.current?.close(); } catch {}
@@ -265,7 +256,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      bridgeHost: effectiveHost,
+      bridgeHost, // expose raw for UI editing; connect uses effectiveHost
       setBridgeHost,
       wsUrl: `ws://${effectiveHost}/ws`,
       httpBase: `http://${effectiveHost}`,
@@ -290,7 +281,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       resumeNextId,
       setResumeNextId,
     }),
-    [effectiveHost, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
+    [bridgeHost, effectiveHost, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
   );
 
   return <BridgeContext.Provider value={value}>{children}</BridgeContext.Provider>;
