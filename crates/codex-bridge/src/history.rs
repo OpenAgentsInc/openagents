@@ -18,6 +18,8 @@ pub struct HistoryItem {
     pub mtime: u64,
     pub title: String,
     pub snippet: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_instructions: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -33,6 +35,8 @@ pub struct ThreadItem {
 pub struct ThreadResponse {
     pub title: String,
     pub items: Vec<ThreadItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,9 +125,9 @@ pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
                     .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
-                let (title, snippet) = extract_title_and_snippet(&p).unwrap_or_else(|| ("Session".into(), "".into()));
+                let (title, snippet, has_instr) = extract_title_and_snippet_ext(&p).unwrap_or_else(|| ("Session".into(), "".into(), false));
                 let id = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
-                items.push(HistoryItem { id, path: p.to_string_lossy().to_string(), mtime, title, snippet });
+                items.push(HistoryItem { id, path: p.to_string_lossy().to_string(), mtime, title, snippet, has_instructions: Some(has_instr) });
             }
         }
     }
@@ -156,14 +160,20 @@ fn file_is_new_format(p: &Path) -> bool {
     false
 }
 
-fn extract_title_and_snippet(p: &Path) -> Option<(String, String)> {
+fn extract_title_and_snippet_ext(p: &Path) -> Option<(String, String, bool)> {
     let mut last_assistant: Option<String> = None;
     let mut last_user: Option<String> = None;
     let mut last_reasoning: Option<String> = None;
+    let mut has_instructions = false;
     let f = fs::File::open(p).ok()?;
     let r = BufReader::new(f);
     for line in r.lines().filter_map(Result::ok) {
         if let StdResult::Ok(v) = serde_json::from_str::<JsonValue>(&line) {
+            if v.get("type").and_then(|x| x.as_str()) == Some("session_meta") {
+                if v.get("payload").and_then(|m| m.get("instructions")).and_then(|x| x.as_str()).is_some() {
+                    has_instructions = true;
+                }
+            }
             if v.get("type").and_then(|x| x.as_str()) == Some("item.completed") {
                 if let Some(item) = v.get("item") {
                     let kind = item.get("type").and_then(|x| x.as_str());
@@ -191,7 +201,7 @@ fn extract_title_and_snippet(p: &Path) -> Option<(String, String)> {
     // Prefer a more semantic title source before falling back
     let title_source = last_assistant.or(last_reasoning).or(last_user).unwrap_or_else(|| "Thread".into());
     let title = infer_title(&title_source);
-    Some((title, snippet))
+    Some((title, snippet, has_instructions))
 }
 
 fn infer_title(s: &str) -> String {
@@ -227,9 +237,15 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
     let r = BufReader::new(f);
     let mut items: Vec<ThreadItem> = vec![];
     let mut first_assistant: Option<String> = None;
+    let mut instructions: Option<String> = None;
     for line in r.lines().filter_map(Result::ok) {
         let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
         match v.get("type").and_then(|x| x.as_str()) {
+            Some("session_meta") => {
+                if let Some(instr) = v.get("payload").and_then(|m| m.get("instructions")).and_then(|x| x.as_str()) {
+                    instructions = Some(instr.to_string());
+                }
+            }
             // Newer JSONL shapes (response_item / event_msg)
             Some("response_item") => {
                 if let Some(payload) = v.get("payload") {
@@ -318,7 +334,7 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
         }
     }
     let title = infer_title(first_assistant.as_deref().unwrap_or("Thread"));
-    Ok(ThreadResponse { title, items })
+    Ok(ThreadResponse { title, items, instructions })
 }
 
 fn now_ts() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
