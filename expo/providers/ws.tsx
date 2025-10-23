@@ -25,6 +25,9 @@ type WsContextValue = {
   setApprovals: (v: Approvals) => void;
   attachPreface: boolean;
   setAttachPreface: (v: boolean) => void;
+  // Next-send resume hook: if set, projects provider will include { resume: <id> }
+  resumeNextId: string | null;
+  setResumeNextId: (id: string | null) => void;
 };
 
 const WsContext = createContext<WsContextValue | undefined>(undefined);
@@ -41,6 +44,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   const [networkEnabled, setNetworkEnabled] = useState(true);
   const [approvals, setApprovals] = useState<Approvals>('never');
   const [attachPreface, setAttachPreface] = useState(true);
+  const [resumeNextId, setResumeNextId] = useState<string | null>(null);
 
   // Persist & hydrate settings
   const SETTINGS_KEY = '@openagents/ws-settings';
@@ -168,8 +172,10 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       setApprovals,
       attachPreface,
       setAttachPreface,
+      resumeNextId,
+      setResumeNextId,
     }),
-    [wsUrl, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface]
+    [wsUrl, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
   );
 
   return <WsContext.Provider value={value}>{children}</WsContext.Provider>;
