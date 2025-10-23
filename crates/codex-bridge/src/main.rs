@@ -520,8 +520,9 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            // Drop noisy CLI line "Reading prompt from stdin..." before any logging/broadcast
-            if line.trim().to_ascii_lowercase().contains("reading prompt from stdin") {
+            // Drop noisy CLI lines we do not want to surface
+            let low = line.trim().to_ascii_lowercase();
+            if low.contains("reading prompt from stdin") || low == "no prompt provided via stdin." {
                 continue;
             }
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
@@ -576,8 +577,9 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            // Drop noisy CLI line "Reading prompt from stdin..." before any logging/broadcast
-            if line.trim().to_ascii_lowercase().contains("reading prompt from stdin") {
+            // Drop noisy CLI lines we do not want to surface
+            let low = line.trim().to_ascii_lowercase();
+            if low.contains("reading prompt from stdin") || low == "no prompt provided via stdin." {
                 continue;
             }
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
