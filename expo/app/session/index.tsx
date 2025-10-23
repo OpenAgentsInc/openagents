@@ -316,7 +316,9 @@ Important policy overrides:
     if (queueRef.current.length === 0) { return }
     flushQueuedFollowUp()
   }, [isRunning, connected, queuedFollowUps, flushQueuedFollowUp])
-  useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
+  // Initialize id counter to avoid collisions with persisted Message Detail entries,
+  // but do not hydrate old logs into the live feed (prevents cross-thread mixing).
+  useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { idRef.current = Math.max(...items.map(i=>i.id)) + 1 } })() }, [])
 
   useHeaderTitle('New Thread')
   useFocusEffect(React.useCallback(() => { setHeaderTitle(titleRef.current) }, [setHeaderTitle]))
