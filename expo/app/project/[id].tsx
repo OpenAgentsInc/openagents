@@ -20,7 +20,7 @@ export default function ProjectDetail() {
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>The project you tried to open doesn’t exist.</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
           <Button title="Back" onPress={() => router.back()} />
-          <Button title="Projects" onPress={() => router.replace('/(tabs)/projects')} />
+          <Button title="Projects" onPress={() => router.replace('/projects')} />
         </View>
       </View>
     );
@@ -40,7 +40,7 @@ export default function ProjectDetail() {
 
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
           <Button title="Set Active" onPress={() => setActive(project.id)} />
-          <Button title="Open Session" onPress={() => { setActive(project.id); router.push('/(tabs)/session'); }} />
+          <Button title="Open Session" onPress={() => { setActive(project.id); router.push('/session'); }} />
           <Button title="Ping (cd)" onPress={() => sendForProject(project, 'Echo working dir and list top-level: run `pwd` then `ls -la`')} />
         </View>
 

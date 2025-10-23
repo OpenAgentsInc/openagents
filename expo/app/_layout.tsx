@@ -158,11 +158,11 @@ function DrawerWrapper() {
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="session/index" options={{ headerShown: false }} />
           <Stack.Screen name="session/[id]" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="projects/index" options={{}} />
-          <Stack.Screen name="project/[id]" options={{}} />
-          <Stack.Screen name="project/new" options={{}} />
-          <Stack.Screen name="library/index" options={{}} />
-          <Stack.Screen name="settings/index" options={{}} />
+          <Stack.Screen name="projects/index" />
+          <Stack.Screen name="project/[id]" />
+          <Stack.Screen name="project/new" />
+          <Stack.Screen name="library/index" />
+          <Stack.Screen name="settings/index" />
           <Stack.Screen name="session/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
         {open ? (

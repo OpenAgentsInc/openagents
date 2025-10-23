@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
+import { CodeBlock } from '@/components/code-block'
 
 export function CommandExecutionCard({ command, status, exitCode, sample, outputLen, showExitCode = false, showOutputLen = false }: { command: string; status?: string; exitCode?: number | null; sample?: string; outputLen?: number; showExitCode?: boolean; showOutputLen?: boolean }) {
   const badgeBg = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0) ? Colors.danger : status === 'completed' ? Colors.success : Colors.gray
@@ -20,12 +21,12 @@ export function CommandExecutionCard({ command, status, exitCode, sample, output
         <View style={{ gap: 4 }}>
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>output ~{outputLen}B</Text>
           {sample ? (
-            <Text selectable style={{ color: Colors.foreground, fontFamily: Typography.primary, backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.border, padding: 8, fontSize: 11, lineHeight: 14 }}>{sample}</Text>
+            <CodeBlock code={sample} language="bash" />
           ) : null}
         </View>
       ) : sample ? (
         // Show sample snippet but hide size meta in the main feed
-        <Text selectable style={{ color: Colors.foreground, fontFamily: Typography.primary, backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.border, padding: 8, fontSize: 11, lineHeight: 14 }}>{sample}</Text>
+        <CodeBlock code={sample} language="bash" />
       ) : null}
     </View>
   )

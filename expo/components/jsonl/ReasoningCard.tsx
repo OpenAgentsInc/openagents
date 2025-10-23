@@ -4,6 +4,7 @@ import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import type { ReasoningItem } from '@/types/exec-jsonl'
+import { CodeBlock } from '@/components/code-block'
 
 export function ReasoningCard({ item }: { item: ReasoningItem }) {
   return (
@@ -12,8 +13,12 @@ export function ReasoningCard({ item }: { item: ReasoningItem }) {
         style={{
           body: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 18 },
           code_inline: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 },
-          code_block: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
-          fence: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
+          code_block: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 0 },
+          fence: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 0 },
+        }}
+        rules={{
+          fence: (node: any) => <CodeBlock code={String(node?.content ?? '')} language={String((node?.params ?? node?.info) || '')} />,
+          code_block: (node: any) => <CodeBlock code={String(node?.content ?? '')} />,
         }}
       >
         {item.text}
