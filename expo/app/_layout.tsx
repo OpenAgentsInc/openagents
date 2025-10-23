@@ -106,7 +106,7 @@ function DrawerWrapper() {
     const { connected } = useWs();
     return (
       <View style={{ marginLeft: 10 }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: connected ? '#22C55E' : '#EF4444' }} />
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: connected ? Colors.statusSuccess : Colors.statusError }} />
       </View>
     );
   };
@@ -182,6 +182,7 @@ function DrawerWrapper() {
           })}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </View>
     </Drawer>
