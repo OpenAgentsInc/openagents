@@ -33,7 +33,7 @@ import { useDrawer } from "@/providers/drawer"
 import { Ionicons } from "@expo/vector-icons"
 
 export default function SessionScreen() {
-  const params = useLocalSearchParams<{ focus?: string }>()
+  const params = useLocalSearchParams<{ focus?: string; new?: string }>()
   const headerHeight = useHeaderStore((s) => s.height)
   const setHeaderTitle = useHeaderStore((s) => s.setTitle)
   const insets = useSafeAreaInsets()
@@ -321,6 +321,22 @@ Important policy overrides:
       return () => clearTimeout(t)
     }
   }, [params?.focus])
+
+  // If navigated with ?new=1, aggressively clear any existing feed immediately
+  useEffect(() => {
+    if (params?.new) {
+      setLog([])
+      setQueuedFollowUps([])
+      setIsRunning(false)
+      flushingFollowUpRef.current = false
+      queueRef.current = []
+      composerDraftRef.current = ''
+      setComposerPrefill(undefined)
+      clearLogsStore()
+      currentThreadIdRef.current = null
+      requireThreadStartRef.current = true
+    }
+  }, [params?.new])
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
