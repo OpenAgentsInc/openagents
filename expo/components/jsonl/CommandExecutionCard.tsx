@@ -28,7 +28,7 @@ export function CommandExecutionCard({
 }) {
   const isFail = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0)
   const isDone = status === 'completed' || (typeof exitCode === 'number' && exitCode === 0)
-  const iconName = isFail ? 'close-circle' : isDone ? 'check' : 'progress-clock'
+  const iconName = isFail ? 'close' : isDone ? 'check' : 'dots-horizontal'
   const iconColor = isFail ? Colors.danger : isDone ? Colors.success : Colors.secondary
   const clamp = collapsed ? { maxHeight: maxBodyHeight, overflow: 'hidden' as const } : undefined
   return (
