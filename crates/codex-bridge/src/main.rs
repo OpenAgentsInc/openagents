@@ -405,20 +405,14 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
 }
 
 fn cli_supports_resume(bin: &PathBuf) -> bool {
-    fn ok_contains(out: &std::process::Output, needle: &str) -> bool {
-        let s = String::from_utf8_lossy(&out.stdout);
-        s.to_lowercase().contains(&needle.to_lowercase())
+    // Strict detection: only treat as supported if `codex exec resume --help` succeeds.
+    match std::process::Command::new(bin)
+        .args(["exec", "resume", "--help"]) // exists only on resume-capable builds
+        .output()
+    {
+        Ok(o) => o.status.success(),
+        Err(_) => false,
     }
-    if let Ok(o) = std::process::Command::new(bin).args(["exec", "resume", "--help"]).output() {
-        if o.status.success() || ok_contains(&o, "resume") { return true; }
-    }
-    if let Ok(o) = std::process::Command::new(bin).args(["exec", "--help"]).output() {
-        if ok_contains(&o, "resume") { return true; }
-    }
-    if let Ok(o) = std::process::Command::new(bin).arg("--help").output() {
-        if ok_contains(&o, "resume") { return true; }
-    }
-    false
 }
 
 async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -> Result<()> {
