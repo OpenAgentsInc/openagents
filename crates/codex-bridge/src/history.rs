@@ -21,7 +21,7 @@ pub struct HistoryItem {
 }
 
 #[derive(Debug, Serialize, Clone)]
-pub struct SessionItem {
+pub struct ThreadItem {
     pub ts: u64,
     pub kind: String, // message | reason | cmd
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,9 +30,9 @@ pub struct SessionItem {
 }
 
 #[derive(Debug, Serialize, Clone)]
-pub struct SessionResponse {
+pub struct ThreadResponse {
     pub title: String,
-    pub items: Vec<SessionItem>,
+    pub items: Vec<ThreadItem>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,19 +74,19 @@ pub async fn session_handler(Query(q): Query<SessionQuery>) -> impl IntoResponse
     let target = match resolve_session_path(Path::new(&base), q.id.as_deref(), q.path.as_deref()) {
         Some(p) => p,
         None => {
-            warn!(base=%base, id=?q.id, path=?q.path, msg="/session not found");
+            warn!(base=%base, id=?q.id, path=?q.path, msg="/thread not found");
             return (axum::http::StatusCode::NOT_FOUND, "not found").into_response()
         },
     };
-    info!(base=%base, id=?q.id, path=%target, msg="/session request");
-    match parse_session(Path::new(&target)) {
+    info!(base=%base, id=?q.id, path=%target, msg="/thread request");
+    match parse_thread(Path::new(&target)) {
         StdResult::Ok(resp) => {
-            info!(items=resp.items.len(), title=%resp.title, id=?q.id, msg="/session parsed");
+            info!(items=resp.items.len(), title=%resp.title, id=?q.id, msg="/thread parsed");
             Json(resp).into_response()
         }
         StdResult::Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("session parse failed: {e:?}"),
+            format!("thread parse failed: {e:?}"),
         )
             .into_response(),
     }
@@ -207,10 +207,10 @@ pub fn resolve_session_path(base: &Path, id: Option<&str>, hint: Option<&str>) -
     None
 }
 
-pub fn parse_session(path: &Path) -> Result<SessionResponse> {
+pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
     let f = fs::File::open(path).context("open session file")?;
     let r = BufReader::new(f);
-    let mut items: Vec<SessionItem> = vec![];
+    let mut items: Vec<ThreadItem> = vec![];
     let mut first_assistant: Option<String> = None;
     for line in r.lines().filter_map(Result::ok) {
         let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
@@ -219,7 +219,7 @@ pub fn parse_session(path: &Path) -> Result<SessionResponse> {
                 if let Some(item) = v.get("item") {
                     if item.get("type").and_then(|x| x.as_str()) == Some("command_execution") {
                         if let Some(cmd) = item.get("command").and_then(|x| x.as_str()) {
-                            items.push(SessionItem { ts: now_ts(), kind: "cmd".into(), role: None, text: format!("CMD {}", cmd) });
+                            items.push(ThreadItem { ts: now_ts(), kind: "cmd".into(), role: None, text: format!("CMD {}", cmd) });
                         }
                     }
                 }
@@ -230,17 +230,17 @@ pub fn parse_session(path: &Path) -> Result<SessionResponse> {
                         Some("agent_message") => {
                             if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                                 if first_assistant.is_none() { first_assistant = Some(text.to_string()); }
-                                items.push(SessionItem { ts: now_ts(), kind: "message".into(), role: Some("assistant".into()), text: text.to_string() });
+                                items.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: Some("assistant".into()), text: text.to_string() });
                             }
                         }
                         Some("user_message") => {
                             if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
-                                items.push(SessionItem { ts: now_ts(), kind: "message".into(), role: Some("user".into()), text: text.to_string() });
+                                items.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: Some("user".into()), text: text.to_string() });
                             }
                         }
                         Some("reasoning") => {
                             if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
-                                items.push(SessionItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
+                                items.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
                             }
                         }
                         _ => {}
@@ -250,8 +250,8 @@ pub fn parse_session(path: &Path) -> Result<SessionResponse> {
             _ => {}
         }
     }
-    let title = infer_title(first_assistant.as_deref().unwrap_or("Session"));
-    Ok(SessionResponse { title, items })
+    let title = infer_title(first_assistant.as_deref().unwrap_or("Thread"));
+    Ok(ThreadResponse { title, items })
 }
 
 fn now_ts() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_session_extracts_items() {
+    fn parse_thread_extracts_items() {
         let td = tempfile::tempdir().unwrap();
         let p = td.path().join("rollout.jsonl");
         write_file(&p, &[
@@ -299,9 +299,9 @@ mod tests {
             r#"{"type":"item.completed","item":{"id":"m1","type":"user_message","text":"Hi"}}"#,
             r#"{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"**Done**."}}"#,
         ]);
-        let sess = parse_session(&p).unwrap();
-        assert_eq!(sess.title, "Done");
-        assert!(sess.items.iter().any(|i| i.kind == "cmd" && i.text.contains("echo hello")));
-        assert!(sess.items.iter().any(|i| i.kind == "message" && i.role.as_deref() == Some("assistant")));
+        let th = parse_thread(&p).unwrap();
+        assert_eq!(th.title, "Done");
+        assert!(th.items.iter().any(|i| i.kind == "cmd" && i.text.contains("echo hello")));
+        assert!(th.items.iter().any(|i| i.kind == "message" && i.role.as_deref() == Some("assistant")));
     }
 }
