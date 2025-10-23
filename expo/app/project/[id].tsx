@@ -40,7 +40,7 @@ export default function ProjectDetail() {
 
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
           <Button title="Set Active" onPress={() => setActive(project.id)} />
-          <Button title="Open Thread" onPress={() => { setActive(project.id); router.push('/thread'); }} />
+          <Button title="Open Thread" onPress={() => { setActive(project.id); router.push('/thread?focus=1'); }} />
           <Button title="Ping (cd)" onPress={() => sendForProject(project, 'Echo working dir and list top-level: run `pwd` then `ls -la`')} />
         </View>
 
