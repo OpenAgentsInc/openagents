@@ -2,43 +2,41 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
 
 export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string }
-export type SessionItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
-export type SessionResponse = { title: string; items: SessionItem[] }
+export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
+export type ThreadResponse = { title: string; items: ThreadItem[] }
 
-type SessionsState = {
+type ThreadsState = {
   history: HistoryItem[]
   loadingHistory: boolean
   historyLoadedAt?: number
-  session: Record<string, SessionResponse | undefined>
-  loadingSession: Record<string, boolean>
+  thread: Record<string, ThreadResponse | undefined>
+  loadingThread: Record<string, boolean>
   loadHistory: (baseWsUrl: string) => Promise<void>
-  loadSession: (baseWsUrl: string, id: string, path?: string) => Promise<SessionResponse | undefined>
+  loadThread: (baseWsUrl: string, id: string, path?: string) => Promise<ThreadResponse | undefined>
 }
 
-const HISTORY_KEY = '@openagents/sessions-history-v1'
+const HISTORY_KEY = '@openagents/threads-history-v1'
 
 function wsToHttpBase(wsUrl: string): string {
   try {
     const u = new URL(wsUrl)
     const proto = u.protocol === 'wss:' ? 'https:' : 'http:'
-    const origin = `${proto}//${u.host}`
-    return origin
+    return `${proto}//${u.host}`
   } catch {
     return 'http://localhost:8787'
   }
 }
 
-export const useSessions = create<SessionsState>((set, get) => ({
+export const useThreads = create<ThreadsState>((set, get) => ({
   history: [],
   loadingHistory: false,
   historyLoadedAt: undefined,
-  session: {},
-  loadingSession: {},
+  thread: {},
+  loadingThread: {},
   loadHistory: async (wsUrl: string) => {
     const base = wsToHttpBase(wsUrl)
     set({ loadingHistory: true })
     try {
-      // hydrate cache first
       try {
         const raw = await AsyncStorage.getItem(HISTORY_KEY)
         if (raw) {
@@ -56,24 +54,24 @@ export const useSessions = create<SessionsState>((set, get) => ({
       set({ loadingHistory: false })
     }
   },
-  loadSession: async (wsUrl: string, id: string, path?: string) => {
+  loadThread: async (wsUrl: string, id: string, path?: string) => {
     const base = wsToHttpBase(wsUrl)
     const key = id
-    const cur = get().session[key]
+    const cur = get().thread[key]
     if (cur) return cur
-    set({ loadingSession: { ...get().loadingSession, [key]: true } })
+    set({ loadingThread: { ...get().loadingThread, [key]: true } })
     try {
-      const url = new URL(`${base}/session`)
+      const url = new URL(`${base}/thread`)
       url.searchParams.set('id', id)
       if (path) url.searchParams.set('path', path)
       const res = await fetch(url.toString())
       if (!res.ok) return undefined
-      const json = (await res.json()) as SessionResponse
-      set({ session: { ...get().session, [key]: json } })
+      const json = (await res.json()) as ThreadResponse
+      set({ thread: { ...get().thread, [key]: json } })
       return json
     } finally {
-      const { [key]: _, ...rest } = get().loadingSession
-      set({ loadingSession: rest })
+      const { [key]: _, ...rest } = get().loadingThread
+      set({ loadingThread: rest })
     }
   },
 }))

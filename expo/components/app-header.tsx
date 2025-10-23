@@ -27,7 +27,7 @@ export function AppHeader() {
   const onNewChat = React.useCallback(async () => {
     try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {}
     clearLog()
-    router.push('/session')
+    router.push('/thread')
   }, [clearLog])
 
   return (

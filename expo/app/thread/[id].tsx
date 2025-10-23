@@ -1,25 +1,25 @@
 import React from 'react'
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
 import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native'
-import { useSessions } from '@/lib/sessions-store'
+import { useThreads } from '@/lib/threads-store'
 import { useWs } from '@/providers/ws'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
 
-export default function SessionHistoryView() {
+export default function ThreadHistoryView() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
   const { wsUrl, setResumeNextId } = useWs()
   const router = useRouter()
-  const loadSession = useSessions((s) => s.loadSession)
-  const session = useSessions((s) => (id ? s.session[id] : undefined))
-  const loadingMap = useSessions((s) => s.loadingSession)
+  const loadThread = useThreads((s) => s.loadThread)
+  const thread = useThreads((s) => (id ? s.thread[id] : undefined))
+  const loadingMap = useThreads((s) => s.loadingThread)
   const loading = Boolean(id && loadingMap[id])
 
-  React.useEffect(() => { if (id) loadSession(wsUrl, id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, wsUrl, loadSession])
-  useHeaderTitle(session?.title || 'Session')
+  React.useEffect(() => { if (id) loadThread(wsUrl, id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, wsUrl, loadThread])
+  useHeaderTitle(thread?.title || 'Thread')
 
-  const items = session?.items || []
+  const items = thread?.items || []
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -38,7 +38,7 @@ export default function SessionHistoryView() {
           ListFooterComponent={id ? (
             <View style={{ marginTop: 12 }}>
               <Pressable
-                onPress={() => { setResumeNextId(id); router.push('/session') }}
+                onPress={() => { setResumeNextId(id); router.push('/thread') }}
                 style={{ alignSelf: 'flex-start', backgroundColor: Colors.card, borderColor: Colors.border, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 }}
                 accessibilityRole="button"
               >
@@ -71,3 +71,4 @@ function Row({ it }: { it: { ts: number; kind: 'message'|'reason'|'cmd'; role?: 
   }
   return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>{it.text}</Text>
 }
+

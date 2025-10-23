@@ -92,6 +92,11 @@ pub async fn session_handler(Query(q): Query<SessionQuery>) -> impl IntoResponse
     }
 }
 
+// Alias endpoint for terminology alignment (threads)
+pub async fn thread_handler(Query(q): Query<SessionQuery>) -> impl IntoResponse {
+    session_handler(Query(q)).await
+}
+
 pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
     let mut items: Vec<HistoryItem> = vec![];
     let mut stack = vec![base.to_path_buf()];
