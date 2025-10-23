@@ -39,40 +39,53 @@ function DrawerContent() {
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 24 }} style={{ flex: 1 }}>
-        <View style={{ height: 56, justifyContent: 'center', paddingHorizontal: 16 }}>
-          <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>OpenAgents</Text>
-        </View>
-        <View style={{ paddingHorizontal: 16, gap: 8 }}>
-          <Pressable onPress={closeAnd(() => router.push('/(tabs)/library'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
-            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
-          </Pressable>
-          <View style={{ height: 12 }} />
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
-          <Pressable onPress={closeAnd(() => router.push('/(tabs)/projects'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
-            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See projects…</Text>
-          </Pressable>
-          {projects.slice(0, 5).map((p) => (
-            <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/(tabs)/session'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
-              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
+      <View style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }} style={{ flex: 1 }}>
+          <View style={{ height: 56, justifyContent: 'center', paddingHorizontal: 16 }}>
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>OpenAgents</Text>
+          </View>
+          <View style={{ paddingHorizontal: 16, gap: 8 }}>
+            <Pressable onPress={closeAnd(() => router.push('/(tabs)/library'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
             </Pressable>
-          ))}
-          <View style={{ height: 16 }} />
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
-          {hydrating ? (
-            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>Loading…</Text>
-          ) : userMsgs.length === 0 ? (
-            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
-          ) : userMsgs.map((m) => {
-            const clean = String(m.text).replace(/^\s*>\s?/, '');
-            return (
-              <Pressable key={m.id} onPress={closeAnd(() => router.push('/(tabs)/session'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
-                <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{clean}</Text>
+            <View style={{ height: 12 }} />
+            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
+            <Pressable onPress={closeAnd(() => router.push('/(tabs)/projects'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See projects…</Text>
+            </Pressable>
+            {projects.slice(0, 5).map((p) => (
+              <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/(tabs)/session'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+                <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
-            );
-          })}
+            ))}
+            <View style={{ height: 16 }} />
+            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
+            {hydrating ? (
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>Loading…</Text>
+            ) : userMsgs.length === 0 ? (
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
+            ) : userMsgs.map((m) => {
+              const clean = String(m.text).replace(/^\s*>\s?/, '');
+              return (
+                <Pressable key={m.id} onPress={closeAnd(() => router.push('/(tabs)/session'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+                  <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{clean}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+        <View style={{ borderTopWidth: 1, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
+          <Pressable
+            onPress={closeAnd(() => router.push('/(tabs)/settings'))}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+          >
+            <Ionicons name="settings-outline" size={18} color={Colors.foreground} />
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Settings</Text>
+          </Pressable>
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -155,6 +168,7 @@ function DrawerWrapper() {
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="session/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </View>
     </Drawer>

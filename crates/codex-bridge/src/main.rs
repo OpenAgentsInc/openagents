@@ -161,15 +161,18 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     // Ensure we have a live codex stdin; respawn if needed
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn || desired_cd.is_some() {
-                        // Decide on resume: only after we've seen a thread id before, and only if CLI supports it
+                        // Decide on resume: prefer explicit resume id from preface; otherwise use last captured thread id
                         let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
+                        let resume_arg: Option<String> = match desired_resume.as_deref() {
+                            Some("last") => resume_id.clone(),
+                            Some(s) if !s.is_empty() => Some(s.to_string()),
+                            _ => resume_id.clone(),
+                        };
                         // If we already have a stdin but need to honor a cd, close it to end the previous child
                         if !need_respawn && desired_cd.is_some() {
                             let mut g = stdin_state.child_stdin.lock().await;
                             let _ = g.take(); // drop to close stdin and let old child exit
                         }
-                        // Only resume by explicit session id we have captured; ignore app 'last'.
-                        let resume_arg: Option<String> = resume_id.clone();
                         match spawn_codex_child_only_with_dir(
                             &stdin_state.opts,
                             desired_cd.clone(),

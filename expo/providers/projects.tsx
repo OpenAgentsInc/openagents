@@ -74,7 +74,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         agent_file: project.agentFile || undefined,
       };
     }
-    // Do not send 'resume:last' hints; the bridge resumes strictly by session id.
+    // Resume support: if a session resume id has been queued, include it once.
+    if (ws.resumeNextId && typeof ws.resumeNextId === 'string') {
+      cfg.resume = ws.resumeNextId;
+      try { ws.setResumeNextId(null); } catch {}
+    }
 
     const cfgLine = JSON.stringify(cfg);
     const finalText = ws.attachPreface
