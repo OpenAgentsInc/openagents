@@ -49,6 +49,7 @@ export default function TabLayout() {
       initialRouteName="session"
       screenOptions={{
         headerShown: true,
+        animation: 'none',
         headerTitleStyle: { fontFamily: Typography.bold },
         headerStyle: { backgroundColor: Colors.background },
         headerBackground: () => (
