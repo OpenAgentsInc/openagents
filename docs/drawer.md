@@ -1,6 +1,6 @@
 # Drawer Implementation Guide (as used in this app)
 
-This document explains exactly how this app implements a side drawer using `react-native-drawer-layout`, including all required packages, setup, platform considerations (iOS/Android/Web), and copy‑pasteable code. A coding agent can reproduce the drawer in a new codebase by following these steps alone.
+This document explains exactly how this app (PizzaApp3, a demo Ignite/Expo app) implements a side drawer using `react-native-drawer-layout`, including all required packages, setup, platform considerations (iOS/Android/Web), and copy‑pasteable code. A coding agent can reproduce the drawer in a new codebase by following these steps alone.
 
 ---
 
@@ -221,7 +221,7 @@ export function DrawerIconButton(props: PressableProps) {
   })
 
   return (
-    <AnimatedPressable accessibilityRole="button" {...props} style={[container, $container]}> 
+    <AnimatedPressable accessibilityRole="button" {...props} style={[container, $container]}>
       <Animated.View style={[$bar, topBar]} />
       <Animated.View style={[$bar, { marginTop: 4 }, middleBar]} />
       <Animated.View style={[$bar, bottomBar]} />
@@ -316,4 +316,3 @@ If you want the same helper used by this app, see `app/utils/useSafeAreaInsetsSt
 - Safe area helper (optional): `app/utils/useSafeAreaInsetsStyle.ts`
 
 Following this guide reproduces the exact drawer behavior from this app in a new project.
-
