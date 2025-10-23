@@ -24,14 +24,7 @@ function DrawerContent() {
   const userMsgs = getAllLogs().filter((l) => typeof l.text === 'string' && /^\s*>/.test(l.text)).slice(-10).reverse();
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
-    <SafeAreaView style={{
-      flex: 1,
-      backgroundColor: Colors.background,
-      // Add a subtle border on the trailing edge of the drawer
-      borderRightWidth: isRTL ? 0 : 1,
-      borderLeftWidth: isRTL ? 1 : 0,
-      borderColor: Colors.border,
-    }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }} style={{ flex: 1 }}>
         <View style={{ height: 56, justifyContent: 'center', paddingHorizontal: 16 }}>
           <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 18 }}>OpenAgents</Text>
@@ -64,6 +57,11 @@ function DrawerContent() {
           })}
         </View>
       </ScrollView>
+      {/* Static edge divider (avoids any fade during drawer animation) */}
+      <View
+        pointerEvents="none"
+        style={{ position: 'absolute', top: 0, bottom: 0, [isRTL ? 'left' : 'right']: 0, width: 1, backgroundColor: Colors.border }}
+      />
     </SafeAreaView>
   );
 }
