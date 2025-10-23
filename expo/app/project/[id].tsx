@@ -16,8 +16,8 @@ export default function ProjectDetail() {
   if (!project) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16, gap: 10 }}>
-        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>Project not found</Text>
-        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>The project you tried to open doesn’t exist.</Text>
+        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 18 }}>Project not found</Text>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>The project you tried to open doesn’t exist.</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
           <Button title="Back" onPress={() => router.back()} />
           <Button title="Projects" onPress={() => router.replace('/(tabs)/projects')} />
@@ -46,9 +46,9 @@ export default function ProjectDetail() {
 
         {!!project.todos?.length && (
           <View style={{ marginTop: 12 }}>
-            <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12 }}>To‑dos</Text>
+            <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold, fontSize: 12 }}>To‑dos</Text>
             {project.todos.map((t, i) => (
-              <Text key={i} style={{ color: t.completed ? Colors.secondary : Colors.foreground, fontFamily: Typography.primary }}>
+              <Text key={i} style={{ color: t.completed ? Colors.textSecondary : Colors.textPrimary, fontFamily: Typography.primary }}>
                 {t.completed ? '☑︎' : '☐'} {t.text}
               </Text>
             ))}
@@ -62,14 +62,14 @@ export default function ProjectDetail() {
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChange}
         autoCapitalize="none"
         autoCorrect={false}
-        placeholderTextColor={Colors.secondary}
-        style={{ borderWidth: 1, borderColor: Colors.border, padding: 10, backgroundColor: Colors.card, color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13 }}
+        placeholderTextColor={Colors.textSecondary}
+        style={{ borderWidth: 1, borderColor: Colors.border, padding: 10, backgroundColor: Colors.card, color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13 }}
       />
     </View>
   );
@@ -78,15 +78,15 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 function Multiline({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChange}
         autoCapitalize="none"
         autoCorrect={false}
         multiline
-        placeholderTextColor={Colors.secondary}
-        style={{ borderWidth: 1, borderColor: Colors.border, padding: 10, backgroundColor: Colors.card, color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, minHeight: 80 }}
+        placeholderTextColor={Colors.textSecondary}
+        style={{ borderWidth: 1, borderColor: Colors.border, padding: 10, backgroundColor: Colors.card, color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13, minHeight: 80 }}
       />
     </View>
   );
@@ -94,8 +94,8 @@ function Multiline({ label, value, onChange }: { label: string; value: string; o
 
 function Button({ title, onPress }: { title: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={{ backgroundColor: Colors.quaternary, paddingHorizontal: 16, paddingVertical: 12 }}>
-      <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{title}</Text>
+    <Pressable onPress={onPress} style={{ backgroundColor: Colors.buttonBg, paddingHorizontal: 16, paddingVertical: 12 }}>
+      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
 }

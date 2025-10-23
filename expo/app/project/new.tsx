@@ -44,7 +44,7 @@ export default function NewProject() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16, gap: 10 }}>
-      <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>New Project</Text>
+      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 18 }}>New Project</Text>
       <Field label="Name" value={name} onChange={setName} autoFocus />
       <Field label="Working directory" value={workingDir} onChange={setWorkingDir} placeholder="/Users/you/code/repo" />
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
@@ -58,15 +58,15 @@ export default function NewProject() {
 function Field({ label, value, onChange, placeholder, autoFocus }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean }) {
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChange}
         autoCapitalize="none"
         autoCorrect={false}
         placeholder={placeholder}
-        placeholderTextColor={Colors.secondary}
-        style={{ borderWidth: 1, borderColor: Colors.border, padding: 10, backgroundColor: Colors.card, color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13 }}
+        placeholderTextColor={Colors.textSecondary}
+        style={{ borderWidth: 1, borderColor: Colors.border, padding: 10, backgroundColor: Colors.card, color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13 }}
         autoFocus={autoFocus}
       />
     </View>
@@ -75,8 +75,8 @@ function Field({ label, value, onChange, placeholder, autoFocus }: { label: stri
 
 function Button({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={{ backgroundColor: disabled ? Colors.border : Colors.quaternary, paddingHorizontal: 16, paddingVertical: 12 }}>
-      <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{title}</Text>
+    <Pressable onPress={onPress} disabled={disabled} style={{ backgroundColor: disabled ? Colors.border : Colors.buttonBg, paddingHorizontal: 16, paddingVertical: 12 }}>
+      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
 }
