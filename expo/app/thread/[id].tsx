@@ -22,14 +22,31 @@ export default function ThreadHistoryView() {
   useHeaderTitle(thread?.title || 'Thread')
 
   const items = React.useMemo(() => {
-    const base = thread?.items || []
+    const base = (thread?.items || []).slice()
     if (base.length === 0) return base
+    // Drop leading instruction dump or preface blocks
     const first = base[0]
     const text = String(first?.text ?? '')
     const isUserish = first?.role === 'user' || /^\s*>/.test(text) || /^You:\s*/i.test(text)
     const looksLikeInstructions = /<user_instructions>/i.test(text) || /#\s*Repository\s+Guidelines/i.test(text)
-    if (isUserish && looksLikeInstructions) return base.slice(1)
-    return base
+    const looksLikeEnvPreface = /<environment_context>/i.test(text) || /\bYou are a coding agent running\b/i.test(text) || /\bEnvironment:\b/.test(text)
+    let arr = base
+    if (isUserish && (looksLikeInstructions || looksLikeEnvPreface)) arr = base.slice(1)
+    // Deduplicate consecutive identical entries after basic sanitization
+    const out: typeof arr = []
+    for (const it of arr) {
+      const prev = out[out.length - 1]
+      if (
+        prev &&
+        prev.kind === it.kind &&
+        ((prev.role ?? '') === (it.role ?? '')) &&
+        String(prev.text).trim() === String(it.text).trim()
+      ) {
+        continue
+      }
+      out.push(it)
+    }
+    return out
   }, [thread?.items])
 
   return (
@@ -63,23 +80,32 @@ export default function ThreadHistoryView() {
   )
 }
 
+function sanitizeUserText(s: string): string {
+  let text = String(s || '')
+  // Remove <environment_context>...</environment_context> blocks if present
+  text = text.replace(/<environment_context>[\s\S]*?<\/environment_context>/gi, '').trim()
+  // If there is a clear preface separated by blank line(s), prefer the trailing segment
+  const parts = text.split(/\n\n+/)
+  if (parts.length > 1) {
+    text = parts[parts.length - 1].trim()
+  }
+  return text
+}
+
 function Row({ it }: { it: { ts: number; kind: 'message'|'reason'|'cmd'; role?: 'assistant'|'user'; text: string } }) {
   if (it.kind === 'message' && it.role === 'assistant') {
-    return (
-      <View style={{ borderColor: Colors.border, borderWidth: 1, backgroundColor: Colors.card, padding: 8 }}>
-        <MarkdownBlock markdown={it.text} />
-      </View>
-    )
+    return <MarkdownBlock markdown={it.text} />
   }
   if (it.kind === 'message' && it.role === 'user') {
-    return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>You: {it.text}</Text>
+    const text = sanitizeUserText(it.text)
+    return (
+      <Text style={{ fontSize: 12, lineHeight: 16, color: Colors.foreground, fontFamily: Typography.primary, marginTop: 6, marginBottom: 8 }}>
+        {`> ${text}`}
+      </Text>
+    )
   }
   if (it.kind === 'reason') {
-    return (
-      <View style={{ paddingVertical: 2 }}>
-        <ReasoningHeadline text={it.text} />
-      </View>
-    )
+    return <ReasoningHeadline text={it.text} />
   }
   if (it.kind === 'cmd') {
     return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>{it.text}</Text>
