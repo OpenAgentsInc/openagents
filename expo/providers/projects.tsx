@@ -88,8 +88,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     projects, activeProject: active, setActive, save, del, sendForProject,
   }), [projects, active, setActive, save, del, sendForProject]);
 
-  if (!ready) return <>{children}</>; // keep UI mounted while hydrating
-
+  // Always provide the context, even before hydration completes, so
+  // consumers like SessionScreen can call useProjects safely.
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -131,4 +131,3 @@ function buildHumanPreface(
   }
   return lines.filter(Boolean).join('\n');
 }
-
