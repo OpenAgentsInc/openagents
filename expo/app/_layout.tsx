@@ -1,6 +1,7 @@
 import React from 'react'
 import '@/utils/gestureHandler'
 import { Stack, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { ThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -8,10 +9,11 @@ import { Drawer } from 'react-native-drawer-layout';
 import { I18nManager, Pressable, ScrollView, Text, View } from 'react-native';
 import { useTypographySetup, applyTypographyGlobals, Typography } from '@/constants/typography';
 import { Colors, NavigationTheme } from '@/constants/theme';
-import { WsProvider } from '@/providers/ws';
+import { WsProvider, useWs } from '@/providers/ws';
 import { ProjectsProvider, useProjects } from '@/providers/projects';
 import { useAutoUpdate } from '@/hooks/use-auto-update';
 import { DrawerProvider, useDrawer } from '@/providers/drawer';
+import * as Haptics from 'expo-haptics';
 import { getAllLogs, loadLogs } from '@/lib/log-store';
 
 function DrawerContent() {
@@ -85,6 +87,30 @@ export default function RootLayout() {
 function DrawerWrapper() {
   const { open, setOpen } = useDrawer();
   const isRTL = I18nManager.isRTL;
+  const router = useRouter();
+
+  const ConnectionDot = () => {
+    const { connected } = useWs();
+    return (
+      <View style={{ marginLeft: 10 }}>
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: connected ? '#22C55E' : '#EF4444' }} />
+      </View>
+    );
+  };
+
+  const NewChatButton = () => {
+    const { clearLog } = useWs();
+    const onPress = async () => {
+      try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } } catch {}
+      clearLog();
+      router.push('/(tabs)/session');
+    };
+    return (
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
+        <Ionicons name="add" size={22} color={Colors.textPrimary} />
+      </Pressable>
+    );
+  };
   return (
     <Drawer
       open={open}
@@ -105,10 +131,53 @@ function DrawerWrapper() {
           ...(isRTL ? { marginRight: open ? 0 : -1 } : { marginLeft: open ? 0 : -1 }),
         }}
       >
-        <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background }, headerShown: false, animation: 'none' }}>
+        <Stack
+          screenOptions={({ route, navigation }) => ({
+            contentStyle: { backgroundColor: Colors.background },
+            headerShown: true,
+            animation: 'none',
+            headerTitle: '',
+            headerTitleStyle: { fontFamily: Typography.bold },
+            headerStyle: { backgroundColor: Colors.background },
+            headerTitleAlign: 'left',
+            headerLeftContainerStyle: { marginLeft: 0, paddingLeft: 0 },
+            headerLeft: () => {
+              const canGoBack = navigation.canGoBack();
+              const routeName = String(route.name);
+              const title = routeTitle(routeName);
+              return (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Pressable
+                    onPress={() => { if (canGoBack) navigation.goBack(); else setOpen(true); }}
+                    accessibilityRole="button"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ paddingHorizontal: 6, paddingVertical: 6 }}
+                  >
+                    <Ionicons name={canGoBack ? 'chevron-back' : 'menu'} size={22} color={Colors.textPrimary} />
+                  </Pressable>
+                  <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16, marginLeft: 6 }}>{title}</Text>
+                </View>
+              );
+            },
+            headerRight: () => (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
+                <NewChatButton />
+                <ConnectionDot />
+              </View>
+            ),
+          })}
+        >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
       </View>
     </Drawer>
   );
+}
+
+function routeTitle(name: string): string {
+  if (name === '(tabs)') return '';
+  if (name === 'message/[id]') return 'Message';
+  if (name === 'project/[id]') return 'Project';
+  if (name === 'project/new') return 'New Project';
+  return name.replace(/\[(.*?)\]/g, '$1').replace(/\b\w/g, (c) => c.toUpperCase());
 }
