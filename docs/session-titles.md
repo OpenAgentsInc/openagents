@@ -23,7 +23,7 @@ This document explains how the app decides what to display as the title while yo
 
 ## How the Session screen sets the title
 
-File: `expo/app/(tabs)/session.tsx`
+File: `expo/app/session/index.tsx`
 
 1) Initial seed (resume id)
 
@@ -61,7 +61,7 @@ Related files:
 Flow:
 1) The history list is fetched from the bridge’s HTTP API (`/history`). Items include an `id`, `path`, `mtime`, `title`, and `snippet`.
 2) Opening a history row shows the session detail (`/session/[id]`), which loads the session transcript via `/session?id=<id>&path=<optional>`.
-3) The “Continue chat” button on the detail screen calls `useWs().setResumeNextId(id)` and navigates to the live Session tab (`/(tabs)/session`).
+3) The “Continue chat” button on the detail screen calls `useWs().setResumeNextId(id)` and navigates to the live Session screen (`/session`).
 4) The Session screen sees `resumeNextId` on mount and seeds the title accordingly; the final authoritative id (first `thread_id`) will replace it once the stream starts.
 
 Note: `resumeNextId` is cleared (for payload construction) by the Projects provider when forming the next message’s JSON config line. The header value already set from the resume id is not automatically cleared; it will be updated by the first `thread` event.
@@ -70,7 +70,7 @@ Note: `resumeNextId` is cleared (for payload construction) by the Projects provi
 
 - Title rendering: `expo/components/app-header.tsx`.
 - Title store/hook: `expo/lib/header-store.ts` → `useHeaderTitle`.
-- Session title policy: `expo/app/(tabs)/session.tsx`.
+- Session title policy: `expo/app/session/index.tsx`.
 - Resume id wiring: `expo/app/session/[id].tsx` (sets `resumeNextId`), `expo/providers/ws.tsx` (holds `resumeNextId`).
 - History/session APIs: `expo/lib/sessions-store.ts` (`/history`, `/session`).
 
@@ -79,4 +79,3 @@ If you need to change the short‑id format, update the small inline helper in t
 ## Theme notes
 
 The title color is derived from `Colors.foreground` in `AppHeader`. Do not hardcode any colors in components; add or use tokens in `expo/constants/theme.ts` per the repository policy.
-

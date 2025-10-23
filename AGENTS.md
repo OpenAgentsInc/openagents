@@ -3,11 +3,11 @@
 ## Codebase Summary
 - Purpose: mobile command center for coding agents. Expo app drives agent sessions over a local WebSocket bridge to the OpenAI Codex CLI; Rust service spawns/streams the CLI; docs capture JSONL schema and operational notes.
 - Architecture: two layers
-  - App (`expo/`): Expo Router tabs — Session (live feed + input), History (persisted entries), Library (UI component samples), Settings (bridge URL + permissions). Parses Codex JSONL into typed UI rows and cards.
+  - App (`expo/`): Expo Router screens — Session (live feed + input), History (in Drawer; fetched from bridge), Library (UI component samples), Settings (bridge URL + permissions). Parses Codex JSONL into typed UI rows and cards.
   - Bridge (`crates/codex-bridge/`): Axum WebSocket server on `--bind` (default `0.0.0.0:8787`) that launches `codex exec --json` (auto‑adds `resume --last` when supported) and forwards stdout/stderr lines to all clients; each prompt is written to the child’s stdin then closed to signal EOF.
 - Key App Modules:
-  - Routing: `expo/app/` with group `expo/app/(tabs)/` and message detail at `expo/app/message/[id].tsx`.
-  - Session UI: `expo/app/(tabs)/session.tsx` renders a streaming feed. Incoming lines are parsed by `expo/lib/codex-events.ts` into kinds like `md`, `reason`, `exec_begin`, `file_change`, `web_search`, `mcp_call`, `todo_list`, `cmd_item`, `err`, `turn`, `thread`, `item_lifecycle`.
+  - Routing: `expo/app/` with routes: `/session`, `/session/[id]`, `/projects`, `/project/[id]`, `/library`, `/settings`; message detail at `expo/app/message/[id].tsx`.
+  - Session UI: `expo/app/session/index.tsx` renders a streaming feed. Incoming lines are parsed by `expo/lib/codex-events.ts` into kinds like `md`, `reason`, `exec_begin`, `file_change`, `web_search`, `mcp_call`, `todo_list`, `cmd_item`, `err`, `turn`, `thread`, `item_lifecycle`.
   - Components: JSONL renderers in `expo/components/jsonl/*` (e.g., `MarkdownBlock`, `ReasoningHeadline`, `ExecBeginRow`, `FileChangeCard`, `CommandExecutionCard`). A `HapticTab` adds iOS haptics for the tab bar.
   - State & storage: lightweight log store in `expo/lib/log-store.ts` (AsyncStorage backed) powers History and Message detail views.
   - Connection/permissions: `expo/providers/ws.tsx` manages the WebSocket connection, exposes `readOnly`, `networkEnabled`, `approvals`, and `attachPreface` toggles (persisted). The header shows a green/red dot for connection.
@@ -40,7 +40,7 @@
   - OTA iOS default: prefer `bun run update:ios -- "<msg>"` unless Android explicitly requested.
   - Rust deps: add via `cargo add` without versions; let Cargo lock at root.
   - Security: no secrets; iOS bundle id `com.openagents.app`.
-  - Gotchas: shell quoting for paths with parentheses like `expo/app/(tabs)/...` when scripting.
+  - Gotchas: none specific to paths with parentheses now; the `(tabs)` group has been removed.
 
 ## Project Structure & Module Organization
 - Mobile app: `expo/` (Expo Router in `expo/app/`, assets in `expo/assets/`).
