@@ -102,7 +102,27 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
           if (typeof s.bridgeHost === 'string') setBridgeHost(s.bridgeHost);
           // Back-compat: migrate old wsUrl -> bridgeHost
           if (!s.bridgeHost && typeof s.wsUrl === 'string') {
-            try { const u = new URL(s.wsUrl); if (u.host) setBridgeHost(u.host); } catch {}
+            let migrated: string | null = null;
+            try {
+              const u = new URL(s.wsUrl);
+              if (u.host) migrated = u.host;
+            } catch {
+              // Fallback: accept raw host:port or ws://host:port[/ws]
+              try {
+                const rawUrl = String(s.wsUrl).trim();
+                const stripped = rawUrl
+                  .replace(/^ws:\/\//i, '')
+                  .replace(/^wss:\/\//i, '')
+                  .replace(/^http:\/\//i, '')
+                  .replace(/^https:\/\//i, '')
+                  .replace(/\/ws$/i, '')
+                  .replace(/\/$/, '');
+                if (stripped.includes(':') || /^[\d.]+$/.test(stripped)) {
+                  migrated = stripped;
+                }
+              } catch {}
+            }
+            if (migrated) setBridgeHost(migrated);
           }
           if (typeof s.readOnly === 'boolean') setReadOnly(s.readOnly);
           if (typeof s.networkEnabled === 'boolean') setNetworkEnabled(s.networkEnabled);
