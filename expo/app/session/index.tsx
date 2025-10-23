@@ -61,6 +61,15 @@ export default function SessionScreen() {
   const [workingSeconds, setWorkingSeconds] = useState(0)
   const [kbVisible, setKbVisible] = useState(false)
 
+  // Increment the visible working timer while awaiting first assistant content
+  useEffect(() => {
+    if (!awaitingFirst || typeof workingStartedAt !== 'number') return
+    const tick = () => setWorkingSeconds(Math.max(0, Math.floor((Date.now() - workingStartedAt) / 1000)))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [awaitingFirst, workingStartedAt])
+
   const latestCmdIdByCommand = React.useMemo(() => {
     const m = new Map<string, number>()
     for (const entry of log) {
