@@ -64,7 +64,15 @@ function DrawerContent() {
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
             ) : history.slice(0, 5).map((h) => (
               <View key={h.id} style={{ paddingVertical: 8 }}>
-                <Pressable onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`))} accessibilityRole="button">
+                <Pressable onPress={closeAnd(() => {
+                  try {
+                    if (Array.isArray((h as any).tail) && (h as any).tail.length > 0) {
+                      const prime = { title: h.title || 'Thread', items: (h as any).tail, partial: true } as any
+                      try { const mod = require('@/lib/threads-store'); mod.useThreads.getState().primeThread(h.id, prime) } catch {}
+                    }
+                  } catch {}
+                  router.push(`/thread/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`)
+                })} accessibilityRole="button">
                   <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{h.title || '(no title)'}</Text>
                   <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(h.mtime * 1000).toLocaleString()}</Text>
                 </Pressable>

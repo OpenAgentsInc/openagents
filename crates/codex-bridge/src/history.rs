@@ -19,6 +19,8 @@ pub struct HistoryItem {
     pub snippet: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_instructions: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tail: Option<Vec<ThreadItem>>, // last ~20 normalized items
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -67,9 +69,18 @@ pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
                     .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
-                let (title, snippet, has_instr) = extract_title_and_snippet_ext(&p).unwrap_or_else(|| ("Session".into(), "".into(), false));
+                let (title, snippet, has_instr, tail) = extract_title_and_snippet_ext(&p)
+                    .unwrap_or_else(|| ("Session".into(), "".into(), false, Vec::new()));
                 let id = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
-                items.push(HistoryItem { id, path: p.to_string_lossy().to_string(), mtime, title, snippet, has_instructions: Some(has_instr) });
+                items.push(HistoryItem {
+                    id,
+                    path: p.to_string_lossy().to_string(),
+                    mtime,
+                    title,
+                    snippet,
+                    has_instructions: if has_instr { Some(true) } else { None },
+                    tail: if tail.is_empty() { None } else { Some(tail) },
+                });
             }
         }
     }
@@ -102,38 +113,62 @@ fn file_is_new_format(p: &Path) -> bool {
     false
 }
 
-fn extract_title_and_snippet_ext(p: &Path) -> Option<(String, String, bool)> {
+fn extract_title_and_snippet_ext(p: &Path) -> Option<(String, String, bool, Vec<ThreadItem>)> {
     let mut last_assistant: Option<String> = None;
     let mut last_user: Option<String> = None;
     let mut last_reasoning: Option<String> = None;
     let mut has_instructions = false;
+    let mut tail: Vec<ThreadItem> = Vec::new();
     let f = fs::File::open(p).ok()?;
     let r = BufReader::new(f);
     for line in r.lines().filter_map(Result::ok) {
-        if let StdResult::Ok(v) = serde_json::from_str::<JsonValue>(&line) {
-            if v.get("type").and_then(|x| x.as_str()) == Some("session_meta") {
+        let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
+        match v.get("type").and_then(|x| x.as_str()) {
+            Some("session_meta") => {
                 if v.get("payload").and_then(|m| m.get("instructions")).and_then(|x| x.as_str()).is_some() {
                     has_instructions = true;
                 }
             }
-            if v.get("type").and_then(|x| x.as_str()) == Some("item.completed") {
+            Some("item.completed") => {
                 if let Some(item) = v.get("item") {
                     let kind = item.get("type").and_then(|x| x.as_str());
                     if kind == Some("agent_message") {
                         if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                             last_assistant = Some(text.to_string());
+                            tail.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: Some("assistant".into()), text: text.to_string() });
+                            if tail.len() > 20 { tail.remove(0); }
                         }
                     } else if kind == Some("user_message") {
                         if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                             last_user = Some(text.to_string());
+                            tail.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: Some("user".into()), text: text.to_string() });
+                            if tail.len() > 20 { tail.remove(0); }
                         }
                     } else if kind == Some("reasoning") {
                         if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                             last_reasoning = Some(text.to_string());
+                            tail.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
+                            if tail.len() > 20 { tail.remove(0); }
                         }
+                    } else if kind == Some("command_execution") {
+                        let cmd = item.get("command").and_then(|x| x.as_str()).unwrap_or("");
+                        let out = item.get("aggregated_output").and_then(|x| x.as_str()).unwrap_or("");
+                        let exit_code = item.get("exit_code").and_then(|x| x.as_i64()).unwrap_or(0);
+                        let status = item.get("status").and_then(|x| x.as_str()).unwrap_or("completed");
+                        let sample = if out.len() > 240 { format!("{}", &out[..240]) } else { out.to_string() };
+                        let payload = serde_json::json!({
+                            "command": cmd,
+                            "status": status,
+                            "exit_code": exit_code,
+                            "sample": sample,
+                            "output_len": out.len()
+                        });
+                        tail.push(ThreadItem { ts: now_ts(), kind: "cmd".into(), role: None, text: payload.to_string() });
+                        if tail.len() > 20 { tail.remove(0); }
                     }
                 }
             }
+            _ => {}
         }
     }
     let snippet = last_assistant.clone()
@@ -143,7 +178,7 @@ fn extract_title_and_snippet_ext(p: &Path) -> Option<(String, String, bool)> {
     // Prefer a more semantic title source before falling back
     let title_source = last_assistant.or(last_reasoning).or(last_user).unwrap_or_else(|| "Thread".into());
     let title = infer_title(&title_source);
-    Some((title, snippet, has_instructions))
+    Some((title, snippet, has_instructions, tail))
 }
 
 fn infer_title(s: &str) -> String {
