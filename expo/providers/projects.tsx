@@ -27,6 +27,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [active, setActiveState] = useState<Project | undefined>(undefined);
   const ws = useWs();
+  const [sentCount, setSentCount] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -74,6 +75,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         agent_file: project.agentFile || undefined,
       };
     }
+    // Hint the bridge to resume on subsequent prompts (per WS connection)
+    if (sentCount > 0) { cfg.resume = 'last'; }
 
     const cfgLine = JSON.stringify(cfg);
     const finalText = ws.attachPreface
@@ -81,7 +84,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       : base;
 
     const payload = `${cfgLine}\n${finalText}` + (finalText.endsWith('\n') ? '' : '\n');
-    return ws.send(payload);
+    const ok = ws.send(payload);
+    if (ok) setSentCount((n) => n + 1);
+    return ok;
   }, [ws]);
 
   const value = useMemo<ProjectsCtx>(() => ({
