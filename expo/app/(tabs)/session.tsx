@@ -247,7 +247,14 @@ Important policy overrides:
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
       <View style={{ flex: 1, paddingTop: 0, paddingBottom: 4, paddingHorizontal: 8, gap: 0 }}>
         <View style={{ flex: 1 }}>
-          <ScrollView ref={scrollRef} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={{ paddingTop: 0, paddingBottom: 6, paddingHorizontal: 8 }}>
+          <ScrollView
+            ref={scrollRef}
+            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            contentContainerStyle={{ paddingTop: 0, paddingBottom: 6, paddingHorizontal: 8 }}
+            contentInsetAdjustmentBehavior="never"
+            automaticallyAdjustContentInsets={false}
+            automaticallyAdjustsScrollIndicatorInsets={false}
+          >
             {log.filter((e) => e.kind !== 'json').map((e) => {
               const onPressOpen = () => {
                 const idToOpen = e.detailId ?? e.id
