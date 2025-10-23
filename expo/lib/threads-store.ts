@@ -14,8 +14,8 @@ type ThreadsState = {
   // Ephemeral mapping of live thread_id (UUID) -> projectId set when a thread starts
   threadProject: Record<string, string | undefined>
   setThreadProject: (threadId: string, projectId: string) => void
-  loadHistory: (baseWsUrl: string) => Promise<void>
-  loadThread: (baseWsUrl: string, id: string, path?: string) => Promise<ThreadResponse | undefined>
+  loadHistory: (httpBase: string) => Promise<void>
+  loadThread: (httpBase: string, id: string, path?: string) => Promise<ThreadResponse | undefined>
 }
 
 const HISTORY_KEY = '@openagents/threads-history-v1'
@@ -41,8 +41,8 @@ export const useThreads = create<ThreadsState>((set, get) => ({
     const cur = get().threadProject
     set({ threadProject: { ...cur, [threadId]: projectId } })
   },
-  loadHistory: async (wsUrl: string) => {
-    const base = wsToHttpBase(wsUrl)
+  loadHistory: async (httpBase: string) => {
+    const base = httpBase
     set({ loadingHistory: true })
     try {
       try {
@@ -62,8 +62,8 @@ export const useThreads = create<ThreadsState>((set, get) => ({
       set({ loadingHistory: false })
     }
   },
-  loadThread: async (wsUrl: string, id: string, path?: string) => {
-    const base = wsToHttpBase(wsUrl)
+  loadThread: async (httpBase: string, id: string, path?: string) => {
+    const base = httpBase
     const key = id
     const cur = get().thread[key]
     if (cur) return cur

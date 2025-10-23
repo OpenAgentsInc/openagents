@@ -7,12 +7,13 @@ import { useHeaderTitle } from '@/lib/header-store'
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
-  const { wsUrl, setWsUrl, connected, connect, disconnect, clearLog, readOnly, setReadOnly, networkEnabled, setNetworkEnabled, approvals, setApprovals, attachPreface, setAttachPreface } = useWs()
+  const { bridgeHost, setBridgeHost, wsUrl, httpBase, connected, connect, disconnect, clearLog, readOnly, setReadOnly, networkEnabled, setNetworkEnabled, approvals, setApprovals, attachPreface, setAttachPreface } = useWs()
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
-      <Text style={styles.label}>WebSocket URL</Text>
-      <TextInput value={wsUrl} onChangeText={setWsUrl} autoCapitalize='none' autoCorrect={false} placeholder='ws://localhost:8787/ws' placeholderTextColor={Colors.secondary} style={styles.input} />
+      <Text style={styles.label}>Bridge Host (host:port)</Text>
+      <TextInput value={bridgeHost} onChangeText={setBridgeHost} autoCapitalize='none' autoCorrect={false} placeholder='localhost:8787' placeholderTextColor={Colors.secondary} style={styles.input} />
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>WS: {`ws://${bridgeHost}/ws`}   ·   HTTP: {`http://${bridgeHost}`}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
         <StatusPill connected={connected} />
@@ -80,4 +81,3 @@ function StatusPill({ connected }: { connected: boolean }) {
     </View>
   )
 }
-
