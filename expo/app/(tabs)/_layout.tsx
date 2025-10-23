@@ -86,7 +86,7 @@ export default function TabLayout() {
         headerTitleStyle: { fontFamily: Typography.bold },
         headerStyle: { backgroundColor: Colors.background },
         headerTitleAlign: 'left',
-        headerTitle: () => null, // we render title inside headerLeft to keep it flush-left
+        headerTitle: '', // axe the centered title entirely
         headerLeftContainerStyle: { marginLeft: 0, paddingLeft: 0 },
         headerLeft: () => <TitleWithMenu title={titleForRoute(route.name)} />,
         headerBackground: () => (
@@ -102,8 +102,8 @@ export default function TabLayout() {
         ),
       })}
     >
-      <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
-      <Stack.Screen name="projects" options={{ title: 'Projects' }} />
+      <Stack.Screen name="dashboard" />
+      <Stack.Screen name="projects" />
       <Stack.Screen name="session" />
       <Stack.Screen name="history" />
       <Stack.Screen name="library" />
