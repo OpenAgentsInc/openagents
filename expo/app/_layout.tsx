@@ -18,12 +18,20 @@ function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
+  const isRTL = I18nManager.isRTL;
   const [_, __] = React.useState(0);
   React.useEffect(() => { (async ()=>{ await loadLogs(); __((n)=>n+1) })(); }, []);
   const userMsgs = getAllLogs().filter((l) => typeof l.text === 'string' && /^\s*>/.test(l.text)).slice(-10).reverse();
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
+    <SafeAreaView style={{
+      flex: 1,
+      backgroundColor: Colors.background,
+      // Add a subtle border on the trailing edge of the drawer
+      borderRightWidth: isRTL ? 0 : 1,
+      borderLeftWidth: isRTL ? 1 : 0,
+      borderColor: Colors.border,
+    }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }} style={{ flex: 1 }}>
         <View style={{ height: 56, justifyContent: 'center', paddingHorizontal: 16 }}>
           <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 18 }}>OpenAgents</Text>
