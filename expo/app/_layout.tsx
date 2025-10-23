@@ -16,7 +16,7 @@ import { useThreads } from "@/lib/threads-store"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider, useProjects } from "@/providers/projects"
 import { BridgeProvider, useBridge } from "@/providers/ws"
-import { Ionicons } from "@expo/vector-icons"
+import { Ionicons, AntDesign } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
 import { useAppLogStore } from "@/lib/app-log"
 
@@ -96,6 +96,15 @@ function DrawerContent() {
           </View>
         </ScrollView>
         <View style={{ borderTopWidth: 1, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
+          <Pressable
+            onPress={closeAnd(() => router.push('/dashboard' as any))}
+            accessibilityRole="button"
+            accessibilityLabel="Open dashboard"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 8 }}
+          >
+            <AntDesign name="dashboard" size={18} color={Colors.foreground} />
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Dashboard</Text>
+          </Pressable>
           <Pressable
             onPress={closeAnd(() => router.push('/settings'))}
             accessibilityRole="button"
@@ -215,6 +224,7 @@ function DrawerWrapper() {
         >
           {/* Removed tabs; declare screens individually */}
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="dashboard/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
           <Stack.Screen name="projects/index" />
