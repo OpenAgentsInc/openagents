@@ -13,16 +13,20 @@ export default function ProjectDetail() {
 
   if (!project) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16 }}>
-        <Stack.Screen options={{ title: 'Project' }} />
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Project not found.</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16, gap: 10 }}>
+        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 18 }}>Project not found</Text>
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>The project you tried to open doesn’t exist.</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <Button title="Back" onPress={() => router.back()} />
+          <Button title="Projects" onPress={() => router.replace('/(tabs)/projects')} />
+        </View>
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
-      <Stack.Screen options={{ title: project.name, headerBackTitle: '' }} />
+      <Stack.Screen options={{ headerBackTitle: '' }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
         <Field label="Name" value={project.name} onChange={v => save({ ...project, name: v })} />
         <Field label="Voice aliases (comma separated)" value={project.voiceAliases.join(', ')} onChange={v => save({ ...project, voiceAliases: v.split(',').map(s => s.trim()).filter(Boolean) })} />
@@ -93,4 +97,3 @@ function Button({ title, onPress }: { title: string; onPress: () => void }) {
     </Pressable>
   );
 }
-
