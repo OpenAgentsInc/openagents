@@ -32,7 +32,7 @@ export function AppHeader() {
     // Persistently clear logs even if the session screen is not mounted yet
     try { await clearLogsStore() } catch {}
     clearLog()
-    router.push('/thread?focus=1')
+    router.push('/thread?focus=1&new=1')
   }, [clearLog])
 
   return (
