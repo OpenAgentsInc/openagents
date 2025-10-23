@@ -105,7 +105,7 @@ function DrawerWrapper() {
           ...(isRTL ? { marginRight: open ? 0 : -1 } : { marginLeft: open ? 0 : -1 }),
         }}
       >
-        <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background }, headerShown: false }}>
+        <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background }, headerShown: false, animation: 'none' }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
       </View>
