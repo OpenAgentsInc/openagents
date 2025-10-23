@@ -1,0 +1,275 @@
+use anyhow::*;
+use axum::{extract::Query, response::IntoResponse, Json};
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use std::{
+    fs,
+    io::{BufRead, BufReader},
+    path::Path,
+    time::SystemTime,
+};
+use std::result::Result as StdResult;
+
+#[derive(Debug, Serialize, Clone)]
+pub struct HistoryItem {
+    pub id: String,
+    pub path: String,
+    pub mtime: u64,
+    pub title: String,
+    pub snippet: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct SessionItem {
+    pub ts: u64,
+    pub kind: String, // message | reason | cmd
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>, // assistant | user
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct SessionResponse {
+    pub title: String,
+    pub items: Vec<SessionItem>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HistoryQuery {
+    #[allow(dead_code)]
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SessionQuery {
+    pub id: Option<String>,
+    pub path: Option<String>,
+}
+
+pub async fn history_handler(Query(_q): Query<HistoryQuery>) -> impl IntoResponse {
+    let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
+        std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
+    });
+    let items = match scan_history(Path::new(&base), 5) {
+        StdResult::Ok(v) => v,
+        StdResult::Err(e) => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("history scan failed: {e:?}"),
+            )
+                .into_response()
+        }
+    };
+    Json(serde_json::json!({"items": items})).into_response()
+}
+
+pub async fn session_handler(Query(q): Query<SessionQuery>) -> impl IntoResponse {
+    let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
+        std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
+    });
+    let target = match resolve_session_path(Path::new(&base), q.id.as_deref(), q.path.as_deref()) {
+        Some(p) => p,
+        None => return (axum::http::StatusCode::NOT_FOUND, "not found").into_response(),
+    };
+    match parse_session(Path::new(&target)) {
+        StdResult::Ok(resp) => Json(resp).into_response(),
+        StdResult::Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("session parse failed: {e:?}"),
+        )
+            .into_response(),
+    }
+}
+
+pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
+    let mut items: Vec<HistoryItem> = vec![];
+    let mut stack = vec![base.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if let StdResult::Ok(rd) = fs::read_dir(&dir) {
+            for ent in rd.flatten() {
+                let p = ent.path();
+                if p.is_dir() { stack.push(p); continue; }
+                if p.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; }
+                if !file_is_new_format(&p) { continue; }
+                let md = match ent.metadata() { StdResult::Ok(m) => m, StdResult::Err(_) => continue };
+                let mtime = md
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let (title, snippet) = extract_title_and_snippet(&p).unwrap_or_else(|| ("Session".into(), "".into()));
+                let id = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                items.push(HistoryItem { id, path: p.to_string_lossy().to_string(), mtime, title, snippet });
+            }
+        }
+    }
+    items.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+    items.truncate(limit);
+    Ok(items)
+}
+
+fn file_is_new_format(p: &Path) -> bool {
+    if let StdResult::Ok(f) = fs::File::open(p) {
+        let r = BufReader::new(f);
+        for line in r.lines().filter_map(Result::ok).take(50) {
+            if let StdResult::Ok(v) = serde_json::from_str::<JsonValue>(&line) {
+                if v.get("type").and_then(|x| x.as_str()).is_some() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn extract_title_and_snippet(p: &Path) -> Option<(String, String)> {
+    let mut last_assistant: Option<String> = None;
+    let f = fs::File::open(p).ok()?;
+    let r = BufReader::new(f);
+    for line in r.lines().filter_map(Result::ok) {
+        if let StdResult::Ok(v) = serde_json::from_str::<JsonValue>(&line) {
+            if v.get("type").and_then(|x| x.as_str()) == Some("item.completed") {
+                if let Some(item) = v.get("item") {
+                    let kind = item.get("type").and_then(|x| x.as_str());
+                    if kind == Some("agent_message") {
+                        if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
+                            last_assistant = Some(text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let snippet = last_assistant.unwrap_or_else(|| "(no assistant message)".into());
+    let title = infer_title(&snippet);
+    Some((title, snippet))
+}
+
+fn infer_title(s: &str) -> String {
+    if let Some(start) = s.find("**") {
+        if let Some(end_rel) = s[start + 2..].find("**") {
+            return s[start + 2..start + 2 + end_rel].trim().to_string();
+        }
+    }
+    s.split_whitespace().take(6).collect::<Vec<_>>().join(" ")
+}
+
+pub fn resolve_session_path(base: &Path, id: Option<&str>, hint: Option<&str>) -> Option<String> {
+    if let Some(h) = hint {
+        let ph = Path::new(h);
+        if ph.exists() && h.starts_with(&*base.to_string_lossy()) { return Some(h.to_string()); }
+    }
+    let target = id?;
+    let mut stack = vec![base.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if let StdResult::Ok(rd) = fs::read_dir(&dir) {
+            for ent in rd.flatten() {
+                let p = ent.path();
+                if p.is_dir() { stack.push(p); continue; }
+                if p.file_name().and_then(|n| n.to_str()) == Some(target) { return Some(p.to_string_lossy().to_string()); }
+            }
+        }
+    }
+    None
+}
+
+pub fn parse_session(path: &Path) -> Result<SessionResponse> {
+    let f = fs::File::open(path).context("open session file")?;
+    let r = BufReader::new(f);
+    let mut items: Vec<SessionItem> = vec![];
+    let mut first_assistant: Option<String> = None;
+    for line in r.lines().filter_map(Result::ok) {
+        let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
+        match v.get("type").and_then(|x| x.as_str()) {
+            Some("item.started") => {
+                if let Some(item) = v.get("item") {
+                    if item.get("type").and_then(|x| x.as_str()) == Some("command_execution") {
+                        if let Some(cmd) = item.get("command").and_then(|x| x.as_str()) {
+                            items.push(SessionItem { ts: now_ts(), kind: "cmd".into(), role: None, text: format!("CMD {}", cmd) });
+                        }
+                    }
+                }
+            }
+            Some("item.completed") => {
+                if let Some(item) = v.get("item") {
+                    match item.get("type").and_then(|x| x.as_str()) {
+                        Some("agent_message") => {
+                            if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
+                                if first_assistant.is_none() { first_assistant = Some(text.to_string()); }
+                                items.push(SessionItem { ts: now_ts(), kind: "message".into(), role: Some("assistant".into()), text: text.to_string() });
+                            }
+                        }
+                        Some("user_message") => {
+                            if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
+                                items.push(SessionItem { ts: now_ts(), kind: "message".into(), role: Some("user".into()), text: text.to_string() });
+                            }
+                        }
+                        Some("reasoning") => {
+                            if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
+                                items.push(SessionItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let title = infer_title(first_assistant.as_deref().unwrap_or("Session"));
+    Ok(SessionResponse { title, items })
+}
+
+fn now_ts() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_file(p: &Path, lines: &[&str]) { let mut f = fs::File::create(p).unwrap(); for l in lines { writeln!(f, "{}", l).unwrap(); } }
+
+    #[test]
+    fn scan_history_filters_new_format_and_limits() {
+        let td = tempfile::tempdir().unwrap();
+        let base = td.path().join("sessions");
+        fs::create_dir_all(&base).unwrap();
+        // Old-format file (should be ignored)
+        let old = base.join("old.jsonl");
+        write_file(&old, &[r#"{"id":"x","msg":{"type":"agent_message","message":"old format"}}"#]);
+        // 6 new-format files; only 5 should be returned
+        for i in 0..6u32 {
+            let p = base.join(format!("rollout-{}.jsonl", i));
+            write_file(&p, &[
+                r#"{"type":"thread.started","thread_id":"t"}"#,
+                r#"{"type":"item.completed","item":{"id":"a","type":"agent_message","text":"**Title** message here"}}"#,
+            ]);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let items = scan_history(&base, 5).unwrap();
+        assert_eq!(items.len(), 5, "should limit to 5 newest sessions");
+        assert!(items.iter().all(|it| it.id.starts_with("rollout-")));
+        let mut mtimes = items.iter().map(|i| i.mtime).collect::<Vec<_>>();
+        let mut sorted = mtimes.clone();
+        sorted.sort_by(|a,b| b.cmp(a));
+        assert_eq!(mtimes, sorted);
+    }
+
+    #[test]
+    fn parse_session_extracts_items() {
+        let td = tempfile::tempdir().unwrap();
+        let p = td.path().join("rollout.jsonl");
+        write_file(&p, &[
+            r#"{"type":"thread.started","thread_id":"t"}"#,
+            r#"{"type":"item.started","item":{"id":"c1","type":"command_execution","command":"echo hello","aggregated_output":"","status":"in_progress"}}"#,
+            r#"{"type":"item.completed","item":{"id":"m1","type":"user_message","text":"Hi"}}"#,
+            r#"{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"**Done**."}}"#,
+        ]);
+        let sess = parse_session(&p).unwrap();
+        assert_eq!(sess.title, "Done");
+        assert!(sess.items.iter().any(|i| i.kind == "cmd" && i.text.contains("echo hello")));
+        assert!(sess.items.iter().any(|i| i.kind == "message" && i.role.as_deref() == Some("assistant")));
+    }
+}
+
