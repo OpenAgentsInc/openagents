@@ -4,21 +4,21 @@ This guide explains how conversation resume works internally and how to resume a
 
 ## TL;DR (CLI)
 
-- Resume the most recent recorded session and send a new prompt:
+- Start fresh and pipe the prompt:
   ```bash
-  codex exec --json resume --last "your next prompt"
+  echo "first prompt" | codex exec --json -
   ```
-- Resume by explicit session id (UUID shown in rollout filename or meta):
+- Resume most recent and read the next prompt from stdin:
   ```bash
-  codex exec --json resume <SESSION_ID> "your next prompt"
+  echo "next prompt" | codex exec --json resume --last -
   ```
-- Read the next prompt from stdin instead:
+- Resume by id and read from stdin:
   ```bash
-  echo "your next prompt" | codex exec --json resume --last -
+  echo "next prompt" | codex exec --json resume <SESSION_ID> -
   ```
-- You can also place the prompt before the subcommand (parent-level positional):
+- Or pass the prompt positionally (no `-` needed):
   ```bash
-  codex exec --json "your next prompt" resume --last
+  codex exec --json resume --last "next prompt"
   ```
 
 Notes:
@@ -85,7 +85,7 @@ History from the rollout is used to seed state but is not re-emitted in the JSON
   - Path resolution (`--last` or by id): `codex-rs/exec/src/lib.rs:484`
   - When a path is found: `ConversationManager::resume_conversation_from_rollout` used to restore and continue; else falls back to a new conversation: `codex-rs/exec/src/lib.rs:230`
 - JSON output on resume:
-  - `SessionConfigured` → `{"type":"thread.started"}`: `codex-rs/exec/src/event_processor_with_jsonl_output.rs:106`
+  - `SessionConfigured` → `{"type":"thread.started"}`: `codex-rs/exec/src/event_processor_with_jsonl_output.rs:144`
 - Persistence model:
   - Resume opens the same rollout file for append: `codex-rs/core/src/rollout/recorder.rs:86` and `codex-rs/core/src/rollout/recorder.rs:127`
   - Rollout history load and reconstruction: `codex-rs/core/src/rollout/recorder.rs:248` and `codex-rs/core/src/codex.rs:610`
@@ -102,3 +102,39 @@ History from the rollout is used to seed state but is not re-emitted in the JSON
 ---
 
 If you change the resume behavior or the JSON event mapping, please update this document alongside the relevant code.
+
+## Bridge integration (OpenAgents app)
+
+The mobile app streams prompts to a Rust bridge that spawns `codex exec`. To keep a single conversation across messages:
+
+1) First message (fresh session):
+
+```
+codex exec --json -   # read prompt from stdin
+```
+
+2) Subsequent messages (resume):
+
+```
+codex exec --json resume --last -
+# or
+codex exec --json resume <SESSION_ID> -
+```
+
+3) How the bridge finds `<SESSION_ID>`:
+
+- Codex emits a `thread.started` event with `thread_id` once per session. Capture this from JSONL and reuse it on respawn.
+
+4) App hint to resume:
+
+- The app prepends a JSON first line per prompt. On subsequent messages it adds `{"resume":"last"}`; the bridge uses it when supported.
+
+5) CLI support nuance:
+
+- Ensure your Codex binary supports `exec resume`. Check with `codex exec resume --help`. If unsupported, the bridge logs a clear note and starts a fresh session.
+
+6) Point bridge at a known-good build (optional):
+
+```
+cargo run -p codex-bridge -- --codex-bin ~/code/codex-openai/codex-rs/target/release/codex
+```

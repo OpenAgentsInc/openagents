@@ -195,7 +195,8 @@ Important policy overrides:
     return () => setOnMessage(null)
   }, [setOnMessage])
 
-  useEffect(() => { setClearLogHandler(() => { setLog([]); clearLogsStore(); }); return () => setClearLogHandler(null) }, [setClearLogHandler])
+  const { resetResumeHint } = useProjects();
+  useEffect(() => { setClearLogHandler(() => { setLog([]); clearLogsStore(); resetResumeHint(); }); return () => setClearLogHandler(null) }, [setClearLogHandler, resetResumeHint])
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
   // Update header title dynamically: "New session" when empty
