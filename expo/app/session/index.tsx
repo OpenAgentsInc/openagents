@@ -31,11 +31,13 @@ import { useHeaderStore, useHeaderTitle, useHeaderSubtitle } from "@/lib/header-
 import { useThreads } from "@/lib/threads-store"
 import { useDrawer } from "@/providers/drawer"
 import { Ionicons } from "@expo/vector-icons"
+import { useFocusEffect } from "@react-navigation/native"
 
 export default function SessionScreen() {
   const params = useLocalSearchParams<{ focus?: string; new?: string }>()
   const headerHeight = useHeaderStore((s) => s.height)
   const setHeaderTitle = useHeaderStore((s) => s.setTitle)
+  const titleRef = React.useRef<string>('New Thread')
   const insets = useSafeAreaInsets()
   const drawer = useDrawer();
 
@@ -205,7 +207,7 @@ Important policy overrides:
         else if (parsed.kind === 'thread') {
           try {
             const short = String(parsed.thread_id ?? '').split('-')[0] || ''
-            if (short) setHeaderTitle(`Thread ${short}`)
+            if (short) { const t = `Thread ${short}`; try { titleRef.current = t } catch {}; setHeaderTitle(t) }
             // Thread boundary handling
             const incoming = String(parsed.thread_id || '')
             const current = currentThreadIdRef.current
@@ -314,6 +316,7 @@ Important policy overrides:
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
   useHeaderTitle('New Thread')
+  useFocusEffect(React.useCallback(() => { setHeaderTitle(titleRef.current) }, [setHeaderTitle]))
   useHeaderSubtitle(activeProject?.name ?? '')
   useEffect(() => {
     if (params?.focus) {
