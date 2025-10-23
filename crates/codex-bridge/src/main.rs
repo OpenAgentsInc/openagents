@@ -38,8 +38,8 @@ struct AppState {
     last_thread_id: Mutex<Option<String>>,
     // Track last assistant message to synthesize context when resume is unsupported
     last_agent_message: Mutex<Option<String>>,
-    // Cache CLI resume support detection for this binary
-    supports_resume: bool,
+    // Cache CLI resume support detection for this binary (mutable if we detect runtime failure)
+    supports_resume: Mutex<bool>,
 }
 
 #[tokio::main]
@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
         last_agent_message: Mutex::new(None),
-        supports_resume,
+        supports_resume: Mutex::new(supports_resume),
     });
 
     // Start readers for stdout/stderr → broadcast + console
@@ -131,7 +131,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         }
                         // Prefer resume token from the app if provided; otherwise use captured id if any
                         let resume_arg: Option<String> = desired_resume.clone().or_else(|| resume_id.clone());
-                        match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone(), resume_arg.as_deref()).await {
+                        let supports_resume = *stdin_state.supports_resume.lock().await;
+                        match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone(), resume_arg.as_deref(), supports_resume).await {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.take() {
                                     *stdin_state.child_stdin.lock().await = Some(stdin);
@@ -154,7 +155,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         let mut data = t.to_string();
                         // Fallback: if CLI doesn't support resume, but we have a last agent message,
                         // inject it as lightweight context after the JSON preface.
-                        if !stdin_state.supports_resume {
+                        if !*stdin_state.supports_resume.lock().await {
                             if let Some(prev) = stdin_state.last_agent_message.lock().await.clone() {
                                 let mut iter = data.splitn(2, '\n');
                                 let first = iter.next().unwrap_or("");
@@ -183,7 +184,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn {
                         let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
-                        match spawn_codex_child_only_with_dir(&stdin_state.opts, None, resume_id.as_deref()).await {
+                        let supports_resume = *stdin_state.supports_resume.lock().await;
+                        match spawn_codex_child_only_with_dir(&stdin_state.opts, None, resume_id.as_deref(), supports_resume).await {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.take() {
                                     *stdin_state.child_stdin.lock().await = Some(stdin);
@@ -293,12 +295,11 @@ async fn spawn_codex_child_only(opts: &Opts) -> Result<ChildWithIo> {
     Ok(ChildWithIo { stdin, stdout, stderr })
 }
 
-async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Option<PathBuf>, resume_id: Option<&str>) -> Result<ChildWithIo> {
+async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Option<PathBuf>, resume_id: Option<&str>, supports_resume: bool) -> Result<ChildWithIo> {
     let (bin, mut args) = build_bin_and_args(opts)?;
     // Attach resume args only when requested/available and the CLI supports resume
-    let supports = cli_supports_resume(&bin);
     if let Some(rid) = resume_id {
-        if supports {
+        if supports_resume {
             if rid == "last" {
                 info!(msg = "enabling resume --last");
                 args.push("resume".into());
@@ -451,6 +452,7 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
     });
 
     let tx_err = state.tx.clone();
+    let state_for_stderr = state.clone();
     tokio::spawn(async move {
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
@@ -459,6 +461,14 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
             eprintln!("{}", log);
             if line.contains("\"sandbox\"") || line.contains("sandbox") {
                 info!("msg" = "observed sandbox string from stderr", raw = %line);
+            }
+            // Detect CLIs that reject `exec resume` and permanently disable resume.
+            if line.contains("unexpected argument '--last'") || line.contains("Usage: codex") && line.contains("exec --json <PROMPT>") {
+                let mut lock = state_for_stderr.supports_resume.lock().await;
+                if *lock {
+                    *lock = false;
+                    info!("msg" = "detected CLI without exec resume; disabling resume attempts");
+                }
             }
             let _ = tx_err.send(line);
         }
