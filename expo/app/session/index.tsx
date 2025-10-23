@@ -494,19 +494,14 @@ Important policy overrides:
                   const obj = JSON.parse(e.text)
                   const lastIdForCmd = latestCmdIdByCommand.get(String(obj.command ?? ''))
                   if (typeof lastIdForCmd === 'number' && lastIdForCmd !== e.id) { return null }
+                  const label = String(obj.command ?? '').trim()
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
-                        <CommandExecutionCard
-                          command={obj.command ?? ''}
-                          status={obj.status}
-                          exitCode={obj.exit_code}
-                          sample={obj.sample}
-                          outputLen={obj.output_len}
-                          showExitCode={false}
-                          collapsed={true}
-                          maxBodyHeight={120}
-                        />
+                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, label)}>
+                        <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12 }}>{label}</Text>
+                          <Ionicons name="chevron-forward" size={16} color={Colors.secondary} />
+                        </View>
                         {copiedId === e.id ? <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
