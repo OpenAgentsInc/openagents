@@ -64,6 +64,36 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const [hydrated] = useState(true);
   const autoTriedRef = useRef(false);
 
+  // Normalize any legacy or malformed host values (e.g., ws://host:port/ws)
+  const sanitizeHost = useCallback((raw: string): string => {
+    try {
+      const val = String(raw || '').trim();
+      if (!val) return 'localhost:8787';
+      const stripped = val
+        .replace(/^ws:\/\//i, '')
+        .replace(/^wss:\/\//i, '')
+        .replace(/^http:\/\//i, '')
+        .replace(/^https:\/\//i, '')
+        .replace(/\/$/, '')
+        .replace(/\/ws$/i, '')
+        .replace(/\/$/, '');
+      return stripped || 'localhost:8787';
+    } catch {
+      return 'localhost:8787';
+    }
+  }, []);
+
+  const effectiveHost = sanitizeHost(bridgeHost);
+  // If we detect a difference, persist the normalized form once
+  const normalizedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (normalizedRef.current === effectiveHost) return;
+    if (bridgeHost && bridgeHost !== effectiveHost) {
+      try { setBridgeHost(effectiveHost); } catch {}
+    }
+    normalizedRef.current = effectiveHost;
+  }, [bridgeHost, effectiveHost, setBridgeHost]);
+
   const disconnect = useCallback(() => {
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;
@@ -73,8 +103,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const connect = useCallback(() => {
     try { wsRef.current?.close(); } catch {}
     try {
-      const wsUrl = `ws://${bridgeHost}/ws`;
-      const httpBase = `http://${bridgeHost}`;
+      const wsUrl = `ws://${effectiveHost}/ws`;
+      const httpBase = `http://${effectiveHost}`;
       appLog('bridge.connect', { wsUrl, httpBase });
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -108,7 +138,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       // Suppress connection error logs in the feed.
       appLog('bridge.connect.error', { error: String(e?.message ?? e) }, 'error');
     }
-  }, [bridgeHost]);
+  }, [effectiveHost]);
 
   // Helper: wait until the WebSocket is OPEN (or time out)
   const awaitConnected = useCallback(async (timeoutMs: number = 8000) => {
@@ -152,7 +182,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     }, 3000);
     return () => clearInterval(interval);
-  }, [connected, connect, hydrated, bridgeHost]);
+  }, [connected, connect, hydrated, effectiveHost]);
 
   useEffect(() => () => { try { wsRef.current?.close(); } catch {} }, []);
 
@@ -235,10 +265,10 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      bridgeHost,
+      bridgeHost: effectiveHost,
       setBridgeHost,
-      wsUrl: `ws://${bridgeHost}/ws`,
-      httpBase: `http://${bridgeHost}`,
+      wsUrl: `ws://${effectiveHost}/ws`,
+      httpBase: `http://${effectiveHost}`,
       connected,
       connect,
       disconnect,
@@ -260,7 +290,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       resumeNextId,
       setResumeNextId,
     }),
-    [bridgeHost, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
+    [effectiveHost, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
   );
 
   return <BridgeContext.Provider value={value}>{children}</BridgeContext.Provider>;
