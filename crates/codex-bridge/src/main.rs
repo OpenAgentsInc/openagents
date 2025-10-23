@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
         .route("/thread", get(history::thread_handler))
         .with_state(state);
 
-    info!("binding" = %opts.bind, "msg" = "codex-bridge listening (routes: /ws, /history, /thread [/session alias])");
+    info!("binding" = %opts.bind, "msg" = "codex-bridge listening (routes: /ws, /history, /thread)");
     let listener = tokio::net::TcpListener::bind(&opts.bind).await?;
     axum::serve(listener, app).await?;
     Ok(())
