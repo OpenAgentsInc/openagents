@@ -6,6 +6,8 @@ import { useWs } from '@/providers/ws'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
+import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
+import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 
 export default function ThreadHistoryView() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
@@ -65,7 +67,7 @@ function Row({ it }: { it: { ts: number; kind: 'message'|'reason'|'cmd'; role?: 
   if (it.kind === 'message' && it.role === 'assistant') {
     return (
       <View style={{ borderColor: Colors.border, borderWidth: 1, backgroundColor: Colors.card, padding: 8 }}>
-        <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{it.text}</Text>
+        <MarkdownBlock markdown={it.text} />
       </View>
     )
   }
@@ -73,7 +75,11 @@ function Row({ it }: { it: { ts: number; kind: 'message'|'reason'|'cmd'; role?: 
     return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>You: {it.text}</Text>
   }
   if (it.kind === 'reason') {
-    return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>{it.text}</Text>
+    return (
+      <View style={{ paddingVertical: 2 }}>
+        <ReasoningHeadline text={it.text} />
+      </View>
+    )
   }
   if (it.kind === 'cmd') {
     return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>{it.text}</Text>
