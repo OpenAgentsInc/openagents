@@ -14,7 +14,6 @@ export default function NewProject() {
   const { projects, save, setActive } = useProjects();
   const [name, setName] = useState('');
   const [workingDir, setWorkingDir] = useState('');
-  const [aliases, setAliases] = useState('');
   const [saving, setSaving] = useState(false);
 
   const disabled = !name.trim();
@@ -31,7 +30,7 @@ export default function NewProject() {
       await save({
         id,
         name: name.trim(),
-        voiceAliases: aliases.split(',').map((s) => s.trim()).filter(Boolean),
+        voiceAliases: [],
         workingDir: workingDir.trim(),
         createdAt: now,
         updatedAt: now,
@@ -46,7 +45,6 @@ export default function NewProject() {
       <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 18 }}>New Project</Text>
       <Field label="Name" value={name} onChange={setName} autoFocus />
       <Field label="Working directory" value={workingDir} onChange={setWorkingDir} placeholder="/Users/you/code/repo" />
-      <Field label="Voice aliases (comma-separated)" value={aliases} onChange={setAliases} placeholder="ruins, atlantis" />
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
         <Button title="Create" onPress={onCreate} disabled={disabled || saving} />
         <Button title="Cancel" onPress={() => router.back()} />
@@ -80,4 +78,3 @@ function Button({ title, onPress, disabled }: { title: string; onPress: () => vo
     </Pressable>
   );
 }
-
