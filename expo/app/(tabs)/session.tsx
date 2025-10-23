@@ -59,6 +59,21 @@ export default function SessionScreen() {
   const [workingStartedAt, setWorkingStartedAt] = useState<number | null>(null)
   const [workingSeconds, setWorkingSeconds] = useState(0)
 
+  // Compute last-seen cmd item per command string so in_progress entries
+  // are replaced by later completed ones in the main feed
+  const latestCmdIdByCommand = React.useMemo(() => {
+    const m = new Map<string, number>()
+    for (const entry of log) {
+      if (entry.kind !== 'cmd') continue
+      try {
+        const obj = JSON.parse(entry.text)
+        const cmd = String(obj.command ?? '')
+        if (cmd) m.set(cmd, entry.id)
+      } catch {}
+    }
+    return m
+  }, [log])
+
   const copyAndFlash = useCallback(async (id: number, text: string) => {
     try { await Clipboard.setStringAsync(text) } catch {}
     setCopiedId(id)
@@ -365,14 +380,7 @@ Important policy overrides:
             automaticallyAdjustContentInsets={false}
             automaticallyAdjustsScrollIndicatorInsets={false}
           >
-            {awaitingFirst ? (
-              <View style={{ paddingVertical: 6, paddingHorizontal: 8 }}>
-                <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>
-                  Working: {workingSeconds}s
-                </Text>
-              </View>
-            ) : null}
-            {log.filter((e) => e.kind !== 'json').map((e) => {
+            {log.filter((e) => e.kind !== 'json').map((e, idx, arr) => {
               const onPressOpen = () => {
                 const idToOpen = e.detailId ?? e.id
                 router.push(`/message/${idToOpen}`)
@@ -500,10 +508,14 @@ Important policy overrides:
               if (e.kind === 'cmd') {
                 try {
                   const obj = JSON.parse(e.text)
+                  const lastIdForCmd = latestCmdIdByCommand.get(String(obj.command ?? ''))
+                  if (typeof lastIdForCmd === 'number' && lastIdForCmd !== e.id) {
+                    return null // suppress older in_progress entries for same command
+                  }
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
                       <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
-                        <CommandExecutionCard command={obj.command ?? ''} status={obj.status} exitCode={obj.exit_code} sample={obj.sample} outputLen={obj.output_len} />
+                        <CommandExecutionCard command={obj.command ?? ''} status={obj.status} exitCode={obj.exit_code} sample={obj.sample} outputLen={obj.output_len} showExitCode={false} />
                         {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
@@ -541,13 +553,30 @@ Important policy overrides:
               const preview = isLong ? lines.slice(0, 8).join('\n') + '\n…' : e.text
               const isUserMsg = /^\s*>/.test(e.text)
               const copyText = isUserMsg ? e.text.replace(/^\s*>\s?/, '') : e.text
+              const isLastUserMsg = isUserMsg && (() => {
+                for (let j = arr.length - 1; j >= 0; j--) {
+                  const it = arr[j];
+                  if (it.kind === 'json') continue;
+                  if (/^\s*>/.test(it.text)) return it.id === e.id;
+                }
+                return false;
+              })();
               return (
-                <View key={e.id} style={{ paddingLeft: indent }}>
-                  <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, copyText)}>
-                    <Text selectable={!isUserMsg} style={{ fontSize: 12, lineHeight: 16, color: Colors.textPrimary, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
-                    {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
-                  </Pressable>
-                </View>
+                <React.Fragment key={e.id}>
+                  <View style={{ paddingLeft: indent }}>
+                    <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, copyText)}>
+                      <Text selectable={!isUserMsg} style={{ fontSize: 12, lineHeight: 16, color: Colors.textPrimary, fontFamily: Typography.primary, opacity: e.deemphasize ? 0.35 : 1 }}>{preview}</Text>
+                      {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
+                    </Pressable>
+                  </View>
+                  {awaitingFirst && isLastUserMsg ? (
+                    <View style={{ paddingLeft: 0, paddingVertical: 6, paddingHorizontal: 8 }} key={`working-${e.id}`}>
+                      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>
+                        Working: {workingSeconds}s
+                      </Text>
+                    </View>
+                  ) : null}
+                </React.Fragment>
               )
             })}
           </ScrollView>
