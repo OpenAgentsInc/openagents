@@ -1,142 +1,89 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
-export type LogKind = 'md' | 'reason' | 'text' | 'json' | 'summary' | 'delta' | 'exec' | 'file' | 'search' | 'mcp' | 'todo' | 'cmd' | 'err' | 'turn' | 'thread' | 'item_lifecycle';
+export type LogKind = 'md' | 'reason' | 'text' | 'json' | 'summary' | 'delta' | 'exec' | 'file' | 'search' | 'mcp' | 'todo' | 'cmd' | 'err' | 'turn' | 'thread' | 'item_lifecycle'
 
 export type LogDetail = {
-  id: number;
-  text: string;
-  kind: LogKind;
-  deemphasize?: boolean;
-  ts?: number;
+  id: number
+  text: string
+  kind: LogKind
+  deemphasize?: boolean
+  ts?: number
   // Optional pointer: for summary/preview items, link to the full JSON/detail entry.
-  detailId?: number;
-};
-
-const store = new Map<number, LogDetail>();
-let snapshot: LogDetail[] = []; // referentially stable snapshot of logs
-function recomputeSnapshot() {
-  snapshot = Array.from(store.values()).sort((a, b) => a.id - b.id);
-}
-type Listener = () => void;
-const listeners = new Set<Listener>();
-const KEY = '@openagents/logs-v1';
-let hydrated = false;
-let loadPromise: Promise<LogDetail[]> | null = null;
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-function notify() {
-  listeners.forEach((listener) => {
-    try { listener(); } catch {}
-  });
+  detailId?: number
 }
 
-export function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+type LogState = {
+  logs: LogDetail[]
+  add: (entry: LogDetail) => void
+  clear: () => void
 }
 
-export function putLog(detail: LogDetail) {
-  try {
-    const txt = String(detail.text ?? '');
-    if (txt.includes('exec_command_end')) {
-      return; // hard filter noisy exec end blobs from ever entering the store
+export const useLogStore = create<LogState>()(
+  persist(
+    (set, get) => ({
+      logs: [],
+      add: (entry) => {
+        try {
+          const txt = String(entry.text ?? '')
+          if (txt.includes('exec_command_end')) return
+        } catch {}
+        const cur = get().logs
+        const next = [...cur, entry]
+        set({ logs: next })
+      },
+      clear: () => set({ logs: [] }),
+    }),
+    {
+      name: '@openagents/logs-v2',
+      version: 2,
+      storage: createJSONStorage(() => AsyncStorage),
+      migrate: (persisted: any, from) => {
+        // Migrate v1: plain array of LogDetail
+        try {
+          if (Array.isArray(persisted)) return { logs: persisted as LogDetail[] }
+        } catch {}
+        return persisted
+      },
+      partialize: (s) => ({ logs: s.logs }),
     }
-  } catch {}
-  store.set(detail.id, detail);
-  recomputeSnapshot();
-  notify();
-  scheduleSave();
+  )
+)
+
+// Back-compat API used by screens
+export function putLog(detail: LogDetail) {
+  useLogStore.getState().add(detail)
 }
 
 export function getLog(id: number): LogDetail | undefined {
-  return store.get(id);
+  const arr = useLogStore.getState().logs
+  return arr.find((d) => d.id === id)
 }
 
-// Snapshot for useSyncExternalStore; must be referentially stable
-export function getAllLogs(): LogDetail[] { return snapshot; }
-
-function scheduleSave() {
-  if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    persistNow().catch(() => {});
-  }, 150);
-}
-
-async function persistNow() {
-  try {
-    const arr = getAllLogs();
-    await AsyncStorage.setItem(KEY, JSON.stringify(arr));
-  } catch {}
+// Snapshot for useSyncExternalStore; referentially stable until logs mutate
+export function getAllLogs(): LogDetail[] {
+  return useLogStore.getState().logs
 }
 
 export function isHydrated(): boolean {
-  return hydrated;
+  // Zustand persist hydrates automatically; treat as true
+  return true
 }
 
 export async function loadLogs(): Promise<LogDetail[]> {
-  if (hydrated && !loadPromise) {
-    return snapshot;
-  }
-  if (!loadPromise) {
-    loadPromise = (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(KEY);
-        if (!raw) {
-          hydrated = true;
-          recomputeSnapshot();
-          notify();
-          return snapshot;
-        }
-        const arr: LogDetail[] = JSON.parse(raw);
-        const sanitized = arr.filter((d) => {
-          try { return !String(d.text ?? '').includes('exec_command_end'); } catch { return true; }
-        });
-        if (sanitized.length !== arr.length) {
-          try { await AsyncStorage.setItem(KEY, JSON.stringify(sanitized)); } catch {}
-        }
-        store.clear();
-        for (const d of sanitized) store.set(d.id, d);
-        hydrated = true;
-        recomputeSnapshot();
-        notify();
-        return snapshot;
-      } catch {
-        hydrated = true;
-        recomputeSnapshot();
-        notify();
-        return snapshot;
-      } finally {
-        loadPromise = null;
-      }
-    })();
-  }
-  const pending = loadPromise;
-  return pending!;
+  try { await useLogStore.persist.rehydrate?.() } catch {}
+  return useLogStore.getState().logs
 }
 
 export async function saveLogs(): Promise<void> {
-  scheduleSave();
+  // No-op: persist handled by middleware
 }
 
 export async function flushLogs(): Promise<void> {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  await persistNow();
+  // No-op
 }
 
 export async function clearLogs(): Promise<void> {
-  store.clear();
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  try { await AsyncStorage.removeItem(KEY); } catch {}
-  hydrated = true;
-  recomputeSnapshot();
-  notify();
+  useLogStore.getState().clear()
 }
