@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard"
-import { router } from "expo-router"
+import { router, useLocalSearchParams } from "expo-router"
 import React, { useCallback, useEffect, useRef, useState } from "react"
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native"
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View, TextInput } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import Markdown from "react-native-markdown-display"
 import { CommandExecutionCard } from "@/components/jsonl/CommandExecutionCard"
@@ -32,6 +32,7 @@ import { useDrawer } from "@/providers/drawer"
 import { Ionicons } from "@expo/vector-icons"
 
 export default function SessionScreen() {
+  const params = useLocalSearchParams<{ focus?: string }>()
   const headerHeight = useHeaderStore((s) => s.height)
   const insets = useSafeAreaInsets()
   const drawer = useDrawer();
@@ -49,6 +50,7 @@ export default function SessionScreen() {
   const flushingFollowUpRef = useRef(false)
   const queueRef = useRef<string[]>([])
   const composerDraftRef = useRef('')
+  const composerInputRef = useRef<TextInput | null>(null)
   const sendNowRef = useRef<(text: string) => boolean>(() => false)
   const { projects, activeProject, setActive, sendForProject } = useProjects()
   // Working-status state: shows "Working: Ns" until first visible content arrives
@@ -201,6 +203,7 @@ Important policy overrides:
       composerDraftRef.current = ''
       setComposerPrefill(undefined)
       clearLogsStore()
+      try { setTimeout(() => composerInputRef.current?.focus(), 0) } catch {}
     })
     return () => setClearLogHandler(null)
   }, [setClearLogHandler])
@@ -212,6 +215,12 @@ Important policy overrides:
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
   useHeaderTitle('Thread')
+  useEffect(() => {
+    if (params?.focus) {
+      const t = setTimeout(() => composerInputRef.current?.focus(), 0)
+      return () => clearTimeout(t)
+    }
+  }, [params?.focus])
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -425,7 +434,7 @@ Important policy overrides:
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 8}>
           <View style={{ paddingBottom: Math.max(insets.bottom, 8), paddingHorizontal: 8 }}>
-            <Composer onSend={handleSend} connected={connected} isRunning={isRunning} onQueue={(m)=>{}} onInterrupt={handleInterrupt} queuedMessages={queuedFollowUps} prefill={composerPrefill} onDraftChange={handleDraftChange} />
+            <Composer onSend={handleSend} connected={connected} isRunning={isRunning} onQueue={(m)=>{}} onInterrupt={handleInterrupt} queuedMessages={queuedFollowUps} prefill={composerPrefill} onDraftChange={handleDraftChange} inputRef={composerInputRef} />
           </View>
         </KeyboardAvoidingView>
       </View>

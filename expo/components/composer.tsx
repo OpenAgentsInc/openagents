@@ -14,6 +14,7 @@ type ComposerProps = {
   queuedMessages?: string[];
   prefill?: string | null;
   onDraftChange?: (text: string) => void;
+  inputRef?: React.RefObject<TextInput | null>;
 };
 
 const BUTTON_COLOR = Colors.quaternary;
@@ -28,6 +29,7 @@ export function Composer({
   queuedMessages = [],
   prefill,
   onDraftChange,
+  inputRef,
 }: ComposerProps) {
   const [text, setText] = useState('');
   const trimmed = text.trim();
@@ -90,6 +92,7 @@ export function Composer({
             placeholder={resolvedPlaceholder}
             returnKeyType="send"
             onSubmitEditing={doSend}
+            ref={inputRef}
             style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, color: Colors.foreground, fontSize: 16, fontFamily: Typography.primary }}
             placeholderTextColor={Colors.secondary}
           />

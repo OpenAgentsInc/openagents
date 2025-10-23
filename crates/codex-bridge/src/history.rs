@@ -158,6 +158,8 @@ fn file_is_new_format(p: &Path) -> bool {
 
 fn extract_title_and_snippet(p: &Path) -> Option<(String, String)> {
     let mut last_assistant: Option<String> = None;
+    let mut last_user: Option<String> = None;
+    let mut last_reasoning: Option<String> = None;
     let f = fs::File::open(p).ok()?;
     let r = BufReader::new(f);
     for line in r.lines().filter_map(Result::ok) {
@@ -169,13 +171,26 @@ fn extract_title_and_snippet(p: &Path) -> Option<(String, String)> {
                         if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                             last_assistant = Some(text.to_string());
                         }
+                    } else if kind == Some("user_message") {
+                        if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
+                            last_user = Some(text.to_string());
+                        }
+                    } else if kind == Some("reasoning") {
+                        if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
+                            last_reasoning = Some(text.to_string());
+                        }
                     }
                 }
             }
         }
     }
-    let snippet = last_assistant.unwrap_or_else(|| "(no assistant message)".into());
-    let title = infer_title(&snippet);
+    let snippet = last_assistant.clone()
+        .or(last_user.clone())
+        .or(last_reasoning.clone())
+        .unwrap_or_else(|| "(no messages)".into());
+    // Prefer a more semantic title source before falling back
+    let title_source = last_assistant.or(last_reasoning).or(last_user).unwrap_or_else(|| "Thread".into());
+    let title = infer_title(&title_source);
     Some((title, snippet))
 }
 
