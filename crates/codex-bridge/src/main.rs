@@ -279,12 +279,12 @@ async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Option<P
                 info!(msg = "enabling resume --last");
                 args.push("resume".into());
                 args.push("--last".into());
-                args.push("-".into()); // read prompt from stdin
+                // No positional dash: exec reads from stdin when no prompt arg is provided
             } else {
                 info!(resume = rid, msg = "enabling resume by id");
                 args.push("resume".into());
                 args.push(rid.into());
-                args.push("-".into()); // read prompt from stdin
+                // No positional dash: exec reads from stdin when no prompt arg is provided
             }
         } else {
             info!(requested = rid, msg = "exec resume not supported by codex binary; spawning without resume");

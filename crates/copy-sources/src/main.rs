@@ -45,11 +45,17 @@ fn main() {
     let expo_root = repo_root.join("expo");
     let crates_root = repo_root.join("crates");
     let docs_root = repo_root.join("docs");
+    let scripts_root = repo_root.join("scripts");
 
     let mut files: Vec<PathBuf> = Vec::new();
 
     // docs/**
     if docs_root.exists() { walk_filtered(&docs_root, &mut files); }
+    // include select top-level docs
+    for f in ["README.md", "AGENTS.md"] {
+        let p = repo_root.join(f);
+        if p.exists() { files.push(p); }
+    }
 
     // crates/**/* (excluding target) + Cargo.toml/build.rs/README.md
     if let Ok(entries) = fs::read_dir(&crates_root) {
@@ -66,7 +72,7 @@ fn main() {
     if workspace_cargo.exists() { files.push(workspace_cargo); }
 
     // expo selected folders + root configs
-    for f in ["app", "components", "constants", "hooks", "lib", "providers", "types"] {
+    for f in ["app", "components", "constants", "hooks", "lib", "providers", "types", "utils"] {
         let d = expo_root.join(f);
         if d.exists() { walk_filtered(&d, &mut files); }
     }
@@ -75,6 +81,9 @@ fn main() {
     ] {
         let p = expo_root.join(f); if p.exists() { files.push(p); }
     }
+
+    // root scripts/** (helper tools)
+    if scripts_root.exists() { walk_filtered(&scripts_root, &mut files); }
 
     files.sort(); files.dedup();
 
