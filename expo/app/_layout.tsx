@@ -14,15 +14,19 @@ import { ProjectsProvider, useProjects } from '@/providers/projects';
 import { useAutoUpdate } from '@/hooks/use-auto-update';
 import { DrawerProvider, useDrawer } from '@/providers/drawer';
 import * as Haptics from 'expo-haptics';
-import { getAllLogs, isHydrated, loadLogs, subscribe } from '@/lib/log-store';
+import { getAllLogs, loadLogs, subscribe } from '@/lib/log-store';
 
 function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
   const logs = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
-  const hydrated = isHydrated();
-  React.useEffect(() => { if (!hydrated) loadLogs().catch(() => {}); }, [hydrated]);
+  const [hydrating, setHydrating] = React.useState(true);
+  React.useEffect(() => {
+    let alive = true;
+    loadLogs().catch(() => {}).finally(() => { if (alive) setHydrating(false); });
+    return () => { alive = false; };
+  }, []);
   const userMsgs = React.useMemo(
     () =>
       logs
@@ -54,7 +58,7 @@ function DrawerContent() {
           ))}
           <View style={{ height: 16 }} />
           <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
-          {!hydrated ? (
+          {hydrating ? (
             <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>Loading…</Text>
           ) : userMsgs.length === 0 ? (
             <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>

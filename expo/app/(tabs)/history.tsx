@@ -1,15 +1,19 @@
 import React, { useEffect, useMemo } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getAllLogs, isHydrated, loadLogs, subscribe } from '@/lib/log-store';
+import { getAllLogs, loadLogs, subscribe } from '@/lib/log-store';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 
 export default function HistoryScreen() {
   const router = useRouter();
   const items = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
-  const hydrated = isHydrated();
-  useEffect(() => { if (!hydrated) loadLogs().catch(() => {}); }, [hydrated]);
+  const [hydrating, setHydrating] = React.useState(true);
+  useEffect(() => {
+    let alive = true;
+    loadLogs().catch(() => {}).finally(() => { if (alive) setHydrating(false); });
+    return () => { alive = false; };
+  }, []);
   const data = useMemo(() => items.slice().reverse(), [items]);
 
   return (
@@ -26,7 +30,7 @@ export default function HistoryScreen() {
         )}
         ListEmptyComponent={
           <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
-            {hydrated ? 'No history yet.' : 'Loading…'}
+            {hydrating ? 'Loading…' : 'No history yet.'}
           </Text>
         }
         contentContainerStyle={{ paddingBottom: 12 }}
