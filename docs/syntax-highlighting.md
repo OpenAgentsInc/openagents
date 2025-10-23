@@ -84,6 +84,21 @@ Where used
 - Reasoning cards that may include inline/fenced code.
 - Command output previews (e.g., stdout/stderr samples).
 
+## Current Integration Points (repo paths)
+
+These files already use Prism‑based highlighting:
+
+- Code renderer: `expo/components/code-block.tsx`
+- Markdown (agent output): `expo/components/jsonl/MarkdownBlock.tsx`
+- Reasoning headline: `expo/components/jsonl/ReasoningHeadline.tsx`
+- Reasoning card: `expo/components/jsonl/ReasoningCard.tsx`
+- Command output samples: `expo/components/jsonl/CommandExecutionCard.tsx`
+- Message detail raw JSON: `expo/app/message/[id].tsx`
+
+Notes
+- For raw JSON in message detail, we set `language="json"` to apply JSON highlighting to the full payload.
+- Markdown fence rules pass the fence’s info string (e.g., `tsx`, `bash`) down as the language.
+
 ## Themes
 
 Prism React Renderer exports a set of built‑in themes via `themes`. Example:
@@ -98,6 +113,18 @@ Popular choices: `themes.vsDark`, `themes.shadesOfPurple`, `themes.nightOwl`, `t
 
 Custom theme
 - You can provide a `PrismTheme` object instead of a built‑in theme. See the README for the structure or copy one from the package and tweak colors.
+
+Swap theme globally
+- We currently import `themes.vsDark` directly in `CodeBlock`.
+- To change globally, update the `theme` prop in `expo/components/code-block.tsx` to a different built‑in theme, or export a central theme constant and reuse it.
+
+```tsx
+// expo/components/code-block.tsx
+import { Highlight, themes } from 'prism-react-renderer'
+const THEME = themes.nightOwl // choose your theme here
+...
+<Highlight theme={THEME} code={lines} language={lang as any}>
+```
 
 ## Languages
 
@@ -120,6 +147,10 @@ import Prism from 'prismjs/components/prism-core'
 Language detection
 - We map common aliases to bundled languages (e.g., `sh|bash|zsh → bash`, `js → javascript`, `ts → tsx`, `json5 → json`).
 - When rendering from Markdown, the fence info string (```tsx, ```bash, ```json) becomes the `language` prop.
+
+Expo/Metro note
+- Dynamic language imports work in Expo via `await import('prismjs/components/prism-…')` as long as you keep the `global.Prism` assignment before the imports.
+- Add these imports near app startup or lazily where needed (e.g., within a screen effect) to avoid slowing initial load.
 
 ## Mobile Considerations
 
@@ -185,4 +216,3 @@ export function CodeBlock({ code, language, maxHeight }: { code: string; languag
 - prism-react-renderer README: https://github.com/FormidableLabs/prism-react-renderer#readme
 - Prism languages: https://prismjs.com/#languages-list
 - react-native-markdown-display: https://github.com/iamacup/react-native-markdown-display
-
