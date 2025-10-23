@@ -25,6 +25,9 @@ import {
     clearLogs as clearLogsStore, loadLogs, putLog, saveLogs
 } from "@/lib/log-store"
 import { useWs } from "@/providers/ws"
+import { useProjects } from "@/providers/projects"
+import { pickProjectFromUtterance } from "@/lib/project-router"
+import { mergeProjectTodos } from "@/lib/projects-store"
 import { useHeaderHeight } from "@react-navigation/elements"
 
 export default function SessionScreen() {
@@ -56,6 +59,7 @@ export default function SessionScreen() {
   const scrollRef = useRef<ScrollView | null>(null)
   const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler } = useWs()
   const [copiedId, setCopiedId] = useState<number | null>(null)
+  const { projects, activeProject, setActive, sendForProject } = useProjects()
 
   const copyAndFlash = useCallback(async (id: number, text: string) => {
     try { await Clipboard.setStringAsync(text) } catch {}
@@ -97,14 +101,11 @@ Important policy overrides:
 
   const send = () => {
     const base = prompt.trim()
-    const finalText = attachPreface ? `${buildPreface()}\n\n${base}` : base
-    // Force an explicit config line upfront so the CLI cannot default to read-only
-    // This line is safe for Codex exec: a leading JSON object is treated as configuration.
-    const cfg = { sandbox: 'danger-full-access', approval: 'never' }
-    const cfgLine = JSON.stringify(cfg)
-    const combined = `${cfgLine}\n${finalText}`
-    const payload = combined.endsWith('\n') ? combined : combined + '\n'
-    if (!sendWs(payload)) { append('Not connected'); return }
+    if (!base) return
+    // Try to route by project mention; fallback to current active project
+    const routed = pickProjectFromUtterance(base, projects) || activeProject
+    if (routed && routed.id !== activeProject?.id) { setActive(routed.id) }
+    if (!sendForProject(routed, base)) { append('Not connected'); return }
     append(`> ${base}`)
     setPrompt('')
     // After sending, collapse back to a single line.
@@ -175,6 +176,11 @@ Important policy overrides:
         else if (parsed.kind === 'todo_list') {
           const payload = JSON.stringify({ status: parsed.status, items: parsed.items })
           append(payload, false, 'todo', trimmed)
+          try {
+            if (activeProject?.id) {
+              mergeProjectTodos(activeProject.id, parsed.items).catch(() => {})
+            }
+          } catch {}
         }
         else if (parsed.kind === 'cmd_item') {
           const payload = JSON.stringify({ command: parsed.command, status: parsed.status, exit_code: parsed.exit_code, sample: parsed.sample, output_len: parsed.output_len })

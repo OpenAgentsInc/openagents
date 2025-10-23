@@ -45,7 +45,7 @@ export default function TabLayout() {
   };
   return (
     <Tabs
-      initialRouteName="session"
+      initialRouteName="dashboard"
       screenOptions={{
         headerShown: true,
         headerTitleStyle: { fontFamily: Typography.bold },
@@ -67,6 +67,20 @@ export default function TabLayout() {
         },
       }}
     >
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />, 
+        }}
+      />
+      <Tabs.Screen
+        name="projects"
+        options={{
+          title: 'Projects',
+          tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />, 
+        }}
+      />
       <Tabs.Screen name="session" options={{ title: 'Session', tabBarIcon: ({ color, size }) => (<Ionicons name="grid" size={size} color={color} />) }} />
       <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen
