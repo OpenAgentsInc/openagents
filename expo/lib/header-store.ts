@@ -4,6 +4,8 @@ import { create } from 'zustand'
 type HeaderState = {
   title: string
   setTitle: (t: string) => void
+  subtitle: string
+  setSubtitle: (t: string) => void
   height: number
   setHeight: (h: number) => void
 }
@@ -11,6 +13,8 @@ type HeaderState = {
 export const useHeaderStore = create<HeaderState>((set) => ({
   title: '',
   setTitle: (t) => set({ title: t }),
+  subtitle: '',
+  setSubtitle: (t) => set({ subtitle: t }),
   height: 0,
   setHeight: (h) => set({ height: h }),
 }))
@@ -18,4 +22,9 @@ export const useHeaderStore = create<HeaderState>((set) => ({
 export function useHeaderTitle(title: string) {
   const setTitle = useHeaderStore((s) => s.setTitle)
   React.useEffect(() => { setTitle(title) }, [setTitle, title])
+}
+
+export function useHeaderSubtitle(subtitle: string) {
+  const setSubtitle = useHeaderStore((s) => s.setSubtitle)
+  React.useEffect(() => { setSubtitle(subtitle) }, [setSubtitle, subtitle])
 }
