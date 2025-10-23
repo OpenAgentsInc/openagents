@@ -2,9 +2,10 @@ import * as Clipboard from "expo-clipboard"
 import { router } from "expo-router"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-    KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text,
+    KeyboardAvoidingView, Platform, Pressable, ScrollView, Text,
     TextInput, View
 } from "react-native"
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import Markdown from "react-native-markdown-display"
 import { CommandExecutionCard } from "@/components/jsonl/CommandExecutionCard"
 import { ErrorRow } from "@/components/jsonl/ErrorRow"
@@ -32,6 +33,7 @@ import { useHeaderHeight } from "@react-navigation/elements"
 
 export default function SessionScreen() {
   const headerHeight = useHeaderHeight()
+  const insets = useSafeAreaInsets()
   const ui = useMemo(() => ({ button: '#3F3F46' }), [])
 
   const [prompt, setPrompt] = useState('')

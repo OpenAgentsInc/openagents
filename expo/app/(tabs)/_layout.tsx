@@ -1,15 +1,16 @@
-import { Tabs, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { Pressable, View } from 'react-native';
 import { useWs } from '@/providers/ws';
 import React from 'react';
 import { Typography } from '@/constants/typography';
-import { HapticTab } from '@/components/haptic-tab';
 import * as Haptics from 'expo-haptics';
+import { useDrawer } from '@/providers/drawer';
 
 export default function TabLayout() {
   const router = useRouter();
+  const drawer = useDrawer();
   const ConnectionDot = () => {
     const { connected } = useWs();
     return (
@@ -44,72 +45,37 @@ export default function TabLayout() {
     );
   };
   return (
-    <Tabs
-      initialRouteName="dashboard"
+    <Stack
+      initialRouteName="session"
       screenOptions={{
         headerShown: true,
         headerTitleStyle: { fontFamily: Typography.bold },
         headerStyle: { backgroundColor: Colors.background },
         headerTintColor: Colors.textPrimary,
+        headerLeft: () => (
+          <Pressable
+            onPress={drawer.toggle}
+            accessibilityRole="button"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ paddingHorizontal: 6, paddingVertical: 6 }}
+          >
+            <Ionicons name="menu" size={22} color={Colors.textPrimary} />
+          </Pressable>
+        ),
         headerRight: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
             <NewChatButton />
             <ConnectionDot />
           </View>
         ),
-        tabBarShowLabel: false,
-        tabBarActiveTintColor: Colors.tabBarActive,
-        tabBarInactiveTintColor: Colors.tabBarInactive,
-        tabBarButton: HapticTab,
-        tabBarStyle: {
-          backgroundColor: Colors.tabBarBackground,
-          borderTopColor: Colors.border,
-        },
       }}
     >
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />, 
-        }}
-      />
-      <Tabs.Screen
-        name="projects"
-        options={{
-          title: 'Projects',
-          tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />, 
-        }}
-      />
-      <Tabs.Screen name="session" options={{ title: 'Session', tabBarIcon: ({ color, size }) => (<Ionicons name="grid" size={size} color={color} />) }} />
-      <Tabs.Screen name="index" options={{ href: null }} />
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'History',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="time" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="library"
-        options={{
-          title: 'Library',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings" size={size} color={color} />
-          ),
-        }}
-      />
-    </Tabs>
+      <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
+      <Stack.Screen name="projects" options={{ title: 'Projects' }} />
+      <Stack.Screen name="session" options={{ title: 'Session' }} />
+      <Stack.Screen name="history" options={{ title: 'History' }} />
+      <Stack.Screen name="library" options={{ title: 'Library' }} />
+      <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+    </Stack>
   );
 }
