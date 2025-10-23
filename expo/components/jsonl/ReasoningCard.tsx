@@ -7,7 +7,7 @@ import type { ReasoningItem } from '@/types/exec-jsonl'
 
 export function ReasoningCard({ item }: { item: ReasoningItem }) {
   return (
-    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 12, padding: 12 }}>
+    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12 }}>
       <Markdown
         style={{
           body: { color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 18 },
@@ -21,4 +21,3 @@ export function ReasoningCard({ item }: { item: ReasoningItem }) {
     </View>
   )
 }
-

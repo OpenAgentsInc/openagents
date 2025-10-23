@@ -6,9 +6,9 @@ import { Typography } from '@/constants/typography'
 export function CommandExecutionCard({ command, status, exitCode, sample, outputLen }: { command: string; status?: string; exitCode?: number | null; sample?: string; outputLen?: number }) {
   const badgeBg = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0) ? '#EF4444' : status === 'completed' ? '#22C55E' : '#A3A3A3'
   return (
-    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 12, padding: 12, gap: 8 }}>
+    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ backgroundColor: badgeBg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+        <View style={{ backgroundColor: badgeBg, borderRadius: 0, paddingHorizontal: 8, paddingVertical: 2 }}>
           <Text style={{ color: '#000', fontFamily: Typography.bold, fontSize: 11 }}>{(status ?? 'cmd').toUpperCase()}</Text>
         </View>
         <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{command}</Text>
@@ -27,4 +27,3 @@ export function CommandExecutionCard({ command, status, exitCode, sample, output
     </View>
   )
 }
-
