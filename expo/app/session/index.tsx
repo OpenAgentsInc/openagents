@@ -22,7 +22,7 @@ import { parseCodexLine } from "@/lib/codex-events"
 import {
     clearLogs as clearLogsStore, loadLogs, putLog, saveLogs, getLog
 } from "@/lib/log-store"
-import { useWs } from "@/providers/ws"
+import { useBridge } from "@/providers/ws"
 import { useProjects } from "@/providers/projects"
 import { pickProjectFromUtterance } from "@/lib/project-router"
 import { mergeProjectTodos } from "@/lib/projects-store"
@@ -46,7 +46,7 @@ export default function SessionScreen() {
   const shouldAutoScrollRef = useRef(true)
   const lastLengthRef = useRef(0)
   const lastContentHeightRef = useRef(0)
-  const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler, resumeNextId } = useWs()
+  const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler, resumeNextId } = useBridge()
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [queuedFollowUps, setQueuedFollowUps] = useState<string[]>([])
