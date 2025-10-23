@@ -100,10 +100,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 Message::Text(t) => {
                     let preview = if t.len() > 180 { format!("{}…", &t[..180].replace('\n', "\\n")) } else { t.replace('\n', "\\n") };
                     info!("msg" = "ws text received", size = t.len(), preview = preview);
+                    let desired_cd = extract_cd_from_ws_payload(&t);
                     // Ensure we have a live codex stdin; respawn if needed
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
-                    if need_respawn {
-                        match spawn_codex_child_only(&stdin_state.opts).await {
+                    if need_respawn || desired_cd.is_some() {
+                        // If we already have a stdin but need to honor a cd, close it to end the previous child
+                        if !need_respawn && desired_cd.is_some() {
+                            let mut g = stdin_state.child_stdin.lock().await;
+                            let _ = g.take(); // drop to close stdin and let old child exit
+                        }
+                        match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone()).await {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.take() {
                                     *stdin_state.child_stdin.lock().await = Some(stdin);
@@ -141,7 +147,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     info!("msg" = "ws binary received", size = b.len());
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn {
-                        match spawn_codex_child_only(&stdin_state.opts).await {
+                        match spawn_codex_child_only_with_dir(&stdin_state.opts, None).await {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.take() {
                                     *stdin_state.child_stdin.lock().await = Some(stdin);
@@ -225,6 +231,35 @@ async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<Stri
 async fn spawn_codex_child_only(opts: &Opts) -> Result<ChildWithIo> {
     let (bin, args) = build_bin_and_args(opts)?;
     let workdir = detect_repo_root(None);
+    info!(
+        "bin" = %bin.display(),
+        "args" = ?args,
+        "workdir" = %workdir.display(),
+        "msg" = "respawn codex for new prompt"
+    );
+    let mut child = Command::new(bin)
+        .current_dir(&workdir)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("failed to spawn codex")?;
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    tokio::spawn(async move {
+        match child.wait().await {
+            Ok(status) => info!(?status, "codex exited"),
+            Err(e) => error!(?e, "codex wait failed"),
+        }
+    });
+    Ok(ChildWithIo { stdin, stdout, stderr })
+}
+
+async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Option<PathBuf>) -> Result<ChildWithIo> {
+    let (bin, args) = build_bin_and_args(opts)?;
+    let workdir = workdir_override.unwrap_or_else(|| detect_repo_root(None));
     info!(
         "bin" = %bin.display(),
         "args" = ?args,
@@ -429,4 +464,13 @@ fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
             return original;
         }
     }
+}
+
+fn extract_cd_from_ws_payload(payload: &str) -> Option<PathBuf> {
+    let first_line = payload.lines().next()?.trim();
+    if !first_line.starts_with('{') { return None; }
+    let v: JsonValue = serde_json::from_str(first_line).ok()?;
+    let cd = v.get("cd").and_then(|s| s.as_str())?;
+    if cd.is_empty() { return None; }
+    Some(PathBuf::from(cd))
 }

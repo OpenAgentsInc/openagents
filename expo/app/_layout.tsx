@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useTypographySetup, applyTypographyGlobals, Typography } from '@/constants/typography';
 import { Colors, NavigationTheme } from '@/constants/theme';
 import { WsProvider } from '@/providers/ws';
+import { ProjectsProvider } from '@/providers/projects';
 import { useAutoUpdate } from '@/hooks/use-auto-update';
 
 export default function RootLayout() {
@@ -15,10 +16,12 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={NavigationTheme}>
       <WsProvider>
-        <StatusBar style="light" />
-        <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background } }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        </Stack>
+        <ProjectsProvider>
+          <StatusBar style="light" />
+          <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background } }}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          </Stack>
+        </ProjectsProvider>
       </WsProvider>
     </ThemeProvider>
   );

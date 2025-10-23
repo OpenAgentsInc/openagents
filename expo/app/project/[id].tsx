@@ -1,0 +1,96 @@
+import React, { useMemo } from 'react';
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { ScrollView, Text, View, TextInput, Pressable } from 'react-native';
+import { Colors } from '@/constants/theme';
+import { Typography } from '@/constants/typography';
+import { useProjects } from '@/providers/projects';
+
+export default function ProjectDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { projects, activeProject, setActive, sendForProject, save } = useProjects();
+  const project = useMemo(() => projects.find(p => p.id === id) ?? activeProject, [projects, activeProject, id]);
+
+  if (!project) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16 }}>
+        <Stack.Screen options={{ title: 'Project' }} />
+        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Project not found.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <Stack.Screen options={{ title: project.name, headerBackTitle: '' }} />
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+        <Field label="Name" value={project.name} onChange={v => save({ ...project, name: v })} />
+        <Field label="Voice aliases (comma separated)" value={project.voiceAliases.join(', ')} onChange={v => save({ ...project, voiceAliases: v.split(',').map(s => s.trim()).filter(Boolean) })} />
+        <Field label="Working directory" value={project.workingDir} onChange={v => save({ ...project, workingDir: v })} />
+        <Field label="Repo (owner/name)" value={project.repo?.remote ?? ''} onChange={v => save({ ...project, repo: { ...project.repo, remote: v } })} />
+        <Field label="Branch" value={project.repo?.branch ?? ''} onChange={v => save({ ...project, repo: { ...project.repo, branch: v || undefined } })} />
+        <Field label="Agent file (relative)" value={project.agentFile ?? ''} onChange={v => save({ ...project, agentFile: v || undefined })} />
+        <Multiline label="Custom instructions" value={project.instructions ?? ''} onChange={v => save({ ...project, instructions: v || undefined })} />
+
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <Button title="Set Active" onPress={() => setActive(project.id)} />
+          <Button title="Open Session" onPress={() => { setActive(project.id); router.push('/(tabs)/session'); }} />
+          <Button title="Ping (cd)" onPress={() => sendForProject(project, 'Echo working dir and list top-level: run `pwd` then `ls -la`')} />
+        </View>
+
+        {!!project.todos?.length && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold, fontSize: 12 }}>To‑dos</Text>
+            {project.todos.map((t, i) => (
+              <Text key={i} style={{ color: t.completed ? Colors.textSecondary : Colors.textPrimary, fontFamily: Typography.primary }}>
+                {t.completed ? '☑︎' : '☐'} {t.text}
+              </Text>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholderTextColor={Colors.textSecondary}
+        style={{ borderWidth: 1, borderColor: Colors.border, padding: 10, backgroundColor: Colors.card, color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13 }}
+      />
+    </View>
+  );
+}
+
+function Multiline({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        autoCapitalize="none"
+        autoCorrect={false}
+        multiline
+        placeholderTextColor={Colors.textSecondary}
+        style={{ borderWidth: 1, borderColor: Colors.border, padding: 10, backgroundColor: Colors.card, color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13, minHeight: 80 }}
+      />
+    </View>
+  );
+}
+
+function Button({ title, onPress }: { title: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={{ backgroundColor: '#3F3F46', paddingHorizontal: 16, paddingVertical: 12 }}>
+      <Text style={{ color: '#fff', fontFamily: Typography.bold }}>{title}</Text>
+    </Pressable>
+  );
+}
+
