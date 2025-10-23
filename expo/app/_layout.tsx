@@ -44,13 +44,13 @@ function DrawerContent() {
           <View style={{ height: 56, justifyContent: 'center', paddingHorizontal: 16 }}>
             <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>OpenAgents</Text>
           </View>
-          <View style={{ paddingHorizontal: 16, gap: 8 }}>
-            <View style={{ height: 12 }} />
+          <View style={{ paddingHorizontal: 16, gap: 4 }}>
+            <View style={{ height: 8 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="folder-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
             </View>
-            <Pressable onPress={closeAnd(() => router.push('/projects'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
+            <Pressable onPress={closeAnd(() => router.push('/projects'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See projects…</Text>
             </Pressable>
             {projects.slice(0, 5).map((p) => (
@@ -58,7 +58,7 @@ function DrawerContent() {
                 <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
             ))}
-            <View style={{ height: 16 }} />
+            <View style={{ height: 8 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="time-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
@@ -71,7 +71,7 @@ function DrawerContent() {
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : null
             ) : history.slice(0, 5).map((h) => (
-              <View key={h.id} style={{ paddingVertical: 8 }}>
+              <View key={h.id} style={{ paddingVertical: 6 }}>
                 <Pressable onPress={closeAnd(() => {
                   try {
                     if (Array.isArray((h as any).tail) && (h as any).tail.length > 0) {
