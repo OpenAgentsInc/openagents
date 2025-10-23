@@ -32,7 +32,7 @@ import { Ionicons } from "@expo/vector-icons"
 import { useFocusEffect } from "@react-navigation/native"
 
 export default function SessionScreen() {
-  const params = useLocalSearchParams<{ focus?: string; new?: string }>()
+  const params = useLocalSearchParams<{ focus?: string; new?: string; resuming?: string }>()
   const headerHeight = useHeaderStore((s) => s.height)
   const setHeaderTitle = useHeaderStore((s) => s.setTitle)
   const titleRef = React.useRef<string>('New Thread')
@@ -343,6 +343,15 @@ Important policy overrides:
       requireThreadStartRef.current = true
     }
   }, [params?.new])
+
+  // If navigated with ?resuming=1, show working indicator immediately
+  useEffect(() => {
+    if (params?.resuming && !isRunning) {
+      setIsRunning(true)
+      setAwaitingFirst(true); awaitingFirstRef.current = true
+      setWorkingStartedAt(Date.now()); setWorkingSeconds(0)
+    }
+  }, [params?.resuming])
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>

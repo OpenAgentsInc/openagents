@@ -173,7 +173,7 @@ export default function ThreadHistoryView() {
               // Prefer resume_id from parsed thread; fall back to history filename
               const resumeId = thread?.resume_id || (typeof id === 'string' ? id : null)
               try { sendForProject(activeProject, txt, resumeId) } catch {}
-              router.replace('/thread?focus=1')
+              router.replace('/thread?focus=1&resuming=1')
             }}
             connected={true}
             isRunning={false}
