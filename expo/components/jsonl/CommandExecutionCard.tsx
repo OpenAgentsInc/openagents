@@ -3,6 +3,7 @@ import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { CodeBlock } from '@/components/code-block'
+import { MaterialCommunityIcons } from '@expo/vector-icons'
 
 export function CommandExecutionCard({
   command,
@@ -25,14 +26,15 @@ export function CommandExecutionCard({
   collapsed?: boolean
   maxBodyHeight?: number
 }) {
-  const badgeBg = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0) ? Colors.danger : status === 'completed' ? Colors.success : Colors.gray
+  const isFail = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0)
+  const isDone = status === 'completed' || (typeof exitCode === 'number' && exitCode === 0)
+  const iconName = isFail ? 'close-circle' : isDone ? 'check-circle' : 'progress-clock'
+  const iconColor = isFail ? Colors.danger : isDone ? Colors.success : Colors.secondary
   const clamp = collapsed ? { maxHeight: maxBodyHeight, overflow: 'hidden' as const } : undefined
   return (
     <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ backgroundColor: badgeBg, borderRadius: 0, paddingHorizontal: 8, paddingVertical: 2 }}>
-          <Text style={{ color: Colors.primaryForeground, fontFamily: Typography.bold, fontSize: 11 }}>{(status ?? 'cmd').toUpperCase()}</Text>
-        </View>
+        <MaterialCommunityIcons name={iconName as any} size={18} color={iconColor} />
         <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13 }}>{command}</Text>
       </View>
       {showExitCode && typeof exitCode === 'number' ? (
