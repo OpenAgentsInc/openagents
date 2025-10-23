@@ -11,6 +11,9 @@ type ThreadsState = {
   historyLoadedAt?: number
   thread: Record<string, ThreadResponse | undefined>
   loadingThread: Record<string, boolean>
+  // Ephemeral mapping of live thread_id (UUID) -> projectId set when a thread starts
+  threadProject: Record<string, string | undefined>
+  setThreadProject: (threadId: string, projectId: string) => void
   loadHistory: (baseWsUrl: string) => Promise<void>
   loadThread: (baseWsUrl: string, id: string, path?: string) => Promise<ThreadResponse | undefined>
 }
@@ -33,6 +36,11 @@ export const useThreads = create<ThreadsState>((set, get) => ({
   historyLoadedAt: undefined,
   thread: {},
   loadingThread: {},
+  threadProject: {},
+  setThreadProject: (threadId: string, projectId: string) => {
+    const cur = get().threadProject
+    set({ threadProject: { ...cur, [threadId]: projectId } })
+  },
   loadHistory: async (wsUrl: string) => {
     const base = wsToHttpBase(wsUrl)
     set({ loadingHistory: true })

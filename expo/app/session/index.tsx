@@ -27,7 +27,8 @@ import { useProjects } from "@/providers/projects"
 import { pickProjectFromUtterance } from "@/lib/project-router"
 import { mergeProjectTodos } from "@/lib/projects-store"
 import { Composer } from "@/components/composer"
-import { useHeaderStore, useHeaderTitle } from "@/lib/header-store"
+import { useHeaderStore, useHeaderTitle, useHeaderSubtitle } from "@/lib/header-store"
+import { useThreads } from "@/lib/threads-store"
 import { useDrawer } from "@/providers/drawer"
 import { Ionicons } from "@expo/vector-icons"
 
@@ -54,6 +55,8 @@ export default function SessionScreen() {
   const composerInputRef = useRef<TextInput | null>(null)
   const sendNowRef = useRef<(text: string) => boolean>(() => false)
   const { projects, activeProject, setActive, sendForProject } = useProjects()
+  const setThreadProject = useThreads((s) => s.setThreadProject)
+  const lastSentProjectIdRef = useRef<string | null>(null)
   // Working-status state: shows "Working: Ns" until first visible content arrives
   const [awaitingFirst, setAwaitingFirst] = useState(false)
   const awaitingFirstRef = useRef(false)
@@ -125,11 +128,15 @@ Important policy overrides:
     if (!base) return false
     const routed = pickProjectFromUtterance(base, projects) || activeProject
     if (routed && routed.id !== activeProject?.id) { setActive(routed.id) }
+    // Remember which project this send belongs to (for mapping when thread starts)
+    lastSentProjectIdRef.current = routed?.id ?? activeProject?.id ?? null
     if (!sendForProject(routed, base)) { append('Not connected'); return false }
     append(`> ${base}`)
     setIsRunning(true)
     setAwaitingFirst(true); awaitingFirstRef.current = true
     setWorkingStartedAt(Date.now()); setWorkingSeconds(0)
+    // Update header subtitle to the active project name, if any
+    try { if (routed?.name) { useHeaderStore.getState().setSubtitle(routed.name) } else if (activeProject?.name) { useHeaderStore.getState().setSubtitle(activeProject.name) } else { useHeaderStore.getState().setSubtitle('') } } catch {}
     return true
   }
 
@@ -190,6 +197,9 @@ Important policy overrides:
           try {
             const short = String(parsed.thread_id ?? '').split('-')[0] || ''
             if (short) setHeaderTitle(`Thread ${short}`)
+            // Capture mapping thread_id -> projectId used for this send (if any)
+            const pid = lastSentProjectIdRef.current
+            if (pid && parsed.thread_id) { setThreadProject(parsed.thread_id, pid) }
           } catch {}
           continue
         }
@@ -265,7 +275,8 @@ Important policy overrides:
   }, [isRunning, connected, queuedFollowUps, flushQueuedFollowUp])
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
-  useHeaderTitle('Thread')
+  useHeaderTitle('New Thread')
+  useHeaderSubtitle(activeProject?.name ?? '')
   useEffect(() => {
     if (params?.focus) {
       const t = setTimeout(() => composerInputRef.current?.focus(), 0)

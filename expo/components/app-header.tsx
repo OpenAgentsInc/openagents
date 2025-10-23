@@ -13,9 +13,10 @@ import { router, usePathname } from 'expo-router'
 export function AppHeader() {
   const insets = useSafeAreaInsets()
   const title = useHeaderStore((s) => s.title)
+  const subtitle = useHeaderStore((s) => s.subtitle)
   const setHeight = useHeaderStore((s) => s.setHeight)
   const { toggle } = useDrawer()
-  const { connected, clearLog } = useWs()
+  const { connected, clearLog, setResumeNextId } = useWs()
   const pathname = usePathname()
   const showBack = React.useMemo(() => pathname?.startsWith('/message/') ?? false, [pathname])
 
@@ -26,6 +27,7 @@ export function AppHeader() {
 
   const onNewChat = React.useCallback(async () => {
     try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {}
+    try { setResumeNextId('new') } catch {}
     clearLog()
     router.push('/thread?focus=1')
   }, [clearLog])
@@ -46,9 +48,14 @@ export function AppHeader() {
           <View style={{ marginLeft: 8 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger }} />
           </View>
-          {!!title && (
-            <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 16, marginLeft: 6 }}>{title}</Text>
-          )}
+          <View style={{ marginLeft: 6 }}>
+            {!!title && (
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 16 }}>{title}</Text>
+            )}
+            {!!subtitle && (
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 2 }}>{subtitle}</Text>
+            )}
+          </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
           <Pressable onPress={onNewChat} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
