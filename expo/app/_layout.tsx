@@ -94,8 +94,8 @@ function DrawerWrapper() {
       renderDrawerContent={() => <DrawerContent />}
     >
       <StatusBar style="light" />
-      <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background } }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: true }} />
+      <Stack screenOptions={{ contentStyle: { backgroundColor: Colors.background }, headerShown: false }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
     </Drawer>
   );
