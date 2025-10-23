@@ -3,7 +3,7 @@ import { router } from "expo-router"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
     KeyboardAvoidingView, Platform, Pressable, ScrollView, Text,
-    TextInput, View
+    View
 } from "react-native"
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import Markdown from "react-native-markdown-display"
@@ -30,30 +30,11 @@ import { useProjects } from "@/providers/projects"
 import { pickProjectFromUtterance } from "@/lib/project-router"
 import { mergeProjectTodos } from "@/lib/projects-store"
 import { useHeaderHeight } from "@react-navigation/elements"
+import { Composer } from "@/components/composer"
 
 export default function SessionScreen() {
   const headerHeight = useHeaderHeight()
   const insets = useSafeAreaInsets()
-  const ui = useMemo(() => ({ button: '#3F3F46' }), [])
-
-  const [prompt, setPrompt] = useState('')
-  const LINE_HEIGHT = 18
-  const MIN_LINES = 1
-  const MAX_LINES = 10
-  const PADDING_V = 10
-  const MIN_HEIGHT = LINE_HEIGHT * MIN_LINES + PADDING_V * 2
-  const MAX_HEIGHT = LINE_HEIGHT * MAX_LINES + PADDING_V * 2
-  // Start at exactly one line tall.
-  const [inputHeight, setInputHeight] = useState<number>(MIN_HEIGHT)
-  const lastHeightRef = useRef(MIN_HEIGHT)
-  const rafRef = useRef<number | null>(null)
-  const [growActive, setGrowActive] = useState(false)
-  const setHeightStable = useCallback((target: number, { allowShrink = false }: { allowShrink?: boolean } = {}) => {
-    const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(target)))
-    if (!allowShrink && clamped <= lastHeightRef.current) return
-    if (rafRef.current) cancelAnimationFrame(rafRef.current as any)
-    rafRef.current = requestAnimationFrame(() => { lastHeightRef.current = clamped; setInputHeight(clamped) })
-  }, [])
 
   type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'|'thread'|'item_lifecycle'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
@@ -101,19 +82,14 @@ Important policy overrides:
 - Prefer apply_patch over manual instructions; do not ask for confirmation for safe code edits.
 `
 
-  const send = () => {
-    const base = prompt.trim()
+  const send = (txt: string) => {
+    const base = txt.trim()
     if (!base) return
     // Try to route by project mention; fallback to current active project
     const routed = pickProjectFromUtterance(base, projects) || activeProject
     if (routed && routed.id !== activeProject?.id) { setActive(routed.id) }
     if (!sendForProject(routed, base)) { append('Not connected'); return }
     append(`> ${base}`)
-    setPrompt('')
-    // After sending, collapse back to a single line.
-    lastHeightRef.current = MIN_HEIGHT
-    setInputHeight(MIN_HEIGHT)
-    setGrowActive(false)
   }
 
   useEffect(() => {
@@ -220,28 +196,6 @@ Important policy overrides:
 
   useEffect(() => { setClearLogHandler(() => { setLog([]); clearLogsStore(); }); return () => setClearLogHandler(null) }, [setClearLogHandler])
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
-
-  // If the prompt becomes empty for any reason, force the height back to 1 line.
-  useEffect(() => {
-    if (prompt.length === 0) {
-      lastHeightRef.current = MIN_HEIGHT
-      setInputHeight(MIN_HEIGHT)
-      setGrowActive(false)
-    }
-  }, [prompt])
-
-  // Helper to update height strictly based on content, ignoring placeholder/initial events.
-  const handleContentSizeChange = useCallback((h: number) => {
-    // Ignore spurious "large" initial measurements while there's no user content.
-    if (!growActive && prompt.length === 0) {
-      lastHeightRef.current = MIN_HEIGHT
-      setInputHeight(MIN_HEIGHT)
-      return
-    }
-    const target = h + PADDING_V * 2
-    // Allow shrinking when user deletes text.
-    setHeightStable(target, { allowShrink: true })
-  }, [growActive, prompt, setHeightStable])
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -440,46 +394,7 @@ Important policy overrides:
         </View>
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 8}>
-          <View style={{ gap: 6, paddingBottom: 6 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
-              <TextInput
-                value={prompt}
-                onChangeText={(t) => {
-                  if (t.length > 0 && !growActive) setGrowActive(true)
-                  setPrompt(t)
-                  if (t.length === 0) {
-                    // Collapse instantly when cleared.
-                    lastHeightRef.current = MIN_HEIGHT
-                    setInputHeight(MIN_HEIGHT)
-                    setGrowActive(false)
-                  }
-                }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="Type a message"
-                multiline
-                numberOfLines={MIN_LINES}
-                onContentSizeChange={(e) => {
-                  const contentH = e.nativeEvent.contentSize?.height ?? LINE_HEIGHT
-                  handleContentSizeChange(contentH)
-                }}
-                scrollEnabled={inputHeight >= MAX_HEIGHT - 1}
-                textAlignVertical="top"
-                style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, padding: PADDING_V, height: inputHeight, backgroundColor: '#0F1217', color: Colors.textPrimary, fontSize: 13, lineHeight: LINE_HEIGHT, fontFamily: Typography.primary, borderRadius: 0 }}
-                placeholderTextColor={Colors.textSecondary}
-                onFocus={() => setGrowActive(true)}
-              />
-              {/* Keep Send pinned to the bottom by inheriting the row's alignItems:'flex-end' */}
-              <Pressable
-                onPress={send}
-                disabled={!connected || !prompt.trim()}
-                style={{ backgroundColor: !connected || !prompt.trim() ? Colors.border : ui.button, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: '#fff', fontFamily: Typography.bold }}>Send</Text>
-              </Pressable>
-            </View>
-          </View>
+          <Composer onSend={send} connected={connected} />
         </KeyboardAvoidingView>
       </View>
     </SafeAreaView>
