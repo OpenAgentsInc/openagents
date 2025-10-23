@@ -221,16 +221,12 @@ function Row({ it, isLastCmd }: { it: { ts: number; kind: 'message'|'reason'|'cm
     try {
       const obj = JSON.parse(it.text)
       if (!isLastCmd) return null
+      const label = String(obj.command ?? '').trim()
       return (
-        <CommandExecutionCard
-          command={obj.command ?? ''}
-          status={obj.status}
-          exitCode={obj.exit_code}
-          sample={obj.sample}
-          outputLen={obj.output_len}
-          showExitCode={false}
-          collapsed={true}
-        />
+        <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12 }}>{label}</Text>
+          <Ionicons name="chevron-forward" size={16} color={Colors.secondary} />
+        </View>
       )
     } catch {
       return null
