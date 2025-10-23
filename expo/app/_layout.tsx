@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics"
 import { Stack, useRouter } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import React from "react"
-import { I18nManager, Pressable, ScrollView, Text, View } from "react-native"
+import { I18nManager, Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native"
 import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
 import { AppHeader } from "@/components/app-header"
@@ -61,11 +61,14 @@ function DrawerContent() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="time-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
+              {loading ? (
+                <ActivityIndicator size="small" color={Colors.secondary} />
+              ) : null}
             </View>
-            {loading ? (
-              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>Loading…</Text>
-            ) : history.length === 0 ? (
-              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
+            {history.length === 0 ? (
+              !loading ? (
+                <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
+              ) : null
             ) : history.slice(0, 5).map((h) => (
               <View key={h.id} style={{ paddingVertical: 8 }}>
                 <Pressable onPress={closeAnd(() => {
