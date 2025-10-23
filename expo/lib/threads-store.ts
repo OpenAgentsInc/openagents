@@ -16,6 +16,7 @@ type ThreadsState = {
   lastHistoryUrl?: string
   thread: Record<string, ThreadResponse | undefined>
   loadingThread: Record<string, boolean>
+  rehydrated: boolean
   // Ephemeral mapping of live thread_id (UUID) -> projectId set when a thread starts
   threadProject: Record<string, string | undefined>
   setThreadProject: (threadId: string, projectId: string) => void
@@ -34,6 +35,7 @@ export const useThreads = create<ThreadsState>()(
       lastHistoryUrl: undefined,
       thread: {},
       loadingThread: {},
+      rehydrated: false,
       threadProject: {},
       setThreadProject: (threadId: string, projectId: string) => {
         const cur = get().threadProject
@@ -102,6 +104,11 @@ export const useThreads = create<ThreadsState>()(
         threadProject: state.threadProject,
       }),
       storage: createJSONStorage(() => AsyncStorage),
+      onRehydrateStorage: () => (state, error) => {
+        try {
+          useThreads.setState({ rehydrated: true })
+        } catch {}
+      },
       migrate: (persisted: any) => {
         // Legacy migration from HISTORY_KEY cache shape { items: HistoryItem[] }
         try {
