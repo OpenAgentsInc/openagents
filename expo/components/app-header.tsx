@@ -44,13 +44,14 @@ export function AppHeader() {
             onPress={() => { showBack ? router.back() : toggle() }}
             accessibilityRole="button"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{ paddingHorizontal: 6, paddingVertical: 6 }}
+            style={{ paddingHorizontal: 6, paddingVertical: 6, position: 'relative' }}
           >
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
+            <View
+              pointerEvents="none"
+              style={{ position: 'absolute', right: 2, top: 2, width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
+            />
           </Pressable>
-          <View style={{ marginLeft: 8 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger }} />
-          </View>
           <View style={{ marginLeft: 6 }}>
             {!!title && (
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 14 }}>{title}</Text>
