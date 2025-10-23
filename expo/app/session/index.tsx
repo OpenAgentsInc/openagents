@@ -179,7 +179,8 @@ Important policy overrides:
         if (skipJsonBlockRef.current) { if (/\}\}\s*$/.test(trimmed) || /^\}\s*$/.test(trimmed)) { skipJsonBlockRef.current = false } continue }
         const startsJsonEnvelope = trimmed.startsWith('{') && trimmed.includes('"msg"') && (/:\s*$/.test(trimmed) || /:\{\s*$/.test(trimmed));
         if (startsJsonEnvelope) { skipJsonBlockRef.current = true; continue }
-        if (trimmed.toLowerCase().includes('reading prompt from stdin')) { continue }
+        const low = trimmed.toLowerCase()
+        if (low.includes('reading prompt from stdin') || low === 'no prompt provided via stdin.') { continue }
         if (trimmed.includes('exec_command_end')) { continue }
         const parsed = parseCodexLine(trimmed)
         if (parsed.kind === 'delta') { continue }
