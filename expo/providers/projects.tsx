@@ -18,7 +18,6 @@ type ProjectsCtx = {
   save: (p: Project) => Promise<void>;
   del: (id: ProjectId) => Promise<void>;
   sendForProject: (project: Project | undefined, userText: string) => boolean;
-  resetResumeHint: () => void;
 };
 
 const Ctx = createContext<ProjectsCtx | undefined>(undefined);
@@ -28,7 +27,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [active, setActiveState] = useState<Project | undefined>(undefined);
   const ws = useWs();
-  const [sentCount, setSentCount] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -76,8 +74,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         agent_file: project.agentFile || undefined,
       };
     }
-    // Hint the bridge to resume on subsequent prompts (per WS connection)
-    if (sentCount > 0) { cfg.resume = 'last'; }
+    // Do not send 'resume:last' hints; the bridge resumes strictly by session id.
 
     const cfgLine = JSON.stringify(cfg);
     const finalText = ws.attachPreface
@@ -85,16 +82,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       : base;
 
     const payload = `${cfgLine}\n${finalText}` + (finalText.endsWith('\n') ? '' : '\n');
-    const ok = ws.send(payload);
-    if (ok) setSentCount((n) => n + 1);
-    return ok;
-  }, [ws, sentCount]);
-
-  const resetResumeHint = useCallback(() => setSentCount(0), []);
+    return ws.send(payload);
+  }, [ws]);
 
   const value = useMemo<ProjectsCtx>(() => ({
-    projects, activeProject: active, setActive, save, del, sendForProject, resetResumeHint,
-  }), [projects, active, setActive, save, del, sendForProject, resetResumeHint]);
+    projects, activeProject: active, setActive, save, del, sendForProject,
+  }), [projects, active, setActive, save, del, sendForProject]);
 
   // Always provide the context, even before hydration completes, so
   // consumers like SessionScreen can call useProjects safely.
