@@ -49,7 +49,7 @@ export function AppHeader() {
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
             <View
               pointerEvents="none"
-              style={{ position: 'absolute', right: 4, top: 2, width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
+              style={{ position: 'absolute', right: 4, top: 7, width: 9, height: 9, borderRadius: 4.5, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
             />
           </Pressable>
           <View style={{ marginLeft: 6 }}>
