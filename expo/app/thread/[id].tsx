@@ -24,7 +24,9 @@ export default function ThreadHistoryView() {
   const loading = Boolean(id && loadingMap[id])
   const listRef = React.useRef<FlatList<any> | null>(null)
   const [atBottom, setAtBottom] = React.useState(true)
-  const didAutoScrollRef = React.useRef(false)
+  const initialScrolledRef = React.useRef(false)
+  const prevCountRef = React.useRef(0)
+  const prevPartialRef = React.useRef<boolean | undefined>(undefined)
   const headerHeight = useHeaderStore((s) => s.height)
   const insets = useSafeAreaInsets()
   const composerInputRef = React.useRef<any>(null)
@@ -75,6 +77,38 @@ export default function ThreadHistoryView() {
     return map
   }, [items])
 
+  // Auto-scroll behaviors
+  React.useEffect(() => {
+    // Initial snap to bottom when any content is present
+    if (!initialScrolledRef.current && items.length > 0) {
+      const t = setTimeout(() => {
+        try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
+        initialScrolledRef.current = true
+        prevCountRef.current = items.length
+        setAtBottom(true)
+      }, 0)
+      return () => clearTimeout(t)
+    }
+    // If items grew (full hydrate), keep pinned to bottom
+    if (items.length > prevCountRef.current) {
+      const t = setTimeout(() => { try { listRef.current?.scrollToEnd({ animated: false }) } catch {} }, 0)
+      prevCountRef.current = items.length
+      return () => clearTimeout(t)
+    }
+  }, [items.length])
+
+  React.useEffect(() => {
+    // When we switch from partial preview to full content, ensure bottom
+    const was = prevPartialRef.current
+    const now = thread?.partial
+    if (was === true && now !== true) {
+      const t = setTimeout(() => { try { listRef.current?.scrollToEnd({ animated: false }) } catch {} }, 0)
+      prevPartialRef.current = now
+      return () => clearTimeout(t)
+    }
+    prevPartialRef.current = now
+  }, [thread?.partial])
+
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <Stack.Screen options={{ title: '', headerBackTitle: '' }} />
@@ -89,12 +123,18 @@ export default function ThreadHistoryView() {
           data={items}
           keyExtractor={(_, i) => String(i)}
           contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 80 }}
-          onContentSizeChange={() => {
-            if (!didAutoScrollRef.current) {
-              try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
-              didAutoScrollRef.current = true
+          ListHeaderComponent={(() => {
+            // Show top loader when we have content but are still hydrating the rest
+            if ((thread?.partial || loading) && items.length > 0) {
+              return (
+                <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+                  <ActivityIndicator color={Colors.secondary} />
+                  <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 4 }}>Loading earlier messages…</Text>
+                </View>
+              )
             }
-          }}
+            return null
+          })()}
           onScroll={(e) => {
             try {
               const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent
