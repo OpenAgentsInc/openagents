@@ -74,7 +74,7 @@ export default function ComponentLibraryScreen() {
         ]} />
       </Section>
 
-      <Section title="CommandExecutionCard (feed style: no meta)">
+      <Section title="CommandExecutionCard (feed style: no meta, collapsed)">
         <CommandExecutionCard
           command="rg -n prism-react-renderer"
           status="completed"
@@ -82,6 +82,8 @@ export default function ComponentLibraryScreen() {
           sample={'README.md:12:prism-react-renderer'}
           outputLen={24}
           // defaults hide exit code and output length metadata
+          collapsed={true}
+          maxBodyHeight={120}
         />
       </Section>
 
