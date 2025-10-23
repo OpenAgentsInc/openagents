@@ -37,6 +37,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<MsgHandler>(null);
+  const pendingBufferRef = useRef<string[]>([]); // buffer chunks when no handler is attached
   const clearLogHandlerRef = useRef<(() => void) | null>(null);
 
   // Simple in-memory preferences (could persist with AsyncStorage)
@@ -69,7 +70,15 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       };
       ws.onmessage = (evt) => {
         const data = typeof evt.data === 'string' ? evt.data : String(evt.data);
-        onMessageRef.current?.(data);
+        // Always buffer so re-attaching consumers can catch up.
+        try {
+          const buf = pendingBufferRef.current;
+          buf.push(data);
+          // Trim buffer to last 800 chunks to avoid unbounded growth
+          if (buf.length > 800) buf.splice(0, buf.length - 800);
+        } catch {}
+        // Deliver to active consumer if present
+        try { onMessageRef.current?.(data); } catch {}
       };
       ws.onerror = (evt: any) => {
         // Keep errors out of the session feed; rely on header dot and dev console
@@ -143,6 +152,17 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
 
   const setOnMessage = useCallback((fn: MsgHandler) => {
     onMessageRef.current = fn;
+    // If a consumer attached, synchronously flush any buffered chunks so UI state updates
+    if (fn) {
+      const buf = pendingBufferRef.current;
+      if (buf.length > 0) {
+        try {
+          for (const chunk of buf) { try { fn(chunk) } catch {} }
+        } finally {
+          pendingBufferRef.current = [];
+        }
+      }
+    }
   }, []);
 
   const setClearLogHandler = useCallback((fn: (() => void) | null) => {
