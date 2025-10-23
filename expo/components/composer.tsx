@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, TextInput, Pressable, Text } from 'react-native';
+import { View, TextInput, Pressable, Text, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
@@ -54,6 +54,7 @@ export function Composer({
     } else {
       onSend(base);
     }
+    try { inputRef?.current?.blur(); Keyboard.dismiss(); } catch {}
     setText('');
     onDraftChange?.('');
   }, [trimmed, connected, isRunning, onQueue, onSend, onDraftChange]);
