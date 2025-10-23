@@ -201,7 +201,12 @@ Important policy overrides:
         else if (parsed.kind === 'cmd_item') { const payload = JSON.stringify({ command: parsed.command, status: parsed.status, exit_code: parsed.exit_code, sample: parsed.sample, output_len: parsed.output_len }); append(payload, false, 'cmd', trimmed) }
         else if (parsed.kind === 'err') { const payload = JSON.stringify({ message: parsed.message }); append(payload, false, 'err', trimmed) }
         else if (parsed.kind === 'turn') {
-          if (parsed.phase === 'started') { setIsRunning(true); continue }
+          if (parsed.phase === 'started') { 
+            setIsRunning(true);
+            setAwaitingFirst(true); awaitingFirstRef.current = true;
+            setWorkingStartedAt(Date.now()); setWorkingSeconds(0);
+            continue 
+          }
           else if (parsed.phase === 'completed' || parsed.phase === 'failed') {
             setIsRunning(false);
             if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false }
