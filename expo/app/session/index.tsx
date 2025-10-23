@@ -515,6 +515,19 @@ Important policy overrides:
                 try {
                   const obj = JSON.parse(e.text)
                   if (obj.phase === 'started') return null
+                  // Only show the last visible Turn event in the feed
+                  let hasLaterVisible = false
+                  for (let j = idx + 1; j < arr.length; j++) {
+                    const it = arr[j]
+                    if (it.kind === 'json' || it.kind === 'thread') continue
+                    if (it.kind === 'turn') {
+                      try { const t = JSON.parse(it.text); if (t?.phase === 'started') { continue } } catch {}
+                    }
+                    // Non-empty text or any other renderable kinds count as visible
+                    hasLaterVisible = true
+                    break
+                  }
+                  if (hasLaterVisible) return null
                   let durationMs: number | undefined = undefined
                   if (obj.phase === 'completed' || obj.phase === 'failed') {
                     let startId: number | undefined = undefined
