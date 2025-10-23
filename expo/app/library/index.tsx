@@ -19,6 +19,7 @@ import { ErrorRow } from '@/components/jsonl/ErrorRow'
 
 export default function ComponentLibraryScreen() {
   useHeaderTitle('Component Library')
+  const [showUnused, setShowUnused] = React.useState(false)
 
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
     <View style={{ gap: 8 }}>
@@ -114,11 +115,21 @@ export default function ComponentLibraryScreen() {
         <ErrorRow message="Something went wrong while fetching." />
       </Section>
 
-      <Section title="unused (hidden in feed)">
-        {/* Not shown in the main feed; kept here only for reference */}
-        <ThreadStartedRow threadId="abcd1234" />
-        <TurnEventRow phase="started" />
-      </Section>
+      <View style={{ gap: 8 }}>
+        <Text
+          onPress={() => setShowUnused((v) => !v)}
+          style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12 }}
+        >
+          {showUnused ? 'Unused (tap to collapse)' : 'Unused (hidden in feed)'}
+        </Text>
+        {showUnused ? (
+          <View>
+            {/* Not shown in the main feed; kept here only for reference */}
+            <ThreadStartedRow threadId="abcd1234" />
+            <TurnEventRow phase="started" />
+          </View>
+        ) : null}
+      </View>
     </ScrollView>
   )
 }
