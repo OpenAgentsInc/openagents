@@ -5,7 +5,7 @@ import { Typography } from '@/constants/typography'
 
 export type FileChange = { path: string; kind: 'add'|'delete'|'update'|string }
 
-export function FileChangeCard({ changes, status }: { changes: ReadonlyArray<FileChange>; status?: string }) {
+export function FileChangeCard({ changes, status, limit = 8 }: { changes: ReadonlyArray<FileChange>; status?: string; limit?: number | null }) {
   const counts = changes.reduce((acc, c) => { acc[c.kind] = (acc[c.kind] ?? 0) + 1; return acc }, {} as Record<string, number>)
   const summary = [
     counts['add'] ? `+${counts['add']}` : null,
@@ -19,13 +19,13 @@ export function FileChangeCard({ changes, status }: { changes: ReadonlyArray<Fil
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Summary: {summary}</Text>
       )}
       <View style={{ gap: 4 }}>
-        {changes.slice(0, 8).map((c, i) => (
+        {changes.slice(0, typeof limit === 'number' ? limit : changes.length).map((c, i) => (
           <Text key={i} selectable style={{ color: Colors.foreground, fontFamily: Typography.primary }}>
             {c.kind === 'add' ? '+' : c.kind === 'delete' ? '-' : '~'} {c.path}
           </Text>
         ))}
-        {changes.length > 8 && (
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>… {changes.length - 8} more</Text>
+        {typeof limit === 'number' && changes.length > limit && (
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>… {changes.length - limit} more</Text>
         )}
       </View>
     </View>
