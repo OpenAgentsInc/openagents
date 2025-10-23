@@ -1,7 +1,7 @@
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, Text } from 'react-native';
 import { useWs } from '@/providers/ws';
 import React from 'react';
 import { Typography } from '@/constants/typography';
@@ -80,9 +80,22 @@ export default function TabLayout() {
       <Stack.Screen
         name="session"
         options={{
-          title: 'New session',
-          headerTitleAlign: 'left',
-          headerTitleStyle: { fontFamily: Typography.primary, fontSize: 16 },
+          headerTitle: () => null,
+          headerLeft: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Pressable
+                onPress={drawer.toggle}
+                accessibilityRole="button"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ paddingHorizontal: 6, paddingVertical: 6 }}
+              >
+                <Ionicons name="menu" size={22} color={Colors.textPrimary} />
+              </Pressable>
+              <Text style={{ color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 16, marginLeft: 6 }}>
+                New session
+              </Text>
+            </View>
+          ),
         }}
       />
       <Stack.Screen name="history" options={{ title: 'History' }} />
