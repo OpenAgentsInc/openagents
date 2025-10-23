@@ -50,7 +50,7 @@ export function AppHeader() {
           </View>
           <View style={{ marginLeft: 6 }}>
             {!!title && (
-              <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 16 }}>{title}</Text>
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 14 }}>{title}</Text>
             )}
             {!!subtitle && (
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 2 }}>{subtitle}</Text>
