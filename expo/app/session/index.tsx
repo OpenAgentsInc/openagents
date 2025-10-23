@@ -3,7 +3,6 @@ import { router, useLocalSearchParams } from "expo-router"
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View, TextInput, Keyboard } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import Markdown from "react-native-markdown-display"
 import { CommandExecutionCard } from "@/components/jsonl/CommandExecutionCard"
 import { ErrorRow } from "@/components/jsonl/ErrorRow"
 import { ExecBeginRow } from "@/components/jsonl/ExecBeginRow"
@@ -29,7 +28,6 @@ import { mergeProjectTodos } from "@/lib/projects-store"
 import { Composer } from "@/components/composer"
 import { useHeaderStore, useHeaderTitle, useHeaderSubtitle } from "@/lib/header-store"
 import { useThreads } from "@/lib/threads-store"
-import { useDrawer } from "@/providers/drawer"
 import { Ionicons } from "@expo/vector-icons"
 import { useFocusEffect } from "@react-navigation/native"
 
@@ -39,7 +37,6 @@ export default function SessionScreen() {
   const setHeaderTitle = useHeaderStore((s) => s.setTitle)
   const titleRef = React.useRef<string>('New Thread')
   const insets = useSafeAreaInsets()
-  const drawer = useDrawer();
 
   type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'|'thread'|'item_lifecycle'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
