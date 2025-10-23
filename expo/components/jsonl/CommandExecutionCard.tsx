@@ -4,8 +4,29 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { CodeBlock } from '@/components/code-block'
 
-export function CommandExecutionCard({ command, status, exitCode, sample, outputLen, showExitCode = false, showOutputLen = false }: { command: string; status?: string; exitCode?: number | null; sample?: string; outputLen?: number; showExitCode?: boolean; showOutputLen?: boolean }) {
+export function CommandExecutionCard({
+  command,
+  status,
+  exitCode,
+  sample,
+  outputLen,
+  showExitCode = false,
+  showOutputLen = false,
+  collapsed = false,
+  maxBodyHeight = 120,
+}: {
+  command: string
+  status?: string
+  exitCode?: number | null
+  sample?: string
+  outputLen?: number
+  showExitCode?: boolean
+  showOutputLen?: boolean
+  collapsed?: boolean
+  maxBodyHeight?: number
+}) {
   const badgeBg = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0) ? Colors.danger : status === 'completed' ? Colors.success : Colors.gray
+  const clamp = collapsed ? { maxHeight: maxBodyHeight, overflow: 'hidden' as const } : undefined
   return (
     <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -21,12 +42,16 @@ export function CommandExecutionCard({ command, status, exitCode, sample, output
         <View style={{ gap: 4 }}>
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>output ~{outputLen}B</Text>
           {sample ? (
-            <CodeBlock code={sample} language="bash" />
+            <View style={clamp}>
+              <CodeBlock code={sample} language="bash" />
+            </View>
           ) : null}
         </View>
       ) : sample ? (
         // Show sample snippet but hide size meta in the main feed
-        <CodeBlock code={sample} language="bash" />
+        <View style={clamp}>
+          <CodeBlock code={sample} language="bash" />
+        </View>
       ) : null}
     </View>
   )

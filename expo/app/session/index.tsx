@@ -44,6 +44,8 @@ export default function SessionScreen() {
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
   const shouldAutoScrollRef = useRef(true)
+  const lastLengthRef = useRef(0)
+  const lastContentHeightRef = useRef(0)
   const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler, resumeNextId } = useWs()
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
@@ -290,7 +292,24 @@ Important policy overrides:
         <View style={{ flex: 1 }}>
           <ScrollView
             ref={scrollRef}
-            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            onScroll={(e) => {
+              try {
+                const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent
+                const atBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 24
+                shouldAutoScrollRef.current = atBottom
+              } catch {}
+            }}
+            scrollEventThrottle={32}
+            onContentSizeChange={(_, h) => {
+              const len = log.length
+              const appended = len > lastLengthRef.current
+              const grew = h > lastContentHeightRef.current + 4 // ignore tiny jitter
+              lastLengthRef.current = len
+              lastContentHeightRef.current = h
+              if ((appended || grew) && shouldAutoScrollRef.current) {
+                try { scrollRef.current?.scrollToEnd({ animated: true }) } catch {}
+              }
+            }}
             contentContainerStyle={{ paddingTop: 0, paddingBottom: 6, paddingHorizontal: 8 }}
             contentInsetAdjustmentBehavior="never"
             automaticallyAdjustContentInsets={false}
@@ -298,7 +317,8 @@ Important policy overrides:
           >
             {log.filter((e) => e.kind !== 'json').map((e, idx, arr) => {
               const onPressOpen = () => { const idToOpen = e.detailId ?? e.id; router.push(`/message/${idToOpen}`) };
-              const indent = e.kind === 'exec' ? 12 : (e.kind === 'file' || e.kind === 'search' || e.kind === 'mcp' || e.kind === 'todo' || e.kind === 'cmd' || e.kind === 'err' || e.kind === 'summary') ? 24 : (e.kind === 'item_lifecycle' ? 12 : 0)
+              // Remove left padding so rows are flush with container margins
+              const indent = 0
               const isMd = e.text.startsWith('::md::')
               if (isMd) {
                 const md = e.text.slice('::md::'.length)
@@ -410,7 +430,16 @@ Important policy overrides:
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
                       <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
-                        <CommandExecutionCard command={obj.command ?? ''} status={obj.status} exitCode={obj.exit_code} sample={obj.sample} outputLen={obj.output_len} showExitCode={false} />
+                        <CommandExecutionCard
+                          command={obj.command ?? ''}
+                          status={obj.status}
+                          exitCode={obj.exit_code}
+                          sample={obj.sample}
+                          outputLen={obj.output_len}
+                          showExitCode={false}
+                          collapsed={true}
+                          maxBodyHeight={120}
+                        />
                         {copiedId === e.id ? <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
