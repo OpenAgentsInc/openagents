@@ -116,8 +116,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             let mut g = stdin_state.child_stdin.lock().await;
                             let _ = g.take(); // drop to close stdin and let old child exit
                         }
-                        // Prefer resume token from the app if provided; otherwise use captured id if any
-                        let resume_arg: Option<String> = desired_resume.clone().or_else(|| resume_id.clone());
+                        // Only resume by explicit session id we have captured; ignore app 'last'.
+                        let resume_arg: Option<String> = resume_id.clone();
                         match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone(), resume_arg.as_deref()).await {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.take() {
