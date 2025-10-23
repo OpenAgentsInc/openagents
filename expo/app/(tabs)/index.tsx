@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
-import { SafeAreaView, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
