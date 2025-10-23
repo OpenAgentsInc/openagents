@@ -38,7 +38,6 @@ export default function ComponentLibraryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 14 }}>
-      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 18 }}>Component Library</Text>
       <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
         Basic renderers for Exec JSONL ThreadItem variants. We will expand this list and reuse these in the session feed.
       </Text>
