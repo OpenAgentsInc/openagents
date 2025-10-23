@@ -51,6 +51,11 @@ export default function SessionScreen() {
   const composerDraftRef = useRef('')
   const sendNowRef = useRef<(text: string) => boolean>(() => false)
   const { projects, activeProject, setActive, sendForProject } = useProjects()
+  // Working-status state: shows "Working: Ns" until first visible content arrives
+  const [awaitingFirst, setAwaitingFirst] = useState(false)
+  const awaitingFirstRef = useRef(false)
+  const [workingStartedAt, setWorkingStartedAt] = useState<number | null>(null)
+  const [workingSeconds, setWorkingSeconds] = useState(0)
 
   const copyAndFlash = useCallback(async (id: number, text: string) => {
     try { await Clipboard.setStringAsync(text) } catch {}
@@ -98,6 +103,9 @@ Important policy overrides:
     if (!sendForProject(routed, base)) { append('Not connected'); return false }
     append(`> ${base}`)
     setIsRunning(true)
+    // Start working timer until first visible assistant content arrives
+    setAwaitingFirst(true); awaitingFirstRef.current = true
+    setWorkingStartedAt(Date.now()); setWorkingSeconds(0)
     return true
   }
 
@@ -183,12 +191,16 @@ Important policy overrides:
           continue
         }
         else if (parsed.kind === 'md') {
+          if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false }
           const raw = String(parsed.markdown ?? '').trim()
           const core = raw.replace(/^\*\*|\*\*$/g, '').replace(/^`|`$/g, '').trim().toLowerCase()
           const isBland = core === 'unknown' || core === 'n/a' || core === 'none' || core === 'null'
           if (!isBland) append(`::md::${parsed.markdown}`, false, 'md')
         }
-        else if (parsed.kind === 'reason') append(`::reason::${parsed.text}`, false, 'reason')
+        else if (parsed.kind === 'reason') {
+          if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false }
+          append(`::reason::${parsed.text}`, false, 'reason')
+        }
         else if (parsed.kind === 'thread') {
           const payload = JSON.stringify({ thread_id: parsed.thread_id })
           append(payload, false, 'thread', trimmed)
@@ -235,6 +247,7 @@ Important policy overrides:
             setIsRunning(true)
           } else if (parsed.phase === 'completed' || parsed.phase === 'failed') {
             setIsRunning(false)
+            if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false }
             const message = typeof parsed.message === 'string' ? parsed.message : ''
             const wasInterrupted = parsed.phase === 'failed' && message.toLowerCase().includes('interrupt')
             if (wasInterrupted) {
@@ -264,11 +277,13 @@ Important policy overrides:
           if (/^\[exec (out|end)\]/i.test(parsed.text)) {
             continue
           }
+          if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false }
           append(parsed.text, true, 'summary', trimmed)
         }
         else if (parsed.kind === 'text') {
           const raw = String(parsed.raw ?? '').trim()
           if (!raw) { continue }
+          if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false }
           append(raw, true, 'text')
         }
         else if (parsed.kind === 'json') {
@@ -280,6 +295,17 @@ Important policy overrides:
     })
     return () => setOnMessage(null)
   }, [setOnMessage])
+
+  // Tick working seconds while awaiting first visible content
+  useEffect(() => {
+    if (!awaitingFirst || !workingStartedAt) return
+    const id = setInterval(() => {
+      setWorkingSeconds(Math.max(0, Math.floor((Date.now() - workingStartedAt) / 1000)))
+    }, 1000)
+    // Update immediately
+    setWorkingSeconds(Math.max(0, Math.floor((Date.now() - workingStartedAt) / 1000)))
+    return () => clearInterval(id)
+  }, [awaitingFirst, workingStartedAt])
 
   useEffect(() => {
     setClearLogHandler(() => {
@@ -326,6 +352,13 @@ Important policy overrides:
             automaticallyAdjustContentInsets={false}
             automaticallyAdjustsScrollIndicatorInsets={false}
           >
+            {awaitingFirst ? (
+              <View style={{ paddingVertical: 6, paddingHorizontal: 8 }}>
+                <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>
+                  Working: {workingSeconds}s
+                </Text>
+              </View>
+            ) : null}
             {log.filter((e) => e.kind !== 'json').map((e) => {
               const onPressOpen = () => {
                 const idToOpen = e.detailId ?? e.id
