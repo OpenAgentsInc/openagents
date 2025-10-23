@@ -87,7 +87,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     const ok = ws.send(payload);
     if (ok) setSentCount((n) => n + 1);
     return ok;
-  }, [ws]);
+  }, [ws, sentCount]);
 
   const value = useMemo<ProjectsCtx>(() => ({
     projects, activeProject: active, setActive, save, del, sendForProject,

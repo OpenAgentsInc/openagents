@@ -105,6 +105,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     info!("msg" = "ws text received", size = t.len(), preview = preview);
                     let desired_cd = extract_cd_from_ws_payload(&t);
                     let desired_resume = extract_resume_from_ws_payload(&t); // "last" or a session id
+                    info!(?desired_cd, ?desired_resume, msg = "parsed ws preface");
                     // Ensure we have a live codex stdin; respawn if needed
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn || desired_cd.is_some() {
