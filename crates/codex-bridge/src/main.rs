@@ -297,11 +297,16 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     } else {
         vec!["exec".into(), "--json".into()]
     };
-    // Ensure we resume the most recent session instead of starting fresh each time,
-    // but only if the installed CLI supports the `resume` subcommand.
-    if !args.iter().any(|a| a == "resume") && cli_supports_resume(&bin) {
-        args.push("resume".into());
-        args.push("--last".into());
+    // Ensure we resume the most recent session instead of starting fresh each time.
+    if !args.iter().any(|a| a == "resume") {
+        let supports = cli_supports_resume(&bin);
+        info!(supports, msg = "resume support check");
+        if supports {
+            args.push("resume".into());
+            args.push("--last".into());
+        } else {
+            info!("msg" = "codex does not advertise resume; starting fresh sessions");
+        }
     }
     if !opts.extra.is_empty() { args.extend(opts.extra.clone()); }
 
@@ -354,16 +359,20 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
 }
 
 fn cli_supports_resume(bin: &PathBuf) -> bool {
-    let out = std::process::Command::new(bin)
-        .args(["exec", "--help"])
-        .output();
-    match out {
-        Ok(o) => {
-            let help = String::from_utf8_lossy(&o.stdout);
-            help.contains("Resume") || help.contains("resume --last") || help.contains("resume")
-        }
-        Err(_) => false,
+    fn ok_contains(out: &std::process::Output, needle: &str) -> bool {
+        let s = String::from_utf8_lossy(&out.stdout);
+        s.to_lowercase().contains(&needle.to_lowercase())
     }
+    if let Ok(o) = std::process::Command::new(bin).args(["exec", "resume", "--help"]).output() {
+        if o.status.success() || ok_contains(&o, "resume") { return true; }
+    }
+    if let Ok(o) = std::process::Command::new(bin).args(["exec", "--help"]).output() {
+        if ok_contains(&o, "resume") { return true; }
+    }
+    if let Ok(o) = std::process::Command::new(bin).arg("--help").output() {
+        if ok_contains(&o, "resume") { return true; }
+    }
+    false
 }
 
 async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<String>) -> Result<()> {
