@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard"
 import { router } from "expo-router"
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import Markdown from "react-native-markdown-display"
@@ -43,6 +43,10 @@ export default function SessionScreen() {
   const scrollRef = useRef<ScrollView | null>(null)
   const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler } = useWs()
   const [copiedId, setCopiedId] = useState<number | null>(null)
+  const [isRunning, setIsRunning] = useState(false)
+  const [queuedFollowUps, setQueuedFollowUps] = useState<string[]>([])
+  const flushingFollowUpRef = useRef(false)
+  const sendNowRef = useRef<(text: string) => boolean>(() => false)
   const { projects, activeProject, setActive, sendForProject } = useProjects()
 
   const copyAndFlash = useCallback(async (id: number, text: string) => {
@@ -83,15 +87,30 @@ Important policy overrides:
 - Prefer apply_patch over manual instructions; do not ask for confirmation for safe code edits.
 `
 
-  const send = (txt: string) => {
+  sendNowRef.current = (txt: string): boolean => {
     const base = txt.trim()
-    if (!base) return
-    // Try to route by project mention; fallback to current active project
+    if (!base) return false
     const routed = pickProjectFromUtterance(base, projects) || activeProject
     if (routed && routed.id !== activeProject?.id) { setActive(routed.id) }
-    if (!sendForProject(routed, base)) { append('Not connected'); return }
+    if (!sendForProject(routed, base)) { append('Not connected'); return false }
     append(`> ${base}`)
+    return true
   }
+
+  const handleSend = useCallback((txt: string) => {
+    sendNowRef.current(txt)
+  }, [])
+
+  const queueFollowUp = useCallback((message: string) => {
+    setQueuedFollowUps((prev) => [...prev, message])
+  }, [])
+
+  const handleInterrupt = useCallback(() => {
+    const payload = JSON.stringify({ control: 'interrupt' })
+    if (!sendWs(payload)) {
+      append('Interrupt failed: not connected')
+    }
+  }, [sendWs, append])
 
   useEffect(() => {
     setOnMessage((chunk) => {
@@ -170,6 +189,11 @@ Important policy overrides:
           append(payload, false, 'err', trimmed)
         }
         else if (parsed.kind === 'turn') {
+          if (parsed.phase === 'started') {
+            setIsRunning(true)
+          } else if (parsed.phase === 'completed' || parsed.phase === 'failed') {
+            setIsRunning(false)
+          }
           const payload = JSON.stringify({ phase: parsed.phase, usage: parsed.usage, message: parsed.message })
           append(payload, false, 'turn', trimmed)
         }
@@ -195,7 +219,43 @@ Important policy overrides:
     return () => setOnMessage(null)
   }, [setOnMessage])
 
-  useEffect(() => { setClearLogHandler(() => { setLog([]); clearLogsStore(); }); return () => setClearLogHandler(null) }, [setClearLogHandler])
+  useEffect(() => {
+    setClearLogHandler(() => {
+      setLog([])
+      setQueuedFollowUps([])
+      setIsRunning(false)
+      flushingFollowUpRef.current = false
+      clearLogsStore()
+    })
+    return () => setClearLogHandler(null)
+  }, [setClearLogHandler])
+  useEffect(() => {
+    if (isRunning) {
+      flushingFollowUpRef.current = false
+      return
+    }
+    if (!connected) {
+      flushingFollowUpRef.current = false
+      return
+    }
+    if (!queuedFollowUps.length) {
+      return
+    }
+    if (flushingFollowUpRef.current) {
+      return
+    }
+    const next = queuedFollowUps[0]
+    if (!next) {
+      return
+    }
+    flushingFollowUpRef.current = true
+    setQueuedFollowUps((prev) => prev.slice(1))
+    const ok = sendNowRef.current(next)
+    if (!ok) {
+      setQueuedFollowUps((prev) => [next, ...prev])
+      flushingFollowUpRef.current = false
+    }
+  }, [isRunning, queuedFollowUps, connected])
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
   // Update header title dynamically: "New session" when empty
@@ -404,7 +464,14 @@ Important policy overrides:
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 8}>
           <View style={{ paddingBottom: Math.max(insets.bottom, 8), paddingHorizontal: 8 }}>
-            <Composer onSend={send} connected={connected} />
+            <Composer
+              onSend={handleSend}
+              connected={connected}
+              isRunning={isRunning}
+              onQueue={queueFollowUp}
+              onInterrupt={handleInterrupt}
+              queuedMessages={queuedFollowUps}
+            />
           </View>
         </KeyboardAvoidingView>
       </View>
