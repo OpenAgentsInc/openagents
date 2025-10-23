@@ -15,16 +15,16 @@ import { useAutoUpdate } from '@/hooks/use-auto-update';
 import { AppHeader } from '@/components/app-header'
 import { DrawerProvider, useDrawer } from '@/providers/drawer';
 import * as Haptics from 'expo-haptics';
-import { useSessions } from '@/lib/sessions-store';
+import { useThreads } from '@/lib/threads-store';
 
 function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
   const { wsUrl } = useWs();
-  const history = useSessions((s) => s.history);
-  const loading = useSessions((s) => s.loadingHistory);
-  const loadHistory = useSessions((s) => s.loadHistory);
+  const history = useThreads((s) => s.history);
+  const loading = useThreads((s) => s.loadingHistory);
+  const loadHistory = useThreads((s) => s.loadHistory);
   React.useEffect(() => { loadHistory(wsUrl).catch(() => {}); }, [loadHistory, wsUrl]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
@@ -44,7 +44,7 @@ function DrawerContent() {
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See projects…</Text>
             </Pressable>
             {projects.slice(0, 5).map((p) => (
-              <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/session'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/thread'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
                 <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
             ))}
@@ -55,7 +55,7 @@ function DrawerContent() {
             ) : history.length === 0 ? (
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
             ) : history.slice(0, 5).map((h) => (
-              <Pressable key={h.id} onPress={closeAnd(() => router.push(`/session/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Pressable key={h.id} onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
                 <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{h.title || '(no title)'}</Text>
                 <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(h.mtime * 1000).toLocaleString()}</Text>
               </Pressable>
@@ -120,7 +120,7 @@ function DrawerWrapper() {
       // Force the next send to start a fresh session (no resume)
       try { setResumeNextId('new') } catch {}
       clearLog();
-      router.push('/session');
+      router.push('/thread');
     };
     return (
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
@@ -158,8 +158,8 @@ function DrawerWrapper() {
         >
           {/* Removed tabs; declare screens individually */}
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="session/index" options={{ headerShown: false }} />
-          <Stack.Screen name="session/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="thread/index" options={{ headerShown: false }} />
+          <Stack.Screen name="thread/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="projects/index" />
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="project/new" />

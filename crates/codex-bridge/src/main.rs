@@ -83,6 +83,7 @@ async fn main() -> Result<()> {
         .route("/ws", get(ws_handler))
         .route("/history", get(history::history_handler))
         .route("/session", get(history::session_handler))
+        .route("/thread", get(history::thread_handler))
         .with_state(state);
 
     info!("binding" = %opts.bind, "msg" = "codex-bridge listening (routes: /ws, /history, /session)");
