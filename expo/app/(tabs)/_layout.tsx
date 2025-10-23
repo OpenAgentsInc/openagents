@@ -65,16 +65,30 @@ export default function TabLayout() {
     );
   };
 
+  const titleForRoute = (name: string | undefined) => {
+    switch (name) {
+      case 'dashboard': return 'Dashboard';
+      case 'projects': return 'Projects';
+      case 'session': return 'Session';
+      case 'history': return 'History';
+      case 'library': return 'Component Library';
+      case 'settings': return 'Settings';
+      default: return name ? name.charAt(0).toUpperCase() + name.slice(1) : '';
+    }
+  };
+
   return (
     <Stack
       initialRouteName="session"
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: true,
         animation: 'none',
         headerTitleStyle: { fontFamily: Typography.bold },
         headerStyle: { backgroundColor: Colors.background },
         headerTitleAlign: 'left',
-        headerTitle: ({ children }) => <TitleWithMenu title={String(children ?? '')} />,
+        headerTitle: () => null, // we render title inside headerLeft to keep it flush-left
+        headerLeftContainerStyle: { marginLeft: 0, paddingLeft: 0 },
+        headerLeft: () => <TitleWithMenu title={titleForRoute(route.name)} />,
         headerBackground: () => (
           <View style={{ flex: 1, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border }} />
         ),
@@ -86,19 +100,14 @@ export default function TabLayout() {
             <ConnectionDot />
           </View>
         ),
-      }}
+      })}
     >
       <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
       <Stack.Screen name="projects" options={{ title: 'Projects' }} />
-      <Stack.Screen
-        name="session"
-        options={{
-          title: 'Session',
-        }}
-      />
-      <Stack.Screen name="history" options={{ title: 'History' }} />
-      <Stack.Screen name="library" options={{ title: 'Component Library' }} />
-      <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+      <Stack.Screen name="session" />
+      <Stack.Screen name="history" />
+      <Stack.Screen name="library" />
+      <Stack.Screen name="settings" />
     </Stack>
   );
 }
