@@ -8,8 +8,9 @@ export function TurnEventRow({ phase, usage, message, showUsage = false, duratio
   const color = phase === 'failed' ? Colors.danger : isCompleted ? Colors.tertiary : Colors.secondary
   const titleBase = phase === 'started' ? 'Turn started' : isCompleted ? 'Turn completed' : 'Turn failed'
   const duration = typeof durationMs === 'number' ? ` (${(durationMs/1000).toFixed(1)}s)` : ''
+  const padV = isCompleted ? 4 : 2
   return (
-    <View style={{ paddingVertical: 2 }}>
+    <View style={{ paddingVertical: padV }}>
       <Text style={{ color, fontFamily: Typography.primary, fontSize: 12, textAlign: isCompleted ? 'center' : 'left' }}>{titleBase}{duration}</Text>
       {phase === 'completed' && usage && showUsage ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
