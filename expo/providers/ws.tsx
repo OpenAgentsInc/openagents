@@ -6,8 +6,10 @@ type MsgHandler = ((text: string) => void) | null;
 type Approvals = 'never' | 'on-request' | 'on-failure';
 
 type WsContextValue = {
-  wsUrl: string;
-  setWsUrl: (v: string) => void;
+  bridgeHost: string; // e.g., "localhost:8787" or "100.x.x.x:8787"
+  setBridgeHost: (v: string) => void;
+  wsUrl: string;   // derived: ws://<bridgeHost>/ws
+  httpBase: string; // derived: http://<bridgeHost>
   connected: boolean;
   connect: () => void;
   disconnect: () => void;
@@ -33,7 +35,7 @@ type WsContextValue = {
 const WsContext = createContext<WsContextValue | undefined>(undefined);
 
 export function WsProvider({ children }: { children: React.ReactNode }) {
-  const [wsUrl, setWsUrl] = useState('ws://localhost:8787/ws');
+  const [bridgeHost, setBridgeHost] = useState('localhost:8787');
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<MsgHandler>(null);
@@ -62,7 +64,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   const connect = useCallback(() => {
     try { wsRef.current?.close(); } catch {}
     try {
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(`ws://${bridgeHost}/ws`);
       wsRef.current = ws;
       ws.onopen = () => {
         setConnected(true);
@@ -89,7 +91,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
     } catch (e: any) {
       // Suppress connection error logs in the feed.
     }
-  }, [wsUrl]);
+  }, [bridgeHost]);
 
   useEffect(() => {
     (async () => {
@@ -97,7 +99,11 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
         const raw = await AsyncStorage.getItem(SETTINGS_KEY);
         if (raw) {
           const s = JSON.parse(raw);
-          if (typeof s.wsUrl === 'string') setWsUrl(s.wsUrl);
+          if (typeof s.bridgeHost === 'string') setBridgeHost(s.bridgeHost);
+          // Back-compat: migrate old wsUrl -> bridgeHost
+          if (!s.bridgeHost && typeof s.wsUrl === 'string') {
+            try { const u = new URL(s.wsUrl); if (u.host) setBridgeHost(u.host); } catch {}
+          }
           if (typeof s.readOnly === 'boolean') setReadOnly(s.readOnly);
           if (typeof s.networkEnabled === 'boolean') setNetworkEnabled(s.networkEnabled);
           if (s.approvals === 'never' || s.approvals === 'on-request' || s.approvals === 'on-failure') setApprovals(s.approvals);
@@ -111,9 +117,9 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydratedRef.current) return;
-    const payload = JSON.stringify({ wsUrl, readOnly, networkEnabled, approvals, attachPreface });
+    const payload = JSON.stringify({ bridgeHost, readOnly, networkEnabled, approvals, attachPreface });
     AsyncStorage.setItem(SETTINGS_KEY, payload).catch(() => {});
-  }, [wsUrl, readOnly, networkEnabled, approvals, attachPreface]);
+  }, [bridgeHost, readOnly, networkEnabled, approvals, attachPreface]);
 
   // Try a single auto-connect after hydration using the saved URL.
   useEffect(() => {
@@ -124,7 +130,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
     // Best-effort: ignore errors; UI still has manual Connect.
     connect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, wsUrl]);
+  }, [hydrated, bridgeHost]);
 
   // Auto-reconnect loop: every 3s when disconnected, try to connect.
   useEffect(() => {
@@ -139,7 +145,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     }, 3000);
     return () => clearInterval(interval);
-  }, [connected, connect, hydrated, wsUrl]);
+  }, [connected, connect, hydrated, bridgeHost]);
 
   useEffect(() => () => { try { wsRef.current?.close(); } catch {} }, []);
 
@@ -175,8 +181,10 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      wsUrl,
-      setWsUrl,
+      bridgeHost,
+      setBridgeHost,
+      wsUrl: `ws://${bridgeHost}/ws`,
+      httpBase: `http://${bridgeHost}`,
       connected,
       connect,
       disconnect,
@@ -195,7 +203,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       resumeNextId,
       setResumeNextId,
     }),
-    [wsUrl, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
+    [bridgeHost, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
   );
 
   return <WsContext.Provider value={value}>{children}</WsContext.Provider>;

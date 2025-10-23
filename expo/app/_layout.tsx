@@ -21,11 +21,11 @@ function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
-  const { wsUrl } = useWs();
+  const { httpBase } = useWs();
   const history = useThreads((s) => s.history);
   const loading = useThreads((s) => s.loadingHistory);
   const loadHistory = useThreads((s) => s.loadHistory);
-  React.useEffect(() => { loadHistory(wsUrl).catch(() => {}); }, [loadHistory, wsUrl]);
+  React.useEffect(() => { loadHistory(httpBase).catch(() => {}); }, [loadHistory, httpBase]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.black }}>
