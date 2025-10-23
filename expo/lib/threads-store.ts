@@ -52,12 +52,17 @@ export const useThreads = create<ThreadsState>((set, get) => ({
           if (Array.isArray(cached?.items)) set({ history: cached.items })
         }
       } catch {}
-      const res = await fetch(`${base}/history`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      const items = Array.isArray(json.items) ? (json.items as HistoryItem[]) : []
-      set({ history: items, historyLoadedAt: Date.now() })
-      try { await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify({ items })) } catch {}
+      try {
+        const url = `${base}/history`
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const json = await res.json()
+        const items = Array.isArray(json.items) ? (json.items as HistoryItem[]) : []
+        set({ history: items, historyLoadedAt: Date.now() })
+        try { await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify({ items })) } catch {}
+      } catch (e) {
+        try { console.warn('[threads] history fetch failed', { base, error: String((e as any)?.message ?? e) }) } catch {}
+      }
     } finally {
       set({ loadingHistory: false })
     }

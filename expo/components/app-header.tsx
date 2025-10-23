@@ -1,15 +1,15 @@
-import React from 'react'
-import { View, Text, Pressable } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
-import { Colors } from '@/constants/theme'
-import { Typography } from '@/constants/typography'
-import { useHeaderStore } from '@/lib/header-store'
-import { clearLogs as clearLogsStore } from '@/lib/log-store'
-import { useDrawer } from '@/providers/drawer'
-import { useBridge } from '@/providers/ws'
-import * as Haptics from 'expo-haptics'
-import { router, usePathname } from 'expo-router'
+import * as Haptics from "expo-haptics"
+import { router, usePathname } from "expo-router"
+import React from "react"
+import { Pressable, Text, View } from "react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { Colors } from "@/constants/theme"
+import { Typography } from "@/constants/typography"
+import { useHeaderStore } from "@/lib/header-store"
+import { clearLogs as clearLogsStore } from "@/lib/log-store"
+import { useDrawer } from "@/providers/drawer"
+import { useBridge } from "@/providers/ws"
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
 
 export function AppHeader() {
   const insets = useSafeAreaInsets()
@@ -49,7 +49,7 @@ export function AppHeader() {
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
             <View
               pointerEvents="none"
-              style={{ position: 'absolute', right: 2, top: 2, width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
+              style={{ position: 'absolute', right: 4, top: 2, width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
             />
           </Pressable>
           <View style={{ marginLeft: 6 }}>
