@@ -107,7 +107,7 @@ function DrawerWrapper() {
     const { connected } = useWs();
     return (
       <View style={{ marginLeft: 10 }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: connected ? Colors.success : Colors.danger }} />
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger }} />
       </View>
     );
   };

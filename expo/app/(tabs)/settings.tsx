@@ -31,7 +31,7 @@ export default function SettingsScreen() {
         autoCapitalize="none"
         autoCorrect={false}
         placeholder="ws://localhost:8787/ws"
-        placeholderTextColor={Colors.textSecondary}
+        placeholderTextColor={Colors.secondary}
         style={styles.input}
       />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
