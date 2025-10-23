@@ -4,9 +4,9 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { appLog } from '@/lib/app-log'
 import { useBridge } from '@/providers/ws'
 
-export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean }
 export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
-export type ThreadResponse = { title: string; items: ThreadItem[]; instructions?: string; resume_id?: string }
+export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean; tail?: ThreadItem[] }
+export type ThreadResponse = { title: string; items: ThreadItem[]; instructions?: string; resume_id?: string; partial?: boolean }
 
 type ThreadsState = {
   history: HistoryItem[]
@@ -19,6 +19,7 @@ type ThreadsState = {
   // Ephemeral mapping of live thread_id (UUID) -> projectId set when a thread starts
   threadProject: Record<string, string | undefined>
   setThreadProject: (threadId: string, projectId: string) => void
+  primeThread: (id: string, preview: ThreadResponse) => void
   loadHistory: (requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<HistoryItem[]>) => Promise<void>
   loadThread: (requestThread: (id: string, path?: string) => Promise<ThreadResponse | undefined>, id: string, path?: string) => Promise<ThreadResponse | undefined>
 }
@@ -38,7 +39,10 @@ export const useThreads = create<ThreadsState>()(
         const cur = get().threadProject
         set({ threadProject: { ...cur, [threadId]: projectId } })
       },
-  loadHistory: async (requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<HistoryItem[]>) => {
+      primeThread: (id: string, preview: ThreadResponse) => {
+        set({ thread: { ...get().thread, [id]: { ...preview, partial: true } } })
+      },
+      loadHistory: async (requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<HistoryItem[]>) => {
     set({ loadingHistory: true })
     try {
           const state = get()
@@ -71,7 +75,8 @@ export const useThreads = create<ThreadsState>()(
       loadThread: async (requestThread: (id: string, path?: string) => Promise<ThreadResponse | undefined>, id: string, path?: string) => {
         const key = id
         const cur = get().thread[key]
-        if (cur) return cur
+        // Fetch if missing or if we only have a partial preview
+        if (cur && !cur.partial) return cur
         set({ loadingThread: { ...get().loadingThread, [key]: true } })
         try {
           appLog('thread.fetch.start', { via: 'ws', id, path })
