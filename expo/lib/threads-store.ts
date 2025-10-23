@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
 
-export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string }
+export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean }
 export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
-export type ThreadResponse = { title: string; items: ThreadItem[] }
+export type ThreadResponse = { title: string; items: ThreadItem[]; instructions?: string }
 
 type ThreadsState = {
   history: HistoryItem[]
@@ -75,4 +75,3 @@ export const useThreads = create<ThreadsState>((set, get) => ({
     }
   },
 }))
-
