@@ -40,72 +40,72 @@ export default function ComponentLibraryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 14 }}>
-      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
         Basic renderers for Exec JSONL ThreadItem variants. We will expand this list and reuse these in the session feed.
       </Text>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>agent_message</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>agent_message</Text>
         <AgentMessageCard item={samples.agent_message} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>reasoning (headline preview)</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>reasoning (headline preview)</Text>
         <ReasoningHeadline text={samples.reasoning.text} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>reasoning (full)</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>reasoning (full)</Text>
         <ReasoningCard item={samples.reasoning} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>exec_command_begin</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>exec_command_begin</Text>
         <ExecBeginRow payload={samples.exec_begin} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>file_change</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>file_change</Text>
         <FileChangeCard changes={samples.file_change.changes} status={samples.file_change.status} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>web_search</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>web_search</Text>
         <WebSearchRow query={samples.web_search.query} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>mcp_tool_call</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>mcp_tool_call</Text>
         <McpToolCallRow server={samples.mcp_call.server} tool={samples.mcp_call.tool} status={samples.mcp_call.status} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>todo_list</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>todo_list</Text>
         <TodoListCard items={samples.todo_list.items} status={samples.todo_list.status} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>command_execution</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>command_execution</Text>
         <CommandExecutionCard command={samples.cmd_item.command} status={samples.cmd_item.status} exitCode={samples.cmd_item.exit_code} sample={samples.cmd_item.sample} outputLen={samples.cmd_item.output_len} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>error</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>error</Text>
         <ErrorRow message={samples.err.message} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>turn.completed</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>turn.completed</Text>
         <TurnEventRow phase={samples.turn_complete.phase} usage={samples.turn_complete.usage} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>thread.started</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>thread.started</Text>
         <ThreadStartedRow threadId={samples.thread_started.thread_id} />
       </View>
 
       <View style={{ gap: 8 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>item.lifecycle (fallback)</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>item.lifecycle (fallback)</Text>
         <ItemLifecycleRow phase={samples.item_lifecycle_started.phase} id={samples.item_lifecycle_started.id} itemType={samples.item_lifecycle_started.item_type} status={samples.item_lifecycle_started.status} />
       </View>
     </ScrollView>

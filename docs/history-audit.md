@@ -30,3 +30,97 @@
 - Drawer now subscribes to the log store so new prompts appear instantly (`expo/app/_layout.tsx`).
 - History tab and message detail views wait for hydration before rendering empty states, preventing the “No history yet” flicker on first load.
 - Log persistence is throttled via a 150ms debounce and survives concurrent loads with a shared hydration flag (`expo/lib/log-store.ts`).
+
+---
+
+## Historical Codex Chats: What Prior Apps Did vs. Now
+
+This section documents how earlier apps loaded Codex history and what changes are needed to support true historical chats here.
+
+### Prior Implementations (external references)
+
+- Tricoder (RN/Expo app):
+  - Server-driven history. The mobile app called a local daemon to list and view sessions.
+  - Code (for reference on your machine): `~/code/tricoder/lib/store.ts` implements `loadHistory()` to GET `http://<host>/history?limit=…&since=…`, caches in AsyncStorage, and opens `app/session/[id].tsx` which fetches `GET /session?id=<id>`.
+  - Tapping a history row navigates to a dedicated session view and can resume that session.
+
+- v7 (Rust + iOS renderer):
+  - Daemon `codexd` exposes `/history`, `/session`, and `/message` (resume) using Axum.
+  - `/history` scans `~/.codex/sessions/**/rollout-*.jsonl`, sorts by mtime, and returns `{ id, path, mtime, title, snippet }`.
+  - `/session` parses one JSONL file into `{ title, items: [{ ts, kind, role?, text }] }` for the UI to render.
+  - `/message` resumes an existing session id and forwards events to connected clients.
+
+### Current Project (this repo)
+
+- No server-side history. The app only persists the current live feed to `AsyncStorage` via `expo/lib/log-store.ts`.
+- “History” and the Drawer show entries from that local store; there are no session boundaries and no access to Codex’s on-disk rollouts.
+- The Rust bridge (`crates/codex-bridge`) only serves a WebSocket at `/ws`; it has no `/history` or `/session` routes.
+
+### Gap Analysis
+
+- Missing discovery of Codex rollouts on disk (e.g., `~/.codex/sessions`).
+- No HTTP endpoints to list sessions, fetch a historical transcript, or resume by id.
+- UI uses a flat log of one run; there is no session catalog.
+
+---
+
+## Path Forward: Enable Real Historical Chats
+
+There are two viable approaches; both converge on the same client API.
+
+### Option A — Extend the existing bridge
+
+Add endpoints to `crates/codex-bridge` (already Axum-based):
+
+- `GET /history?limit=&since=`
+  - Scan a base dir (default `$HOME/.codex/sessions`; override with `CODEXD_HISTORY_DIR`).
+  - Return newest-first array of `{ id, path, mtime, title, snippet }`.
+  - Title can be derived from the first bold segment or first N words; snippet is the last assistant message.
+
+- `GET /session?id=&path=`
+  - Resolve to a JSONL file (exact filename or absolute `path`).
+  - Parse and normalize to UI-friendly items: `{ ts, kind: 'message'|'reason'|'cmd'|'pending', role?, text }` (drop noisy `exec_command_output_delta`).
+
+- `POST /message` (or `GET /message` query) — optional
+  - Resume an existing session id (reusing the bridge’s existing `exec resume` flow) and stream new output over `/ws`.
+
+Server impl notes:
+
+- Port the scanning/handlers from v7 `crates/codexd/src/main.rs` into a new `history.rs` module under the bridge.
+- Keep scan bounds conservative (depth, extension, item cap) and support an auth token if exposing beyond localhost.
+
+### Option B — Ship a separate `codexd` next to the bridge
+
+- Keep `codex-bridge` focused on streaming; run a second process for history endpoints.
+- Pros: code reuse is simplest. Cons: two ports to manage in the app.
+
+Recommendation: Option A for a single-port developer experience.
+
+---
+
+## Client Changes (Expo)
+
+- Introduce a sessions store distinct from the live feed:
+  - Add `expo/lib/sessions-store.ts` that fetches `/history` and caches results.
+  - Update the History tab to display sessions from `/history` (newest first). Tapping a row opens a new `app/session/[id].tsx` which loads `/session?id=…`.
+  - Keep `expo/lib/log-store.ts` for the current run only; do not mix with historical transcripts.
+  - Optional: a “Continue chat” button on the session view that sets the next send’s preface `{ "resume": "<id>" }` so the bridge resumes that session.
+
+---
+
+## Minimal Implementation Plan
+
+1. Bridge: add `/history` and `/session` routes to `crates/codex-bridge` (port from v7 `codexd`).
+2. App: create `sessions-store.ts`; wire the History tab and a new `session/[id].tsx` to those endpoints.
+3. Resume: plumb a “Continue chat” path (preface or explicit action) that the bridge already understands.
+4. Test with large rollouts and ensure we ignore `exec_command_output_delta` lines.
+
+Follow-ups:
+- Add a small in-bridge index cache (last scan time + memoized results).
+- Optional `/search` endpoint for titles/snippets.
+
+---
+
+## Summary
+
+Today’s app only shows a locally persisted, single-session feed. Tricoder/v7 loaded true Codex history by scanning `~/.codex/sessions` and serving it over HTTP. We can replicate that by adding `/history` and `/session` to the Axum bridge and updating the History tab to query them. This yields immediate historical chat browsing with a clean path to “resume from history”.

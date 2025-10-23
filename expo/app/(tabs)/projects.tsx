@@ -14,8 +14,8 @@ export default function ProjectsList() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 14 }}>
-      <Pressable onPress={() => router.push('/project/new')} style={{ alignSelf: 'flex-end', backgroundColor: Colors.buttonBg, paddingHorizontal: 12, paddingVertical: 8 }}>
-        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>New</Text>
+      <Pressable onPress={() => router.push('/project/new')} style={{ alignSelf: 'flex-end', backgroundColor: Colors.quaternary, paddingHorizontal: 12, paddingVertical: 8 }}>
+        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>New</Text>
       </Pressable>
 
       <View style={{ gap: 10 }}>
@@ -30,8 +30,8 @@ export default function ProjectsList() {
           />
         ))}
         {projects.length === 0 && (
-          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>No projects yet.</Text>
-        )}
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No projects yet.</Text>
+      )}
       </View>
     </ScrollView>
   );
