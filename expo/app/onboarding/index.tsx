@@ -35,14 +35,11 @@ export default function Onboarding() {
       </Text>
       <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, marginTop: 6, marginBottom: 6 }}>Quick Start</Text>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, marginBottom: 16 }}>
-        1) Start the bridge on your desktop: <Text style={{ fontFamily: Typography.bold, color: Colors.foreground }}>cargo run -p codex-bridge -- --bind 0.0.0.0:8787</Text>{'\n'}
+        1) Start the bridge on your desktop: <Text style={{ fontFamily: Typography.bold, color: Colors.foreground }}>cargo bridge</Text>{'\n'}
         2) In the app, open Settings and set Bridge Host (e.g., <Text style={{ fontFamily: Typography.bold, color: Colors.foreground }}>localhost:8787</Text> or <Text style={{ fontFamily: Typography.bold, color: Colors.foreground }}>100.x.x.x:8787</Text>).{'\n'}
         3) Start a New Thread.
       </Text>
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-        <Pressable onPress={skip} style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>Skip</Text>
-        </Pressable>
         <Pressable onPress={finish} style={{ backgroundColor: Colors.quaternary, paddingHorizontal: 16, paddingVertical: 12 }}>
           <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Get Started</Text>
         </Pressable>

@@ -1,0 +1,6 @@
+[alias]
+# Run the WebSocket bridge with sensible defaults
+bridge = "run -p codex-bridge -- --bind 0.0.0.0:8787"
+# Optional dash-style for discoverability
+run-bridge = "run -p codex-bridge -- --bind 0.0.0.0:8787"
+
