@@ -9,6 +9,7 @@ use std::{
     time::SystemTime,
 };
 use std::result::Result as StdResult;
+use tracing::{info, warn};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct HistoryItem {
@@ -50,9 +51,11 @@ pub async fn history_handler(Query(_q): Query<HistoryQuery>) -> impl IntoRespons
     let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
         std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
     });
+    info!(base=%base, limit=5, msg="/history request");
     let items = match scan_history(Path::new(&base), 5) {
         StdResult::Ok(v) => v,
         StdResult::Err(e) => {
+            warn!(?e, base=%base, msg="history scan failed");
             return (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 format!("history scan failed: {e:?}"),
@@ -60,6 +63,7 @@ pub async fn history_handler(Query(_q): Query<HistoryQuery>) -> impl IntoRespons
                 .into_response()
         }
     };
+    info!(returned=items.len(), base=%base, msg="/history response");
     Json(serde_json::json!({"items": items})).into_response()
 }
 
@@ -69,10 +73,17 @@ pub async fn session_handler(Query(q): Query<SessionQuery>) -> impl IntoResponse
     });
     let target = match resolve_session_path(Path::new(&base), q.id.as_deref(), q.path.as_deref()) {
         Some(p) => p,
-        None => return (axum::http::StatusCode::NOT_FOUND, "not found").into_response(),
+        None => {
+            warn!(base=%base, id=?q.id, path=?q.path, msg="/session not found");
+            return (axum::http::StatusCode::NOT_FOUND, "not found").into_response()
+        },
     };
+    info!(base=%base, id=?q.id, path=%target, msg="/session request");
     match parse_session(Path::new(&target)) {
-        StdResult::Ok(resp) => Json(resp).into_response(),
+        StdResult::Ok(resp) => {
+            info!(items=resp.items.len(), title=%resp.title, id=?q.id, msg="/session parsed");
+            Json(resp).into_response()
+        }
         StdResult::Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             format!("session parse failed: {e:?}"),
@@ -84,13 +95,20 @@ pub async fn session_handler(Query(q): Query<SessionQuery>) -> impl IntoResponse
 pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
     let mut items: Vec<HistoryItem> = vec![];
     let mut stack = vec![base.to_path_buf()];
+    let mut scanned_dirs: usize = 0;
+    let mut scanned_files: usize = 0;
+    let mut scanned_jsonl: usize = 0;
+    let mut skipped_old: usize = 0;
     while let Some(dir) = stack.pop() {
+        scanned_dirs += 1;
         if let StdResult::Ok(rd) = fs::read_dir(&dir) {
             for ent in rd.flatten() {
                 let p = ent.path();
+                scanned_files += 1;
                 if p.is_dir() { stack.push(p); continue; }
                 if p.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; }
-                if !file_is_new_format(&p) { continue; }
+                scanned_jsonl += 1;
+                if !file_is_new_format(&p) { skipped_old += 1; continue; }
                 let md = match ent.metadata() { StdResult::Ok(m) => m, StdResult::Err(_) => continue };
                 let mtime = md
                     .modified()
@@ -106,6 +124,16 @@ pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
     }
     items.sort_by(|a, b| b.mtime.cmp(&a.mtime));
     items.truncate(limit);
+    info!(
+        base=%base.display(),
+        scanned_dirs,
+        scanned_files,
+        scanned_jsonl,
+        skipped_old,
+        returned=items.len(),
+        limit,
+        msg="history scan summary"
+    );
     Ok(items)
 }
 
@@ -272,4 +300,3 @@ mod tests {
         assert!(sess.items.iter().any(|i| i.kind == "message" && i.role.as_deref() == Some("assistant")));
     }
 }
-
