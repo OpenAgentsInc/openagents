@@ -9,11 +9,11 @@ export function MarkdownBlock({ markdown }: { markdown: string }) {
     fence: (node: any) => {
       const lang = typeof node?.params === 'string' ? node.params : (typeof node?.info === 'string' ? node.info : undefined)
       const code = String(node?.content ?? '')
-      return <CodeBlock code={code} language={lang} />
+      return <CodeBlock key={String(node?.key ?? `fence-${code.slice(0,16)}`)} code={code} language={lang} />
     },
     code_block: (node: any) => {
       const code = String(node?.content ?? '')
-      return <CodeBlock code={code} />
+      return <CodeBlock key={String(node?.key ?? `code-${code.slice(0,16)}`)} code={code} />
     },
   }
   return (
