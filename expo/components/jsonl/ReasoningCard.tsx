@@ -17,8 +17,12 @@ export function ReasoningCard({ item }: { item: ReasoningItem }) {
           fence: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 0 },
         }}
         rules={{
-          fence: (node: any) => <CodeBlock code={String(node?.content ?? '')} language={String((node?.params ?? node?.info) || '')} />,
-          code_block: (node: any) => <CodeBlock code={String(node?.content ?? '')} />,
+          fence: (node: any) => (
+            <CodeBlock key={String(node?.key ?? `fence-${String(node?.content ?? '').slice(0,16)}`)} code={String(node?.content ?? '')} language={String((node?.params ?? node?.info) || '')} />
+          ),
+          code_block: (node: any) => (
+            <CodeBlock key={String(node?.key ?? `code-${String(node?.content ?? '').slice(0,16)}`)} code={String(node?.content ?? '')} />
+          ),
         }}
       >
         {item.text}
