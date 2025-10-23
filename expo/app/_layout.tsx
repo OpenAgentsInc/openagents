@@ -65,7 +65,7 @@ function DrawerContent() {
           ) : userMsgs.map((m) => {
             const clean = String(m.text).replace(/^\s*>\s?/, '');
             return (
-              <Pressable key={m.id} onPress={closeAnd(() => router.push(`/message/${m.detailId ?? m.id}`))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Pressable key={m.id} onPress={closeAnd(() => router.push('/(tabs)/session'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
                 <Text numberOfLines={1} style={{ color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 16 }}>{clean}</Text>
               </Pressable>
             );

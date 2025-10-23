@@ -23,7 +23,7 @@ export default function HistoryScreen() {
         keyExtractor={(it) => String(it.id)}
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         renderItem={({ item }) => (
-          <Pressable onPress={() => router.push(`/message/${(item as any).detailId ?? item.id}`)} style={{ borderWidth: 1, borderColor: Colors.border, padding: 8 }}>
+          <Pressable onPress={() => router.push('/(tabs)/session')} style={{ borderWidth: 1, borderColor: Colors.border, padding: 8 }}>
             <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>#{item.id} · {item.kind}</Text>
             <Text numberOfLines={2} style={{ color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13, marginTop: 4 }}>{item.text.replace(/^::(md|reason)::/, '')}</Text>
           </Pressable>
