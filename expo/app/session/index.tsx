@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard"
 import { router, useLocalSearchParams } from "expo-router"
 import React, { useCallback, useEffect, useRef, useState } from "react"
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View, TextInput } from "react-native"
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View, TextInput, Keyboard } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import Markdown from "react-native-markdown-display"
 import { CommandExecutionCard } from "@/components/jsonl/CommandExecutionCard"
@@ -59,6 +59,7 @@ export default function SessionScreen() {
   const awaitingFirstRef = useRef(false)
   const [workingStartedAt, setWorkingStartedAt] = useState<number | null>(null)
   const [workingSeconds, setWorkingSeconds] = useState(0)
+  const [kbVisible, setKbVisible] = useState(false)
 
   const latestCmdIdByCommand = React.useMemo(() => {
     const m = new Map<string, number>()
@@ -235,6 +236,13 @@ Important policy overrides:
     })
     return () => setClearLogHandler(null)
   }, [setClearLogHandler])
+
+  // Track keyboard visibility to toggle bottom safe area padding
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKbVisible(true))
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKbVisible(false))
+    return () => { try { show.remove(); hide.remove() } catch {} }
+  }, [])
   useEffect(() => {
     if (isRunning || !connected) { flushingFollowUpRef.current = false; return }
     if (queueRef.current.length === 0) { return }
@@ -449,8 +457,8 @@ Important policy overrides:
           </ScrollView>
         </View>
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight}>
-          <View style={{ paddingBottom: Platform.OS === 'ios' ? 2 : Math.max(insets.bottom, 8), paddingHorizontal: 8 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 4}>
+          <View style={{ paddingBottom: kbVisible ? 6 : Math.max(insets.bottom, 8), paddingHorizontal: 8 }}>
             <Composer onSend={handleSend} connected={connected} isRunning={isRunning} onQueue={(m)=>{}} onInterrupt={handleInterrupt} queuedMessages={queuedFollowUps} prefill={composerPrefill} onDraftChange={handleDraftChange} inputRef={composerInputRef} />
           </View>
         </KeyboardAvoidingView>
