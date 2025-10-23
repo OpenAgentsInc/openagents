@@ -59,6 +59,8 @@ export default function SessionScreen() {
   const { projects, activeProject, setActive, sendForProject } = useProjects()
   const setThreadProject = useThreads((s) => s.setThreadProject)
   const lastSentProjectIdRef = useRef<string | null>(null)
+  const currentThreadIdRef = useRef<string | null>(null)
+  const requireThreadStartRef = useRef<boolean>(true)
   // Working-status state: shows "Working: Ns" until first visible content arrives
   const [awaitingFirst, setAwaitingFirst] = useState(false)
   const awaitingFirstRef = useRef(false)
@@ -192,6 +194,11 @@ Important policy overrides:
         if (low.includes('reading prompt from stdin') || low === 'no prompt provided via stdin.') { continue }
         if (trimmed.includes('exec_command_end')) { continue }
         const parsed = parseCodexLine(trimmed)
+        // If we are waiting for a fresh thread.started (e.g., after New Thread),
+        // ignore all incoming events until it arrives to avoid mixing threads.
+        if (requireThreadStartRef.current && parsed.kind !== 'thread') {
+          continue
+        }
         if (parsed.kind === 'delta') { continue }
         else if (parsed.kind === 'md') { if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } const raw = String(parsed.markdown ?? '').trim(); const core = raw.replace(/^\*\*|\*\*$/g, '').replace(/^`|`$/g, '').trim().toLowerCase(); const isBland = core === 'unknown' || core === 'n/a' || core === 'none' || core === 'null'; if (!isBland) append(`::md::${parsed.markdown}`, false, 'md') }
         else if (parsed.kind === 'reason') { if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } append(`::reason::${parsed.text}`, false, 'reason') }
@@ -199,6 +206,16 @@ Important policy overrides:
           try {
             const short = String(parsed.thread_id ?? '').split('-')[0] || ''
             if (short) setHeaderTitle(`Thread ${short}`)
+            // Thread boundary handling
+            const incoming = String(parsed.thread_id || '')
+            const current = currentThreadIdRef.current
+            if (current && incoming && current !== incoming) {
+              // New thread started while we had content — reset feed to avoid mixing
+              setLog([])
+              idRef.current = 1
+            }
+            currentThreadIdRef.current = incoming || null
+            requireThreadStartRef.current = false
             // Capture mapping thread_id -> projectId used for this send (if any)
             const pid = lastSentProjectIdRef.current
             if (pid && parsed.thread_id) { setThreadProject(parsed.thread_id, pid) }
@@ -259,6 +276,9 @@ Important policy overrides:
       composerDraftRef.current = ''
       setComposerPrefill(undefined)
       clearLogsStore()
+      // Ensure we don't accept stray events until the next thread starts
+      currentThreadIdRef.current = null
+      requireThreadStartRef.current = true
       try { setTimeout(() => composerInputRef.current?.focus(), 0) } catch {}
     })
     return () => setClearLogHandler(null)
