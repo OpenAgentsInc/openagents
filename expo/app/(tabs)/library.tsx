@@ -15,8 +15,10 @@ import { ErrorRow } from '@/components/jsonl/ErrorRow'
 import { TurnEventRow } from '@/components/jsonl/TurnEventRow'
 import { ThreadStartedRow } from '@/components/jsonl/ThreadStartedRow'
 import { ItemLifecycleRow } from '@/components/jsonl/ItemLifecycleRow'
+import { useHeaderTitle } from '@/lib/header-store'
 
 export default function ComponentLibraryScreen() {
+  useHeaderTitle('Component Library')
   const samples = {
     agent_message: { type: 'agent_message', text: 'This is a basic agent message rendered via AgentMessageCard.' } as const,
     reasoning: { type: 'reasoning', text: '**Summarizing folder structure**\n\nOnly the headline is shown inline; full trace uses a detail view.' } as const,

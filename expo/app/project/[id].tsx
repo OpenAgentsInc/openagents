@@ -4,10 +4,12 @@ import { ScrollView, Text, View, TextInput, Pressable } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 import { useProjects } from '@/providers/projects';
+import { useHeaderTitle } from '@/lib/header-store';
 
 export default function ProjectDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  useHeaderTitle('Project');
   const { projects, activeProject, setActive, sendForProject, save } = useProjects();
   const project = useMemo(() => projects.find(p => p.id === id) ?? activeProject, [projects, activeProject, id]);
 
@@ -26,7 +28,7 @@ export default function ProjectDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
-      <Stack.Screen options={{ headerBackTitle: '' }} />
+      <Stack.Screen options={{ headerShown: false }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
         <Field label="Name" value={project.name} onChange={v => save({ ...project, name: v })} />
         <Field label="Voice aliases (comma separated)" value={project.voiceAliases.join(', ')} onChange={v => save({ ...project, voiceAliases: v.split(',').map(s => s.trim()).filter(Boolean) })} />

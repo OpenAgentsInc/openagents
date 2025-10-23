@@ -4,9 +4,11 @@ import { useRouter } from 'expo-router';
 import { getAllLogs, loadLogs, subscribe } from '@/lib/log-store';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
+import { useHeaderTitle } from '@/lib/header-store';
 
 export default function HistoryScreen() {
   const router = useRouter();
+  useHeaderTitle('History');
   const items = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
   const [hydrating, setHydrating] = React.useState(true);
   useEffect(() => {
@@ -24,12 +26,12 @@ export default function HistoryScreen() {
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         renderItem={({ item }) => (
           <Pressable onPress={() => router.push('/(tabs)/session')} style={{ borderWidth: 1, borderColor: Colors.border, padding: 8 }}>
-            <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>#{item.id} · {item.kind}</Text>
-            <Text numberOfLines={2} style={{ color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13, marginTop: 4 }}>{item.text.replace(/^::(md|reason)::/, '')}</Text>
+            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>#{item.id} · {item.kind}</Text>
+            <Text numberOfLines={2} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, marginTop: 4 }}>{item.text.replace(/^::(md|reason)::/, '')}</Text>
           </Pressable>
         )}
         ListEmptyComponent={
-          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
             {hydrating ? 'Loading…' : 'No history yet.'}
           </Text>
         }

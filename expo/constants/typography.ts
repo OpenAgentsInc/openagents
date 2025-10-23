@@ -20,7 +20,7 @@ export function applyTypographyGlobals() {
   if (appliedTypographyGlobals) return;
   if ((Text as any).defaultProps == null) (Text as any).defaultProps = {};
   if ((TextInput as any).defaultProps == null) (TextInput as any).defaultProps = {};
-  const baseTextStyle = { fontFamily: Typography.primary, color: Colors.textPrimary } as const;
+  const baseTextStyle = { fontFamily: Typography.primary, color: Colors.foreground } as const;
   (Text as any).defaultProps.style = [
     (Text as any).defaultProps.style,
     baseTextStyle,

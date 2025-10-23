@@ -14,18 +14,18 @@ export function FileChangeCard({ changes, status }: { changes: ReadonlyArray<Fil
   ].filter(Boolean).join(' ')
   return (
     <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
-      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>file_change {status ? `(${status})` : ''}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>file_change {status ? `(${status})` : ''}</Text>
       {!!summary && (
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Summary: {summary}</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Summary: {summary}</Text>
       )}
       <View style={{ gap: 4 }}>
         {changes.slice(0, 8).map((c, i) => (
-          <Text key={i} selectable style={{ color: Colors.textPrimary, fontFamily: Typography.primary }}>
+          <Text key={i} selectable style={{ color: Colors.foreground, fontFamily: Typography.primary }}>
             {c.kind === 'add' ? '+' : c.kind === 'delete' ? '-' : '~'} {c.path}
           </Text>
         ))}
         {changes.length > 8 && (
-          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>… {changes.length - 8} more</Text>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>… {changes.length - 8} more</Text>
         )}
       </View>
     </View>

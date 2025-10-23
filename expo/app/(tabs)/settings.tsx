@@ -3,8 +3,10 @@ import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 import { useWs } from '@/providers/ws';
 import { useMemo } from 'react';
+import { useHeaderTitle } from '@/lib/header-store';
 
 export default function SettingsScreen() {
+  useHeaderTitle('Settings');
   const { wsUrl, setWsUrl, connected, connect, disconnect, readOnly, setReadOnly, networkEnabled, setNetworkEnabled, approvals, setApprovals, attachPreface, setAttachPreface, clearLog } = useWs();
   const seg = useMemo(() => ({
     base: {

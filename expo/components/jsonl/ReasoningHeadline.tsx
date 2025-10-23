@@ -28,12 +28,12 @@ export function ReasoningHeadline({ text }: { text: string }) {
   return (
     <Markdown
       style={{
-        body: { color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 16 },
-        paragraph: { color: Colors.textSecondary, marginTop: 0, marginBottom: 2 },
-        strong: { fontFamily: Typography.bold, color: Colors.textSecondary },
-        code_inline: { backgroundColor: Colors.codeBg, color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 },
-        code_block: { backgroundColor: Colors.codeBg, color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
-        fence: { backgroundColor: Colors.codeBg, color: Colors.textSecondary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
+        body: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 16 },
+        paragraph: { color: Colors.secondary, marginTop: 0, marginBottom: 2 },
+        strong: { fontFamily: Typography.bold, color: Colors.secondary },
+        code_inline: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 },
+        code_block: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
+        fence: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
       }}
     >
       {headline}

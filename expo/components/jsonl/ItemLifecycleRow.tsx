@@ -15,11 +15,11 @@ export function ItemLifecycleRow({
   status?: string
 }) {
   const phaseLabel = phase === 'started' ? 'started' : phase === 'completed' ? 'completed' : 'updated'
-  const tone = Colors.textSecondary
+  const tone = Colors.secondary
   return (
     <View style={{ paddingVertical: 2 }}>
       <Text style={{ color: tone, fontFamily: Typography.primary }}>
-        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{itemType}</Text>{' '}
+        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{itemType}</Text>{' '}
         {phaseLabel}
         {status ? <Text> ({status})</Text> : null}
         {id ? <Text> · {id}</Text> : null}
@@ -27,4 +27,3 @@ export function ItemLifecycleRow({
     </View>
   )
 }
-

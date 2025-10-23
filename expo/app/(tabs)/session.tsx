@@ -26,15 +26,13 @@ import { useWs } from "@/providers/ws"
 import { useProjects } from "@/providers/projects"
 import { pickProjectFromUtterance } from "@/lib/project-router"
 import { mergeProjectTodos } from "@/lib/projects-store"
-import { useHeaderHeight } from "@react-navigation/elements"
 import { Composer } from "@/components/composer"
-import { useNavigation } from "@react-navigation/native"
+import { useHeaderStore, useHeaderTitle } from "@/lib/header-store"
 import { useDrawer } from "@/providers/drawer"
 import { Ionicons } from "@expo/vector-icons"
 
 export default function SessionScreen() {
-  const navigation = useNavigation();
-  const headerHeight = useHeaderHeight()
+  const headerHeight = useHeaderStore((s) => s.height)
   const insets = useSafeAreaInsets()
   const drawer = useDrawer();
 
@@ -351,11 +349,7 @@ Important policy overrides:
 
   // Update header title dynamically: "New session" when empty
   const isNew = log.length === 0;
-  useEffect(() => {
-    navigation.setOptions({
-      headerLeft: () => <SessionHeaderLeft title={isNew ? 'New session' : 'Session'} />,
-    });
-  }, [navigation, isNew]);
+  useHeaderTitle(isNew ? 'New session' : 'Session')
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -620,19 +614,4 @@ Important policy overrides:
   )
 }
 
-function SessionHeaderLeft({ title }: { title: string }) {
-  const drawer = useDrawer();
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <Pressable
-        onPress={drawer.toggle}
-        accessibilityRole="button"
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        style={{ paddingHorizontal: 6, paddingVertical: 6 }}
-      >
-        <Ionicons name="menu" size={22} color={Colors.textPrimary} />
-      </Pressable>
-      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16, marginLeft: 6 }}>{title}</Text>
-    </View>
-  );
-}
+// Native header removed; custom header handles menu and title

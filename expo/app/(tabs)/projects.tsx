@@ -5,10 +5,12 @@ import { Typography } from '@/constants/typography';
 import { useProjects } from '@/providers/projects';
 import { ProjectCard } from '@/components/projects/ProjectCard';
 import { useRouter } from 'expo-router';
+import { useHeaderTitle } from '@/lib/header-store';
 
 export default function ProjectsList() {
   const { projects, setActive } = useProjects();
   const router = useRouter();
+  useHeaderTitle('Projects');
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 14 }}>

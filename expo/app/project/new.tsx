@@ -4,6 +4,7 @@ import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 import { useProjects } from '@/providers/projects';
 import { useRouter } from 'expo-router';
+import { useHeaderTitle } from '@/lib/header-store';
 
 function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') || `proj-${Date.now()}`;
@@ -11,6 +12,7 @@ function slugify(s: string): string {
 
 export default function NewProject() {
   const router = useRouter();
+  useHeaderTitle('New Project');
   const { projects, save, setActive } = useProjects();
   const [name, setName] = useState('');
   const [workingDir, setWorkingDir] = useState('~/code');

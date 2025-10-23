@@ -6,12 +6,11 @@ import { Typography } from '@/constants/typography'
 export function WebSearchRow({ query }: { query: string }) {
   return (
     <View style={{ paddingVertical: 2 }}>
-      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
-        WebSearch <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
+        WebSearch <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>
           {query}
         </Text>
       </Text>
     </View>
   )
 }
-

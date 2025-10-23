@@ -12,30 +12,30 @@ export function ProjectCard({ project, onPress }: { project: Project; onPress?: 
   return (
     <Pressable onPress={onPress} style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16 }}>{project.name}</Text>
+        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 16 }}>{project.name}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pill icon="construct-outline" label={`${running}`} tone={Colors.textSecondary} />
-          <Pill icon="alert-circle-outline" label={`${needs}`} tone={needs > 0 ? Colors.statusWarn : Colors.textSecondary} />
+          <Pill icon="alert-circle-outline" label={`${needs}`} tone={needs > 0 ? Colors.warning : Colors.secondary} />
         </View>
       </View>
 
       {!!project.repo?.remote && (
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, marginTop: 4 }}>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, marginTop: 4 }}>
           Repo: {project.repo.remote}{project.repo.branch ? `#${project.repo.branch}` : ''}
         </Text>
       )}
       {!!project.workingDir && (
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, marginTop: 2 }}>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, marginTop: 2 }}>
           Dir: {project.workingDir}
         </Text>
       )}
       {!!project.agentFile && (
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, marginTop: 2 }}>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, marginTop: 2 }}>
           Agent: {project.agentFile}
         </Text>
       )}
       {typeof project.lastActivity === 'number' && (
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, marginTop: 6, fontSize: 12 }}>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, marginTop: 6, fontSize: 12 }}>
           Last activity: {new Date(project.lastActivity).toLocaleString()}
         </Text>
       )}
@@ -43,7 +43,7 @@ export function ProjectCard({ project, onPress }: { project: Project; onPress?: 
   );
 }
 
-function Pill({ icon, label, tone = Colors.textSecondary }: { icon: any; label: string; tone?: string }) {
+function Pill({ icon, label, tone = Colors.secondary }: { icon: any; label: string; tone?: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 0 }}>
       <Ionicons name={icon} size={12} color={tone} />
