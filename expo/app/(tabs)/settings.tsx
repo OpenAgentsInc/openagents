@@ -15,9 +15,9 @@ export default function SettingsScreen() {
       borderColor: Colors.border,
       backgroundColor: Colors.card,
     },
-    active: { backgroundColor: '#3F3F46', borderColor: '#4B5563' },
+    active: { backgroundColor: Colors.buttonBg, borderColor: Colors.buttonActiveBorder },
     text: { color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 },
-    textActive: { color: '#fff', fontFamily: Typography.bold },
+    textActive: { color: Colors.textPrimary, fontFamily: Typography.bold },
   }), []);
   return (
     <View style={styles.container}>
@@ -110,8 +110,8 @@ const styles = StyleSheet.create({
 
 function Button({ title, onPress }: { title: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={{ backgroundColor: '#3F3F46', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}>
-      <Text style={{ color: '#fff', fontFamily: Typography.bold }}>{title}</Text>
+    <Pressable onPress={onPress} style={{ backgroundColor: Colors.buttonBg, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}>
+      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
 }
@@ -126,8 +126,8 @@ function Segmented({ title, active, onPress, seg }: { title: string; active: boo
 
 function StatusPill({ connected }: { connected: boolean }) {
   return (
-    <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 0, borderWidth: 1, borderColor: connected ? '#A3A3A3' : Colors.border, backgroundColor: connected ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)' }}>
-      <Text style={{ color: connected ? '#D4D4D8' : Colors.textSecondary, fontSize: 12, fontFamily: Typography.bold }}>
+    <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 0, borderWidth: 1, borderColor: connected ? Colors.muted : Colors.border, backgroundColor: connected ? Colors.overlayHigh : Colors.overlayLow }}>
+      <Text style={{ color: connected ? Colors.textMuted : Colors.textSecondary, fontSize: 12, fontFamily: Typography.bold }}>
         {connected ? 'Connected' : 'Disconnected'}
       </Text>
     </View>

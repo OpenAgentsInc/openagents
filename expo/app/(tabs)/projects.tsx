@@ -12,8 +12,8 @@ export default function ProjectsList() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 14 }}>
-      <Pressable onPress={() => router.push('/project/new')} style={{ alignSelf: 'flex-end', backgroundColor: '#3F3F46', paddingHorizontal: 12, paddingVertical: 8 }}>
-        <Text style={{ color: '#fff', fontFamily: Typography.bold }}>New</Text>
+      <Pressable onPress={() => router.push('/project/new')} style={{ alignSelf: 'flex-end', backgroundColor: Colors.buttonBg, paddingHorizontal: 12, paddingVertical: 8 }}>
+        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>New</Text>
       </Pressable>
 
       <View style={{ gap: 10 }}>

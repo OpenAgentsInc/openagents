@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock';
 import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard';
 import { ReasoningCard } from '@/components/jsonl/ReasoningCard';
+import { TurnEventRow } from '@/components/jsonl/TurnEventRow';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 import * as Clipboard from 'expo-clipboard';
@@ -66,6 +67,19 @@ export default function MessageDetail() {
                 <ReasoningCard item={{ type: 'reasoning', text: detail.text.startsWith('::reason::') ? detail.text.slice('::reason::'.length) : detail.text }} />
                 {copied ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 4 }}>Copied</Text> : null}
               </Pressable>
+            ) : detail.kind === 'turn' ? (
+              (() => {
+                try {
+                  const obj = JSON.parse(detail.text)
+                  return (
+                    <TurnEventRow phase={obj.phase ?? 'started'} usage={obj.usage} message={obj.message} showUsage={true} />
+                  )
+                } catch {
+                  return (
+                    <Text selectable style={{ color: Colors.textPrimary, fontFamily: Typography.primary, lineHeight: 18 }}>{detail?.text}</Text>
+                  )
+                }
+              })()
             ) : detail.kind === 'cmd' ? (
               (() => {
                 try {

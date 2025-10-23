@@ -15,7 +15,7 @@ export function ProjectCard({ project, onPress }: { project: Project; onPress?: 
         <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16 }}>{project.name}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pill icon="construct-outline" label={`${running}`} tone={Colors.textSecondary} />
-          <Pill icon="alert-circle-outline" label={`${needs}`} tone={needs > 0 ? '#F59E0B' : Colors.textSecondary} />
+          <Pill icon="alert-circle-outline" label={`${needs}`} tone={needs > 0 ? Colors.statusWarn : Colors.textSecondary} />
         </View>
       </View>
 

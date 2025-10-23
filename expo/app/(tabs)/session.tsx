@@ -20,7 +20,7 @@ import { Colors } from "@/constants/theme"
 import { Typography } from "@/constants/typography"
 import { parseCodexLine } from "@/lib/codex-events"
 import {
-    clearLogs as clearLogsStore, loadLogs, putLog, saveLogs
+    clearLogs as clearLogsStore, loadLogs, putLog, saveLogs, getLog
 } from "@/lib/log-store"
 import { useWs } from "@/providers/ws"
 import { useProjects } from "@/providers/projects"
@@ -538,10 +538,29 @@ Important policy overrides:
               if (e.kind === 'turn') {
                 try {
                   const obj = JSON.parse(e.text)
+                  let durationMs: number | undefined = undefined
+                  if (obj.phase === 'completed' || obj.phase === 'failed') {
+                    // Find the nearest preceding 'turn started' entry
+                    let startId: number | undefined = undefined
+                    for (let k = idx - 1; k >= 0; k--) {
+                      const it = arr[k]
+                      if (it.kind !== 'turn') continue
+                      try {
+                        const prev = JSON.parse(it.text)
+                        if (prev.phase === 'started') { startId = it.id; break }
+                        if (prev.phase === 'completed' || prev.phase === 'failed') { break }
+                      } catch {}
+                    }
+                    const endTs = getLog(e.id)?.ts
+                    const startTs = startId ? getLog(startId)?.ts : undefined
+                    if (typeof endTs === 'number' && typeof startTs === 'number') {
+                      durationMs = Math.max(0, endTs - startTs)
+                    }
+                  }
                   return (
                     <View key={e.id} style={{ paddingLeft: indent }}>
                       <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, e.text)}>
-                        <TurnEventRow phase={obj.phase ?? 'started'} usage={obj.usage} message={obj.message} />
+                        <TurnEventRow phase={obj.phase ?? 'started'} usage={obj.usage} message={obj.message} showUsage={false} durationMs={durationMs} />
                         {copiedId === e.id ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
                       </Pressable>
                     </View>
