@@ -72,7 +72,14 @@ export default function TabLayout() {
     >
       <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
       <Stack.Screen name="projects" options={{ title: 'Projects' }} />
-      <Stack.Screen name="session" options={{ title: 'Session' }} />
+      <Stack.Screen
+        name="session"
+        options={{
+          title: 'New session',
+          headerTitleAlign: 'left',
+          headerTitleStyle: { fontFamily: Typography.primary, fontSize: 16 },
+        }}
+      />
       <Stack.Screen name="history" options={{ title: 'History' }} />
       <Stack.Screen name="library" options={{ title: 'Library' }} />
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
