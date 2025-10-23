@@ -165,7 +165,6 @@ function DrawerWrapper() {
           <Stack.Screen name="project/new" />
           <Stack.Screen name="library/index" />
           <Stack.Screen name="settings/index" />
-          <Stack.Screen name="session/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
         {open ? (
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: Colors.white, opacity: 0.04 }} />
