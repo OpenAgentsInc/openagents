@@ -15,8 +15,8 @@ type ComposerProps = {
   onDraftChange?: (text: string) => void;
 };
 
-const BUTTON_COLOR = Colors.buttonBg;
-const INTERRUPT_COLOR = Colors.statusError;
+const BUTTON_COLOR = Colors.quaternary;
+const INTERRUPT_COLOR = Colors.danger;
 
 export function Composer({
   onSend,
@@ -72,14 +72,14 @@ export function Composer({
   return (
     <View style={{ gap: 6, paddingBottom: 6 }}>
       {queueCount > 0 && (
-        <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surfaceAlt, paddingHorizontal: 10, paddingVertical: 8, gap: 4 }}>
+        <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.black, paddingHorizontal: 10, paddingVertical: 8, gap: 4 }}>
           {previewMessages.map((item, idx) => (
-            <Text key={`${idx}-${item}`} style={{ color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 12, opacity: 0.75 }}>
+            <Text key={`${idx}-${item}`} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12, opacity: 0.75 }}>
               ↳ {truncate(item, 120)}
             </Text>
           ))}
           {queueCount > 3 && (
-            <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>
+            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
               …and {queueCount - 3} more
             </Text>
           )}
@@ -98,7 +98,7 @@ export function Composer({
               borderRadius: 0,
             }}
           >
-            <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>Interrupt</Text>
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Interrupt</Text>
           </Pressable>
         )}
         <TextInput
@@ -109,8 +109,8 @@ export function Composer({
           placeholder={resolvedPlaceholder}
           returnKeyType="send"
           onSubmitEditing={doSend}
-          style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: Colors.surfaceMuted, color: Colors.textPrimary, fontSize: 13, fontFamily: Typography.primary, borderRadius: 0 }}
-          placeholderTextColor={Colors.textSecondary}
+          style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: Colors.black, color: Colors.foreground, fontSize: 13, fontFamily: Typography.primary, borderRadius: 0 }}
+          placeholderTextColor={Colors.secondary}
         />
         <Pressable
           onPress={doSend}
@@ -118,7 +118,7 @@ export function Composer({
           style={{ backgroundColor: canSend ? BUTTON_COLOR : Colors.border, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}
           accessibilityRole="button"
         >
-          <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{sendLabel}</Text>
+          <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{sendLabel}</Text>
         </Pressable>
       </View>
     </View>

@@ -17,9 +17,9 @@ export default function SettingsScreen() {
       borderColor: Colors.border,
       backgroundColor: Colors.card,
     },
-    active: { backgroundColor: Colors.buttonBg, borderColor: Colors.buttonActiveBorder },
-    text: { color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 },
-    textActive: { color: Colors.textPrimary, fontFamily: Typography.bold },
+    active: { backgroundColor: Colors.quaternary, borderColor: Colors.gray },
+    text: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 },
+    textActive: { color: Colors.foreground, fontFamily: Typography.bold },
   }), []);
   return (
     <View style={styles.container}>
@@ -86,10 +86,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontFamily: Typography.bold,
-    color: Colors.textPrimary,
+    color: Colors.foreground,
   },
   label: {
-    color: Colors.textSecondary,
+    color: Colors.secondary,
     fontFamily: Typography.bold,
     fontSize: 12,
     marginTop: 8,
@@ -100,20 +100,20 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 0,
     backgroundColor: Colors.card,
-    color: Colors.textPrimary,
+    color: Colors.foreground,
     fontFamily: Typography.primary,
     fontSize: 13,
   },
   body: {
-    color: Colors.textSecondary,
+    color: Colors.secondary,
     fontFamily: Typography.primary,
   },
 });
 
 function Button({ title, onPress }: { title: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={{ backgroundColor: Colors.buttonBg, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}>
-      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{title}</Text>
+    <Pressable onPress={onPress} style={{ backgroundColor: Colors.quaternary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}>
+      <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
 }
@@ -128,8 +128,8 @@ function Segmented({ title, active, onPress, seg }: { title: string; active: boo
 
 function StatusPill({ connected }: { connected: boolean }) {
   return (
-    <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 0, borderWidth: 1, borderColor: connected ? Colors.muted : Colors.border, backgroundColor: connected ? Colors.overlayHigh : Colors.overlayLow }}>
-      <Text style={{ color: connected ? Colors.textMuted : Colors.textSecondary, fontSize: 12, fontFamily: Typography.bold }}>
+    <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 0, borderWidth: 1, borderColor: connected ? Colors.gray : Colors.border, backgroundColor: Colors.card }}>
+      <Text style={{ color: Colors.secondary, fontSize: 12, fontFamily: Typography.bold }}>
         {connected ? 'Connected' : 'Disconnected'}
       </Text>
     </View>
