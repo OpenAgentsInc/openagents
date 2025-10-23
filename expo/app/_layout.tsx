@@ -159,7 +159,7 @@ function DrawerWrapper() {
           {/* Removed tabs; declare screens individually */}
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="thread/index" options={{ headerShown: false }} />
-          <Stack.Screen name="thread/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
           <Stack.Screen name="projects/index" />
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="project/new" />
