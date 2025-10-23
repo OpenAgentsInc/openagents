@@ -170,11 +170,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             Some(s) if !s.is_empty() => Some(s.to_string()),
                             _ => resume_id.clone(),
                         };
-                        // If we already have a stdin but need to honor a cd, close it to end the previous child
-                        if !need_respawn && desired_cd.is_some() {
-                            let mut g = stdin_state.child_stdin.lock().await;
-                            let _ = g.take(); // drop to close stdin and let old child exit
-                        }
+                        // Defer closing previous stdin until we know the new child spawned.
                         match spawn_codex_child_only_with_dir(
                             &stdin_state.opts,
                             desired_cd.clone(),
@@ -183,6 +179,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         .await
                         {
                             Ok(mut child) => {
+                                // Close previous stdin only after we have a new child
+                                if desired_cd.is_some() {
+                                    let mut g = stdin_state.child_stdin.lock().await;
+                                    let _ = g.take();
+                                }
                                 {
                                     let mut pid_lock = stdin_state.child_pid.lock().await;
                                     *pid_lock = Some(child.pid);
@@ -741,6 +742,15 @@ fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
     }
 }
 
+fn expand_home(p: &str) -> PathBuf {
+    if let Some(stripped) = p.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") { return PathBuf::from(home).join(stripped); }
+    } else if p == "~" {
+        if let Ok(home) = std::env::var("HOME") { return PathBuf::from(home); }
+    }
+    PathBuf::from(p)
+}
+
 fn extract_cd_from_ws_payload(payload: &str) -> Option<PathBuf> {
     let first_line = payload.lines().next()?.trim();
     if !first_line.starts_with('{') {
@@ -751,7 +761,7 @@ fn extract_cd_from_ws_payload(payload: &str) -> Option<PathBuf> {
     if cd.is_empty() {
         return None;
     }
-    Some(PathBuf::from(cd))
+    Some(expand_home(cd))
 }
 
 fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
