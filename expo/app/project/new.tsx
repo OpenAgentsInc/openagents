@@ -13,7 +13,7 @@ export default function NewProject() {
   const router = useRouter();
   const { projects, save, setActive } = useProjects();
   const [name, setName] = useState('');
-  const [workingDir, setWorkingDir] = useState('');
+  const [workingDir, setWorkingDir] = useState('~/code');
   const [saving, setSaving] = useState(false);
 
   const disabled = !name.trim();
