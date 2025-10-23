@@ -234,7 +234,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     // Subscribe once
     return new Promise<any[]>((resolve, reject) => {
       let done = false;
-      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 8000);
+      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 30000);
       const unsub = addSubscriber((line) => {
         if (done) return;
         const s = String(line || '').trim(); if (!s.startsWith('{')) return;
@@ -254,7 +254,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     await awaitConnected().catch((e) => { throw e });
     return new Promise<any | undefined>((resolve, reject) => {
       let done = false;
-      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 8000);
+      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 20000);
       const unsub = addSubscriber((line) => {
         if (done) return;
         const s = String(line || '').trim(); if (!s.startsWith('{')) return;
