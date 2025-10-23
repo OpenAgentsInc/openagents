@@ -46,7 +46,7 @@ function DrawerContent() {
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See projects…</Text>
             </Pressable>
             {projects.slice(0, 5).map((p) => (
-              <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/thread'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/thread?focus=1'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
                 <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
             ))}
@@ -129,7 +129,7 @@ function DrawerWrapper() {
       try { setResumeNextId('new') } catch {}
       await clearPersisted();
       clearLog();
-      router.push('/thread');
+      router.push('/thread?focus=1');
     };
     return (
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
