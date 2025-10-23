@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
         history: Mutex::new(Vec::new()),
-        history_cache: Mutex::new(crate::history::HistoryCache::default()),
+        history_cache: Mutex::new(crate::history::HistoryCache::new(400, std::time::Duration::from_secs(6))),
     });
 
     // Start readers for stdout/stderr → broadcast + console
