@@ -2,6 +2,7 @@ import React from 'react'
 import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
+import { CodeBlock } from '@/components/code-block'
 
 export function ReasoningHeadline({ text }: { text: string }) {
   // Extract only the first bold headline (e.g., **Title**) from the full reasoning text
@@ -32,8 +33,12 @@ export function ReasoningHeadline({ text }: { text: string }) {
         paragraph: { color: Colors.secondary, marginTop: 0, marginBottom: 2 },
         strong: { fontFamily: Typography.bold, color: Colors.secondary },
         code_inline: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 },
-        code_block: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
-        fence: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
+        code_block: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 0 },
+        fence: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 0 },
+      }}
+      rules={{
+        fence: (node: any) => <CodeBlock code={String(node?.content ?? '')} language={String((node?.params ?? node?.info) || '')} />,
+        code_block: (node: any) => <CodeBlock code={String(node?.content ?? '')} />,
       }}
     >
       {headline}

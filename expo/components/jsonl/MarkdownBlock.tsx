@@ -2,8 +2,20 @@ import React from 'react'
 import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
+import { CodeBlock } from '@/components/code-block'
 
 export function MarkdownBlock({ markdown }: { markdown: string }) {
+  const rules: any = {
+    fence: (node: any) => {
+      const lang = typeof node?.params === 'string' ? node.params : (typeof node?.info === 'string' ? node.info : undefined)
+      const code = String(node?.content ?? '')
+      return <CodeBlock code={code} language={lang} />
+    },
+    code_block: (node: any) => {
+      const code = String(node?.content ?? '')
+      return <CodeBlock code={code} />
+    },
+  }
   return (
     <Markdown
       style={{
@@ -15,9 +27,10 @@ export function MarkdownBlock({ markdown }: { markdown: string }) {
         heading4: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 14, lineHeight: 18, marginTop: 6, marginBottom: 4 },
         list_item: { marginTop: 2, marginBottom: 2 },
         code_inline: { backgroundColor: Colors.black, color: Colors.foreground, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 },
-        code_block: { backgroundColor: Colors.black, color: Colors.foreground, borderWidth: 1, borderColor: Colors.border, padding: 8 },
-        fence: { backgroundColor: Colors.black, color: Colors.foreground, borderWidth: 1, borderColor: Colors.border, padding: 8 },
+        code_block: { backgroundColor: Colors.black, color: Colors.foreground, borderWidth: 1, borderColor: Colors.border, padding: 0 },
+        fence: { backgroundColor: Colors.black, color: Colors.foreground, borderWidth: 1, borderColor: Colors.border, padding: 0 },
       }}
+      rules={rules}
     >
       {markdown}
     </Markdown>

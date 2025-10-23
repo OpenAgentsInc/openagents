@@ -31,7 +31,7 @@ export default function ProjectsList() {
         ))}
         {projects.length === 0 && (
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No projects yet.</Text>
-      )}
+        )}
       </View>
     </ScrollView>
   );

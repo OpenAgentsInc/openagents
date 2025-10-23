@@ -19,6 +19,7 @@ import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 import * as Clipboard from 'expo-clipboard';
 import { useHeaderTitle } from '@/lib/header-store';
+import { CodeBlock } from '@/components/code-block';
 
 export default function MessageDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -168,9 +169,7 @@ export default function MessageDetail() {
                     <View>
                       <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 4 }}>Raw JSON</Text>
                       <Pressable onLongPress={() => copy(detail.text)}>
-                        <Text selectable style={{ color: Colors.foreground, fontFamily: Typography.primary, backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.border, padding: 8, fontSize: 12, lineHeight: 16 }}>
-                          {detail.text}
-                        </Text>
+                        <CodeBlock code={detail.text} language="json" />
                         {copied ? <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 4 }}>Copied</Text> : null}
                       </Pressable>
                     </View>

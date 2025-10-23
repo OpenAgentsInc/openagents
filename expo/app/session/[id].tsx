@@ -38,7 +38,7 @@ export default function SessionHistoryView() {
           ListFooterComponent={id ? (
             <View style={{ marginTop: 12 }}>
               <Pressable
-                onPress={() => { setResumeNextId(id); router.push('/(tabs)/session') }}
+                onPress={() => { setResumeNextId(id); router.push('/session') }}
                 style={{ alignSelf: 'flex-start', backgroundColor: Colors.card, borderColor: Colors.border, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 }}
                 accessibilityRole="button"
               >
