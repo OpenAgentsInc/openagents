@@ -1,11 +1,7 @@
 import * as Clipboard from "expo-clipboard"
 import { router } from "expo-router"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import {
-    KeyboardAvoidingView, Platform, Pressable, ScrollView, Text,
-    View
-} from "react-native"
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native"
 import Markdown from "react-native-markdown-display"
 import { CommandExecutionCard } from "@/components/jsonl/CommandExecutionCard"
 import { ErrorRow } from "@/components/jsonl/ErrorRow"
@@ -34,7 +30,6 @@ import { Composer } from "@/components/composer"
 
 export default function SessionScreen() {
   const headerHeight = useHeaderHeight()
-  const insets = useSafeAreaInsets()
 
   type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'|'thread'|'item_lifecycle'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
@@ -198,7 +193,7 @@ Important policy overrides:
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <View style={{ flex: 1, paddingTop: 0, paddingBottom: 4, paddingHorizontal: 8, gap: 0 }}>
         <View style={{ flex: 1 }}>
           <ScrollView
@@ -397,6 +392,6 @@ Important policy overrides:
           <Composer onSend={send} connected={connected} />
         </KeyboardAvoidingView>
       </View>
-    </SafeAreaView>
+    </View>
   )
 }

@@ -1,7 +1,7 @@
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
-import { Pressable, View, Text } from 'react-native';
+import { Pressable, View, Text, StyleSheet } from 'react-native';
 import { useWs } from '@/providers/ws';
 import React from 'react';
 import { Typography } from '@/constants/typography';
@@ -89,12 +89,12 @@ export default function TabLayout() {
         headerTitle: '', // axe the centered title entirely
         headerLeftContainerStyle: { marginLeft: 0, paddingLeft: 0 },
         headerLeft: () => <TitleWithMenu title={titleForRoute(route.name)} />,
+        headerShadowVisible: false,
         headerBackground: () => (
           <View style={{ flex: 1, backgroundColor: Colors.background }}>
-            <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: Colors.border }} />
+            <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: StyleSheet.hairlineWidth, backgroundColor: Colors.border }} />
           </View>
         ),
-        headerShadowVisible: false,
         headerTintColor: Colors.textPrimary,
         headerRight: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
