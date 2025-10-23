@@ -1,6 +1,5 @@
 use anyhow::*;
-use axum::{extract::Query, response::IntoResponse, Json};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::{
     fs,
@@ -9,7 +8,7 @@ use std::{
     time::SystemTime,
 };
 use std::result::Result as StdResult;
-use tracing::{info, warn};
+use tracing::info;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct HistoryItem {
@@ -41,67 +40,8 @@ pub struct ThreadResponse {
     pub resume_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct HistoryQuery {
-    #[allow(dead_code)]
-    pub token: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SessionQuery {
-    pub id: Option<String>,
-    pub path: Option<String>,
-}
-
-pub async fn history_handler(Query(_q): Query<HistoryQuery>) -> impl IntoResponse {
-    let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
-        std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
-    });
-    info!(base=%base, limit=5, msg="/history request");
-    let items = match scan_history(Path::new(&base), 5) {
-        StdResult::Ok(v) => v,
-        StdResult::Err(e) => {
-            warn!(?e, base=%base, msg="history scan failed");
-            return (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("history scan failed: {e:?}"),
-            )
-                .into_response()
-        }
-    };
-    info!(returned=items.len(), base=%base, msg="/history response");
-    Json(serde_json::json!({"items": items})).into_response()
-}
-
-pub async fn session_handler(Query(q): Query<SessionQuery>) -> impl IntoResponse {
-    let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
-        std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
-    });
-    let target = match resolve_session_path(Path::new(&base), q.id.as_deref(), q.path.as_deref()) {
-        Some(p) => p,
-        None => {
-            warn!(base=%base, id=?q.id, path=?q.path, msg="/thread not found");
-            return (axum::http::StatusCode::NOT_FOUND, "not found").into_response()
-        },
-    };
-    info!(base=%base, id=?q.id, path=%target, msg="/thread request");
-    match parse_thread(Path::new(&target)) {
-        StdResult::Ok(resp) => {
-            info!(items=resp.items.len(), title=%resp.title, id=?q.id, msg="/thread parsed");
-            Json(resp).into_response()
-        }
-        StdResult::Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("thread parse failed: {e:?}"),
-        )
-            .into_response(),
-    }
-}
-
-// Alias endpoint for terminology alignment (threads)
-pub async fn thread_handler(Query(q): Query<SessionQuery>) -> impl IntoResponse {
-    session_handler(Query(q)).await
-}
+// HTTP handlers removed: the bridge now serves history and thread content
+// exclusively via WebSocket control messages.
 
 pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
     let mut items: Vec<HistoryItem> = vec![];

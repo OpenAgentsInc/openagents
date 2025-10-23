@@ -8,9 +8,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use axum::extract::ws::{Message, WebSocket};
-use axum::{
-    Router, extract::State, extract::WebSocketUpgrade, response::IntoResponse, routing::get,
-};
+use axum::{Router, extract::State, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
@@ -81,12 +79,9 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
-        .route("/history", get(history::history_handler))
-        .route("/session", get(history::session_handler))
-        .route("/thread", get(history::thread_handler))
         .with_state(state);
 
-    info!("binding" = %opts.bind, "msg" = "codex-bridge listening (routes: /ws, /history, /thread)");
+    info!("binding" = %opts.bind, "msg" = "codex-bridge listening (route: /ws)");
     let listener = tokio::net::TcpListener::bind(&opts.bind).await?;
     axum::serve(listener, app).await?;
     Ok(())
