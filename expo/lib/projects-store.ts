@@ -93,6 +93,20 @@ export const useProjectsStore = create<ProjectsState>()(
 // Back-compat procedural API used by providers/projects and others
 export async function hydrateProjects(): Promise<void> {
   try { await useProjectsStore.persist.rehydrate?.() } catch {}
+  // Legacy migration path: import from old AsyncStorage keys if current store is empty
+  try {
+    const cur = useProjectsStore.getState()
+    if (Object.keys(cur.items || {}).length === 0) {
+      const raw = await AsyncStorage.getItem('@openagents/projects-v1')
+      if (raw) {
+        const obj = JSON.parse(raw) as Record<ProjectId, Project>
+        const active = await AsyncStorage.getItem('@openagents/projects-active-v1')
+        if (obj && typeof obj === 'object') {
+          useProjectsStore.setState({ items: obj, activeId: active as ProjectId | null })
+        }
+      }
+    }
+  } catch {}
 }
 
 export function listProjects(): Project[] {
@@ -122,4 +136,3 @@ export async function removeProject(id: ProjectId): Promise<void> {
 export async function mergeProjectTodos(projectId: ProjectId, todos: ProjectTodo[]): Promise<void> {
   useProjectsStore.getState().mergeTodos(projectId, todos)
 }
-
