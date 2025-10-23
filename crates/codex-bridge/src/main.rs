@@ -104,6 +104,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     let preview = if t.len() > 180 { format!("{}…", &t[..180].replace('\n', "\\n")) } else { t.replace('\n', "\\n") };
                     info!("msg" = "ws text received", size = t.len(), preview = preview);
                     let desired_cd = extract_cd_from_ws_payload(&t);
+                    let desired_resume = extract_resume_from_ws_payload(&t); // "last" or a session id
                     // Ensure we have a live codex stdin; respawn if needed
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn || desired_cd.is_some() {
@@ -114,7 +115,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             let mut g = stdin_state.child_stdin.lock().await;
                             let _ = g.take(); // drop to close stdin and let old child exit
                         }
-                        match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone(), resume_id.as_deref()).await {
+                        // Prefer resume token from the app if provided; otherwise use captured id if any
+                        let resume_arg: Option<String> = desired_resume.clone().or_else(|| resume_id.clone());
+                        match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone(), resume_arg.as_deref()).await {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.take() {
                                     *stdin_state.child_stdin.lock().await = Some(stdin);
@@ -498,4 +501,14 @@ fn extract_cd_from_ws_payload(payload: &str) -> Option<PathBuf> {
     let cd = v.get("cd").and_then(|s| s.as_str())?;
     if cd.is_empty() { return None; }
     Some(PathBuf::from(cd))
+}
+
+fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
+    let first_line = payload.lines().next()?.trim();
+    if !first_line.starts_with('{') { return None; }
+    let v: JsonValue = serde_json::from_str(first_line).ok()?;
+    match v.get("resume") {
+        Some(JsonValue::String(s)) if !s.is_empty() => Some(s.clone()),
+        _ => None,
+    }
 }
