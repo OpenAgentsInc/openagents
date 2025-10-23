@@ -19,6 +19,7 @@ import { BridgeProvider, useBridge } from "@/providers/ws"
 import { Ionicons, AntDesign } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
 import { useAppLogStore } from "@/lib/app-log"
+import { useOnboarding } from "@/lib/onboarding-store"
 
 function DrawerContent() {
   const router = useRouter();
@@ -168,6 +169,13 @@ function DrawerWrapper() {
   const { open, setOpen } = useDrawer();
   const isRTL = I18nManager.isRTL;
   const router = useRouter();
+  const onboarding = useOnboarding();
+  React.useEffect(() => {
+    if (!onboarding.rehydrated) return;
+    if (!onboarding.completed) {
+      try { router.push('/onboarding' as any) } catch {}
+    }
+  }, [onboarding.rehydrated, onboarding.completed]);
 
   const ConnectionDot = () => {
     const { connected } = useBridge();
@@ -227,6 +235,7 @@ function DrawerWrapper() {
         >
           {/* Removed tabs; declare screens individually */}
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="onboarding/index" options={{ headerShown: false }} />
           <Stack.Screen name="dashboard/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
