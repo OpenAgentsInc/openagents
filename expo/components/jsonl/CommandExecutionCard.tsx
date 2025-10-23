@@ -3,7 +3,7 @@ import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 
-export function CommandExecutionCard({ command, status, exitCode, sample, outputLen, showExitCode = false }: { command: string; status?: string; exitCode?: number | null; sample?: string; outputLen?: number; showExitCode?: boolean }) {
+export function CommandExecutionCard({ command, status, exitCode, sample, outputLen, showExitCode = false, showOutputLen = false }: { command: string; status?: string; exitCode?: number | null; sample?: string; outputLen?: number; showExitCode?: boolean; showOutputLen?: boolean }) {
   const badgeBg = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0) ? Colors.danger : status === 'completed' ? Colors.success : Colors.gray
   return (
     <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
@@ -16,13 +16,16 @@ export function CommandExecutionCard({ command, status, exitCode, sample, output
       {showExitCode && typeof exitCode === 'number' ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>exit_code: {exitCode}</Text>
       ) : null}
-      {typeof outputLen === 'number' && outputLen > 0 ? (
+      {showOutputLen && typeof outputLen === 'number' && outputLen > 0 ? (
         <View style={{ gap: 4 }}>
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>output ~{outputLen}B</Text>
           {sample ? (
-            <Text selectable style={{ color: Colors.foreground, fontFamily: Typography.primary, backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.border, padding: 8 }}>{sample}</Text>
+            <Text selectable style={{ color: Colors.foreground, fontFamily: Typography.primary, backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.border, padding: 8, fontSize: 11, lineHeight: 14 }}>{sample}</Text>
           ) : null}
         </View>
+      ) : sample ? (
+        // Show sample snippet but hide size meta in the main feed
+        <Text selectable style={{ color: Colors.foreground, fontFamily: Typography.primary, backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.border, padding: 8, fontSize: 11, lineHeight: 14 }}>{sample}</Text>
       ) : null}
     </View>
   )
