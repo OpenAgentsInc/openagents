@@ -78,8 +78,8 @@ export function ExecBeginRow({ payload }: { payload: ExecBeginPayload }) {
     const shownPath = isList ? (pretty.path ?? '.') : pretty.path
     return (
       <View style={{ paddingVertical: 2 }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
-          <Text style={{ color: Colors.textPrimary, fontFamily: Typography.primary }}>{pretty.action}</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
+          <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{pretty.action}</Text>
           {shownPath ? (
             <Text>
               {' '}
@@ -94,12 +94,12 @@ export function ExecBeginRow({ payload }: { payload: ExecBeginPayload }) {
   // Fallback to raw command display
   return (
     <View style={{ paddingVertical: 2 }}>
-      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
-        [exec] <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{cmd}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
+        [exec] <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{cmd}</Text>
       </Text>
       {cwd ? (
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>
-          in <Text style={{ color: Colors.textPrimary }}>{cwd}</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
+          in <Text style={{ color: Colors.foreground }}>{cwd}</Text>
         </Text>
       ) : null}
     </View>

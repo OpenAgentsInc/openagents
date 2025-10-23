@@ -6,11 +6,10 @@ import { Typography } from '@/constants/typography'
 export function ThreadStartedRow({ threadId }: { threadId: string }) {
   return (
     <View style={{ paddingVertical: 2 }}>
-      <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
-        <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>Thread</Text>{' '}
-        started · <Text style={{ color: Colors.textPrimary }}>{threadId}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
+        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Thread</Text>{' '}
+        started · <Text style={{ color: Colors.foreground }}>{threadId}</Text>
       </Text>
     </View>
   )
 }
-

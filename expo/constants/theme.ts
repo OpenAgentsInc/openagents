@@ -1,44 +1,91 @@
 import { DarkTheme as NavigationDarkTheme, type Theme } from '@react-navigation/native';
 
+// Adapted from the provided CSS variables to React Native theme tokens.
 export const Colors = {
-  // Core palette
-  background: '#000000',
-  card: '#0A0A0A',
-  border: '#222222',
-  textPrimary: '#FFFFFF',
-  textSecondary: '#B3B3B3',
-  tint: '#FFFFFF', // active accents (no blue)
+  // Palette Colors - Rainbow Order
+  // Reds
+  flRed: '#ff0000',
+  activeRed: '#ff4136',
+  brightRed: '#e7040f',
+  maroon: '#660000',
 
-  // Text variants
-  textMuted: '#D4D4D8',
-  textOnBright: '#000000',
+  // Oranges
+  flOrange: '#ff6600',
+  orange: '#e25600',
 
-  // Status & feedback
-  statusSuccess: '#22C55E',
-  statusError: '#EF4444',
-  statusWarn: '#F59E0B',
-  statusFailText: '#FCA5A5',
-  statusSuccessText: '#86EFAC',
+  // Yellows
+  flYellow: '#ffff00',
+  activeYellow: '#ffd700',
+  gold: '#ffb700',
+  yellow: '#FEBF00',
+  olive: '#666600',
 
-  // Surfaces
-  surfaceAlt: '#12141C',
-  surfaceMuted: '#0F1217',
-  codeBg: '#0F1217',
-  buttonBg: '#3F3F46',
-  buttonActiveBorder: '#4B5563',
-  muted: '#A3A3A3',
+  // Greens
+  flGreen: '#00ff00',
+  green: '#04A545',
 
-  // Overlays / tints
-  overlayHigh: 'rgba(255,255,255,0.06)',
-  overlayLow: 'rgba(255,255,255,0.02)',
+  // Cyans
+  flCyan: '#00ffff',
+  cyan: '#006566',
 
-  // Specials
-  transparent: 'transparent',
+  // Blues
+  flBlue: '#0000ff',
+  blue: '#000066',
+
+  // Purples & Magentas
+  purple: '#7643b9',
+  activePurple: '#7643b9',
+  magenta: '#660065',
+  flMagenta: '#ff00ff',
+  activeMagenta: '#cc2197',
+  hotPink: '#ff41b4',
+
+  // Neutrals
+  black: '#000000',
+  gray: '#999999',
+  white: '#ffffff',
+
+  // Core Design System Colors
+  background: '#08090a',
+  border: '#23252a',
+  primary: '#f7f8f8',
+  secondary: '#d0d6e0',
+  tertiary: '#8a8f98',
+  quaternary: '#62666d',
+
+  // System Colors - Using Design System
+  foreground: '#f7f8f8', // var(--primary)
+  card: '#08090a', // var(--background)
+  cardForeground: '#f7f8f8',
+  popover: '#08090a',
+  popoverForeground: '#f7f8f8',
+  primaryForeground: '#08090a',
+  secondaryForeground: '#08090a',
+  muted: '#08090a',
+  mutedForeground: '#d0d6e0',
+  accent: '#08090a',
+  accentForeground: '#f7f8f8',
+  destructive: '#e7040f', // bright red
+  destructiveForeground: '#f7f8f8',
+  input: '#08090a',
+  ring: '#f7f8f8',
+  radius: 0,
+
+  // Status/State colors from palette
+  success: '#04A545',
+  successForeground: '#f7f8f8',
+  warning: '#FEBF00',
+  warningForeground: '#08090a',
+  danger: '#e7040f',
+  dangerForeground: '#f7f8f8',
 
   // Components
-  tabBarBackground: '#000000',
-  tabBarActive: '#FFFFFF',
-  tabBarInactive: '#808080',
+  tabBarBackground: '#08090a',
+  tabBarActive: '#f7f8f8',
+  tabBarInactive: '#8a8f98',
+  
+  // Specials
+  transparent: 'transparent',
 } as const;
 
 export const NavigationTheme: Theme = {
@@ -46,11 +93,11 @@ export const NavigationTheme: Theme = {
   dark: true,
   colors: {
     ...NavigationDarkTheme.colors,
-    primary: Colors.tint,
+    primary: Colors.foreground,
     background: Colors.background,
     card: Colors.card,
-    text: Colors.textPrimary,
+    text: Colors.foreground,
     border: Colors.border,
-    notification: Colors.textSecondary,
+    notification: Colors.secondary,
   },
 };

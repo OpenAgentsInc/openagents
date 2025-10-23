@@ -11,7 +11,7 @@ export default function HomeRedirect() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Opening session…</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Opening session…</Text>
       </View>
     </SafeAreaView>
   )

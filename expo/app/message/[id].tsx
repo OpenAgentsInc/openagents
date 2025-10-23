@@ -10,9 +10,11 @@ import { TurnEventRow } from '@/components/jsonl/TurnEventRow';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 import * as Clipboard from 'expo-clipboard';
+import { useHeaderTitle } from '@/lib/header-store';
 
 export default function MessageDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  useHeaderTitle('Message');
   const num = Number(id);
   const logs = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
   const [hydrating, setHydrating] = React.useState(true);
@@ -33,14 +35,8 @@ export default function MessageDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
-      <Stack.Screen
-        options={{
-          title: `Message ${id}`,
-          headerTitleStyle: { fontFamily: Typography.bold },
-          headerBackTitle: '',
-          headerBackButtonDisplayMode: 'minimal',
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
+      {useHeaderTitle('Message')}
       <ScrollView
         contentContainerStyle={{
           paddingTop: 16,
