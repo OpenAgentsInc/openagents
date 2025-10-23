@@ -71,11 +71,8 @@ export function Composer({
 
   return (
     <View style={{ gap: 6, paddingBottom: 6 }}>
-      {(isRunning || queueCount > 0) && (
+      {queueCount > 0 && (
         <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: '#12141C', paddingHorizontal: 10, paddingVertical: 8, gap: 4 }}>
-          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>
-            {isRunning ? 'Agent running — follow-ups will send automatically when this turn ends.' : 'Queued follow-ups ready to send.'}
-          </Text>
           {previewMessages.map((item, idx) => (
             <Text key={`${idx}-${item}`} style={{ color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 12, opacity: 0.75 }}>
               ↳ {truncate(item, 120)}
