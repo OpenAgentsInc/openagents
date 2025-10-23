@@ -284,6 +284,22 @@ Important policy overrides:
     return () => setClearLogHandler(null)
   }, [setClearLogHandler])
 
+  // Extra safety: if a New Thread action set resumeNextId='new', proactively clear
+  useEffect(() => {
+    if (resumeNextId === 'new') {
+      setLog([])
+      setQueuedFollowUps([])
+      setIsRunning(false)
+      flushingFollowUpRef.current = false
+      queueRef.current = []
+      composerDraftRef.current = ''
+      setComposerPrefill(undefined)
+      clearLogsStore()
+      currentThreadIdRef.current = null
+      requireThreadStartRef.current = true
+    }
+  }, [resumeNextId])
+
   // Track keyboard visibility to toggle bottom safe area padding
   useEffect(() => {
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKbVisible(true))
