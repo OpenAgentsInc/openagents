@@ -510,6 +510,10 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            // Drop noisy CLI line "Reading prompt from stdin..." before any logging/broadcast
+            if line.trim().to_ascii_lowercase().contains("reading prompt from stdin") {
+                continue;
+            }
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
             println!("{}", log);
             if line.contains("\"sandbox\"") || line.contains("sandbox") {
@@ -562,6 +566,10 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            // Drop noisy CLI line "Reading prompt from stdin..." before any logging/broadcast
+            if line.trim().to_ascii_lowercase().contains("reading prompt from stdin") {
+                continue;
+            }
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
             eprintln!("{}", log);
             if line.contains("\"sandbox\"") || line.contains("sandbox") {
@@ -589,16 +597,6 @@ fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
         Ok(v) => v,
         Err(_) => return None,
     };
-
-    // Helper to locate nested { msg: { type: ... } }
-    fn get_msg_mut(v: &mut JsonValue) -> Option<&mut JsonValue> {
-        if let Some(obj) = v.as_object_mut() {
-            if let Some(m) = obj.get_mut("msg") {
-                return Some(m);
-            }
-        }
-        None
-    }
 
     // Check top-level and nested msg without overlapping borrows
     let is_top = root.get("type").and_then(|t| t.as_str()) == Some("exec_command_output_delta");

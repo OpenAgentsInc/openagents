@@ -177,7 +177,7 @@ Important policy overrides:
         const startsJsonEnvelope = trimmed.startsWith('{') && trimmed.includes('"msg"') && (/:\s*$/.test(trimmed) || /:\{\s*$/.test(trimmed));
         if (startsJsonEnvelope) { skipJsonBlockRef.current = true; continue }
         // Filter out noisy CLI status lines we don't want in the feed
-        if (/^Reading prompt from stdin/i.test(trimmed)) {
+        if (trimmed.toLowerCase().includes('reading prompt from stdin')) {
           continue
         }
         // Some exec end events can still slip through as partial JSON fragments.
