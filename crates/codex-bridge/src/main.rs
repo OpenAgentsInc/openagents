@@ -36,6 +36,10 @@ struct AppState {
     opts: Opts,
     // Track last seen session id so we can resume on subsequent prompts
     last_thread_id: Mutex<Option<String>>,
+    // Track last assistant message to synthesize context when resume is unsupported
+    last_agent_message: Mutex<Option<String>>,
+    // Cache CLI resume support detection for this binary
+    supports_resume: bool,
 }
 
 #[tokio::main]
@@ -43,12 +47,21 @@ async fn main() -> Result<()> {
     init_tracing();
     let opts = Opts::parse();
 
+    let supports_resume = {
+        let bin = match &opts.codex_bin {
+            Some(p) => p.clone(),
+            None => which::which("codex").unwrap_or_else(|_| PathBuf::from("codex")),
+        };
+        cli_supports_resume(&bin)
+    };
     let (mut child, tx) = spawn_codex(&opts).await?;
     let state = Arc::new(AppState {
         tx,
         child_stdin: Mutex::new(Some(child.stdin.take().context("child stdin missing")?)),
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
+        last_agent_message: Mutex::new(None),
+        supports_resume,
     });
 
     // Start readers for stdout/stderr → broadcast + console
@@ -139,6 +152,19 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     let mut guard = stdin_state.child_stdin.lock().await;
                     if let Some(mut stdin) = guard.take() {
                         let mut data = t.to_string();
+                        // Fallback: if CLI doesn't support resume, but we have a last agent message,
+                        // inject it as lightweight context after the JSON preface.
+                        if !stdin_state.supports_resume {
+                            if let Some(prev) = stdin_state.last_agent_message.lock().await.clone() {
+                                let mut iter = data.splitn(2, '\n');
+                                let first = iter.next().unwrap_or("");
+                                let rest = iter.next().unwrap_or("");
+                                let injected = format!(
+                                    "{first}\n[previous assistant message for context]:\n{prev}\n\n{rest}"
+                                );
+                                data = injected;
+                            }
+                        }
                         if !data.ends_with('\n') { data.push('\n'); }
                         let write_preview = if data.len() > 160 { format!("{}…", &data[..160].replace('\n', "\\n")) } else { data.replace('\n', "\\n") };
                         info!("msg" = "writing to child stdin", bytes = write_preview.len(), preview = write_preview);
@@ -418,6 +444,11 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                     let id = v.get("thread_id").and_then(|x| x.as_str())
                         .or_else(|| v.get("msg").and_then(|m| m.get("thread_id")).and_then(|x| x.as_str()));
                     if let Some(val) = id { let _ = state_for_stdout.last_thread_id.lock().await.insert(val.to_string()); info!(thread_id=%val, msg="captured thread id for resume"); }
+                }
+                if matches!(t.as_deref(), Some("agent_message")) {
+                    let text = v.get("message").and_then(|x| x.as_str())
+                        .or_else(|| v.get("msg").and_then(|m| m.get("message")).and_then(|x| x.as_str()));
+                    if let Some(val) = text { let _ = state_for_stdout.last_agent_message.lock().await.insert(val.to_string()); }
                 }
             }
             let _ = tx_out.send(line);
