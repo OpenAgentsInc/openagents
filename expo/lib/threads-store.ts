@@ -5,7 +5,7 @@ import { useBridge } from '@/providers/ws'
 
 export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean }
 export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
-export type ThreadResponse = { title: string; items: ThreadItem[]; instructions?: string }
+export type ThreadResponse = { title: string; items: ThreadItem[]; instructions?: string; resume_id?: string }
 
 type ThreadsState = {
   history: HistoryItem[]

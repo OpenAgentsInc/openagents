@@ -16,7 +16,7 @@ import { useProjects } from '@/providers/projects'
 
 export default function ThreadHistoryView() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
-  const { requestThread, setResumeNextId } = useBridge()
+  const { requestThread } = useBridge()
   const router = useRouter()
   const loadThread = useThreads((s) => s.loadThread)
   const thread = useThreads((s) => (id ? s.thread[id] : undefined))
@@ -130,9 +130,9 @@ export default function ThreadHistoryView() {
           <Composer
             onSend={(txt) => {
               if (!id) return
-              try { setResumeNextId(id) } catch {}
-              // Send immediately, then navigate to live view
-              try { sendForProject(activeProject, txt) } catch {}
+              // Prefer resume_id from parsed thread; fall back to history filename
+              const resumeId = thread?.resume_id || (typeof id === 'string' ? id : null)
+              try { sendForProject(activeProject, txt, resumeId) } catch {}
               router.replace('/thread?focus=1')
             }}
             connected={true}
