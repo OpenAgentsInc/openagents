@@ -69,7 +69,7 @@ export function Composer({
   }, [canInterrupt, onInterrupt]);
 
   return (
-    <View style={{ paddingBottom: 6 }}>
+    <View style={{ paddingBottom: 2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         {/* Left circular + button — commented out for full-width input */}
         {/**
@@ -83,7 +83,7 @@ export function Composer({
         */}
 
         {/* Input pill */}
-        <View style={{ flex: 1, backgroundColor: '#2A2A2A', borderRadius: 22, borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1, backgroundColor: Colors.card, borderRadius: 22, borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', alignItems: 'center' }}>
           <TextInput
             value={text}
             onChangeText={handleChange}

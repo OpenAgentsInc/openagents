@@ -230,6 +230,58 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
     for line in r.lines().filter_map(Result::ok) {
         let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
         match v.get("type").and_then(|x| x.as_str()) {
+            // Newer JSONL shapes (response_item / event_msg)
+            Some("response_item") => {
+                if let Some(payload) = v.get("payload") {
+                    match payload.get("type").and_then(|x| x.as_str()) {
+                        Some("message") => {
+                            let role = payload.get("role").and_then(|x| x.as_str()).unwrap_or("");
+                            // Extract text from content array
+                            let mut txt = String::new();
+                            if let Some(arr) = payload.get("content").and_then(|x| x.as_array()) {
+                                for part in arr {
+                                    if let Some(t) = part.get("text").and_then(|x| x.as_str()) {
+                                        if !txt.is_empty() { txt.push_str("\n"); }
+                                        txt.push_str(t);
+                                    }
+                                }
+                            }
+                            if !txt.trim().is_empty() {
+                                let role_s = if role == "assistant" { Some("assistant".to_string()) } else if role == "user" { Some("user".to_string()) } else { None };
+                                if role_s.as_deref() == Some("assistant") && first_assistant.is_none() { first_assistant = Some(txt.clone()); }
+                                items.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: role_s, text: txt });
+                            }
+                        }
+                        Some("reasoning") => {
+                            // Prefer summary text if available
+                            if let Some(summary) = payload.get("summary").and_then(|x| x.as_array()) {
+                                let mut txt = String::new();
+                                for s in summary {
+                                    if s.get("type").and_then(|x| x.as_str()) == Some("summary_text") {
+                                        if let Some(t) = s.get("text").and_then(|x| x.as_str()) {
+                                            if !txt.is_empty() { txt.push_str("\n"); }
+                                            txt.push_str(t);
+                                        }
+                                    }
+                                }
+                                if !txt.trim().is_empty() {
+                                    items.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: txt });
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Some("event_msg") => {
+                if let Some(p) = v.get("payload") {
+                    if p.get("type").and_then(|x| x.as_str()) == Some("agent_reasoning") {
+                        if let Some(text) = p.get("text").and_then(|x| x.as_str()) {
+                            items.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
+                        }
+                    }
+                }
+            }
             Some("item.started") => {
                 if let Some(item) = v.get("item") {
                     if item.get("type").and_then(|x| x.as_str()) == Some("command_execution") {
