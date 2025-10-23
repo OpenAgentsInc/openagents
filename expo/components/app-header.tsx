@@ -32,9 +32,8 @@ export function AppHeader() {
     // Persistently clear logs even if the session screen is not mounted yet
     try { await clearLogsStore() } catch {}
     clearLog()
-    if (!pathname || !pathname.startsWith('/thread')) {
-      router.push('/thread?focus=1&new=1')
-    }
+    // Always navigate to a fresh live thread view, even from /thread/[id]
+    router.push('/thread?focus=1&new=1')
   }, [clearLog, pathname, setResumeNextId])
 
   return (
