@@ -44,6 +44,27 @@ export default function TabLayout() {
       </Pressable>
     );
   };
+  const TitleWithMenu = ({ title }: { title?: string }) => {
+    const drawerCtl = useDrawer();
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Pressable
+          onPress={drawerCtl.toggle}
+          accessibilityRole="button"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ paddingHorizontal: 6, paddingVertical: 6 }}
+        >
+          <Ionicons name="menu" size={22} color={Colors.textPrimary} />
+        </Pressable>
+        {!!title && (
+          <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16, marginLeft: 6 }}>
+            {title}
+          </Text>
+        )}
+      </View>
+    );
+  };
+
   return (
     <Stack
       initialRouteName="session"
@@ -52,21 +73,13 @@ export default function TabLayout() {
         animation: 'none',
         headerTitleStyle: { fontFamily: Typography.bold },
         headerStyle: { backgroundColor: Colors.background },
+        headerTitleAlign: 'left',
+        headerTitle: ({ children }) => <TitleWithMenu title={String(children ?? '')} />,
         headerBackground: () => (
           <View style={{ flex: 1, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border }} />
         ),
         headerShadowVisible: false,
         headerTintColor: Colors.textPrimary,
-        headerLeft: () => (
-          <Pressable
-            onPress={drawer.toggle}
-            accessibilityRole="button"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{ paddingHorizontal: 6, paddingVertical: 6 }}
-          >
-            <Ionicons name="menu" size={22} color={Colors.textPrimary} />
-          </Pressable>
-        ),
         headerRight: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
             <NewChatButton />
@@ -80,22 +93,7 @@ export default function TabLayout() {
       <Stack.Screen
         name="session"
         options={{
-          headerTitle: () => null,
-          headerLeft: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Pressable
-                onPress={drawer.toggle}
-                accessibilityRole="button"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ paddingHorizontal: 6, paddingVertical: 6 }}
-              >
-                <Ionicons name="menu" size={22} color={Colors.textPrimary} />
-              </Pressable>
-              <Text style={{ color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 16, marginLeft: 6 }}>
-                New session
-              </Text>
-            </View>
-          ),
+          title: 'Session',
         }}
       />
       <Stack.Screen name="history" options={{ title: 'History' }} />
