@@ -104,6 +104,13 @@
 - PRs: clear description, link issues, note scope, and include screenshots/GIFs for UI changes.
 - Checks: lint passes, app boots via `bun run start`, docs updated when behavior changes.
 
+## Multi‑Agent Git Etiquette
+- Do not stage everything: avoid commands like `git add -A`, `git add .`, or `git commit -a`. Explicitly add only the files you changed for the current task.
+- Never stash: do not run `git stash` (including variants like `git stash -u`). Stashing can hide or discard work in progress from other agents operating on the same branch.
+- Respect concurrent work: assume other agents may be active on this branch. Do not run destructive or history‑rewriting commands (e.g., `git reset --hard`, `git clean -fdx`, force pushes, or rebases) unless explicitly instructed.
+- Keep commits focused: limit diffs to the smallest set of files necessary; avoid touching unrelated files.
+- Review before committing: use `git status` and `git diff --staged` to confirm only intended paths are included.
+
 ## Agent Workflow Requirements (Expo TypeScript)
 - If you touch TypeScript/TSX under `expo/`, run the type checker via `bun run typecheck`.
 - Do not finish work until the typecheck passes with no warnings.
