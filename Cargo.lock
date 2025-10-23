@@ -262,6 +262,7 @@ dependencies = [
  "axum",
  "clap",
  "futures",
+ "libc",
  "serde_json",
  "shlex",
  "tokio",
