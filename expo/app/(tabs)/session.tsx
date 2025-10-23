@@ -45,7 +45,10 @@ export default function SessionScreen() {
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [queuedFollowUps, setQueuedFollowUps] = useState<string[]>([])
+  const [composerPrefill, setComposerPrefill] = useState<string | null | undefined>(undefined)
   const flushingFollowUpRef = useRef(false)
+  const queueRef = useRef<string[]>([])
+  const composerDraftRef = useRef('')
   const sendNowRef = useRef<(text: string) => boolean>(() => false)
   const { projects, activeProject, setActive, sendForProject } = useProjects()
 
@@ -94,23 +97,62 @@ Important policy overrides:
     if (routed && routed.id !== activeProject?.id) { setActive(routed.id) }
     if (!sendForProject(routed, base)) { append('Not connected'); return false }
     append(`> ${base}`)
+    setIsRunning(true)
     return true
   }
 
-  const handleSend = useCallback((txt: string) => {
-    sendNowRef.current(txt)
-  }, [])
-
   const queueFollowUp = useCallback((message: string) => {
-    setQueuedFollowUps((prev) => [...prev, message])
+    const base = message.trim()
+    if (!base) return
+    queueRef.current = [...queueRef.current, base]
+    setQueuedFollowUps(queueRef.current.slice())
+  }, [setQueuedFollowUps])
+
+  const handleSend = useCallback((txt: string) => {
+    const base = txt.trim()
+    if (!base) return
+    if (isRunning) {
+      queueFollowUp(base)
+      return
+    }
+    if (!sendNowRef.current(base)) {
+      queueFollowUp(base)
+    }
+  }, [isRunning, queueFollowUp])
+
+  const flushQueuedFollowUp = useCallback(() => {
+    if (flushingFollowUpRef.current) return
+    if (queueRef.current.length === 0) return
+    flushingFollowUpRef.current = true
+    const next = queueRef.current.shift()!
+    setQueuedFollowUps(queueRef.current.slice())
+    const sent = sendNowRef.current(next)
+    if (!sent) {
+      queueRef.current.unshift(next)
+      setQueuedFollowUps(queueRef.current.slice())
+    }
+    flushingFollowUpRef.current = false
+  }, [setQueuedFollowUps])
+
+  const handleDraftChange = useCallback((value: string) => {
+    composerDraftRef.current = value
   }, [])
 
   const handleInterrupt = useCallback(() => {
     const payload = JSON.stringify({ control: 'interrupt' })
     if (!sendWs(payload)) {
       append('Interrupt failed: not connected')
+    } else {
+      append('> [interrupt] requested', true, 'text')
     }
   }, [sendWs, append])
+
+  useEffect(() => {
+    if (composerPrefill !== undefined) {
+      const timer = setTimeout(() => setComposerPrefill(undefined), 0)
+      return () => clearTimeout(timer)
+    }
+  }, [composerPrefill])
 
   useEffect(() => {
     setOnMessage((chunk) => {
@@ -193,6 +235,26 @@ Important policy overrides:
             setIsRunning(true)
           } else if (parsed.phase === 'completed' || parsed.phase === 'failed') {
             setIsRunning(false)
+            const message = typeof parsed.message === 'string' ? parsed.message : ''
+            const wasInterrupted = parsed.phase === 'failed' && message.toLowerCase().includes('interrupt')
+            if (wasInterrupted) {
+              if (queueRef.current.length > 0) {
+                const existingDraft = composerDraftRef.current
+                const parts = queueRef.current.slice()
+                if (existingDraft.trim().length > 0) {
+                  parts.push(existingDraft)
+                }
+                const newDraft = parts.join('\n')
+                queueRef.current = []
+                setQueuedFollowUps([])
+                if (newDraft.trim().length > 0) {
+                  setComposerPrefill(newDraft)
+                  composerDraftRef.current = newDraft
+                }
+              }
+            } else {
+              flushQueuedFollowUp()
+            }
           }
           const payload = JSON.stringify({ phase: parsed.phase, usage: parsed.usage, message: parsed.message })
           append(payload, false, 'turn', trimmed)
@@ -225,6 +287,9 @@ Important policy overrides:
       setQueuedFollowUps([])
       setIsRunning(false)
       flushingFollowUpRef.current = false
+      queueRef.current = []
+      composerDraftRef.current = ''
+      setComposerPrefill(undefined)
       clearLogsStore()
     })
     return () => setClearLogHandler(null)
@@ -471,6 +536,8 @@ Important policy overrides:
               onQueue={queueFollowUp}
               onInterrupt={handleInterrupt}
               queuedMessages={queuedFollowUps}
+              prefill={composerPrefill}
+              onDraftChange={handleDraftChange}
             />
           </View>
         </KeyboardAvoidingView>
