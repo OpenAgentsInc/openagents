@@ -268,13 +268,24 @@ async fn spawn_codex_child_only(opts: &Opts) -> Result<ChildWithIo> {
 
 async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Option<PathBuf>, resume_id: Option<&str>) -> Result<ChildWithIo> {
     let (bin, mut args) = build_bin_and_args(opts)?;
-    // Attach resume args only when we have a prior session id and the CLI supports resume
+    // Attach resume args only when requested/available and the CLI supports resume
     let supports = cli_supports_resume(&bin);
-    let resume_mode = if supports { resume_id } else { None };
-    if let Some(rid) = resume_mode {
-        info!(resume = rid, msg = "enabling resume by id");
-        args.push("resume".into());
-        args.push(rid.into());
+    if let Some(rid) = resume_id {
+        if supports {
+            if rid == "last" {
+                info!(msg = "enabling resume --last");
+                args.push("resume".into());
+                args.push("--last".into());
+                args.push("-".into()); // read prompt from stdin
+            } else {
+                info!(resume = rid, msg = "enabling resume by id");
+                args.push("resume".into());
+                args.push(rid.into());
+                args.push("-".into()); // read prompt from stdin
+            }
+        } else {
+            info!(requested = rid, msg = "resume requested but unsupported by CLI; starting fresh");
+        }
     }
     let workdir = workdir_override.unwrap_or_else(|| detect_repo_root(None));
     info!(
