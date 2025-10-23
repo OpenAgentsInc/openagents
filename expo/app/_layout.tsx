@@ -6,7 +6,7 @@ import { ThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Drawer } from 'react-native-drawer-layout';
-import { I18nManager, Pressable, ScrollView, Text, View, StyleSheet } from 'react-native';
+import { I18nManager, Pressable, ScrollView, Text, View } from 'react-native';
 import { useTypographySetup, applyTypographyGlobals, Typography } from '@/constants/typography';
 import { Colors, NavigationTheme } from '@/constants/theme';
 import { WsProvider, useWs } from '@/providers/ws';
@@ -35,16 +35,16 @@ function DrawerContent() {
             <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>OpenAgents</Text>
           </View>
           <View style={{ paddingHorizontal: 16, gap: 8 }}>
-            <Pressable onPress={closeAnd(() => router.push('/(tabs)/library'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
+            <Pressable onPress={closeAnd(() => router.push('/library'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
             </Pressable>
             <View style={{ height: 12 }} />
             <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
-            <Pressable onPress={closeAnd(() => router.push('/(tabs)/projects'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
+            <Pressable onPress={closeAnd(() => router.push('/projects'))} accessibilityRole="button" style={{ paddingVertical: 10 }}>
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See projects…</Text>
             </Pressable>
             {projects.slice(0, 5).map((p) => (
-              <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/(tabs)/session'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/session'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
                 <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
             ))}
@@ -62,9 +62,9 @@ function DrawerContent() {
             ))}
           </View>
         </ScrollView>
-        <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
+        <View style={{ borderTopWidth: 1, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
           <Pressable
-            onPress={closeAnd(() => router.push('/(tabs)/settings'))}
+            onPress={closeAnd(() => router.push('/settings'))}
             accessibilityRole="button"
             accessibilityLabel="Open settings"
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
@@ -118,7 +118,7 @@ function DrawerWrapper() {
     const onPress = async () => {
       try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } } catch {}
       clearLog();
-      router.push('/(tabs)/session');
+      router.push('/session');
     };
     return (
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
@@ -139,11 +139,11 @@ function DrawerWrapper() {
       <View
         style={{
           flex: 1,
-          borderLeftWidth: isRTL ? 0 : StyleSheet.hairlineWidth,
-          borderRightWidth: isRTL ? StyleSheet.hairlineWidth : 0,
+          borderLeftWidth: isRTL ? 0 : 1,
+          borderRightWidth: isRTL ? 1 : 0,
           borderColor: Colors.border,
           // Hide the divider when closed by nudging it off-screen
-          ...(isRTL ? { marginRight: open ? 0 : -StyleSheet.hairlineWidth } : { marginLeft: open ? 0 : -StyleSheet.hairlineWidth }),
+          ...(isRTL ? { marginRight: open ? 0 : -1 } : { marginLeft: open ? 0 : -1 }),
         }}
       >
         <AppHeader />
@@ -154,8 +154,15 @@ function DrawerWrapper() {
             animation: 'none',
           }}
         >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          {/* Removed tabs; declare screens individually */}
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="session/index" options={{ headerShown: false }} />
+          <Stack.Screen name="session/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="projects/index" options={{}} />
+          <Stack.Screen name="project/[id]" options={{}} />
+          <Stack.Screen name="project/new" options={{}} />
+          <Stack.Screen name="library/index" options={{}} />
+          <Stack.Screen name="settings/index" options={{}} />
           <Stack.Screen name="session/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
         {open ? (
