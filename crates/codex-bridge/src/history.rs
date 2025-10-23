@@ -5,7 +5,7 @@ use std::{
     fs,
     io::{BufRead, BufReader},
     path::Path,
-    time::SystemTime,
+    time::{Duration, SystemTime, Instant},
 };
 use std::result::Result as StdResult;
 use tracing::info;
@@ -309,6 +309,55 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
 
 fn now_ts() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
 
+// Simple in-memory cache for history listing to avoid repeated full scans
+#[derive(Debug)]
+pub struct HistoryCache {
+    pub last_scan_at: Option<Instant>,
+    pub last_seen_mtime: u64,
+    pub top: Vec<HistoryItem>,
+    pub max_len: usize,
+    pub ttl: Duration,
+}
+
+impl Default for HistoryCache {
+    fn default() -> Self {
+        Self { last_scan_at: None, last_seen_mtime: 0, top: Vec::new(), max_len: 400, ttl: Duration::from_secs(6) }
+    }
+}
+
+impl HistoryCache {
+    pub fn new(max_len: usize, ttl: Duration) -> Self { Self { last_scan_at: None, last_seen_mtime: 0, top: Vec::new(), max_len, ttl } }
+    pub fn get(&mut self, base: &Path, limit: usize, since_mtime: Option<u64>) -> Result<Vec<HistoryItem>> {
+        let now = Instant::now();
+        let ttl_ok = self.last_scan_at.map(|t| now.duration_since(t) < self.ttl).unwrap_or(false);
+        let need_refresh = !ttl_ok;
+        if need_refresh {
+            // Refresh cache with a full scan; keep only top max_len
+            let mut items = scan_history(base, self.max_len)?;
+            if !items.is_empty() {
+                self.last_seen_mtime = items.iter().map(|i| i.mtime).max().unwrap_or(self.last_seen_mtime);
+            }
+            self.top = items.drain(..).collect();
+            self.last_scan_at = Some(now);
+        }
+        let mut out: Vec<HistoryItem> = match since_mtime {
+            Some(since) => self.top.iter().filter(|it| it.mtime > since).cloned().collect(),
+            None => self.top.iter().cloned().collect(),
+        };
+        out.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+        if out.len() > limit { out.truncate(limit); }
+        info!(
+            fast_path = %(!need_refresh),
+            cached = %ttl_ok,
+            since_mtime = since_mtime.unwrap_or(0),
+            returned = out.len(),
+            limit,
+            msg = "history cache served"
+        );
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,5 +405,28 @@ mod tests {
         assert_eq!(th.title, "Done");
         assert!(th.items.iter().any(|i| i.kind == "cmd" && i.text.contains("echo hello")));
         assert!(th.items.iter().any(|i| i.kind == "message" && i.role.as_deref() == Some("assistant")));
+    }
+
+    #[test]
+    fn history_cache_serves_from_cache_and_since_mtime() {
+        let td = tempfile::tempdir().unwrap();
+        let base = td.path().join("sessions");
+        fs::create_dir_all(&base).unwrap();
+        // Create 3 new-format files
+        for i in 0..3u32 {
+            let p = base.join(format!("rollout-{}.jsonl", i));
+            write_file(&p, &[
+                r#"{"type":"thread.started","thread_id":"t"}"#,
+                r#"{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"**Hello**."}}"#,
+            ]);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let mut cache = HistoryCache::new(50, std::time::Duration::from_secs(60));
+        let first = cache.get(&base, 10, None).unwrap();
+        assert_eq!(first.len(), 3);
+        let max_m = first.iter().map(|i| i.mtime).max().unwrap();
+        // since_mtime at max should return empty
+        let delta = cache.get(&base, 10, Some(max_m)).unwrap();
+        assert!(delta.is_empty());
     }
 }

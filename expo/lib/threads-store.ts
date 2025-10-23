@@ -19,7 +19,7 @@ type ThreadsState = {
   // Ephemeral mapping of live thread_id (UUID) -> projectId set when a thread starts
   threadProject: Record<string, string | undefined>
   setThreadProject: (threadId: string, projectId: string) => void
-  loadHistory: (requestHistory: () => Promise<HistoryItem[]>) => Promise<void>
+  loadHistory: (requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<HistoryItem[]>) => Promise<void>
   loadThread: (requestThread: (id: string, path?: string) => Promise<ThreadResponse | undefined>, id: string, path?: string) => Promise<ThreadResponse | undefined>
 }
 
@@ -38,21 +38,36 @@ export const useThreads = create<ThreadsState>()(
         const cur = get().threadProject
         set({ threadProject: { ...cur, [threadId]: projectId } })
       },
-      loadHistory: async (requestHistory: () => Promise<HistoryItem[]>) => {
-        set({ loadingHistory: true })
-        try {
-          appLog('history.fetch.start', { via: 'ws' })
-          const items = await requestHistory()
-          set({ history: items, historyLoadedAt: Date.now(), historyError: null })
-          appLog('history.fetch.success', { count: items.length })
-        } catch (e: any) {
-          const msg = String(e?.message ?? e)
-          set({ historyError: msg })
-          appLog('history.fetch.error', { error: msg }, 'error')
-        } finally {
-          set({ loadingHistory: false })
-        }
-      },
+  loadHistory: async (requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<HistoryItem[]>) => {
+    set({ loadingHistory: true })
+    try {
+          const state = get()
+          const existing = state.history || []
+          const latestMtime = existing.reduce((acc, it)=> Math.max(acc, it.mtime || 0), 0)
+          const params = latestMtime ? { since_mtime: latestMtime, limit: 50 } : { limit: 50 }
+          appLog('history.fetch.start', { via: 'ws', params })
+          const delta = await requestHistory(params)
+          let next = existing.slice()
+          if (Array.isArray(delta) && delta.length > 0) {
+            const seen = new Set(next.map(i=>i.id))
+            for (const it of delta) { if (!seen.has(it.id)) { next.push(it); seen.add(it.id) } }
+            next.sort((a,b)=> (b.mtime - a.mtime))
+          }
+          if (next.length === 0 && existing.length === 0) {
+            // Fallback initial fetch without since_mtime if cache is empty and delta was empty
+            const full = await requestHistory({ limit: 50 })
+            next = Array.isArray(full) ? full : []
+          }
+          set({ history: next, historyLoadedAt: Date.now(), historyError: null })
+          appLog('history.fetch.success', { count: next.length, delta: delta?.length ?? 0 })
+      } catch (e: any) {
+      const msg = String(e?.message ?? e)
+      set({ historyError: msg })
+      appLog('history.fetch.error', { error: msg }, 'error')
+    } finally {
+      set({ loadingHistory: false })
+    }
+  },
       loadThread: async (requestThread: (id: string, path?: string) => Promise<ThreadResponse | undefined>, id: string, path?: string) => {
         const key = id
         const cur = get().thread[key]
