@@ -13,7 +13,22 @@ export type LogDetail = {
 };
 
 const store = new Map<number, LogDetail>();
+type Listener = () => void;
+const listeners = new Set<Listener>();
 const KEY = '@openagents/logs-v1';
+
+function notify() {
+  listeners.forEach((listener) => {
+    try { listener(); } catch {}
+  });
+}
+
+export function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 export function putLog(detail: LogDetail) {
   try {
@@ -23,6 +38,7 @@ export function putLog(detail: LogDetail) {
     }
   } catch {}
   store.set(detail.id, detail);
+  notify();
 }
 
 export function getLog(id: number): LogDetail | undefined {
@@ -48,6 +64,7 @@ export async function loadLogs(): Promise<LogDetail[]> {
     try { if (sanitized.length !== arr.length) await AsyncStorage.setItem(KEY, JSON.stringify(sanitized)); } catch {}
     store.clear();
     for (const d of sanitized) store.set(d.id, d);
+    notify();
     return getAllLogs();
   } catch {
     return [];
@@ -64,4 +81,5 @@ export async function saveLogs(): Promise<void> {
 export async function clearLogs(): Promise<void> {
   store.clear();
   try { await AsyncStorage.removeItem(KEY); } catch {}
+  notify();
 }
