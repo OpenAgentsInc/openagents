@@ -84,7 +84,7 @@ export default function TabLayout() {
         headerShown: true,
         animation: 'none',
         headerTitleStyle: { fontFamily: Typography.bold },
-        headerStyle: { backgroundColor: Colors.background },
+        headerStyle: { backgroundColor: Colors.background, borderBottomColor: Colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
         headerTitleAlign: 'left',
         headerTitle: '', // axe the centered title entirely
         headerLeftContainerStyle: { marginLeft: 0, paddingLeft: 0 },

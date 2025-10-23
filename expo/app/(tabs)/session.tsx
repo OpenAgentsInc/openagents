@@ -2,6 +2,7 @@ import * as Clipboard from "expo-clipboard"
 import { router } from "expo-router"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import Markdown from "react-native-markdown-display"
 import { CommandExecutionCard } from "@/components/jsonl/CommandExecutionCard"
 import { ErrorRow } from "@/components/jsonl/ErrorRow"
@@ -30,6 +31,7 @@ import { Composer } from "@/components/composer"
 
 export default function SessionScreen() {
   const headerHeight = useHeaderHeight()
+  const insets = useSafeAreaInsets()
 
   type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'|'thread'|'item_lifecycle'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
@@ -389,7 +391,9 @@ Important policy overrides:
         </View>
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 8}>
-          <Composer onSend={send} connected={connected} />
+          <View style={{ paddingBottom: Math.max(insets.bottom, 8), paddingHorizontal: 8 }}>
+            <Composer onSend={send} connected={connected} />
+          </View>
         </KeyboardAvoidingView>
       </View>
     </View>
