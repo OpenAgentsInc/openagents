@@ -301,9 +301,16 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
             Some("item.started") => {
                 if let Some(item) = v.get("item") {
                     if item.get("type").and_then(|x| x.as_str()) == Some("command_execution") {
-                        if let Some(cmd) = item.get("command").and_then(|x| x.as_str()) {
-                            items.push(ThreadItem { ts: now_ts(), kind: "cmd".into(), role: None, text: format!("CMD {}", cmd) });
-                        }
+                        let cmd = item.get("command").and_then(|x| x.as_str()).unwrap_or("");
+                        // Start entry: in_progress with empty sample
+                        let payload = serde_json::json!({
+                            "command": cmd,
+                            "status": item.get("status").and_then(|x| x.as_str()).unwrap_or("in_progress"),
+                            "exit_code": serde_json::Value::Null,
+                            "sample": "",
+                            "output_len": 0
+                        });
+                        items.push(ThreadItem { ts: now_ts(), kind: "cmd".into(), role: None, text: payload.to_string() });
                     }
                 }
             }
@@ -325,6 +332,21 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
                             if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                                 items.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
                             }
+                        }
+                        Some("command_execution") => {
+                            let cmd = item.get("command").and_then(|x| x.as_str()).unwrap_or("");
+                            let out = item.get("aggregated_output").and_then(|x| x.as_str()).unwrap_or("");
+                            let exit_code = item.get("exit_code").and_then(|x| x.as_i64()).unwrap_or(0);
+                            let status = item.get("status").and_then(|x| x.as_str()).unwrap_or("completed");
+                            let sample = if out.len() > 240 { format!("{}", &out[..240]) } else { out.to_string() };
+                            let payload = serde_json::json!({
+                                "command": cmd,
+                                "status": status,
+                                "exit_code": exit_code,
+                                "sample": sample,
+                                "output_len": out.len()
+                            });
+                            items.push(ThreadItem { ts: now_ts(), kind: "cmd".into(), role: None, text: payload.to_string() });
                         }
                         _ => {}
                     }

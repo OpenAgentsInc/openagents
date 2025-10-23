@@ -7,6 +7,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
+import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 
 export default function ThreadHistoryView() {
@@ -49,6 +50,20 @@ export default function ThreadHistoryView() {
     return out
   }, [thread?.items])
 
+  // For command entries, only keep the last entry per command (like live feed)
+  const lastCmdIndex = React.useMemo(() => {
+    const map = new Map<string, number>()
+    items.forEach((it, idx) => {
+      if (it.kind !== 'cmd') return
+      try {
+        const obj = JSON.parse(it.text)
+        const cmd = String(obj.command ?? '')
+        if (cmd) map.set(cmd, idx)
+      } catch {}
+    })
+    return map
+  }, [items])
+
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <Stack.Screen options={{ title: '', headerBackTitle: '' }} />
@@ -62,7 +77,17 @@ export default function ThreadHistoryView() {
           data={items}
           keyExtractor={(_, i) => String(i)}
           contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 80 }}
-          renderItem={({ item }) => <Row it={item} />}
+          renderItem={({ item, index }) => {
+            const isLastCmd = item.kind !== 'cmd' ? undefined : (() => {
+              try {
+                const obj = JSON.parse(item.text)
+                const cmd = String(obj.command ?? '')
+                if (!cmd) return true
+                return lastCmdIndex.get(cmd) === index
+              } catch { return true }
+            })()
+            return <Row it={item} isLastCmd={isLastCmd} />
+          }}
           ListFooterComponent={id ? (
             <View style={{ marginTop: 12 }}>
               <Pressable
@@ -92,7 +117,7 @@ function sanitizeUserText(s: string): string {
   return text
 }
 
-function Row({ it }: { it: { ts: number; kind: 'message'|'reason'|'cmd'; role?: 'assistant'|'user'; text: string } }) {
+function Row({ it, isLastCmd }: { it: { ts: number; kind: 'message'|'reason'|'cmd'; role?: 'assistant'|'user'; text: string }, isLastCmd?: boolean }) {
   if (it.kind === 'message' && it.role === 'assistant') {
     return <MarkdownBlock markdown={it.text} />
   }
@@ -108,7 +133,23 @@ function Row({ it }: { it: { ts: number; kind: 'message'|'reason'|'cmd'; role?: 
     return <ReasoningHeadline text={it.text} />
   }
   if (it.kind === 'cmd') {
-    return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>{it.text}</Text>
+    try {
+      const obj = JSON.parse(it.text)
+      if (!isLastCmd) return null
+      return (
+        <CommandExecutionCard
+          command={obj.command ?? ''}
+          status={obj.status}
+          exitCode={obj.exit_code}
+          sample={obj.sample}
+          outputLen={obj.output_len}
+          showExitCode={false}
+          collapsed={true}
+        />
+      )
+    } catch {
+      return null
+    }
   }
   return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>{it.text}</Text>
 }
