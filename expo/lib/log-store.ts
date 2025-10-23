@@ -13,6 +13,10 @@ export type LogDetail = {
 };
 
 const store = new Map<number, LogDetail>();
+let snapshot: LogDetail[] = []; // referentially stable snapshot of logs
+function recomputeSnapshot() {
+  snapshot = Array.from(store.values()).sort((a, b) => a.id - b.id);
+}
 type Listener = () => void;
 const listeners = new Set<Listener>();
 const KEY = '@openagents/logs-v1';
@@ -41,6 +45,7 @@ export function putLog(detail: LogDetail) {
     }
   } catch {}
   store.set(detail.id, detail);
+  recomputeSnapshot();
   notify();
   scheduleSave();
 }
@@ -49,9 +54,8 @@ export function getLog(id: number): LogDetail | undefined {
   return store.get(id);
 }
 
-export function getAllLogs(): LogDetail[] {
-  return Array.from(store.values()).sort((a, b) => (a.id - b.id));
-}
+// Snapshot for useSyncExternalStore; must be referentially stable
+export function getAllLogs(): LogDetail[] { return snapshot; }
 
 function scheduleSave() {
   if (saveTimer) return;
@@ -74,7 +78,7 @@ export function isHydrated(): boolean {
 
 export async function loadLogs(): Promise<LogDetail[]> {
   if (hydrated && !loadPromise) {
-    return getAllLogs();
+    return snapshot;
   }
   if (!loadPromise) {
     loadPromise = (async () => {
@@ -82,8 +86,9 @@ export async function loadLogs(): Promise<LogDetail[]> {
         const raw = await AsyncStorage.getItem(KEY);
         if (!raw) {
           hydrated = true;
+          recomputeSnapshot();
           notify();
-          return [];
+          return snapshot;
         }
         const arr: LogDetail[] = JSON.parse(raw);
         const sanitized = arr.filter((d) => {
@@ -95,12 +100,14 @@ export async function loadLogs(): Promise<LogDetail[]> {
         store.clear();
         for (const d of sanitized) store.set(d.id, d);
         hydrated = true;
+        recomputeSnapshot();
         notify();
-        return getAllLogs();
+        return snapshot;
       } catch {
         hydrated = true;
+        recomputeSnapshot();
         notify();
-        return [];
+        return snapshot;
       } finally {
         loadPromise = null;
       }
@@ -130,5 +137,6 @@ export async function clearLogs(): Promise<void> {
   }
   try { await AsyncStorage.removeItem(KEY); } catch {}
   hydrated = true;
+  recomputeSnapshot();
   notify();
 }
