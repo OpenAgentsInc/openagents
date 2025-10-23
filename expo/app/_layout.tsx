@@ -15,7 +15,7 @@ import { useAutoUpdate } from "@/hooks/use-auto-update"
 import { useThreads } from "@/lib/threads-store"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider, useProjects } from "@/providers/projects"
-import { useWs, WsProvider } from "@/providers/ws"
+import { BridgeProvider, useBridge } from "@/providers/ws"
 import { Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
 
@@ -23,7 +23,7 @@ function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
-  const { httpBase } = useWs();
+  const { httpBase } = useBridge();
   const history = useThreads((s) => s.history);
   const loading = useThreads((s) => s.loadingHistory);
   const loadHistory = useThreads((s) => s.loadHistory);
@@ -92,13 +92,13 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider value={NavigationTheme}>
-        <WsProvider>
+        <BridgeProvider>
           <ProjectsProvider>
             <DrawerProvider>
               <DrawerWrapper />
             </DrawerProvider>
           </ProjectsProvider>
-        </WsProvider>
+        </BridgeProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
@@ -110,7 +110,7 @@ function DrawerWrapper() {
   const router = useRouter();
 
   const ConnectionDot = () => {
-    const { connected } = useWs();
+    const { connected } = useBridge();
     return (
       <View style={{ marginLeft: 10 }}>
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger }} />
@@ -119,7 +119,7 @@ function DrawerWrapper() {
   };
 
   const NewChatButton = () => {
-    const { clearLog, setResumeNextId } = useWs();
+    const { clearLog, setResumeNextId } = useBridge();
     const clearPersisted = async () => {
       try { const mod = await import('@/lib/log-store'); await mod.clearLogs(); } catch {}
     };

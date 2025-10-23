@@ -5,7 +5,7 @@ type MsgHandler = ((text: string) => void) | null;
 
 type Approvals = 'never' | 'on-request' | 'on-failure';
 
-type WsContextValue = {
+type BridgeContextValue = {
   bridgeHost: string; // e.g., "localhost:8787" or "100.x.x.x:8787"
   setBridgeHost: (v: string) => void;
   wsUrl: string;   // derived: ws://<bridgeHost>/ws
@@ -32,9 +32,9 @@ type WsContextValue = {
   setResumeNextId: (id: string | null) => void;
 };
 
-const WsContext = createContext<WsContextValue | undefined>(undefined);
+const BridgeContext = createContext<BridgeContextValue | undefined>(undefined);
 
-export function WsProvider({ children }: { children: React.ReactNode }) {
+export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const [bridgeHost, setBridgeHost] = useState('localhost:8787');
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -206,11 +206,15 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
     [bridgeHost, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
   );
 
-  return <WsContext.Provider value={value}>{children}</WsContext.Provider>;
+  return <BridgeContext.Provider value={value}>{children}</BridgeContext.Provider>;
 }
 
-export function useWs() {
-  const ctx = useContext(WsContext);
-  if (!ctx) throw new Error('useWs must be used within WsProvider');
+export function useBridge() {
+  const ctx = useContext(BridgeContext);
+  if (!ctx) throw new Error('useBridge must be used within BridgeProvider');
   return ctx;
 }
+
+// Back-compat exports (deprecated)
+export const WsProvider = BridgeProvider;
+export const useWs = useBridge;

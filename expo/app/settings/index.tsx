@@ -1,13 +1,13 @@
 import React from 'react'
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
-import { useWs } from '@/providers/ws'
+import { useBridge } from '@/providers/ws'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
-  const { bridgeHost, setBridgeHost, wsUrl, httpBase, connected, connect, disconnect, clearLog, readOnly, setReadOnly, networkEnabled, setNetworkEnabled, approvals, setApprovals, attachPreface, setAttachPreface } = useWs()
+  const { bridgeHost, setBridgeHost, wsUrl, httpBase, connected, connect, disconnect, clearLog, readOnly, setReadOnly, networkEnabled, setNetworkEnabled, approvals, setApprovals, attachPreface, setAttachPreface } = useBridge()
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>

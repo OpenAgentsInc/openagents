@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useWs } from '@/providers/ws';
+import { useBridge } from '@/providers/ws';
 import {
   hydrateProjects,
   listProjects,
@@ -26,7 +26,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [active, setActiveState] = useState<Project | undefined>(undefined);
-  const ws = useWs();
+  const ws = useBridge();
 
   useEffect(() => {
     (async () => {
@@ -105,7 +105,7 @@ export function useProjects() {
 }
 
 function buildHumanPreface(
-  ws: ReturnType<typeof useWs>,
+  ws: ReturnType<typeof useBridge>,
   project?: Project,
 ) {
   const envFs = ws.readOnly ? 'read-only' : 'write access within workspace';

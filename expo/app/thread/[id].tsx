@@ -2,7 +2,7 @@ import React from 'react'
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
 import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native'
 import { useThreads } from '@/lib/threads-store'
-import { useWs } from '@/providers/ws'
+import { useBridge } from '@/providers/ws'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
@@ -11,7 +11,7 @@ import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 
 export default function ThreadHistoryView() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
-  const { httpBase, setResumeNextId } = useWs()
+  const { httpBase, setResumeNextId } = useBridge()
   const router = useRouter()
   const loadThread = useThreads((s) => s.loadThread)
   const thread = useThreads((s) => (id ? s.thread[id] : undefined))

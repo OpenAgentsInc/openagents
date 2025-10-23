@@ -7,7 +7,7 @@ import { Typography } from '@/constants/typography'
 import { useHeaderStore } from '@/lib/header-store'
 import { clearLogs as clearLogsStore } from '@/lib/log-store'
 import { useDrawer } from '@/providers/drawer'
-import { useWs } from '@/providers/ws'
+import { useBridge } from '@/providers/ws'
 import * as Haptics from 'expo-haptics'
 import { router, usePathname } from 'expo-router'
 
@@ -17,7 +17,7 @@ export function AppHeader() {
   const subtitle = useHeaderStore((s) => s.subtitle)
   const setHeight = useHeaderStore((s) => s.setHeight)
   const { toggle } = useDrawer()
-  const { connected, clearLog, setResumeNextId } = useWs()
+  const { connected, clearLog, setResumeNextId } = useBridge()
   const pathname = usePathname()
   const showBack = React.useMemo(() => pathname?.startsWith('/message/') ?? false, [pathname])
 

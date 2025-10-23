@@ -2,13 +2,13 @@ import React from 'react'
 import { useLocalSearchParams, Stack } from 'expo-router'
 import { ScrollView, Text, View } from 'react-native'
 import { useThreads } from '@/lib/threads-store'
-import { useWs } from '@/providers/ws'
+import { useBridge } from '@/providers/ws'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 
 export default function ThreadInstructions() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
-  const { httpBase } = useWs()
+  const { httpBase } = useBridge()
   const loadThread = useThreads((s) => s.loadThread)
   const thread = useThreads((s) => (id ? s.thread[id] : undefined))
   React.useEffect(() => { if (id) loadThread(httpBase, id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, httpBase, loadThread])
