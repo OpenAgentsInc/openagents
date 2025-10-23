@@ -15,27 +15,17 @@ import { useAutoUpdate } from '@/hooks/use-auto-update';
 import { AppHeader } from '@/components/app-header'
 import { DrawerProvider, useDrawer } from '@/providers/drawer';
 import * as Haptics from 'expo-haptics';
-import { getAllLogs, loadLogs, subscribe } from '@/lib/log-store';
+import { useSessions } from '@/lib/sessions-store';
 
 function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
-  const logs = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
-  const [hydrating, setHydrating] = React.useState(true);
-  React.useEffect(() => {
-    let alive = true;
-    loadLogs().catch(() => {}).finally(() => { if (alive) setHydrating(false); });
-    return () => { alive = false; };
-  }, []);
-  const userMsgs = React.useMemo(
-    () =>
-      logs
-        .filter((l) => typeof l.text === 'string' && /^\s*>/.test(l.text))
-        .slice(-10)
-        .reverse(),
-    [logs],
-  );
+  const { wsUrl } = useWs();
+  const history = useSessions((s) => s.history);
+  const loading = useSessions((s) => s.loadingHistory);
+  const loadHistory = useSessions((s) => s.loadHistory);
+  React.useEffect(() => { loadHistory(wsUrl).catch(() => {}); }, [loadHistory, wsUrl]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.black }}>
@@ -60,18 +50,16 @@ function DrawerContent() {
             ))}
             <View style={{ height: 16 }} />
             <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
-            {hydrating ? (
+            {loading ? (
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>Loading…</Text>
-            ) : userMsgs.length === 0 ? (
+            ) : history.length === 0 ? (
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
-            ) : userMsgs.map((m) => {
-              const clean = String(m.text).replace(/^\s*>\s?/, '');
-              return (
-                <Pressable key={m.id} onPress={closeAnd(() => router.push('/(tabs)/session'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
-                  <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{clean}</Text>
-                </Pressable>
-              );
-            })}
+            ) : history.slice(0, 5).map((h) => (
+              <Pressable key={h.id} onPress={closeAnd(() => router.push(`/session/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+                <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{h.title || '(no title)'}</Text>
+                <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(h.mtime * 1000).toLocaleString()}</Text>
+              </Pressable>
+            ))}
           </View>
         </ScrollView>
         <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>

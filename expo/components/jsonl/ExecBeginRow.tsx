@@ -57,7 +57,7 @@ export function ExecBeginRow({ payload, full = false }: { payload: ExecBeginPayl
         const v = first[k] ?? {}
         const p = pickPath(v)
         let action = labelFor(k)
-        let path = shorten(p)
+        let path = full ? p : shorten(p)
         // Avoid surfacing literal "Unknown" to users.
         if (action === 'Unknown' || action.toLowerCase() === 'unknown') {
           // Try to recover: show the raw shell command if available
@@ -87,6 +87,11 @@ export function ExecBeginRow({ payload, full = false }: { payload: ExecBeginPayl
             </Text>
           ) : null}
         </Text>
+        {full && cwd ? (
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
+            in <Text style={{ color: Colors.foreground }}>{cwd}</Text>
+          </Text>
+        ) : null}
       </View>
     )
   }
