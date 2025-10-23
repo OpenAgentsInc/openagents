@@ -553,6 +553,11 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
             if low.contains("reading prompt from stdin") || low == "no prompt provided via stdin." {
                 continue;
             }
+            // Transient exec errors from the CLI that are immediately retried (e.g., after path correction)
+            // are confusing in the UI; suppress them from the broadcast/log stream.
+            if low.contains("codex_core::exec: exec error") {
+                continue;
+            }
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
             println!("{}", log);
             if line.contains("\"sandbox\"") || line.contains("sandbox") {
@@ -608,6 +613,9 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
             // Drop noisy CLI lines we do not want to surface
             let low = line.trim().to_ascii_lowercase();
             if low.contains("reading prompt from stdin") || low == "no prompt provided via stdin." {
+                continue;
+            }
+            if low.contains("codex_core::exec: exec error") {
                 continue;
             }
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
