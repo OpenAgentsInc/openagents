@@ -109,11 +109,15 @@ export default function ComponentLibraryScreen() {
         ]} />
       </Section>
 
-      <Section title="Turn / Thread / Error">
-        <ThreadStartedRow threadId="abcd1234" />
-        <TurnEventRow phase="started" />
+      <Section title="Turn (completed) / Error">
         <TurnEventRow phase="completed" usage={{ input_tokens: 1200, cached_input_tokens: 300, output_tokens: 420 }} />
         <ErrorRow message="Something went wrong while fetching." />
+      </Section>
+
+      <Section title="unused (hidden in feed)">
+        {/* Not shown in the main feed; kept here only for reference */}
+        <ThreadStartedRow threadId="abcd1234" />
+        <TurnEventRow phase="started" />
       </Section>
     </ScrollView>
   )

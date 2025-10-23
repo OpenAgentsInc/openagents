@@ -118,10 +118,14 @@ function DrawerWrapper() {
 
   const NewChatButton = () => {
     const { clearLog, setResumeNextId } = useWs();
+    const clearPersisted = async () => {
+      try { const mod = await import('@/lib/log-store'); await mod.clearLogs(); } catch {}
+    };
     const onPress = async () => {
       try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } } catch {}
       // Force the next send to start a fresh session (no resume)
       try { setResumeNextId('new') } catch {}
+      await clearPersisted();
       clearLog();
       router.push('/thread');
     };
