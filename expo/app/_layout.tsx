@@ -6,7 +6,7 @@ import { ThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Drawer } from 'react-native-drawer-layout';
-import { I18nManager, Pressable, ScrollView, Text, View } from 'react-native';
+import { I18nManager, Pressable, ScrollView, Text, View, StyleSheet } from 'react-native';
 import { useTypographySetup, applyTypographyGlobals, Typography } from '@/constants/typography';
 import { Colors, NavigationTheme } from '@/constants/theme';
 import { WsProvider, useWs } from '@/providers/ws';
@@ -74,7 +74,7 @@ function DrawerContent() {
             })}
           </View>
         </ScrollView>
-        <View style={{ borderTopWidth: 1, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
+        <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
           <Pressable
             onPress={closeAnd(() => router.push('/(tabs)/settings'))}
             accessibilityRole="button"
@@ -151,11 +151,11 @@ function DrawerWrapper() {
       <View
         style={{
           flex: 1,
-          borderLeftWidth: isRTL ? 0 : 1,
-          borderRightWidth: isRTL ? 1 : 0,
+          borderLeftWidth: isRTL ? 0 : StyleSheet.hairlineWidth,
+          borderRightWidth: isRTL ? StyleSheet.hairlineWidth : 0,
           borderColor: Colors.border,
           // Hide the divider when closed by nudging it off-screen
-          ...(isRTL ? { marginRight: open ? 0 : -1 } : { marginLeft: open ? 0 : -1 }),
+          ...(isRTL ? { marginRight: open ? 0 : -StyleSheet.hairlineWidth } : { marginLeft: open ? 0 : -StyleSheet.hairlineWidth }),
         }}
       >
         <AppHeader />
