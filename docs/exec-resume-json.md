@@ -1,10 +1,16 @@
 # Resuming Conversations with `codex exec --json`
 
-This guide explains how conversation resume works internally and how to resume a session when using JSONL output mode (`--json`).
+This document explains how resume works with the non‑interactive Exec CLI and how to use it reliably in JSONL mode. It also calls out version differences you may encounter.
 
-## TL;DR (CLI)
+## Supported Syntax (newer Codex builds)
 
-- Start fresh and pipe the prompt:
+Recent Codex builds include a dedicated subcommand under Exec:
+
+- Inspect support: `codex exec --help` should list a `resume` command. Or run `codex exec resume --help`.
+
+Common patterns when supported:
+
+- Start fresh and read prompt from stdin:
   ```bash
   echo "first prompt" | codex exec --json -
   ```
@@ -16,7 +22,7 @@ This guide explains how conversation resume works internally and how to resume a
   ```bash
   echo "next prompt" | codex exec --json resume <SESSION_ID> -
   ```
-- Or pass the prompt positionally (no `-` needed):
+- Positional prompt is also accepted:
   ```bash
   codex exec --json resume --last "next prompt"
   ```
@@ -24,34 +30,36 @@ This guide explains how conversation resume works internally and how to resume a
 Notes:
 - `-C <DIR>` (aka `--cd`) sets the working directory for the session.
 - `--skip-git-repo-check` allows running outside a Git repo.
-- Any model/sandbox overrides you pass on the command line apply when resuming.
+- Model/sandbox flags you pass on the command line apply when resuming (they override the stored config).
+
+## Older Codex builds (no `exec resume`)
+
+Some installed versions of Codex do not include the `resume` subcommand under `exec`. In those versions, `codex exec --json resume --last "…"` fails with an argument error (because `resume` is parsed as the prompt and `--last` is unexpected). You can detect this case because `codex exec --help` shows no `resume` command.
+
+Behavior in that case:
+
+- `codex exec` always starts a new session; there is no non‑interactive resume.
+- For interactive flows you can still run `codex resume` (interactive CLI), but that is not JSONL/exec mode.
+- The OpenAgents bridge detects the absence of `exec resume` and falls back to starting a fresh session on each message.
+
+If you need `exec resume`, update Codex to a build that includes it (the Rust workspace target `codex-exec` shows `resume` in its `--help`).
 
 ## What “Resume” Does
 
-- Loads a previously recorded session (a rollout file under `~/.codex/sessions/...`).
-- Reconstructs conversation state in memory from that rollout.
-- Continues the session and appends new items to the same rollout file.
-- Streams fresh events to stdout as JSONL (one event per line). The very first event is:
+- Loads a previous rollout from `~/.codex/sessions/**/rollout-*.jsonl`.
+- Reconstructs the conversation state and continues in the same file (append).
+- Emits JSONL to stdout; the first line on a run is:
   ```json
   {"type":"thread.started","thread_id":"<SESSION_ID>"}
   ```
-
-JSON exec mode uses the same resume logic as human output mode — only the renderer differs.
-
-## Where Sessions Are Stored
-
-- Default root: `~/.codex` (configurable via `CODEX_HOME`).
-- Rollout files: `~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-<uuid>.jsonl`
-- The `<uuid>` at the end of the filename is the session id. It is also present on the first meta line inside the file as `payload.id`.
+- History is used to seed state but is not re‑emitted; you only see new turn/items.
 
 ## Choosing What to Resume
 
-The `resume` subcommand accepts one of:
+When `exec resume` is available, you can choose:
 
-- `--last` — picks the newest session across all sources (CLI, VSCode, Exec, MCP).
-- `<SESSION_ID>` — looks up a rollout file by UUID (present in the filename and meta).
-
-If no prior session can be found, Codex starts a new session transparently.
+- `--last` — newest recorded session across sources.
+- `<SESSION_ID>` — a specific UUID (present in filename suffix and in the first meta line `payload.id`).
 
 Examples:
 
@@ -63,78 +71,30 @@ codex exec --json resume --last "continue from where we left off"
 codex exec --json resume 5973b6c0-94b8-487b-a530-2aeb6098ae0e -
 ```
 
-## What You’ll See in JSONL
+## Code References (current implementation)
 
-On resume, the renderer emits `thread.started` with the existing session id and then only new turn events. A typical sequence for a resumed turn:
+- Exec CLI surface and `resume` subcommand: `codex-rs/exec/src/cli.rs`
+- Prompt selection (parent vs subcommand): `codex-rs/exec/src/lib.rs`
+- Resume path resolution and conversation restore: `codex-rs/exec/src/lib.rs`
+- JSONL renderer `thread.started`: `codex-rs/exec/src/event_processor_with_jsonl_output.rs`
+- Rollout persistence and discovery helpers: `codex-rs/core/src/rollout/*`
 
-```json
-{"type":"thread.started","thread_id":"5973b6c0-94b8-487b-a530-2aeb6098ae0e"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"…"}}
-{"type":"turn.completed","usage":{"input_tokens":123,"cached_input_tokens":0,"output_tokens":45}}
-```
+## Bridge Integration (OpenAgents app)
 
-History from the rollout is used to seed state but is not re-emitted in the JSONL stream.
+- First message (fresh session):
+  ```
+  codex exec --json -
+  ```
+- Subsequent messages (when supported):
+  ```
+  codex exec --json resume --last -
+  # or
+  codex exec --json resume <SESSION_ID> -
+  ```
+- The bridge captures `thread.started.thread_id` from JSONL and reuses it when respawning.
+- If `exec resume` isn’t supported, the bridge logs a note and starts a fresh session.
 
-## Behavior Details (Code Reference)
-
-- CLI surface:
-  - Subcommand and args: `codex-rs/exec/src/cli.rs:67` and `codex-rs/exec/src/cli.rs:96`
-  - Parent vs subcommand prompt selection: `codex-rs/exec/src/lib.rs:66`
-- Resume wiring (exec):
-  - Path resolution (`--last` or by id): `codex-rs/exec/src/lib.rs:484`
-  - When a path is found: `ConversationManager::resume_conversation_from_rollout` used to restore and continue; else falls back to a new conversation: `codex-rs/exec/src/lib.rs:230`
-- JSON output on resume:
-  - `SessionConfigured` → `{"type":"thread.started"}`: `codex-rs/exec/src/event_processor_with_jsonl_output.rs:144`
-- Persistence model:
-  - Resume opens the same rollout file for append: `codex-rs/core/src/rollout/recorder.rs:86` and `codex-rs/core/src/rollout/recorder.rs:127`
-  - Rollout history load and reconstruction: `codex-rs/core/src/rollout/recorder.rs:248` and `codex-rs/core/src/codex.rs:610`
-- Session discovery helpers:
-  - List newest sessions (used for `--last`): `codex-rs/core/src/rollout/recorder.rs:62`
-  - Find by UUID string: `codex-rs/core/src/rollout/list.rs:483`
-
-## Tips
-
-- To programmatically discover the latest session path, inspect `~/.codex/sessions/**/rollout-*.jsonl` and choose the newest by timestamp/UUID order (same logic as the code does).
-- To extract the session id, read the first line (SessionMeta) and parse `payload.id`, or grab it from the filename suffix.
-- You can change models/sandbox mode on resume; the new settings take effect immediately and are recorded in the configuration summary emitted at the start of the run.
-
----
-
-If you change the resume behavior or the JSON event mapping, please update this document alongside the relevant code.
-
-## Bridge integration (OpenAgents app)
-
-The mobile app streams prompts to a Rust bridge that spawns `codex exec`. To keep a single conversation across messages:
-
-1) First message (fresh session):
-
-```
-codex exec --json -   # read prompt from stdin
-```
-
-2) Subsequent messages (resume):
-
-```
-codex exec --json resume --last -
-# or
-codex exec --json resume <SESSION_ID> -
-```
-
-3) How the bridge finds `<SESSION_ID>`:
-
-- Codex emits a `thread.started` event with `thread_id` once per session. Capture this from JSONL and reuse it on respawn.
-
-4) App hint to resume:
-
-- The app prepends a JSON first line per prompt. On subsequent messages it adds `{"resume":"last"}`; the bridge uses it when supported.
-
-5) CLI support nuance:
-
-- Ensure your Codex binary supports `exec resume`. Check with `codex exec resume --help`. If unsupported, the bridge logs a clear note and starts a fresh session.
-
-6) Point bridge at a known-good build (optional):
-
+Tip: To target a known‑good binary during development, point the bridge at a locally built Codex:
 ```
 cargo run -p codex-bridge -- --codex-bin ~/code/codex-openai/codex-rs/target/release/codex
 ```
