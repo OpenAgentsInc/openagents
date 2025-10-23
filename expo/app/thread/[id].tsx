@@ -1,14 +1,18 @@
 import React from 'react'
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
-import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native'
+import { ActivityIndicator, FlatList, Pressable, Text, View, KeyboardAvoidingView, Platform } from 'react-native'
 import { useThreads } from '@/lib/threads-store'
 import { useBridge } from '@/providers/ws'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
-import { useHeaderTitle } from '@/lib/header-store'
+import { useHeaderStore, useHeaderTitle } from '@/lib/header-store'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
+import { Composer } from '@/components/composer'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
+import { useProjects } from '@/providers/projects'
 
 export default function ThreadHistoryView() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
@@ -18,6 +22,13 @@ export default function ThreadHistoryView() {
   const thread = useThreads((s) => (id ? s.thread[id] : undefined))
   const loadingMap = useThreads((s) => s.loadingThread)
   const loading = Boolean(id && loadingMap[id])
+  const listRef = React.useRef<FlatList<any> | null>(null)
+  const [atBottom, setAtBottom] = React.useState(true)
+  const didAutoScrollRef = React.useRef(false)
+  const headerHeight = useHeaderStore((s) => s.height)
+  const insets = useSafeAreaInsets()
+  const composerInputRef = React.useRef<any>(null)
+  const { activeProject, sendForProject } = useProjects()
 
   React.useEffect(() => { if (id) loadThread((id2, p) => requestThread(id2, p), id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, requestThread, loadThread])
   useHeaderTitle(thread?.title || 'Thread')
@@ -74,9 +85,24 @@ export default function ThreadHistoryView() {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={items}
           keyExtractor={(_, i) => String(i)}
           contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 80 }}
+          onContentSizeChange={() => {
+            if (!didAutoScrollRef.current) {
+              try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
+              didAutoScrollRef.current = true
+            }
+          }}
+          onScroll={(e) => {
+            try {
+              const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent
+              const atBot = contentOffset.y + layoutMeasurement.height >= contentSize.height - 24
+              setAtBottom(atBot)
+            } catch {}
+          }}
+          scrollEventThrottle={32}
           renderItem={({ item, index }) => {
             const isLastCmd = item.kind !== 'cmd' ? undefined : (() => {
               try {
@@ -88,19 +114,38 @@ export default function ThreadHistoryView() {
             })()
             return <Row it={item} isLastCmd={isLastCmd} />
           }}
-          ListFooterComponent={id ? (
-            <View style={{ marginTop: 12 }}>
-              <Pressable
-                onPress={() => { setResumeNextId(id); router.push('/thread') }}
-                style={{ alignSelf: 'flex-start', backgroundColor: Colors.card, borderColor: Colors.border, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 }}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Continue chat</Text>
-              </Pressable>
-            </View>
-          ) : null}
         />
       )}
+      {!atBottom && (
+        <Pressable
+          onPress={() => { try { listRef.current?.scrollToEnd({ animated: true }) } catch {} }}
+          accessibilityRole="button"
+          style={{ position: 'absolute', right: 16, bottom: 88, width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.foreground, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Ionicons name="chevron-down" size={20} color={Colors.black} />
+        </Pressable>
+      )}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 4}>
+        <View style={{ paddingBottom: Math.max(insets.bottom, 8), paddingHorizontal: 8 }}>
+          <Composer
+            onSend={(txt) => {
+              if (!id) return
+              try { setResumeNextId(id) } catch {}
+              // Send immediately, then navigate to live view
+              try { sendForProject(activeProject, txt) } catch {}
+              router.replace('/thread?focus=1')
+            }}
+            connected={true}
+            isRunning={false}
+            onQueue={() => {}}
+            onInterrupt={() => {}}
+            queuedMessages={[]}
+            prefill={null}
+            onDraftChange={() => {}}
+            inputRef={composerInputRef}
+          />
+        </View>
+      </KeyboardAvoidingView>
     </View>
   )
 }
