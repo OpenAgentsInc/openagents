@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { appLog } from '@/lib/app-log';
 
 type MsgHandler = ((text: string) => void) | null;
 
@@ -64,10 +65,14 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const connect = useCallback(() => {
     try { wsRef.current?.close(); } catch {}
     try {
-      const ws = new WebSocket(`ws://${bridgeHost}/ws`);
+      const wsUrl = `ws://${bridgeHost}/ws`;
+      const httpBase = `http://${bridgeHost}`;
+      appLog('bridge.connect', { wsUrl, httpBase });
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       ws.onopen = () => {
         setConnected(true);
+        appLog('bridge.open');
         // Suppress noisy connection status logs in the session feed.
       };
       ws.onmessage = (evt) => {
@@ -87,9 +92,11 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       };
       ws.onclose = () => {
         setConnected(false);
+        appLog('bridge.close');
       };
     } catch (e: any) {
       // Suppress connection error logs in the feed.
+      appLog('bridge.connect.error', { error: String(e?.message ?? e) }, 'error');
     }
   }, [bridgeHost]);
 

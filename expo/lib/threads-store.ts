@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
+import { appLog } from '@/lib/app-log'
 
 export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean }
 export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
@@ -9,6 +10,8 @@ type ThreadsState = {
   history: HistoryItem[]
   loadingHistory: boolean
   historyLoadedAt?: number
+  historyError?: string | null
+  lastHistoryUrl?: string
   thread: Record<string, ThreadResponse | undefined>
   loadingThread: Record<string, boolean>
   // Ephemeral mapping of live thread_id (UUID) -> projectId set when a thread starts
@@ -34,6 +37,8 @@ export const useThreads = create<ThreadsState>((set, get) => ({
   history: [],
   loadingHistory: false,
   historyLoadedAt: undefined,
+  historyError: null,
+  lastHistoryUrl: undefined,
   thread: {},
   loadingThread: {},
   threadProject: {},
@@ -52,17 +57,20 @@ export const useThreads = create<ThreadsState>((set, get) => ({
           if (Array.isArray(cached?.items)) set({ history: cached.items })
         }
       } catch {}
-      try {
-        const url = `${base}/history`
-        const res = await fetch(url)
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const json = await res.json()
-        const items = Array.isArray(json.items) ? (json.items as HistoryItem[]) : []
-        set({ history: items, historyLoadedAt: Date.now() })
-        try { await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify({ items })) } catch {}
-      } catch (e) {
-        try { console.warn('[threads] history fetch failed', { base, error: String((e as any)?.message ?? e) }) } catch {}
-      }
+      const url = `${base}/history`
+      set({ lastHistoryUrl: url })
+      appLog('history.fetch.start', { url })
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      const items = Array.isArray(json.items) ? (json.items as HistoryItem[]) : []
+      set({ history: items, historyLoadedAt: Date.now(), historyError: null })
+      appLog('history.fetch.success', { count: items.length })
+      try { await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify({ items })) } catch {}
+    } catch (e: any) {
+      const msg = String(e?.message ?? e)
+      set({ historyError: msg })
+      appLog('history.fetch.error', { base, error: msg }, 'error')
     } finally {
       set({ loadingHistory: false })
     }
@@ -77,10 +85,13 @@ export const useThreads = create<ThreadsState>((set, get) => ({
       const url = new URL(`${base}/thread`)
       url.searchParams.set('id', id)
       if (path) url.searchParams.set('path', path)
-      const res = await fetch(url.toString())
+      const endpoint = url.toString()
+      appLog('thread.fetch.start', { url: endpoint, id, path })
+      const res = await fetch(endpoint)
       if (!res.ok) return undefined
       const json = (await res.json()) as ThreadResponse
       set({ thread: { ...get().thread, [key]: json } })
+      appLog('thread.fetch.success', { id, items: json?.items?.length ?? 0 })
       return json
     } finally {
       const { [key]: _, ...rest } = get().loadingThread

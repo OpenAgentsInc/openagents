@@ -18,6 +18,7 @@ import { ProjectsProvider, useProjects } from "@/providers/projects"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
+import { useAppLogStore } from "@/lib/app-log"
 
 function DrawerContent() {
   const router = useRouter();
@@ -27,6 +28,8 @@ function DrawerContent() {
   const history = useThreads((s) => s.history);
   const loading = useThreads((s) => s.loadingHistory);
   const loadHistory = useThreads((s) => s.loadHistory);
+  const lastUrl = useThreads((s) => s.lastHistoryUrl);
+  const historyError = useThreads((s) => s.historyError);
   React.useEffect(() => { loadHistory(httpBase).catch(() => {}); }, [loadHistory, httpBase]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
@@ -65,6 +68,16 @@ function DrawerContent() {
                 {/* Intentionally omit inline instructions link in History */}
               </View>
             ))}
+            {!!historyError && (
+              <View style={{ paddingVertical: 6 }}>
+                <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12 }}>History failed</Text>
+                <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>GET {lastUrl}</Text>
+                <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Error: {historyError}</Text>
+                <Pressable onPress={() => loadHistory(httpBase)} accessibilityRole="button" style={{ alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: Colors.card }}>
+                  <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Retry</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </ScrollView>
         <View style={{ borderTopWidth: 1, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
@@ -76,6 +89,16 @@ function DrawerContent() {
           >
             <Ionicons name="settings-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Settings</Text>
+          </Pressable>
+          <View style={{ height: 8 }} />
+          <Pressable
+            onPress={closeAnd(() => router.push('/logs'))}
+            accessibilityRole="button"
+            accessibilityLabel="Open logs"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}
+          >
+            <Ionicons name="bug-outline" size={18} color={Colors.foreground} />
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Logs</Text>
           </Pressable>
         </View>
       </View>
@@ -174,6 +197,7 @@ function DrawerWrapper() {
           <Stack.Screen name="project/new" />
           <Stack.Screen name="library/index" />
           <Stack.Screen name="settings/index" />
+          <Stack.Screen name="logs/index" />
         </Stack>
         {open ? (
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: Colors.white, opacity: 0.04 }} />
