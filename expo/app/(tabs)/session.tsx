@@ -367,11 +367,8 @@ Important policy overrides:
               // Indentation heuristic:
               // - top level: md, reason, turn
               // - tool/exec/results: exec (level 1), file/search/mcp/todo/cmd/err/summary (level 2)
-              const indent =
-                e.kind === 'exec' ? 12 :
-                (e.kind === 'file' || e.kind === 'search' || e.kind === 'mcp' || e.kind === 'todo' || e.kind === 'cmd' || e.kind === 'err' || e.kind === 'summary')
-                  ? 24
-                  : (e.kind === 'item_lifecycle' ? 12 : 0)
+              // Remove left padding for all rows so items are flush with the container margins
+              const indent = 0
               const isMd = e.text.startsWith('::md::')
               if (isMd) {
                 const md = e.text.slice('::md::'.length)
