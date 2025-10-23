@@ -590,16 +590,6 @@ fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
         Err(_) => return None,
     };
 
-    // Helper to locate nested { msg: { type: ... } }
-    fn get_msg_mut(v: &mut JsonValue) -> Option<&mut JsonValue> {
-        if let Some(obj) = v.as_object_mut() {
-            if let Some(m) = obj.get_mut("msg") {
-                return Some(m);
-            }
-        }
-        None
-    }
-
     // Check top-level and nested msg without overlapping borrows
     let is_top = root.get("type").and_then(|t| t.as_str()) == Some("exec_command_output_delta");
     let mut_target: Option<&mut JsonValue> = if is_top {
