@@ -1,5 +1,5 @@
 import React from 'react'
-import '@/app/utils/gestureHandler'
+import '@/utils/gestureHandler'
 import { Stack, useRouter } from 'expo-router';
 import { ThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
