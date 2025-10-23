@@ -14,9 +14,9 @@ export function MarkdownBlock({ markdown }: { markdown: string }) {
         heading3: { color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16, lineHeight: 20, marginTop: 8, marginBottom: 4 },
         heading4: { color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 14, lineHeight: 18, marginTop: 6, marginBottom: 4 },
         list_item: { marginTop: 2, marginBottom: 2 },
-        code_inline: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 },
-        code_block: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
-        fence: { backgroundColor: '#0F1217', color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
+        code_inline: { backgroundColor: Colors.codeBg, color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 },
+        code_block: { backgroundColor: Colors.codeBg, color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
+        fence: { backgroundColor: Colors.codeBg, color: Colors.textPrimary, borderWidth: 1, borderColor: Colors.border, padding: 8 },
       }}
     >
       {markdown}

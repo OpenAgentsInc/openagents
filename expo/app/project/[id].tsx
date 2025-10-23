@@ -92,8 +92,8 @@ function Multiline({ label, value, onChange }: { label: string; value: string; o
 
 function Button({ title, onPress }: { title: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={{ backgroundColor: '#3F3F46', paddingHorizontal: 16, paddingVertical: 12 }}>
-      <Text style={{ color: '#fff', fontFamily: Typography.bold }}>{title}</Text>
+    <Pressable onPress={onPress} style={{ backgroundColor: Colors.buttonBg, paddingHorizontal: 16, paddingVertical: 12 }}>
+      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
 }

@@ -73,8 +73,8 @@ function Field({ label, value, onChange, placeholder, autoFocus }: { label: stri
 
 function Button({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={{ backgroundColor: disabled ? Colors.border : '#3F3F46', paddingHorizontal: 16, paddingVertical: 12 }}>
-      <Text style={{ color: '#fff', fontFamily: Typography.bold }}>{title}</Text>
+    <Pressable onPress={onPress} disabled={disabled} style={{ backgroundColor: disabled ? Colors.border : Colors.buttonBg, paddingHorizontal: 16, paddingVertical: 12 }}>
+      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   );
 }
