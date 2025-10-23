@@ -38,7 +38,7 @@ function DrawerContent() {
   );
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.black }}>
       <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ paddingBottom: 24 }} style={{ flex: 1 }}>
           <View style={{ height: 56, justifyContent: 'center', paddingHorizontal: 16 }}>
@@ -170,6 +170,9 @@ function DrawerWrapper() {
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="session/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
+        {open ? (
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: Colors.white, opacity: 0.04 }} />
+        ) : null}
       </View>
     </Drawer>
   );
