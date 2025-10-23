@@ -64,6 +64,23 @@
 - Files: kebab-case for components (e.g., `themed-text.tsx`); Expo Router uses `index.tsx`, `_layout.tsx`.
 - Rust (when added): crates kebab-case; modules snake_case; prefer `clippy` defaults.
 
+### Theme & Colors Policy (RN/Expo)
+- Do not hardcode colors in components or styles. Use tokens from `expo/constants/theme.ts` only.
+- If a new color is required, add it as a token in `expo/constants/theme.ts` first, then consume it via `Colors.<token>`.
+- Base palette and system tokens are adapted from a CSS variable map; prefer these names when choosing colors:
+  - Palette: `flRed`, `activeRed`, `brightRed`, `maroon`, `flOrange`, `orange`, `flYellow`, `activeYellow`, `gold`, `yellow`, `olive`, `flGreen`, `green`, `flCyan`, `cyan`, `flBlue`, `blue`, `purple`, `activePurple`, `magenta`, `flMagenta`, `activeMagenta`, `hotPink`, `black`, `gray`, `white`.
+  - Core/system: `background`, `border`, `foreground`, `card`, `cardForeground`, `popover`, `popoverForeground`, `primary`, `secondary`, `tertiary`, `quaternary`, `muted`, `mutedForeground`, `accent`, `accentForeground`, `destructive`, `destructiveForeground`, `input`, `ring`, `success`, `successForeground`, `warning`, `warningForeground`, `danger`, `dangerForeground`, `tabBarBackground`, `tabBarActive`, `tabBarInactive`, `transparent`.
+- Typical mappings in components:
+  - Text primary → `Colors.foreground`; secondary/caption → `Colors.secondary`.
+  - Borders → `Colors.border`; containers/cards → `Colors.card`.
+  - Success/warn/error badges → `Colors.success`/`Colors.warning`/`Colors.danger`.
+- Validation before finishing work: run a grep to ensure no hex or color names remain outside the theme file:
+  - `rg -n "['\"](#[0-9A-Fa-f]{3,8}|rgba?\(|hsla?\(|transparent|white|black|red|blue|green|orange|yellow|purple|gray|grey)['\"]" expo | rg -v "expo/constants/theme.ts|app.json|bun.lock"`
+  - If matches are found, replace them with `Colors.*` tokens.
+  - Do not rely on `StyleSheet.hairlineWidth` or platform defaults for color; set color with tokens where relevant.
+  
+Note: `expo/app.json` contains build‑time static colors (e.g., splash background). These cannot reference runtime tokens and are excluded from the no‑hardcode rule.
+
 ## Rust Workspace & Dependencies
 - Workspace: root `Cargo.toml` manages members (e.g., `crates/codex-bridge`). This is intentional so Rust builds run from the repo root.
 - Lockfile: `Cargo.lock` lives at the workspace root by Cargo design. It will be regenerated at the root whenever building a workspace; do not move it into `crates/`.

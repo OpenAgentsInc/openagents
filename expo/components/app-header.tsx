@@ -33,18 +33,18 @@ export function AppHeader() {
       <View style={{ height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Pressable onPress={toggle} accessibilityRole="button" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
-            <Ionicons name="menu" size={22} color={Colors.textPrimary} />
+            <Ionicons name="menu" size={22} color={Colors.foreground} />
           </Pressable>
           <View style={{ marginLeft: 8 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: connected ? Colors.success : Colors.danger }} />
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: connected ? Colors.success : Colors.danger }} />
           </View>
           {!!title && (
-            <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16, marginLeft: 6 }}>{title}</Text>
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 16, marginLeft: 6 }}>{title}</Text>
           )}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
           <Pressable onPress={onNewChat} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
-            <Ionicons name="add" size={22} color={Colors.textPrimary} />
+            <Ionicons name="add" size={22} color={Colors.foreground} />
           </Pressable>
         </View>
       </View>
