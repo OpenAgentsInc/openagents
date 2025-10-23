@@ -126,7 +126,7 @@ function Segmented({ title, active, onPress, seg }: { title: string; active: boo
 
 function StatusPill({ connected }: { connected: boolean }) {
   return (
-    <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: connected ? '#A3A3A3' : Colors.border, backgroundColor: connected ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)' }}>
+    <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 0, borderWidth: 1, borderColor: connected ? '#A3A3A3' : Colors.border, backgroundColor: connected ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)' }}>
       <Text style={{ color: connected ? '#D4D4D8' : Colors.textSecondary, fontSize: 12, fontFamily: Typography.bold }}>
         {connected ? 'Connected' : 'Disconnected'}
       </Text>

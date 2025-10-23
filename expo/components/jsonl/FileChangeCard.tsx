@@ -13,7 +13,7 @@ export function FileChangeCard({ changes, status }: { changes: ReadonlyArray<Fil
     counts['delete'] ? `-${counts['delete']}` : null,
   ].filter(Boolean).join(' ')
   return (
-    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 12, padding: 12, gap: 8 }}>
+    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
       <Text style={{ color: Colors.textSecondary, fontFamily: Typography.bold }}>file_change {status ? `(${status})` : ''}</Text>
       {!!summary && (
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Summary: {summary}</Text>

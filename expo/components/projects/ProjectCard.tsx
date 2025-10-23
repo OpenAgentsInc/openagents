@@ -10,7 +10,7 @@ export function ProjectCard({ project, onPress }: { project: Project; onPress?: 
   const running = project.runningAgents ?? 0;
 
   return (
-    <Pressable onPress={onPress} style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 12, padding: 12 }}>
+    <Pressable onPress={onPress} style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16 }}>{project.name}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -45,10 +45,9 @@ export function ProjectCard({ project, onPress }: { project: Project; onPress?: 
 
 function Pill({ icon, label, tone = Colors.textSecondary }: { icon: any; label: string; tone?: string }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 0 }}>
       <Ionicons name={icon} size={12} color={tone} />
       <Text style={{ color: tone, fontFamily: Typography.bold, fontSize: 12 }}>{label}</Text>
     </View>
   );
 }
-
