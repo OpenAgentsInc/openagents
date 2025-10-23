@@ -37,6 +37,8 @@ pub struct ThreadResponse {
     pub items: Vec<ThreadItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resume_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -238,9 +240,15 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
     let mut items: Vec<ThreadItem> = vec![];
     let mut first_assistant: Option<String> = None;
     let mut instructions: Option<String> = None;
+    let mut resume_id: Option<String> = None;
     for line in r.lines().filter_map(Result::ok) {
         let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
         match v.get("type").and_then(|x| x.as_str()) {
+            Some("thread.started") => {
+                if let Some(id) = v.get("thread_id").and_then(|x| x.as_str()) {
+                    resume_id = Some(id.to_string());
+                }
+            }
             Some("session_meta") => {
                 if let Some(instr) = v.get("payload").and_then(|m| m.get("instructions")).and_then(|x| x.as_str()) {
                     instructions = Some(instr.to_string());
@@ -356,7 +364,7 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
         }
     }
     let title = infer_title(first_assistant.as_deref().unwrap_or("Thread"));
-    Ok(ThreadResponse { title, items, instructions })
+    Ok(ThreadResponse { title, items, instructions, resume_id })
 }
 
 fn now_ts() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }

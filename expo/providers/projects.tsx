@@ -17,7 +17,7 @@ type ProjectsCtx = {
   setActive: (id: ProjectId | null) => Promise<void>;
   save: (p: Project) => Promise<void>;
   del: (id: ProjectId) => Promise<void>;
-  sendForProject: (project: Project | undefined, userText: string) => boolean;
+  sendForProject: (project: Project | undefined, userText: string, resumeId?: string | null) => boolean;
 };
 
 const Ctx = createContext<ProjectsCtx | undefined>(undefined);
@@ -57,7 +57,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
-  const sendForProject = useCallback((project: Project | undefined, userText: string) => {
+  const sendForProject = useCallback((project: Project | undefined, userText: string, resumeId?: string | null) => {
     const base = userText.trim();
     if (!base) return false;
 
@@ -74,8 +74,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         agent_file: project.agentFile || undefined,
       };
     }
-    // Resume support: if a session resume id has been queued, include it once.
-    if (ws.resumeNextId && typeof ws.resumeNextId === 'string') {
+    // Resume support: prefer explicit resumeId param; otherwise consume one-shot from context.
+    if (typeof resumeId === 'string' && resumeId) {
+      cfg.resume = resumeId;
+    } else if (ws.resumeNextId && typeof ws.resumeNextId === 'string') {
       cfg.resume = ws.resumeNextId;
       try { ws.setResumeNextId(null); } catch {}
     }
