@@ -30,7 +30,11 @@ function DrawerContent() {
   const loadHistory = useThreads((s) => s.loadHistory);
   const lastUrl = useThreads((s) => s.lastHistoryUrl);
   const historyError = useThreads((s) => s.historyError);
-  React.useEffect(() => { loadHistory(() => bridge.requestHistory()).catch(() => {}); }, [loadHistory, bridge]);
+  const rehydrated = useThreads((s) => s.rehydrated);
+  React.useEffect(() => {
+    if (!rehydrated) return;
+    loadHistory((params) => bridge.requestHistory(params)).catch(() => {});
+  }, [rehydrated, loadHistory, bridge]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.border }}>
@@ -84,7 +88,7 @@ function DrawerContent() {
                 <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12 }}>History failed</Text>
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>WS: history</Text>
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Error: {historyError}</Text>
-                <Pressable onPress={() => loadHistory(() => bridge.requestHistory())} accessibilityRole="button" style={{ alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: Colors.card }}>
+                <Pressable onPress={() => loadHistory((params) => bridge.requestHistory(params))} accessibilityRole="button" style={{ alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: Colors.card }}>
                   <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Retry</Text>
                 </Pressable>
               </View>
