@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { ScrollView, Text, View, Pressable } from 'react-native';
-import { getLog } from '@/lib/log-store';
+import { getAllLogs, getLog, isHydrated, loadLogs, subscribe } from '@/lib/log-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock';
 import { ReasoningCard } from '@/components/jsonl/ReasoningCard';
@@ -12,15 +12,22 @@ import * as Clipboard from 'expo-clipboard';
 export default function MessageDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const num = Number(id);
-  const detail = getLog(num);
+  const logs = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
+  const hydrated = isHydrated();
+  useEffect(() => { if (!hydrated) loadLogs().catch(() => {}); }, [hydrated]);
+  const detail = useMemo(() => {
+    if (Number.isNaN(num)) return undefined;
+    return logs.find((entry) => entry.id === num) ?? getLog(num);
+  }, [logs, num]);
   const insets = useSafeAreaInsets();
   const [copied, setCopied] = useState(false)
   const copy = useCallback(async (text: string) => {
     try { await Clipboard.setStringAsync(text) } catch {}
     setCopied(true); setTimeout(() => setCopied(false), 800)
   }, [])
-  const isUserMsg = typeof detail?.text === 'string' && /^\s*>/.test(detail.text)
-  const cleanBody = typeof detail?.text === 'string' ? detail.text.replace(/^\s*>\s?/, '') : ''
+  const rawText = typeof detail?.text === 'string' ? detail.text : undefined;
+  const isUserMsg = typeof rawText === 'string' && /^\s*>/.test(rawText);
+  const cleanBody = typeof rawText === 'string' ? rawText.replace(/^\s*>\s?/, '') : '';
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -39,10 +46,9 @@ export default function MessageDetail() {
           paddingBottom: 32 + insets.bottom,
         }}
       >
-        {!detail && (
-          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Message not found.</Text>
-        )}
-        {detail && (
+        {!detail ? (
+          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>{hydrated ? 'Message not found.' : 'Loading message…'}</Text>
+        ) : (
           <View style={{ gap: 12 }}>
             <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>Kind: {detail.kind}</Text>
             <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>ID: {detail.id}</Text>

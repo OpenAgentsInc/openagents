@@ -1,5 +1,5 @@
 #[cfg(unix)]
-use std::convert::TryInto;
+use std::{convert::TryInto, os::unix::process::CommandExt};
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
@@ -297,14 +297,23 @@ async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<Stri
         "workdir" = %workdir.display(),
         "msg" = "spawning codex"
     );
-    let mut child = Command::new(bin)
+    let mut command = Command::new(&bin);
+    command
         .current_dir(&workdir)
-        .args(args)
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("failed to spawn codex")?;
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        command.pre_exec(|| unsafe {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().context("failed to spawn codex")?;
 
     let pid = child.id().context("child pid missing")?;
     let stdin = child.stdin.take();
@@ -340,14 +349,23 @@ async fn spawn_codex_child_only(opts: &Opts) -> Result<ChildWithIo> {
         "workdir" = %workdir.display(),
         "msg" = "respawn codex for new prompt"
     );
-    let mut child = Command::new(bin)
+    let mut command = Command::new(&bin);
+    command
         .current_dir(&workdir)
-        .args(args)
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("failed to spawn codex")?;
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        command.pre_exec(|| unsafe {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().context("failed to spawn codex")?;
     let pid = child.id().context("child pid missing")?;
     let stdin = child.stdin.take();
     let stdout = child.stdout.take();
@@ -402,14 +420,23 @@ async fn spawn_codex_child_only_with_dir(
         "workdir" = %workdir.display(),
         "msg" = "respawn codex for new prompt"
     );
-    let mut child = Command::new(bin)
+    let mut command = Command::new(&bin);
+    command
         .current_dir(&workdir)
-        .args(args)
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("failed to spawn codex")?;
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        command.pre_exec(|| unsafe {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().context("failed to spawn codex")?;
     let pid = child.id().context("child pid missing")?;
     let stdin = child.stdin.take();
     let stdout = child.stdout.take();
@@ -698,7 +725,8 @@ async fn interrupt_running_child(state: &Arc<AppState>) -> Result<()> {
 fn send_interrupt_signal(pid: u32) -> Result<()> {
     use std::io::ErrorKind;
     let pid_i32: i32 = pid.try_into().context("pid out of range for SIGINT")?;
-    let res = unsafe { libc::kill(pid_i32, libc::SIGINT) };
+    let target = -pid_i32;
+    let res = unsafe { libc::kill(target, libc::SIGINT) };
     if res == 0 {
         return Ok(());
     }
@@ -712,7 +740,7 @@ fn send_interrupt_signal(pid: u32) -> Result<()> {
 #[cfg(windows)]
 fn send_interrupt_signal(pid: u32) -> Result<()> {
     let status = std::process::Command::new("taskkill")
-        .args(["/PID", &pid.to_string()])
+        .args(["/PID", &pid.to_string(), "/T"])
         .status()
         .context("failed to spawn taskkill for interrupt")?;
     if status.success() {

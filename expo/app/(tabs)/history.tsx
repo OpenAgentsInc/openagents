@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getAllLogs, loadLogs, subscribe } from '@/lib/log-store';
+import { getAllLogs, isHydrated, loadLogs, subscribe } from '@/lib/log-store';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
 
 export default function HistoryScreen() {
   const router = useRouter();
   const items = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
-  useEffect(() => { loadLogs().catch(() => {}); }, []);
+  const hydrated = isHydrated();
+  useEffect(() => { if (!hydrated) loadLogs().catch(() => {}); }, [hydrated]);
   const data = useMemo(() => items.slice().reverse(), [items]);
 
   return (
@@ -23,7 +24,11 @@ export default function HistoryScreen() {
             <Text numberOfLines={2} style={{ color: Colors.textPrimary, fontFamily: Typography.primary, fontSize: 13, marginTop: 4 }}>{item.text.replace(/^::(md|reason)::/, '')}</Text>
           </Pressable>
         )}
-        ListEmptyComponent={<Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>No history yet.</Text>}
+        ListEmptyComponent={
+          <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>
+            {hydrated ? 'No history yet.' : 'Loading…'}
+          </Text>
+        }
         contentContainerStyle={{ paddingBottom: 12 }}
       />
     </View>

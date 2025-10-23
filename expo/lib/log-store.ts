@@ -16,6 +16,9 @@ const store = new Map<number, LogDetail>();
 type Listener = () => void;
 const listeners = new Set<Listener>();
 const KEY = '@openagents/logs-v1';
+let hydrated = false;
+let loadPromise: Promise<LogDetail[]> | null = null;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function notify() {
   listeners.forEach((listener) => {
@@ -39,6 +42,7 @@ export function putLog(detail: LogDetail) {
   } catch {}
   store.set(detail.id, detail);
   notify();
+  scheduleSave();
 }
 
 export function getLog(id: number): LogDetail | undefined {
@@ -49,37 +53,82 @@ export function getAllLogs(): LogDetail[] {
   return Array.from(store.values()).sort((a, b) => (a.id - b.id));
 }
 
-export async function loadLogs(): Promise<LogDetail[]> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY);
-    if (!raw) return [];
-    const arr: LogDetail[] = JSON.parse(raw);
-    // Sanitize persisted logs: drop any exec_command_end blobs that may have been
-    // saved before we added runtime filtering. This avoids showing them after
-    // rehydration without requiring users to clear the log.
-    const sanitized = arr.filter((d) => {
-      try { return !String(d.text ?? '').includes('exec_command_end'); } catch { return true }
-    });
-    // Persist the sanitized list so it stays clean across restarts.
-    try { if (sanitized.length !== arr.length) await AsyncStorage.setItem(KEY, JSON.stringify(sanitized)); } catch {}
-    store.clear();
-    for (const d of sanitized) store.set(d.id, d);
-    notify();
-    return getAllLogs();
-  } catch {
-    return [];
-  }
+function scheduleSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistNow().catch(() => {});
+  }, 150);
 }
 
-export async function saveLogs(): Promise<void> {
+async function persistNow() {
   try {
     const arr = getAllLogs();
     await AsyncStorage.setItem(KEY, JSON.stringify(arr));
   } catch {}
 }
 
+export function isHydrated(): boolean {
+  return hydrated;
+}
+
+export async function loadLogs(): Promise<LogDetail[]> {
+  if (hydrated && !loadPromise) {
+    return getAllLogs();
+  }
+  if (!loadPromise) {
+    loadPromise = (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(KEY);
+        if (!raw) {
+          hydrated = true;
+          notify();
+          return [];
+        }
+        const arr: LogDetail[] = JSON.parse(raw);
+        const sanitized = arr.filter((d) => {
+          try { return !String(d.text ?? '').includes('exec_command_end'); } catch { return true; }
+        });
+        if (sanitized.length !== arr.length) {
+          try { await AsyncStorage.setItem(KEY, JSON.stringify(sanitized)); } catch {}
+        }
+        store.clear();
+        for (const d of sanitized) store.set(d.id, d);
+        hydrated = true;
+        notify();
+        return getAllLogs();
+      } catch {
+        hydrated = true;
+        notify();
+        return [];
+      } finally {
+        loadPromise = null;
+      }
+    })();
+  }
+  const pending = loadPromise;
+  return pending!;
+}
+
+export async function saveLogs(): Promise<void> {
+  scheduleSave();
+}
+
+export async function flushLogs(): Promise<void> {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  await persistNow();
+}
+
 export async function clearLogs(): Promise<void> {
   store.clear();
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
   try { await AsyncStorage.removeItem(KEY); } catch {}
+  hydrated = true;
   notify();
 }

@@ -14,16 +14,23 @@ import { ProjectsProvider, useProjects } from '@/providers/projects';
 import { useAutoUpdate } from '@/hooks/use-auto-update';
 import { DrawerProvider, useDrawer } from '@/providers/drawer';
 import * as Haptics from 'expo-haptics';
-import { getAllLogs, loadLogs } from '@/lib/log-store';
+import { getAllLogs, isHydrated, loadLogs, subscribe } from '@/lib/log-store';
 
 function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
-  const isRTL = I18nManager.isRTL;
-  const [_, __] = React.useState(0);
-  React.useEffect(() => { (async ()=>{ await loadLogs(); __((n)=>n+1) })(); }, []);
-  const userMsgs = getAllLogs().filter((l) => typeof l.text === 'string' && /^\s*>/.test(l.text)).slice(-10).reverse();
+  const logs = React.useSyncExternalStore(subscribe, getAllLogs, getAllLogs);
+  const hydrated = isHydrated();
+  React.useEffect(() => { if (!hydrated) loadLogs().catch(() => {}); }, [hydrated]);
+  const userMsgs = React.useMemo(
+    () =>
+      logs
+        .filter((l) => typeof l.text === 'string' && /^\s*>/.test(l.text))
+        .slice(-10)
+        .reverse(),
+    [logs],
+  );
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -47,7 +54,9 @@ function DrawerContent() {
           ))}
           <View style={{ height: 16 }} />
           <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
-          {userMsgs.length === 0 ? (
+          {!hydrated ? (
+            <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>Loading…</Text>
+          ) : userMsgs.length === 0 ? (
             <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
           ) : userMsgs.map((m) => {
             const clean = String(m.text).replace(/^\s*>\s?/, '');
