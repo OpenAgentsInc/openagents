@@ -133,6 +133,16 @@ export function parseCodexLine(line: string): ParsedLine {
         const item: any = evt.item;
         const t = item?.type;
         const phase = (evt.type.split('.')?.[1] ?? 'updated') as 'started' | 'updated' | 'completed';
+
+        // NEW: Modern Codex emits agent output as ThreadItems
+        //  - item.type === "agent_message" with { text }
+        //  - item.type === "reasoning"     with { text }
+        if (t === 'agent_message' && typeof item?.text === 'string') {
+          return { kind: 'md', markdown: item.text as string };
+        }
+        if (t === 'reasoning' && typeof item?.text === 'string') {
+          return { kind: 'reason', text: item.text as string };
+        }
         if (t === 'command_execution') {
           const status: string | undefined = item?.status ?? evt?.type?.split('.')?.[1];
           const command = String(item?.command ?? '');
