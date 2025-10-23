@@ -51,6 +51,10 @@ export default function TabLayout() {
         headerShown: true,
         headerTitleStyle: { fontFamily: Typography.bold },
         headerStyle: { backgroundColor: Colors.background },
+        headerBackground: () => (
+          <View style={{ flex: 1, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border }} />
+        ),
+        headerShadowVisible: false,
         headerTintColor: Colors.textPrimary,
         headerLeft: () => (
           <Pressable
