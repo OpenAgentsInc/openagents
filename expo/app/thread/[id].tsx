@@ -225,7 +225,7 @@ function Row({ it, isLastCmd }: { it: { ts: number; kind: 'message'|'reason'|'cm
       return (
         <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12 }}>{label}</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.secondary} />
+          <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />
         </View>
       )
     } catch {
