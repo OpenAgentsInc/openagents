@@ -28,8 +28,12 @@ import { pickProjectFromUtterance } from "@/lib/project-router"
 import { mergeProjectTodos } from "@/lib/projects-store"
 import { useHeaderHeight } from "@react-navigation/elements"
 import { Composer } from "@/components/composer"
+import { useNavigation } from "@react-navigation/native"
+import { useDrawer } from "@/providers/drawer"
+import { Ionicons } from "@expo/vector-icons"
 
 export default function SessionScreen() {
+  const navigation = useNavigation();
   const headerHeight = useHeaderHeight()
   const insets = useSafeAreaInsets()
 
@@ -193,6 +197,14 @@ Important policy overrides:
 
   useEffect(() => { setClearLogHandler(() => { setLog([]); clearLogsStore(); }); return () => setClearLogHandler(null) }, [setClearLogHandler])
   useEffect(() => { (async ()=>{ const items = await loadLogs(); if (items.length) { setLog(items.map(({id,text,kind,deemphasize,detailId})=>({id,text,kind,deemphasize,detailId}))); idRef.current = Math.max(...items.map(i=>i.id))+1 } })() }, [])
+
+  // Update header title dynamically: "New session" when empty
+  const isNew = log.length === 0;
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => <SessionHeaderLeft title={isNew ? 'New session' : 'Session'} />,
+    });
+  }, [navigation, isNew]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -398,4 +410,21 @@ Important policy overrides:
       </View>
     </View>
   )
+}
+
+function SessionHeaderLeft({ title }: { title: string }) {
+  const drawer = useDrawer();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <Pressable
+        onPress={drawer.toggle}
+        accessibilityRole="button"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        style={{ paddingHorizontal: 6, paddingVertical: 6 }}
+      >
+        <Ionicons name="menu" size={22} color={Colors.textPrimary} />
+      </Pressable>
+      <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold, fontSize: 16, marginLeft: 6 }}>{title}</Text>
+    </View>
+  );
 }
