@@ -34,6 +34,8 @@ struct AppState {
     tx: broadcast::Sender<String>,
     child_stdin: Mutex<Option<tokio::process::ChildStdin>>, // drop after first write to signal EOF
     opts: Opts,
+    // Track last seen session id so we can resume on subsequent prompts
+    last_thread_id: Mutex<Option<String>>,
 }
 
 #[tokio::main]
@@ -46,10 +48,11 @@ async fn main() -> Result<()> {
         tx,
         child_stdin: Mutex::new(Some(child.stdin.take().context("child stdin missing")?)),
         opts: opts.clone(),
+        last_thread_id: Mutex::new(None),
     });
 
     // Start readers for stdout/stderr → broadcast + console
-    start_stream_forwarders(child, &state.tx).await?;
+    start_stream_forwarders(child, state.clone()).await?;
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
@@ -104,12 +107,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     // Ensure we have a live codex stdin; respawn if needed
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn || desired_cd.is_some() {
+                        // Decide on resume: only after we've seen a thread id before, and only if CLI supports it
+                        let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
                         // If we already have a stdin but need to honor a cd, close it to end the previous child
                         if !need_respawn && desired_cd.is_some() {
                             let mut g = stdin_state.child_stdin.lock().await;
                             let _ = g.take(); // drop to close stdin and let old child exit
                         }
-                        match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone()).await {
+                        match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone(), resume_id.as_deref()).await {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.take() {
                                     *stdin_state.child_stdin.lock().await = Some(stdin);
@@ -117,7 +122,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     error!("respawned codex missing stdin");
                                 }
                                 // start forwarding for new child
-                                if let Err(e) = start_stream_forwarders(child, &stdin_state.tx).await {
+                                if let Err(e) = start_stream_forwarders(child, stdin_state.clone()).await {
                                     error!(?e, "failed starting forwarders for respawned codex");
                                 }
                             }
@@ -147,12 +152,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     info!("msg" = "ws binary received", size = b.len());
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn {
-                        match spawn_codex_child_only_with_dir(&stdin_state.opts, None).await {
+                        let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
+                        match spawn_codex_child_only_with_dir(&stdin_state.opts, None, resume_id.as_deref()).await {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.take() {
                                     *stdin_state.child_stdin.lock().await = Some(stdin);
                                 }
-                                if let Err(e) = start_stream_forwarders(child, &stdin_state.tx).await {
+                                if let Err(e) = start_stream_forwarders(child, stdin_state.clone()).await {
                                     error!(?e, "failed starting forwarders for respawned codex");
                                 }
                             }
@@ -195,7 +201,7 @@ struct ChildWithIo {
 }
 
 async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<String>)> {
-    let (bin, args) = build_bin_and_args(opts)?;
+    let (bin, args) = build_bin_and_args(opts)?; // initial spawn: never add resume here
     let workdir = detect_repo_root(None);
     info!(
         "bin" = %bin.display(),
@@ -257,8 +263,16 @@ async fn spawn_codex_child_only(opts: &Opts) -> Result<ChildWithIo> {
     Ok(ChildWithIo { stdin, stdout, stderr })
 }
 
-async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Option<PathBuf>) -> Result<ChildWithIo> {
-    let (bin, args) = build_bin_and_args(opts)?;
+async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Option<PathBuf>, resume_id: Option<&str>) -> Result<ChildWithIo> {
+    let (bin, mut args) = build_bin_and_args(opts)?;
+    // Attach resume args only when we have a prior session id and the CLI supports resume
+    let supports = cli_supports_resume(&bin);
+    let resume_mode = if supports { resume_id } else { None };
+    if let Some(rid) = resume_mode {
+        info!(resume = rid, msg = "enabling resume by id");
+        args.push("resume".into());
+        args.push(rid.into());
+    }
     let workdir = workdir_override.unwrap_or_else(|| detect_repo_root(None));
     info!(
         "bin" = %bin.display(),
@@ -297,17 +311,8 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     } else {
         vec!["exec".into(), "--json".into()]
     };
-    // Ensure we resume the most recent session instead of starting fresh each time.
-    if !args.iter().any(|a| a == "resume") {
-        let supports = cli_supports_resume(&bin);
-        info!(supports, msg = "resume support check");
-        if supports {
-            args.push("resume".into());
-            args.push("--last".into());
-        } else {
-            info!("msg" = "codex does not advertise resume; starting fresh sessions");
-        }
-    }
+    // Do not attach resume here; we add it per-message when respawning after a
+    // prior thread id is known.
     if !opts.extra.is_empty() { args.extend(opts.extra.clone()); }
 
     fn contains_flag(args: &[String], short: &str, long: &str) -> bool {
@@ -375,11 +380,12 @@ fn cli_supports_resume(bin: &PathBuf) -> bool {
     false
 }
 
-async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<String>) -> Result<()> {
+async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -> Result<()> {
     let stdout = child.stdout.take().context("missing stdout")?;
     let stderr = child.stderr.take().context("missing stderr")?;
 
-    let tx_out = tx.clone();
+    let tx_out = state.tx.clone();
+    let state_for_stdout = state.clone();
     tokio::spawn(async move {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
@@ -389,12 +395,22 @@ async fn start_stream_forwarders(mut child: ChildWithIo, tx: &broadcast::Sender<
             if line.contains("\"sandbox\"") || line.contains("sandbox") {
                 info!("msg" = "observed sandbox string from stdout", raw = %line);
             }
+            // Try to capture thread id for resume
+            if let Ok(v) = serde_json::from_str::<JsonValue>(&line) {
+                let t = v.get("type").and_then(|x| x.as_str()).map(|s| s.to_string())
+                    .or_else(|| v.get("msg").and_then(|m| m.get("type")).and_then(|x| x.as_str()).map(|s| s.to_string()));
+                if matches!(t.as_deref(), Some("thread.started")) {
+                    let id = v.get("thread_id").and_then(|x| x.as_str())
+                        .or_else(|| v.get("msg").and_then(|m| m.get("thread_id")).and_then(|x| x.as_str()));
+                    if let Some(val) = id { let _ = state_for_stdout.last_thread_id.lock().await.insert(val.to_string()); info!(thread_id=%val, msg="captured thread id for resume"); }
+                }
+            }
             let _ = tx_out.send(line);
         }
         info!("msg" = "stdout stream ended");
     });
 
-    let tx_err = tx.clone();
+    let tx_err = state.tx.clone();
     tokio::spawn(async move {
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
