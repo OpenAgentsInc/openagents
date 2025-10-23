@@ -4,6 +4,7 @@ import { ScrollView, Text, View, Pressable } from 'react-native';
 import { getAllLogs, getLog, loadLogs, subscribe } from '@/lib/log-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock';
+import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard';
 import { ReasoningCard } from '@/components/jsonl/ReasoningCard';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
@@ -65,6 +66,25 @@ export default function MessageDetail() {
                 <ReasoningCard item={{ type: 'reasoning', text: detail.text.startsWith('::reason::') ? detail.text.slice('::reason::'.length) : detail.text }} />
                 {copied ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 4 }}>Copied</Text> : null}
               </Pressable>
+            ) : detail.kind === 'cmd' ? (
+              (() => {
+                try {
+                  const obj = JSON.parse(detail.text);
+                  return (
+                    <Pressable onLongPress={() => copy(detail.text)}>
+                      <CommandExecutionCard command={obj.command ?? ''} status={obj.status} exitCode={obj.exit_code} sample={obj.sample} outputLen={obj.output_len} showExitCode={true} />
+                      {copied ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 4 }}>Copied</Text> : null}
+                    </Pressable>
+                  );
+                } catch {
+                  return (
+                    <Pressable onLongPress={() => copy(detail.text)}>
+                      <Text selectable style={{ color: Colors.textPrimary, fontFamily: Typography.primary, lineHeight: 18 }}>{detail.text}</Text>
+                      {copied ? <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary, fontSize: 12, marginTop: 4 }}>Copied</Text> : null}
+                    </Pressable>
+                  );
+                }
+              })()
             ) : (
               <Pressable onLongPress={() => copy(isUserMsg ? cleanBody : (detail?.text ?? ''))}>
                 <Text selectable={!isUserMsg} style={{ color: Colors.textPrimary, fontFamily: Typography.primary, lineHeight: 18 }}>{detail?.text}</Text>

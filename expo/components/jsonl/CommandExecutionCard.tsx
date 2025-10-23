@@ -3,7 +3,7 @@ import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 
-export function CommandExecutionCard({ command, status, exitCode, sample, outputLen }: { command: string; status?: string; exitCode?: number | null; sample?: string; outputLen?: number }) {
+export function CommandExecutionCard({ command, status, exitCode, sample, outputLen, showExitCode = false }: { command: string; status?: string; exitCode?: number | null; sample?: string; outputLen?: number; showExitCode?: boolean }) {
   const badgeBg = status === 'failed' || (typeof exitCode === 'number' && exitCode !== 0) ? '#EF4444' : status === 'completed' ? '#22C55E' : '#A3A3A3'
   return (
     <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
@@ -13,7 +13,7 @@ export function CommandExecutionCard({ command, status, exitCode, sample, output
         </View>
         <Text style={{ color: Colors.textPrimary, fontFamily: Typography.bold }}>{command}</Text>
       </View>
-      {typeof exitCode === 'number' ? (
+      {showExitCode && typeof exitCode === 'number' ? (
         <Text style={{ color: Colors.textSecondary, fontFamily: Typography.primary }}>exit_code: {exitCode}</Text>
       ) : null}
       {typeof outputLen === 'number' && outputLen > 0 ? (
