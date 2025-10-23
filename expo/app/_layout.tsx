@@ -114,9 +114,11 @@ function DrawerWrapper() {
   };
 
   const NewChatButton = () => {
-    const { clearLog } = useWs();
+    const { clearLog, setResumeNextId } = useWs();
     const onPress = async () => {
       try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } } catch {}
+      // Force the next send to start a fresh session (no resume)
+      try { setResumeNextId('new') } catch {}
       clearLog();
       router.push('/session');
     };

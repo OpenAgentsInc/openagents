@@ -156,7 +156,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         preview = preview
                     );
                     let desired_cd = extract_cd_from_ws_payload(&t);
-                    let desired_resume = extract_resume_from_ws_payload(&t); // "last" or a session id
+                    let desired_resume = extract_resume_from_ws_payload(&t); // "last" | session id | "new"/"none" (start fresh)
                     info!(?desired_cd, ?desired_resume, msg = "parsed ws preface");
                     // Ensure we have a live codex stdin; respawn if needed
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
@@ -164,6 +164,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         // Decide on resume: prefer explicit resume id from preface; otherwise use last captured thread id
                         let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
                         let resume_arg: Option<String> = match desired_resume.as_deref() {
+                            Some("new") | Some("none") => None,
                             Some("last") => resume_id.clone(),
                             Some(s) if !s.is_empty() => Some(s.to_string()),
                             _ => resume_id.clone(),
