@@ -119,6 +119,15 @@ function DrawerContent() {
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Settings</Text>
           </Pressable>
           <Pressable
+            onPress={closeAnd(() => router.push('/help' as any))}
+            accessibilityRole="button"
+            accessibilityLabel="Open help"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
+          >
+            <Ionicons name="help-circle-outline" size={18} color={Colors.foreground} />
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Help</Text>
+          </Pressable>
+          <Pressable
             onPress={closeAnd(() => router.push('/library'))}
             accessibilityRole="button"
             accessibilityLabel="Open component library"
@@ -235,6 +244,7 @@ function DrawerWrapper() {
           <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="onboarding/index" options={{ headerShown: false }} />
           <Stack.Screen name="dashboard/index" options={{ headerShown: false }} />
+          <Stack.Screen name="help/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
           <Stack.Screen name="projects/index" />
