@@ -11,14 +11,14 @@ import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 
 export default function ThreadHistoryView() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
-  const { httpBase, setResumeNextId } = useBridge()
+  const { requestThread, setResumeNextId } = useBridge()
   const router = useRouter()
   const loadThread = useThreads((s) => s.loadThread)
   const thread = useThreads((s) => (id ? s.thread[id] : undefined))
   const loadingMap = useThreads((s) => s.loadingThread)
   const loading = Boolean(id && loadingMap[id])
 
-  React.useEffect(() => { if (id) loadThread(httpBase, id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, httpBase, loadThread])
+  React.useEffect(() => { if (id) loadThread((id2, p) => requestThread(id2, p), id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, requestThread, loadThread])
   useHeaderTitle(thread?.title || 'Thread')
 
   const items = React.useMemo(() => {

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
 import { appLog } from '@/lib/app-log'
+import { useBridge } from '@/providers/ws'
 
 export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean }
 export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
@@ -17,21 +18,11 @@ type ThreadsState = {
   // Ephemeral mapping of live thread_id (UUID) -> projectId set when a thread starts
   threadProject: Record<string, string | undefined>
   setThreadProject: (threadId: string, projectId: string) => void
-  loadHistory: (httpBase: string) => Promise<void>
-  loadThread: (httpBase: string, id: string, path?: string) => Promise<ThreadResponse | undefined>
+  loadHistory: (requestHistory: () => Promise<HistoryItem[]>) => Promise<void>
+  loadThread: (requestThread: (id: string, path?: string) => Promise<ThreadResponse | undefined>, id: string, path?: string) => Promise<ThreadResponse | undefined>
 }
 
 const HISTORY_KEY = '@openagents/threads-history-v1'
-
-function wsToHttpBase(wsUrl: string): string {
-  try {
-    const u = new URL(wsUrl)
-    const proto = u.protocol === 'wss:' ? 'https:' : 'http:'
-    return `${proto}//${u.host}`
-  } catch {
-    return 'http://localhost:8787'
-  }
-}
 
 export const useThreads = create<ThreadsState>((set, get) => ({
   history: [],
@@ -46,8 +37,7 @@ export const useThreads = create<ThreadsState>((set, get) => ({
     const cur = get().threadProject
     set({ threadProject: { ...cur, [threadId]: projectId } })
   },
-  loadHistory: async (httpBase: string) => {
-    const base = httpBase
+  loadHistory: async (requestHistory: () => Promise<HistoryItem[]>) => {
     set({ loadingHistory: true })
     try {
       try {
@@ -57,42 +47,32 @@ export const useThreads = create<ThreadsState>((set, get) => ({
           if (Array.isArray(cached?.items)) set({ history: cached.items })
         }
       } catch {}
-      const url = `${base}/history`
-      set({ lastHistoryUrl: url })
-      appLog('history.fetch.start', { url })
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      const items = Array.isArray(json.items) ? (json.items as HistoryItem[]) : []
+      appLog('history.fetch.start', { via: 'ws' })
+      const items = await requestHistory()
       set({ history: items, historyLoadedAt: Date.now(), historyError: null })
       appLog('history.fetch.success', { count: items.length })
       try { await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify({ items })) } catch {}
     } catch (e: any) {
       const msg = String(e?.message ?? e)
       set({ historyError: msg })
-      appLog('history.fetch.error', { base, error: msg }, 'error')
+      appLog('history.fetch.error', { error: msg }, 'error')
     } finally {
       set({ loadingHistory: false })
     }
   },
-  loadThread: async (httpBase: string, id: string, path?: string) => {
-    const base = httpBase
+  loadThread: async (requestThread: (id: string, path?: string) => Promise<ThreadResponse | undefined>, id: string, path?: string) => {
     const key = id
     const cur = get().thread[key]
     if (cur) return cur
     set({ loadingThread: { ...get().loadingThread, [key]: true } })
     try {
-      const url = new URL(`${base}/thread`)
-      url.searchParams.set('id', id)
-      if (path) url.searchParams.set('path', path)
-      const endpoint = url.toString()
-      appLog('thread.fetch.start', { url: endpoint, id, path })
-      const res = await fetch(endpoint)
-      if (!res.ok) return undefined
-      const json = (await res.json()) as ThreadResponse
-      set({ thread: { ...get().thread, [key]: json } })
-      appLog('thread.fetch.success', { id, items: json?.items?.length ?? 0 })
-      return json
+      appLog('thread.fetch.start', { via: 'ws', id, path })
+      const json = await requestThread(id, path)
+      if (json) {
+        set({ thread: { ...get().thread, [key]: json } })
+        appLog('thread.fetch.success', { id, items: json?.items?.length ?? 0 })
+      }
+      return json ?? undefined
     } finally {
       const { [key]: _, ...rest } = get().loadingThread
       set({ loadingThread: rest })
