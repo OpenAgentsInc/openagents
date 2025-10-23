@@ -34,6 +34,7 @@ import { Ionicons } from "@expo/vector-icons"
 export default function SessionScreen() {
   const params = useLocalSearchParams<{ focus?: string }>()
   const headerHeight = useHeaderStore((s) => s.height)
+  const setHeaderTitle = useHeaderStore((s) => s.setTitle)
   const insets = useSafeAreaInsets()
   const drawer = useDrawer();
 
@@ -174,7 +175,13 @@ Important policy overrides:
         if (parsed.kind === 'delta') { continue }
         else if (parsed.kind === 'md') { if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } const raw = String(parsed.markdown ?? '').trim(); const core = raw.replace(/^\*\*|\*\*$/g, '').replace(/^`|`$/g, '').trim().toLowerCase(); const isBland = core === 'unknown' || core === 'n/a' || core === 'none' || core === 'null'; if (!isBland) append(`::md::${parsed.markdown}`, false, 'md') }
         else if (parsed.kind === 'reason') { if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } append(`::reason::${parsed.text}`, false, 'reason') }
-        else if (parsed.kind === 'thread') { const payload = JSON.stringify({ thread_id: parsed.thread_id }); append(payload, false, 'thread', trimmed) }
+        else if (parsed.kind === 'thread') {
+          try {
+            const short = String(parsed.thread_id ?? '').split('-')[0] || ''
+            if (short) setHeaderTitle(`Thread ${short}`)
+          } catch {}
+          continue
+        }
         else if (parsed.kind === 'item_lifecycle') { const payload = JSON.stringify({ phase: parsed.phase, id: parsed.id, item_type: parsed.item_type, status: parsed.status }); append(payload, true, 'item_lifecycle', trimmed) }
         else if (parsed.kind === 'exec_begin') { const payload = JSON.stringify({ command: parsed.command, cwd: parsed.cwd, parsed: parsed.parsed }); append(payload, false, 'exec', trimmed) }
         else if (parsed.kind === 'file_change') { const payload = JSON.stringify({ status: parsed.status, changes: parsed.changes }); append(payload, false, 'file', trimmed) }
@@ -183,7 +190,28 @@ Important policy overrides:
         else if (parsed.kind === 'todo_list') { const payload = JSON.stringify({ status: parsed.status, items: parsed.items }); append(payload, false, 'todo', trimmed); try { if (activeProject?.id) { mergeProjectTodos(activeProject.id, parsed.items).catch(() => {}) } } catch {} }
         else if (parsed.kind === 'cmd_item') { const payload = JSON.stringify({ command: parsed.command, status: parsed.status, exit_code: parsed.exit_code, sample: parsed.sample, output_len: parsed.output_len }); append(payload, false, 'cmd', trimmed) }
         else if (parsed.kind === 'err') { const payload = JSON.stringify({ message: parsed.message }); append(payload, false, 'err', trimmed) }
-        else if (parsed.kind === 'turn') { if (parsed.phase === 'started') { setIsRunning(true) } else if (parsed.phase === 'completed' || parsed.phase === 'failed') { setIsRunning(false); if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } const message = typeof parsed.message === 'string' ? parsed.message : ''; const wasInterrupted = parsed.phase === 'failed' && message.toLowerCase().includes('interrupt'); if (wasInterrupted) { if (queueRef.current.length > 0) { const existingDraft = composerDraftRef.current; const parts = queueRef.current.slice(); if (existingDraft.trim().length > 0) { parts.push(existingDraft) } const newDraft = parts.join('\n'); queueRef.current = []; setQueuedFollowUps([]); if (newDraft.trim().length > 0) { setComposerPrefill(newDraft); composerDraftRef.current = newDraft } } } else { flushQueuedFollowUp() } } const payload = JSON.stringify({ phase: parsed.phase, usage: parsed.usage, message: parsed.message }); append(payload, false, 'turn', trimmed) }
+        else if (parsed.kind === 'turn') {
+          if (parsed.phase === 'started') { setIsRunning(true); continue }
+          else if (parsed.phase === 'completed' || parsed.phase === 'failed') {
+            setIsRunning(false);
+            if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false }
+            const message = typeof parsed.message === 'string' ? parsed.message : '';
+            const wasInterrupted = parsed.phase === 'failed' && message.toLowerCase().includes('interrupt');
+            if (wasInterrupted) {
+              if (queueRef.current.length > 0) {
+                const existingDraft = composerDraftRef.current;
+                const parts = queueRef.current.slice();
+                if (existingDraft.trim().length > 0) { parts.push(existingDraft) }
+                const newDraft = parts.join('\n');
+                queueRef.current = [];
+                setQueuedFollowUps([]);
+                if (newDraft.trim().length > 0) { setComposerPrefill(newDraft); composerDraftRef.current = newDraft }
+              }
+            } else { flushQueuedFollowUp() }
+          }
+          const payload = JSON.stringify({ phase: parsed.phase, usage: parsed.usage, message: parsed.message });
+          append(payload, false, 'turn', trimmed)
+        }
         else if (parsed.kind === 'summary') { if (/^\[exec (out|end)\]/i.test(parsed.text)) { continue } if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } append(parsed.text, true, 'summary', trimmed) }
         else if (parsed.kind === 'text') { const raw = String(parsed.raw ?? '').trim(); if (!raw) { continue } if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } append(raw, true, 'text') }
         else if (parsed.kind === 'json') { if (parsed.raw.includes('exec_command_end')) { continue } append(parsed.raw, true, 'json') }
@@ -261,19 +289,7 @@ Important policy overrides:
                   </View>
                 )
               }
-              if (e.kind === 'thread') {
-                try {
-                  const obj = JSON.parse(e.text)
-                  return (
-                    <View key={e.id} style={{ paddingLeft: indent }}>
-                      <Pressable onPress={onPressOpen} onLongPress={() => copyAndFlash(e.id, obj.thread_id ?? e.text)}>
-                        <ThreadStartedRow threadId={obj.thread_id ?? ''} />
-                        {copiedId === e.id ? <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 11, marginTop: 2 }}>Copied</Text> : null}
-                      </Pressable>
-                    </View>
-                  )
-                } catch {}
-              }
+              if (e.kind === 'thread') { return null }
               if (e.kind === 'item_lifecycle') {
                 try {
                   const obj = JSON.parse(e.text)
@@ -383,6 +399,7 @@ Important policy overrides:
               if (e.kind === 'turn') {
                 try {
                   const obj = JSON.parse(e.text)
+                  if (obj.phase === 'started') return null
                   let durationMs: number | undefined = undefined
                   if (obj.phase === 'completed' || obj.phase === 'failed') {
                     let startId: number | undefined = undefined
@@ -432,8 +449,8 @@ Important policy overrides:
           </ScrollView>
         </View>
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 8}>
-          <View style={{ paddingBottom: Math.max(insets.bottom, 8), paddingHorizontal: 8 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight}>
+          <View style={{ paddingBottom: Platform.OS === 'ios' ? 2 : Math.max(insets.bottom, 8), paddingHorizontal: 8 }}>
             <Composer onSend={handleSend} connected={connected} isRunning={isRunning} onQueue={(m)=>{}} onInterrupt={handleInterrupt} queuedMessages={queuedFollowUps} prefill={composerPrefill} onDraftChange={handleDraftChange} inputRef={composerInputRef} />
           </View>
         </KeyboardAvoidingView>
