@@ -73,9 +73,27 @@ export default function ComponentLibraryScreen() {
         ]} />
       </Section>
 
-      <Section title="CommandExecutionCard">
-        <CommandExecutionCard command="rg -n prism-react-renderer" status="completed" exitCode={0} sample="README.md:12:prism-react-renderer"
-          outputLen={24} showExitCode={true} showOutputLen={true} />
+      <Section title="CommandExecutionCard (feed style: no meta)">
+        <CommandExecutionCard
+          command="rg -n prism-react-renderer"
+          status="completed"
+          exitCode={0}
+          sample={'README.md:12:prism-react-renderer'}
+          outputLen={24}
+          // defaults hide exit code and output length metadata
+        />
+      </Section>
+
+      <Section title="CommandExecutionCard (detail style: with meta)">
+        <CommandExecutionCard
+          command="rg -n prism-react-renderer"
+          status="completed"
+          exitCode={0}
+          sample={'README.md:12:prism-react-renderer'}
+          outputLen={24}
+          showExitCode={true}
+          showOutputLen={true}
+        />
       </Section>
 
       <Section title="WebSearchRow / McpToolCallRow">
