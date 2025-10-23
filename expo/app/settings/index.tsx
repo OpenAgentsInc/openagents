@@ -7,7 +7,7 @@ import { useHeaderTitle } from '@/lib/header-store'
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
-  const { bridgeHost, setBridgeHost, wsUrl, httpBase, connected, connect, disconnect, clearLog, readOnly, setReadOnly, networkEnabled, setNetworkEnabled, approvals, setApprovals, attachPreface, setAttachPreface } = useBridge()
+  const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, attachPreface, setAttachPreface } = useBridge()
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
@@ -18,24 +18,7 @@ export default function SettingsScreen() {
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
         <StatusPill connected={connected} />
       </View>
-      <Button title='Clear Log' onPress={clearLog} />
       <Text style={styles.title}>Preferences</Text>
-      <Text style={styles.label}>Filesystem</Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Segmented title='Read‑only' active={readOnly} onPress={() => setReadOnly(true)} />
-        <Segmented title='Write (workspace)' active={!readOnly} onPress={() => setReadOnly(false)} />
-      </View>
-      <Text style={styles.label}>Network</Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Segmented title='Restricted' active={!networkEnabled} onPress={() => setNetworkEnabled(false)} />
-        <Segmented title='Enabled' active={networkEnabled} onPress={() => setNetworkEnabled(true)} />
-      </View>
-      <Text style={styles.label}>Approvals</Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Segmented title='never' active={approvals==='never'} onPress={() => setApprovals('never')} />
-        <Segmented title='on-request' active={approvals==='on-request'} onPress={() => setApprovals('on-request')} />
-        <Segmented title='on-failure' active={approvals==='on-failure'} onPress={() => setApprovals('on-failure')} />
-      </View>
       <Text style={styles.label}>Attach preface to prompts</Text>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Segmented title='Off' active={!attachPreface} onPress={() => setAttachPreface(false)} />
