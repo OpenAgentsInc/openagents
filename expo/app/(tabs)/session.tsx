@@ -36,11 +36,13 @@ export default function SessionScreen() {
   const navigation = useNavigation();
   const headerHeight = useHeaderHeight()
   const insets = useSafeAreaInsets()
+  const drawer = useDrawer();
 
   type Entry = { id: number; text: string; kind: 'md'|'reason'|'text'|'json'|'summary'|'delta'|'exec'|'file'|'search'|'mcp'|'todo'|'cmd'|'err'|'turn'|'thread'|'item_lifecycle'; deemphasize?: boolean; detailId?: number }
   const [log, setLog] = useState<Entry[]>([])
   const idRef = useRef(1)
   const scrollRef = useRef<ScrollView | null>(null)
+  const shouldAutoScrollRef = useRef(true)
   const { connected, send: sendWs, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, setClearLogHandler } = useWs()
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
@@ -346,7 +348,18 @@ Important policy overrides:
         <View style={{ flex: 1 }}>
           <ScrollView
             ref={scrollRef}
-            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            onContentSizeChange={() => {
+              if (!drawer.open && shouldAutoScrollRef.current) {
+                scrollRef.current?.scrollToEnd({ animated: true })
+              }
+            }}
+            onScroll={(e) => {
+              const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent
+              const threshold = 24
+              const isNearBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - threshold
+              shouldAutoScrollRef.current = isNearBottom
+            }}
+            scrollEventThrottle={16}
             contentContainerStyle={{ paddingTop: 0, paddingBottom: 6, paddingHorizontal: 8 }}
             contentInsetAdjustmentBehavior="never"
             automaticallyAdjustContentInsets={false}
