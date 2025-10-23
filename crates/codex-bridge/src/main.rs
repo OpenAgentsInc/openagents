@@ -57,6 +57,7 @@ struct AppState {
     last_thread_id: Mutex<Option<String>>,
     // Replay buffer for new websocket clients
     history: Mutex<Vec<String>>,
+    history_cache: Mutex<crate::history::HistoryCache>,
 }
 
 #[tokio::main]
@@ -72,6 +73,7 @@ async fn main() -> Result<()> {
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
         history: Mutex::new(Vec::new()),
+        history_cache: Mutex::new(crate::history::HistoryCache::default()),
     });
 
     // Start readers for stdout/stderr → broadcast + console
@@ -138,12 +140,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     error!(?e, "failed to interrupt codex child");
                                 }
                             }
-                            ControlCommand::History => {
+                            ControlCommand::History { limit, since_mtime } => {
                                 // Serve history over broadcast channel
                                 let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
                                     std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
                                 });
-                                match crate::history::scan_history(std::path::Path::new(&base), 5) {
+                                let lim = limit.unwrap_or(5);
+                                match stdin_state.history_cache.lock().await.get(std::path::Path::new(&base), lim, since_mtime) {
                                     Ok(items) => {
                                         let line = serde_json::json!({"type":"bridge.history","items": items}).to_string();
                                         let _ = stdin_state.tx.send(line);
@@ -681,7 +684,7 @@ fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
 #[derive(Debug, Clone)]
 enum ControlCommand {
     Interrupt,
-    History,
+    History { limit: Option<usize>, since_mtime: Option<u64> },
     Thread { id: Option<String>, path: Option<String> },
 }
 
@@ -698,7 +701,11 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
     let control = v.get("control").and_then(|c| c.as_str())?;
     match control {
         "interrupt" => Some(ControlCommand::Interrupt),
-        "history" => Some(ControlCommand::History),
+        "history" => {
+            let limit = v.get("limit").and_then(|x| x.as_u64()).map(|n| n as usize);
+            let since_mtime = v.get("since_mtime").and_then(|x| x.as_u64());
+            Some(ControlCommand::History { limit, since_mtime })
+        }
         "thread" => {
             let id = v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string());
             let path = v.get("path").and_then(|x| x.as_str()).map(|s| s.to_string());

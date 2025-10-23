@@ -18,7 +18,7 @@ type BridgeContextValue = {
   setOnMessage: (fn: MsgHandler) => void;
   addSubscriber: (fn: MsgHandler) => () => void;
   // WS request helpers (no HTTP)
-  requestHistory: () => Promise<any[]>;
+  requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<any[]>;
   requestThread: (id: string, path?: string) => Promise<any | undefined>;
   // Log controls (Console registers a handler; Settings can trigger)
   setClearLogHandler: (fn: (() => void) | null) => void;
@@ -205,7 +205,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // WS helpers
-  const requestHistory = useCallback(async (): Promise<any[]> => {
+  const requestHistory = useCallback(async (params?: { limit?: number; since_mtime?: number }): Promise<any[]> => {
     await awaitConnected().catch((e) => { throw e });
     // Subscribe once
     return new Promise<any[]>((resolve, reject) => {
@@ -221,7 +221,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
           }
         } catch {}
       });
-      const ok = send(JSON.stringify({ control: 'history' }));
+      const payload = { control: 'history', ...(params?.limit ? { limit: params.limit } : {}), ...(params?.since_mtime ? { since_mtime: params.since_mtime } : {}) } as any;
+      const ok = send(JSON.stringify(payload));
       if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
     });
   }, [addSubscriber, send, awaitConnected]);
