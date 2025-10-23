@@ -11,6 +11,8 @@ type ComposerProps = {
   placeholder?: string;
   isRunning?: boolean;
   queuedMessages?: string[];
+  prefill?: string | null;
+  onDraftChange?: (text: string) => void;
 };
 
 const BUTTON_COLOR = '#3F3F46';
@@ -24,6 +26,8 @@ export function Composer({
   placeholder,
   isRunning = false,
   queuedMessages = [],
+  prefill,
+  onDraftChange,
 }: ComposerProps) {
   const [text, setText] = useState('');
   const trimmed = text.trim();
@@ -33,6 +37,14 @@ export function Composer({
   const sendLabel = isRunning && onQueue ? 'Queue' : 'Send';
   const queueCount = queuedMessages.length;
   const previewMessages = queuedMessages.slice(0, 3);
+
+  React.useEffect(() => {
+    if (prefill !== undefined) {
+      const value = prefill ?? '';
+      setText(value);
+      onDraftChange?.(value);
+    }
+  }, [prefill, onDraftChange]);
 
   const doSend = useCallback(() => {
     if (!connected) return;
@@ -44,11 +56,13 @@ export function Composer({
       onSend(base);
     }
     setText('');
-  }, [trimmed, connected, isRunning, onQueue, onSend]);
+    onDraftChange?.('');
+  }, [trimmed, connected, isRunning, onQueue, onSend, onDraftChange]);
 
   const handleChange = useCallback((value: string) => {
     setText(value);
-  }, []);
+    onDraftChange?.(value);
+  }, [onDraftChange]);
 
   const handleInterrupt = useCallback(() => {
     if (!canInterrupt) return;
