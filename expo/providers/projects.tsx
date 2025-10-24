@@ -12,13 +12,17 @@ import {
   type ProjectId,
 } from '@/lib/projects-store';
 
+type SendOptions = {
+  includePreface?: boolean;
+};
+
 type ProjectsCtx = {
   projects: Project[];
   activeProject: Project | undefined;
   setActive: (id: ProjectId | null) => Promise<void>;
   save: (p: Project) => Promise<void>;
   del: (id: ProjectId) => Promise<void>;
-  sendForProject: (project: Project | undefined, userText: string, resumeId?: string | null) => boolean;
+  sendForProject: (project: Project | undefined, userText: string, resumeId?: string | null, options?: SendOptions) => boolean;
 };
 
 const Ctx = createContext<ProjectsCtx | undefined>(undefined);
@@ -91,7 +95,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
-  const sendForProject = useCallback((project: Project | undefined, userText: string, resumeId?: string | null) => {
+  const sendForProject = useCallback((project: Project | undefined, userText: string, resumeId?: string | null, options?: SendOptions) => {
     const base = userText.trim();
     if (!base) return false;
 
@@ -117,7 +121,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
 
     const cfgLine = JSON.stringify(cfg);
-    const finalText = ws.attachPreface
+    const shouldAttachPreface = ws.attachPreface && (options?.includePreface ?? true);
+    const finalText = shouldAttachPreface
       ? `${buildHumanPreface(ws, project)}\n\n${base}`
       : base;
 

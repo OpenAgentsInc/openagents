@@ -8,6 +8,8 @@ export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?
 export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean; tail?: ThreadItem[] }
 export type ThreadResponse = { title: string; items: ThreadItem[]; instructions?: string; resume_id?: string; partial?: boolean }
 
+const MAX_HISTORY_CACHE = 80; // cap persisted history to keep hydration fast
+
 type ThreadsState = {
   history: HistoryItem[]
   loadingHistory: boolean
@@ -48,7 +50,7 @@ export const useThreads = create<ThreadsState>()(
     set({ loadingHistory: true })
     try {
           const state = get()
-          const existing = state.history || []
+          const existing = (state.history || []).slice(0, MAX_HISTORY_CACHE)
           const latestMtime = existing.reduce((acc, it)=> Math.max(acc, it.mtime || 0), 0)
           const params = latestMtime ? { since_mtime: latestMtime, limit: 50 } : { limit: 50 }
           appLog('history.fetch.start', { via: 'ws', params })
@@ -59,10 +61,16 @@ export const useThreads = create<ThreadsState>()(
             for (const it of delta) { if (!seen.has(it.id)) { next.push(it); seen.add(it.id) } }
             next.sort((a,b)=> (b.mtime - a.mtime))
           }
+          if (next.length > MAX_HISTORY_CACHE) {
+            next = next.slice(0, MAX_HISTORY_CACHE)
+          }
           if (next.length === 0 && existing.length === 0) {
             // Fallback initial fetch without since_mtime if cache is empty and delta was empty
             const full = await requestHistory({ limit: 50 })
             next = Array.isArray(full) ? full : []
+            if (next.length > MAX_HISTORY_CACHE) {
+              next = next.slice(0, MAX_HISTORY_CACHE)
+            }
           }
           set({ history: next, historyLoadedAt: Date.now(), historyError: null })
           appLog('history.fetch.success', { count: next.length, delta: delta?.length ?? 0 })
@@ -97,10 +105,10 @@ export const useThreads = create<ThreadsState>()(
     {
       name: '@openagents/threads-v1',
       version: 1,
+      skipHydration: true,
       partialize: (state) => ({
-        history: state.history,
+        history: (state.history || []).slice(0, MAX_HISTORY_CACHE),
         historyLoadedAt: state.historyLoadedAt,
-        thread: state.thread,
         threadProject: state.threadProject,
       }),
       storage: createJSONStorage(() => AsyncStorage),
@@ -110,14 +118,42 @@ export const useThreads = create<ThreadsState>()(
         } catch {}
       },
       migrate: (persisted: any) => {
-        // Legacy migration from HISTORY_KEY cache shape { items: HistoryItem[] }
         try {
-          if (persisted && typeof persisted === 'object' && Array.isArray(persisted.items) && !Array.isArray(persisted.history)) {
-            return { ...persisted, history: persisted.items, items: undefined }
+          if (persisted && typeof persisted === 'object') {
+            const next: any = { ...persisted };
+            if (Array.isArray(next.items) && !Array.isArray(next.history)) {
+              next.history = next.items;
+              delete next.items;
+            }
+            if (Array.isArray(next.history) && next.history.length > MAX_HISTORY_CACHE) {
+              next.history = next.history.slice(0, MAX_HISTORY_CACHE);
+            }
+            if (next.thread && typeof next.thread === 'object') {
+              next.thread = {};
+            }
+            return next;
           }
         } catch {}
-        return persisted
+        return persisted;
       },
     }
   )
 )
+
+let threadsRehydratePromise: Promise<void> | null = null;
+
+export function ensureThreadsRehydrated(): Promise<void> {
+  if (!threadsRehydratePromise) {
+    threadsRehydratePromise = (async () => {
+      try {
+        await useThreads.persist.rehydrate?.();
+      } catch {
+        useThreads.setState({ rehydrated: true });
+      }
+      if (!useThreads.getState().rehydrated) {
+        useThreads.setState({ rehydrated: true });
+      }
+    })();
+  }
+  return threadsRehydratePromise;
+}

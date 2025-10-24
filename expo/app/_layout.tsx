@@ -4,7 +4,7 @@ import { Stack, useRouter } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import React from "react"
 import {
-    ActivityIndicator, I18nManager, Pressable, ScrollView, Text, View
+    ActivityIndicator, I18nManager, InteractionManager, Pressable, ScrollView, Text, View
 } from "react-native"
 import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
@@ -16,7 +16,7 @@ import {
 import { useAutoUpdate } from "@/hooks/use-auto-update"
 import { useAppLogStore } from "@/lib/app-log"
 import { useOnboarding } from "@/lib/onboarding-store"
-import { useThreads } from "@/lib/threads-store"
+import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider, useProjects } from "@/providers/projects"
 import { SkillsProvider } from "@/providers/skills"
@@ -166,6 +166,22 @@ function DrawerContent() {
 export default function RootLayout() {
   const fontsLoaded = useTypographySetup();
   useAutoUpdate();
+  React.useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const run = () => {
+      if (!cancelled) ensureThreadsRehydrated();
+    };
+    const handle = InteractionManager?.runAfterInteractions?.(run);
+    if (!handle) {
+      timer = setTimeout(run, 0);
+    }
+    return () => {
+      cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+      if (handle && typeof handle.cancel === "function") handle.cancel();
+    };
+  }, []);
   if (!fontsLoaded) return null;
   applyTypographyGlobals();
 
