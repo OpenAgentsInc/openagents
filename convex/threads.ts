@@ -21,6 +21,47 @@ export const byId = queryGeneric(async ({ db }, args: { id: GenericId<"threads">
   return rows[0] ?? null;
 });
 
+export const upsertFromStream = mutationGeneric(async (
+  { db },
+  args: {
+    threadId: string;
+    title?: string;
+    projectId?: string;
+    rolloutPath?: string;
+    resumeId?: string;
+    source?: string;
+  }
+) => {
+  const now = Date.now();
+  const existing = await db
+    .query("threads")
+    .filter((q) => q.eq(q.field("threadId"), args.threadId))
+    .collect();
+  if (existing.length > 0) {
+    const doc = existing[0]!;
+    await db.patch(doc._id, {
+      title: args.title ?? doc.title,
+      projectId: args.projectId ?? doc.projectId,
+      rolloutPath: args.rolloutPath ?? doc.rolloutPath,
+      resumeId: args.resumeId ?? doc.resumeId,
+      source: args.source ?? doc.source,
+      updatedAt: now,
+    } as any);
+    return doc._id;
+  }
+  const id = await db.insert("threads", {
+    threadId: args.threadId,
+    title: args.title ?? "New Thread",
+    projectId: args.projectId ?? "",
+    rolloutPath: args.rolloutPath ?? "",
+    resumeId: args.resumeId ?? "",
+    source: args.source ?? "stream",
+    createdAt: now,
+    updatedAt: now,
+  } as any);
+  return id;
+});
+
 export const createDemo = mutationGeneric(async ({ db }) => {
   const now = Date.now();
   const id = await db.insert("threads", {

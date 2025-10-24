@@ -23,6 +23,7 @@ import { ConvexProviderLocal } from "@/providers/convex"
 import { SkillsProvider } from "@/providers/skills"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
+import { useQuery } from 'convex/react'
 import { ThemeProvider } from "@react-navigation/native"
 
 function DrawerContent() {
@@ -36,10 +37,14 @@ function DrawerContent() {
   const lastUrl = useThreads((s) => s.lastHistoryUrl);
   const historyError = useThreads((s) => s.historyError);
   const rehydrated = useThreads((s) => s.rehydrated);
+  // Prefer Convex threads if available; fallback to bridge history
+  const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
   React.useEffect(() => {
     if (!rehydrated) return;
-    loadHistory((params) => bridge.requestHistory(params)).catch(() => {});
-  }, [rehydrated, loadHistory, bridge]);
+    if (convexThreads === null) {
+      loadHistory((params) => bridge.requestHistory(params)).catch(() => {});
+    }
+  }, [rehydrated, loadHistory, bridge, convexThreads]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
@@ -70,27 +75,43 @@ function DrawerContent() {
                 <ActivityIndicator size="small" color={Colors.secondary} />
               ) : null}
             </View>
-            {history.length === 0 ? (
-              !loading ? (
+            {Array.isArray(convexThreads) ? (
+              convexThreads.length === 0 ? (
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
-              ) : null
-            ) : history.slice(0, 5).map((h) => (
-              <View key={h.id} style={{ paddingVertical: 6 }}>
-                <Pressable onPress={closeAnd(() => {
-                  try {
-                    if (Array.isArray((h as any).tail) && (h as any).tail.length > 0) {
-                      const prime = { title: h.title || 'Thread', items: (h as any).tail, partial: true } as any
-                      try { const mod = require('@/lib/threads-store'); mod.useThreads.getState().primeThread(h.id, prime) } catch {}
-                    }
-                  } catch {}
-                  router.push(`/thread/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`)
-                })} accessibilityRole="button">
-                  <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{h.title || '(no title)'}</Text>
-                  <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(h.mtime * 1000).toLocaleString()}</Text>
-                </Pressable>
-                {/* Intentionally omit inline instructions link in History */}
-              </View>
-            ))}
+              ) : (
+                convexThreads.slice(0, 5).map((row: any) => (
+                  <View key={String(row._id || row.id)} style={{ paddingVertical: 6 }}>
+                    <Pressable onPress={closeAnd(() => {
+                      router.push(`/convex/thread/${encodeURIComponent(row._id || row.id)}`)
+                    })} accessibilityRole="button">
+                      <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{row.title || '(no title)'}</Text>
+                      <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date((row.updatedAt || row.createdAt || Date.now())).toLocaleString()}</Text>
+                    </Pressable>
+                  </View>
+                ))
+              )
+            ) : (
+              history.length === 0 ? (
+                !loading ? (
+                  <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
+                ) : null
+              ) : history.slice(0, 5).map((h) => (
+                <View key={h.id} style={{ paddingVertical: 6 }}>
+                  <Pressable onPress={closeAnd(() => {
+                    try {
+                      if (Array.isArray((h as any).tail) && (h as any).tail.length > 0) {
+                        const prime = { title: h.title || 'Thread', items: (h as any).tail, partial: true } as any
+                        try { const mod = require('@/lib/threads-store'); mod.useThreads.getState().primeThread(h.id, prime) } catch {}
+                      }
+                    } catch {}
+                    router.push(`/thread/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`)
+                  })} accessibilityRole="button">
+                    <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{h.title || '(no title)'}</Text>
+                    <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(h.mtime * 1000).toLocaleString()}</Text>
+                  </Pressable>
+                </View>
+              ))
+            )}
             {!!historyError && (
               <View style={{ paddingVertical: 6 }}>
                 <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12 }}>History failed</Text>
