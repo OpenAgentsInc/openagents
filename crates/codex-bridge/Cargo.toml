@@ -21,6 +21,8 @@ which = "8.0.0"
 notify = "6.1"
 reqwest = { version = "0.12", default-features = true }
 rusqlite = { version = "0.31" }
+convex = "0.10.1"
+maplit = "1.0.2"
 
 [dev-dependencies]
 tempfile = "3.10.1"
