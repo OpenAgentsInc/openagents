@@ -157,6 +157,15 @@ function DrawerContent() {
             <Ionicons name="bug-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Logs</Text>
           </Pressable>
+          <Pressable
+            onPress={closeAnd(() => router.push('/convex'))}
+            accessibilityRole="button"
+            accessibilityLabel="Open Convex status"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
+          >
+            <Ionicons name="cloud-outline" size={18} color={Colors.foreground} />
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Convex</Text>
+          </Pressable>
         </View>
       </View>
     </SafeAreaView>
@@ -270,6 +279,7 @@ function DrawerWrapper() {
           <Stack.Screen name="thread/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
           <Stack.Screen name="projects/index" />
+          <Stack.Screen name="convex/index" />
           <Stack.Screen name="skills/index" />
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="project/new" />

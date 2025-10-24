@@ -19,6 +19,8 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["fmt", "env-filter"] }
 which = "8.0.0"
 notify = "6.1"
+reqwest = { version = "0.12", default-features = true }
+rusqlite = { version = "0.31" }
 
 [dev-dependencies]
 tempfile = "3.10.1"
