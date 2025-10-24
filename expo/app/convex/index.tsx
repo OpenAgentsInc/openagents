@@ -21,6 +21,20 @@ export default function ConvexScreen() {
 
   React.useEffect(() => { refresh() }, [])
 
+  // Ingestion progress (optional visual)
+  const [ingest, setIngest] = React.useState<{ ok_batch: number; remaining: number } | null>(null)
+  React.useEffect(() => {
+    const unsub = ws.addSubscriber((line) => {
+      try {
+        const obj = JSON.parse(String(line || ''))
+        if (obj?.type === 'bridge.ingest_progress') {
+          setIngest({ ok_batch: Number(obj.ok_batch || 0), remaining: Number(obj.remaining || 0) })
+        }
+      } catch {}
+    })
+    return unsub
+  }, [ws])
+
   // Derive the device-reachable Convex URL from Settings (bridgeHost)
   const deviceConvexUrl = React.useMemo(() => {
     try {
@@ -60,6 +74,15 @@ export default function ConvexScreen() {
         </View>
       )}
       <View style={{ height: 8 }} />
+      {ingest ? (
+        <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, padding: 8 }}>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, marginBottom: 6 }}>Ingesting history… (batch {ingest.ok_batch}, remaining {ingest.remaining})</Text>
+          <View style={{ height: 6, backgroundColor: Colors.border }}>
+            {/* Simple indeterminate bar */}
+            <View style={{ width: '35%', height: '100%', backgroundColor: Colors.secondary }} />
+          </View>
+        </View>
+      ) : null}
       <View style={{ height: 16 }} />
       <CreateDemoConvexRow />
       <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 20 }}>Live Threads (Convex)</Text>
