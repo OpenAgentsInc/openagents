@@ -49,13 +49,13 @@ export function AppHeader() {
             onPress={() => { showBack ? router.back() : toggle() }}
             accessibilityRole="button"
             // Expand the tappable area without changing visuals
-            hitSlop={{ top: 24, bottom: 24, left: 16, right: 16 }}
-            style={{ height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', position: 'relative' }}
+            hitSlop={{ top: 32, bottom: 32, left: 20, right: 20 }}
+            style={{ height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', alignItems: 'center', position: 'relative', marginTop: -1 }}
           >
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
             <View
               pointerEvents="none"
-              style={{ position: 'absolute', right: 4, top: 7, width: 9, height: 9, borderRadius: 4.5, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
+              style={{ position: 'absolute', right: 4, top: 4, width: 9, height: 9, borderRadius: 4.5, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
             />
           </Pressable>
           <View style={{ marginLeft: 6, maxWidth: '75%' }}>
