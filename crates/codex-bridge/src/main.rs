@@ -18,6 +18,7 @@ use tokio::{
     sync::{Mutex, broadcast},
 };
 use tracing::{error, info, warn};
+use chrono::TimeZone;
 use tracing_subscriber::prelude::*;
 use std::time::Duration;
 
@@ -411,7 +412,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 if let Ok(th) = crate::history::parse_thread(std::path::Path::new(&path)) {
                                                     let resume_id = th.resume_id.clone().unwrap_or(h.id.clone());
                                                     let title = th.title.clone();
-                                                    let _ = stdin_state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: &resume_id, title: Some(&title), project_id: None, created_at: Some(h.mtime * 1000), updated_at: Some(h.mtime * 1000) }).await;
+                                                    // Compute strict started_ms as in enqueue_single_thread
+                                                    let started_ms = th.started_ts.map(|t| t * 1000)
+                                                        .or_else(|| crate::history::derive_started_ts_from_path(std::path::Path::new(&path)).map(|t| t * 1000))
+                                                        .unwrap_or_else(|| {
+                                                            let today = chrono::Local::now().date_naive();
+                                                            let ndt = chrono::NaiveDateTime::new(today, chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+                                                            if let Some(dt) = chrono::Local.from_local_datetime(&ndt).single() { (dt.timestamp() as u64) * 1000 } else { 0 }
+                                                        });
+                                                    let _ = stdin_state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: &resume_id, title: Some(&title), project_id: None, created_at: Some(started_ms), updated_at: Some(started_ms), source_path: Some(&path) }).await;
                                                     for it in th.items {
                                                         if it.kind == "message" {
                                                             let role = it.role.as_deref().unwrap_or("assistant");
@@ -867,7 +876,7 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                             .insert(val.to_string());
                         info!(thread_id=%val, msg="captured thread id for resume");
                         // Mirror: enqueue thread upsert with minimal info
-                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: val, title: Some("Thread"), project_id: None, created_at: Some(now_ms()), updated_at: Some(now_ms()) }).await;
+                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: val, title: Some("Thread"), project_id: None, created_at: Some(now_ms()), updated_at: Some(now_ms()), source_path: None }).await;
                     }
                 }
                 // Mirror agent/user messages when present in newer shapes
@@ -1064,8 +1073,16 @@ async fn run_convex_ingester(state: Arc<AppState>, port: u16) {
                     args.insert("threadId".into(), Value::from(tid));
                     if let Some(title) = parsed.get("title").and_then(|x| x.as_str()) { args.insert("title".into(), Value::from(title)); }
                     if let Some(pid) = parsed.get("project_id").and_then(|x| x.as_str()) { args.insert("projectId".into(), Value::from(pid)); }
-                    if let Some(ca) = parsed.get("created_at").and_then(|x| x.as_u64()) { args.insert("createdAt".into(), Value::from(ca as f64)); }
-                    if let Some(ua) = parsed.get("updated_at").and_then(|x| x.as_u64()) { args.insert("updatedAt".into(), Value::from(ua as f64)); }
+                    let mut ca = parsed.get("created_at").and_then(|x| x.as_u64());
+                    let mut ua = parsed.get("updated_at").and_then(|x| x.as_u64());
+                    if (ca.is_none() || ca == Some(0)) || (ua.is_none() || ua == Some(0)) {
+                        if let Some(sp) = parsed.get("source_path").and_then(|x| x.as_str()) {
+                            if let Some(derived) = crate::history::derive_started_ts_from_path(std::path::Path::new(sp)) { ca = Some(derived * 1000); ua = ca; }
+                        }
+                        if ca.is_none() || ca == Some(0) { warn!(thread_id=%tid, msg="ingester: created_at missing; deriving fallback"); }
+                    }
+                    if let Some(v) = ca { args.insert("createdAt".into(), Value::from(v as f64)); }
+                    if let Some(v) = ua { args.insert("updatedAt".into(), Value::from(v as f64)); }
                     if let Err(e) = client.mutation("threads:upsertFromStream", args).await {
                         warn!(?e, "convex upsert failed"); failed.push(line.to_string());
                     } else { ok_count += 1; }
@@ -1182,12 +1199,18 @@ async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::Histor
                 0
             }
         });
+    // If started_ms is suspiciously close to now (likely import-time), log the full context
+    let now_ms = now_ms();
+    if started_ms > now_ms.saturating_sub(2 * 60 * 1000) {
+        warn!(id=%resume_id, path=%h.path, title=%title, started_ms, now_ms, msg="suspicious start time close to now; check derive logic");
+    }
     state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert {
         thread_id: &resume_id,
         title: Some(&title),
         project_id: None,
         created_at: Some(started_ms),
         updated_at: Some(started_ms),
+        source_path: Some(&h.path),
     }).await?;
     for it in th.items {
         if it.kind == "message" {

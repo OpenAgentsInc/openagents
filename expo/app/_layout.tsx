@@ -32,6 +32,16 @@ function DrawerContent() {
   const { setOpen } = useDrawer();
   // Convex-only history
   const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
+  const topThreads = React.useMemo(() => {
+    if (!Array.isArray(convexThreads)) return null
+    const copy = convexThreads.slice()
+    copy.sort((a: any, b: any) => {
+      const at = (a?.updatedAt ?? a?.createdAt ?? 0) as number
+      const bt = (b?.updatedAt ?? b?.createdAt ?? 0) as number
+      return bt - at
+    })
+    return copy.slice(0, 10)
+  }, [convexThreads])
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
@@ -63,16 +73,16 @@ function DrawerContent() {
               ) : null}
             </View>
             {Array.isArray(convexThreads) && (
-              convexThreads.length === 0 ? (
+              (topThreads?.length ?? 0) === 0 ? (
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
-                convexThreads.slice(0, 5).map((row: any) => (
+                (topThreads || []).map((row: any) => (
                   <View key={String(row._id || row.id)} style={{ paddingVertical: 6 }}>
                     <Pressable onPress={closeAnd(() => {
                       router.push(`/convex/thread/${encodeURIComponent(row._id || row.id)}`)
                     })} accessibilityRole="button">
                       <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{row.title || '(no title)'}</Text>
-                      <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date((row.updatedAt || row.createdAt || Date.now())).toLocaleString()}</Text>
+                      <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(((row.updatedAt ?? row.createdAt) ?? Date.now())).toLocaleString()}</Text>
                     </Pressable>
                   </View>
                 ))
