@@ -47,11 +47,16 @@ export default function ConvexThreadDetail() {
       ) : (
         <View style={{ gap: 10 }}>
           {messages.map((m: any) => (
-            <View key={m._id || `${m.threadId}-${m.ts}`} style={{ borderWidth: 1, borderColor: Colors.border, padding: 10 }}>
-              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(m.ts).toLocaleString()} · {m.role}</Text>
+            <Pressable
+              key={m._id || `${m.threadId}-${m.ts}`}
+              onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
+              accessibilityRole="button"
+              style={{ borderWidth: 1, borderColor: Colors.border, padding: 10 }}
+            >
+              <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(m.ts).toLocaleString()} · {m.role}</Text>
               <View style={{ height: 6 }} />
-              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{m.text}</Text>
-            </View>
+              <Text numberOfLines={4} style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{m.text}</Text>
+            </Pressable>
           ))}
         </View>
       )}

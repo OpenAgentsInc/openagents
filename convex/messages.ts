@@ -26,6 +26,20 @@ export const create = mutationGeneric(async ({ db }, args: CreateArgs) => {
   return id;
 });
 
+export const byId = queryGeneric(async ({ db }, args: { id: string }) => {
+  try {
+    // @ts-ignore: Convex typed id at runtime
+    const doc = await db.get(args.id as any);
+    if (doc) return doc;
+  } catch {}
+  const rows = await db
+    .query("messages")
+    // @ts-ignore: compare raw string form
+    .filter((q) => q.eq(q.field("_id"), (args.id as any)))
+    .collect();
+  return rows[0] ?? null;
+});
+
 export const createDemo = mutationGeneric(async ({ db }, args: { threadId: string }) => {
   const ts = Date.now();
   const id = await db.insert("messages", {
