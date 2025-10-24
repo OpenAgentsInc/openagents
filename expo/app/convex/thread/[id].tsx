@@ -13,8 +13,8 @@ export default function ConvexThreadDetail() {
   const thread = (useQuery as any)('threads:byId', { id }) as any
   useHeaderTitle(thread?.title ? String(thread.title) : 'Thread')
 
-  // Live messages subscription for this thread
-  const messages = (useQuery as any)('messages:forThread', { threadId: id }) as any[] | undefined | null
+  // Live messages subscription for this thread: use the thread.threadId, not the Convex doc _id
+  const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || '' }) as any[] | undefined | null
 
   const createDemo = (useMutation as any)('messages:createDemo') as (args: { threadId: string }) => Promise<any>
   const [busy, setBusy] = React.useState(false)
