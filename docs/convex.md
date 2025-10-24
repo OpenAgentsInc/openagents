@@ -119,6 +119,44 @@ We added an optional `threadId` field to `threads` to uniquely link rows with Co
   - Backfill: on first launch after connecting to Convex, the app backfills the last ~20 Codex sessions into Convex automatically.
   - Server‑side (planned): move mirroring to the bridge so history is captured even when the app is not connected.
 
+## Mirroring and Backfill
+
+We’re migrating “ALL CONVEX” for history. There are two cooperating pipelines so users see history whether or not the app is open:
+
+- Live mirror (client) — shipped
+  - As Codex JSONL streams in, the app calls Convex mutations:
+    - `threads:upsertFromStream` on `thread.started` to create/update a thread row (with timestamps/title).
+    - `messages:create` on user/assistant content (role, text, ts) to populate the transcript.
+  - This gives fast, visible updates; Drawer History subscribes to `threads:list` and reflects them immediately.
+
+- Live mirror (server) — phase 1 shipped (spool), ingester coming next
+  - The bridge now captures the same events from the JSONL stream and writes a durable queue to disk:
+    - Spool path: `~/.openagents/convex/mirror/spool.jsonl`
+    - Events: `thread_upsert` and `message_create` lines in JSONL form.
+  - An ingester (phase 2) will drain this spool and call the Convex mutations even if no client is connected. Until the ingester ships, the spool acts as a safe buffer and the client still mirrors live so you continue to see updates.
+
+- Backfill (historical) — how to run
+  - To stage historical data from Codex JSONLs into the spool, send a WS control to the bridge:
+    - `{ "control": "convex.backfill" }`
+  - The bridge scans `~/.codex/sessions`, parses new‑format rollouts, and enqueues `thread_upsert` + `message_create` for each thread. It emits a summary line:
+    - `{ "type": "bridge.convex_backfill", "status": "enqueued", "count": N }`
+  - Once the ingester is running, those queued events are written to Convex; Drawer History will auto‑update via subscription. Today, the client’s own backfill also runs on first launch and writes the last ~20 threads to Convex immediately.
+
+### What users experience
+
+- Drawer History
+  - Shows Convex threads only. While the Convex client connects, a small spinner appears next to the “History” label. Once connected, titles/timestamps appear and update in real time.
+  - Long titles are truncated to a single line; tap to open the live transcript view.
+
+- After backfill
+  - If Convex functions are deployed and reachable, historical threads appear as soon as they’re written (either by the client backfill or, soon, the server ingester). No bridge /history fallback is used in the UI anymore.
+
+### Operational notes
+
+- Convex backend is started by the bridge on `0.0.0.0:7788` by default so devices can connect over LAN/VPN. Health probes still use `http://127.0.0.1:7788` locally.
+- The spool is append‑only and durable across restarts; the ingester will be idempotent by using the upsert mutation and inserting messages with timestamps.
+- If Convex is unreachable, the client mirror pauses, but the server spool still records events for later ingestion.
+
 ## Production/TestFlight considerations
 
 - End users do not need Node/Bun. The Convex backend is started by the Rust bridge; only developers need the CLI to deploy function changes during development.
