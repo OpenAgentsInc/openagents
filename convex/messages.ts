@@ -38,3 +38,11 @@ export const createDemo = mutationGeneric(async ({ db }, args: { threadId: strin
   return id;
 });
 
+export const countForThread = queryGeneric(async ({ db }, args: { threadId: string }) => {
+  const rows = await db
+    .query("messages")
+    .withIndex?.('threadId', (q: any) => q.eq('threadId', args.threadId))
+    .filter((q) => q.eq(q.field("threadId"), args.threadId))
+    .collect();
+  return Array.isArray(rows) ? rows.length : 0;
+});
