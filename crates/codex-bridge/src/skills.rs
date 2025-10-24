@@ -21,6 +21,8 @@ pub struct Skill {
     pub description: String,
     #[serde(flatten)]
     pub meta: SkillMeta,
+    /// Origin of the skill: "user" (~/.openagents/skills) or "registry" (repo skills/)
+    pub source: Option<String>,
 }
 
 pub fn openagents_home() -> PathBuf {
@@ -36,9 +38,25 @@ pub fn ensure_dirs() -> Result<()> {
 }
 
 pub fn list_skills() -> Result<Vec<Skill>> {
-    let dir = skills_dir();
     let mut out: Vec<Skill> = Vec::new();
-    if !dir.exists() { ensure_dirs()?; return Ok(out); }
+    // 1) User-local skills (~/.openagents/skills)
+    let user_dir = skills_dir();
+    if !user_dir.exists() { let _ = ensure_dirs(); }
+    append_skills_from(&user_dir, "user", &mut out)?;
+    // 2) Registry skills inside the repo (skills/ adjacent to repo root)
+    for reg in registry_skills_dirs() {
+        append_skills_from(&reg, "registry", &mut out)?;
+    }
+    // De-duplicate by id preferring user over registry
+    out.sort_by(|a,b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut dedup: Vec<Skill> = Vec::new();
+    for s in out { if seen.insert(s.id.clone()) { dedup.push(s) } }
+    Ok(dedup)
+}
+
+fn append_skills_from(dir: &std::path::Path, source: &str, out: &mut Vec<Skill>) -> Result<()> {
+    if !dir.exists() { return Ok(()); }
     for ent in fs::read_dir(&dir).context("read skills dir")? {
         let p = ent?.path();
         if !p.is_dir() { continue; }
@@ -46,17 +64,14 @@ pub fn list_skills() -> Result<Vec<Skill>> {
         if !skill_file.exists() { continue; }
         if let Some(s) = fs::read_to_string(&skill_file).ok() {
             if let Some(fm) = extract_frontmatter_yaml(&s) {
-                // Validate frontmatter against schema (skip invalid)
-                if !validate_against_schema(include_str!("../schemas/skill.schema.json"), &fm) {
-                    continue;
-                }
-                let sk = match map_fm_to_skill(&p, &fm) { std::result::Result::Ok(v) => v, _ => continue };
+                if !validate_against_schema(include_str!("../schemas/skill.schema.json"), &fm) { continue; }
+                let mut sk = match map_fm_to_skill(&p, &fm) { std::result::Result::Ok(v) => v, _ => continue };
+                sk.source = Some(source.to_string());
                 out.push(sk);
             }
         }
     }
-    out.sort_by(|a,b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(out)
+    Ok(())
 }
 
 fn map_fm_to_skill(dir: &Path, fm: &yaml::Value) -> Result<Skill> {
@@ -68,7 +83,7 @@ fn map_fm_to_skill(dir: &Path, fm: &yaml::Value) -> Result<Skill> {
         seq.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect::<Vec<_>>()
     });
     let metadata = fm.get("metadata").and_then(|v| serde_json::to_value(v).ok());
-    Ok(Skill { id, name, description, meta: SkillMeta { license, allowed_tools, metadata } })
+    Ok(Skill { id, name, description, meta: SkillMeta { license, allowed_tools, metadata }, source: None })
 }
 
 fn extract_frontmatter_yaml(s: &str) -> Option<yaml::Value> {
@@ -86,4 +101,18 @@ fn validate_against_schema(schema_json: &str, yaml_val: &yaml::Value) -> bool {
     let json_val: serde_json::Value = if let Some(v) = serde_json::to_value(yaml_val).ok() { v } else { return false };
     let schema_val: serde_json::Value = if let Some(v) = serde_json::from_str(schema_json).ok() { v } else { return false };
     if let Some(compiled) = JSONSchema::compile(&schema_val).ok() { compiled.is_valid(&json_val) } else { false }
+}
+
+pub fn registry_skills_dirs() -> Vec<PathBuf> {
+    // Priority: explicit env, then ./skills under current working directory if present
+    let mut out = Vec::new();
+    if let std::result::Result::Ok(p) = std::env::var("OPENAGENTS_REGISTRY_SKILLS_DIR") {
+        let path = PathBuf::from(p);
+        if path.is_dir() { out.push(path); }
+    }
+    if let std::result::Result::Ok(cwd) = std::env::current_dir() {
+        let p = cwd.join("skills");
+        if p.is_dir() { out.push(p); }
+    }
+    out
 }
