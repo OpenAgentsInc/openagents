@@ -1,4 +1,6 @@
-import { DarkTheme as NavigationDarkTheme, type Theme } from '@react-navigation/native';
+import {
+  DarkTheme as NavigationDarkTheme, Theme, type
+} from "@react-navigation/native"
 
 // Adapted from the provided CSS variables to React Native theme tokens.
 export const Colors = {
@@ -83,8 +85,8 @@ export const Colors = {
   tabBarBackground: '#08090a',
   tabBarActive: '#f7f8f8',
   tabBarInactive: '#8a8f98',
-  sidebarBackground: '#000000',
-  
+  sidebarBackground: '#23252a',
+
   // Specials
   transparent: 'transparent',
 } as const;
