@@ -19,7 +19,10 @@ export function AppHeader() {
   const { toggle } = useDrawer()
   const { connected, clearLog, setResumeNextId } = useBridge()
   const pathname = usePathname()
-  const showBack = React.useMemo(() => pathname?.startsWith('/message/') ?? false, [pathname])
+  const showBack = React.useMemo(() => {
+    const p = String(pathname || '')
+    return p.startsWith('/message/') || p.startsWith('/thread/') || p.startsWith('/convex/thread/')
+  }, [pathname])
 
   const onLayout = React.useCallback((e: any) => {
     const h = e?.nativeEvent?.layout?.height ?? 0
@@ -53,9 +56,11 @@ export function AppHeader() {
               style={{ position: 'absolute', right: 4, top: 7, width: 9, height: 9, borderRadius: 4.5, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
             />
           </Pressable>
-          <View style={{ marginLeft: 6 }}>
+          <View style={{ marginLeft: 6, maxWidth: '75%' }}>
             {!!title && (
-              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 14 }}>{title}</Text>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 14 }}>
+                {title}
+              </Text>
             )}
             {!!subtitle && (
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 1 }}>
