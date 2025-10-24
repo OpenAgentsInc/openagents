@@ -66,7 +66,10 @@ We target the local backend on loopback (no cloud). Two env vars are accepted by
 - `CONVEX_SELF_HOSTED_URL=http://127.0.0.1:7788`
 - `CONVEX_ADMIN_KEY=<admin key>`
 
-You can place these in a `.env.local` (git‑ignored) or set them inline per command.
+You can place these in a `.env.local` (git‑ignored) or set them inline per command. The scripts accept either the official names or fallbacks:
+
+- Preferred: `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY`
+- Fallbacks (mapped automatically by scripts): `CONVEX_URL` and `CONVEX_ADMIN_KEY`
 
 Admin key (dev):
 - The Convex backend ships with a default dev instance name/secret (`carnitas` / a hex secret). We use `keybroker` to generate an admin key for local use.
