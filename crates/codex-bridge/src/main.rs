@@ -24,6 +24,7 @@ use std::time::Duration;
 mod history;
 mod projects;
 mod skills;
+mod mirror;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -81,6 +82,7 @@ struct AppState {
     // Replay buffer for new websocket clients
     history: Mutex<Vec<String>>,
     history_cache: Mutex<crate::history::HistoryCache>,
+    mirror: mirror::ConvexMirror,
 }
 
 #[tokio::main]
@@ -104,6 +106,7 @@ async fn main() -> Result<()> {
         last_thread_id: Mutex::new(None),
         history: Mutex::new(Vec::new()),
         history_cache: Mutex::new(crate::history::HistoryCache::new(400, std::time::Duration::from_secs(6))),
+        mirror: mirror::ConvexMirror::new(mirror::default_mirror_dir()),
     });
 
     // Start readers for stdout/stderr → broadcast + console
@@ -409,6 +412,34 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let tables = list_sqlite_tables(&db).unwrap_or_default();
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
+                            }
+                            ControlCommand::ConvexBackfill => {
+                                let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
+                                    std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
+                                });
+                                let limit = 400usize;
+                                match stdin_state.history_cache.lock().await.get(std::path::Path::new(&base), limit, None) {
+                                    Ok(items) => {
+                                        for h in items.clone() {
+                                            if let Some(path) = crate::history::resolve_session_path(std::path::Path::new(&base), Some(&h.id), Some(&h.path)) {
+                                                if let Ok(th) = crate::history::parse_thread(std::path::Path::new(&path)) {
+                                                    let resume_id = th.resume_id.clone().unwrap_or(h.id.clone());
+                                                    let title = th.title.clone();
+                                                    let _ = stdin_state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: &resume_id, title: Some(&title), project_id: None, created_at: Some(h.mtime * 1000), updated_at: Some(h.mtime * 1000) }).await;
+                                                    for it in th.items {
+                                                        if it.kind == "message" {
+                                                            let role = it.role.as_deref().unwrap_or("assistant");
+                                                            let text = it.text;
+                                                            let _ = stdin_state.mirror.append(&crate::mirror::MirrorEvent::MessageCreate { thread_id: &resume_id, role, text: &text, ts: it.ts * 1000 }).await;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        let _ = stdin_state.tx.send(serde_json::json!({"type":"bridge.convex_backfill","status":"enqueued","count": items.len()}).to_string());
+                                    }
+                                    Err(e) => { error!(?e, "backfill scan failed"); }
+                                }
                             }
                             ControlCommand::ProjectSave { project } => {
                                 match crate::projects::save_project(&project) {
@@ -849,6 +880,28 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                             .await
                             .insert(val.to_string());
                         info!(thread_id=%val, msg="captured thread id for resume");
+                        // Mirror: enqueue thread upsert with minimal info
+                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: val, title: Some("Thread"), project_id: None, created_at: Some(now_ms()), updated_at: Some(now_ms()) }).await;
+                    }
+                }
+                // Mirror agent/user messages when present in newer shapes
+                if t.as_deref() == Some("response_item") {
+                    if let Some(payload) = v.get("payload") {
+                        if payload.get("type").and_then(|x| x.as_str()) == Some("message") {
+                            let role = payload.get("role").and_then(|x| x.as_str()).unwrap_or("");
+                            let mut txt = String::new();
+                            if let Some(arr) = payload.get("content").and_then(|x| x.as_array()) {
+                                for part in arr { if let Some(t) = part.get("text").and_then(|x| x.as_str()) { if !txt.is_empty() { txt.push('\n'); } txt.push_str(t); } }
+                            }
+                            if !txt.trim().is_empty() {
+                                if let Some(tid) = state_for_stdout.last_thread_id.lock().await.clone() {
+                                    let role_s = if role == "assistant" { "assistant" } else if role == "user" { "user" } else { "" };
+                                    if !role_s.is_empty() {
+                                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::MessageCreate { thread_id: &tid, role: role_s, text: &txt, ts: now_ms() }).await;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 // no-op for agent_message in always-resume mode
@@ -899,6 +952,8 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
 
     Ok(())
 }
+
+fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64 }
 
 fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
     // Try to parse line as JSON and compact large delta arrays for logging only
@@ -1007,6 +1062,7 @@ enum ControlCommand {
     ConvexCreateDemo,
     ConvexCreateThreads,
     ConvexCreateDemoThread,
+    ConvexBackfill,
 }
 
 fn parse_control_command(payload: &str) -> Option<ControlCommand> {
@@ -1033,6 +1089,7 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         "convex.create_demo" => Some(ControlCommand::ConvexCreateDemo),
         "convex.create_threads" => Some(ControlCommand::ConvexCreateThreads),
         "convex.create_demo_thread" => Some(ControlCommand::ConvexCreateDemoThread),
+        "convex.backfill" => Some(ControlCommand::ConvexBackfill),
         "project.save" => {
             let proj: crate::projects::Project = serde_json::from_value(v.get("project")?.clone()).ok()?;
             Some(ControlCommand::ProjectSave { project: proj })
