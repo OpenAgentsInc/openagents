@@ -34,9 +34,8 @@ export const upsertFromStream = mutationGeneric(async (
     updatedAt?: number; // millis
   }
 ) => {
-  const now = Date.now();
-  const createdAt = typeof args.createdAt === 'number' ? args.createdAt : now;
-  const updatedAt = typeof args.updatedAt === 'number' ? args.updatedAt : now;
+  const createdAt = typeof args.createdAt === 'number' ? args.createdAt : 0;
+  const updatedAt = typeof args.updatedAt === 'number' ? args.updatedAt : createdAt;
   const existing = await db
     .query("threads")
     .filter((q) => q.eq(q.field("threadId"), args.threadId))

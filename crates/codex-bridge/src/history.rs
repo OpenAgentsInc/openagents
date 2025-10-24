@@ -1,4 +1,5 @@
 use anyhow::*;
+use chrono::TimeZone;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::{
@@ -40,6 +41,8 @@ pub struct ThreadResponse {
     pub instructions: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resume_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_ts: Option<u64>,
 }
 
 // HTTP handlers removed: the bridge now serves history and thread content
@@ -216,12 +219,17 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
     let mut first_assistant: Option<String> = None;
     let mut instructions: Option<String> = None;
     let mut resume_id: Option<String> = None;
+    let mut started_ts: Option<u64> = None;
     for line in r.lines().filter_map(Result::ok) {
         let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
         match v.get("type").and_then(|x| x.as_str()) {
             Some("thread.started") => {
                 if let Some(id) = v.get("thread_id").and_then(|x| x.as_str()) {
                     resume_id = Some(id.to_string());
+                }
+                // Derive a start timestamp from filename if available
+                if started_ts.is_none() {
+                    started_ts = derive_started_ts_from_path(path);
                 }
             }
             Some("session_meta") => {
@@ -339,10 +347,63 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
         }
     }
     let title = infer_title(first_assistant.as_deref().unwrap_or("Thread"));
-    Ok(ThreadResponse { title, items, instructions, resume_id })
+    Ok(ThreadResponse { title, items, instructions, resume_id, started_ts })
 }
 
 fn now_ts() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
+
+pub fn derive_started_ts_from_path(path: &Path) -> Option<u64> {
+    // Try from filename like rollout-YYYY-MM-DDTHH-MM-SS-....jsonl
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if let Some(rest) = name.strip_prefix("rollout-") {
+            // YYYY-MM-DDTHH-MM-SS
+            let parts: Vec<&str> = rest.split('-').collect();
+            if parts.len() >= 6 {
+                let y = parts.get(0)?.parse::<i32>().ok()?;
+                let m = parts.get(1)?.parse::<u32>().ok()?;
+                // parts[2] includes DDTHH; split on 'T'
+                let dd_thh = parts.get(2)?.to_string();
+                let mut dd = 0u32; let mut hh = 0u32;
+                if let Some((dd_s, hh_s)) = dd_thh.split_once('T') {
+                    dd = dd_s.parse::<u32>().ok()?;
+                    hh = hh_s.parse::<u32>().ok()?;
+                }
+                let mm = parts.get(3)?.parse::<u32>().ok()?;
+                let ss = parts.get(4)?.parse::<u32>().ok()?;
+                let nd = chrono::NaiveDate::from_ymd_opt(y, m, dd)?;
+                let nt = chrono::NaiveTime::from_hms_opt(hh, mm, ss)?;
+                let ndt = chrono::NaiveDateTime::new(nd, nt);
+                // Interpret as local time
+                let ts = chrono::Local.from_local_datetime(&ndt).single()?.timestamp() as u64;
+                return Some(ts);
+            }
+        }
+    }
+    // Fallback: try from directories .../<YYYY>/<MM>/<DD>/...
+    let comps: Vec<String> = path.components().filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string())).collect();
+    // Look for patterns ending with /YYYY/MM/DD/
+    for w in comps.windows(3) {
+        if w.len() == 3 {
+            let yy = w[0].parse::<i32>();
+            let mm = w[1].parse::<u32>();
+            let dd = w[2].parse::<u32>();
+            if yy.is_ok() && mm.is_ok() && dd.is_ok() {
+                let y = yy.unwrap();
+                let m = mm.unwrap();
+                let d = dd.unwrap();
+                if (2000..=2100).contains(&y) && (1..=12).contains(&m) && (1..=31).contains(&d) {
+                    let nd = match chrono::NaiveDate::from_ymd_opt(y, m, d) { Some(v)=>v, None=>continue };
+                    let nt = match chrono::NaiveTime::from_hms_opt(0, 0, 0) { Some(v)=>v, None=>continue };
+                    let ndt = chrono::NaiveDateTime::new(nd, nt);
+                    if let Some(dt) = chrono::Local.from_local_datetime(&ndt).single() {
+                        return Some(dt.timestamp() as u64);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
 
 // Simple in-memory cache for history listing to avoid repeated full scans
 #[derive(Debug)]
