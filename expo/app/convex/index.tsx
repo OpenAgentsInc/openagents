@@ -4,6 +4,7 @@ import { useBridge } from '@/providers/ws'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
+import { useQuery } from 'convex/react'
 
 export default function ConvexScreen() {
   const ws = useBridge()
@@ -59,6 +60,34 @@ export default function ConvexScreen() {
           ))
         )}
       </View>
+
+      <View style={{ height: 16 }} />
+      <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 20 }}>Live Threads (Convex)</Text>
+      <ThreadsList />
     </ScrollView>
+  )
+}
+
+function ThreadsList() {
+  // Subscribe to a generic Convex query named "threads:list" with no args
+  // This will live-update if a Convex project with that query is deployed to the backend.
+  const result = (useQuery as any)('threads:list', {}) as any
+  if (result === undefined) {
+    return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Connecting…</Text>
+  }
+  if (result === null) {
+    return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No Convex project deployed or query missing (threads:list).</Text>
+  }
+  if (!Array.isArray(result)) {
+    return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Unexpected result.</Text>
+  }
+  return (
+    <View style={{ gap: 6 }}>
+      {result.length === 0 ? (
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No threads yet.</Text>
+      ) : result.map((row: any) => (
+        <Text key={row._id || row.id} style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{row.title || row.id}</Text>
+      ))}
+    </View>
   )
 }

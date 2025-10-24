@@ -19,6 +19,7 @@ import { useOnboarding } from "@/lib/onboarding-store"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider, useProjects } from "@/providers/projects"
+import { ConvexProviderLocal } from "@/providers/convex"
 import { SkillsProvider } from "@/providers/skills"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
@@ -200,9 +201,11 @@ export default function RootLayout() {
         <BridgeProvider>
           <ProjectsProvider>
             <SkillsProvider>
-            <DrawerProvider>
-              <DrawerWrapper />
-            </DrawerProvider>
+              <ConvexProviderLocal>
+                <DrawerProvider>
+                  <DrawerWrapper />
+                </DrawerProvider>
+              </ConvexProviderLocal>
             </SkillsProvider>
           </ProjectsProvider>
         </BridgeProvider>
