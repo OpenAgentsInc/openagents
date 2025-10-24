@@ -1,0 +1,8 @@
+{
+  "name": "openagents-convex",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "convex": "^1.28.0"
+  }
+}

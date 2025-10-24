@@ -166,6 +166,9 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .arg("--db").arg("sqlite")
         .arg("--interface").arg("127.0.0.1")
         .arg("--port").arg(port.to_string())
+        .arg("--local-storage").arg(
+            std::env::var("HOME").map(|h| format!("{}/.openagents/convex/storage", h)).unwrap_or_else(|_| "convex_local_storage".to_string())
+        )
         .arg("--disable-beacon")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
