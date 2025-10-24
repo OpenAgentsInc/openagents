@@ -7,9 +7,11 @@ use tokio::sync::Mutex;
 #[serde(tag = "type")]
 pub enum MirrorEvent<'a> {
     #[serde(rename = "thread_upsert")]
-    ThreadUpsert { thread_id: &'a str, title: Option<&'a str>, project_id: Option<&'a str>, created_at: Option<u64>, updated_at: Option<u64>, source_path: Option<&'a str> },
+    ThreadUpsert { thread_id: &'a str, title: Option<&'a str>, project_id: Option<&'a str>, created_at: Option<u64>, updated_at: Option<u64>, source_path: Option<&'a str>, resume_id: Option<&'a str>, convex_thread_id: Option<&'a str> },
     #[serde(rename = "message_create")]
     MessageCreate { thread_id: &'a str, role: &'a str, text: &'a str, ts: u64 },
+    #[serde(rename = "jsonl_item")]
+    JsonlItem { thread_id: &'a str, kind: &'a str, ts: u64, text: Option<&'a str>, data: Option<serde_json::Value> },
 }
 
 #[derive(Debug, Clone)]

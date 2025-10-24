@@ -24,11 +24,11 @@ export const byId = queryGeneric(async ({ db }, args: { id: GenericId<"threads">
 export const upsertFromStream = mutationGeneric(async (
   { db },
   args: {
-    threadId: string;
+    threadId?: string; // Convex document id string (preferred key)
+    resumeId?: string; // Codex CLI thread id for resume
     title?: string;
     projectId?: string;
     rolloutPath?: string;
-    resumeId?: string;
     source?: string;
     createdAt?: number; // millis
     updatedAt?: number; // millis
@@ -36,10 +36,19 @@ export const upsertFromStream = mutationGeneric(async (
 ) => {
   const createdAt = typeof args.createdAt === 'number' ? args.createdAt : 0;
   const updatedAt = typeof args.updatedAt === 'number' ? args.updatedAt : createdAt;
-  const existing = await db
-    .query("threads")
-    .filter((q) => q.eq(q.field("threadId"), args.threadId))
-    .collect();
+  let existing: any[] = [];
+  if (args.threadId) {
+    existing = await db
+      .query("threads")
+      .filter((q) => q.eq(q.field("threadId"), args.threadId))
+      .collect();
+  }
+  if (existing.length === 0 && args.resumeId) {
+    existing = await db
+      .query("threads")
+      .filter((q) => q.eq(q.field("resumeId"), args.resumeId))
+      .collect();
+  }
   if (existing.length > 0) {
     const doc = existing[0]!;
     await db.patch(doc._id, {
@@ -53,7 +62,7 @@ export const upsertFromStream = mutationGeneric(async (
     return doc._id;
   }
   const id = await db.insert("threads", {
-    threadId: args.threadId,
+    threadId: args.threadId || (args.resumeId ? String(args.resumeId) : ''),
     title: args.title ?? "New Thread",
     projectId: args.projectId ?? "",
     rolloutPath: args.rolloutPath ?? "",

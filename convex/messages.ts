@@ -1,7 +1,7 @@
 import { queryGeneric, mutationGeneric } from "convex/server";
 
 type ForThreadArgs = { threadId: string };
-type CreateArgs = { threadId: string; role: string; text: string; ts?: number };
+type CreateArgs = { threadId: string; role?: string; kind?: string; text?: string; data?: any; ts?: number };
 
 export const forThread = queryGeneric(async ({ db }, args: ForThreadArgs) => {
   const { threadId } = args;
@@ -14,12 +14,14 @@ export const forThread = queryGeneric(async ({ db }, args: ForThreadArgs) => {
 });
 
 export const create = mutationGeneric(async ({ db }, args: CreateArgs) => {
-  const { threadId, role, text } = args;
+  const { threadId } = args;
   const ts = args.ts ?? Date.now();
   const id = await db.insert("messages", {
     threadId,
-    role,
-    text,
+    role: args.role,
+    kind: args.kind || 'message',
+    text: args.text,
+    data: args.data,
     ts,
     createdAt: ts,
   });
@@ -46,6 +48,7 @@ export const createDemo = mutationGeneric(async ({ db }, args: { threadId: strin
     threadId: args.threadId,
     role: "assistant",
     text: "Hello from Convex messages!",
+    kind: 'message',
     ts,
     createdAt: ts,
   });

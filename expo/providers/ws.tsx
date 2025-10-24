@@ -17,9 +17,7 @@ type BridgeContextValue = {
   send: (payload: string | ArrayBuffer | Blob) => boolean;
   setOnMessage: (fn: MsgHandler) => void;
   addSubscriber: (fn: MsgHandler) => () => void;
-  // WS request helpers (no HTTP)
-  requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<any[]>;
-  requestThread: (id: string, path?: string) => Promise<any | undefined>;
+  // WS request helpers (deprecated in Convex-only flow)
   requestProjects: () => Promise<any[]>;
   requestConvexStatus: () => Promise<{ healthy: boolean; url: string; db: string; tables: string[] }>;
   createConvexDemo: () => Promise<{ healthy: boolean; url: string; db: string; tables: string[] }>;
@@ -210,48 +208,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     return () => { try { subsRef.current.delete(fn) } catch {} };
   }, []);
 
-  // WS helpers
-  const requestHistory = useCallback(async (params?: { limit?: number; since_mtime?: number }): Promise<any[]> => {
-    await awaitConnected().catch((e) => { throw e });
-    // Subscribe once
-    return new Promise<any[]>((resolve, reject) => {
-      let done = false;
-      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 30000);
-      const unsub = addSubscriber((line) => {
-        if (done) return;
-        const s = String(line || '').trim(); if (!s.startsWith('{')) return;
-        try {
-          const obj = JSON.parse(s);
-          if (obj?.type === 'bridge.history' && Array.isArray(obj.items)) {
-            done = true; clearTimeout(timer); unsub(); resolve(obj.items);
-          }
-        } catch {}
-      });
-      const payload = { control: 'history', ...(params?.limit ? { limit: params.limit } : {}), ...(params?.since_mtime ? { since_mtime: params.since_mtime } : {}) } as any;
-      const ok = send(JSON.stringify(payload));
-      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
-    });
-  }, [addSubscriber, send, awaitConnected]);
-
-  const requestThread = useCallback(async (id: string, path?: string): Promise<any | undefined> => {
-    await awaitConnected().catch((e) => { throw e });
-    return new Promise<any | undefined>((resolve, reject) => {
-      let done = false;
-      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 20000);
-      const unsub = addSubscriber((line) => {
-        if (done) return;
-        const s = String(line || '').trim(); if (!s.startsWith('{')) return;
-        try {
-          const obj = JSON.parse(s);
-          if (obj?.type === 'bridge.thread' && obj?.thread) {
-            done = true; clearTimeout(timer); unsub(); resolve(obj.thread);
-          }
-        } catch {}
-      });
-      const ok = send(JSON.stringify({ control: 'thread', id, path }));
-      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
-    });
-  }, [addSubscriber, send, awaitConnected]);
+  // Removed history/thread helpers; Convex-only UI uses subscriptions directly
 
   const requestProjects = useCallback(async (): Promise<any[]> => {
     await awaitConnected().catch((e) => { throw e });
@@ -365,8 +322,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       addSubscriber,
       setClearLogHandler,
       clearLog,
-      requestHistory,
-      requestThread,
+      
       requestProjects,
       requestConvexStatus,
       createConvexDemo,
