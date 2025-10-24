@@ -223,17 +223,11 @@ function DrawerWrapper() {
   };
 
   const NewChatButton = () => {
-    const { clearLog, setResumeNextId } = useBridge();
-    const clearPersisted = async () => {
-      try { const mod = await import('@/lib/log-store'); await mod.clearLogs(); } catch {}
-    };
+    const createThread = (require('convex/react') as any).useMutation('threads:create') as (args?: { title?: string; projectId?: string }) => Promise<string>;
     const onPress = async () => {
       try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } } catch {}
-      // Force the next send to start a fresh session (no resume)
-      try { setResumeNextId('new') } catch {}
-      await clearPersisted();
-      clearLog();
-      router.push('/thread?focus=1&new=1');
+      try { const id = await createThread({ title: 'New Thread' }); router.push(`/convex/thread/${encodeURIComponent(String(id))}`); }
+      catch { router.push('/convex'); }
     };
     return (
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>

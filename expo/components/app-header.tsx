@@ -9,6 +9,7 @@ import { useHeaderStore } from "@/lib/header-store"
 import { clearLogs as clearLogsStore } from "@/lib/log-store"
 import { useDrawer } from "@/providers/drawer"
 import { useBridge } from "@/providers/ws"
+import { useMutation } from 'convex/react'
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
 
 export function AppHeader() {
@@ -17,7 +18,8 @@ export function AppHeader() {
   const subtitle = useHeaderStore((s) => s.subtitle)
   const setHeight = useHeaderStore((s) => s.setHeight)
   const { toggle } = useDrawer()
-  const { connected, clearLog, setResumeNextId } = useBridge()
+  const { connected } = useBridge()
+  const createThread = (useMutation as any)('threads:create') as (args?: { title?: string; projectId?: string }) => Promise<string>
   const pathname = usePathname()
   const showBack = React.useMemo(() => {
     const p = String(pathname || '')
@@ -32,13 +34,15 @@ export function AppHeader() {
 
   const onNewChat = React.useCallback(async () => {
     try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {}
-    try { setResumeNextId('new') } catch {}
-    // Persistently clear logs even if the session screen is not mounted yet
-    try { await clearLogsStore() } catch {}
-    clearLog()
-    // Always navigate to a fresh live thread view, even from /thread/[id]
-    router.push('/thread?focus=1&new=1')
-  }, [clearLog, pathname, setResumeNextId])
+    // Create a new Convex thread and open it
+    try {
+      const id = await createThread({ title: 'New Thread' })
+      router.push(`/convex/thread/${encodeURIComponent(String(id))}`)
+    } catch {
+      // Fallback to local route in case Convex is not reachable
+      router.push('/convex')
+    }
+  }, [createThread])
 
   return (
     <View onLayout={onLayout} style={{ paddingTop: insets.top, backgroundColor: Colors.background, borderBottomColor: Colors.border, borderBottomWidth: 1 }}>
