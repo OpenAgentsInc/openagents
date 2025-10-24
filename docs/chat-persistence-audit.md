@@ -138,3 +138,45 @@ This document surveys how Codex persists chat data across the Rust codebase, how
 
 If you want me to propose a change set to include Exec sessions in the TUI’s resume picker, or to add a config knob to control the filter, I can draft that next.
 
+
+Addendum: Making OpenAgents sessions appear in Codex “resume” lists
+
+Problem
+- Our bridge launches Codex via `codex exec --json`, so rollouts are tagged with `SessionSource::Exec` in the first `SessionMeta` line of each JSONL file.
+- The interactive Codex resume picker (“codex resume”) uses `INTERACTIVE_SESSION_SOURCES = [Cli, VSCode]`, so Exec sessions are saved on disk but filtered out of the picker/“resume last”.
+
+Options (ranked by invasiveness)
+1) Upstream a filter knob in Codex (recommended long‑term)
+   - Add a config flag or env like `resume.include_exec = true` or `CODEX_RESUME_INCLUDE_EXEC=1` that expands the interactive filter to `[Cli, VSCode, Exec]`.
+   - Touch points in Codex (reference):
+     - Filter constant: codex-rs/core/src/rollout/mod.rs (`INTERACTIVE_SESSION_SOURCES`).
+     - Call sites: codex-rs/tui/src/lib.rs and codex-rs/tui/src/resume_picker.rs use this list when calling `RolloutRecorder::list_conversations`.
+   - Pros: truthful metadata; consistent behavior across all UIs. Cons: requires upstream change.
+
+2) Post‑process the rollout to re‑tag source (Opt‑in, no upstream required)
+   - After each session completes, rewrite the first JSONL line to change `source: "Exec"` → `"Cli"` so the picker includes it.
+   - Implementation sketch in our bridge:
+     - Capture the `session_configured` event (we already see it in the stream) to get `rollout_path`.
+     - On child exit (success or normal shutdown), open the file, read all lines, JSON‑parse line 1, set `payload.source = "Cli"`, write to a temp file and atomically replace the original.
+     - Guard with a user setting (e.g., “Publish to Codex Resume”) defaulting to off; when off, we leave `Exec` untouched.
+   - Notes:
+     - Codex uses the file’s `source` value only for filtering; re‑labeling does not affect resume fidelity.
+     - This relies on Codex’s current schema (first line is `SessionMetaLine` with `payload.source`). If upstream changes, adjust the key.
+
+3) Resume by id instead of picker (works today)
+   - Exec already supports `codex exec resume --last` or `codex exec resume <SESSION_ID>` without the interactive filter.
+   - From the file name (`rollout-…jsonl`) or the streamed `thread.started` event we can surface the id and call resume by id. This does not change what appears in the picker, but it gives users a one‑tap “Resume in Codex” action.
+
+4) Ensure a single `$CODEX_HOME`
+   - If picker cannot locate sessions, confirm both Codex and our bridge write to the same `$CODEX_HOME` (default `~/.codex`).
+
+Proposed UX in OpenAgents
+- Setting: “Publish sessions to Codex resume (relabel source to Interactive)”
+  - When enabled, apply option (2) on session completion; otherwise, keep `Exec` tagging.
+  - Add a subtitle explaining the effect and link to this doc for details.
+- Optional: “Open in Codex” action for a session that calls `codex resume <SESSION_ID>` on the desktop.
+
+Impact and trade‑offs
+- Re‑tagging (`Exec` → `Cli`) is the most practical short‑term path to make sessions appear in the picker without upstream changes. It slightly blurs provenance in the metadata but does not break replay.
+- Upstreaming a filter knob yields the cleanest long‑term behavior and preserves truthful `source` values.
+- Resuming by id works regardless of tags and requires no changes, but does not populate the interactive list.
