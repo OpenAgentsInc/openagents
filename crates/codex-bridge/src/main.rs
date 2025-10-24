@@ -208,6 +208,24 @@ fn create_demo_table(db_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+fn create_threads_table(db_path: &PathBuf) -> Result<()> {
+    let conn = rusqlite::Connection::open(db_path)?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS threads (\
+            id TEXT PRIMARY KEY,\
+            rollout_path TEXT NOT NULL,\
+            title TEXT,\
+            resume_id TEXT,\
+            project_id TEXT,\
+            source TEXT,\
+            created_at INTEGER,\
+            updated_at INTEGER\
+        )",
+        rusqlite::params![],
+    )?;
+    Ok(())
+}
+
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
@@ -311,6 +329,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             ControlCommand::ConvexCreateDemo => {
                                 let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
                                 let _ = create_demo_table(&db);
+                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let healthy = convex_health(&url).await.unwrap_or(false);
+                                let tables = list_sqlite_tables(&db).unwrap_or_default();
+                                let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
+                                let _ = stdin_state.tx.send(line);
+                            }
+                            ControlCommand::ConvexCreateThreads => {
+                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
+                                let _ = create_threads_table(&db);
                                 let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
                                 let healthy = convex_health(&url).await.unwrap_or(false);
                                 let tables = list_sqlite_tables(&db).unwrap_or_default();
@@ -912,6 +939,7 @@ enum ControlCommand {
     ProjectDelete { id: String },
     ConvexStatus,
     ConvexCreateDemo,
+    ConvexCreateThreads,
 }
 
 fn parse_control_command(payload: &str) -> Option<ControlCommand> {
