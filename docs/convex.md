@@ -123,3 +123,4 @@ We added an optional `threadId` field to `threads` to uniquely link rows with Co
 - End users do not need Node/Bun. The Convex backend is started by the Rust bridge; only developers need the CLI to deploy function changes during development.
 - Mobile connects to the user’s desktop Convex over LAN/VPN. Keep the binding at `127.0.0.1` and route via Tailscale/host networking.
 - If your Convex functions change (e.g., new tables), re‑run the deploy step on the desktop. The app will pick them up on reconnect.
+- iOS ATS: In production/TestFlight, plain HTTP to local/VPN hosts is blocked by default. We set `NSAppTransportSecurity -> NSAllowsArbitraryLoads: true` and `NSAllowsLocalNetworking: true` in `expo/app.json`. This requires a new native build; OTA updates cannot change Info.plist. If you prefer not to allow arbitrary loads, host Convex behind HTTPS and point Settings to that URL.
