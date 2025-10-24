@@ -1,14 +1,14 @@
 import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
 
 export default defineSchema({
   threads: defineTable({
-    title: "string",
-    rolloutPath: "string",
-    resumeId: "string",
-    projectId: "string",
-    source: "string",
-    createdAt: "number",
-    updatedAt: "number",
+    title: v.string(),
+    rolloutPath: v.string(),
+    resumeId: v.string(),
+    projectId: v.string(),
+    source: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
   }),
 });
-

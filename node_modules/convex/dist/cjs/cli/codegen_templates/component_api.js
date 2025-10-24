@@ -1,0 +1,502 @@
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var component_api_exports = {};
+__export(component_api_exports, {
+  componentApiDTS: () => componentApiDTS,
+  componentApiJs: () => componentApiJs,
+  componentApiStubDTS: () => componentApiStubDTS,
+  resolveFunctionReference: () => resolveFunctionReference,
+  rootComponentApiCJS: () => rootComponentApiCJS
+});
+module.exports = __toCommonJS(component_api_exports);
+var import_path = __toESM(require("path"), 1);
+var import_bundler = require("../../bundler/index.js");
+var import_directoryStructure = require("../lib/components/definition/directoryStructure.js");
+var import_api = require("./api.js");
+var import_common = require("./common.js");
+var import_validator_helpers = require("./validator_helpers.js");
+function componentApiJs() {
+  const lines = [];
+  lines.push((0, import_common.header)("Generated `api` utility."));
+  lines.push(`
+    import { anyApi, componentsGeneric } from "convex/server";
+
+    /**
+     * A utility for referencing Convex functions in your app's API.
+     *
+     * Usage:
+     * \`\`\`js
+     * const myFunctionReference = api.myModule.myFunction;
+     * \`\`\`
+     */
+    export const api = anyApi;
+    export const internal = anyApi;
+    export const components = componentsGeneric();
+  `);
+  return lines.join("\n");
+}
+function rootComponentApiCJS() {
+  const lines = [];
+  lines.push((0, import_common.header)("Generated `api` utility."));
+  lines.push(`const { anyApi } = require("convex/server");`);
+  lines.push(`module.exports = {
+    api: anyApi,
+    internal: anyApi,
+  };`);
+  return lines.join("\n");
+}
+function componentApiStubDTS() {
+  const lines = [];
+  lines.push((0, import_common.header)("Generated `api` utility."));
+  lines.push(`import type { AnyApi, AnyComponents } from "convex/server";`);
+  lines.push(`
+    export declare const api: AnyApi;
+    export declare const internal: AnyApi;
+    export declare const components: AnyComponents;
+  `);
+  return lines.join("\n");
+}
+async function componentApiDTS(ctx, startPush, rootComponent, componentDirectory, opts) {
+  const definitionPath = (0, import_directoryStructure.toComponentDefinitionPath)(
+    rootComponent,
+    componentDirectory
+  );
+  const analysis = startPush.analysis[definitionPath];
+  if (!analysis) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: `No analysis found for component ${definitionPath} orig: ${definitionPath}
+in
+${Object.keys(startPush.analysis).toString()}`
+    });
+  }
+  const lines = [];
+  lines.push((0, import_common.header)("Generated `api` utility."));
+  let apiLines;
+  if (opts.staticApi) {
+    apiLines = codegenStaticApiObjects(ctx, analysis);
+  } else {
+    apiLines = codegenDynamicApiObjects(
+      ctx,
+      componentDirectory,
+      startPush,
+      definitionPath
+    );
+  }
+  for await (const line of apiLines) {
+    lines.push(line);
+  }
+  lines.push(`
+  export declare const components: {`);
+  for (const childComponent of analysis.definition.childComponents) {
+    const childComponentAnalysis = startPush.analysis[childComponent.path];
+    if (!childComponentAnalysis) {
+      return await ctx.crash({
+        exitCode: 1,
+        errorType: "fatal",
+        printedMessage: `No analysis found for child component ${childComponent.path}`
+      });
+    }
+    for await (const line of codegenExports(
+      ctx,
+      childComponent.name,
+      childComponentAnalysis
+    )) {
+      lines.push(line);
+    }
+  }
+  lines.push("};");
+  return lines.join("\n");
+}
+async function* codegenStaticApiObjects(ctx, analysis) {
+  yield `import type { FunctionReference } from "convex/server";`;
+  const apiTree = await buildApiTree(ctx, analysis.functions, {
+    kind: "public"
+  });
+  yield `
+  /**
+   * A utility for referencing Convex functions in your app's public API.
+   *
+   * Usage:
+   * \`\`\`js
+   * const myFunctionReference = api.myModule.myFunction;
+   * \`\`\`
+   */`;
+  yield `export declare const api:`;
+  yield* codegenApiTree(ctx, apiTree);
+  yield ";";
+  yield `
+  /**
+   * A utility for referencing Convex functions in your app's internal API.
+   *
+   * Usage:
+   * \`\`\`js
+   * const myFunctionReference = internal.myModule.myFunction;
+   * \`\`\`
+   */`;
+  const internalTree = await buildApiTree(ctx, analysis.functions, {
+    kind: "internal"
+  });
+  yield `export declare const internal:`;
+  yield* codegenApiTree(ctx, internalTree);
+  yield ";";
+}
+async function* codegenDynamicApiObjects(ctx, componentDirectory, startPush, definitionPath) {
+  const absModulePaths = await (0, import_bundler.entryPoints)(ctx, componentDirectory.path);
+  const modulePaths = absModulePaths.map(
+    (p) => import_path.default.relative(componentDirectory.path, p)
+  );
+  for (const modulePath of modulePaths) {
+    const ident = (0, import_api.moduleIdentifier)(modulePath);
+    const path2 = (0, import_api.importPath)(modulePath);
+    yield `import type * as ${ident} from "../${path2}.js";`;
+  }
+  yield `
+    import type {
+      ApiFromModules,
+      FilterApi,
+      FunctionReference,
+    } from "convex/server";
+
+    /**
+     * A utility for referencing Convex functions in your app's API.
+     *
+     * Usage:
+     * \`\`\`js
+     * const myFunctionReference = api.myModule.myFunction;
+     * \`\`\`
+     */
+    declare const fullApi: ApiFromModules<{
+  `;
+  for (const modulePath of modulePaths) {
+    const ident = (0, import_api.moduleIdentifier)(modulePath);
+    const path2 = (0, import_api.importPath)(modulePath);
+    yield `  "${path2}": typeof ${ident},`;
+  }
+  yield `}>;`;
+  yield* codegenApiWithMounts(ctx, startPush, definitionPath);
+  yield `
+    export declare const api: FilterApi<typeof fullApiWithMounts, FunctionReference<any, "public">>;
+    export declare const internal: FilterApi<typeof fullApiWithMounts, FunctionReference<any, "internal">>;
+  `;
+}
+async function buildApiTree(ctx, functions, visibility) {
+  const root = {};
+  for (const [modulePath, module2] of Object.entries(functions)) {
+    const p = (0, import_api.importPath)(modulePath);
+    if (p.startsWith("_deps/")) {
+      continue;
+    }
+    for (const f of module2.functions) {
+      if (f.visibility?.kind !== visibility.kind) {
+        continue;
+      }
+      let current = root;
+      for (const pathComponent of p.split("/")) {
+        let next = current[pathComponent];
+        if (!next) {
+          next = { type: "branch", branch: {} };
+          current[pathComponent] = next;
+        }
+        if (next.type === "leaf") {
+          return await ctx.crash({
+            exitCode: 1,
+            errorType: "fatal",
+            printedMessage: `Ambiguous function name: ${f.name} in ${modulePath}`
+          });
+        }
+        current = next.branch;
+      }
+      if (current[f.name]) {
+        return await ctx.crash({
+          exitCode: 1,
+          errorType: "fatal",
+          printedMessage: `Duplicate function name: ${f.name} in ${modulePath}`
+        });
+      }
+      current[f.name] = { type: "leaf", leaf: f };
+    }
+  }
+  return root;
+}
+async function* codegenApiTree(ctx, tree) {
+  yield "{";
+  for (const [identifier, subtree] of Object.entries(tree)) {
+    if (subtree.type === "branch") {
+      yield `"${identifier}":`;
+      yield* codegenApiTree(ctx, subtree.branch);
+      yield ",";
+    } else {
+      const visibility = subtree.leaf.visibility?.kind;
+      if (!visibility) {
+        return await ctx.crash({
+          exitCode: 1,
+          errorType: "fatal",
+          printedMessage: `Function ${subtree.leaf.name} has no visibility`
+        });
+      }
+      const ref = await codegenFunctionReference(
+        ctx,
+        subtree.leaf,
+        visibility,
+        true
+      );
+      yield `"${identifier}": ${ref},`;
+    }
+  }
+  yield "}";
+}
+async function* codegenApiWithMounts(ctx, startPush, definitionPath) {
+  const mountTree = await buildMountTree(ctx, startPush, definitionPath, []);
+  if (mountTree) {
+    yield "export type Mounts = ";
+    yield* codegenMountTree(mountTree);
+    yield `;`;
+    yield `// For now fullApiWithMounts is only fullApi which provides`;
+    yield `// jump-to-definition in component client code.`;
+    yield `// Use Mounts for the same type without the inference.`;
+    yield "declare const fullApiWithMounts: typeof fullApi;";
+  } else {
+    yield "declare const fullApiWithMounts: typeof fullApi;";
+  }
+}
+function* codegenMountTree(tree) {
+  yield `{`;
+  for (const [identifier, subtree] of Object.entries(tree)) {
+    if (typeof subtree === "string") {
+      yield `"${identifier}": ${subtree},`;
+    } else {
+      yield `"${identifier}":`;
+      yield* codegenMountTree(subtree);
+      yield `,`;
+    }
+  }
+  yield `}`;
+}
+async function buildMountTree(ctx, startPush, definitionPath, attributes) {
+  const analysis = startPush.analysis[definitionPath];
+  if (!analysis) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: `No analysis found for component ${definitionPath} orig: ${definitionPath}
+in
+${Object.keys(startPush.analysis).toString()}`
+    });
+  }
+  let current = analysis.definition.exports.branch;
+  for (const attribute of attributes) {
+    const componentExport = current.find(
+      ([identifier]) => identifier === attribute
+    );
+    if (!componentExport) {
+      return await ctx.crash({
+        exitCode: 1,
+        errorType: "fatal",
+        printedMessage: `No export found for ${attribute}`
+      });
+    }
+    const [_, node] = componentExport;
+    if (node.type !== "branch") {
+      return await ctx.crash({
+        exitCode: 1,
+        errorType: "fatal",
+        printedMessage: `Expected branch at ${attribute}`
+      });
+    }
+    current = node.branch;
+  }
+  return buildComponentMountTree(ctx, startPush, analysis, current);
+}
+async function buildComponentMountTree(ctx, startPush, analysis, exports) {
+  const result = {};
+  let nonEmpty = false;
+  for (const [identifier, componentExport] of exports) {
+    if (componentExport.type === "leaf") {
+      if (componentExport.leaf.startsWith("_reference/childComponent/")) {
+        const suffix = componentExport.leaf.slice(
+          "_reference/childComponent/".length
+        );
+        const [componentName, ...attributes] = suffix.split("/");
+        const childComponent = analysis.definition.childComponents.find(
+          (c) => c.name === componentName
+        );
+        if (!childComponent) {
+          return await ctx.crash({
+            exitCode: 1,
+            errorType: "fatal",
+            printedMessage: `No child component found for ${componentName}`
+          });
+        }
+        const childTree = await buildMountTree(
+          ctx,
+          startPush,
+          childComponent.path,
+          attributes
+        );
+        if (childTree) {
+          result[identifier] = childTree;
+          nonEmpty = true;
+        }
+      }
+      const isRoot = analysis.definition.definitionType.type === "app";
+      if (!isRoot && componentExport.leaf.startsWith("_reference/function/")) {
+        const leaf = await resolveFunctionReference(
+          ctx,
+          analysis,
+          componentExport.leaf,
+          "public"
+        );
+        result[identifier] = leaf;
+        nonEmpty = true;
+      }
+    } else {
+      const subTree = await buildComponentMountTree(
+        ctx,
+        startPush,
+        analysis,
+        componentExport.branch
+      );
+      if (subTree) {
+        result[identifier] = subTree;
+        nonEmpty = true;
+      }
+    }
+  }
+  return nonEmpty ? result : null;
+}
+async function* codegenExports(ctx, name, analysis) {
+  yield `${name}: {`;
+  for (const [name2, componentExport] of analysis.definition.exports.branch) {
+    yield `${name2}:`;
+    yield* codegenExport(ctx, analysis, componentExport);
+    yield ",";
+  }
+  yield "},";
+}
+async function* codegenExport(ctx, analysis, componentExport) {
+  if (componentExport.type === "leaf") {
+    yield await resolveFunctionReference(
+      ctx,
+      analysis,
+      componentExport.leaf,
+      "internal"
+    );
+  } else if (componentExport.type === "branch") {
+    yield "{";
+    for (const [name, childExport] of componentExport.branch) {
+      yield `${name}:`;
+      yield* codegenExport(ctx, analysis, childExport);
+      yield ",";
+    }
+    yield "}";
+  }
+}
+async function resolveFunctionReference(ctx, analysis, reference, visibility) {
+  if (!reference.startsWith("_reference/function/")) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: `Invalid function reference: ${reference}`
+    });
+  }
+  const udfPath = reference.slice("_reference/function/".length);
+  const [modulePath, functionName] = udfPath.split(":");
+  const canonicalizedModulePath = canonicalizeModulePath(modulePath);
+  const analyzedModule = analysis.functions[canonicalizedModulePath];
+  if (!analyzedModule) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: `Module not found: ${modulePath}`
+    });
+  }
+  const analyzedFunction = analyzedModule.functions.find(
+    (f) => f.name === functionName
+  );
+  if (!analyzedFunction) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: `Function not found: ${functionName}`
+    });
+  }
+  return await codegenFunctionReference(
+    ctx,
+    analyzedFunction,
+    visibility,
+    false
+  );
+}
+async function codegenFunctionReference(ctx, analyzedFunction, visibility, useIdType) {
+  const udfType = analyzedFunction.udfType.toLowerCase();
+  let argsType = "any";
+  try {
+    const argsValidator = (0, import_validator_helpers.parseValidator)(analyzedFunction.args);
+    if (argsValidator) {
+      if (argsValidator.type === "object" || argsValidator.type === "any") {
+        argsType = (0, import_validator_helpers.validatorToType)(argsValidator, useIdType);
+      } else {
+        throw new Error(
+          `Unexpected argument validator type: ${argsValidator.type}`
+        );
+      }
+    }
+  } catch (e) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: `Invalid function args: ${analyzedFunction.args}`,
+      errForSentry: e
+    });
+  }
+  let returnsType = "any";
+  try {
+    const returnsValidator = (0, import_validator_helpers.parseValidator)(analyzedFunction.returns);
+    if (returnsValidator) {
+      returnsType = (0, import_validator_helpers.validatorToType)(returnsValidator, useIdType);
+    }
+  } catch (e) {
+    return await ctx.crash({
+      exitCode: 1,
+      errorType: "fatal",
+      printedMessage: `Invalid function returns: ${analyzedFunction.returns}`,
+      errForSentry: e
+    });
+  }
+  return `FunctionReference<"${udfType}", "${visibility}", ${argsType}, ${returnsType}>`;
+}
+function canonicalizeModulePath(modulePath) {
+  if (!modulePath.endsWith(".js")) {
+    return modulePath + ".js";
+  }
+  return modulePath;
+}
+//# sourceMappingURL=component_api.js.map
