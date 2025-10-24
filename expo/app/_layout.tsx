@@ -19,6 +19,7 @@ import { useOnboarding } from "@/lib/onboarding-store"
 import { useThreads } from "@/lib/threads-store"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider, useProjects } from "@/providers/projects"
+import { SkillsProvider } from "@/providers/skills"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
@@ -60,6 +61,14 @@ function DrawerContent() {
                 <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
             ))}
+            <View style={{ height: 12 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="flash-outline" size={14} color={Colors.secondary} />
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Skills</Text>
+            </View>
+            <Pressable onPress={closeAnd(() => router.push('/skills'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See skills…</Text>
+            </Pressable>
             <View style={{ height: 8 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="time-outline" size={14} color={Colors.secondary} />
@@ -164,9 +173,11 @@ export default function RootLayout() {
       <ThemeProvider value={NavigationTheme}>
         <BridgeProvider>
           <ProjectsProvider>
+            <SkillsProvider>
             <DrawerProvider>
               <DrawerWrapper />
             </DrawerProvider>
+            </SkillsProvider>
           </ProjectsProvider>
         </BridgeProvider>
       </ThemeProvider>
@@ -242,6 +253,7 @@ function DrawerWrapper() {
           <Stack.Screen name="thread/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
           <Stack.Screen name="projects/index" />
+          <Stack.Screen name="skills/index" />
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="project/new" />
           <Stack.Screen name="library/index" />

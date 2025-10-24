@@ -81,6 +81,9 @@ async fn main() -> Result<()> {
     // Start readers for stdout/stderr → broadcast + console
     start_stream_forwarders(child, state.clone()).await?;
 
+    // Live-reload: watch ~/.openagents/skills and broadcast updates
+    tokio::spawn(watch_skills_and_broadcast(state.clone()));
+
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .with_state(state);
@@ -729,6 +732,42 @@ fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
         Ok(s) => s,
         Err(_) => return None,
     })
+}
+
+async fn watch_skills_and_broadcast(state: Arc<AppState>) {
+    use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+    use std::sync::mpsc::channel;
+    let dir = crate::skills::skills_dir();
+    if let Err(e) = std::fs::create_dir_all(&dir) { error!(?e, "skills mkdir failed"); return; }
+    let (txev, rcev) = channel();
+    let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let _ = txev.send(res);
+    }) {
+        Ok(w) => w,
+        Err(e) => { error!(?e, "skills watcher create failed"); return; }
+    };
+    if let Err(e) = watcher.watch(&dir, RecursiveMode::Recursive) {
+        error!(?e, "skills watcher watch failed");
+        return;
+    }
+    info!(dir=%dir.display(), msg="skills watcher started");
+    // Blocking loop; debounced
+    loop {
+        match rcev.recv() {
+            Ok(_evt) => {
+                // Simple debounce: drain quick bursts
+                let _ = rcev.try_recv(); let _ = rcev.try_recv();
+                match crate::skills::list_skills() {
+                    Ok(items) => {
+                        let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string();
+                        let _ = state.tx.send(line);
+                    }
+                    Err(e) => { error!(?e, "skills list failed on change"); }
+                }
+            }
+            Err(_disconnected) => break,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
