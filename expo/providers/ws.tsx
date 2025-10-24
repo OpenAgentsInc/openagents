@@ -20,6 +20,7 @@ type BridgeContextValue = {
   // WS request helpers (no HTTP)
   requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<any[]>;
   requestThread: (id: string, path?: string) => Promise<any | undefined>;
+  requestProjects: () => Promise<any[]>;
   // Log controls (Console registers a handler; Settings can trigger)
   setClearLogHandler: (fn: (() => void) | null) => void;
   clearLog: () => void;
@@ -247,6 +248,23 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     });
   }, [addSubscriber, send, awaitConnected]);
 
+  const requestProjects = useCallback(async (): Promise<any[]> => {
+    await awaitConnected().catch((e) => { throw e });
+    return new Promise<any[]>((resolve, reject) => {
+      let done = false;
+      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 15000);
+      const unsub = addSubscriber((line) => {
+        if (done) return; const s = String(line || '').trim(); if (!s.startsWith('{')) return;
+        try {
+          const obj = JSON.parse(s);
+          if (obj?.type === 'bridge.projects' && Array.isArray(obj.items)) { done = true; clearTimeout(timer); unsub(); resolve(obj.items); }
+        } catch {}
+      });
+      const ok = send(JSON.stringify({ control: 'projects' }));
+      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
+    });
+  }, [addSubscriber, send, awaitConnected]);
+
   const setClearLogHandler = useCallback((fn: (() => void) | null) => {
     clearLogHandlerRef.current = fn;
   }, []);
@@ -271,6 +289,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       clearLog,
       requestHistory,
       requestThread,
+      requestProjects,
       readOnly,
       setReadOnly,
       networkEnabled,

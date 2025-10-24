@@ -37,6 +37,40 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  // Seed from bridge (WS) on mount; keep persisted store for instant rehydrate
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = await ws.requestProjects();
+        if (Array.isArray(items) && items.length > 0) {
+          // Map wire fields (camelCase) directly to Project shape
+          const arr = items.map((x: any) => ({
+            id: String(x.id || x.name || ''),
+            name: String(x.name || x.id || ''),
+            voiceAliases: Array.isArray(x.voiceAliases) ? x.voiceAliases : [],
+            workingDir: String(x.working_dir || x.workingDir || ''),
+            repo: x.repo,
+            agentFile: x.agent_file || x.agentFile,
+            instructions: x.instructions || x.description,
+            runningAgents: 0,
+            attentionCount: 0,
+            todos: Array.isArray(x.todos) ? x.todos : [],
+            lastActivity: undefined,
+            createdAt: x.created_at || x.createdAt || Date.now(),
+            updatedAt: x.updated_at || x.updatedAt || Date.now(),
+            approvals: x.approvals,
+            model: x.model,
+            sandbox: x.sandbox,
+          })) as Project[];
+          // Replace store contents with WS snapshot
+          try { const mod = await import('@/lib/projects-store'); mod.useProjectsStore.getState().setAll(arr) } catch {}
+          setProjects(listProjects());
+          setActiveState(getActiveProject());
+        }
+      } catch {}
+    })();
+  }, [ws]);
+
   const refresh = useCallback(() => {
     setProjects(listProjects());
     setActiveState(getActiveProject());
