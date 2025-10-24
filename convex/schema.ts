@@ -3,7 +3,9 @@ import { v } from "convex/values";
 
 export default defineSchema({
   threads: defineTable({
-    threadId: v.string(),
+    // threadId is optional to allow migrating existing rows created before this field existed.
+    // New inserts should set it; the app upsert does.
+    threadId: v.optional(v.string()),
     title: v.string(),
     rolloutPath: v.string(),
     resumeId: v.string(),

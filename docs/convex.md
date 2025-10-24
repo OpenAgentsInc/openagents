@@ -18,11 +18,8 @@ We continue to keep Codex JSONL rollouts as the source of truth for resuming thr
   - SQLite DB: `~/.openagents/convex/data.sqlite3`
   - File storage: `~/.openagents/convex/storage`
 
-- Manual start (advanced)
-  - We install a prebuilt `local_backend` binary to `~/.openagents/bin/local_backend`.
-  - Example: `~/.openagents/bin/local_backend ~/.openagents/convex/data.sqlite3 --db sqlite --interface 127.0.0.1 --port 7788 --disable-beacon`
-
 - App wiring
+  - The app only calls queries/mutations; it never creates tables.
   - A Convex React client is provided via `expo/providers/convex.tsx`.
   - The Convex screen (`/convex`) shows connection status (via the bridge) and a live list of threads from Convex React once functions are deployed.
 
@@ -39,7 +36,7 @@ We continue to keep Codex JSONL rollouts as the source of truth for resuming thr
   - `list` query: returns all threads (desc order)
   - `createDemo` mutation: inserts a demo thread row
 
-These need to be pushed to your local Convex backend once (or whenever changed).
+These need to be pushed to your local Convex backend once (or whenever changed). This is a developer/desktop step only — mobile clients do not need any env files.
 
 ## What `npx convex dev` does and when to use it
 
@@ -59,21 +56,14 @@ Non‑watch alternatives:
 - One‑shot push: `npx convex deploy` (helpful for CI or scripting)
 - One‑time dev cycle: `npx convex dev --once`
 
-## Self‑hosted configuration
+## Self‑hosted configuration (developer machine)
 
-We target the local backend on loopback (no cloud). Two env vars are accepted by the Convex CLI for self‑host setups:
+We target the local backend on loopback (no cloud). To push functions during development, the Convex CLI accepts:
 
 - `CONVEX_SELF_HOSTED_URL=http://127.0.0.1:7788`
-- `CONVEX_ADMIN_KEY=<admin key>`
+- `CONVEX_SELF_HOSTED_ADMIN_KEY=<admin key>`
 
-You can place these in a `.env.local` (git‑ignored) or set them inline per command. The scripts accept either the official names or fallbacks:
-
-- Preferred: `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY`
-- Fallbacks (mapped automatically by scripts): `CONVEX_URL` and `CONVEX_ADMIN_KEY`
-
-Admin key (dev):
-- The Convex backend ships with a default dev instance name/secret (`carnitas` / a hex secret). We use `keybroker` to generate an admin key for local use.
-- Bridge supervision does not require an admin key; the key is only for pushing functions via the CLI.
+Place these in a repo‑root `.env.local` (git‑ignored) or set inline. This is required only for developers deploying server functions, not for end users on mobile.
 
 ## First‑time setup (one‑time)
 
@@ -93,13 +83,9 @@ Admin key (dev):
 
 After this, the app’s Convex screen (“Live Threads”) will render `threads:list` and live‑update.
 
-## App demo helpers
+## Migration note (threads.threadId)
 
-Even without deploying functions, you can test SQLite structure via the bridge:
-- Create `threads` table: the “Create threads table” button on `/convex`
-- Insert a demo row: “Create demo thread” button
-
-These use bridge WS controls to manipulate the SQLite DB directly. They are for bootstrap/testing only; the React subscription is powered by the Convex functions you deploy.
+We added an optional `threadId` field to `threads` to uniquely link rows with Codex threads. Legacy demo rows may lack this field. The schema now allows it to be absent; new upserts/mirrors will populate it. You can later normalize by patching legacy rows and making the field required.
 
 ## Paths and ports
 
