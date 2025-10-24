@@ -3,9 +3,12 @@ import { ScrollView, Text, View } from 'react-native'
 import { useSkills } from '@/providers/skills'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
+import { useHeaderTitle, useHeaderSubtitle } from '@/lib/header-store'
 
 export default function SkillsIndex() {
   const { skills } = useSkills()
+  useHeaderTitle('Skills')
+  useHeaderSubtitle('')
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16 }}>
       <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 20, marginBottom: 12 }}>Skills</Text>
