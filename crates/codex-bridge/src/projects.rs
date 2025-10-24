@@ -1,6 +1,6 @@
 use anyhow::*;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::{Path, PathBuf}};
+use std::{fs, path::PathBuf};
 use serde_yaml as yaml;
 use jsonschema::JSONSchema;
 
