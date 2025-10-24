@@ -84,8 +84,9 @@ Admin key (dev):
      - `CONVEX_SELF_HOSTED_URL=http://127.0.0.1:7788`
      - `CONVEX_ADMIN_KEY=<the key>`
 3) From repo root, push functions:
-   - Interactive (first time to create `convex.json`): `npx convex dev`
-   - Non‑interactive (after configured): `npx convex deploy --typecheck disable --codegen enable`
+   - Recommended: `bun run convex:dev:once` (uses `.env.local`, writes `convex.json`, pushes once)
+   - Watch mode: `bun run convex:dev`
+   - One‑shot deploy (after configured): `bun run convex:deploy`
 
 After this, the app’s Convex screen (“Live Threads”) will render `threads:list` and live‑update.
 
@@ -124,4 +125,3 @@ These use bridge WS controls to manipulate the SQLite DB directly. They are for 
 - Add embeddings and vector search using the Convex vector crates (future)
 - Move more read paths (e.g., history list) to Convex subscriptions
 - Integrate bridge upserts for live Codex -> Convex mirroring
-
