@@ -737,8 +737,14 @@ fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
 async fn watch_skills_and_broadcast(state: Arc<AppState>) {
     use notify::{RecommendedWatcher, RecursiveMode, Watcher};
     use std::sync::mpsc::channel;
-    let dir = crate::skills::skills_dir();
-    if let Err(e) = std::fs::create_dir_all(&dir) { error!(?e, "skills mkdir failed"); return; }
+    let user_dir = crate::skills::skills_dir();
+    let registry_dirs = crate::skills::registry_skills_dirs();
+    let mut watched: Vec<std::path::PathBuf> = Vec::new();
+    if let Err(e) = std::fs::create_dir_all(&user_dir) { error!(?e, "skills mkdir failed"); }
+    if user_dir.is_dir() { watched.push(user_dir.clone()); }
+    for d in registry_dirs { if d.is_dir() { watched.push(d); } }
+
+    if watched.is_empty() { return; }
     let (txev, rcev) = channel();
     let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let _ = txev.send(res);
@@ -746,16 +752,18 @@ async fn watch_skills_and_broadcast(state: Arc<AppState>) {
         Ok(w) => w,
         Err(e) => { error!(?e, "skills watcher create failed"); return; }
     };
-    if let Err(e) = watcher.watch(&dir, RecursiveMode::Recursive) {
-        error!(?e, "skills watcher watch failed");
-        return;
+    for d in &watched {
+        if let Err(e) = watcher.watch(d, RecursiveMode::Recursive) {
+            error!(dir=%d.display(), ?e, "skills watcher watch failed");
+        } else {
+            info!(dir=%d.display(), msg="skills watcher started");
+        }
     }
-    info!(dir=%dir.display(), msg="skills watcher started");
     // Blocking loop; debounced
     loop {
         match rcev.recv() {
             Ok(_evt) => {
-                // Simple debounce: drain quick bursts
+                // Drain quick bursts
                 let _ = rcev.try_recv(); let _ = rcev.try_recv();
                 match crate::skills::list_skills() {
                     Ok(items) => {
