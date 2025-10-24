@@ -21,7 +21,6 @@ import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider, useProjects } from "@/providers/projects"
 import { ConvexProviderLocal } from "@/providers/convex"
 import { SkillsProvider } from "@/providers/skills"
-import { ConvexBackfillOnce } from "@/providers/convex-sync"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { useQuery } from 'convex/react'
@@ -180,7 +179,6 @@ export default function RootLayout() {
           <ProjectsProvider>
             <SkillsProvider>
               <ConvexProviderLocal>
-              <ConvexBackfillOnce />
                 <DrawerProvider>
                   <DrawerWrapper />
                 </DrawerProvider>
