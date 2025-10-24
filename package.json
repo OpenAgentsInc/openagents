@@ -3,9 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "convex:dev": "sh -c 'set -a; [ -f .env.local ] && . ./.env.local; : ${CONVEX_SELF_HOSTED_ADMIN_KEY:=$CONVEX_ADMIN_KEY}; : ${CONVEX_SELF_HOSTED_URL:=$CONVEX_URL}; export CONVEX_SELF_HOSTED_ADMIN_KEY CONVEX_SELF_HOSTED_URL; convex dev --url \"$CONVEX_SELF_HOSTED_URL\" --admin-key \"$CONVEX_SELF_HOSTED_ADMIN_KEY\" --typecheck disable --codegen enable'",
-    "convex:dev:once": "sh -c 'set -a; [ -f .env.local ] && . ./.env.local; : ${CONVEX_SELF_HOSTED_ADMIN_KEY:=$CONVEX_ADMIN_KEY}; : ${CONVEX_SELF_HOSTED_URL:=$CONVEX_URL}; export CONVEX_SELF_HOSTED_ADMIN_KEY CONVEX_SELF_HOSTED_URL; convex dev --once --url \"$CONVEX_SELF_HOSTED_URL\" --admin-key \"$CONVEX_SELF_HOSTED_ADMIN_KEY\" --typecheck disable --codegen enable'",
-    "convex:deploy": "sh -c 'set -a; [ -f .env.local ] && . ./.env.local; : ${CONVEX_SELF_HOSTED_ADMIN_KEY:=$CONVEX_ADMIN_KEY}; : ${CONVEX_SELF_HOSTED_URL:=$CONVEX_URL}; export CONVEX_SELF_HOSTED_ADMIN_KEY CONVEX_SELF_HOSTED_URL; convex deploy --url \"$CONVEX_SELF_HOSTED_URL\" --admin-key \"$CONVEX_SELF_HOSTED_ADMIN_KEY\" --typecheck disable --codegen enable'"
+    "convex:dev": "bash ./scripts/convex-cli.sh dev",
+    "convex:dev:once": "bash ./scripts/convex-cli.sh dev:once",
+    "convex:deploy": "bash ./scripts/convex-cli.sh deploy"
   },
   "devDependencies": {
     "convex": "^1.28.0"
