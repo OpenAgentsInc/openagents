@@ -23,6 +23,16 @@ export const create = mutationGeneric(async ({ db }, args: CreateArgs) => {
     ts,
     createdAt: ts,
   });
+  // Bump thread.updatedAt when a new message arrives
+  try {
+    const thr = await db
+      .query('threads')
+      .filter((q) => q.eq(q.field('threadId'), threadId))
+      .collect();
+    if (thr.length > 0) {
+      await db.patch(thr[0]!._id, { updatedAt: ts } as any);
+    }
+  } catch {}
   return id;
 });
 
