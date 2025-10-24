@@ -16,6 +16,15 @@ import { useProjects } from '@/providers/projects'
 
 export default function ThreadHistoryView() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
+  // Redirect Convex-only: route all historical views to the Convex thread screen
+  const redirectDone = React.useRef(false)
+  React.useEffect(() => {
+    if (redirectDone.current) return
+    if (id) {
+      try { router.replace(`/convex/thread/${encodeURIComponent(String(id))}`) } catch {}
+      redirectDone.current = true
+    }
+  }, [id])
   const { requestThread } = useBridge()
   const router = useRouter()
   const loadThread = useThreads((s) => s.loadThread)
