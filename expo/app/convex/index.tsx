@@ -41,9 +41,14 @@ export default function ConvexScreen() {
       <View style={{ height: 8 }} />
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 20 }}>Tables</Text>
-        <Pressable onPress={async () => { setLoading(true); try { const s = await ws.createConvexThreads(); setStatus({ healthy: !!s.healthy, url: s.url, db: s.db, tables: s.tables || [] }) } finally { setLoading(false) } }} accessibilityRole='button' style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 6 }}>
-          <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>Create threads table</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Pressable onPress={async () => { setLoading(true); try { const s = await ws.createConvexThreads(); setStatus({ healthy: !!s.healthy, url: s.url, db: s.db, tables: s.tables || [] }) } finally { setLoading(false) } }} accessibilityRole='button' style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>Create threads table</Text>
+          </Pressable>
+          <Pressable onPress={async () => { setLoading(true); try { const s = await ws.createConvexDemoThread(); setStatus({ healthy: !!s.healthy, url: s.url, db: s.db, tables: s.tables || [] }) } finally { setLoading(false) } }} accessibilityRole='button' style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>Create demo thread</Text>
+          </Pressable>
+        </View>
       </View>
       <View>
         {(status?.tables || []).length === 0 ? (
