@@ -7,7 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 export function ConvexBackfillOnce() {
   const ws = useBridge()
   const threads = (useQuery as any)('threads:list', {}) as any[] | null | undefined
-  const upsertThread = (useMutation as any)('threads:upsertFromStream') as (args: { threadId: string; title?: string; projectId?: string }) => Promise<any>
+  const upsertThread = (useMutation as any)('threads:upsertFromStream') as (args: { threadId: string; title?: string; projectId?: string; createdAt?: number; updatedAt?: number }) => Promise<any>
   const createMessage = (useMutation as any)('messages:create') as (args: { threadId: string; role: string; text: string; ts?: number }) => Promise<any>
 
   const ranRef = React.useRef(false)
@@ -27,15 +27,19 @@ export function ConvexBackfillOnce() {
             const thr = await ws.requestThread(h.id, h.path)
             if (!thr) continue
             const threadId = String(thr.resume_id || h.id)
-            await upsertThread({ threadId, title: thr.title || 'Thread' }).catch(()=>{})
-            const items = Array.isArray(thr.items) ? thr.items : []
-            for (const it of items) {
+            // Derive a stable timestamp for created/updated from file mtime or last item
+            const itemsArr = Array.isArray(thr.items) ? thr.items : []
+            const lastTs = itemsArr.length > 0 ? itemsArr[itemsArr.length - 1].ts : undefined
+            const when = typeof lastTs === 'number' ? lastTs * 1000 : (typeof h.mtime === 'number' ? h.mtime * 1000 : Date.now())
+            await upsertThread({ threadId, title: thr.title || 'Thread', createdAt: when, updatedAt: when, projectId: undefined }).catch(()=>{})
+            const itemsB = Array.isArray(thr.items) ? thr.items : []
+            for (const it of itemsB) {
               try {
                 if (it.kind !== 'message') continue
                 const role = it.role === 'user' ? 'user' : 'assistant'
                 const text = String(it.text || '')
                 if (!text.trim()) continue
-                await createMessage({ threadId, role, text, ts: typeof it.ts === 'number' ? it.ts * 1000 : undefined }).catch(()=>{})
+                await createMessage({ threadId, role, text, ts: typeof it.ts === 'number' ? it.ts * 1000 : when }).catch(()=>{})
               } catch {}
             }
           } catch {}

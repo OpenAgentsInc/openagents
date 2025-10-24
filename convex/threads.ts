@@ -30,9 +30,13 @@ export const upsertFromStream = mutationGeneric(async (
     rolloutPath?: string;
     resumeId?: string;
     source?: string;
+    createdAt?: number; // millis
+    updatedAt?: number; // millis
   }
 ) => {
   const now = Date.now();
+  const createdAt = typeof args.createdAt === 'number' ? args.createdAt : now;
+  const updatedAt = typeof args.updatedAt === 'number' ? args.updatedAt : now;
   const existing = await db
     .query("threads")
     .filter((q) => q.eq(q.field("threadId"), args.threadId))
@@ -45,7 +49,7 @@ export const upsertFromStream = mutationGeneric(async (
       rolloutPath: args.rolloutPath ?? doc.rolloutPath,
       resumeId: args.resumeId ?? doc.resumeId,
       source: args.source ?? doc.source,
-      updatedAt: now,
+      updatedAt,
     } as any);
     return doc._id;
   }
@@ -56,8 +60,8 @@ export const upsertFromStream = mutationGeneric(async (
     rolloutPath: args.rolloutPath ?? "",
     resumeId: args.resumeId ?? "",
     source: args.source ?? "stream",
-    createdAt: now,
-    updatedAt: now,
+    createdAt,
+    updatedAt,
   } as any);
   return id;
 });

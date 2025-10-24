@@ -69,7 +69,7 @@ export default function SessionScreen() {
   const [workingSeconds, setWorkingSeconds] = useState(0)
   const [kbVisible, setKbVisible] = useState(false)
   // Convex mutations for mirroring
-  const upsertThread = (useMutation as any)('threads:upsertFromStream') as (args: { threadId: string; title?: string; projectId?: string }) => Promise<any>
+  const upsertThread = (useMutation as any)('threads:upsertFromStream') as (args: { threadId: string; title?: string; projectId?: string; createdAt?: number; updatedAt?: number }) => Promise<any>
   const createMessage = (useMutation as any)('messages:create') as (args: { threadId: string; role: string; text: string; ts?: number }) => Promise<any>
 
   // Increment the visible working timer while awaiting first assistant content
