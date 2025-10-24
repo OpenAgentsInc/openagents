@@ -31,7 +31,6 @@ export default function ProjectDetail() {
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
         <Field label="Name" value={project.name} onChange={v => save({ ...project, name: v })} />
-        <Field label="Voice aliases (comma separated)" value={project.voiceAliases.join(', ')} onChange={v => save({ ...project, voiceAliases: v.split(',').map(s => s.trim()).filter(Boolean) })} />
         <Field label="Working directory" value={project.workingDir} onChange={v => save({ ...project, workingDir: v })} />
         <Field label="Repo (owner/name)" value={project.repo?.remote ?? ''} onChange={v => save({ ...project, repo: { ...project.repo, remote: v } })} />
         <Field label="Branch" value={project.repo?.branch ?? ''} onChange={v => save({ ...project, repo: { ...project.repo, branch: v || undefined } })} />

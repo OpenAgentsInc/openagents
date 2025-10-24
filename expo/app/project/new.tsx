@@ -32,7 +32,6 @@ export default function NewProject() {
       await save({
         id,
         name: name.trim(),
-        voiceAliases: [],
         workingDir: workingDir.trim(),
         createdAt: now,
         updatedAt: now,

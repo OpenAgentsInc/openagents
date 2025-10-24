@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.dev/schemas/skill.schema.json",
+  "title": "OpenAgents Skill (Claude-compatible)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "license": { "type": ["string", "null"] },
+    "allowed-tools": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "metadata": {
+      "type": ["object", "null"],
+      "additionalProperties": { "type": ["string", "number", "boolean", "null", "array", "object"] }
+    }
+  }
+}

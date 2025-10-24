@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.dev/schemas/project.schema.json",
+  "title": "OpenAgents Project",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["name", "workingDir"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "workingDir": { "type": "string", "minLength": 1 },
+    "description": { "type": ["string", "null"] },
+    "repo": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": { "type": "string" },
+        "remote": { "type": "string" },
+        "url": { "type": "string" },
+        "branch": { "type": "string" }
+      }
+    },
+    "agentFile": { "type": ["string", "null"] },
+    "instructions": { "type": ["string", "null"] },
+    "approvals": { "type": ["string", "null"] },
+    "model": { "type": ["string", "null"] },
+    "sandbox": { "type": ["string", "null"] },
+    "createdAt": { "type": ["number", "integer", "null"] },
+    "updatedAt": { "type": ["number", "integer", "null"] }
+  }
+}
