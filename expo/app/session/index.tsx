@@ -60,6 +60,7 @@ export default function SessionScreen() {
   const lastSentProjectIdRef = useRef<string | null>(null)
   const currentThreadIdRef = useRef<string | null>(null)
   const requireThreadStartRef = useRef<boolean>(true)
+  const prefaceSentRef = useRef<boolean>(false)
   // Working-status state: shows "Working: Ns" until first visible content arrives
   const [awaitingFirst, setAwaitingFirst] = useState(false)
   const awaitingFirstRef = useRef(false)
@@ -133,7 +134,10 @@ Important policy overrides:
     if (routed && routed.id !== activeProject?.id) { setActive(routed.id) }
     // Remember which project this send belongs to (for mapping when thread starts)
     lastSentProjectIdRef.current = routed?.id ?? activeProject?.id ?? null
-    if (!sendForProject(routed, base)) { append('Not connected'); return false }
+    const includePreface = attachPreface && !prefaceSentRef.current;
+    const sent = sendForProject(routed, base, undefined, { includePreface });
+    if (!sent) { append('Not connected'); return false }
+    if (includePreface) { prefaceSentRef.current = true; }
     append(`> ${base}`)
     setIsRunning(true)
     setAwaitingFirst(true); awaitingFirstRef.current = true
@@ -281,6 +285,7 @@ Important policy overrides:
       // Ensure we don't accept stray events until the next thread starts
       currentThreadIdRef.current = null
       requireThreadStartRef.current = true
+      prefaceSentRef.current = false
       try {
         const alreadyFocused = !!composerInputRef.current?.isFocused?.()
         if (!alreadyFocused) setTimeout(() => composerInputRef.current?.focus(), 0)
@@ -302,6 +307,7 @@ Important policy overrides:
       clearLogsStore()
       currentThreadIdRef.current = null
       requireThreadStartRef.current = true
+      prefaceSentRef.current = false
     }
   }, [resumeNextId])
 
@@ -346,6 +352,7 @@ Important policy overrides:
       clearLogsStore()
       currentThreadIdRef.current = null
       requireThreadStartRef.current = true
+      prefaceSentRef.current = false
     }
   }, [params?.new])
 
