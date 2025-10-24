@@ -1052,31 +1052,57 @@ async fn watch_skills_and_broadcast(state: Arc<AppState>) {
 }
 
 async fn run_convex_ingester(port: u16) {
-    use tokio::process::Command as TokioCommand;
-    let repo = detect_repo_root(None);
-    let script = repo.join("scripts/ingest-spool.mjs");
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
     let url = format!("http://127.0.0.1:{}", port);
     loop {
-        // Check if spool exists and non-empty; if not, sleep a bit longer
         let spool = crate::mirror::default_mirror_dir().join("spool.jsonl");
         let run_now = match std::fs::metadata(&spool) { Ok(m) => m.len() > 0, Err(_) => false };
         if run_now {
-            let mut cmd = TokioCommand::new("node");
-            cmd.arg(script.as_os_str())
-                .env("CONVEX_URL", &url)
-                .env("SPOOL", spool.as_os_str())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            match cmd.output().await {
-                Ok(out) => {
-                    let so = String::from_utf8_lossy(&out.stdout).to_string();
-                    let se = String::from_utf8_lossy(&out.stderr).to_string();
-                    if !so.trim().is_empty() { println!("{}", so.trim()); }
-                    if !se.trim().is_empty() { eprintln!("{}", se.trim()); }
+            let lines = std::fs::read_to_string(&spool).unwrap_or_default();
+            if lines.trim().is_empty() {
+                tokio::time::sleep(Duration::from_secs(6)).await;
+                continue;
+            }
+            let mut client = match ConvexClient::new(&url).await {
+                Ok(c) => c,
+                Err(e) => { warn!(?e, "convex client init failed"); tokio::time::sleep(Duration::from_secs(6)).await; continue; }
+            };
+            let mut failed: Vec<String> = Vec::new();
+            for line in lines.split('\n').filter(|l| !l.trim().is_empty()) {
+                let parsed: serde_json::Value = match serde_json::from_str(line) { Ok(v)=>v, Err(_)=> { failed.push(line.to_string()); continue } };
+                let t = parsed.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                if t == "thread_upsert" {
+                    let tid = parsed.get("thread_id").and_then(|x| x.as_str()).unwrap_or("");
+                    if tid.is_empty() { continue }
+                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                    args.insert("threadId".into(), Value::from(tid));
+                    if let Some(title) = parsed.get("title").and_then(|x| x.as_str()) { args.insert("title".into(), Value::from(title)); }
+                    if let Some(pid) = parsed.get("project_id").and_then(|x| x.as_str()) { args.insert("projectId".into(), Value::from(pid)); }
+                    if let Some(ca) = parsed.get("created_at").and_then(|x| x.as_u64()) { args.insert("createdAt".into(), Value::from(ca as i64)); }
+                    if let Some(ua) = parsed.get("updated_at").and_then(|x| x.as_u64()) { args.insert("updatedAt".into(), Value::from(ua as i64)); }
+                    if let Err(e) = client.mutation("threads:upsertFromStream", args).await {
+                        warn!(?e, "convex upsert failed"); failed.push(line.to_string());
+                    }
+                } else if t == "message_create" {
+                    let tid = parsed.get("thread_id").and_then(|x| x.as_str()).unwrap_or("");
+                    let role = parsed.get("role").and_then(|x| x.as_str()).unwrap_or("");
+                    let text = parsed.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                    let ts = parsed.get("ts").and_then(|x| x.as_u64()).unwrap_or(0);
+                    if tid.is_empty() || role.is_empty() || text.is_empty() { continue }
+                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                    args.insert("threadId".into(), Value::from(tid));
+                    args.insert("role".into(), Value::from(role));
+                    args.insert("text".into(), Value::from(text));
+                    args.insert("ts".into(), Value::from(ts as i64));
+                    if let Err(e) = client.mutation("messages:create", args).await {
+                        warn!(?e, "convex message failed"); failed.push(line.to_string());
+                    }
                 }
-                Err(e) => {
-                    error!(?e, "convex ingester spawn failed");
-                }
+            }
+            // Rewrite spool with failures only
+            if let Err(e) = std::fs::write(&spool, if failed.is_empty() { String::new() } else { failed.join("\n") + "\n" }) {
+                warn!(?e, "rewrite spool failed");
             }
         }
         tokio::time::sleep(Duration::from_secs(if run_now { 2 } else { 6 })).await;
