@@ -2,17 +2,14 @@ import React from 'react'
 import { useLocalSearchParams, Stack } from 'expo-router'
 import { ScrollView, Text, View } from 'react-native'
 import { useThreads } from '@/lib/threads-store'
-import { useBridge } from '@/providers/ws'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 
 export default function ThreadInstructions() {
   const { id, path } = useLocalSearchParams<{ id: string; path?: string }>()
-  const { requestThread } = useBridge()
-  const loadThread = useThreads((s) => s.loadThread)
-  const thread = useThreads((s) => (id ? s.thread[id] : undefined))
-  React.useEffect(() => { if (id) loadThread((id2, p) => requestThread(id2, p), id, typeof path === 'string' ? path : undefined).catch(()=>{}) }, [id, path, requestThread, loadThread])
-  const body = thread?.instructions || '(no instructions)'
+  // In Convex-only flow, instructions are not loaded via bridge history.
+  // Show a placeholder until we add a dedicated Convex field.
+  const body = '(no instructions)'
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <Stack.Screen options={{ title: 'Instructions', headerBackTitle: '' }} />

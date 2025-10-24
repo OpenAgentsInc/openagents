@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use axum::extract::ws::{Message, WebSocket};
-use axum::{Router, extract::State, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
+use axum::{Router, extract::State, extract::WebSocketUpgrade, response::IntoResponse, routing::{get, post}, Json};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
@@ -84,6 +84,8 @@ struct AppState {
     history: Mutex<Vec<String>>,
     history_cache: Mutex<crate::history::HistoryCache>,
     mirror: mirror::ConvexMirror,
+    // Current Convex thread doc id being processed (for mapping thread.started -> Convex threadId)
+    current_convex_thread: Mutex<Option<String>>,
 }
 
 #[tokio::main]
@@ -114,6 +116,7 @@ async fn main() -> Result<()> {
         history: Mutex::new(Vec::new()),
         history_cache: Mutex::new(crate::history::HistoryCache::new(400, std::time::Duration::from_secs(6))),
         mirror: mirror::ConvexMirror::new(mirror::default_mirror_dir()),
+        current_convex_thread: Mutex::new(None),
     });
 
     // Start background ingester loop to drain mirror spool into Convex
@@ -130,8 +133,11 @@ async fn main() -> Result<()> {
     // Background: enqueue historical threads/messages to the mirror spool on startup
     tokio::spawn(enqueue_historical_on_start(state.clone()));
 
+    // HTTP submit endpoint for app → bridge turn submission
+
     let app = Router::new()
         .route("/ws", get(ws_handler))
+        .route("/submit", post(http_submit))
         .with_state(state);
 
     info!("binding" = %opts.bind, "msg" = "codex-bridge listening (route: /ws)");
@@ -420,7 +426,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                             let ndt = chrono::NaiveDateTime::new(today, chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap());
                                                             if let Some(dt) = chrono::Local.from_local_datetime(&ndt).single() { (dt.timestamp() as u64) * 1000 } else { 0 }
                                                         });
-                                                    let _ = stdin_state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: &resume_id, title: Some(&title), project_id: None, created_at: Some(started_ms), updated_at: Some(started_ms), source_path: Some(&path) }).await;
+                                let _ = stdin_state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: &resume_id, title: Some(&title), project_id: None, created_at: Some(started_ms), updated_at: Some(started_ms), source_path: Some(&path), resume_id: Some(&resume_id), convex_thread_id: None }).await;
                                                     for it in th.items {
                                                         if it.kind == "message" {
                                                             let role = it.role.as_deref().unwrap_or("assistant");
@@ -875,8 +881,18 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                             .await
                             .insert(val.to_string());
                         info!(thread_id=%val, msg="captured thread id for resume");
-                        // Mirror: enqueue thread upsert with minimal info
-                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: val, title: Some("Thread"), project_id: None, created_at: Some(now_ms()), updated_at: Some(now_ms()), source_path: None }).await;
+                        // Mirror: enqueue thread upsert, mapped to current Convex thread if known
+                        let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert {
+                            thread_id: convex_tid_opt.as_deref().unwrap_or(val),
+                            title: Some("Thread"),
+                            project_id: None,
+                            created_at: Some(now_ms()),
+                            updated_at: Some(now_ms()),
+                            source_path: None,
+                            resume_id: Some(val),
+                            convex_thread_id: convex_tid_opt.as_deref(),
+                        }).await;
                     }
                 }
                 // Mirror agent/user messages when present in newer shapes
@@ -894,6 +910,40 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                     if !role_s.is_empty() {
                                         let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::MessageCreate { thread_id: &tid, role: role_s, text: &txt, ts: now_ms() }).await;
                                     }
+                                }
+                            }
+                        } else if payload.get("type").and_then(|x| x.as_str()) == Some("reasoning") {
+                            // Aggregate summary text if available
+                            let mut txt = String::new();
+                            if let Some(arr) = payload.get("summary").and_then(|x| x.as_array()) {
+                                for part in arr { if let Some(t) = part.get("text").and_then(|x| x.as_str()) { if !txt.is_empty() { txt.push('\n'); } txt.push_str(t); } }
+                            }
+                            if !txt.trim().is_empty() {
+                                if let Some(tid) = state_for_stdout.last_thread_id.lock().await.clone() {
+                                    let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::JsonlItem { thread_id: &tid, kind: "reason", ts: now_ms(), text: Some(&txt), data: None }).await;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Item lifecycle: command executions and others
+                if let Some(ty) = t.as_deref() {
+                    if ty.starts_with("item.") {
+                        if let Some(payload) = v.get("item").or_else(|| v.get("payload").and_then(|p| p.get("item"))) {
+                            let kind = payload.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                            let map_kind = match kind {
+                                "command_execution" => Some("cmd"),
+                                "file_change" => Some("file"),
+                                "web_search" => Some("search"),
+                                "mcp_tool_call" => Some("mcp"),
+                                "todo_list" => Some("todo"),
+                                _ => None,
+                            };
+                            if let Some(k) = map_kind {
+                                if let Some(tid) = state_for_stdout.last_thread_id.lock().await.clone() {
+                                    // Store payload as JSON string in text to avoid type issues; UI can parse
+                                    let payload_str = payload.to_string();
+                                    let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::JsonlItem { thread_id: &tid, kind: k, ts: now_ms(), text: Some(&payload_str), data: None }).await;
                                 }
                             }
                         }
@@ -1070,7 +1120,11 @@ async fn run_convex_ingester(state: Arc<AppState>, port: u16) {
                     let tid = parsed.get("thread_id").and_then(|x| x.as_str()).unwrap_or("");
                     if tid.is_empty() { continue }
                     let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                    args.insert("threadId".into(), Value::from(tid));
+                    // Prefer explicit convex_thread_id as threadId; else fall back to thread_id
+                    let convex_tid = parsed.get("convex_thread_id").and_then(|x| x.as_str()).unwrap_or("");
+                    if !convex_tid.is_empty() { args.insert("threadId".into(), Value::from(convex_tid)); }
+                    else { args.insert("threadId".into(), Value::from(tid)); }
+                    if let Some(resume) = parsed.get("resume_id").and_then(|x| x.as_str()) { args.insert("resumeId".into(), Value::from(resume)); }
                     if let Some(title) = parsed.get("title").and_then(|x| x.as_str()) { args.insert("title".into(), Value::from(title)); }
                     if let Some(pid) = parsed.get("project_id").and_then(|x| x.as_str()) { args.insert("projectId".into(), Value::from(pid)); }
                     let mut ca = parsed.get("created_at").and_then(|x| x.as_u64());
@@ -1095,10 +1149,25 @@ async fn run_convex_ingester(state: Arc<AppState>, port: u16) {
                     let mut args: BTreeMap<String, Value> = BTreeMap::new();
                     args.insert("threadId".into(), Value::from(tid));
                     args.insert("role".into(), Value::from(role));
+                    args.insert("kind".into(), Value::from("message"));
                     args.insert("text".into(), Value::from(text));
                     args.insert("ts".into(), Value::from(ts as f64));
                     if let Err(e) = client.mutation("messages:create", args).await {
                         warn!(?e, "convex message failed"); failed.push(line.to_string());
+                    } else { ok_count += 1; }
+                } else if t == "jsonl_item" {
+                    let tid = parsed.get("thread_id").and_then(|x| x.as_str()).unwrap_or("");
+                    if tid.is_empty() { continue }
+                    let kind = parsed.get("kind").and_then(|x| x.as_str()).unwrap_or("item");
+                    let ts = parsed.get("ts").and_then(|x| x.as_u64()).unwrap_or(0);
+                    let text = parsed.get("text").and_then(|x| x.as_str());
+                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                    args.insert("threadId".into(), Value::from(tid));
+                    args.insert("kind".into(), Value::from(kind));
+                    if let Some(t) = text { args.insert("text".into(), Value::from(t)); }
+                    args.insert("ts".into(), Value::from(ts as f64));
+                    if let Err(e) = client.mutation("messages:create", args).await {
+                        warn!(?e, "convex jsonl item failed"); failed.push(line.to_string());
                     } else { ok_count += 1; }
                 }
             }
@@ -1179,6 +1248,45 @@ async fn enqueue_historical_on_start(state: Arc<AppState>) {
     });
 }
 
+#[derive(serde::Deserialize)]
+struct SubmitPayload {
+    threadDocId: String,
+    text: String,
+    projectId: Option<String>,
+    resumeId: Option<String>,
+}
+
+async fn http_submit(State(state): State<Arc<AppState>>, Json(body): Json<SubmitPayload>) -> impl IntoResponse {
+    let tdoc = body.threadDocId.clone();
+    { *state.current_convex_thread.lock().await = Some(tdoc); }
+    let project_id_opt = body.projectId.clone();
+    let desired_cd = project_id_opt.clone().and_then(|pid| {
+        match crate::projects::list_projects() { Ok(list) => list.into_iter().find(|p| p.id == pid).map(|p| p.working_dir), Err(_) => None }
+    });
+    let resume = body.resumeId.as_deref();
+    // Ensure child exists or spawn with requested dir/resume
+    let need_respawn = { state.child_stdin.lock().await.is_none() };
+    if need_respawn || desired_cd.is_some() || resume.is_some() {
+        match spawn_codex_child_only_with_dir(&state.opts, desired_cd.clone().map(|s| std::path::PathBuf::from(s)), resume).await {
+            Ok(mut child) => {
+                if let Some(stdin) = child.stdin.take() { *state.child_stdin.lock().await = Some(stdin); }
+                if let Err(e) = start_stream_forwarders(child, state.clone()).await { error!(?e, "http submit: forwarders failed"); }
+            }
+            Err(e) => { error!(?e, "http submit: spawn failed"); return Json(serde_json::json!({"ok": false, "error": format!("spawn failed: {}", e)})); }
+        }
+    }
+    // Write preface + message
+    let mut cfg = serde_json::json!({ "sandbox": "danger-full-access", "approval": "never" });
+    if let Some(cd) = desired_cd.as_deref() { cfg["cd"] = serde_json::Value::String(cd.to_string()); }
+    if let Some(pid) = project_id_opt.as_deref() { cfg["project"] = serde_json::json!({ "id": pid }); }
+    let payload = format!("{}\n{}\n", cfg.to_string(), body.text);
+    if let Some(mut stdin) = state.child_stdin.lock().await.take() {
+        if let Err(e) = stdin.write_all(payload.as_bytes()).await { error!(?e, "http submit: write failed"); let _ = stdin.flush().await; }
+        let _ = stdin.flush().await; drop(stdin);
+    }
+    Json(serde_json::json!({"ok": true}))
+}
+
 async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::HistoryItem) -> anyhow::Result<()> {
     let path = std::path::Path::new(&h.path);
     let th = crate::history::parse_thread(path)?;
@@ -1211,6 +1319,8 @@ async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::Histor
         created_at: Some(started_ms),
         updated_at: Some(started_ms),
         source_path: Some(&h.path),
+        resume_id: Some(&resume_id),
+        convex_thread_id: None,
     }).await?;
     for it in th.items {
         if it.kind == "message" {

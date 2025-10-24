@@ -18,7 +18,11 @@ function normalizeLanguage(lang?: string): string {
 
 export function CodeBlock({ code, language, maxHeight }: { code: string; language?: string; maxHeight?: number }) {
   const lang = normalizeLanguage(language)
-  const lines = String(code ?? '').replace(/\r\n/g, '\n')
+  // Normalize newlines and trim any trailing newlines to avoid
+  // rendering an extra blank line at the end of blocks.
+  const lines = String(code ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n+$/, '')
   return (
     <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.black, maxHeight, overflow: 'hidden' as any }}>
       <Highlight theme={themes.vsDark} code={lines} language={lang as any}>
@@ -43,4 +47,3 @@ export function CodeBlock({ code, language, maxHeight }: { code: string; languag
     </View>
   )
 }
-

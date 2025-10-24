@@ -51,13 +51,13 @@ IP tips: Tailscale VPN works well to put devices on the same private network. It
 
 Any setup issues, DM us or open an issue.
 
-## Optional: Local Convex Persistence
+## Local Convex Persistence (Required)
 
-We’ve added a self‑hosted Convex backend (SQLite) as an optional persistence layer for live subscriptions and richer queries. JSONL rollouts remain the source of truth for Codex resume.
+The app and bridge use a self‑hosted Convex backend (SQLite) for all threads and messages. The mobile app subscribes to Convex for live updates; the bridge mirrors Codex JSONL into Convex and also consumes pending runs from Convex to drive the Codex CLI. JSONL rollouts remain the source of truth for Codex resume.
 
 - To have the bridge start Convex automatically:
   - `cargo run -p codex-bridge -- --with-convex`
-- To push the sample schema/functions (one‑time):
+- To deploy Convex schema/functions:
   - See docs/convex.md for steps using `bun run convex:dev:once`
 - The Convex screen in the app (Drawer → Convex) shows connection status and a live list once functions are deployed.
 

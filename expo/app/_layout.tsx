@@ -1,10 +1,12 @@
 import "@/utils/gestureHandler"
+import { useQuery } from "convex/react"
 import * as Haptics from "expo-haptics"
 import { Stack, useRouter } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import React from "react"
 import {
-    ActivityIndicator, I18nManager, InteractionManager, Pressable, ScrollView, Text, View
+    ActivityIndicator, I18nManager, InteractionManager, Pressable, ScrollView,
+    Text, View
 } from "react-native"
 import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
@@ -17,13 +19,12 @@ import { useAutoUpdate } from "@/hooks/use-auto-update"
 import { useAppLogStore } from "@/lib/app-log"
 import { useOnboarding } from "@/lib/onboarding-store"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
+import { ConvexProviderLocal } from "@/providers/convex"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider, useProjects } from "@/providers/projects"
-import { ConvexProviderLocal } from "@/providers/convex"
 import { SkillsProvider } from "@/providers/skills"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
-import { useQuery } from 'convex/react'
 import { ThemeProvider } from "@react-navigation/native"
 
 function DrawerContent() {
@@ -127,7 +128,7 @@ function DrawerContent() {
             <Ionicons name="help-circle-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Help</Text>
           </Pressable>
-          {/* <Pressable
+          <Pressable
             onPress={closeAnd(() => router.push('/library'))}
             accessibilityRole="button"
             accessibilityLabel="Open component library"
@@ -135,7 +136,7 @@ function DrawerContent() {
           >
             <Ionicons name="book-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
-          </Pressable> */}
+          </Pressable>
           <Pressable
             onPress={closeAnd(() => router.push('/logs'))}
             accessibilityRole="button"
