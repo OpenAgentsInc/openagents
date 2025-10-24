@@ -21,6 +21,7 @@ use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
 mod history;
+mod projects;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -169,6 +170,37 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         }
                                         Err(e) => { error!(?e, "thread parse failed via ws"); }
                                     }
+                                }
+                            }
+                            ControlCommand::Projects => {
+                                match crate::projects::list_projects() {
+                                    Ok(items) => {
+                                        let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
+                                        let _ = stdin_state.tx.send(line);
+                                    }
+                                    Err(e) => { error!(?e, "projects list failed via ws"); }
+                                }
+                            }
+                            ControlCommand::ProjectSave { project } => {
+                                match crate::projects::save_project(&project) {
+                                    Ok(_) => {
+                                        if let Ok(items) = crate::projects::list_projects() {
+                                            let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
+                                            let _ = stdin_state.tx.send(line);
+                                        }
+                                    }
+                                    Err(e) => { error!(?e, "project save failed via ws"); }
+                                }
+                            }
+                            ControlCommand::ProjectDelete { id } => {
+                                match crate::projects::delete_project(&id) {
+                                    Ok(_) => {
+                                        if let Ok(items) = crate::projects::list_projects() {
+                                            let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
+                                            let _ = stdin_state.tx.send(line);
+                                        }
+                                    }
+                                    Err(e) => { error!(?e, "project delete failed via ws"); }
                                 }
                             }
                         }
@@ -694,6 +726,9 @@ enum ControlCommand {
     Interrupt,
     History { limit: Option<usize>, since_mtime: Option<u64> },
     Thread { id: Option<String>, path: Option<String> },
+    Projects,
+    ProjectSave { project: crate::projects::Project },
+    ProjectDelete { id: String },
 }
 
 fn parse_control_command(payload: &str) -> Option<ControlCommand> {
@@ -713,6 +748,15 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
             let limit = v.get("limit").and_then(|x| x.as_u64()).map(|n| n as usize);
             let since_mtime = v.get("since_mtime").and_then(|x| x.as_u64());
             Some(ControlCommand::History { limit, since_mtime })
+        }
+        "projects" => Some(ControlCommand::Projects),
+        "project.save" => {
+            let proj: crate::projects::Project = serde_json::from_value(v.get("project")?.clone()).ok()?;
+            Some(ControlCommand::ProjectSave { project: proj })
+        }
+        "project.delete" => {
+            let id = v.get("id").and_then(|x| x.as_str())?.to_string();
+            Some(ControlCommand::ProjectDelete { id })
         }
         "thread" => {
             let id = v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string());

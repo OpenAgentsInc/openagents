@@ -222,16 +222,7 @@ function DrawerWrapper() {
       renderDrawerContent={() => <DrawerContent />}
     >
       <StatusBar style="light" />
-      <View
-        style={{
-          flex: 1,
-          borderLeftWidth: isRTL ? 0 : 1,
-          borderRightWidth: isRTL ? 1 : 0,
-          borderColor: Colors.border,
-          // Hide the divider when closed by nudging it off-screen
-          ...(isRTL ? { marginRight: open ? 0 : -1 } : { marginLeft: open ? 0 : -1 }),
-        }}
-      >
+      <View style={{ flex: 1 }}>
         <AppHeader />
         <Stack
           screenOptions={{

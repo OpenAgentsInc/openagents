@@ -45,6 +45,7 @@ type ProjectsState = {
   upsert: (p: Project) => void
   remove: (id: ProjectId) => void
   mergeTodos: (projectId: ProjectId, todos: ProjectTodo[]) => void
+  setAll: (arr: Project[]) => void
 }
 
 export const useProjectsStore = create<ProjectsState>()(
@@ -71,6 +72,7 @@ export const useProjectsStore = create<ProjectsState>()(
         const next: Project = { ...p, todos, attentionCount: todos.filter(t => !t.completed).length, updatedAt: Date.now() }
         return { items: { ...items, [projectId]: next } }
       }),
+      setAll: (arr) => set(() => ({ items: Object.fromEntries(arr.map(p => [p.id, p])) })),
     }),
     {
       name: '@openagents/projects-v2',
