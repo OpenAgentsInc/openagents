@@ -40,22 +40,6 @@ export default function ConvexScreen() {
         </View>
       )}
       <View style={{ height: 8 }} />
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 20 }}>Tables</Text>
-        <Pressable onPress={async () => { setLoading(true); try { const s = await ws.createConvexThreads(); setStatus({ healthy: !!s.healthy, url: s.url, db: s.db, tables: s.tables || [] }) } finally { setLoading(false) } }} accessibilityRole='button' style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 6 }}>
-          <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>Create threads table</Text>
-        </Pressable>
-      </View>
-      <View>
-        {(status?.tables || []).length === 0 ? (
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No tables found.</Text>
-        ) : (
-          status!.tables.map((t) => (
-            <Text key={t} style={{ color: Colors.foreground, fontFamily: Typography.primary, paddingVertical: 4 }}>{t}</Text>
-          ))
-        )}
-      </View>
-
       <View style={{ height: 16 }} />
       <CreateDemoConvexRow />
       <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 20 }}>Live Threads (Convex)</Text>
