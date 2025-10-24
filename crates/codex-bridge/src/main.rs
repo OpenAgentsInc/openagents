@@ -101,8 +101,6 @@ async fn main() -> Result<()> {
                 error!(?e, "convex clearAll failed");
             }
         }
-        // Start background ingester loop to drain mirror spool into Convex
-        tokio::spawn(run_convex_ingester(opts.convex_port));
     }
 
     let (mut child, tx) = spawn_codex(&opts).await?;
@@ -116,6 +114,12 @@ async fn main() -> Result<()> {
         history_cache: Mutex::new(crate::history::HistoryCache::new(400, std::time::Duration::from_secs(6))),
         mirror: mirror::ConvexMirror::new(mirror::default_mirror_dir()),
     });
+
+    // Start background ingester loop to drain mirror spool into Convex
+    if opts.with_convex {
+        let s = state.clone();
+        tokio::spawn(run_convex_ingester(s, opts.convex_port));
+    }
 
     // Start readers for stdout/stderr → broadcast + console
     start_stream_forwarders(child, state.clone()).await?;
@@ -1031,7 +1035,7 @@ async fn watch_skills_and_broadcast(state: Arc<AppState>) {
     }
 }
 
-async fn run_convex_ingester(port: u16) {
+async fn run_convex_ingester(state: Arc<AppState>, port: u16) {
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
     let url = format!("http://127.0.0.1:{}", port);
@@ -1163,24 +1167,27 @@ async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::Histor
     let th = crate::history::parse_thread(path)?;
     let resume_id = th.resume_id.clone().unwrap_or(h.id.clone());
     let title = th.title.clone();
-    // Derive timestamps from items when possible
-    let mut min_ts: Option<u64> = None;
-    let mut max_ts: Option<u64> = None;
-    for it in &th.items {
-        if it.kind == "message" {
-            let t = it.ts as u64;
-            min_ts = Some(min_ts.map(|v| v.min(t)).unwrap_or(t));
-            max_ts = Some(max_ts.map(|v| v.max(t)).unwrap_or(t));
-        }
-    }
-    let created_at = min_ts.map(|t| t * 1000).unwrap_or(h.mtime * 1000);
-    let updated_at = max_ts.map(|t| t * 1000).unwrap_or(h.mtime * 1000);
+    // Use thread.started ts if present; else derive from filename/path; else midnight today
+    let started_ms = th.started_ts.map(|t| t * 1000)
+        .or_else(|| crate::history::derive_started_ts_from_path(path).map(|t| t * 1000))
+        .unwrap_or_else(|| {
+            // Midnight today (local), and log a warning with details for diagnostics
+            let today = chrono::Local::now().date_naive();
+            let ndt = chrono::NaiveDateTime::new(today, chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+            if let Some(dt) = chrono::Local.from_local_datetime(&ndt).single() {
+                warn!(id=%resume_id, path=%h.path, msg="fallback to midnight today (no derivable start time)");
+                (dt.timestamp() as u64) * 1000
+            } else {
+                warn!(id=%resume_id, path=%h.path, msg="failed to compute midnight; using 0");
+                0
+            }
+        });
     state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert {
         thread_id: &resume_id,
         title: Some(&title),
         project_id: None,
-        created_at: Some(created_at),
-        updated_at: Some(updated_at),
+        created_at: Some(started_ms),
+        updated_at: Some(started_ms),
     }).await?;
     for it in th.items {
         if it.kind == "message" {
