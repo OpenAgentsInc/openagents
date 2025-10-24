@@ -73,5 +73,10 @@ export const createDemo = mutationGeneric(async ({ db }) => {
     createdAt: now,
     updatedAt: now,
   });
+  // Best-effort: set threadId to the document id string for legacy/demo rows
+  try {
+    // @ts-ignore tolerate patching with stringified id
+    await db.patch(id as any, { threadId: String(id as any) } as any);
+  } catch {}
   return id;
 });
