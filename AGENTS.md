@@ -23,9 +23,6 @@
   - Resume behavior: `docs/exec-resume-json.md`.
   - Permissions model and recommended setups: `docs/permissions.md`.
   - Projects & Skills schema: `docs/projects-and-skills-schema.md`.
-- Tooling & Scripts:
-  - Expo scripts in `expo/package.json` (start, platform targets, typecheck, lint, EAS build/submit/update).
-  - `expo/scripts/copy-sources-to-clipboard.js`: copies key sources (Expo and Rust bridge) to clipboard for sharing/debugging.
 - Repository Layout:
   - `expo/`: app sources, assets, config (`app.json`, `eas.json`, `eslint.config.js`).
   - `crates/codex-bridge/`: Rust WebSocket bridge crate.
