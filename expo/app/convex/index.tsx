@@ -21,6 +21,24 @@ export default function ConvexScreen() {
 
   React.useEffect(() => { refresh() }, [])
 
+  // Derive the device-reachable Convex URL from Settings (bridgeHost)
+  const deviceConvexUrl = React.useMemo(() => {
+    try {
+      const raw = String(ws.bridgeHost || '').trim()
+      const stripped = raw
+        .replace(/^ws:\/\//i, '')
+        .replace(/^wss:\/\//i, '')
+        .replace(/^http:\/\//i, '')
+        .replace(/^https:\/\//i, '')
+        .replace(/\/$/, '')
+        .replace(/\/ws$/i, '')
+        .replace(/\/$/, '')
+      // If user supplied host:port, take the host portion; else default
+      const hostOnly = (stripped.includes(':') ? stripped.split(':')[0] : stripped) || '127.0.0.1'
+      return `http://${hostOnly}:7788`
+    } catch { return 'http://127.0.0.1:7788' }
+  }, [ws.bridgeHost])
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -36,7 +54,8 @@ export default function ConvexScreen() {
           <Text style={{ color: status?.healthy ? Colors.success : Colors.danger, fontFamily: Typography.primary, marginBottom: 6 }}>
             {status?.healthy ? 'Connected' : 'Disconnected'}
           </Text>
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>URL: {status?.url || '-'}</Text>
+          {/* Show the device-reachable URL derived from Settings, not the bridge's loopback */}
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>URL: {deviceConvexUrl}</Text>
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>DB: {status?.db || '-'}</Text>
         </View>
       )}
