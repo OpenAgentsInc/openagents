@@ -2,6 +2,11 @@
   "name": "openagents-convex",
   "private": true,
   "version": "0.0.0",
+  "scripts": {
+    "convex:dev": "convex dev --env-file .env.local --typecheck disable --codegen enable",
+    "convex:dev:once": "convex dev --once --env-file .env.local --typecheck disable --codegen enable",
+    "convex:deploy": "convex deploy --env-file .env.local --typecheck disable --codegen enable"
+  },
   "devDependencies": {
     "convex": "^1.28.0"
   }
