@@ -3,7 +3,9 @@ import * as Haptics from "expo-haptics"
 import { Stack, useRouter } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import React from "react"
-import { I18nManager, Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native"
+import {
+    ActivityIndicator, I18nManager, Pressable, ScrollView, Text, View
+} from "react-native"
 import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
 import { AppHeader } from "@/components/app-header"
@@ -12,14 +14,14 @@ import {
     applyTypographyGlobals, Typography, useTypographySetup
 } from "@/constants/typography"
 import { useAutoUpdate } from "@/hooks/use-auto-update"
+import { useAppLogStore } from "@/lib/app-log"
+import { useOnboarding } from "@/lib/onboarding-store"
 import { useThreads } from "@/lib/threads-store"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider, useProjects } from "@/providers/projects"
 import { BridgeProvider, useBridge } from "@/providers/ws"
-import { Ionicons, AntDesign } from "@expo/vector-icons"
+import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
-import { useAppLogStore } from "@/lib/app-log"
-import { useOnboarding } from "@/lib/onboarding-store"
 
 function DrawerContent() {
   const router = useRouter();
@@ -38,9 +40,9 @@ function DrawerContent() {
   }, [rehydrated, loadHistory, bridge]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.border }}>
-      <View style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }} style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
+      <View style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }} style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
           <View style={{ height: 56, justifyContent: 'center', paddingHorizontal: 16 }}>
             <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>OpenAgents</Text>
           </View>
@@ -100,7 +102,7 @@ function DrawerContent() {
           </View>
         </ScrollView>
         <View style={{ borderTopWidth: 1, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
-          <Pressable
+          {/* <Pressable
             onPress={closeAnd(() => router.push('/dashboard' as any))}
             accessibilityRole="button"
             accessibilityLabel="Open dashboard"
@@ -108,7 +110,7 @@ function DrawerContent() {
           >
             <AntDesign name="dashboard" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Dashboard</Text>
-          </Pressable>
+          </Pressable> */}
           <Pressable
             onPress={closeAnd(() => router.push('/settings'))}
             accessibilityRole="button"
@@ -127,7 +129,7 @@ function DrawerContent() {
             <Ionicons name="help-circle-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Help</Text>
           </Pressable>
-          <Pressable
+          {/* <Pressable
             onPress={closeAnd(() => router.push('/library'))}
             accessibilityRole="button"
             accessibilityLabel="Open component library"
@@ -135,7 +137,7 @@ function DrawerContent() {
           >
             <Ionicons name="book-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
-          </Pressable>
+          </Pressable> */}
           <Pressable
             onPress={closeAnd(() => router.push('/logs'))}
             accessibilityRole="button"
@@ -219,6 +221,7 @@ function DrawerWrapper() {
       onClose={() => setOpen(false)}
       drawerType="back"
       drawerPosition={isRTL ? 'right' : 'left'}
+      drawerStyle={{ backgroundColor: Colors.sidebarBackground }}
       renderDrawerContent={() => <DrawerContent />}
     >
       <StatusBar style="light" />
