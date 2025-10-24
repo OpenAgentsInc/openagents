@@ -1,10 +1,12 @@
 import React from 'react'
-import { ScrollView, View, Text, Pressable, ActivityIndicator } from 'react-native'
+import { ScrollView, View, Text, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import { useQuery, useMutation } from 'convex/react'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
+import { Composer } from '@/components/composer'
+import { useHeaderStore } from '@/lib/header-store'
 
 export default function ConvexThreadDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -17,6 +19,8 @@ export default function ConvexThreadDetail() {
   const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || '' }) as any[] | undefined | null
 
   const createDemo = (useMutation as any)('messages:createDemo') as (args: { threadId: string }) => Promise<any>
+  const createMessage = (useMutation as any)('messages:create') as (args: { threadId: string; role: string; text: string }) => Promise<any>
+  const headerHeight = useHeaderStore((s) => s.height)
   const [busy, setBusy] = React.useState(false)
   const onCreateDemo = async () => {
     if (busy) return
@@ -25,7 +29,8 @@ export default function ConvexThreadDetail() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 12 }}>
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 88 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>Messages</Text>
         <Pressable onPress={onCreateDemo} disabled={busy} style={{ opacity: busy ? 0.6 : 1, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 6 }}>
@@ -50,6 +55,26 @@ export default function ConvexThreadDetail() {
           ))}
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 4}>
+        <View style={{ paddingBottom: 8, paddingHorizontal: 8 }}>
+          <Composer
+            onSend={async (txt) => {
+              const base = String(txt || '').trim()
+              if (!base || !thread?.threadId) return
+              try { await createMessage({ threadId: thread.threadId, role: 'user', text: base }) } catch {}
+            }}
+            connected={true}
+            isRunning={false}
+            onQueue={() => {}}
+            onInterrupt={() => {}}
+            queuedMessages={[]}
+            prefill={null}
+            onDraftChange={() => {}}
+            inputRef={undefined as any}
+          />
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   )
 }
