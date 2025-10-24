@@ -255,8 +255,7 @@ function DrawerWrapper() {
             animation: 'none',
           }}
         >
-          {/* Removed tabs; declare screens individually */}
-          <Stack.Screen name="message/[id]" options={{ animation: 'slide_from_right' }} />
+          {/* Removed legacy Message detail; Convex message detail below */}
           <Stack.Screen name="onboarding/index" options={{ headerShown: false }} />
           <Stack.Screen name="dashboard/index" options={{ headerShown: false }} />
           <Stack.Screen name="help/index" options={{ headerShown: false }} />
@@ -264,6 +263,7 @@ function DrawerWrapper() {
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
           <Stack.Screen name="projects/index" />
           <Stack.Screen name="convex/index" />
+          <Stack.Screen name="convex/message/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="skills/index" />
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="project/new" />

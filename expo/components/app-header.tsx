@@ -24,7 +24,7 @@ export function AppHeader() {
   const showBack = React.useMemo(() => {
     const p = String(pathname || '')
     // Only show back arrow on single message detail views; thread lists keep the nav menu
-    return p.startsWith('/message/')
+    return p.startsWith('/message/') || p.startsWith('/convex/message/')
   }, [pathname])
 
   const onLayout = React.useCallback((e: any) => {
