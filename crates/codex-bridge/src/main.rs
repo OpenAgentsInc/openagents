@@ -226,6 +226,18 @@ fn create_threads_table(db_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+fn insert_demo_thread(db_path: &PathBuf) -> Result<()> {
+    let conn = rusqlite::Connection::open(db_path)?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+    let id = format!("demo-{}", now);
+    conn.execute(
+        "INSERT OR REPLACE INTO threads (id, rollout_path, title, resume_id, project_id, source, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![id, "", "Demo Thread", rusqlite::types::Null, rusqlite::types::Null, "demo", now, now],
+    )?;
+    Ok(())
+}
+
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
@@ -338,6 +350,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             ControlCommand::ConvexCreateThreads => {
                                 let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
                                 let _ = create_threads_table(&db);
+                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let healthy = convex_health(&url).await.unwrap_or(false);
+                                let tables = list_sqlite_tables(&db).unwrap_or_default();
+                                let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
+                                let _ = stdin_state.tx.send(line);
+                            }
+                            ControlCommand::ConvexCreateDemoThread => {
+                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
+                                let _ = create_threads_table(&db);
+                                let _ = insert_demo_thread(&db);
                                 let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
                                 let healthy = convex_health(&url).await.unwrap_or(false);
                                 let tables = list_sqlite_tables(&db).unwrap_or_default();
@@ -940,6 +962,7 @@ enum ControlCommand {
     ConvexStatus,
     ConvexCreateDemo,
     ConvexCreateThreads,
+    ConvexCreateDemoThread,
 }
 
 fn parse_control_command(payload: &str) -> Option<ControlCommand> {
@@ -964,6 +987,8 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         "skills" => Some(ControlCommand::Skills),
         "convex.status" => Some(ControlCommand::ConvexStatus),
         "convex.create_demo" => Some(ControlCommand::ConvexCreateDemo),
+        "convex.create_threads" => Some(ControlCommand::ConvexCreateThreads),
+        "convex.create_demo_thread" => Some(ControlCommand::ConvexCreateDemoThread),
         "project.save" => {
             let proj: crate::projects::Project = serde_json::from_value(v.get("project")?.clone()).ok()?;
             Some(ControlCommand::ProjectSave { project: proj })
