@@ -112,5 +112,14 @@ We added an optional `threadId` field to `threads` to uniquely link rows with Co
 
 - Index messages and add full‑text search
 - Add embeddings and vector search using the Convex vector crates (future)
-- Move more read paths (e.g., history list) to Convex subscriptions
-- Integrate bridge upserts for live Codex -> Convex mirroring
+- Move more read paths (e.g., history list) to Convex subscriptions (in progress; drawer reads from Convex when available)
+- Live mirroring:
+  - Client‑side: the app upserts threads/messages as the JSONL stream arrives (shipped).
+  - Backfill: on first launch after connecting to Convex, the app backfills the last ~20 Codex sessions into Convex automatically.
+  - Server‑side (planned): move mirroring to the bridge so history is captured even when the app is not connected.
+
+## Production/TestFlight considerations
+
+- End users do not need Node/Bun. The Convex backend is started by the Rust bridge; only developers need the CLI to deploy function changes during development.
+- Mobile connects to the user’s desktop Convex over LAN/VPN. Keep the binding at `127.0.0.1` and route via Tailscale/host networking.
+- If your Convex functions change (e.g., new tables), re‑run the deploy step on the desktop. The app will pick them up on reconnect.
