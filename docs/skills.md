@@ -59,6 +59,28 @@ OpenAgents follows this model: we keep skills as folders with `SKILL.md` and let
 - Our validator enforces full JSON Schema (name, description; optional license, allowed-tools, metadata). See `crates/codex-bridge/schemas/skill.schema.json`.
 - Bridge WS control `skills` returns the list of installed skills: `{ "control": "skills" }` → `{ "type": "bridge.skills", "items": Skill[] }`.
 
+## How skills are injected into prompts
+OpenAgents sends a concise, human‑readable preface at the top of user prompts (when “Attach preface” is enabled in Settings). This preface includes:
+
+1) A short description of the environment (filesystem, network, approvals)
+2) Active project details (name, repo, workingDir) if a project is selected
+3) A concise skills summary:
+   - One‑line explainer that OpenAgents supports Claude‑compatible Skills
+   - A list of installed skills as “name — description” (truncated), up to 10
+   - A pointer to full contents: `~/.openagents/skills/<skill-id>/SKILL.md`
+
+This matches Anthropic’s progressive disclosure guidance: the model sees enough to know that skills exist and when to use them, but not the full skill contents by default. When the model decides to use a skill, it can read the full SKILL.md (and any linked files) from disk on demand.
+
+Implementation details
+- Code: `expo/providers/projects.tsx` in `buildHumanPreface()` composes the preface.
+- It reads the current set of skills from the persisted store via `listSkills()`.
+- It truncates descriptions to keep the prompt small and limits the list to 10 entries.
+- If more are installed, it adds “(and N more)”.
+
+Disabling or changing the preface
+- Toggle the “Attach preface” setting if you prefer to send raw messages.
+- If you want more or fewer skills listed by default, adjust the `max` value in `buildHumanPreface()`.
+
 ## Projects vs. Skills
 - Projects bind an agent to a repo/workspace and configuration.
   - Location: `~/.openagents/projects/<project-id>/PROJECT.md`

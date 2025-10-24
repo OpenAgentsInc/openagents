@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useBridge } from '@/providers/ws';
+import { listSkills, type Skill } from '@/lib/skills-store'
 import {
   hydrateProjects,
   listProjects,
@@ -169,5 +170,33 @@ function buildHumanPreface(
       project.instructions ? `- Custom instructions: ${project.instructions}` : '',
     );
   }
+
+  // Include a concise summary of installed skills without overloading context
+  try {
+    const all: Skill[] = listSkills();
+    if (Array.isArray(all) && all.length > 0) {
+      const max = 10; // keep concise
+      const top = all.slice(0, max);
+      lines.push(
+        '',
+        'Skills: OpenAgents supports Claude-compatible Skills (folders under ~/.openagents/skills).',
+        'Each skill has a SKILL.md. Load details on demand only when relevant.',
+        'Installed skills (name — description):',
+      );
+      for (const s of top) {
+        const desc = String(s.description || '').trim();
+        const short = desc.length > 120 ? desc.slice(0, 117) + '…' : desc;
+        lines.push(`- ${s.name} — ${short}`);
+      }
+      if (all.length > top.length) {
+        lines.push(`(and ${all.length - top.length} more)`);
+      }
+      lines.push(
+        '',
+        'Where to find full details: ~/.openagents/skills/<skill-id>/SKILL.md',
+        'Read the SKILL.md of a relevant skill when you decide to use it.'
+      );
+    }
+  } catch {}
   return lines.filter(Boolean).join('\n');
 }
