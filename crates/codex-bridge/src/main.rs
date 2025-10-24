@@ -17,7 +17,7 @@ use tokio::{
     process::Command,
     sync::{Mutex, broadcast},
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::prelude::*;
 use std::time::Duration;
 
@@ -63,6 +63,10 @@ struct Opts {
     /// SQLite DB path for Convex (defaults to ~/.openagents/convex/data.sqlite3)
     #[arg(long, env = "OPENAGENTS_CONVEX_DB")]
     convex_db: Option<PathBuf>,
+
+    /// Interface to bind Convex on (e.g., 0.0.0.0 for remote access, 127.0.0.1 for loopback only)
+    #[arg(long, env = "OPENAGENTS_CONVEX_INTERFACE", default_value = "0.0.0.0")]
+    convex_interface: String,
 }
 
 const MAX_HISTORY_LINES: usize = 2000;
@@ -153,10 +157,22 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     let bin = opts.convex_bin.clone().unwrap_or_else(default_convex_bin);
     let db = opts.convex_db.clone().unwrap_or_else(default_convex_db);
     let port = opts.convex_port;
+    let interface = opts.convex_interface.clone();
     let base = format!("http://127.0.0.1:{}", port);
     if convex_health(&base).await.unwrap_or(false) {
-        info!(url=%base, "convex healthy (already running)");
-        return Ok(());
+        // If a previous instance is already running but the desired interface is not loopback,
+        // attempt a best-effort restart so mobile devices can reach it.
+        if opts.convex_interface.trim() != "127.0.0.1" {
+            info!(url=%base, desired_interface=%opts.convex_interface, "convex healthy on loopback; restarting on desired interface");
+            if let Err(e) = kill_listeners_on_port(port).await {
+                warn!(?e, port, "failed killing existing convex on port; will try spawn anyway");
+            }
+            // Small delay to allow the port to free up
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        } else {
+            info!(url=%base, "convex healthy (already running)");
+            return Ok(());
+        }
     }
     // Spawn process
     std::fs::create_dir_all(db.parent().unwrap_or_else(|| Path::new(".")))
@@ -164,7 +180,7 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     let mut cmd = Command::new(&bin);
     cmd.arg(&db)
         .arg("--db").arg("sqlite")
-        .arg("--interface").arg("127.0.0.1")
+        .arg("--interface").arg(&interface)
         .arg("--port").arg(port.to_string())
         .arg("--local-storage").arg(
             std::env::var("HOME").map(|h| format!("{}/.openagents/convex/storage", h)).unwrap_or_else(|_| "convex_local_storage".to_string())
@@ -173,7 +189,7 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    info!(bin=%bin.display(), db=%db.display(), port, "starting local Convex backend");
+    info!(bin=%bin.display(), db=%db.display(), port, interface=%interface, "starting local Convex backend");
     let mut child = cmd.spawn().context("spawn convex local_backend")?;
     // Wait up to ~10s for health
     let mut ok = false;
@@ -192,6 +208,31 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         anyhow::bail!("convex health probe failed")
     }
 }
+
+#[cfg(unix)]
+async fn kill_listeners_on_port(port: u16) -> Result<()> {
+    use std::process::Command as StdCommand;
+    // Find listener PIDs with lsof (macOS/Linux)
+    let output = StdCommand::new("lsof")
+        .args(["-i", &format!(":{}", port), "-sTCP:LISTEN", "-t"])
+        .output();
+    let out = match output {
+        Ok(o) => o,
+        Err(e) => return Err(anyhow::Error::from(e).context("lsof not available to kill listeners")),
+    };
+    if !out.status.success() { return Ok(()); }
+    let pids = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|s| s.trim().parse::<i32>().ok())
+        .collect::<Vec<_>>();
+    for pid in pids {
+        let _ = StdCommand::new("kill").args(["-TERM", &pid.to_string()]).status();
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+async fn kill_listeners_on_port(_port: u16) -> Result<()> { Ok(()) }
 
 fn list_sqlite_tables(db_path: &PathBuf) -> Result<Vec<String>> {
     let conn = rusqlite::Connection::open(db_path)?;

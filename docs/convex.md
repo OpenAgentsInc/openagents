@@ -12,11 +12,12 @@ We continue to keep Codex JSONL rollouts as the source of truth for resuming thr
 ## How it runs
 
 - Bridge supervision
-  - `codex-bridge` can start a Convex backend automatically on loopback.
-  - Use: `cargo run -p codex-bridge -- --with-convex` (default port `127.0.0.1:7788`).
+  - `codex-bridge` can start a Convex backend automatically.
+  - Use: `cargo run -p codex-bridge -- --with-convex` (default port `7788`).
   - Bridge health‑checks `GET /instance_version` and logs “convex healthy …”.
   - SQLite DB: `~/.openagents/convex/data.sqlite3`
   - File storage: `~/.openagents/convex/storage`
+  - Interface: by default we bind Convex to `0.0.0.0` so mobile devices on LAN/VPN can connect. You can force loopback by setting `OPENAGENTS_CONVEX_INTERFACE=127.0.0.1` or passing `--convex-interface 127.0.0.1`.
 
 - App wiring
   - The app only calls queries/mutations; it never creates tables.
@@ -121,6 +122,6 @@ We added an optional `threadId` field to `threads` to uniquely link rows with Co
 ## Production/TestFlight considerations
 
 - End users do not need Node/Bun. The Convex backend is started by the Rust bridge; only developers need the CLI to deploy function changes during development.
-- Mobile connects to the user’s desktop Convex over LAN/VPN. Keep the binding at `127.0.0.1` and route via Tailscale/host networking.
+- Mobile connects to the user’s desktop Convex over LAN/VPN. Ensure the Convex backend is reachable on the device network by binding to `0.0.0.0` (default) or a specific LAN/VPN IP.
 - If your Convex functions change (e.g., new tables), re‑run the deploy step on the desktop. The app will pick them up on reconnect.
 - iOS ATS: In production/TestFlight, plain HTTP to local/VPN hosts is blocked by default. We set `NSAppTransportSecurity -> NSAllowsArbitraryLoads: true` and `NSAllowsLocalNetworking: true` in `expo/app.json`. This requires a new native build; OTA updates cannot change Info.plist. If you prefer not to allow arbitrary loads, host Convex behind HTTPS and point Settings to that URL.
