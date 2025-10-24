@@ -1,10 +1,10 @@
-import { query, mutation } from "convex/server";
+import { queryGeneric, mutationGeneric } from "convex/server";
 
-export const list = query(async ({ db }) => {
+export const list = queryGeneric(async ({ db }) => {
   return await db.query("threads").order("desc").collect();
 });
 
-export const createDemo = mutation(async ({ db }) => {
+export const createDemo = mutationGeneric(async ({ db }) => {
   const now = Date.now();
   const id = await db.insert("threads", {
     title: "Demo Thread",
@@ -17,4 +17,3 @@ export const createDemo = mutation(async ({ db }) => {
   });
   return id;
 });
-

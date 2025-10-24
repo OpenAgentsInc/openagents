@@ -1,0 +1,1 @@
+{"version":3,"file":"component_server.d.ts","sourceRoot":"","sources":["../../../../src/cli/codegen_templates/component_server.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,kBAAkB,EAAE,MAAM,oDAAoD,CAAC;AAGxF,wBAAgB,iBAAiB,IAAI,MAAM,CAuF1C;AAkJD,wBAAgB,sBAAsB,CAAC,MAAM,EAAE,OAAO,GAAG,MAAM,CAE9D;AAED,wBAAsB,kBAAkB,CACtC,kBAAkB,EAAE,kBAAkB,GACrC,OAAO,CAAC,MAAM,CAAC,CAGjB"}
