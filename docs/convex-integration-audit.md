@@ -114,3 +114,46 @@ References
 ## Recommendation
 Adopt a staged integration: keep JSONL rollouts for Codex compatibility, add Convex as an opt‑in local persistence service to enable live sync, rich querying, and vector search. Start with loopback SQLite, then layer on full‑text and vectors, and eventually reactive UI backed by Convex subscriptions.
 
+---
+
+Addendum: Deployment options (Docker vs. binary) and “one command” UX
+
+Target UX
+- End user runs a single command on desktop, e.g. `cargo bridge` or `cargo bridge --with-convex`, and everything required starts locally with SQLite. No Docker, no Postgres.
+
+Options
+1) Standalone Convex binary (preferred near‑term)
+   - Shape: download or build the official Convex backend binary once, store under `~/.openagents/bin/convex-backend`, and spawn it from our bridge when needed.
+   - Pros: minimal coupling; we track an upstream release tag; easy to replace/upgrade; works with SQLite; preserves Convex’s operational model.
+   - Cons: separate artifact management (download/verify); platform‑specific builds.
+   - UX: add `cargo run -p codex-bridge -- --start-convex` flag (aliased in `cargo bridge`), or a Settings toggle “Start local Convex automatically”. Health‑check on `127.0.0.1:7788`.
+
+2) Git submodule + small runner crate in this repo
+   - Shape: add `get-convex/convex-backend` as a git submodule; create `crates/oa-convex` that depends on minimal internal crates (e.g., `local_backend`) to produce a trimmed runner binary (e.g. `oa-convex`). SQLite only, loopback bind by default.
+   - Pros: one Cargo workspace build; single `cargo bridge` can orchestrate both binaries; no external installer.
+   - Cons: heavy monorepo dependency; internal crate APIs are not guaranteed stable; build times may increase; licensing diligence required (FSL‑1.1‑Apache‑2.0 is okay for local use, confirm redistribution policy).
+   - UX: add alias `cargo convex` to run `oa-convex`, and `cargo bridge` can spawn/monitor it.
+
+3) Git dependency (direct) on convex-backend crates
+   - Shape: reference Convex crates via `git = "https://github.com/get-convex/convex-backend"` at a pinned `rev` and compile a runner.
+   - Pros: no submodule maintenance; pin to a commit.
+   - Cons: similar to (2) but potentially more brittle; complex workspace graph; large compile surface; upstream refactors can break our build.
+
+4) Write a “Convex Bridge” wrapper binary (thin supervisor)
+   - Shape: our `crates/convex-bridge` that only supervises a Convex server process and applies local defaults (SQLite path under `~/.openagents/convex`, port 7788, loopback bind), plus health checks and logs.
+   - Pros: small and stable; hides process mgmt behind a clean CLI; pairs well with (1) for the actual server.
+   - Cons: still needs a Convex server binary from (1) or (2).
+
+Data layout and defaults
+- DB root: `~/.openagents/convex/data` (SQLite files live here). Config/env under `~/.openagents/convex/config` if needed.
+- Port: `127.0.0.1:7788` by default; configurable in Settings; Tailscale exposure optional.
+- Health: use `health_check` endpoint from the server; bridge retries/backoff and shows status in header.
+
+Recommended path
+- Start with (1) + (4): supervise an upstream Convex backend binary from our bridge. Keep the “one command” UX by making `cargo bridge` start Convex automatically when the “Use local Convex persistence (beta)” toggle is enabled.
+- If we want everything self‑contained later, move to (2) with a submodule + `crates/oa-convex` runner (SQLite only) and add `cargo convex` as a helper alias.
+
+Notes
+- Postgres is not required; SQLite is sufficient for P0/P1.
+- We can keep JSONL rollouts authoritative and gradually cut over read paths (history/thread lists) to Convex subscriptions.
+- For upgrades, bridge checks the Convex binary version at startup and prompts to update if incompatible.
