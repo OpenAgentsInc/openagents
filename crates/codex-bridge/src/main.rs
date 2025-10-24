@@ -95,6 +95,12 @@ async fn main() -> Result<()> {
         if let Err(e) = ensure_convex_running(&opts).await {
             error!(?e, "failed to ensure local Convex is running");
         }
+        // Optional destructive clear of all Convex data before ingest
+        if std::env::var("OPENAGENTS_CONVEX_CLEAR").ok().as_deref() == Some("1") {
+            if let Err(e) = run_convex_clear_all(opts.convex_port).await {
+                error!(?e, "convex clearAll failed");
+            }
+        }
         // Start background ingester loop to drain mirror spool into Convex
         tokio::spawn(run_convex_ingester(opts.convex_port));
     }
@@ -116,6 +122,8 @@ async fn main() -> Result<()> {
 
     // Live-reload: watch ~/.openagents/skills and broadcast updates
     tokio::spawn(watch_skills_and_broadcast(state.clone()));
+    // Background: enqueue historical threads/messages to the mirror spool on startup
+    tokio::spawn(enqueue_historical_on_start(state.clone()));
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
@@ -129,8 +137,10 @@ async fn main() -> Result<()> {
 
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt};
+    // Default to info but quiet down noisy dependencies unless overridden by RUST_LOG
+    let default_filter = "info,convex=warn,convex::base_client=warn,tungstenite=warn";
     let _ = tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| default_filter.into()))
         .with(fmt::layer())
         .try_init();
 }
@@ -330,37 +340,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     error!(?e, "failed to interrupt codex child");
                                 }
                             }
-                            ControlCommand::History { limit, since_mtime } => {
-                                // Serve history over broadcast channel
-                                let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
-                                    std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
-                                });
-                                let lim = limit.unwrap_or(5);
-                                match stdin_state.history_cache.lock().await.get(std::path::Path::new(&base), lim, since_mtime) {
-                                    Ok(items) => {
-                                        let line = serde_json::json!({"type":"bridge.history","items": items}).to_string();
-                                        let _ = stdin_state.tx.send(line);
-                                    }
-                                    Err(e) => {
-                                        error!(?e, "history scan failed via ws");
-                                    }
-                                }
-                            }
-                            ControlCommand::Thread { id, path } => {
-                                let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
-                                    std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
-                                });
-                                let p = crate::history::resolve_session_path(std::path::Path::new(&base), id.as_deref(), path.as_deref());
-                                if let Some(target) = p {
-                                    match crate::history::parse_thread(std::path::Path::new(&target)) {
-                                        Ok(resp) => {
-                                            let line = serde_json::json!({"type":"bridge.thread","id": id, "thread": resp}).to_string();
-                                            let _ = stdin_state.tx.send(line);
-                                        }
-                                        Err(e) => { error!(?e, "thread parse failed via ws"); }
-                                    }
-                                }
-                            }
+                            // History/Thread controls removed — Convex-only UI now
                             ControlCommand::Projects => {
                                 match crate::projects::list_projects() {
                                     Ok(items) => {
@@ -1069,6 +1049,7 @@ async fn run_convex_ingester(port: u16) {
                 Err(e) => { warn!(?e, "convex client init failed"); tokio::time::sleep(Duration::from_secs(6)).await; continue; }
             };
             let mut failed: Vec<String> = Vec::new();
+            let mut ok_count: usize = 0;
             for line in lines.split('\n').filter(|l| !l.trim().is_empty()) {
                 let parsed: serde_json::Value = match serde_json::from_str(line) { Ok(v)=>v, Err(_)=> { failed.push(line.to_string()); continue } };
                 let t = parsed.get("type").and_then(|x| x.as_str()).unwrap_or("");
@@ -1079,11 +1060,11 @@ async fn run_convex_ingester(port: u16) {
                     args.insert("threadId".into(), Value::from(tid));
                     if let Some(title) = parsed.get("title").and_then(|x| x.as_str()) { args.insert("title".into(), Value::from(title)); }
                     if let Some(pid) = parsed.get("project_id").and_then(|x| x.as_str()) { args.insert("projectId".into(), Value::from(pid)); }
-                    if let Some(ca) = parsed.get("created_at").and_then(|x| x.as_u64()) { args.insert("createdAt".into(), Value::from(ca as i64)); }
-                    if let Some(ua) = parsed.get("updated_at").and_then(|x| x.as_u64()) { args.insert("updatedAt".into(), Value::from(ua as i64)); }
+                    if let Some(ca) = parsed.get("created_at").and_then(|x| x.as_u64()) { args.insert("createdAt".into(), Value::from(ca as f64)); }
+                    if let Some(ua) = parsed.get("updated_at").and_then(|x| x.as_u64()) { args.insert("updatedAt".into(), Value::from(ua as f64)); }
                     if let Err(e) = client.mutation("threads:upsertFromStream", args).await {
                         warn!(?e, "convex upsert failed"); failed.push(line.to_string());
-                    }
+                    } else { ok_count += 1; }
                 } else if t == "message_create" {
                     let tid = parsed.get("thread_id").and_then(|x| x.as_str()).unwrap_or("");
                     let role = parsed.get("role").and_then(|x| x.as_str()).unwrap_or("");
@@ -1094,26 +1075,131 @@ async fn run_convex_ingester(port: u16) {
                     args.insert("threadId".into(), Value::from(tid));
                     args.insert("role".into(), Value::from(role));
                     args.insert("text".into(), Value::from(text));
-                    args.insert("ts".into(), Value::from(ts as i64));
+                    args.insert("ts".into(), Value::from(ts as f64));
                     if let Err(e) = client.mutation("messages:create", args).await {
                         warn!(?e, "convex message failed"); failed.push(line.to_string());
-                    }
+                    } else { ok_count += 1; }
                 }
             }
             // Rewrite spool with failures only
             if let Err(e) = std::fs::write(&spool, if failed.is_empty() { String::new() } else { failed.join("\n") + "\n" }) {
                 warn!(?e, "rewrite spool failed");
             }
+            info!(ok = ok_count, failed = failed.len(), msg = "convex ingester batch done");
+            // Broadcast progress to UI (optional)
+            let remaining = failed.len();
+            let line = serde_json::json!({
+                "type": "bridge.ingest_progress",
+                "ok_batch": ok_count,
+                "remaining": remaining,
+            }).to_string();
+            let _ = state.tx.send(line);
         }
         tokio::time::sleep(Duration::from_secs(if run_now { 2 } else { 6 })).await;
     }
 }
 
+async fn run_convex_clear_all(port: u16) -> anyhow::Result<()> {
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
+    let url = format!("http://127.0.0.1:{}", port);
+    let mut client = ConvexClient::new(&url).await?;
+    let args: BTreeMap<String, Value> = BTreeMap::new();
+    match client.mutation("admin:clearAll", args).await {
+        Ok(res) => { info!(?res, msg="convex clearAll done"); }
+        Err(e) => { error!(?e, "convex clearAll error"); }
+    }
+    Ok(())
+}
+
+fn state_broadcast_send(line: String) -> Result<(), ()> {
+    // Access to a global is not available; we can't reach AppState here without refactoring.
+    // For now, print the JSON for consumers reading stdout; UI already ignores non-JSON lines.
+    println!("{}", line);
+    Ok(())
+}
+
+fn sessions_base_dir() -> String {
+    std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
+        std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
+    })
+}
+
+async fn enqueue_historical_on_start(state: Arc<AppState>) {
+    let base = sessions_base_dir();
+    let base_path_owned = std::path::PathBuf::from(&base);
+    let base_path = base_path_owned.as_path();
+    // Initial quick batch (10 newest)
+    let initial = match crate::history::scan_history(base_path, 10) {
+        Ok(v) => v,
+        Err(e) => { warn!(?e, "initial history scan failed"); Vec::new() }
+    };
+    let mut ok = 0usize;
+    for h in &initial {
+        if let Err(e) = enqueue_single_thread(&state, h).await { warn!(?e, id=%h.id, "enqueue thread failed") } else { ok += 1; }
+    }
+    info!(count = ok, base=%base, msg="initial enqueue to spool");
+
+    // Continue with larger batch in the background
+    let state2 = state.clone();
+    let base_path2 = base_path_owned.clone();
+    tokio::spawn(async move {
+        let rest = match crate::history::scan_history(base_path2.as_path(), 2000) {
+            Ok(mut all) => { if all.len() > 10 { all.drain(0..10); all } else { Vec::new() } },
+            Err(_e) => Vec::new(),
+        };
+        let mut cnt = 0usize;
+        for h in rest {
+            let _ = enqueue_single_thread(&state2, &h).await.map(|_| { cnt += 1; });
+            // Yield frequently so we don't block the runtime
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        if cnt > 0 { info!(count = cnt, msg = "enqueue remaining history to spool"); }
+    });
+}
+
+async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::HistoryItem) -> anyhow::Result<()> {
+    let path = std::path::Path::new(&h.path);
+    let th = crate::history::parse_thread(path)?;
+    let resume_id = th.resume_id.clone().unwrap_or(h.id.clone());
+    let title = th.title.clone();
+    // Derive timestamps from items when possible
+    let mut min_ts: Option<u64> = None;
+    let mut max_ts: Option<u64> = None;
+    for it in &th.items {
+        if it.kind == "message" {
+            let t = it.ts as u64;
+            min_ts = Some(min_ts.map(|v| v.min(t)).unwrap_or(t));
+            max_ts = Some(max_ts.map(|v| v.max(t)).unwrap_or(t));
+        }
+    }
+    let created_at = min_ts.map(|t| t * 1000).unwrap_or(h.mtime * 1000);
+    let updated_at = max_ts.map(|t| t * 1000).unwrap_or(h.mtime * 1000);
+    state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert {
+        thread_id: &resume_id,
+        title: Some(&title),
+        project_id: None,
+        created_at: Some(created_at),
+        updated_at: Some(updated_at),
+    }).await?;
+    for it in th.items {
+        if it.kind == "message" {
+            let role = it.role.as_deref().unwrap_or("assistant");
+            let text = it.text;
+            state.mirror.append(&crate::mirror::MirrorEvent::MessageCreate {
+                thread_id: &resume_id,
+                role,
+                text: &text,
+                ts: it.ts * 1000,
+            }).await?;
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 enum ControlCommand {
     Interrupt,
-    History { limit: Option<usize>, since_mtime: Option<u64> },
-    Thread { id: Option<String>, path: Option<String> },
     Projects,
     Skills,
     ProjectSave { project: crate::projects::Project },
@@ -1138,11 +1224,6 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
     let control = v.get("control").and_then(|c| c.as_str())?;
     match control {
         "interrupt" => Some(ControlCommand::Interrupt),
-        "history" => {
-            let limit = v.get("limit").and_then(|x| x.as_u64()).map(|n| n as usize);
-            let since_mtime = v.get("since_mtime").and_then(|x| x.as_u64());
-            Some(ControlCommand::History { limit, since_mtime })
-        }
         "projects" => Some(ControlCommand::Projects),
         "skills" => Some(ControlCommand::Skills),
         "convex.status" => Some(ControlCommand::ConvexStatus),
@@ -1157,11 +1238,6 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         "project.delete" => {
             let id = v.get("id").and_then(|x| x.as_str())?.to_string();
             Some(ControlCommand::ProjectDelete { id })
-        }
-        "thread" => {
-            let id = v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string());
-            let path = v.get("path").and_then(|x| x.as_str()).map(|s| s.to_string());
-            Some(ControlCommand::Thread { id, path })
         }
         _ => None,
     }
