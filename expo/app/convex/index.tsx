@@ -69,66 +69,14 @@ export default function ConvexScreen() {
 }
 
 function ThreadsList() {
-  const ws = useBridge()
   // Subscribe to a generic Convex query named "threads:list" with no args
   // This will live-update if a Convex project with that query is deployed to the backend.
   const result = (useQuery as any)('threads:list', {}) as any
-  const [fallback, setFallback] = React.useState<any[] | null>(null)
-  const [tripped, setTripped] = React.useState(false)
-
-  // If Convex client can't connect (e.g., ATS blocks HTTP on device), fall back to bridge history
-  React.useEffect(() => {
-    if (result !== undefined) return // either connected (array/null) or not deployed
-    const t = setTimeout(async () => {
-      try {
-        setTripped(true)
-        const items = await ws.requestHistory({ limit: 20 })
-        setFallback(items || [])
-      } catch { setFallback([]) }
-    }, 2500)
-    return () => clearTimeout(t)
-  }, [result, ws])
-
-  if (result === undefined && !tripped) {
+  if (result === undefined) {
     return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Connecting…</Text>
   }
   if (result === null) {
-    // Not deployed: show bridge history fallback
-    if (!fallback) return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No Convex project deployed (showing history)…</Text>
-    return (
-      <View style={{ gap: 6 }}>
-        {fallback.length === 0 ? (
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No threads yet.</Text>
-        ) : fallback.map((h: any) => (
-          <Pressable
-            key={h.id}
-            onPress={() => router.push(`/thread/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`)}
-            accessibilityRole='button'
-            style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 8 }}
-          >
-            <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{h.title || '(no title)'}</Text>
-          </Pressable>
-        ))}
-      </View>
-    )
-  }
-  if (result === undefined && fallback) {
-    return (
-      <View style={{ gap: 6 }}>
-        {fallback.length === 0 ? (
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No threads yet.</Text>
-        ) : fallback.map((h: any) => (
-          <Pressable
-            key={h.id}
-            onPress={() => router.push(`/thread/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`)}
-            accessibilityRole='button'
-            style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 8 }}
-          >
-            <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{h.title || '(no title)'}</Text>
-          </Pressable>
-        ))}
-      </View>
-    )
+    return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No Convex project deployed or query missing (threads:list).</Text>
   }
   if (!Array.isArray(result)) {
     return <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Unexpected result.</Text>
