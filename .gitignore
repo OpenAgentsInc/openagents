@@ -1,3 +1,6 @@
 target
 .DS_Store
 expo/.tmp
+convex_local_storage/
+convex/.env.local
+convex/_generated/
