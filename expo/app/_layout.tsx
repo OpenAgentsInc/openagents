@@ -31,21 +31,8 @@ function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
-  const bridge = useBridge();
-  const history = useThreads((s) => s.history);
-  const loading = useThreads((s) => s.loadingHistory);
-  const loadHistory = useThreads((s) => s.loadHistory);
-  const lastUrl = useThreads((s) => s.lastHistoryUrl);
-  const historyError = useThreads((s) => s.historyError);
-  const rehydrated = useThreads((s) => s.rehydrated);
-  // Prefer Convex threads if available; fallback to bridge history
+  // Convex-only history
   const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
-  React.useEffect(() => {
-    if (!rehydrated) return;
-    if (convexThreads === null) {
-      loadHistory((params) => bridge.requestHistory(params)).catch(() => {});
-    }
-  }, [rehydrated, loadHistory, bridge, convexThreads]);
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
@@ -72,11 +59,11 @@ function DrawerContent() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="time-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
-              {loading ? (
+              {convexThreads === undefined ? (
                 <ActivityIndicator size="small" color={Colors.secondary} />
               ) : null}
             </View>
-            {Array.isArray(convexThreads) ? (
+            {Array.isArray(convexThreads) && (
               convexThreads.length === 0 ? (
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
@@ -91,37 +78,6 @@ function DrawerContent() {
                   </View>
                 ))
               )
-            ) : (
-              history.length === 0 ? (
-                !loading ? (
-                  <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
-                ) : null
-              ) : history.slice(0, 5).map((h) => (
-                <View key={h.id} style={{ paddingVertical: 6 }}>
-                  <Pressable onPress={closeAnd(() => {
-                    try {
-                      if (Array.isArray((h as any).tail) && (h as any).tail.length > 0) {
-                        const prime = { title: h.title || 'Thread', items: (h as any).tail, partial: true } as any
-                        try { const mod = require('@/lib/threads-store'); mod.useThreads.getState().primeThread(h.id, prime) } catch {}
-                      }
-                    } catch {}
-                    router.push(`/thread/${encodeURIComponent(h.id)}?path=${encodeURIComponent(h.path)}`)
-                  })} accessibilityRole="button">
-                    <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{h.title || '(no title)'}</Text>
-                    <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(h.mtime * 1000).toLocaleString()}</Text>
-                  </Pressable>
-                </View>
-              ))
-            )}
-            {!!historyError && (
-              <View style={{ paddingVertical: 6 }}>
-                <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12 }}>History failed</Text>
-                <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>WS: history</Text>
-                <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Error: {historyError}</Text>
-                <Pressable onPress={() => loadHistory((params) => bridge.requestHistory(params))} accessibilityRole="button" style={{ alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: Colors.card }}>
-                  <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Retry</Text>
-                </Pressable>
-              </View>
             )}
           </View>
         </ScrollView>
