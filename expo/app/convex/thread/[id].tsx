@@ -78,7 +78,7 @@ export default function ConvexThreadDetail() {
             }
             if (kind === 'cmd') {
               try {
-                const d = m.data || {}
+                const d = m.data || (typeof m.text === 'string' ? JSON.parse(m.text) : {})
                 const command = String(d.command || '')
                 const status = String(d.status || '')
                 const exitCode = typeof d.exit_code === 'number' ? d.exit_code : undefined
@@ -104,13 +104,8 @@ export default function ConvexThreadDetail() {
               try {
                 await enqueueRun({ threadDocId: String(thread._id), text: base, role: 'user', projectId: thread?.projectId || undefined })
               } catch {}
-              // Trigger bridge workflow via HTTP; app does not consume WS JSONL
-              try {
-                await fetch(`${ws.httpBase}/submit`, {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ threadDocId: String(thread._id), text: base, projectId: thread?.projectId || undefined, resumeId: thread?.resumeId || undefined })
-                })
-              } catch {}
+              // Trigger bridge workflow via WebSocket control command (no HTTP)
+              try { ws.send(JSON.stringify({ control: 'run.submit', threadDocId: String(thread._id), text: base, projectId: thread?.projectId || undefined, resumeId: thread?.resumeId || undefined })) } catch {}
             }}
             connected={true}
             isRunning={false}

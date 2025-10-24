@@ -10,7 +10,8 @@
   - Session UI: `expo/app/session/index.tsx` renders a streaming feed. Incoming lines are parsed by `expo/lib/codex-events.ts` into kinds like `md`, `reason`, `exec_begin`, `file_change`, `web_search`, `mcp_call`, `todo_list`, `cmd_item`, `err`, `turn`, `thread`, `item_lifecycle`.
   - Components: JSONL renderers in `expo/components/jsonl/*` (e.g., `MarkdownBlock`, `ReasoningHeadline`, `ExecBeginRow`, `FileChangeCard`, `CommandExecutionCard`). A `HapticTab` adds iOS haptics for the tab bar.
   - State & storage: lightweight log store in `expo/lib/log-store.ts` (AsyncStorage backed) powers History and Message detail views.
-  - Connection/permissions: `expo/providers/ws.tsx` manages the WebSocket connection, exposes `readOnly`, `networkEnabled`, `approvals`, and `attachPreface` toggles (persisted). The header shows a green/red dot for connection.
+- Connection/permissions: `expo/providers/ws.tsx` manages the WebSocket connection, exposes `readOnly`, `networkEnabled`, `approvals`, and `attachPreface` toggles (persisted). The header shows a green/red dot for connection.
+  - Rule: No HTTP calls to the bridge. All bridge control is via WebSocket control messages (e.g., `{ "control": "run.submit", ... }`) or via Convex queries/mutations. Do not add REST endpoints.
   - Theming/typography: Dark theme in `expo/constants/theme.ts`; global mono font + defaults via `expo/constants/typography.ts` (Berkeley Mono; splash hidden after fonts load).
   - OTA: `expo/hooks/use-auto-update.ts` checks for `expo-updates` when not in dev; EAS configured for channel `v0.1.1` with runtimeVersion `appVersion` in `expo/app.json` and `expo/eas.json`.
 - Bridge Details:

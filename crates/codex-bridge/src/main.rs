@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use axum::extract::ws::{Message, WebSocket};
-use axum::{Router, extract::State, extract::WebSocketUpgrade, response::IntoResponse, routing::{get, post}, Json};
+use axum::{Router, extract::State, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
@@ -137,7 +137,6 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
-        .route("/submit", post(http_submit))
         .with_state(state);
 
     info!("binding" = %opts.bind, "msg" = "codex-bridge listening (route: /ws)");
@@ -440,6 +439,34 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         let _ = stdin_state.tx.send(serde_json::json!({"type":"bridge.convex_backfill","status":"enqueued","count": items.len()}).to_string());
                                     }
                                     Err(e) => { error!(?e, "backfill scan failed"); }
+                                }
+                            }
+                            ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id } => {
+                                // Map to project working dir
+                                let desired_cd = project_id.as_ref().and_then(|pid| {
+                                    match crate::projects::list_projects() { Ok(list) => list.into_iter().find(|p| p.id == *pid).map(|p| p.working_dir), Err(_) => None }
+                                });
+                                { *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone()); }
+                                // Ensure child running with desired dir/resume
+                                match spawn_codex_child_only_with_dir(
+                                    &stdin_state.opts,
+                                    desired_cd.clone().map(|s| std::path::PathBuf::from(s)),
+                                    resume_id.as_deref(),
+                                ).await {
+                                    Ok(mut child) => {
+                                        if let Some(stdin) = child.stdin.take() { *stdin_state.child_stdin.lock().await = Some(stdin); }
+                                        if let Err(e) = start_stream_forwarders(child, stdin_state.clone()).await { error!(?e, "run.submit: forwarders failed"); }
+                                        // Write config + text
+                                        let mut cfg = serde_json::json!({ "sandbox": "danger-full-access", "approval": "never" });
+                                        if let Some(cd) = desired_cd.as_deref() { cfg["cd"] = serde_json::Value::String(cd.to_string()); }
+                                        if let Some(pid) = project_id.as_deref() { cfg["project"] = serde_json::json!({ "id": pid }); }
+                                        let payload = format!("{}\n{}\n", cfg.to_string(), text);
+                                        if let Some(mut stdin) = stdin_state.child_stdin.lock().await.take() {
+                                            if let Err(e) = stdin.write_all(payload.as_bytes()).await { error!(?e, "run.submit: write failed"); }
+                                            let _ = stdin.flush().await; drop(stdin);
+                                        }
+                                    }
+                                    Err(e) => { error!(?e, "run.submit: spawn failed"); }
                                 }
                             }
                             ControlCommand::ProjectSave { project } => {
@@ -1248,44 +1275,6 @@ async fn enqueue_historical_on_start(state: Arc<AppState>) {
     });
 }
 
-#[derive(serde::Deserialize)]
-struct SubmitPayload {
-    threadDocId: String,
-    text: String,
-    projectId: Option<String>,
-    resumeId: Option<String>,
-}
-
-async fn http_submit(State(state): State<Arc<AppState>>, Json(body): Json<SubmitPayload>) -> impl IntoResponse {
-    let tdoc = body.threadDocId.clone();
-    { *state.current_convex_thread.lock().await = Some(tdoc); }
-    let project_id_opt = body.projectId.clone();
-    let desired_cd = project_id_opt.clone().and_then(|pid| {
-        match crate::projects::list_projects() { Ok(list) => list.into_iter().find(|p| p.id == pid).map(|p| p.working_dir), Err(_) => None }
-    });
-    let resume = body.resumeId.as_deref();
-    // Ensure child exists or spawn with requested dir/resume
-    let need_respawn = { state.child_stdin.lock().await.is_none() };
-    if need_respawn || desired_cd.is_some() || resume.is_some() {
-        match spawn_codex_child_only_with_dir(&state.opts, desired_cd.clone().map(|s| std::path::PathBuf::from(s)), resume).await {
-            Ok(mut child) => {
-                if let Some(stdin) = child.stdin.take() { *state.child_stdin.lock().await = Some(stdin); }
-                if let Err(e) = start_stream_forwarders(child, state.clone()).await { error!(?e, "http submit: forwarders failed"); }
-            }
-            Err(e) => { error!(?e, "http submit: spawn failed"); return Json(serde_json::json!({"ok": false, "error": format!("spawn failed: {}", e)})); }
-        }
-    }
-    // Write preface + message
-    let mut cfg = serde_json::json!({ "sandbox": "danger-full-access", "approval": "never" });
-    if let Some(cd) = desired_cd.as_deref() { cfg["cd"] = serde_json::Value::String(cd.to_string()); }
-    if let Some(pid) = project_id_opt.as_deref() { cfg["project"] = serde_json::json!({ "id": pid }); }
-    let payload = format!("{}\n{}\n", cfg.to_string(), body.text);
-    if let Some(mut stdin) = state.child_stdin.lock().await.take() {
-        if let Err(e) = stdin.write_all(payload.as_bytes()).await { error!(?e, "http submit: write failed"); let _ = stdin.flush().await; }
-        let _ = stdin.flush().await; drop(stdin);
-    }
-    Json(serde_json::json!({"ok": true}))
-}
 
 async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::HistoryItem) -> anyhow::Result<()> {
     let path = std::path::Path::new(&h.path);
@@ -1349,6 +1338,7 @@ enum ControlCommand {
     ConvexCreateThreads,
     ConvexCreateDemoThread,
     ConvexBackfill,
+    RunSubmit { thread_doc_id: String, text: String, project_id: Option<String>, resume_id: Option<String> },
 }
 
 fn parse_control_command(payload: &str) -> Option<ControlCommand> {
@@ -1378,6 +1368,13 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         "project.delete" => {
             let id = v.get("id").and_then(|x| x.as_str())?.to_string();
             Some(ControlCommand::ProjectDelete { id })
+        }
+        "run.submit" => {
+            let tdoc = v.get("threadDocId").and_then(|x| x.as_str())?.to_string();
+            let text = v.get("text").and_then(|x| x.as_str())?.to_string();
+            let project_id = v.get("projectId").and_then(|x| x.as_str()).map(|s| s.to_string());
+            let resume_id = v.get("resumeId").and_then(|x| x.as_str()).map(|s| s.to_string());
+            Some(ControlCommand::RunSubmit { thread_doc_id: tdoc, text, project_id, resume_id })
         }
         _ => None,
     }
