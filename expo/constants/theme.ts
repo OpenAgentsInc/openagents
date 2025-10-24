@@ -85,7 +85,7 @@ export const Colors = {
   tabBarBackground: '#08090a',
   tabBarActive: '#f7f8f8',
   tabBarInactive: '#8a8f98',
-  sidebarBackground: '#0A0A0A',
+  sidebarBackground: '#0e0e12',
 
   // Specials
   transparent: 'transparent',
