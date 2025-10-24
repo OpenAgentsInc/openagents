@@ -22,6 +22,7 @@ use tracing_subscriber::prelude::*;
 
 mod history;
 mod projects;
+mod skills;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -179,6 +180,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         let _ = stdin_state.tx.send(line);
                                     }
                                     Err(e) => { error!(?e, "projects list failed via ws"); }
+                                }
+                            }
+                            ControlCommand::Skills => {
+                                match crate::skills::list_skills() {
+                                    Ok(items) => {
+                                        let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string();
+                                        let _ = stdin_state.tx.send(line);
+                                    }
+                                    Err(e) => { error!(?e, "skills list failed via ws"); }
                                 }
                             }
                             ControlCommand::ProjectSave { project } => {
@@ -727,6 +737,7 @@ enum ControlCommand {
     History { limit: Option<usize>, since_mtime: Option<u64> },
     Thread { id: Option<String>, path: Option<String> },
     Projects,
+    Skills,
     ProjectSave { project: crate::projects::Project },
     ProjectDelete { id: String },
 }
@@ -750,6 +761,7 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
             Some(ControlCommand::History { limit, since_mtime })
         }
         "projects" => Some(ControlCommand::Projects),
+        "skills" => Some(ControlCommand::Skills),
         "project.save" => {
             let proj: crate::projects::Project = serde_json::from_value(v.get("project")?.clone()).ok()?;
             Some(ControlCommand::ProjectSave { project: proj })

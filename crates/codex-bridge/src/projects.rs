@@ -2,6 +2,7 @@ use anyhow::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::{Path, PathBuf}};
 use serde_yaml as yaml;
+use jsonschema::JSONSchema;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -17,7 +18,6 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub working_dir: String,
-    pub voice_aliases: Option<Vec<String>>,
     pub repo: Option<ProjectRepo>,
     pub agent_file: Option<String>,
     pub instructions: Option<String>,
@@ -47,19 +47,39 @@ pub fn list_projects() -> Result<Vec<Project>> {
     if !dir.exists() { ensure_dirs()?; return Ok(out); }
     for ent in fs::read_dir(&dir).context("read projects dir")? {
         let p = ent?.path();
-        if !(p.extension().and_then(|e| e.to_str()) == Some("md") || p.extension().and_then(|e| e.to_str()) == Some("skill.md")) {
-            // also allow *.skill.md via ends_with
-            if let Some(name) = p.file_name().and_then(|x| x.to_str()) { if !name.ends_with(".skill.md") { continue; } }
-        }
-        if let Some(s) = fs::read_to_string(&p).ok() {
-            if let Some(mut pr) = parse_skill_markdown(&s).ok() {
-                if pr.id.trim().is_empty() {
-                    let name = p.file_name().and_then(|x| x.to_str()).unwrap_or("");
-                    let base = name.strip_suffix(".skill.md").or_else(|| name.strip_suffix(".md")).unwrap_or(name);
-                    let base = base.strip_suffix(".skill").unwrap_or(base);
-                    pr.id = base.to_string();
+        if p.is_dir() {
+            let proj_md = p.join("PROJECT.md");
+            if !proj_md.exists() { continue; }
+            if let Some(s) = fs::read_to_string(&proj_md).ok() {
+                if let Some(fm) = extract_frontmatter_yaml(&s) {
+                    if !validate_against_schema(include_str!("../schemas/project.schema.json"), &fm) { continue; }
+                    let mut pr = match parse_project_frontmatter(&fm) { std::result::Result::Ok(pr) => pr, _ => continue };
+                    // id = directory name
+                    if pr.id.trim().is_empty() {
+                        pr.id = p.file_name().and_then(|x| x.to_str()).unwrap_or("").to_string();
+                    }
+                    out.push(pr);
                 }
-                out.push(pr);
+            }
+        } else {
+            // Backward-compat: support single-file .project.md
+            let is_project_file = p
+                .file_name()
+                .and_then(|x| x.to_str())
+                .map(|n| n.ends_with(".project.md") || n.ends_with(".md"))
+                .unwrap_or(false);
+            if !is_project_file { continue; }
+            if let Some(s) = fs::read_to_string(&p).ok() {
+                if let Some(fm) = extract_frontmatter_yaml(&s) {
+                    if !validate_against_schema(include_str!("../schemas/project.schema.json"), &fm) { continue; }
+                    let mut pr = match parse_project_frontmatter(&fm) { std::result::Result::Ok(pr) => pr, _ => continue };
+                    if pr.id.trim().is_empty() {
+                        let name = p.file_name().and_then(|x| x.to_str()).unwrap_or("");
+                        let base = name.strip_suffix(".project.md").or_else(|| name.strip_suffix(".md")).unwrap_or(name);
+                        pr.id = base.to_string();
+                    }
+                    out.push(pr);
+                }
             }
         }
     }
@@ -69,17 +89,28 @@ pub fn list_projects() -> Result<Vec<Project>> {
 
 pub fn save_project(p: &Project) -> Result<()> {
     ensure_dirs()?;
-    let path = projects_dir().join(format!("{}.skill.md", &p.id));
-    let s = render_skill_markdown(p);
+    let dir = projects_dir().join(&p.id);
+    fs::create_dir_all(&dir).context("create project dir")?;
+    let path = dir.join("PROJECT.md");
+    let s = render_project_markdown(p);
+    if let Some(fm) = extract_frontmatter_yaml(&s) {
+        if !validate_against_schema(include_str!("../schemas/project.schema.json"), &fm) {
+            bail!("project frontmatter does not conform to schema");
+        }
+    }
     fs::write(path, s).context("write project file")
 }
 
 pub fn delete_project(id: &str) -> Result<()> {
-    // Prefer .skill.md but also fall back to .md
+    // Prefer directory removal; fallback to file removal for legacy
+    let dir = projects_dir().join(id);
+    if dir.exists() && dir.is_dir() {
+        fs::remove_dir_all(&dir).context("remove project dir")?;
+        return Ok(());
+    }
     let candidates = [
-        projects_dir().join(format!("{}.skill.md", id)),
+        projects_dir().join(format!("{}.project.md", id)),
         projects_dir().join(format!("{}.md", id)),
-        projects_dir().join(format!("{}", id)),
     ];
     for path in candidates.iter() {
         if path.exists() { fs::remove_file(path).context("remove project file")?; return Ok(()); }
@@ -96,7 +127,7 @@ mod tests {
         unsafe { std::env::set_var("OPENAGENTS_HOME", td.path().to_string_lossy().to_string()); }
     ensure_dirs().unwrap();
         // write one
-        let p = Project { id: "alpha".into(), name: "Alpha".into(), working_dir: "/tmp/x".into(), voice_aliases: None, repo: None, agent_file: None, instructions: Some("Custom".into()), todos: None, approvals: None, model: None, sandbox: None, created_at: None, updated_at: None };
+        let p = Project { id: "alpha".into(), name: "Alpha".into(), working_dir: "/tmp/x".into(), repo: None, agent_file: None, instructions: Some("Custom".into()), todos: None, approvals: None, model: None, sandbox: None, created_at: None, updated_at: None };
         save_project(&p).unwrap();
         let items = list_projects().unwrap();
         assert_eq!(items.len(), 1);
@@ -109,23 +140,11 @@ mod tests {
     }
 }
 
-fn parse_skill_markdown(s: &str) -> Result<Project> {
-    // Expect frontmatter delimited by --- ... --- at top
-    let mut lines = s.lines();
-    let first = lines.next().unwrap_or("").trim();
-    if first != "---" { bail!("missing frontmatter start"); }
-    let mut yaml_lines: Vec<&str> = Vec::new();
-    for line in lines.by_ref() {
-        if line.trim() == "---" { break; }
-        yaml_lines.push(line);
-    }
-    let fm: yaml::Value = yaml::from_str(&yaml_lines.join("\n")).context("parse yaml frontmatter")?;
-    // Map YAML keys to Project (camelCase keys in YAML)
+fn parse_project_frontmatter(fm: &yaml::Value) -> Result<Project> {
     let mut p = Project {
         id: String::new(),
         name: fm.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         working_dir: fm.get("workingDir").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        voice_aliases: fm.get("voiceAliases").and_then(|v| v.as_sequence()).map(|arr| arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()),
         repo: None,
         agent_file: fm.get("agentFile").and_then(|v| v.as_str()).map(|s| s.to_string()),
         instructions: fm.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
@@ -143,11 +162,11 @@ fn parse_skill_markdown(s: &str) -> Result<Project> {
     Ok(p)
 }
 
-fn render_skill_markdown(p: &Project) -> String {
+fn render_project_markdown(p: &Project) -> String {
     // Minimal skill header; body includes placeholders the app/agent can edit later
     let mut fm = yaml::Mapping::new();
     fm.insert(yaml::Value::String("name".into()), yaml::Value::String(p.name.clone()));
-    fm.insert(yaml::Value::String("description".into()), yaml::Value::String(p.instructions.clone().unwrap_or_default()));
+    if let Some(desc) = &p.instructions { fm.insert(yaml::Value::String("description".into()), yaml::Value::String(desc.clone())); }
     fm.insert(yaml::Value::String("workingDir".into()), yaml::Value::String(p.working_dir.clone()));
     if let Some(repo) = &p.repo {
         let mut m = yaml::Mapping::new();
@@ -158,6 +177,23 @@ fn render_skill_markdown(p: &Project) -> String {
         fm.insert(yaml::Value::String("repo".into()), yaml::Value::Mapping(m));
     }
     let header = format!("---\n{}\n---\n", yaml::to_string(&yaml::Value::Mapping(fm)).unwrap_or_default());
-    let body = "\n## Overview\n\nDescribe the project or skill here.\n\n## Workflow\n\n1. Step one\n2. Step two\n";
+    let body = "\n## Overview\n\nDescribe the project here.\n\n## Workflow\n\n1. Step one\n2. Step two\n";
     format!("{}{}", header, body)
+}
+
+fn extract_frontmatter_yaml(s: &str) -> Option<yaml::Value> {
+    let mut lines = s.lines();
+    if lines.next()?.trim() != "---" { return None; }
+    let mut buf: Vec<&str> = Vec::new();
+    for line in lines {
+        if line.trim() == "---" { break; }
+        buf.push(line);
+    }
+    yaml::from_str(&buf.join("\n")).ok()
+}
+
+fn validate_against_schema(schema_json: &str, yaml_val: &yaml::Value) -> bool {
+    let json_val: serde_json::Value = if let Some(v) = serde_json::to_value(yaml_val).ok() { v } else { return false };
+    let schema_val: serde_json::Value = if let Some(v) = serde_json::from_str(schema_json).ok() { v } else { return false };
+    if let Some(compiled) = JSONSchema::compile(&schema_val).ok() { compiled.is_valid(&json_val) } else { false }
 }

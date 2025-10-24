@@ -22,6 +22,7 @@
   - JSONL schema and mappings: `docs/exec-jsonl-schema.md`.
   - Resume behavior: `docs/exec-resume-json.md`.
   - Permissions model and recommended setups: `docs/permissions.md`.
+  - Projects & Skills schema: `docs/projects-and-skills-schema.md`.
 - Tooling & Scripts:
   - Expo scripts in `expo/package.json` (start, platform targets, typecheck, lint, EAS build/submit/update).
   - `expo/scripts/copy-sources-to-clipboard.js`: copies key sources (Expo and Rust bridge) to clipboard for sharing/debugging.
@@ -32,7 +33,7 @@
   - Root `Cargo.toml` and `Cargo.lock`: Cargo workspace anchor (lockfile at root by design).
 - Development Flow:
   - App: `cd expo && bun install && bun run start` (then `bun run ios|android|web`). Type‑check with `bun run typecheck`; lint with `bun run lint`.
-  - Bridge: from repo root `cargo run -p codex-bridge -- --bind 0.0.0.0:8787`. App default WS URL is `ws://localhost:8787/ws` (configurable in Settings).
+  - Bridge: from repo root `cargo bridge` (alias for `run -p codex-bridge -- --bind 0.0.0.0:8787`). App default WS URL is `ws://localhost:8787/ws` (configurable in Settings).
   - Agent prompts: Session screen optionally prefixes a one‑line JSON config indicating sandbox/approvals to match the bridge.
 - Conventions & Policies (highlights):
   - TypeScript strict, 2‑space indent, imports grouped React/external → internal. Expo Router filename conventions.
@@ -55,7 +56,52 @@
 - Lint TypeScript/TSX: `bun run lint`.
 - iOS production build: `bun run build:ios:prod`.
 - Submit iOS build: `bun run submit:ios`.
-- Run bridge (Rust): from repo root `cargo run -p codex-bridge -- --bind 0.0.0.0:8787`.
+- Run bridge (Rust): from repo root `cargo bridge`.
+
+## Projects and Skills (Desktop‑side Source of Truth)
+
+- Home folder: `OPENAGENTS_HOME` (defaults to `~/.openagents`).
+  - Projects dir: `~/.openagents/projects/`
+  - Skills dir: `~/.openagents/skills/`
+- Format: Markdown with YAML frontmatter (see `docs/projects-and-skills-schema.md`).
+  - Project files: `{id}.project.md`
+  - Skill files: `{id}.skill.md`
+- Validation: frontmatter is validated against JSON Schemas on the bridge.
+  - Schemas: `crates/codex-bridge/schemas/project.schema.json` and `skill.schema.json`.
+  - The bridge rejects invalid saves and skips invalid files when listing.
+- WebSocket controls (Projects):
+  - List: `{ "control": "projects" }` → `{ type: "bridge.projects", items }`
+  - Save: `{ "control": "project.save", project }` (writes `{id}.project.md`)
+  - Delete: `{ "control": "project.delete", id }`
+- App behavior:
+  - On mount, the app fetches projects over WS and seeds the local store for instant rehydrate; the Projects screen and drawer read from this store.
+
+### Add a Project (example)
+1. Create file `~/.openagents/projects/tricoder.project.md` with:
+```
+---
+name: Tricoder
+workingDir: /Users/you/code/openagents
+repo:
+  provider: github
+  remote: OpenAgentsInc/openagents
+  url: https://github.com/OpenAgentsInc/openagents
+  branch: main
+instructions: |
+  A mobile command center for coding agents. Manage and talk to your coding
+  agents on the go. Fully open source.
+---
+
+# Overview
+...free‑form Markdown body...
+```
+2. Start the bridge: `cargo bridge`
+3. Open the app — projects load via WS.
+
+### Validate a Project
+- The bridge auto‑validates on save/list. To check manually:
+  - Ensure required fields: `name`, `workingDir`.
+  - Optional fields may be present (see schema docs). If a save fails or an item doesn't show up in the list, validate frontmatter against the JSON schema (`crates/codex-bridge/schemas/project.schema.json`).
 
 ## Coding Style & Naming Conventions
 - Language: TypeScript (strict mode) for app code.

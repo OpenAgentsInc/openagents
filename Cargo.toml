@@ -2,5 +2,6 @@
 members = [
     "crates/codex-bridge",
     "crates/copy-sources",
+    "crates/oa-validate",
 ]
 resolver = "2"

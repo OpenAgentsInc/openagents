@@ -47,7 +47,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           const arr = items.map((x: any) => ({
             id: String(x.id || x.name || ''),
             name: String(x.name || x.id || ''),
-            voiceAliases: Array.isArray(x.voiceAliases) ? x.voiceAliases : [],
             workingDir: String(x.working_dir || x.workingDir || ''),
             repo: x.repo,
             agentFile: x.agent_file || x.agentFile,

@@ -16,7 +16,6 @@ export type ProjectTodo = { text: string; completed: boolean }
 export type Project = {
   id: ProjectId
   name: string
-  voiceAliases: string[]
   workingDir: string
   repo?: ProjectRepo
   agentFile?: string
