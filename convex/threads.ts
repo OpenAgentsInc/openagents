@@ -83,3 +83,23 @@ export const createDemo = mutationGeneric(async ({ db }) => {
   } catch {}
   return id;
 });
+
+// Create a new empty thread and return its id. The threadId field is set to the stringified document id
+// so that messages can reference it consistently.
+export const create = mutationGeneric(async ({ db }, args?: { title?: string; projectId?: string }) => {
+  const now = Date.now();
+  const id = await db.insert("threads", {
+    title: args?.title || "New Thread",
+    rolloutPath: "",
+    resumeId: "",
+    projectId: args?.projectId || "",
+    source: "app",
+    createdAt: now,
+    updatedAt: now,
+  } as any);
+  try {
+    // @ts-ignore
+    await db.patch(id as any, { threadId: String(id as any) } as any);
+  } catch {}
+  return id;
+});
