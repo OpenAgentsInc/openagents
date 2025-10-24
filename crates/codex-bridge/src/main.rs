@@ -95,6 +95,8 @@ async fn main() -> Result<()> {
         if let Err(e) = ensure_convex_running(&opts).await {
             error!(?e, "failed to ensure local Convex is running");
         }
+        // Start background ingester loop to drain mirror spool into Convex
+        tokio::spawn(run_convex_ingester(opts.convex_port));
     }
 
     let (mut child, tx) = spawn_codex(&opts).await?;
@@ -1046,6 +1048,38 @@ async fn watch_skills_and_broadcast(state: Arc<AppState>) {
             }
             Err(_disconnected) => break,
         }
+    }
+}
+
+async fn run_convex_ingester(port: u16) {
+    use tokio::process::Command as TokioCommand;
+    let repo = detect_repo_root(None);
+    let script = repo.join("scripts/ingest-spool.mjs");
+    let url = format!("http://127.0.0.1:{}", port);
+    loop {
+        // Check if spool exists and non-empty; if not, sleep a bit longer
+        let spool = crate::mirror::default_mirror_dir().join("spool.jsonl");
+        let run_now = match std::fs::metadata(&spool) { Ok(m) => m.len() > 0, Err(_) => false };
+        if run_now {
+            let mut cmd = TokioCommand::new("node");
+            cmd.arg(script.as_os_str())
+                .env("CONVEX_URL", &url)
+                .env("SPOOL", spool.as_os_str())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            match cmd.output().await {
+                Ok(out) => {
+                    let so = String::from_utf8_lossy(&out.stdout).to_string();
+                    let se = String::from_utf8_lossy(&out.stderr).to_string();
+                    if !so.trim().is_empty() { println!("{}", so.trim()); }
+                    if !se.trim().is_empty() { eprintln!("{}", se.trim()); }
+                }
+                Err(e) => {
+                    error!(?e, "convex ingester spawn failed");
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(if run_now { 2 } else { 6 })).await;
     }
 }
 

@@ -5,7 +5,8 @@
   "scripts": {
     "convex:dev": "bash ./scripts/convex-cli.sh dev",
     "convex:dev:once": "bash ./scripts/convex-cli.sh dev:once",
-    "convex:deploy": "bash ./scripts/convex-cli.sh deploy"
+    "convex:deploy": "bash ./scripts/convex-cli.sh deploy",
+    "convex:ingest": "node ./scripts/ingest-spool.mjs"
   },
   "devDependencies": {
     "convex": "^1.28.0"
