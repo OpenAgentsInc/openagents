@@ -48,8 +48,9 @@ export function AppHeader() {
             onPressIn={() => { try { if (process.env.EXPO_OS === 'ios') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {} }}
             onPress={() => { showBack ? router.back() : toggle() }}
             accessibilityRole="button"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{ paddingHorizontal: 6, paddingVertical: 6, position: 'relative' }}
+            // Expand the tappable area without changing visuals
+            hitSlop={{ top: 24, bottom: 24, left: 16, right: 16 }}
+            style={{ height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', position: 'relative' }}
           >
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
             <View
