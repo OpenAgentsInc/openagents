@@ -30,6 +30,7 @@ import { useHeaderStore, useHeaderTitle, useHeaderSubtitle } from "@/lib/header-
 import { useThreads } from "@/lib/threads-store"
 import { Ionicons } from "@expo/vector-icons"
 import { useFocusEffect } from "@react-navigation/native"
+import { useMutation } from 'convex/react'
 
 export default function SessionScreen() {
   const params = useLocalSearchParams<{ focus?: string; new?: string; resuming?: string }>()
@@ -67,6 +68,9 @@ export default function SessionScreen() {
   const [workingStartedAt, setWorkingStartedAt] = useState<number | null>(null)
   const [workingSeconds, setWorkingSeconds] = useState(0)
   const [kbVisible, setKbVisible] = useState(false)
+  // Convex mutations for mirroring
+  const upsertThread = (useMutation as any)('threads:upsertFromStream') as (args: { threadId: string; title?: string; projectId?: string }) => Promise<any>
+  const createMessage = (useMutation as any)('messages:create') as (args: { threadId: string; role: string; text: string; ts?: number }) => Promise<any>
 
   // Increment the visible working timer while awaiting first assistant content
   useEffect(() => {
@@ -203,7 +207,7 @@ Important policy overrides:
           continue
         }
         if (parsed.kind === 'delta') { continue }
-        else if (parsed.kind === 'md') { if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } const raw = String(parsed.markdown ?? '').trim(); const core = raw.replace(/^\*\*|\*\*$/g, '').replace(/^`|`$/g, '').trim().toLowerCase(); const isBland = core === 'unknown' || core === 'n/a' || core === 'none' || core === 'null'; if (!isBland) append(`::md::${parsed.markdown}`, false, 'md') }
+        else if (parsed.kind === 'md') { if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } const raw = String(parsed.markdown ?? '').trim(); const core = raw.replace(/^\*\*|\*\*$/g, '').replace(/^`|`$/g, '').trim().toLowerCase(); const isBland = core === 'unknown' || core === 'n/a' || core === 'none' || core === 'null'; if (!isBland) { append(`::md::${parsed.markdown}`, false, 'md'); try { const tid = currentThreadIdRef.current; if (tid && raw) { createMessage({ threadId: tid, role: 'assistant', text: raw }).catch(()=>{}) } } catch {} } }
         else if (parsed.kind === 'reason') { if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } append(`::reason::${parsed.text}`, false, 'reason') }
         else if (parsed.kind === 'thread') {
           try {
@@ -222,6 +226,7 @@ Important policy overrides:
             // Capture mapping thread_id -> projectId used for this send (if any)
             const pid = lastSentProjectIdRef.current
             if (pid && parsed.thread_id) { setThreadProject(parsed.thread_id, pid) }
+            try { if (incoming) { upsertThread({ threadId: incoming, title: titleRef.current || 'New Thread', projectId: lastSentProjectIdRef.current || undefined }).catch(()=>{}) } } catch {}
           } catch {}
           continue
         }
@@ -264,7 +269,7 @@ Important policy overrides:
           append(payload, false, 'turn', trimmed)
         }
         else if (parsed.kind === 'summary') { if (/^\[exec (out|end)\]/i.test(parsed.text)) { continue } if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } append(parsed.text, true, 'summary', trimmed) }
-        else if (parsed.kind === 'text') { const raw = String(parsed.raw ?? '').trim(); if (!raw) { continue } if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } append(raw, true, 'text') }
+        else if (parsed.kind === 'text') { const raw = String(parsed.raw ?? '').trim(); if (!raw) { continue } if (awaitingFirstRef.current) { setAwaitingFirst(false); awaitingFirstRef.current = false } append(raw, true, 'text'); try { const tid = currentThreadIdRef.current; const isUser = /^\s*>/.test(raw); const text = isUser ? raw.replace(/^\s*>\s?/, '') : raw; const role = isUser ? 'user' : 'assistant'; if (tid && text) { createMessage({ threadId: tid, role, text }).catch(()=>{}) } } catch {} }
         else if (parsed.kind === 'json') { if (parsed.raw.includes('exec_command_end')) { continue } append(parsed.raw, true, 'json') }
         else append(trimmed, true, 'text')
       }
