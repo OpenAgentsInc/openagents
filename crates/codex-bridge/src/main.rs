@@ -19,6 +19,7 @@ use tokio::{
 };
 use tracing::{error, info};
 use tracing_subscriber::prelude::*;
+use std::time::Duration;
 
 mod history;
 mod projects;
@@ -46,6 +47,22 @@ struct Opts {
     /// Additional args after `--` are forwarded to codex
     #[arg(trailing_var_arg = true)]
     extra: Vec<String>,
+
+    /// Start a local Convex (SQLite) backend on loopback before serving WS
+    #[arg(long, env = "OPENAGENTS_WITH_CONVEX", default_value_t = false)]
+    with_convex: bool,
+
+    /// Path to the Convex local backend binary (defaults to ~/.openagents/bin/local_backend)
+    #[arg(long, env = "OPENAGENTS_CONVEX_BIN")]
+    convex_bin: Option<PathBuf>,
+
+    /// Port to bind Convex on (loopback)
+    #[arg(long, env = "OPENAGENTS_CONVEX_PORT", default_value_t = 7788)]
+    convex_port: u16,
+
+    /// SQLite DB path for Convex (defaults to ~/.openagents/convex/data.sqlite3)
+    #[arg(long, env = "OPENAGENTS_CONVEX_DB")]
+    convex_db: Option<PathBuf>,
 }
 
 const MAX_HISTORY_LINES: usize = 2000;
@@ -66,6 +83,13 @@ struct AppState {
 async fn main() -> Result<()> {
     init_tracing();
     let opts = Opts::parse();
+
+    // Optional: supervise/start local Convex backend
+    if opts.with_convex {
+        if let Err(e) = ensure_convex_running(&opts).await {
+            error!(?e, "failed to ensure local Convex is running");
+        }
+    }
 
     let (mut child, tx) = spawn_codex(&opts).await?;
     let state = Arc::new(AppState {
@@ -100,6 +124,88 @@ fn init_tracing() {
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(fmt::layer())
         .try_init();
+}
+
+fn default_convex_bin() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home).join(".openagents/bin/local_backend");
+    }
+    PathBuf::from("local_backend")
+}
+
+fn default_convex_db() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home).join(".openagents/convex/data.sqlite3");
+    }
+    PathBuf::from("data.sqlite3")
+}
+
+async fn convex_health(url: &str) -> Result<bool> {
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build()?;
+    let resp = client.get(format!("{}/instance_version", url)).send().await;
+    match resp {
+        Ok(r) if r.status().is_success() => Ok(true),
+        _ => Ok(false),
+    }
+}
+
+async fn ensure_convex_running(opts: &Opts) -> Result<()> {
+    let bin = opts.convex_bin.clone().unwrap_or_else(default_convex_bin);
+    let db = opts.convex_db.clone().unwrap_or_else(default_convex_db);
+    let port = opts.convex_port;
+    let base = format!("http://127.0.0.1:{}", port);
+    if convex_health(&base).await.unwrap_or(false) {
+        info!(url=%base, "convex healthy (already running)");
+        return Ok(());
+    }
+    // Spawn process
+    std::fs::create_dir_all(db.parent().unwrap_or_else(|| Path::new(".")))
+        .ok();
+    let mut cmd = Command::new(&bin);
+    cmd.arg(&db)
+        .arg("--db").arg("sqlite")
+        .arg("--interface").arg("127.0.0.1")
+        .arg("--port").arg(port.to_string())
+        .arg("--disable-beacon")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    info!(bin=%bin.display(), db=%db.display(), port, "starting local Convex backend");
+    let mut child = cmd.spawn().context("spawn convex local_backend")?;
+    // Wait up to ~10s for health
+    let mut ok = false;
+    for _ in 0..20 {
+        if convex_health(&base).await.unwrap_or(false) { ok = true; break; }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    if ok {
+        info!(url=%base, pid=?child.id(), "convex healthy after start");
+        // Detach, let OS clean up on exit; user can stop process manually if needed
+        Ok(())
+    } else {
+        // If failed to become healthy, try to kill child and report
+        let _ = child.kill().await;
+        error!(url=%base, "convex failed to report healthy in time");
+        anyhow::bail!("convex health probe failed")
+    }
+}
+
+fn list_sqlite_tables(db_path: &PathBuf) -> Result<Vec<String>> {
+    let conn = rusqlite::Connection::open(db_path)?;
+    let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")?;
+    let iter = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    let mut out = Vec::new();
+    for r in iter { out.push(r?); }
+    Ok(out)
+}
+
+fn create_demo_table(db_path: &PathBuf) -> Result<()> {
+    let conn = rusqlite::Connection::open(db_path)?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS oa_demo (id INTEGER PRIMARY KEY, k TEXT, v TEXT)",
+        rusqlite::params![],
+    )?;
+    Ok(())
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -193,6 +299,23 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                     Err(e) => { error!(?e, "skills list failed via ws"); }
                                 }
+                            }
+                            ControlCommand::ConvexStatus => {
+                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
+                                let healthy = convex_health(&url).await.unwrap_or(false);
+                                let tables = if healthy { list_sqlite_tables(&db).unwrap_or_default() } else { Vec::new() };
+                                let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
+                                let _ = stdin_state.tx.send(line);
+                            }
+                            ControlCommand::ConvexCreateDemo => {
+                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
+                                let _ = create_demo_table(&db);
+                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let healthy = convex_health(&url).await.unwrap_or(false);
+                                let tables = list_sqlite_tables(&db).unwrap_or_default();
+                                let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
+                                let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::ProjectSave { project } => {
                                 match crate::projects::save_project(&project) {
@@ -787,6 +910,8 @@ enum ControlCommand {
     Skills,
     ProjectSave { project: crate::projects::Project },
     ProjectDelete { id: String },
+    ConvexStatus,
+    ConvexCreateDemo,
 }
 
 fn parse_control_command(payload: &str) -> Option<ControlCommand> {
@@ -809,6 +934,8 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         }
         "projects" => Some(ControlCommand::Projects),
         "skills" => Some(ControlCommand::Skills),
+        "convex.status" => Some(ControlCommand::ConvexStatus),
+        "convex.create_demo" => Some(ControlCommand::ConvexCreateDemo),
         "project.save" => {
             let proj: crate::projects::Project = serde_json::from_value(v.get("project")?.clone()).ok()?;
             Some(ControlCommand::ProjectSave { project: proj })
