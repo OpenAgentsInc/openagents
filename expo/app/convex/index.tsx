@@ -5,6 +5,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
 import { useQuery, useMutation } from 'convex/react'
+import { router } from 'expo-router'
 
 export default function ConvexScreen() {
   const ws = useBridge()
@@ -66,7 +67,14 @@ function ThreadsList() {
       {result.length === 0 ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No threads yet.</Text>
       ) : result.map((row: any) => (
-        <Text key={row._id || row.id} style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{row.title || row.id}</Text>
+        <Pressable
+          key={row._id || row.id}
+          onPress={() => router.push(`/convex/thread/${encodeURIComponent(row._id || row.id)}`)}
+          accessibilityRole='button'
+          style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 8 }}
+        >
+          <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{row.title || String(row._id || row.id)}</Text>
+        </Pressable>
       ))}
     </View>
   )

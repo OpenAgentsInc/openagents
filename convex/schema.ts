@@ -11,4 +11,11 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  messages: defineTable({
+    threadId: v.string(),
+    role: v.string(), // 'user' | 'assistant' | 'system'
+    text: v.string(),
+    ts: v.number(),
+    createdAt: v.number(),
+  }),
 });
