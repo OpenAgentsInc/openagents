@@ -147,15 +147,15 @@ pub fn run() {
 
 async fn ensure_bridge_running() {
     // If the bridge port is open we assume it's already running
-    if is_port_open(8787).await { return; }
+    if is_port_open(8787) { return; }
     let repo = detect_repo_root(None);
     let bin = repo.join("target").join("debug").join(if cfg!(windows) { "codex-bridge.exe" } else { "codex-bridge" });
     let mut cmd = if bin.exists() {
-        let mut c = tokio::process::Command::new(bin);
+        let mut c = std::process::Command::new(bin);
         c.arg("--bind").arg("0.0.0.0:8787");
         c
     } else {
-        let mut c = tokio::process::Command::new("cargo");
+        let mut c = std::process::Command::new("cargo");
         c.args(["run", "-q", "-p", "codex-bridge", "--", "--bind", "0.0.0.0:8787"]);
         c
     };
@@ -165,14 +165,11 @@ async fn ensure_bridge_running() {
         .stderr(std::process::Stdio::null());
     let _ = cmd.spawn();
     // Give it a moment then return
-    let _ = tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    tauri::async_runtime::sleep(std::time::Duration::from_millis(300)).await;
 }
 
-async fn is_port_open(port: u16) -> bool {
-    use tokio::net::TcpStream;
-    TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port))
-        .await
-        .is_ok()
+fn is_port_open(port: u16) -> bool {
+    std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port)).is_ok()
 }
 
 fn detect_repo_root(start: Option<std::path::PathBuf>) -> std::path::PathBuf {
