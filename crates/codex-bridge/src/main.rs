@@ -158,13 +158,11 @@ async fn main() -> Result<()> {
     tokio::spawn(enqueue_historical_on_start(state.clone()));
 
     // HTTP submit endpoint for app → bridge turn submission
+    let app = Router::new().route("/ws", get(ws_handler)).with_state(state);
 
-    let app = Router::new()
-        .route("/ws", get(ws_handler))
-        .with_state(state);
-
-    info!("binding" = %opts.bind, "msg" = "codex-bridge listening (route: /ws)");
-    let listener = tokio::net::TcpListener::bind(&opts.bind).await?;
+    let bind_addr = opts.bind.clone();
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    info!("binding" = %bind_addr, "msg" = "codex-bridge listening (route: /ws)");
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -205,6 +203,7 @@ async fn convex_health(url: &str) -> Result<bool> {
 }
 
 async fn ensure_convex_running(opts: &Opts) -> Result<()> {
+    info!(port = opts.convex_port, interface = %opts.convex_interface, "convex.ensure: begin");
     let bin = opts.convex_bin.clone().unwrap_or_else(default_convex_bin);
     if !bin.exists() {
         // Try to fetch/install the local backend binary via Convex CLI (bunx convex dev).
@@ -216,7 +215,8 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     let port = opts.convex_port;
     let interface = opts.convex_interface.clone();
     let base = format!("http://127.0.0.1:{}", port);
-    if convex_health(&base).await.unwrap_or(false) {
+    let pre_healthy = convex_health(&base).await.unwrap_or(false);
+    if pre_healthy {
         // If a previous instance is already running but the desired interface is not loopback,
         // attempt a best-effort restart so mobile devices can reach it.
         if opts.convex_interface.trim() != "127.0.0.1" {
@@ -227,7 +227,7 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
             // Small delay to allow the port to free up
             tokio::time::sleep(Duration::from_millis(300)).await;
         } else {
-            info!(url=%base, "convex healthy (already running)");
+            info!(url=%base, "convex.ensure: already healthy");
             return Ok(());
         }
     }
@@ -246,22 +246,23 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    info!(bin=%bin.display(), db=%db.display(), port, interface=%interface, "starting local Convex backend");
+    info!(bin=%bin.display(), db=%db.display(), port, interface=%interface, "convex.ensure: starting local backend");
     let mut child = cmd.spawn().context("spawn convex local_backend")?;
     // Wait up to ~10s for health
     let mut ok = false;
-    for _ in 0..20 {
+    for i in 0..20 {
         if convex_health(&base).await.unwrap_or(false) { ok = true; break; }
+        if i % 2 == 0 { info!(attempt=i+1, url=%base, "convex.ensure: waiting for health"); }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     if ok {
-        info!(url=%base, pid=?child.id(), "convex healthy after start");
+        info!(url=%base, pid=?child.id(), "convex.ensure: healthy after start");
         // Detach, let OS clean up on exit; user can stop process manually if needed
         Ok(())
     } else {
         // If failed to become healthy, try to kill child and report
         let _ = child.kill().await;
-        error!(url=%base, "convex failed to report healthy in time");
+        error!(url=%base, "convex.ensure: failed to report healthy in time");
         anyhow::bail!("convex health probe failed")
     }
 }

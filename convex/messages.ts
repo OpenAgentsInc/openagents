@@ -1,11 +1,21 @@
 import { queryGeneric, mutationGeneric } from "convex/server";
 
-type ForThreadArgs = { threadId: string; limit?: number; since?: number };
+type ForThreadArgs = { threadId: string; limit?: number | bigint | string; since?: number | bigint | string };
 type CreateArgs = { threadId: string; role?: string; kind?: string; text?: string; data?: any; ts?: number };
+
+function toNum(v: unknown, fallback: number): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'bigint') return Number(v);
+  if (typeof v === 'string') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
 
 export const forThread = queryGeneric(async ({ db }, args: ForThreadArgs) => {
   const { threadId } = args;
-  const limit = Math.max(1, Math.min(args.limit ?? 400, 800));
+  const limit = Math.max(1, Math.min(toNum(args.limit, 400), 800));
   // Use index + descending + take for newest N
   try {
     // @ts-ignore withIndex/order/take exist on Convex query builders

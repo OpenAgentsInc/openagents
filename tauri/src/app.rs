@@ -54,86 +54,30 @@ pub fn App() -> impl IntoView {
     let (convex_status, set_convex_status) = signal::<Option<ConvexStatus>>(None);
     let (bridge_status, set_bridge_status) = signal::<Option<BridgeStatus>>(None);
 
-    // Connect to the local bridge websocket with retry/backoff
+    // Connect to the local bridge websocket only after backend signals readiness (reduces failed attempts)
     {
         let set_ws_connected = set_ws_connected.clone();
         let set_convex_status = set_convex_status.clone();
         let set_bridge_status = set_bridge_status.clone();
-        fn schedule<F: 'static + FnOnce()>(delay_ms: i32, f: F) {
-            if let Some(win) = web_sys::window() {
-                let cb = Closure::once_into_js(Box::new(f) as Box<dyn FnOnce()>);
-                let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(cb.as_ref().unchecked_ref(), delay_ms);
-                // cb drops after timeout fires
-            }
-        }
+        fn schedule<F: 'static + FnOnce()>(delay_ms: i32, f: F) { if let Some(win) = web_sys::window() { let cb = Closure::once_into_js(Box::new(f) as Box<dyn FnOnce()>); let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(cb.as_ref().unchecked_ref(), delay_ms); } }
         fn connect(set_ws_connected: WriteSignal<bool>, set_convex_status: WriteSignal<Option<ConvexStatus>>, set_bridge_status: WriteSignal<Option<BridgeStatus>>, attempt: u32) {
-            let ws = match WebSocket::new("ws://127.0.0.1:8787/ws") { Ok(ws) => ws, Err(_) => {
-                // retry later
-                schedule((1000 * attempt.min(10)) as i32, move || connect(set_ws_connected, set_convex_status, set_bridge_status, attempt.saturating_add(1)));
-                return;
-            }};
+            let ws = match WebSocket::new("ws://127.0.0.1:8787/ws") { Ok(ws) => ws, Err(_) => { let delay = (250 * (attempt as i32)).min(1500); schedule(delay, move || connect(set_ws_connected, set_convex_status, set_bridge_status, attempt.saturating_add(1))); return; }};
+            use std::rc::Rc; use std::cell::Cell; let scheduled = Rc::new(Cell::new(false));
             // onopen
-            {
-                let set_ws_connected = set_ws_connected.clone();
-                let ws_clone = ws.clone();
-                let onopen = Closure::wrap(Box::new(move || {
-                    set_ws_connected.set(true);
-                    let _ = ws_clone.send_with_str("{\"control\":\"convex.status\"}");
-                    let _ = ws_clone.send_with_str("{\"control\":\"bridge.status\"}");
-                }) as Box<dyn Fn()>);
-                ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-                onopen.forget();
-            }
+            { let set_ws_connected = set_ws_connected.clone(); let ws_clone = ws.clone(); let onopen = Closure::wrap(Box::new(move || { set_ws_connected.set(true); let _ = ws_clone.send_with_str("{\"control\":\"convex.status\"}"); let _ = ws_clone.send_with_str("{\"control\":\"bridge.status\"}"); }) as Box<dyn Fn()>); ws.set_onopen(Some(onopen.as_ref().unchecked_ref())); onopen.forget(); }
             // onmessage
-            {
-                let set_convex_status = set_convex_status.clone();
-                let set_bridge_status = set_bridge_status.clone();
-                let onmessage = Closure::wrap(Box::new(move |e: MessageEvent| {
-                    if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
-                        let s: String = txt.into();
-                        if let Ok(v) = serde_json::from_str::<JsonValue>(&s) {
-                            if let Some(t) = v.get("type").and_then(|x| x.as_str()) {
-                                match t {
-                                    "bridge.convex_status" => {
-                                        let healthy = v.get("healthy").and_then(|x| x.as_bool()).unwrap_or(false);
-                                        let url = v.get("url").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                                        set_convex_status.set(Some(ConvexStatus { healthy, url }));
-                                    }
-                                    "bridge.status" => {
-                                        let bs: BridgeStatus = serde_json::from_value(v).unwrap_or_default();
-                                        set_bridge_status.set(Some(bs));
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                }) as Box<dyn FnMut(MessageEvent)>);
-                ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-                onmessage.forget();
-            }
-            // onclose/onerror → retry
-            {
-                let set_ws_connected_c = set_ws_connected.clone();
-                let retry = move || {
-                    set_ws_connected_c.set(false);
-                    schedule(1000, move || connect(set_ws_connected_c, set_convex_status, set_bridge_status, 1));
-                };
-                let onclose = Closure::wrap(Box::new(retry) as Box<dyn Fn()>);
-                ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
-                onclose.forget();
-                let set_ws_connected_e = set_ws_connected.clone();
-                let set_convex_status_e = set_convex_status.clone();
-                let set_bridge_status_e = set_bridge_status.clone();
-                let onerror = Closure::wrap(Box::new(move || {
-                    set_ws_connected_e.set(false);
-                    schedule(1000, move || connect(set_ws_connected_e, set_convex_status_e, set_bridge_status_e, 1));
-                }) as Box<dyn Fn()>);
-                ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-                onerror.forget();
-            }
+            { let set_convex_status = set_convex_status.clone(); let set_bridge_status = set_bridge_status.clone(); let onmessage = Closure::wrap(Box::new(move |e: MessageEvent| { if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() { let s: String = txt.into(); if let Ok(v) = serde_json::from_str::<JsonValue>(&s) { if let Some(t) = v.get("type").and_then(|x| x.as_str()) { match t { "bridge.convex_status" => { let healthy = v.get("healthy").and_then(|x| x.as_bool()).unwrap_or(false); let url = v.get("url").and_then(|x| x.as_str()).unwrap_or("").to_string(); set_convex_status.set(Some(ConvexStatus { healthy, url })); } "bridge.status" => { let bs: BridgeStatus = serde_json::from_value(v).unwrap_or_default(); set_bridge_status.set(Some(bs)); } _ => {} } } } } }) as Box<dyn FnMut(MessageEvent)>); ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref())); onmessage.forget(); }
+            // onclose/onerror → single retry
+            { let set_ws_connected_c = set_ws_connected.clone(); let scheduled_flag = scheduled.clone(); let onclose = Closure::wrap(Box::new(move || { if scheduled_flag.replace(true) { return; } set_ws_connected_c.set(false); schedule(500, move || connect(set_ws_connected_c, set_convex_status, set_bridge_status, 2)); }) as Box<dyn Fn()>); ws.set_onclose(Some(onclose.as_ref().unchecked_ref())); onclose.forget(); let set_ws_connected_e = set_ws_connected.clone(); let set_convex_status_e = set_convex_status.clone(); let set_bridge_status_e = set_bridge_status.clone(); let scheduled_flag_err = scheduled.clone(); let onerror = Closure::wrap(Box::new(move || { if scheduled_flag_err.replace(true) { return; } set_ws_connected_e.set(false); schedule(500, move || connect(set_ws_connected_e, set_convex_status_e, set_bridge_status_e, 2)); }) as Box<dyn Fn()>); ws.set_onerror(Some(onerror.as_ref().unchecked_ref())); onerror.forget(); }
         }
-        connect(set_ws_connected, set_convex_status, set_bridge_status, 1);
+        // Listen for backend readiness
+        let handler = Closure::wrap(Box::new({ let set_ws_connected = set_ws_connected.clone(); let set_convex_status = set_convex_status.clone(); let set_bridge_status = set_bridge_status.clone(); move |_e: JsValue| { connect(set_ws_connected, set_convex_status, set_bridge_status, 1); } }) as Box<dyn FnMut(JsValue)>);
+        let _ = tauri_listen("bridge.ready", handler.as_ref().unchecked_ref());
+        handler.forget();
+        // Safety fallback: if no event in 1s, attempt once (no reactive read to avoid warnings)
+        use std::rc::Rc; use std::cell::Cell; let attempted = Rc::new(Cell::new(false));
+        let attempted_clone = attempted.clone();
+        schedule(1000, { let set_ws_connected = set_ws_connected.clone(); let set_convex_status = set_convex_status.clone(); let set_bridge_status = set_bridge_status.clone(); move || { if !attempted_clone.replace(true) { connect(set_ws_connected, set_convex_status, set_bridge_status, 1); } } });
     }
 
     // Fetch recent threads on mount
@@ -183,7 +127,7 @@ pub fn App() -> impl IntoView {
             set_messages.set(vec![]);
             let tid_fetch = tid.clone();
             spawn_local(async move {
-                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "thread_id": tid_fetch, "limit": 400 })).unwrap();
+                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "threadId": tid_fetch, "limit": 400 })).unwrap();
                 let res = invoke("list_messages_for_thread", args).await;
                 if let Ok(v) = serde_wasm_bindgen::from_value::<Vec<MessageRow>>(res) {
                     set_messages.set(v);
@@ -192,7 +136,7 @@ pub fn App() -> impl IntoView {
             // Start live subscription; updates are delivered via 'convex:messages' events
             let tid_sub = tid.clone();
             spawn_local(async move {
-                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "thread_id": tid_sub, "limit": 400 })).unwrap();
+                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "threadId": tid_sub, "limit": 400 })).unwrap();
                 let _ = invoke("subscribe_thread_messages", args).await;
             });
         }

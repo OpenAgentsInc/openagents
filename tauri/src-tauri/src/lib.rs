@@ -93,7 +93,8 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
 }
 
 #[tauri::command]
-async fn list_messages_for_thread(thread_id: String, limit: Option<u32>, convex_url: Option<String>) -> Result<Vec<MessageRow>, String> {
+#[allow(non_snake_case)]
+async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_url: Option<String>) -> Result<Vec<MessageRow>, String> {
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
 
@@ -106,7 +107,7 @@ async fn list_messages_for_thread(thread_id: String, limit: Option<u32>, convex_
         .map_err(|e| format!("convex connect error: {e}"))?;
 
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
-    args.insert("threadId".into(), Value::from(thread_id));
+    args.insert("threadId".into(), Value::from(threadId));
     if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
 
     let res = client
@@ -137,7 +138,8 @@ async fn list_messages_for_thread(thread_id: String, limit: Option<u32>, convex_
 }
 
 #[tauri::command]
-async fn subscribe_thread_messages(window: tauri::WebviewWindow, thread_id: String, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
+#[allow(non_snake_case)]
+async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: String, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
     use convex::{FunctionResult, Value};
     use futures::StreamExt;
     use std::collections::BTreeMap;
@@ -151,7 +153,7 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, thread_id: Stri
         .map_err(|e| format!("convex connect error: {e}"))?;
 
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
-    args.insert("threadId".into(), Value::from(thread_id.clone()));
+    args.insert("threadId".into(), Value::from(threadId.clone()));
     if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
 
     let mut sub = client
@@ -192,6 +194,21 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 ensure_bridge_running().await;
             });
+            // Emit a bridge.ready event as soon as the WS port is open so the UI connects once.
+            {
+                use tauri::Manager;
+                let handle = app.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    for _ in 0..50u32 { // ~5s probe window
+                        if is_port_open(8787) {
+                            let _ = handle.emit("bridge.ready", ());
+                            println!("[tauri/bootstrap] bridge.ready emitted");
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                });
+            }
             // Maximize the main window on startup for an almost-fullscreen layout.
             #[allow(unused_must_use)]
             {
@@ -212,7 +229,11 @@ async fn ensure_bridge_running() {
     // If the bridge port is open we assume it's already running
     if is_port_open(8787) { return; }
     let repo = detect_repo_root(None);
+    println!("[tauri/bootstrap] repo root: {}", repo.display());
     let bin = repo.join("target").join("debug").join(if cfg!(windows) { "codex-bridge.exe" } else { "codex-bridge" });
+    println!("[tauri/bootstrap] bridge bin exists? {} — {}", bin.exists(), bin.display());
+
+    // Prefer direct binary if present, otherwise cargo run
     let mut cmd = if bin.exists() {
         let mut c = std::process::Command::new(bin);
         c.arg("--bind").arg("0.0.0.0:8787");
@@ -223,12 +244,20 @@ async fn ensure_bridge_running() {
         c
     };
     cmd.current_dir(&repo)
+        .env("RUST_LOG", "info")
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    let _ = cmd.spawn();
-    // Give it a moment then return
-    std::thread::sleep(std::time::Duration::from_millis(300));
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit());
+    match cmd.spawn() {
+        Ok(child) => {
+            println!("[tauri/bootstrap] spawned codex-bridge pid={} (stdout/stderr inherited)", child.id());
+        }
+        Err(e) => {
+            println!("[tauri/bootstrap] failed to spawn bridge: {e}");
+        }
+    }
+    // Probe port quickly (<= 2s) so UI can flip fast if ready
+    for _ in 0..10 { if is_port_open(8787) { break; } std::thread::sleep(std::time::Duration::from_millis(200)); }
 }
 
 fn is_port_open(port: u16) -> bool {
