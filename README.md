@@ -23,6 +23,7 @@ A good agent frees you from your computer, doesn't tie you to it.
 - React Native Expo
 - TypeScript
 - Rust
+- Convex (self‑hosted local backend; auto‑bootstrapped)
 - OpenAI Codex CLI
 - Tailscale
 
@@ -58,6 +59,30 @@ IP tips: Tailscale VPN works well to put devices on the same private network. It
 Any setup issues, DM us or open an issue.
 
 Requirements: Rust toolchain, `bash` + `curl` (for Bun install) and a working Node/npm. If Bun is already installed, we’ll use it.
+
+Notes:
+- You also need the Codex CLI installed and on your `PATH` (`codex --version`).
+- No manual `.env.local` setup is needed — the bridge writes it on first run.
+
+## Troubleshooting
+
+- Bun not found / install fails
+  - Ensure `curl` is available and network allows `https://bun.sh`.
+  - You can preinstall Bun: `curl -fsSL https://bun.sh/install | bash`.
+- Convex backend binary missing
+  - The bridge will fetch it via the Convex CLI. If blocked, run: `bunx convex dev --once --skip-push --local-force-upgrade` once from the repo root, then rerun `cargo bridge`.
+- Codex CLI not found
+  - Install the Codex CLI and ensure `codex` is on your `PATH`.
+
+## Stop / Restart
+
+- Stop the bridge: `Ctrl+C` in the terminal running `cargo bridge`.
+- Restart: run `cargo bridge` again (idempotent — bootstrap only happens when needed).
+
+## Advanced
+
+- Bind interface for Convex: set `OPENAGENTS_CONVEX_INTERFACE=127.0.0.1` to restrict to loopback (default is `0.0.0.0`).
+- Skip bootstrap (if you manage Bun/Convex manually): set `OPENAGENTS_BOOTSTRAP=0`.
 
 ## Local Convex Persistence (Required)
 
