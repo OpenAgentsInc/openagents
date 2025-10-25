@@ -136,6 +136,52 @@ async fn list_messages_for_thread(thread_id: String, limit: Option<u32>, convex_
     }
 }
 
+#[tauri::command]
+async fn subscribe_thread_messages(window: tauri::WebviewWindow, thread_id: String, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
+    use convex::{FunctionResult, Value};
+    use futures::StreamExt;
+    use std::collections::BTreeMap;
+
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| "http://127.0.0.1:7788".to_string());
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+    args.insert("threadId".into(), Value::from(thread_id.clone()));
+    if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
+
+    let mut sub = client
+        .subscribe("messages:forThread", args)
+        .await
+        .map_err(|e| format!("convex subscribe error: {e}"))?;
+
+    tauri::async_runtime::spawn(async move {
+        while let Some(result) = sub.next().await {
+            if let FunctionResult::Value(Value::Array(items)) = result {
+                let mut rows: Vec<MessageRow> = Vec::with_capacity(items.len());
+                for item in items {
+                    let json: serde_json::Value = item.into();
+                    let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let kind = json.get("kind").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let text = json.get("text").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let data = json.get("data").cloned();
+                    let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                    rows.push(MessageRow { id, thread_id, role, kind, text, data, ts });
+                }
+                let _ = window.emit("convex:messages", rows);
+            }
+        }
+    });
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -155,7 +201,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread])
+        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

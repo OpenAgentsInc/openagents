@@ -1,4 +1,5 @@
 mod app;
+#[cfg(feature = "jsonl_components")] mod jsonl;
 
 use app::*;
 use leptos::prelude::*;
