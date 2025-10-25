@@ -23,8 +23,11 @@ export function AppHeader() {
   const pathname = usePathname()
   const showBack = React.useMemo(() => {
     const p = String(pathname || '')
-    // Only show back arrow on single message detail views; thread lists keep the nav menu
-    return p.startsWith('/message/') || p.startsWith('/convex/message/')
+    // Show back arrow on deep detail screens (message detail, library subpages)
+    if (p.startsWith('/message/') || p.startsWith('/convex/message/')) return true
+    // Library detail pages live under /library/* (but not /library itself)
+    if (p.startsWith('/library/')) return true
+    return false
   }, [pathname])
 
   const onLayout = React.useCallback((e: any) => {
