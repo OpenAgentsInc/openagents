@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { useBridge } from '@/providers/ws'
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { useQuery } from 'convex/react'
 import { hydrateSkills, listSkills, setAllSkills, type Skill } from '@/lib/skills-store'
 
 type SkillsCtx = { skills: Skill[] }
@@ -8,51 +8,24 @@ const Ctx = createContext<SkillsCtx | undefined>(undefined)
 
 export function SkillsProvider({ children }: { children: React.ReactNode }) {
   const [skills, setSkills] = useState<Skill[]>([])
-  const ws = useBridge()
-
+  // Rehydrate from AsyncStorage immediately for instant UI
   useEffect(() => { (async () => { await hydrateSkills(); setSkills(listSkills()) })() }, [])
-
-  // Seed from bridge; also listen for push updates
+  // Live list from Convex; undefined while connecting, null if function/schema missing
+  const convexSkills = (useQuery as any)('skills:listAll', {}) as any[] | undefined | null
   useEffect(() => {
-    let unsub: (() => void) | null = null
-    ;(async () => {
-      try {
-        const items = await ws.requestSkills()
-        if (Array.isArray(items)) {
-          const arr: Skill[] = items.map((x: any) => ({
-            id: String(x.id || x.name || ''),
-            name: String(x.name || x.id || ''),
-            description: String(x.description || ''),
-            license: x.license ?? null,
-            allowed_tools: Array.isArray(x.allowed_tools) ? x.allowed_tools : Array.isArray(x['allowed-tools']) ? x['allowed-tools'] : null,
-            metadata: x.metadata ?? null,
-          }))
-          setAllSkills(arr)
-          setSkills(listSkills())
-        }
-      } catch {}
-      // Subscribe for live updates
-      unsub = ws.addSubscriber((line) => {
-        try {
-          const s = String(line || '').trim(); if (!s.startsWith('{')) return
-          const obj = JSON.parse(s)
-          if (obj?.type === 'bridge.skills' && Array.isArray(obj.items)) {
-            const arr: Skill[] = obj.items.map((x: any) => ({
-              id: String(x.id || x.name || ''),
-              name: String(x.name || x.id || ''),
-              description: String(x.description || ''),
-              license: x.license ?? null,
-              allowed_tools: Array.isArray(x.allowed_tools) ? x.allowed_tools : Array.isArray(x['allowed-tools']) ? x['allowed-tools'] : null,
-              metadata: x.metadata ?? null,
-            }))
-            setAllSkills(arr)
-            setSkills(listSkills())
-          }
-        } catch {}
-      })
-    })()
-    return () => { try { unsub?.() } catch {} }
-  }, [ws])
+    if (Array.isArray(convexSkills)) {
+      const arr: Skill[] = convexSkills.map((x: any) => ({
+        id: String(x.skillId || x.id || x.name || ''),
+        name: String(x.name || x.skillId || x.id || ''),
+        description: String(x.description || ''),
+        license: x.license ?? null,
+        allowed_tools: Array.isArray(x.allowed_tools) ? x.allowed_tools : Array.isArray(x['allowed-tools']) ? x['allowed-tools'] : null,
+        metadata: x.metadata ?? null,
+      }))
+      setAllSkills(arr)
+      setSkills(listSkills())
+    }
+  }, [convexSkills])
 
   const value = useMemo<SkillsCtx>(() => ({ skills }), [skills])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
@@ -63,4 +36,3 @@ export function useSkills() {
   if (!ctx) throw new Error('useSkills must be used within SkillsProvider')
   return ctx
 }
-

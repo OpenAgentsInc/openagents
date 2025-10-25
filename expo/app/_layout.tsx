@@ -31,6 +31,7 @@ function DrawerContent() {
   const router = useRouter();
   const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
+  const createThread = (require('convex/react') as any).useMutation('threads:create') as (args?: { title?: string; projectId?: string }) => Promise<string>;
   // Convex-only history
   const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
   const topThreads = React.useMemo(() => {
@@ -53,7 +54,6 @@ function DrawerContent() {
           </View>
           <View style={{ paddingHorizontal: 16, gap: 4 }}>
             <View style={{ height: 8 }} />
-            {/** Projects links temporarily disabled in drawer
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="folder-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
@@ -62,11 +62,19 @@ function DrawerContent() {
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>See projects…</Text>
             </Pressable>
             {projects.slice(0, 5).map((p) => (
-              <Pressable key={p.id} onPress={closeAnd(() => { setActive(p.id); router.push('/thread?focus=1&new=1'); })} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Pressable
+                key={p.id}
+                onPress={closeAnd(async () => {
+                  try { await setActive(p.id); } catch {}
+                  try { const id = await createThread({ title: p.name || 'New Thread', projectId: p.id }); router.push(`/convex/thread/${encodeURIComponent(String(id))}`); }
+                  catch {}
+                })}
+                accessibilityRole="button"
+                style={{ paddingVertical: 8 }}
+              >
                 <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
             ))}
-            */}
             <View style={{ height: 8 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="time-outline" size={14} color={Colors.secondary} />

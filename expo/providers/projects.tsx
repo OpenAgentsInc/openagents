@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useBridge } from '@/providers/ws';
+import { useQuery } from 'convex/react'
 import { listSkills, type Skill } from '@/lib/skills-store'
 import {
   hydrateProjects,
@@ -42,38 +43,34 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Seed from bridge (WS) on mount; keep persisted store for instant rehydrate
+  // Live list from Convex; replace store contents when available
+  const convexProjects = (useQuery as any)('projects:list', {}) as any[] | undefined | null
   useEffect(() => {
     (async () => {
-      try {
-        const items = await ws.requestProjects();
-        if (Array.isArray(items) && items.length > 0) {
-          // Map wire fields (camelCase) directly to Project shape
-          const arr = items.map((x: any) => ({
-            id: String(x.id || x.name || ''),
-            name: String(x.name || x.id || ''),
-            workingDir: String(x.working_dir || x.workingDir || ''),
-            repo: x.repo,
-            agentFile: x.agent_file || x.agentFile,
-            instructions: x.instructions || x.description,
-            runningAgents: 0,
-            attentionCount: 0,
-            todos: Array.isArray(x.todos) ? x.todos : [],
-            lastActivity: undefined,
-            createdAt: x.created_at || x.createdAt || Date.now(),
-            updatedAt: x.updated_at || x.updatedAt || Date.now(),
-            approvals: x.approvals,
-            model: x.model,
-            sandbox: x.sandbox,
-          })) as Project[];
-          // Replace store contents with WS snapshot
-          try { const mod = await import('@/lib/projects-store'); mod.useProjectsStore.getState().setAll(arr) } catch {}
-          setProjects(listProjects());
-          setActiveState(getActiveProject());
-        }
-      } catch {}
-    })();
-  }, [ws]);
+      if (Array.isArray(convexProjects)) {
+        const arr = convexProjects.map((x: any) => ({
+          id: String(x.id || x.name || ''),
+          name: String(x.name || x.id || ''),
+          workingDir: String(x.workingDir || x.working_dir || ''),
+          repo: x.repo,
+          agentFile: x.agentFile || x.agent_file,
+          instructions: x.instructions || x.description,
+          runningAgents: 0,
+          attentionCount: 0,
+          todos: Array.isArray(x.todos) ? x.todos : [],
+          lastActivity: undefined,
+          createdAt: x.createdAt || Date.now(),
+          updatedAt: x.updatedAt || Date.now(),
+          approvals: x.approvals,
+          model: x.model,
+          sandbox: x.sandbox,
+        })) as Project[]
+        try { const mod = await import('@/lib/projects-store'); (mod as any).useProjectsStore.getState().setAll(arr) } catch {}
+        setProjects(listProjects())
+        setActiveState(getActiveProject())
+      }
+    })()
+  }, [convexProjects])
 
   const refresh = useCallback(() => {
     setProjects(listProjects());
