@@ -1328,12 +1328,7 @@ async fn run_convex_clear_all(port: u16) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn state_broadcast_send(line: String) -> Result<(), ()> {
-    // Access to a global is not available; we can't reach AppState here without refactoring.
-    // For now, print the JSON for consumers reading stdout; UI already ignores non-JSON lines.
-    println!("{}", line);
-    Ok(())
-}
+// removed unused state_broadcast_send helper
 
 fn sessions_base_dir() -> String {
     std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
