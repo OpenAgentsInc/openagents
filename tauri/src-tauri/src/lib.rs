@@ -132,11 +132,19 @@ async fn list_messages_for_thread(thread_id: String, limit: Option<u32>, convex_
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .setup(|_app| {
+        .setup(|app| {
             // Start codex-bridge automatically in the background on app launch.
             tauri::async_runtime::spawn(async move {
                 ensure_bridge_running().await;
             });
+            // Maximize the main window on startup for an almost-fullscreen layout.
+            #[allow(unused_must_use)]
+            {
+                use tauri::Manager as _;
+                if let Some(win) = app.get_webview_window("main") {
+                    win.maximize();
+                }
+            }
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
