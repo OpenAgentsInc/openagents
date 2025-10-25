@@ -25,7 +25,7 @@ use std::time::Duration;
 mod history;
 mod projects;
 mod skills;
-mod mirror;
+// spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -83,7 +83,6 @@ struct AppState {
     // Replay buffer for new websocket clients
     history: Mutex<Vec<String>>,
     history_cache: Mutex<crate::history::HistoryCache>,
-    mirror: mirror::ConvexMirror,
     // Current Convex thread doc id being processed (for mapping thread.started -> Convex threadId)
     current_convex_thread: Mutex<Option<String>>,
 }
@@ -115,15 +114,8 @@ async fn main() -> Result<()> {
         last_thread_id: Mutex::new(None),
         history: Mutex::new(Vec::new()),
         history_cache: Mutex::new(crate::history::HistoryCache::new(400, std::time::Duration::from_secs(6))),
-        mirror: mirror::ConvexMirror::new(mirror::default_mirror_dir()),
         current_convex_thread: Mutex::new(None),
     });
-
-    // Start background ingester loop to drain mirror spool into Convex
-    if opts.with_convex {
-        let s = state.clone();
-        tokio::spawn(run_convex_ingester(s, opts.convex_port));
-    }
 
     // Start readers for stdout/stderr → broadcast + console
     start_stream_forwarders(child, state.clone()).await?;
@@ -412,6 +404,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let limit = 400usize;
                                 match stdin_state.history_cache.lock().await.get(std::path::Path::new(&base), limit, None) {
                                     Ok(items) => {
+                                        use convex::{ConvexClient, Value};
+                                        use std::collections::BTreeMap;
+                                        let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                        let mut client = match ConvexClient::new(&url).await { Ok(c)=>c, Err(e)=>{ error!(?e, "convex client init failed for backfill");
+                                            let line = serde_json::json!({"type":"bridge.convex_backfill","status":"error","error":"convex init failed"}).to_string(); let _ = stdin_state.tx.send(line); continue; } };
                                         for h in items.clone() {
                                             if let Some(path) = crate::history::resolve_session_path(std::path::Path::new(&base), Some(&h.id), Some(&h.path)) {
                                                 if let Ok(th) = crate::history::parse_thread(std::path::Path::new(&path)) {
@@ -425,12 +422,25 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                             let ndt = chrono::NaiveDateTime::new(today, chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap());
                                                             if let Some(dt) = chrono::Local.from_local_datetime(&ndt).single() { (dt.timestamp() as u64) * 1000 } else { 0 }
                                                         });
-                                let _ = stdin_state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert { thread_id: &resume_id, title: Some(&title), project_id: None, created_at: Some(started_ms), updated_at: Some(started_ms), source_path: Some(&path), resume_id: Some(&resume_id), convex_thread_id: None }).await;
+                                                    // Upsert thread into Convex using resume_id as threadId for historical rows
+                                                    let mut targs: BTreeMap<String, Value> = BTreeMap::new();
+                                                    targs.insert("threadId".into(), Value::from(resume_id.clone()));
+                                                    targs.insert("resumeId".into(), Value::from(resume_id.clone()));
+                                                    targs.insert("title".into(), Value::from(title.clone()));
+                                                    targs.insert("createdAt".into(), Value::from(started_ms as f64));
+                                                    targs.insert("updatedAt".into(), Value::from(started_ms as f64));
+                                                    let _ = client.mutation("threads:upsertFromStream", targs).await;
                                                     for it in th.items {
                                                         if it.kind == "message" {
                                                             let role = it.role.as_deref().unwrap_or("assistant");
                                                             let text = it.text;
-                                                            let _ = stdin_state.mirror.append(&crate::mirror::MirrorEvent::MessageCreate { thread_id: &resume_id, role, text: &text, ts: it.ts * 1000 }).await;
+                                                            let mut margs: BTreeMap<String, Value> = BTreeMap::new();
+                                                            margs.insert("threadId".into(), Value::from(resume_id.clone()));
+                                                            margs.insert("role".into(), Value::from(role));
+                                                            margs.insert("kind".into(), Value::from("message"));
+                                                            margs.insert("text".into(), Value::from(text));
+                                                            margs.insert("ts".into(), Value::from((it.ts as u64 * 1000) as f64));
+                                                            let _ = client.mutation("messages:create", margs).await;
                                                         }
                                                     }
                                                 }
@@ -908,18 +918,22 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                             .await
                             .insert(val.to_string());
                         info!(thread_id=%val, msg="captured thread id for resume");
-                        // Mirror: enqueue thread upsert, mapped to current Convex thread if known
+                        // Direct: upsert thread in Convex (map Codex CLI id -> Convex thread doc id when known)
                         let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
-                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert {
-                            thread_id: convex_tid_opt.as_deref().unwrap_or(val),
-                            title: Some("Thread"),
-                            project_id: None,
-                            created_at: Some(now_ms()),
-                            updated_at: Some(now_ms()),
-                            source_path: None,
-                            resume_id: Some(val),
-                            convex_thread_id: convex_tid_opt.as_deref(),
-                        }).await;
+                        {
+                            use convex::{ConvexClient, Value};
+                            use std::collections::BTreeMap;
+                            let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                            if let Ok(mut client) = ConvexClient::new(&url).await {
+                                let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                if let Some(ctid) = convex_tid_opt.as_deref() { args.insert("threadId".into(), Value::from(ctid)); }
+                                args.insert("resumeId".into(), Value::from(val));
+                                args.insert("title".into(), Value::from("Thread"));
+                                args.insert("createdAt".into(), Value::from(now_ms() as f64));
+                                args.insert("updatedAt".into(), Value::from(now_ms() as f64));
+                                let _ = client.mutation("threads:upsertFromStream", args).await;
+                            }
+                        }
                     }
                 }
                 // Mirror agent/user messages when present in newer shapes
@@ -937,7 +951,18 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                 if !target_tid.is_empty() {
                                     let role_s = if role == "assistant" { "assistant" } else if role == "user" { "user" } else { "" };
                                     if !role_s.is_empty() {
-                                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::MessageCreate { thread_id: &target_tid, role: role_s, text: &txt, ts: now_ms() }).await;
+                                        use convex::{ConvexClient, Value};
+                                        use std::collections::BTreeMap;
+                                        let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                        if let Ok(mut client) = ConvexClient::new(&url).await {
+                                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                            args.insert("threadId".into(), Value::from(target_tid));
+                                            args.insert("role".into(), Value::from(role_s));
+                                            args.insert("kind".into(), Value::from("message"));
+                                            args.insert("text".into(), Value::from(txt));
+                                            args.insert("ts".into(), Value::from(now_ms() as f64));
+                                            let _ = client.mutation("messages:create", args).await;
+                                        }
                                     }
                                 }
                             }
@@ -951,7 +976,17 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                 let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                                 let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                                 if !target_tid.is_empty() {
-                                    let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::JsonlItem { thread_id: &target_tid, kind: "reason", ts: now_ms(), text: Some(&txt), data: None }).await;
+                                    use convex::{ConvexClient, Value};
+                                    use std::collections::BTreeMap;
+                                    let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                    if let Ok(mut client) = ConvexClient::new(&url).await {
+                                        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                        args.insert("threadId".into(), Value::from(target_tid));
+                                        args.insert("kind".into(), Value::from("reason"));
+                                        args.insert("text".into(), Value::from(txt));
+                                        args.insert("ts".into(), Value::from(now_ms() as f64));
+                                        let _ = client.mutation("messages:create", args).await;
+                                    }
                                 }
                             }
                         }
@@ -976,7 +1011,17 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                     if !target_tid.is_empty() {
                                         // Store payload as JSON string in text to avoid type issues; UI can parse
                                         let payload_str = payload.to_string();
-                                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::JsonlItem { thread_id: &target_tid, kind: k, ts: now_ms(), text: Some(&payload_str), data: None }).await;
+                                        use convex::{ConvexClient, Value};
+                                        use std::collections::BTreeMap;
+                                        let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                        if let Ok(mut client) = ConvexClient::new(&url).await {
+                                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                            args.insert("threadId".into(), Value::from(target_tid));
+                                            args.insert("kind".into(), Value::from(k));
+                                            args.insert("text".into(), Value::from(payload_str));
+                                            args.insert("ts".into(), Value::from(now_ms() as f64));
+                                            let _ = client.mutation("messages:create", args).await;
+                                        }
                                     }
                                 }
                         }
@@ -1127,108 +1172,7 @@ async fn watch_skills_and_broadcast(state: Arc<AppState>) {
     }
 }
 
-async fn run_convex_ingester(state: Arc<AppState>, port: u16) {
-    use convex::{ConvexClient, Value};
-    use std::collections::BTreeMap;
-    use std::io::{Read, Seek, SeekFrom, Write};
-    use std::fs::OpenOptions;
-    let url = format!("http://127.0.0.1:{}", port);
-    // Cursor into the spool file; append-only processing avoids races with new lines
-    let mut cursor: u64 = 0;
-    loop {
-        let spool = crate::mirror::default_mirror_dir().join("spool.jsonl");
-        let size = match std::fs::metadata(&spool) { Ok(m) => m.len(), Err(_) => 0 };
-        if size > cursor {
-            // Read from cursor to end
-            let mut file = match OpenOptions::new().read(true).open(&spool) { Ok(f) => f, Err(_) => { tokio::time::sleep(Duration::from_secs(2)).await; continue } };
-            let _ = file.seek(SeekFrom::Start(cursor));
-            let mut buf = String::new();
-            if file.read_to_string(&mut buf).is_err() { tokio::time::sleep(Duration::from_secs(2)).await; continue }
-            if buf.trim().is_empty() { cursor = size; tokio::time::sleep(Duration::from_secs(2)).await; continue; }
-            let mut client = match ConvexClient::new(&url).await {
-                Ok(c) => c,
-                Err(e) => { warn!(?e, "convex client init failed"); tokio::time::sleep(Duration::from_secs(2)).await; continue; }
-            };
-            let mut failed: Vec<String> = Vec::new();
-            let mut ok_count: usize = 0;
-            for line in buf.split('\n').filter(|l| !l.trim().is_empty()) {
-                let parsed: serde_json::Value = match serde_json::from_str(line) { Ok(v)=>v, Err(_)=> { failed.push(line.to_string()); continue } };
-                let t = parsed.get("type").and_then(|x| x.as_str()).unwrap_or("");
-                if t == "thread_upsert" {
-                    let tid = parsed.get("thread_id").and_then(|x| x.as_str()).unwrap_or("");
-                    if tid.is_empty() { continue }
-                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                    // Prefer explicit convex_thread_id as threadId; else fall back to thread_id
-                    let convex_tid = parsed.get("convex_thread_id").and_then(|x| x.as_str()).unwrap_or("");
-                    if !convex_tid.is_empty() { args.insert("threadId".into(), Value::from(convex_tid)); }
-                    else { args.insert("threadId".into(), Value::from(tid)); }
-                    if let Some(resume) = parsed.get("resume_id").and_then(|x| x.as_str()) { args.insert("resumeId".into(), Value::from(resume)); }
-                    if let Some(title) = parsed.get("title").and_then(|x| x.as_str()) { args.insert("title".into(), Value::from(title)); }
-                    if let Some(pid) = parsed.get("project_id").and_then(|x| x.as_str()) { args.insert("projectId".into(), Value::from(pid)); }
-                    let mut ca = parsed.get("created_at").and_then(|x| x.as_u64());
-                    let mut ua = parsed.get("updated_at").and_then(|x| x.as_u64());
-                    if (ca.is_none() || ca == Some(0)) || (ua.is_none() || ua == Some(0)) {
-                        if let Some(sp) = parsed.get("source_path").and_then(|x| x.as_str()) {
-                            if let Some(derived) = crate::history::derive_started_ts_from_path(std::path::Path::new(sp)) { ca = Some(derived * 1000); ua = ca; }
-                        }
-                        if ca.is_none() || ca == Some(0) { warn!(thread_id=%tid, msg="ingester: created_at missing; deriving fallback"); }
-                    }
-                    if let Some(v) = ca { args.insert("createdAt".into(), Value::from(v as f64)); }
-                    if let Some(v) = ua { args.insert("updatedAt".into(), Value::from(v as f64)); }
-                    if let Err(e) = client.mutation("threads:upsertFromStream", args).await {
-                        warn!(?e, "convex upsert failed"); failed.push(line.to_string());
-                    } else { ok_count += 1; }
-                } else if t == "message_create" {
-                    let tid = parsed.get("thread_id").and_then(|x| x.as_str()).unwrap_or("");
-                    let role = parsed.get("role").and_then(|x| x.as_str()).unwrap_or("");
-                    let text = parsed.get("text").and_then(|x| x.as_str()).unwrap_or("");
-                    let ts = parsed.get("ts").and_then(|x| x.as_u64()).unwrap_or(0);
-                    if tid.is_empty() || role.is_empty() || text.is_empty() { continue }
-                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                    args.insert("threadId".into(), Value::from(tid));
-                    args.insert("role".into(), Value::from(role));
-                    args.insert("kind".into(), Value::from("message"));
-                    args.insert("text".into(), Value::from(text));
-                    args.insert("ts".into(), Value::from(ts as f64));
-                    if let Err(e) = client.mutation("messages:create", args).await {
-                        warn!(?e, "convex message failed"); failed.push(line.to_string());
-                    } else { ok_count += 1; }
-                } else if t == "jsonl_item" {
-                    let tid = parsed.get("thread_id").and_then(|x| x.as_str()).unwrap_or("");
-                    if tid.is_empty() { continue }
-                    let kind = parsed.get("kind").and_then(|x| x.as_str()).unwrap_or("item");
-                    let ts = parsed.get("ts").and_then(|x| x.as_u64()).unwrap_or(0);
-                    let text = parsed.get("text").and_then(|x| x.as_str());
-                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                    args.insert("threadId".into(), Value::from(tid));
-                    args.insert("kind".into(), Value::from(kind));
-                    if let Some(t) = text { args.insert("text".into(), Value::from(t)); }
-                    args.insert("ts".into(), Value::from(ts as f64));
-                    if let Err(e) = client.mutation("messages:create", args).await {
-                        warn!(?e, "convex jsonl item failed"); failed.push(line.to_string());
-                    } else { ok_count += 1; }
-                }
-            }
-            // Re-append failures so they will be retried; advance cursor only past successfully read region
-            if !failed.is_empty() {
-                if let Ok(mut f) = OpenOptions::new().append(true).create(true).open(&spool) {
-                    for l in failed { let _ = writeln!(f, "{}", l); }
-                }
-            }
-            cursor = size;
-            info!(ok = ok_count, failed = 0usize, msg = "convex ingester batch done");
-            // Broadcast progress to UI (optional)
-            let remaining = 0usize;
-            let line = serde_json::json!({
-                "type": "bridge.ingest_progress",
-                "ok_batch": ok_count,
-                "remaining": remaining,
-            }).to_string();
-            let _ = state.tx.send(line);
-        }
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-}
+// Ingest loop removed — we write to Convex directly
 
 async fn run_convex_clear_all(port: u16) -> anyhow::Result<()> {
     use convex::{ConvexClient, Value};
@@ -1315,26 +1259,32 @@ async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::Histor
     if started_ms > now_ms.saturating_sub(2 * 60 * 1000) {
         warn!(id=%resume_id, path=%h.path, title=%title, started_ms, now_ms, msg="suspicious start time close to now; check derive logic");
     }
-    state.mirror.append(&crate::mirror::MirrorEvent::ThreadUpsert {
-        thread_id: &resume_id,
-        title: Some(&title),
-        project_id: None,
-        created_at: Some(started_ms),
-        updated_at: Some(started_ms),
-        source_path: Some(&h.path),
-        resume_id: Some(&resume_id),
-        convex_thread_id: None,
-    }).await?;
-    for it in th.items {
-        if it.kind == "message" {
-            let role = it.role.as_deref().unwrap_or("assistant");
-            let text = it.text;
-            state.mirror.append(&crate::mirror::MirrorEvent::MessageCreate {
-                thread_id: &resume_id,
-                role,
-                text: &text,
-                ts: it.ts * 1000,
-            }).await?;
+    // Write directly to Convex
+    {
+        use convex::{ConvexClient, Value};
+        use std::collections::BTreeMap;
+        let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
+        let mut client = ConvexClient::new(&url).await?;
+        // Upsert thread (use resume_id as threadId for historical docs)
+        let mut targs: BTreeMap<String, Value> = BTreeMap::new();
+        targs.insert("threadId".into(), Value::from(resume_id.clone()));
+        targs.insert("resumeId".into(), Value::from(resume_id.clone()));
+        targs.insert("title".into(), Value::from(title.clone()));
+        targs.insert("createdAt".into(), Value::from(started_ms as f64));
+        targs.insert("updatedAt".into(), Value::from(started_ms as f64));
+        let _ = client.mutation("threads:upsertFromStream", targs).await;
+        for it in th.items {
+            if it.kind == "message" {
+                let role = it.role.as_deref().unwrap_or("assistant");
+                let text = it.text;
+                let mut margs: BTreeMap<String, Value> = BTreeMap::new();
+                margs.insert("threadId".into(), Value::from(resume_id.clone()));
+                margs.insert("role".into(), Value::from(role));
+                margs.insert("kind".into(), Value::from("message"));
+                margs.insert("text".into(), Value::from(text));
+                margs.insert("ts".into(), Value::from((it.ts as u64 * 1000) as f64));
+                let _ = client.mutation("messages:create", margs).await;
+            }
         }
     }
     Ok(())
