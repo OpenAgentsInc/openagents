@@ -2,7 +2,7 @@
 
 A mobile command center for your coding agents.
 
-<img width="600" height="431" alt="tricoder" src="https://github.com/user-attachments/assets/a125680d-0c3e-4703-83ac-510385b43e3e" />
+<img width="1000" height="470" alt="wouldnt" src="https://github.com/user-attachments/assets/0569c202-e7d8-43a7-b6ad-829fe761d31b" />
 
 ## Why
 
