@@ -165,7 +165,7 @@ async fn ensure_bridge_running() {
         .stderr(std::process::Stdio::null());
     let _ = cmd.spawn();
     // Give it a moment then return
-    tauri::async_runtime::sleep(std::time::Duration::from_millis(300)).await;
+    std::thread::sleep(std::time::Duration::from_millis(300));
 }
 
 fn is_port_open(port: u16) -> bool {
