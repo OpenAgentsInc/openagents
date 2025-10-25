@@ -73,6 +73,10 @@ Notes:
   - The bridge will fetch it via the Convex CLI. If blocked, run: `bunx convex dev --once --skip-push --local-force-upgrade` once from the repo root, then rerun `cargo bridge`.
 - Codex CLI not found
   - Install the Codex CLI and ensure `codex` is on your `PATH`.
+ - Install errors on `main`
+   - If you hit errors when running `cargo bridge` on the `main` branch (see issue #1316), try checking out a known‑good commit:
+     - `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`
+   - Context: https://github.com/OpenAgentsInc/openagents/issues/1316
 
 ## Stop / Restart
 
