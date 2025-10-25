@@ -30,7 +30,7 @@ export const byId = queryGeneric(async ({ db }, args: { id: string }) => {
     // @ts-ignore convex query builder supports withIndex
     const rows = await db
       .query("projects")
-      .withIndex('by_id', (q: any) => q.eq('id', args.id))
+      .withIndex('by_project_id', (q: any) => q.eq('id', args.id))
       .collect();
     if (Array.isArray(rows) && rows[0]) return rows[0];
   } catch {}
@@ -54,7 +54,7 @@ export const upsertFromFs = mutationGeneric(async ({ db }, p: ProjectDoc) => {
     // @ts-ignore withIndex available on newer backends
     existing = await db
       .query("projects")
-      .withIndex('by_id', (q: any) => q.eq('id', p.id))
+      .withIndex('by_project_id', (q: any) => q.eq('id', p.id))
       .collect();
   } catch {
     existing = await db
@@ -95,7 +95,7 @@ export const remove = mutationGeneric(async ({ db }, args: { id: string }) => {
     // @ts-ignore
     rows = await db
       .query("projects")
-      .withIndex('by_id', (q: any) => q.eq('id', args.id))
+      .withIndex('by_project_id', (q: any) => q.eq('id', args.id))
       .collect();
   } catch {
     rows = await db
@@ -108,4 +108,3 @@ export const remove = mutationGeneric(async ({ db }, args: { id: string }) => {
   }
   return true;
 });
-

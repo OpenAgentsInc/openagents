@@ -33,7 +33,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     // Optional chaining keeps older Convex versions tolerant if index() is not available at typecheck time
-    .index?.('by_id', ['id'])
+    // Note: avoid reserved names like "by_id" and "by_creation_time"
+    .index?.('by_project_id', ['id'])
     .index?.('by_name', ['name']),
 
   // Skills: merged view of personal (~/.openagents/skills), repo registry (./skills), and project-scoped (<workingDir>/skills)
