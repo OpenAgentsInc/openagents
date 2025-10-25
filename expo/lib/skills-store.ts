@@ -11,6 +11,8 @@ export type Skill = {
   license?: string | null
   allowed_tools?: string[] | null
   metadata?: any
+  source?: 'user' | 'registry' | 'project'
+  projectId?: string | null
 }
 
 type SkillsState = {
@@ -43,4 +45,3 @@ export async function hydrateSkills(): Promise<void> {
 export function listSkills(): Skill[] { return useSkillsStore.getState().list() }
 
 export function setAllSkills(arr: Skill[]): void { useSkillsStore.getState().setAll(arr) }
-

@@ -21,6 +21,8 @@ export function SkillsProvider({ children }: { children: React.ReactNode }) {
         license: x.license ?? null,
         allowed_tools: Array.isArray(x.allowed_tools) ? x.allowed_tools : Array.isArray(x['allowed-tools']) ? x['allowed-tools'] : null,
         metadata: x.metadata ?? null,
+        source: ((): any => { const s = String(x.source || ''); return s === 'project' || s === 'user' || s === 'registry' ? s : undefined })(),
+        projectId: typeof x.projectId === 'string' ? x.projectId : null,
       }))
       setAllSkills(arr)
       setSkills(listSkills())
