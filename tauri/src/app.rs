@@ -1,5 +1,6 @@
-use leptos::task::spawn_local;
+use crate::jsonl::{JsonlMessage, MessageRow};
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use wasm_bindgen::closure::Closure;
@@ -29,7 +30,7 @@ pub fn App() -> impl IntoView {
     let (ws_connected, set_ws_connected) = signal(false);
     let (threads, set_threads) = signal::<Vec<serde_json::Value>>(vec![]);
     let (selected_thread_id, set_selected_thread_id) = signal::<Option<String>>(None);
-    let (messages, set_messages) = signal::<Vec<serde_json::Value>>(vec![]);
+    let (messages, set_messages) = signal::<Vec<MessageRow>>(vec![]);
     let (convex_status, set_convex_status) = signal::<Option<ConvexStatus>>(None);
     let (bridge_status, set_bridge_status) = signal::<Option<BridgeStatus>>(None);
 
@@ -146,7 +147,7 @@ pub fn App() -> impl IntoView {
             spawn_local(async move {
                 let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "thread_id": tid, "limit": 400 })).unwrap();
                 let res = invoke("list_messages_for_thread", args).await;
-                if let Ok(v) = serde_wasm_bindgen::from_value::<Vec<serde_json::Value>>(res) {
+                if let Ok(v) = serde_wasm_bindgen::from_value::<Vec<MessageRow>>(res) {
                     set_messages.set(v);
                 }
             });
@@ -199,14 +200,11 @@ pub fn App() -> impl IntoView {
             </aside>
             <section class="content">
                 <div class="messages">
-                    { move || messages.get().into_iter().map(|m| {
-                        let role = m.get("role").and_then(|x| x.as_str()).unwrap_or("assistant");
-                        let text = m.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                        let cls = if role == "user" { "msg user" } else { "msg assistant" };
-                        view! {
-                            <div class={ cls }><div class="bubble">{ text }</div></div>
-                        }
-                    }).collect::<Vec<_>>() }
+                    <For
+                        each=move || messages.get()
+                        key=|row: &MessageRow| row.stable_key()
+                        view=move |row| view! { <JsonlMessage row=row /> }
+                    />
                 </div>
             </section>
         </main>

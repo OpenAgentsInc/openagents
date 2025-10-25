@@ -57,13 +57,13 @@
 
 .container { margin: 0; padding: 0; min-height: 100vh; display: grid; place-items: center; background: var(--background); color: var(--foreground); }
 
-.app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; width: 100vw; }
-.sidebar { border-right: 1px solid var(--border); padding: 16px; overflow: auto; }
-.content { padding: 16px; overflow: auto; }
+.app { display: grid; grid-template-columns: 380px 1fr; gap: 16px; height: 100vh; width: 100vw; padding: 12px 16px; box-sizing: border-box; }
+.sidebar { border-right: 1px solid var(--border); padding: 12px; overflow: auto; }
+.content { padding: 12px 0; overflow: auto; }
 
 .thread-count { font-size: 64px; line-height: 1; letter-spacing: 0.5px; }
 
-.status-list { display: grid; gap: 12px; min-width: 360px; }
+.status-list { display: grid; gap: 12px; width: 100%; min-width: 0; }
 .status-row { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot-ok { background: #04A545; }
@@ -112,3 +112,4 @@ input, button { display: none; }
 }
 
 /* Always dark theme */
+html, body { margin: 0; padding: 0; height: 100%; background: var(--background); color: var(--foreground); }
