@@ -206,15 +206,15 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={NavigationTheme}>
         <BridgeProvider>
-          <ProjectsProvider>
-            <SkillsProvider>
-              <ConvexProviderLocal>
+          <ConvexProviderLocal>
+            <ProjectsProvider>
+              <SkillsProvider>
                 <DrawerProvider>
                   <DrawerWrapper />
                 </DrawerProvider>
-              </ConvexProviderLocal>
-            </SkillsProvider>
-          </ProjectsProvider>
+              </SkillsProvider>
+            </ProjectsProvider>
+          </ConvexProviderLocal>
         </BridgeProvider>
       </ThemeProvider>
     </SafeAreaProvider>
