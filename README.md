@@ -44,8 +44,9 @@ Basics to connect to your local Codex:
    - `cargo bridge`
    - What this does the first time:
      - Starts a local Convex backend on `0.0.0.0:7788`
-     - Ensures Bun is installed (via bun.sh) and runs `bun install`
-     - Deploys Convex schema/functions (`bun run convex:dev:once`) using a generated `.env.local`
+    - Ensures Bun is installed (via bun.sh) and runs `bun install`
+    - Downloads and installs the Convex local backend binary if missing
+    - Deploys Convex schema/functions (`bun run convex:dev:once`) using a generated `.env.local`
      - Launches the Codex WebSocket bridge
 3) Install the app via TestFlight and connect:
    - Join TestFlight: https://testflight.apple.com/join/dvQdns5B
