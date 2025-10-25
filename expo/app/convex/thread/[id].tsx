@@ -1,5 +1,5 @@
 import React from 'react'
-import { ScrollView, View, Text, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native'
+import { ScrollView, View, Text, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import { useQuery, useMutation } from 'convex/react'
 import { Colors } from '@/constants/theme'
@@ -11,6 +11,7 @@ import { useHeaderStore } from '@/lib/header-store'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 export default function ConvexThreadDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -26,6 +27,13 @@ export default function ConvexThreadDetail() {
   const enqueueRun = (useMutation as any)('runs:enqueue') as (args: { threadDocId: string; text: string; role?: string; projectId?: string }) => Promise<any>
   const headerHeight = useHeaderStore((s) => s.height)
   const ws = useBridge()
+  const insets = useSafeAreaInsets()
+  const [kbVisible, setKbVisible] = React.useState(false)
+  React.useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true))
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false))
+    return () => { try { show.remove(); hide.remove(); } catch {} }
+  }, [])
   const [busy, setBusy] = React.useState(false)
   const onCreateDemo = async () => {
     if (busy) return
@@ -96,7 +104,7 @@ export default function ConvexThreadDetail() {
       )}
       </ScrollView>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 4}>
-        <View style={{ paddingBottom: 8, paddingHorizontal: 8 }}>
+        <View style={{ paddingBottom: Math.max(kbVisible ? 8 : insets.bottom, 8), paddingHorizontal: 8 }}>
           <Composer
             onSend={async (txt) => {
               const base = String(txt || '').trim()
