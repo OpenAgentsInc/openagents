@@ -80,13 +80,12 @@ function DrawerContent() {
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
                 (topThreads || []).map((row: any) => (
-                  <View key={String(row._id || row.id)} style={{ paddingVertical: 6 }}>
-                    <Pressable onPress={closeAnd(() => {
-                      router.push(`/convex/thread/${encodeURIComponent(row._id || row.id)}`)
-                    })} accessibilityRole="button">
-                      <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{row.title || '(no title)'}</Text>
-                      <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(((row.updatedAt ?? row.createdAt) ?? Date.now())).toLocaleString()}</Text>
-                    </Pressable>
+                  <View key={String(row._id || row.id)} style={{ paddingVertical: 2 }}>
+                    {/* Use extracted drawer thread row with count badge */}
+                    {(() => {
+                      const Comp = require('@/components/drawer/ThreadListItem').DrawerThreadItem as any
+                      return <Comp row={row} />
+                    })()}
                   </View>
                 ))
               )
@@ -287,6 +286,7 @@ function DrawerWrapper() {
           <Stack.Screen name="library/search-mcp" />
           <Stack.Screen name="library/todo" />
           <Stack.Screen name="library/turn-error" />
+          <Stack.Screen name="library/drawer" />
           <Stack.Screen name="library/unused" />
           <Stack.Screen name="settings/index" />
           <Stack.Screen name="logs/index" />

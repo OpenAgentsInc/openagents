@@ -32,6 +32,7 @@ export default function ComponentLibraryScreen() {
       <LinkRow title="WebSearch & MCP Call" path="/library/search-mcp" subtitle="Rows for web search queries and MCP tool calls" />
       <LinkRow title="TodoListCard" path="/library/todo" subtitle="Agent plan checklist with completion state" />
       <LinkRow title="Turn & Error Rows" path="/library/turn-error" subtitle="Turn lifecycle events and surfaced errors" />
+      <LinkRow title="Drawer Components" path="/library/drawer" subtitle="Thread history row with count badge" />
       <LinkRow title="Unused Samples" path="/library/unused" subtitle="Hidden in feed; for reference" />
     </ScrollView>
   )
