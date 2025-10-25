@@ -10,12 +10,12 @@ import { Composer } from '@/components/composer'
 import { useHeaderStore } from '@/lib/header-store'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
-import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
+import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 
 export default function ConvexThreadDetail() {
-  const params = useLocalSearchParams<{ id: string; new?: string }>()
+  const params = useLocalSearchParams<{ id: string; new?: string; send?: string }>()
   const id = params?.id as string
   const isNew = typeof params?.new === 'string'
 
@@ -65,6 +65,18 @@ export default function ConvexThreadDetail() {
     const t = setTimeout(() => { try { composerRef.current?.focus?.() } catch {} }, 120)
     return () => clearTimeout(t)
   }, [isNew])
+  // Auto-send initial text if provided from fallback page
+  const autoSentRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!isNew || autoSentRef.current) return
+    const initial = typeof params?.send === 'string' ? String(params.send) : ''
+    if (!initial || !thread?._id) return
+    autoSentRef.current = true
+    ;(async () => {
+      try { await enqueueRun({ threadDocId: String(thread._id), text: decodeURIComponent(initial), role: 'user', projectId: thread?.projectId || undefined }) } catch {}
+      try { ws.send(JSON.stringify({ control: 'run.submit', threadDocId: String(thread._id), text: decodeURIComponent(initial), projectId: thread?.projectId || undefined, resumeId: thread?.resumeId || undefined })) } catch {}
+    })()
+  }, [isNew, params?.send, thread?._id])
   
 
   return (
@@ -84,7 +96,7 @@ export default function ConvexThreadDetail() {
             <Pressable
               onPress={() => { try { router.push(`/convex/thread/${encodeURIComponent(String(id))}/metadata`) } catch {} }}
               accessibilityRole="button"
-              style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+              style={{ paddingVertical: 6, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
             >
               <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary }}>View conversation metadata</Text>
               <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />
@@ -109,9 +121,7 @@ export default function ConvexThreadDetail() {
                   <Pressable key={m._id || `${m.threadId}-${m.ts}`}
                     onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
                     accessibilityRole="button"
-                    style={{ borderWidth: 1, borderColor: Colors.border, padding: 10 }}>
-                    <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(m.ts).toLocaleString()} · {m.role || 'message'}</Text>
-                    <View style={{ height: 6 }} />
+                    style={{ paddingVertical: 2 }}>
                     {m.role === 'assistant' ? (
                       <MarkdownBlock markdown={String(m.text || '')} />
                     ) : (
@@ -122,9 +132,7 @@ export default function ConvexThreadDetail() {
               }
               if (kind === 'reason') {
                 return (
-                  <View key={m._id || `${m.threadId}-${m.ts}`} style={{ borderWidth: 1, borderColor: Colors.border, padding: 10 }}>
-                    <ReasoningHeadline text={String(m.text || '')} />
-                  </View>
+                  <ReasoningHeadline key={m._id || `${m.threadId}-${m.ts}`} text={String(m.text || '')} />
                 )
               }
               if (kind === 'cmd') {
@@ -139,12 +147,14 @@ export default function ConvexThreadDetail() {
                       key={m._id || `${m.threadId}-${m.ts}`}
                       onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
                       accessibilityRole="button"
-                      style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                      style={{ paddingVertical: 2 }}
                     >
-                      <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12 }}>
-                        {status === 'in_progress' ? 'Running: ' : 'Command: '} {command || 'shell'}
-                      </Text>
-                      <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flex: 1 }}>
+                          <ExecBeginRow payload={{ command }} showPrefix={false} />
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />
+                      </View>
                     </Pressable>
                   )
                 } catch { return null }
