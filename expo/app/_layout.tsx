@@ -81,10 +81,14 @@ function DrawerContent() {
               ) : (
                 (topThreads || []).map((row: any) => (
                   <View key={String(row._id || row.id)} style={{ paddingVertical: 2 }}>
-                    {/* Use extracted drawer thread row with count badge */}
                     {(() => {
                       const Comp = require('@/components/drawer/ThreadListItem').DrawerThreadItem as any
-                      return <Comp row={row} />
+                      return (
+                        <Comp
+                          row={row}
+                          onPress={closeAnd(() => router.push(`/convex/thread/${encodeURIComponent(row._id || row.id)}`))}
+                        />
+                      )
                     })()}
                   </View>
                 ))

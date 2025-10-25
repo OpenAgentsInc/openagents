@@ -34,16 +34,16 @@ export function ThreadListItemBase({
   )
 }
 
-export function DrawerThreadItem({ row }: { row: any }) {
+export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => void }) {
   const router = useRouter()
   const threadId = String(row?.threadId || row?._id || row?.id || '')
   const updatedAt = (row?.updatedAt ?? row?.createdAt ?? 0) as number
   const count = (useQuery as any)('messages:countForThread', { threadId }) as number | undefined
   const open = () => {
+    if (onPress) { try { onPress() } catch {} ; return }
     try { router.push(`/convex/thread/${encodeURIComponent(String(row._id || row.id))}`) } catch {}
   }
   return (
     <ThreadListItemBase title={row?.title || 'Thread'} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
   )
 }
-
