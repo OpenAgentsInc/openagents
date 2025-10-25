@@ -1,3 +1,4 @@
+import { useMutation } from "convex/react"
 import * as Haptics from "expo-haptics"
 import { router, usePathname } from "expo-router"
 import React from "react"
@@ -9,7 +10,6 @@ import { useHeaderStore } from "@/lib/header-store"
 import { clearLogs as clearLogsStore } from "@/lib/log-store"
 import { useDrawer } from "@/providers/drawer"
 import { useBridge } from "@/providers/ws"
-import { useMutation } from 'convex/react'
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
 
 export function AppHeader() {
@@ -54,7 +54,7 @@ export function AppHeader() {
             accessibilityRole="button"
             // Expand the tappable area without changing visuals
             hitSlop={{ top: 32, bottom: 32, left: 20, right: 20 }}
-            style={{ height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', alignItems: 'center', position: 'relative', marginTop: -1 }}
+            style={{ height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', alignItems: 'center', position: 'relative', marginTop: -12 }}
           >
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
             <View

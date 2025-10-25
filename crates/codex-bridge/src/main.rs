@@ -932,10 +932,12 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                 for part in arr { if let Some(t) = part.get("text").and_then(|x| x.as_str()) { if !txt.is_empty() { txt.push('\n'); } txt.push_str(t); } }
                             }
                             if !txt.trim().is_empty() {
-                                if let Some(tid) = state_for_stdout.last_thread_id.lock().await.clone() {
+                                let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
+                                if !target_tid.is_empty() {
                                     let role_s = if role == "assistant" { "assistant" } else if role == "user" { "user" } else { "" };
                                     if !role_s.is_empty() {
-                                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::MessageCreate { thread_id: &tid, role: role_s, text: &txt, ts: now_ms() }).await;
+                                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::MessageCreate { thread_id: &target_tid, role: role_s, text: &txt, ts: now_ms() }).await;
                                     }
                                 }
                             }
@@ -946,8 +948,10 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                 for part in arr { if let Some(t) = part.get("text").and_then(|x| x.as_str()) { if !txt.is_empty() { txt.push('\n'); } txt.push_str(t); } }
                             }
                             if !txt.trim().is_empty() {
-                                if let Some(tid) = state_for_stdout.last_thread_id.lock().await.clone() {
-                                    let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::JsonlItem { thread_id: &tid, kind: "reason", ts: now_ms(), text: Some(&txt), data: None }).await;
+                                let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
+                                if !target_tid.is_empty() {
+                                    let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::JsonlItem { thread_id: &target_tid, kind: "reason", ts: now_ms(), text: Some(&txt), data: None }).await;
                                 }
                             }
                         }
@@ -966,13 +970,15 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                 "todo_list" => Some("todo"),
                                 _ => None,
                             };
-                            if let Some(k) = map_kind {
-                                if let Some(tid) = state_for_stdout.last_thread_id.lock().await.clone() {
-                                    // Store payload as JSON string in text to avoid type issues; UI can parse
-                                    let payload_str = payload.to_string();
-                                    let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::JsonlItem { thread_id: &tid, kind: k, ts: now_ms(), text: Some(&payload_str), data: None }).await;
+                                if let Some(k) = map_kind {
+                                    let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                    let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
+                                    if !target_tid.is_empty() {
+                                        // Store payload as JSON string in text to avoid type issues; UI can parse
+                                        let payload_str = payload.to_string();
+                                        let _ = state_for_stdout.mirror.append(&crate::mirror::MirrorEvent::JsonlItem { thread_id: &target_tid, kind: k, ts: now_ms(), text: Some(&payload_str), data: None }).await;
+                                    }
                                 }
-                            }
                         }
                     }
                 }
