@@ -10,7 +10,7 @@ function joinCmd(cmd: string[] | ReadonlyArray<string> | string): string {
   return String(cmd)
 }
 
-export function ExecBeginRow({ payload, full = false }: { payload: ExecBeginPayload; full?: boolean }) {
+export function ExecBeginRow({ payload, full = false, showPrefix = true }: { payload: ExecBeginPayload; full?: boolean; showPrefix?: boolean }) {
   const cmd = joinCmd(payload.command)
   const cwd = payload.cwd
   // Try to pretty-print parsed command, e.g., [{ "ListFiles": { path: "docs" } }]
@@ -100,7 +100,8 @@ export function ExecBeginRow({ payload, full = false }: { payload: ExecBeginPayl
   return (
     <View style={{ paddingVertical: 2 }}>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
-        [exec] <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{cmd}</Text>
+        {showPrefix ? '[exec] ' : ''}
+        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{cmd}</Text>
       </Text>
       {cwd ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
