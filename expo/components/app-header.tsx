@@ -23,10 +23,12 @@ export function AppHeader() {
   const pathname = usePathname()
   const showBack = React.useMemo(() => {
     const p = String(pathname || '')
-    // Show back arrow on deep detail screens (message detail, library subpages)
+    // Show back arrow on deep detail screens (message detail, library subpages, thread metadata)
     if (p.startsWith('/message/') || p.startsWith('/convex/message/')) return true
     // Library detail pages live under /library/* (but not /library itself)
     if (p.startsWith('/library/')) return true
+    // Thread metadata detail screen
+    if (p.startsWith('/convex/thread/') && p.includes('/metadata')) return true
     return false
   }, [pathname])
 

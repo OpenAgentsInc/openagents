@@ -83,47 +83,68 @@ export default function ConvexThreadDetail() {
               <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />
             </Pressable>
           )}
-          {(messages as any[]).slice(meta.count).map((m: any) => {
-            const kind = m.kind || (m.role ? 'message' : 'item')
-            if (kind === 'message') {
-              return (
-                <Pressable key={m._id || `${m.threadId}-${m.ts}`}
-                  onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
-                  accessibilityRole="button"
-                  style={{ borderWidth: 1, borderColor: Colors.border, padding: 10 }}>
-                  <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(m.ts).toLocaleString()} · {m.role || 'message'}</Text>
-                  <View style={{ height: 6 }} />
-                  {m.role === 'assistant' ? (
-                    <MarkdownBlock markdown={String(m.text || '')} />
-                  ) : (
-                    <Text numberOfLines={4} style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{String(m.text || '')}</Text>
-                  )}
-                </Pressable>
-              )
-            }
-            if (kind === 'reason') {
-              return (
-                <View key={m._id || `${m.threadId}-${m.ts}`} style={{ borderWidth: 1, borderColor: Colors.border, padding: 10 }}>
-                  <ReasoningHeadline text={String(m.text || '')} />
-                </View>
-              )
-            }
-            if (kind === 'cmd') {
+          {(() => {
+            const arr: any[] = (messages as any[]).slice(meta.count)
+            const lastIdx = new Map<string, number>()
+            arr.forEach((m, i) => {
+              const kind = m?.kind || (m?.role ? 'message' : 'item')
+              if (kind !== 'cmd') return
               try {
                 const d = m.data || (typeof m.text === 'string' ? JSON.parse(m.text) : {})
                 const command = String(d.command || '')
-                const status = String(d.status || '')
-                const exitCode = typeof d.exit_code === 'number' ? d.exit_code : undefined
-                const out = typeof d.aggregated_output === 'string' ? d.aggregated_output : ''
+                if (command) lastIdx.set(command, i)
+              } catch {}
+            })
+            return arr.map((m: any, idx: number) => {
+              const kind = m.kind || (m.role ? 'message' : 'item')
+              if (kind === 'message') {
                 return (
-                  <View key={m._id || `${m.threadId}-${m.ts}`}>
-                    <CommandExecutionCard command={command} status={status} exitCode={exitCode ?? null} sample={out} outputLen={out.length} showExitCode={false} showOutputLen={true} />
+                  <Pressable key={m._id || `${m.threadId}-${m.ts}`}
+                    onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
+                    accessibilityRole="button"
+                    style={{ borderWidth: 1, borderColor: Colors.border, padding: 10 }}>
+                    <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{new Date(m.ts).toLocaleString()} · {m.role || 'message'}</Text>
+                    <View style={{ height: 6 }} />
+                    {m.role === 'assistant' ? (
+                      <MarkdownBlock markdown={String(m.text || '')} />
+                    ) : (
+                      <Text numberOfLines={4} style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{String(m.text || '')}</Text>
+                    )}
+                  </Pressable>
+                )
+              }
+              if (kind === 'reason') {
+                return (
+                  <View key={m._id || `${m.threadId}-${m.ts}`} style={{ borderWidth: 1, borderColor: Colors.border, padding: 10 }}>
+                    <ReasoningHeadline text={String(m.text || '')} />
                   </View>
                 )
-              } catch { return null }
-            }
-            return null
-          })}
+              }
+              if (kind === 'cmd') {
+                try {
+                  const d = m.data || (typeof m.text === 'string' ? JSON.parse(m.text) : {})
+                  const command = String(d.command || '')
+                  const status = String(d.status || '')
+                  const isLatest = command ? lastIdx.get(command) === idx : true
+                  if (!isLatest) return null
+                  return (
+                    <Pressable
+                      key={m._id || `${m.threadId}-${m.ts}`}
+                      onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
+                      accessibilityRole="button"
+                      style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                    >
+                      <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12 }}>
+                        {status === 'in_progress' ? 'Running: ' : 'Command: '} {command || 'shell'}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />
+                    </Pressable>
+                  )
+                } catch { return null }
+              }
+              return null
+            })
+          })()}
         </View>
       )}
       </ScrollView>
