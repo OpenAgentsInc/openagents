@@ -43,6 +43,8 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
     if (onPress) { try { onPress() } catch {} ; return }
     try { router.push(`/convex/thread/${encodeURIComponent(String(row._id || row.id))}`) } catch {}
   }
+  // Filter out threads that have zero primary chat messages
+  if (typeof count === 'number' && count <= 0) return null
   return (
     <ThreadListItemBase title={row?.title || 'Thread'} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
   )
