@@ -60,8 +60,8 @@ struct Opts {
     extra: Vec<String>,
 
     /// Bootstrap developer dependencies (Bun) and run Convex deploy/dev once.
-    /// Enabled by default; set OPENAGENTS_BOOTSTRAP=0 to skip.
-    #[arg(long, env = "OPENAGENTS_BOOTSTRAP", default_value_t = true)]
+    /// Disabled by default to avoid slowing startup; set OPENAGENTS_BOOTSTRAP=1 to enable.
+    #[arg(long, env = "OPENAGENTS_BOOTSTRAP", default_value_t = false)]
     bootstrap: bool,
 
     /// Path to the Convex local backend binary (defaults to ~/.openagents/bin/local_backend)
@@ -106,12 +106,19 @@ async fn main() -> Result<()> {
     {
         let opts_clone = opts.clone();
         tokio::spawn(async move {
-            if let Err(e) = ensure_convex_running(&opts_clone).await {
-                error!(?e, "failed to ensure local Convex is running");
-            }
-            if opts_clone.bootstrap {
-                if let Err(e) = bootstrap_convex(&opts_clone).await {
-                    error!(?e, "convex bootstrap failed");
+            match ensure_convex_running(&opts_clone).await {
+                Ok(()) => {
+                    // Only attempt bootstrap when the backend is healthy
+                    if opts_clone.bootstrap {
+                        if let Err(e) = bootstrap_convex(&opts_clone).await {
+                            error!(?e, "convex bootstrap failed");
+                        }
+                    } else {
+                        info!("msg" = "OPENAGENTS_BOOTSTRAP disabled — skipping convex function push");
+                    }
+                }
+                Err(e) => {
+                    error!(?e, "failed to ensure local Convex is running; skipping bootstrap");
                 }
             }
         });
@@ -248,9 +255,9 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .stderr(Stdio::null());
     info!(bin=%bin.display(), db=%db.display(), port, interface=%interface, "convex.ensure: starting local backend");
     let mut child = cmd.spawn().context("spawn convex local_backend")?;
-    // Wait up to ~10s for health
+    // Wait up to ~20s for health (first-run migrations can be slow)
     let mut ok = false;
-    for i in 0..20 {
+    for i in 0..40 {
         if convex_health(&base).await.unwrap_or(false) { ok = true; break; }
         if i % 2 == 0 { info!(attempt=i+1, url=%base, "convex.ensure: waiting for health"); }
         tokio::time::sleep(Duration::from_millis(500)).await;
