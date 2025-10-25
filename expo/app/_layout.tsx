@@ -278,6 +278,7 @@ function DrawerWrapper() {
           <Stack.Screen name="project/new" />
           <Stack.Screen name="library/index" />
           <Stack.Screen name="library/markdown" />
+          <Stack.Screen name="library/user-message" />
           <Stack.Screen name="library/reasoning-headline" />
           <Stack.Screen name="library/reasoning-card" />
           <Stack.Screen name="library/exec" />
