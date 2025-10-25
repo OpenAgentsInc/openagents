@@ -69,18 +69,32 @@ export const createDemo = mutationGeneric(async ({ db }, args: { threadId: strin
 });
 
 export const countForThread = queryGeneric(async ({ db }, args: { threadId: string }) => {
+  // Count only primary chat messages (assistant/user). Exclude reasoning/tool items.
   try {
+    // @ts-ignore convex query builder supports withIndex + filter
     const rows = await db
       .query("messages")
-      // Use the composite index to select by threadId efficiently
       .withIndex('by_thread_ts', (q: any) => q.eq('threadId', args.threadId))
+      .filter((q: any) =>
+        q.or(
+          q.eq(q.field('kind'), 'message'),
+          q.or(q.eq(q.field('role'), 'assistant'), q.eq(q.field('role'), 'user'))
+        )
+      )
       .collect();
     return Array.isArray(rows) ? rows.length : 0;
   } catch {
-    // Fallback if index isn't available yet
     const rows = await db
       .query("messages")
-      .filter((q) => q.eq(q.field("threadId"), args.threadId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("threadId"), args.threadId),
+          q.or(
+            q.eq(q.field('kind'), 'message'),
+            q.or(q.eq(q.field('role'), 'assistant'), q.eq(q.field('role'), 'user'))
+          )
+        )
+      )
       .collect();
     return Array.isArray(rows) ? rows.length : 0;
   }
