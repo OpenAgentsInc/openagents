@@ -149,11 +149,11 @@ export default function ConvexThreadDetail() {
                       accessibilityRole="button"
                       style={{ paddingVertical: 2 }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flex: 1 }}>
-                          <ExecBeginRow payload={{ command }} showPrefix={false} />
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{'>'}</Text>
+                        <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12 }}>
+                          {(status === 'in_progress' ? 'Running: ' : 'Command: ') + (command || 'shell')}
+                        </Text>
                       </View>
                     </Pressable>
                   )
