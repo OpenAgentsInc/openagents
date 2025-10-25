@@ -40,6 +40,11 @@ Bridge syncers (filesystem → Convex)
   - For each Project `workingDir`, if `skills/` exists, scan as `source='project'` with `projectId`.
 - On file events: re‑call the relevant upsert/remove function with `source` and `projectId`.
 
+Implemented
+- Projects watcher: watches `~/.openagents/projects` recursively and syncs Projects (and re‑scans project‑scoped `skills/`).
+- Skills watcher: watches both personal `~/.openagents/skills` and repo `./skills` and syncs to Convex on changes.
+- Initial sync: runs at bridge startup for Projects + all skill scopes.
+
 App wiring
 - Projects: replace WS seeding in `expo/providers/projects.tsx` with `useQuery('projects:list', {})` (keep persisted store for instant rehydrate).
 - Skills: replace WS subscription in `expo/providers/skills.tsx` with `useQuery('skills:listAll', {})` or project‑filtered queries.
@@ -54,4 +59,3 @@ References
 - Filesystem schema: `docs/projects-and-skills-schema.md`
 - Convex schema: `convex/schema.ts`
 - Convex functions: `convex/projects.ts`, `convex/skills.ts`
-
