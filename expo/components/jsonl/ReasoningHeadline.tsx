@@ -1,4 +1,5 @@
 import React from 'react'
+import { View } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
@@ -27,7 +28,8 @@ export function ReasoningHeadline({ text }: { text: string }) {
   }
 
   return (
-    <Markdown
+    <View style={{ marginTop: 8 }}>
+      <Markdown
       style={{
         body: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 16 },
         paragraph: { color: Colors.secondary, marginTop: 0, marginBottom: 2 },
@@ -44,8 +46,9 @@ export function ReasoningHeadline({ text }: { text: string }) {
           <CodeBlock key={String(node?.key ?? `code-${String(node?.content ?? '').slice(0,16)}`)} code={String(node?.content ?? '')} />
         ),
       }}
-    >
-      {headline}
-    </Markdown>
+      >
+        {headline}
+      </Markdown>
+    </View>
   )
 }
