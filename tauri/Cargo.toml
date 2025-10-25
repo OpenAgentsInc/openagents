@@ -27,5 +27,5 @@ console_error_panic_hook = "0.1.7"
 members = ["src-tauri"]
 
 [features]
-default = []
+default = ["jsonl_components"]
 jsonl_components = []
