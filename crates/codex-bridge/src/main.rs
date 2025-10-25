@@ -956,12 +956,15 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                         let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
                                         if let Ok(mut client) = ConvexClient::new(&url).await {
                                             let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                            args.insert("threadId".into(), Value::from(target_tid));
+                                            args.insert("threadId".into(), Value::from(target_tid.clone()));
                                             args.insert("role".into(), Value::from(role_s));
                                             args.insert("kind".into(), Value::from("message"));
                                             args.insert("text".into(), Value::from(txt));
                                             args.insert("ts".into(), Value::from(now_ms() as f64));
-                                            let _ = client.mutation("messages:create", args).await;
+                                            match client.mutation("messages:create", args).await {
+                                                Ok(_) => info!(thread_id=%target_tid, role="assistant", msg="convex message:create ok"),
+                                                Err(e) => warn!(?e, thread_id=%target_tid, msg="convex message:create failed"),
+                                            }
                                         }
                                     }
                                 }
@@ -981,11 +984,14 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                     let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
                                     if let Ok(mut client) = ConvexClient::new(&url).await {
                                         let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                        args.insert("threadId".into(), Value::from(target_tid));
+                                        args.insert("threadId".into(), Value::from(target_tid.clone()));
                                         args.insert("kind".into(), Value::from("reason"));
                                         args.insert("text".into(), Value::from(txt));
                                         args.insert("ts".into(), Value::from(now_ms() as f64));
-                                        let _ = client.mutation("messages:create", args).await;
+                                        match client.mutation("messages:create", args).await {
+                                            Ok(_) => info!(thread_id=%target_tid, kind="reason", msg="convex message:create ok"),
+                                            Err(e) => warn!(?e, thread_id=%target_tid, kind="reason", msg="convex message:create failed"),
+                                        }
                                     }
                                 }
                             }
@@ -1016,16 +1022,19 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                         let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
                                         if let Ok(mut client) = ConvexClient::new(&url).await {
                                             let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                            args.insert("threadId".into(), Value::from(target_tid));
+                                            args.insert("threadId".into(), Value::from(target_tid.clone()));
                                             args.insert("kind".into(), Value::from(k));
                                             args.insert("text".into(), Value::from(payload_str));
                                             args.insert("ts".into(), Value::from(now_ms() as f64));
-                                            let _ = client.mutation("messages:create", args).await;
+                                            match client.mutation("messages:create", args).await {
+                                                Ok(_) => info!(thread_id=%target_tid, kind=%k, msg="convex message:create ok"),
+                                                Err(e) => warn!(?e, thread_id=%target_tid, kind=%k, msg="convex message:create failed"),
+                                            }
                                         }
                                     }
                                 }
+                            }
                         }
-                    }
                 }
                 // no-op for agent_message in always-resume mode
             }
