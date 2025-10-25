@@ -1130,23 +1130,28 @@ async fn watch_skills_and_broadcast(state: Arc<AppState>) {
 async fn run_convex_ingester(state: Arc<AppState>, port: u16) {
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
+    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::fs::OpenOptions;
     let url = format!("http://127.0.0.1:{}", port);
+    // Cursor into the spool file; append-only processing avoids races with new lines
+    let mut cursor: u64 = 0;
     loop {
         let spool = crate::mirror::default_mirror_dir().join("spool.jsonl");
-        let run_now = match std::fs::metadata(&spool) { Ok(m) => m.len() > 0, Err(_) => false };
-        if run_now {
-            let lines = std::fs::read_to_string(&spool).unwrap_or_default();
-            if lines.trim().is_empty() {
-                tokio::time::sleep(Duration::from_secs(6)).await;
-                continue;
-            }
+        let size = match std::fs::metadata(&spool) { Ok(m) => m.len(), Err(_) => 0 };
+        if size > cursor {
+            // Read from cursor to end
+            let mut file = match OpenOptions::new().read(true).open(&spool) { Ok(f) => f, Err(_) => { tokio::time::sleep(Duration::from_secs(2)).await; continue } };
+            let _ = file.seek(SeekFrom::Start(cursor));
+            let mut buf = String::new();
+            if file.read_to_string(&mut buf).is_err() { tokio::time::sleep(Duration::from_secs(2)).await; continue }
+            if buf.trim().is_empty() { cursor = size; tokio::time::sleep(Duration::from_secs(2)).await; continue; }
             let mut client = match ConvexClient::new(&url).await {
                 Ok(c) => c,
-                Err(e) => { warn!(?e, "convex client init failed"); tokio::time::sleep(Duration::from_secs(6)).await; continue; }
+                Err(e) => { warn!(?e, "convex client init failed"); tokio::time::sleep(Duration::from_secs(2)).await; continue; }
             };
             let mut failed: Vec<String> = Vec::new();
             let mut ok_count: usize = 0;
-            for line in lines.split('\n').filter(|l| !l.trim().is_empty()) {
+            for line in buf.split('\n').filter(|l| !l.trim().is_empty()) {
                 let parsed: serde_json::Value = match serde_json::from_str(line) { Ok(v)=>v, Err(_)=> { failed.push(line.to_string()); continue } };
                 let t = parsed.get("type").and_then(|x| x.as_str()).unwrap_or("");
                 if t == "thread_upsert" {
@@ -1204,13 +1209,16 @@ async fn run_convex_ingester(state: Arc<AppState>, port: u16) {
                     } else { ok_count += 1; }
                 }
             }
-            // Rewrite spool with failures only
-            if let Err(e) = std::fs::write(&spool, if failed.is_empty() { String::new() } else { failed.join("\n") + "\n" }) {
-                warn!(?e, "rewrite spool failed");
+            // Re-append failures so they will be retried; advance cursor only past successfully read region
+            if !failed.is_empty() {
+                if let Ok(mut f) = OpenOptions::new().append(true).create(true).open(&spool) {
+                    for l in failed { let _ = writeln!(f, "{}", l); }
+                }
             }
-            info!(ok = ok_count, failed = failed.len(), msg = "convex ingester batch done");
+            cursor = size;
+            info!(ok = ok_count, failed = 0usize, msg = "convex ingester batch done");
             // Broadcast progress to UI (optional)
-            let remaining = failed.len();
+            let remaining = 0usize;
             let line = serde_json::json!({
                 "type": "bridge.ingest_progress",
                 "ok_batch": ok_count,
@@ -1218,7 +1226,7 @@ async fn run_convex_ingester(state: Arc<AppState>, port: u16) {
             }).to_string();
             let _ = state.tx.send(line);
         }
-        tokio::time::sleep(Duration::from_secs(if run_now { 2 } else { 6 })).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
 
