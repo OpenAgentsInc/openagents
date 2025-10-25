@@ -185,7 +185,7 @@ export default function ConvexThreadDetail() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{'>'}</Text>
                         <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12 }}>
-                          {(status === 'in_progress' ? 'Running: ' : 'Command: ') + (command || 'shell')}
+                          {command || 'shell'}
                         </Text>
                       </View>
                     </Pressable>
