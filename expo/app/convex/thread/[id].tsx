@@ -23,7 +23,6 @@ export default function ConvexThreadDetail() {
   // Live messages subscription for this thread: use the thread.threadId, not the Convex doc _id
   const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || '' }) as any[] | undefined | null
 
-  const createDemo = (useMutation as any)('messages:createDemo') as (args: { threadId: string }) => Promise<any>
   const enqueueRun = (useMutation as any)('runs:enqueue') as (args: { threadDocId: string; text: string; role?: string; projectId?: string }) => Promise<any>
   const headerHeight = useHeaderStore((s) => s.height)
   const ws = useBridge()
@@ -34,22 +33,11 @@ export default function ConvexThreadDetail() {
     const hide = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false))
     return () => { try { show.remove(); hide.remove(); } catch {} }
   }, [])
-  const [busy, setBusy] = React.useState(false)
-  const onCreateDemo = async () => {
-    if (busy) return
-    setBusy(true)
-    try { await createDemo({ threadId: id! }) } catch {} finally { setBusy(false) }
-  }
+  
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 88 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>Messages</Text>
-        <Pressable onPress={onCreateDemo} disabled={busy} style={{ opacity: busy ? 0.6 : 1, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 10, paddingVertical: 6 }}>
-          <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>Add demo message</Text>
-        </Pressable>
-      </View>
 
       {messages === undefined ? (
         <ActivityIndicator color={Colors.secondary} />
