@@ -15,7 +15,10 @@ export function UserMessageRow({ text }: { text: string; numberOfLines?: number 
         blockquote: {
           borderLeftWidth: 3,
           borderColor: Colors.border,
-          paddingLeft: 10,
+          // Nudge the quote left so the vertical rule extends left,
+          // but keep text aligned by compensating padding.
+          marginLeft: -8,
+          paddingLeft: 18,
           marginTop: 6,
           marginBottom: 8,
           backgroundColor: Colors.card,
