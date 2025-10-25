@@ -53,11 +53,18 @@ export default function ConvexThreadDetail() {
   const ws = useBridge()
   const insets = useSafeAreaInsets()
   const [kbVisible, setKbVisible] = React.useState(false)
+  const composerRef = React.useRef<any>(null)
   React.useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true))
     const hide = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false))
     return () => { try { show.remove(); hide.remove(); } catch {} }
   }, [])
+  // Auto-focus input for brand-new threads
+  React.useEffect(() => {
+    if (!isNew) return
+    const t = setTimeout(() => { try { composerRef.current?.focus?.() } catch {} }, 120)
+    return () => clearTimeout(t)
+  }, [isNew])
   
 
   return (
@@ -167,7 +174,7 @@ export default function ConvexThreadDetail() {
             queuedMessages={[]}
             prefill={null}
             onDraftChange={() => {}}
-            inputRef={undefined as any}
+            inputRef={composerRef}
           />
         </View>
       </KeyboardAvoidingView>
