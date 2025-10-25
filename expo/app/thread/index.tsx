@@ -11,7 +11,7 @@ export default function ThreadEntry() {
         const id = await create({ title: 'New Thread' })
         router.replace(`/convex/thread/${encodeURIComponent(String(id))}?new=1`)
       } catch {
-        try { (require('expo-router') as any).router.replace('/convex') } catch {}
+        try { (require('expo-router') as any).router.replace('/thread?focus=1&new=1') } catch {}
       }
     }
     run()

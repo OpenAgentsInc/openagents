@@ -44,8 +44,8 @@ export function AppHeader() {
       const id = await createThread({ title: 'New Thread' })
       router.push(`/convex/thread/${encodeURIComponent(String(id))}?new=1`)
     } catch {
-      // Fallback to local route in case Convex is not reachable
-      router.push('/convex')
+      // Fallback: stay in thread flow with empty state
+      router.push('/thread?focus=1&new=1')
     }
   }, [createThread])
 
