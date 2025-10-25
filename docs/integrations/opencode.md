@@ -1,6 +1,6 @@
 # OpenCode Integration Plan
 
-This document proposes how to support OpenCode in the OpenAgents mobile app and Rust bridge, alongside the existing OpenAI Codex CLI integration. It surveys OpenCode’s architecture, identifies the best integration points, defines an adapter strategy in the bridge, and outlines a phased rollout plan.
+This document proposes how to support OpenCode in the OpenAgents mobile app and Rust bridge, alongside the existing OpenAI Codex CLI integration. It surveys OpenCode’s architecture, identifies the best integration points, defines an adapter strategy in the bridge, and outlines a phased rollout plan. All events emitted to the app will conform to the unified, canonical ThreadEvent schema described in docs/integrations/README.md and implemented in crates/codex-bridge/src/events.rs.
 
 ## Goals
 
@@ -44,7 +44,7 @@ Implications:
 
 ## Integration Strategy
 
-We will add an “OpenCode mode” to the bridge that launches an OpenCode headless server, manages an OpenCode session, subscribes to SSE events, and translates them into Codex‑style JSONL for the app.
+We will add an “OpenCode mode” to the bridge that launches an OpenCode headless server, manages an OpenCode session, subscribes to SSE events, and translates them into the canonical ThreadEvent JSONL envelope for the app.
 
 ### Bridge adapter (OpenCode → Codex‑JSONL)
 
@@ -69,17 +69,17 @@ We will add an “OpenCode mode” to the bridge that launches an OpenCode headl
   - If the opencode server process exits, surface `{ type: "error", message }` and auto‑restart on next command.
   - If SSE drops, auto‑reconnect with backoff; ensure no duplicate emission by tracking last seen event ids where available.
 
-### Event mapping (OpenCode → parsed UI rows)
+### Event mapping (OpenCode → canonical ThreadEvent)
 
-Map OpenCode bus payloads to our `expo/lib/codex-events.ts:1` ParsedLine kinds so the current UI renders without change:
+Map OpenCode bus payloads into canonical ThreadEvent items (bridge emits one JSON line per event). The app’s `expo/lib/codex-events.ts:1` will continue to render these as it already targets the same envelope:
 
 - MessageV2.PartUpdated with `part.type`:
-  - `text` → `{ type: "item.completed", item: { type: "agent_message", text } }` → renders as `md`.
-  - `reasoning` → `{ type: "item.completed", item: { type: "reasoning", text } }` → renders as `reason`.
+  - `text` → `{ type: "item.completed", item: { type: "agent_message", id, text } }`.
+  - `reasoning` → `{ type: "item.completed", item: { type: "reasoning", id, text } }`.
   - `tool` (status running/completed/error) →
-    - running → `{ type: "item.started", item: { type: "command_execution", command: toolName, aggregated_output: "", status: "in_progress" } }`
-    - completed/error → `{ type: "item.completed", item: { type: "command_execution", command: toolName, aggregated_output: output|error, exit_code: status=="completed"?0:1, status } }` → `cmd_item` row.
-  - `patch` → `{ type: "item.completed", item: { type: "file_change", changes: files.map(f=>({ path:f, kind:"update" })), status:"completed" } }` → `file_change` card.
+    - running → `{ type: "item.started", item: { type: "command_execution", id, command: toolName, aggregated_output: "", status: "in_progress" } }`
+    - completed/error → `{ type: "item.completed", item: { type: "command_execution", id, command: toolName, aggregated_output: outputOrError, exit_code: status=="completed"?0:1, status } }`.
+  - `patch` → `{ type: "item.completed", item: { type: "file_change", id, changes: files.map(f=>({ path:f, kind:"update" })), status:"completed" } }`.
   - `snapshot` → suppressed (internal state).
   - `file` attachment → emit an `agent_message` with a markdown link, or ignore if redundant (phase 1);
 - Session/turn
@@ -88,7 +88,7 @@ Map OpenCode bus payloads to our `expo/lib/codex-events.ts:1` ParsedLine kinds s
 - Errors
   - `session.error` / assistant `error` → `{ type: "error", message }`.
 - Housekeeping
-  - On SSE connect → `{ type: "thread.started", thread_id: sessionID }`.
+  - On SSE connect → emit `{ type: "thread.started", thread_id: sessionID }`.
 
 Notes:
 - This mapping intentionally targets existing UI cards to avoid app changes in phase 1.
@@ -141,7 +141,7 @@ We will reuse current controls where feasible and add OpenCode‑specific ones c
 ## Testing
 
 - Local dev
-  - Start bridge in OpenCode mode, confirm SSE connects and events stream into the app feed.
+  - Start bridge in OpenCode mode, confirm SSE connects and canonical ThreadEvent lines stream into the app feed.
   - Submit prompts and verify text/reasoning/tool/file events render as expected.
   - Kill and restart the OpenCode server process to verify bridge auto‑recovers.
 - Non‑goals
@@ -166,5 +166,6 @@ We will reuse current controls where feasible and add OpenCode‑specific ones c
 File references (for contributors):
 - OpenCode server: `~/code/opencode/packages/opencode/src/server/server.ts:1`
 - OpenCode messages: `~/code/opencode/packages/opencode/src/session/message-v2.ts:1`
-- OpenAgents parser: `expo/lib/codex-events.ts:1`
+- Canonical event types: `crates/codex-bridge/src/events.rs:1`
+- App parser: `expo/lib/codex-events.ts:1`
 - Existing JSONL contract: `docs/exec-jsonl-schema.md:1`

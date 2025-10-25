@@ -1,6 +1,6 @@
 # Claude Code Integration Plan (Headless CLI)
 
-This document outlines how to integrate Claude Code’s Headless CLI mode into the OpenAgents mobile app and Rust WebSocket bridge, similar to our Codex and OpenCode adapters. It analyzes the stream‑JSON output format and proposes an adapter that preserves the app’s existing WS contract and UI components.
+This document outlines how to integrate Claude Code’s Headless CLI mode into the OpenAgents mobile app and Rust WebSocket bridge, similar to our Codex and OpenCode adapters. It analyzes the stream‑JSON output format and proposes an adapter that preserves the app’s existing WS contract and UI components. All bridge output will conform to our unified, canonical ThreadEvent envelope (see docs/integrations/README.md and crates/codex-bridge/src/events.rs).
 
 ## Goals
 
@@ -28,7 +28,7 @@ Note: API keys and configuration are handled by the local CLI (e.g., ANTHROPIC_A
 
 ## Integration Strategy
 
-Introduce a “Claude” runner in the bridge that spawns the `claude` CLI per prompt, parses stream‑JSON, and translates events to our Codex‑style JSONL so the app can render without change.
+Introduce a “Claude” runner in the bridge that spawns the `claude` CLI per prompt, parses stream‑JSON, and translates events to the canonical ThreadEvent JSONL so the app can render without change.
 
 ### Process lifecycle
 
@@ -42,16 +42,15 @@ Introduce a “Claude” runner in the bridge that spawns the `claude` CLI per p
 
 - Track the last seen `session_id` from the init object. If Claude CLI supports passing a session identifier (or implicitly resumes by `cwd`), expose a bridge toggle “Resume last Claude session” to carry context across prompts. Otherwise, default to fresh one‑shots.
 
-## Event Mapping (Claude stream‑JSON → App feed rows)
+## Event Mapping (Claude stream‑JSON → canonical ThreadEvent)
 
-Target our existing ParsedLine kinds defined in `expo/lib/codex-events.ts` by emitting Codex‑style envelope events per line.
+Emit canonical ThreadEvent JSON lines. The app’s current parser will render these without change.
 
 - Thread
   - Claude `system/init` → `{"type":"thread.started","thread_id": session_id || <random>}`
 
 - Assistant text
-  - Claude `assistant.content[{type:"text", text}]` → `item.completed` with `agent_message` → UI `md` row
-    - Output line: `{"type":"item.completed","item":{"id":"...","type":"agent_message","text":"..."}}`
+  - Claude `assistant.content[{type:"text", text}]` → `item.completed` with `agent_message` (`{"type":"item.completed","item":{"id":"...","type":"agent_message","text":"..."}}`).
 
 - Reasoning (if surfaced distinctly)
   - If the CLI differentiates reasoning, map to `reasoning` → UI `reason` row.
@@ -147,6 +146,7 @@ When `assistant.message.usage` appears, also emit `{"type":"turn.completed","usa
 
 ## File References
 
+- Canonical event types: `crates/codex-bridge/src/events.rs:1`
 - App parser: `expo/lib/codex-events.ts:1`
-- Codex JSONL schema (target envelope): `docs/exec-jsonl-schema.md:1`
+- Codex JSONL schema (historical reference): `docs/exec-jsonl-schema.md:1`
 - Example Claude headless stream (user provided): `claude --output-format stream-json`

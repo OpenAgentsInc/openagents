@@ -1,6 +1,6 @@
 # OpenAI Codex Integration Plan (Exec JSONL)
 
-This document details our current integration with OpenAI Codex’s `exec --json` mode and clarifies adapter behavior in the Rust bridge and app UI. It cross‑references Codex’s own docs and our internal JSONL schema and resume behavior.
+This document details our current integration with OpenAI Codex’s `exec --json` mode and clarifies adapter behavior in the Rust bridge and app UI. It cross‑references Codex’s own docs and our internal JSONL schema and resume behavior. Codex emits the canonical ThreadEvent envelope natively, so the bridge passes these events through unchanged.
 
 ## Goals
 
@@ -23,7 +23,7 @@ This document details our current integration with OpenAI Codex’s `exec --json
   - Write the prompt to stdin and close stdin to signal EOF.
 
 - Stream handling
-  - Forward each stdout JSONL line to all WS clients.
+  - Forward each stdout JSONL line (canonical ThreadEvent) to all WS clients.
   - Suppress or summarize very large `exec_command_output_delta` payloads in console logs.
   - Track `thread.started.thread_id` to correlate sessions across spawns.
 
@@ -33,7 +33,7 @@ This document details our current integration with OpenAI Codex’s `exec --json
 
 ## JSONL Contract (canonical)
 
-See `docs/exec-jsonl-schema.md:1` for full details. Highlights:
+See `docs/exec-jsonl-schema.md:1` for full details (this matches the canonical ThreadEvent types in `crates/codex-bridge/src/events.rs`). Highlights:
 - Envelope: `type` tagged union; items flatten their `type` under `item`.
 - Usage is included only in `turn.completed`.
 - `ThreadItem.id` is unique per stream and monotonically increasing (`item_0`, `item_1`, ...).
@@ -46,7 +46,7 @@ See `docs/exec-jsonl-schema.md:1` for full details. Highlights:
 
 ## App Mapping
 
-- The app parser (`expo/lib/codex-events.ts:1`) already understands these events and renders:
+- The app parser (`expo/lib/codex-events.ts:1`) already understands these canonical events and renders:
   - `agent_message` → markdown rows.
   - `reasoning` → reasoning rows.
   - `command_execution` → command rows (begin/complete, exit codes, output sample).
@@ -62,5 +62,6 @@ See `docs/exec-jsonl-schema.md:1` for full details. Highlights:
 ## References
 
 - Codex docs: `/Users/christopherdavid/code/codex-openai/docs/exec.md:1`
+- Canonical event types (bridge): `crates/codex-bridge/src/events.rs:1`
 - JSONL schema: `docs/exec-jsonl-schema.md:1`
 - Resume details: `docs/exec-resume-json.md:1`
