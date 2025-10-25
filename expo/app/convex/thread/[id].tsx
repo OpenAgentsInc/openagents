@@ -11,6 +11,7 @@ import { useHeaderStore } from '@/lib/header-store'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
+import { UserMessageRow } from '@/components/jsonl/UserMessageRow'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -53,6 +54,9 @@ export default function ConvexThreadDetail() {
   const ws = useBridge()
   const insets = useSafeAreaInsets()
   const [kbVisible, setKbVisible] = React.useState(false)
+  const scrollRef = React.useRef<ScrollView | null>(null)
+  const [atBottom, setAtBottom] = React.useState(true)
+  const prevLenRef = React.useRef(0)
   const composerRef = React.useRef<any>(null)
   React.useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true))
@@ -77,11 +81,40 @@ export default function ConvexThreadDetail() {
       try { ws.send(JSON.stringify({ control: 'run.submit', threadDocId: String(thread._id), text: decodeURIComponent(initial), projectId: thread?.projectId || undefined, resumeId: thread?.resumeId || undefined })) } catch {}
     })()
   }, [isNew, params?.send, thread?._id])
+  // Auto-scroll: snap to bottom on first load; keep pinned when more messages arrive
+  React.useEffect(() => {
+    const len = Array.isArray(messages) ? messages.length : 0
+    if (len <= 0) { prevLenRef.current = len; return }
+    if (prevLenRef.current === 0) {
+      // First hydrate
+      const t = setTimeout(() => { try { scrollRef.current?.scrollToEnd({ animated: false }) } catch {} }, 0)
+      prevLenRef.current = len
+      return () => clearTimeout(t)
+    }
+    if (len > prevLenRef.current && atBottom) {
+      const t = setTimeout(() => { try { scrollRef.current?.scrollToEnd({ animated: true }) } catch {} }, 0)
+      prevLenRef.current = len
+      return () => clearTimeout(t)
+    }
+    prevLenRef.current = len
+  }, [messages, atBottom])
   
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
-      <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 88 }}>
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: Colors.background }}
+        contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 88 }}
+        onScroll={(e) => {
+          try {
+            const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent
+            const atBot = contentOffset.y + layoutMeasurement.height >= contentSize.height - 24
+            setAtBottom(atBot)
+          } catch {}
+        }}
+        scrollEventThrottle={32}
+      >
 
       {(messages === undefined && !isNew) ? (
         <ActivityIndicator color={Colors.secondary} />
@@ -125,7 +158,7 @@ export default function ConvexThreadDetail() {
                     {m.role === 'assistant' ? (
                       <MarkdownBlock markdown={String(m.text || '')} />
                     ) : (
-                      <Text numberOfLines={4} style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{String(m.text || '')}</Text>
+                      <UserMessageRow text={String(m.text || '')} />
                     )}
                   </Pressable>
                 )
@@ -165,6 +198,15 @@ export default function ConvexThreadDetail() {
         </View>
       )}
       </ScrollView>
+      {!atBottom && (
+        <Pressable
+          onPress={() => { try { scrollRef.current?.scrollToEnd({ animated: true }) } catch {} }}
+          accessibilityRole="button"
+          style={{ position: 'absolute', right: 16, bottom: 88, width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.foreground, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Ionicons name="chevron-down" size={20} color={Colors.black} />
+        </Pressable>
+      )}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={headerHeight + 4}>
         <View style={{ paddingBottom: Math.max(kbVisible ? 8 : insets.bottom, 8), paddingHorizontal: 8 }}>
           <Composer

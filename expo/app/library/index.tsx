@@ -23,6 +23,7 @@ export default function ComponentLibraryScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>JSONL Components</Text>
       <LinkRow title="MarkdownBlock" path="/library/markdown" subtitle="Fenced/inline code, lists, headers" />
+      <LinkRow title="UserMessageRow" path="/library/user-message" subtitle="User-authored content in the feed" />
       <LinkRow title="ReasoningHeadline" path="/library/reasoning-headline" subtitle="Top-line reasoning extraction + markdown" />
       <LinkRow title="ReasoningCard" path="/library/reasoning-card" subtitle="Card with markdown + code" />
       <LinkRow title="ExecBeginRow" path="/library/exec" subtitle="Parsed and raw command rows" />
