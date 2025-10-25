@@ -6,7 +6,8 @@ This doc explains how Skills work in OpenAgents, aligned with Anthropic’s Agen
   - Anthropic overview: https://www.anthropic.com/news/skills
   - Engineering deep‑dive: https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills
   - Claude Code skills docs: https://docs.claude.com/en/docs/claude-code/skills
-  - Our schema details: docs/projects-and-skills-schema.md
+- Our schema details: docs/projects-and-skills-schema.md
+- Convex integration plan: docs/convex-projects-and-skills.md
 
 ## What is a Skill?
 A Skill is a folder of instructions, scripts, and resources that agents can discover and load dynamically to perform better at specific tasks. Skills make agents composable and portable: instead of baking procedures into a single prompt, you package reusable, task‑specific knowledge as files.
