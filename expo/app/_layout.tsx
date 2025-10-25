@@ -264,6 +264,7 @@ function DrawerWrapper() {
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
           <Stack.Screen name="projects/index" />
           <Stack.Screen name="convex/index" />
+          <Stack.Screen name="convex/thread/[id]/metadata" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="convex/message/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="skills/index" />
           <Stack.Screen name="project/[id]" />
