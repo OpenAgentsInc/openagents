@@ -44,6 +44,10 @@ Implemented
 - Projects watcher: watches `~/.openagents/projects` recursively and syncs Projects (and re‑scans project‑scoped `skills/`).
 - Skills watcher: watches both personal `~/.openagents/skills` and repo `./skills` and syncs to Convex on changes.
 - Initial sync: runs at bridge startup for Projects + all skill scopes.
+- Deletion handling: on each sync, the bridge queries Convex and removes any `projects` or `skills` rows not present on disk (by id and scope).
+
+Controls
+- Set `OPENAGENTS_CONVEX_SYNC=0` to disable FS→Convex sync/watchers (enabled by default).
 
 App wiring
 - Projects: replace WS seeding in `expo/providers/projects.tsx` with `useQuery('projects:list', {})` (keep persisted store for instant rehydrate).

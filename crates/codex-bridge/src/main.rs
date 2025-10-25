@@ -125,17 +125,21 @@ async fn main() -> Result<()> {
     // Start readers for stdout/stderr → broadcast + console
     start_stream_forwarders(child, state.clone()).await?;
 
-    // Live-reload: watch ~/.openagents/skills and broadcast updates
-    tokio::spawn(watch_skills_and_broadcast(state.clone()));
-    // Watch ~/.openagents/projects for changes and sync to Convex (also scans project-scoped skills)
-    tokio::spawn(watch_projects_and_sync(state.clone()));
-    // Initial sync of Projects and Skills (filesystem → Convex)
-    {
-        let st = state.clone();
-        tokio::spawn(async move {
-            if let Err(e) = sync_projects_to_convex(st.clone()).await { warn!(?e, "initial projects sync failed"); }
-            if let Err(e) = sync_skills_to_convex(st.clone()).await { warn!(?e, "initial skills sync failed"); }
-        });
+    // Live-reload + sync (optional toggle via OPENAGENTS_CONVEX_SYNC=0 to disable)
+    let sync_enabled = std::env::var("OPENAGENTS_CONVEX_SYNC").ok().map(|v| v != "0").unwrap_or(true);
+    if sync_enabled {
+        tokio::spawn(watch_skills_and_broadcast(state.clone()));
+        tokio::spawn(watch_projects_and_sync(state.clone()));
+        // Initial sync of Projects and Skills (filesystem → Convex)
+        {
+            let st = state.clone();
+            tokio::spawn(async move {
+                if let Err(e) = sync_projects_to_convex(st.clone()).await { warn!(?e, "initial projects sync failed"); }
+                if let Err(e) = sync_skills_to_convex(st.clone()).await { warn!(?e, "initial skills sync failed"); }
+            });
+        }
+    } else {
+        info!("msg" = "OPENAGENTS_CONVEX_SYNC=0 — FS→Convex sync disabled");
     }
     // Background: enqueue historical threads/messages to the mirror spool on startup
     tokio::spawn(enqueue_historical_on_start(state.clone()));
@@ -1690,6 +1694,24 @@ async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> 
     if let Err(e) = sync_project_scoped_skills(state.clone(), &mut client).await {
         warn!(?e, "project-scoped skills sync failed");
     }
+    // Remove projects that no longer exist on disk
+    if let Ok(existing_val) = client.query("projects:list", BTreeMap::new()).await {
+        if let Ok(json) = serde_json::to_value(&existing_val) {
+            if let Some(arr) = json.as_array() {
+                use std::collections::HashSet;
+                let present: HashSet<String> = items.iter().map(|p| p.id.clone()).collect();
+                for row in arr {
+                    let id = row.get("id").and_then(|x| x.as_str()).unwrap_or("");
+                    if id.is_empty() { continue; }
+                    if !present.contains(id) {
+                        let mut rargs: BTreeMap<String, Value> = BTreeMap::new();
+                        rargs.insert("id".into(), Value::from(id.to_string()));
+                        let _ = client.mutation("projects:remove", rargs).await;
+                    }
+                }
+            }
+        }
+    }
     Ok(ok)
 }
 
@@ -1721,6 +1743,43 @@ async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
     // Project-scoped skills
     if let Err(e) = sync_project_scoped_skills(state.clone(), &mut client).await {
         warn!(?e, "project-scoped skills sync failed");
+    }
+    // Removal pass: compute expected keys and remove extras from Convex
+    // Build expected set: (skillId, source, projectId)
+    use std::collections::HashSet;
+    let mut expected: HashSet<(String, String, Option<String>)> = HashSet::new();
+    for s in crate::skills::list_skills().unwrap_or_default().iter() {
+        expected.insert((s.id.clone(), s.source.clone().unwrap_or_else(|| "user".into()), None));
+    }
+    // Project-scoped expected
+    let projects = crate::projects::list_projects().unwrap_or_default();
+    for p in projects.iter() {
+        let dir = std::path::Path::new(&p.working_dir).join("skills");
+        if dir.is_dir() {
+            let skills = crate::skills::list_skills_from_dir(&dir, "project").unwrap_or_default();
+            for s in skills.iter() {
+                expected.insert((s.id.clone(), "project".into(), Some(p.id.clone())));
+            }
+        }
+    }
+    if let Ok(existing) = client.query("skills:listAll", BTreeMap::new()).await {
+        if let Ok(json) = serde_json::to_value(&existing) {
+            if let Some(arr) = json.as_array() {
+                for row in arr {
+                    let skill_id = row.get("skillId").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let source = row.get("source").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let project_id = row.get("projectId").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    if skill_id.is_empty() || source.is_empty() { continue; }
+                    if !expected.contains(&(skill_id.clone(), source.clone(), project_id.clone())) {
+                        let mut rargs: BTreeMap<String, Value> = BTreeMap::new();
+                        rargs.insert("skillId".into(), Value::from(skill_id));
+                        rargs.insert("source".into(), Value::from(source));
+                        if let Some(pid) = project_id { rargs.insert("projectId".into(), Value::from(pid)); }
+                        let _ = client.mutation("skills:removeByScope", rargs).await;
+                    }
+                }
+            }
+        }
     }
     Ok(ok)
 }

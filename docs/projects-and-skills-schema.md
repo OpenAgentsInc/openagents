@@ -92,8 +92,9 @@ Bullet list of the recommended flow, commands to run, files to read, etc.
 
 ## App mapping
 
-- ProjectsProvider requests the project list via WS on mount and seeds the persisted store, preserving instant rehydrate. See `expo/providers/projects.tsx`.
-- The app currently reads Projects from WS; Skills are local files used by humans/agents (future UI can expose them with the same pattern).
+- ProjectsProvider uses Convex: `useQuery('projects:list', {})`, with a persisted store for instant rehydrate. See `expo/providers/projects.tsx`.
+- SkillsProvider uses Convex: `useQuery('skills:listAll', {})`, with a persisted store for instant rehydrate. See `expo/providers/skills.tsx`.
+- The bridge now mirrors filesystem Projects and Skills into Convex (and removes entries on delete).
 
 ## Convex mapping (proposed + in progress)
 
