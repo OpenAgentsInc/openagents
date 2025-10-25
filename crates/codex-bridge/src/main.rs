@@ -102,15 +102,19 @@ async fn main() -> Result<()> {
     init_tracing();
     let opts = Opts::parse();
 
-    // Always supervise/start local Convex backend
-    if let Err(e) = ensure_convex_running(&opts).await {
-        error!(?e, "failed to ensure local Convex is running");
-    }
-    // Bootstrap Bun + Convex functions once so the app can subscribe immediately
-    if opts.bootstrap {
-        if let Err(e) = bootstrap_convex(&opts).await {
-            error!(?e, "convex bootstrap failed");
-        }
+    // Start Convex in the background so the WebSocket server can come up immediately.
+    {
+        let opts_clone = opts.clone();
+        tokio::spawn(async move {
+            if let Err(e) = ensure_convex_running(&opts_clone).await {
+                error!(?e, "failed to ensure local Convex is running");
+            }
+            if opts_clone.bootstrap {
+                if let Err(e) = bootstrap_convex(&opts_clone).await {
+                    error!(?e, "convex bootstrap failed");
+                }
+            }
+        });
     }
     // Optional destructive clear of all Convex data before ingest (opt-in)
     if std::env::var("OPENAGENTS_CONVEX_CLEAR").ok().as_deref() == Some("1") {
