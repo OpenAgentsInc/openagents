@@ -12,6 +12,7 @@ import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 
 export default function ConvexThreadDetail() {
   const params = useLocalSearchParams<{ id: string; new?: string }>()
@@ -24,6 +25,28 @@ export default function ConvexThreadDetail() {
 
   // Live messages subscription for this thread: use the thread.threadId, not the Convex doc _id
   const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || (isNew ? String(id || '') : ''), limit: 400 }) as any[] | undefined | null
+
+  const meta = React.useMemo(() => {
+    const arr: any[] = Array.isArray(messages) ? messages : []
+    const isMeta = (m: any) => {
+      if (!m) return false
+      if ((m.kind || (m.role ? 'message' : '')) !== 'message') return false
+      if ((m.role || '').toLowerCase() !== 'user') return false
+      const t = String(m.text || '')
+      // Heuristics: instructions, environment, or preface config JSON
+      if (/^\s*<user_instructions>/i.test(t)) return true
+      if (/^\s*#\s*Repository\s+Guidelines/i.test(t)) return true
+      if (/<environment_context>/i.test(t)) return true
+      if (/"sandbox"\s*:\s*"|"approval"\s*:\s*"/i.test(t)) return true
+      return false
+    }
+    let count = 0
+    for (let i = 0; i < arr.length; i++) {
+      if (isMeta(arr[i])) count++; else break
+      if (count >= 3) break
+    }
+    return { count, items: arr.slice(0, count) }
+  }, [messages])
 
   const enqueueRun = (useMutation as any)('runs:enqueue') as (args: { threadDocId: string; text: string; role?: string; projectId?: string }) => Promise<any>
   const headerHeight = useHeaderStore((s) => s.height)
@@ -49,7 +72,18 @@ export default function ConvexThreadDetail() {
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
       ) : (
         <View style={{ gap: 10 }}>
-          {messages.map((m: any) => {
+          {/* Collapsed metadata bar */}
+          {meta.count > 0 && (
+            <Pressable
+              onPress={() => { try { router.push(`/convex/thread/${encodeURIComponent(String(id))}/metadata`) } catch {} }}
+              accessibilityRole="button"
+              style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary }}>View conversation metadata</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />
+            </Pressable>
+          )}
+          {(messages as any[]).slice(meta.count).map((m: any) => {
             const kind = m.kind || (m.role ? 'message' : 'item')
             if (kind === 'message') {
               return (

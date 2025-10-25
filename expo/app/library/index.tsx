@@ -21,15 +21,16 @@ export default function ComponentLibraryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>JSONL Components</Text>
       <LinkRow title="MarkdownBlock" path="/library/markdown" subtitle="Fenced/inline code, lists, headers" />
       <LinkRow title="ReasoningHeadline" path="/library/reasoning-headline" subtitle="Top-line reasoning extraction + markdown" />
       <LinkRow title="ReasoningCard" path="/library/reasoning-card" subtitle="Card with markdown + code" />
       <LinkRow title="ExecBeginRow" path="/library/exec" subtitle="Parsed and raw command rows" />
-      <LinkRow title="FileChangeCard" path="/library/file-change" />
-      <LinkRow title="CommandExecutionCard" path="/library/command" subtitle="Feed style and detailed style" />
-      <LinkRow title="WebSearch & MCP Call" path="/library/search-mcp" />
-      <LinkRow title="TodoListCard" path="/library/todo" />
-      <LinkRow title="Turn & Error Rows" path="/library/turn-error" />
+      <LinkRow title="FileChangeCard" path="/library/file-change" subtitle="Summary (+/~/-) and list of changed files" />
+      <LinkRow title="CommandExecutionCard" path="/library/command" subtitle="Command output preview with collapsible body" />
+      <LinkRow title="WebSearch & MCP Call" path="/library/search-mcp" subtitle="Rows for web search queries and MCP tool calls" />
+      <LinkRow title="TodoListCard" path="/library/todo" subtitle="Agent plan checklist with completion state" />
+      <LinkRow title="Turn & Error Rows" path="/library/turn-error" subtitle="Turn lifecycle events and surfaced errors" />
       <LinkRow title="Unused Samples" path="/library/unused" subtitle="Hidden in feed; for reference" />
     </ScrollView>
   )
