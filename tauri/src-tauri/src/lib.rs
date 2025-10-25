@@ -174,13 +174,15 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, thread_id: Stri
                     let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
                     rows.push(MessageRow { id, thread_id, role, kind, text, data, ts });
                 }
-                let _ = window.emit("convex:messages", rows);
+                let _ = window.emit("convex:messages", &rows);
             }
         }
     });
 
     Ok(())
 }
+
+use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
