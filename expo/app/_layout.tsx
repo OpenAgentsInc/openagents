@@ -53,6 +53,7 @@ function DrawerContent() {
           </View>
           <View style={{ paddingHorizontal: 16, gap: 4 }}>
             <View style={{ height: 8 }} />
+            {/** Projects links temporarily disabled in drawer
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="folder-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
@@ -65,6 +66,7 @@ function DrawerContent() {
                 <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
             ))}
+            */}
             <View style={{ height: 8 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="time-outline" size={14} color={Colors.secondary} />
@@ -101,6 +103,7 @@ function DrawerContent() {
             <AntDesign name="dashboard" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Dashboard</Text>
           </Pressable> */}
+          {/** Skills link disabled in drawer
           <Pressable
             onPress={closeAnd(() => router.push('/skills'))}
             accessibilityRole="button"
@@ -110,6 +113,7 @@ function DrawerContent() {
             <Ionicons name="flash-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Skills</Text>
           </Pressable>
+          */}
           <Pressable
             onPress={closeAnd(() => router.push('/settings'))}
             accessibilityRole="button"
@@ -137,6 +141,7 @@ function DrawerContent() {
             <Ionicons name="book-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
           </Pressable>
+          {/** Logs link disabled in drawer
           <Pressable
             onPress={closeAnd(() => router.push('/logs'))}
             accessibilityRole="button"
@@ -146,6 +151,8 @@ function DrawerContent() {
             <Ionicons name="bug-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Logs</Text>
           </Pressable>
+          */}
+          {/** Convex link disabled in drawer
           <Pressable
             onPress={closeAnd(() => router.push('/convex'))}
             accessibilityRole="button"
@@ -155,6 +162,7 @@ function DrawerContent() {
             <Ionicons name="cloud-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Convex</Text>
           </Pressable>
+          */}
         </View>
       </View>
     </SafeAreaView>
@@ -228,7 +236,7 @@ function DrawerWrapper() {
     const onPress = async () => {
       try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } } catch {}
       try { const id = await createThread({ title: 'New Thread' }); router.push(`/convex/thread/${encodeURIComponent(String(id))}`); }
-      catch { router.push('/convex'); }
+      catch { router.push('/thread?focus=1&new=1'); }
     };
     return (
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>

@@ -45,7 +45,7 @@ export default function ProjectDetail() {
               const create = (require('convex/react') as any).useMutation('threads:create') as (args?: { title?: string; projectId?: string }) => Promise<string>;
               const id2 = await create({ title: 'New Thread', projectId: project.id });
               router.push(`/convex/thread/${encodeURIComponent(String(id2))}`);
-            } catch { router.push('/convex'); }
+            } catch { router.push('/thread?focus=1&new=1'); }
           }} />
           <Button title="Ping (cd)" onPress={() => sendForProject(project, 'Echo working dir and list top-level: run `pwd` then `ls -la`')} />
         </View>
