@@ -269,6 +269,16 @@ function DrawerWrapper() {
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="project/new" />
           <Stack.Screen name="library/index" />
+          <Stack.Screen name="library/markdown" />
+          <Stack.Screen name="library/reasoning-headline" />
+          <Stack.Screen name="library/reasoning-card" />
+          <Stack.Screen name="library/exec" />
+          <Stack.Screen name="library/file-change" />
+          <Stack.Screen name="library/command" />
+          <Stack.Screen name="library/search-mcp" />
+          <Stack.Screen name="library/todo" />
+          <Stack.Screen name="library/turn-error" />
+          <Stack.Screen name="library/unused" />
           <Stack.Screen name="settings/index" />
           <Stack.Screen name="logs/index" />
         </Stack>

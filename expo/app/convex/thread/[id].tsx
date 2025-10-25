@@ -23,7 +23,7 @@ export default function ConvexThreadDetail() {
   useHeaderTitle(thread?.title ? String(thread.title) : 'Thread')
 
   // Live messages subscription for this thread: use the thread.threadId, not the Convex doc _id
-  const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || (isNew ? String(id || '') : '') }) as any[] | undefined | null
+  const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || (isNew ? String(id || '') : ''), limit: 400 }) as any[] | undefined | null
 
   const enqueueRun = (useMutation as any)('runs:enqueue') as (args: { threadDocId: string; text: string; role?: string; projectId?: string }) => Promise<any>
   const headerHeight = useHeaderStore((s) => s.height)
