@@ -69,10 +69,19 @@ export const createDemo = mutationGeneric(async ({ db }, args: { threadId: strin
 });
 
 export const countForThread = queryGeneric(async ({ db }, args: { threadId: string }) => {
-  const rows = await db
-    .query("messages")
-    .withIndex?.('threadId', (q: any) => q.eq('threadId', args.threadId))
-    .filter((q) => q.eq(q.field("threadId"), args.threadId))
-    .collect();
-  return Array.isArray(rows) ? rows.length : 0;
+  try {
+    const rows = await db
+      .query("messages")
+      // Use the composite index to select by threadId efficiently
+      .withIndex('by_thread_ts', (q: any) => q.eq('threadId', args.threadId))
+      .collect();
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch {
+    // Fallback if index isn't available yet
+    const rows = await db
+      .query("messages")
+      .filter((q) => q.eq(q.field("threadId"), args.threadId))
+      .collect();
+    return Array.isArray(rows) ? rows.length : 0;
+  }
 });
