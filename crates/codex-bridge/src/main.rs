@@ -22,6 +22,15 @@ use chrono::TimeZone;
 use tracing_subscriber::prelude::*;
 use std::time::Duration;
 
+// Helper: convert Convex FunctionResult into plain JSON for inspection
+fn convex_result_to_json(res: convex::FunctionResult) -> serde_json::Value {
+    match res {
+        convex::FunctionResult::Value(v) => serde_json::Value::from(v),
+        convex::FunctionResult::ErrorMessage(msg) => serde_json::json!({"$error": msg}),
+        convex::FunctionResult::ConvexError(err) => serde_json::json!({"$error": err.message, "$data": serde_json::Value::from(err.data)}),
+    }
+}
+
 mod history;
 mod projects;
 mod skills;
@@ -508,6 +517,22 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                     Err(e) => { error!(?e, "skills list failed via ws"); }
                                 }
+                            }
+                            ControlCommand::BridgeStatus => {
+                                let codex_pid = { *stdin_state.child_pid.lock().await };
+                                let last_thread_id = { stdin_state.last_thread_id.lock().await.clone() };
+                                let bind = stdin_state.opts.bind.clone();
+                                let convex_url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let convex_healthy = convex_health(&convex_url).await.unwrap_or(false);
+                                let line = serde_json::json!({
+                                    "type": "bridge.status",
+                                    "bind": bind,
+                                    "codex_pid": codex_pid,
+                                    "last_thread_id": last_thread_id,
+                                    "convex_url": convex_url,
+                                    "convex_healthy": convex_healthy
+                                }).to_string();
+                                let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::ConvexStatus => {
                                 let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
@@ -1504,6 +1529,7 @@ enum ControlCommand {
     Interrupt,
     Projects,
     Skills,
+    BridgeStatus,
     ProjectSave { project: crate::projects::Project },
     ProjectDelete { id: String },
     ConvexStatus,
@@ -1529,6 +1555,7 @@ fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         "interrupt" => Some(ControlCommand::Interrupt),
         "projects" => Some(ControlCommand::Projects),
         "skills" => Some(ControlCommand::Skills),
+        "bridge.status" => Some(ControlCommand::BridgeStatus),
         "convex.status" => Some(ControlCommand::ConvexStatus),
         "convex.create_demo" => Some(ControlCommand::ConvexCreateDemo),
         "convex.create_threads" => Some(ControlCommand::ConvexCreateThreads),
@@ -1678,8 +1705,8 @@ async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> 
             if let Some(v) = &repo.remote { robj.insert("remote".into(), Value::from(v.clone())); }
             if let Some(v) = &repo.url { robj.insert("url".into(), Value::from(v.clone())); }
             if let Some(v) = &repo.branch { robj.insert("branch".into(), Value::from(v.clone())); }
-            // Value::Object is accepted by convex::Value via From<BTreeMap<..>>
-            args.insert("repo".into(), Value::from(robj));
+            // Wrap object fields into a Convex Value::Object
+            args.insert("repo".into(), Value::Object(robj));
         }
         if let Some(v) = &p.agent_file { args.insert("agentFile".into(), Value::from(v.clone())); }
         if let Some(v) = &p.instructions { args.insert("instructions".into(), Value::from(v.clone())); }
@@ -1696,18 +1723,17 @@ async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> 
     }
     // Remove projects that no longer exist on disk
     if let Ok(existing_val) = client.query("projects:list", BTreeMap::new()).await {
-        if let Ok(json) = serde_json::to_value(&existing_val) {
-            if let Some(arr) = json.as_array() {
-                use std::collections::HashSet;
-                let present: HashSet<String> = items.iter().map(|p| p.id.clone()).collect();
-                for row in arr {
-                    let id = row.get("id").and_then(|x| x.as_str()).unwrap_or("");
-                    if id.is_empty() { continue; }
-                    if !present.contains(id) {
-                        let mut rargs: BTreeMap<String, Value> = BTreeMap::new();
-                        rargs.insert("id".into(), Value::from(id.to_string()));
-                        let _ = client.mutation("projects:remove", rargs).await;
-                    }
+        let json = convex_result_to_json(existing_val);
+        if let Some(arr) = json.as_array() {
+            use std::collections::HashSet;
+            let present: HashSet<String> = items.iter().map(|p| p.id.clone()).collect();
+            for row in arr {
+                let id = row.get("id").and_then(|x| x.as_str()).unwrap_or("");
+                if id.is_empty() { continue; }
+                if !present.contains(id) {
+                    let mut rargs: BTreeMap<String, Value> = BTreeMap::new();
+                    rargs.insert("id".into(), Value::from(id.to_string()));
+                    let _ = client.mutation("projects:remove", rargs).await;
                 }
             }
         }
@@ -1730,8 +1756,13 @@ async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
         args.insert("name".into(), Value::from(s.name.clone()));
         args.insert("description".into(), Value::from(s.description.clone()));
         if let Some(v) = s.meta.license.as_ref() { args.insert("license".into(), Value::from(v.clone())); }
-        if let Some(arr) = s.meta.allowed_tools.as_ref() { args.insert("allowed_tools".into(), Value::from(arr.clone())); }
-        if let Some(m) = s.meta.metadata.as_ref() { args.insert("metadata".into(), Value::from(m.clone())); }
+        if let Some(arr) = s.meta.allowed_tools.as_ref() {
+            let arr_vals: Vec<Value> = arr.iter().cloned().map(Value::from).collect();
+            args.insert("allowed_tools".into(), Value::from(arr_vals));
+        }
+        if let Some(m) = s.meta.metadata.as_ref() {
+            if let Ok(v) = Value::try_from(m.clone()) { args.insert("metadata".into(), v); }
+        }
         args.insert("source".into(), Value::from(source));
         args.insert("createdAt".into(), Value::from(now_ms() as f64));
         args.insert("updatedAt".into(), Value::from(now_ms() as f64));
@@ -1763,20 +1794,19 @@ async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
         }
     }
     if let Ok(existing) = client.query("skills:listAll", BTreeMap::new()).await {
-        if let Ok(json) = serde_json::to_value(&existing) {
-            if let Some(arr) = json.as_array() {
-                for row in arr {
-                    let skill_id = row.get("skillId").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    let source = row.get("source").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    let project_id = row.get("projectId").and_then(|x| x.as_str()).map(|s| s.to_string());
-                    if skill_id.is_empty() || source.is_empty() { continue; }
-                    if !expected.contains(&(skill_id.clone(), source.clone(), project_id.clone())) {
-                        let mut rargs: BTreeMap<String, Value> = BTreeMap::new();
-                        rargs.insert("skillId".into(), Value::from(skill_id));
-                        rargs.insert("source".into(), Value::from(source));
-                        if let Some(pid) = project_id { rargs.insert("projectId".into(), Value::from(pid)); }
-                        let _ = client.mutation("skills:removeByScope", rargs).await;
-                    }
+        let json = convex_result_to_json(existing);
+        if let Some(arr) = json.as_array() {
+            for row in arr {
+                let skill_id = row.get("skillId").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                let source = row.get("source").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                let project_id = row.get("projectId").and_then(|x| x.as_str()).map(|s| s.to_string());
+                if skill_id.is_empty() || source.is_empty() { continue; }
+                if !expected.contains(&(skill_id.clone(), source.clone(), project_id.clone())) {
+                    let mut rargs: BTreeMap<String, Value> = BTreeMap::new();
+                    rargs.insert("skillId".into(), Value::from(skill_id));
+                    rargs.insert("source".into(), Value::from(source));
+                    if let Some(pid) = project_id { rargs.insert("projectId".into(), Value::from(pid)); }
+                    let _ = client.mutation("skills:removeByScope", rargs).await;
                 }
             }
         }
@@ -1799,8 +1829,13 @@ async fn sync_project_scoped_skills(state: Arc<AppState>, client: &mut convex::C
             args.insert("name".into(), Value::from(s.name.clone()));
             args.insert("description".into(), Value::from(s.description.clone()));
             if let Some(v) = s.meta.license.as_ref() { args.insert("license".into(), Value::from(v.clone())); }
-            if let Some(arr) = s.meta.allowed_tools.as_ref() { args.insert("allowed_tools".into(), Value::from(arr.clone())); }
-            if let Some(m) = s.meta.metadata.as_ref() { args.insert("metadata".into(), Value::from(m.clone())); }
+            if let Some(arr) = s.meta.allowed_tools.as_ref() {
+                let arr_vals: Vec<Value> = arr.iter().cloned().map(Value::from).collect();
+                args.insert("allowed_tools".into(), Value::from(arr_vals));
+            }
+            if let Some(m) = s.meta.metadata.as_ref() {
+                if let Ok(v) = Value::try_from(m.clone()) { args.insert("metadata".into(), v); }
+            }
             args.insert("source".into(), Value::from("project"));
             args.insert("projectId".into(), Value::from(p.id.clone()));
             args.insert("path".into(), Value::from(dir.to_string_lossy().to_string()));
