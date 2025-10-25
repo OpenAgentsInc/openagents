@@ -14,14 +14,16 @@ import { CommandExecutionCard } from '@/components/jsonl/CommandExecutionCard'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 export default function ConvexThreadDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const params = useLocalSearchParams<{ id: string; new?: string }>()
+  const id = params?.id as string
+  const isNew = typeof params?.new === 'string'
 
   // Load thread (for title) — tolerate null while loading
   const thread = (useQuery as any)('threads:byId', { id }) as any
   useHeaderTitle(thread?.title ? String(thread.title) : 'Thread')
 
   // Live messages subscription for this thread: use the thread.threadId, not the Convex doc _id
-  const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || '' }) as any[] | undefined | null
+  const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || (isNew ? String(id || '') : '') }) as any[] | undefined | null
 
   const enqueueRun = (useMutation as any)('runs:enqueue') as (args: { threadDocId: string; text: string; role?: string; projectId?: string }) => Promise<any>
   const headerHeight = useHeaderStore((s) => s.height)
@@ -39,11 +41,11 @@ export default function ConvexThreadDetail() {
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 88 }}>
 
-      {messages === undefined ? (
+      {(messages === undefined && !isNew) ? (
         <ActivityIndicator color={Colors.secondary} />
-      ) : messages === null ? (
+      ) : (messages === null) ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No Convex deployment or query missing (messages:forThread).</Text>
-      ) : messages.length === 0 ? (
+      ) : (!Array.isArray(messages) || messages.length === 0) ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
       ) : (
         <View style={{ gap: 10 }}>

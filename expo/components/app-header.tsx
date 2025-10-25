@@ -37,7 +37,7 @@ export function AppHeader() {
     // Create a new Convex thread and open it
     try {
       const id = await createThread({ title: 'New Thread' })
-      router.push(`/convex/thread/${encodeURIComponent(String(id))}`)
+      router.push(`/convex/thread/${encodeURIComponent(String(id))}?new=1`)
     } catch {
       // Fallback to local route in case Convex is not reachable
       router.push('/convex')

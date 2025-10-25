@@ -9,7 +9,7 @@ export default function ThreadEntry() {
         const { router } = require('expo-router') as any
         const create = (require('convex/react') as any).useMutation('threads:create') as (args?: { title?: string }) => Promise<string>
         const id = await create({ title: 'New Thread' })
-        router.replace(`/convex/thread/${encodeURIComponent(String(id))}`)
+        router.replace(`/convex/thread/${encodeURIComponent(String(id))}?new=1`)
       } catch {
         try { (require('expo-router') as any).router.replace('/convex') } catch {}
       }
