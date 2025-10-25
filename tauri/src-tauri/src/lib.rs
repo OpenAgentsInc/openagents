@@ -30,6 +30,105 @@ async fn get_thread_count(convex_url: Option<String>) -> Result<usize, String> {
     }
 }
 
+#[derive(serde::Serialize)]
+struct ThreadSummary {
+    id: String,
+    thread_id: Option<String>,
+    title: String,
+    updated_at: f64,
+}
+
+#[derive(serde::Serialize)]
+struct MessageRow {
+    role: Option<String>,
+    kind: Option<String>,
+    text: Option<String>,
+    ts: f64,
+}
+
+#[tauri::command]
+async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> Result<Vec<ThreadSummary>, String> {
+    use convex::{FunctionResult, Value};
+    use std::collections::BTreeMap;
+
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| "http://127.0.0.1:7788".to_string());
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let res = client
+        .query("threads:list", BTreeMap::new())
+        .await
+        .map_err(|e| format!("convex query error: {e}"))?;
+
+    let mut rows: Vec<ThreadSummary> = Vec::new();
+    match res {
+        FunctionResult::Value(Value::Array(items)) => {
+            for item in items {
+                let json: serde_json::Value = item.into();
+                let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                if id.is_empty() { continue; }
+                let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
+                rows.push(ThreadSummary { id, thread_id, title, updated_at });
+            }
+            // Sort by updated_at desc and clamp to limit (default 10)
+            rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
+            let take = limit.unwrap_or(10) as usize;
+            if rows.len() > take { rows.truncate(take); }
+            Ok(rows)
+        }
+        FunctionResult::Value(_) => Ok(Vec::new()),
+        FunctionResult::ErrorMessage(msg) => Err(msg),
+        FunctionResult::ConvexError(err) => Err(err.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn list_messages_for_thread(thread_id: String, limit: Option<u32>, convex_url: Option<String>) -> Result<Vec<MessageRow>, String> {
+    use convex::{FunctionResult, Value};
+    use std::collections::BTreeMap;
+
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| "http://127.0.0.1:7788".to_string());
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+    args.insert("threadId".into(), Value::from(thread_id));
+    if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
+
+    let res = client
+        .query("messages:forThread", args)
+        .await
+        .map_err(|e| format!("convex query error: {e}"))?;
+
+    match res {
+        FunctionResult::Value(Value::Array(items)) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                let json: serde_json::Value = item.into();
+                let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let kind = json.get("kind").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let text = json.get("text").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                out.push(MessageRow { role, kind, text, ts });
+            }
+            Ok(out)
+        }
+        FunctionResult::Value(_) => Ok(Vec::new()),
+        FunctionResult::ErrorMessage(msg) => Err(msg),
+        FunctionResult::ConvexError(err) => Err(err.to_string()),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -41,7 +140,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_thread_count])
+        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

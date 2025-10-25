@@ -27,6 +27,9 @@ struct BridgeStatus {
 #[component]
 pub fn App() -> impl IntoView {
     let (ws_connected, set_ws_connected) = signal(false);
+    let (threads, set_threads) = signal::<Vec<serde_json::Value>>(vec![]);
+    let (selected_thread_id, set_selected_thread_id) = signal::<Option<String>>(None);
+    let (messages, set_messages) = signal::<Vec<serde_json::Value>>(vec![]);
     let (convex_status, set_convex_status) = signal::<Option<ConvexStatus>>(None);
     let (bridge_status, set_bridge_status) = signal::<Option<BridgeStatus>>(None);
 
@@ -88,25 +91,100 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    // Fetch recent threads on mount
+    {
+        let set_threads = set_threads.clone();
+        spawn_local(async move {
+            let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "limit": 10 })).unwrap();
+            let res = invoke("list_recent_threads", args).await;
+            // Expect an array
+            let arr = js_sys::Array::from(&res);
+            if arr.length() > 0 {
+                // Convert JsValue -> serde_json::Value
+                if let Ok(v) = serde_wasm_bindgen::from_value::<Vec<serde_json::Value>>(res.clone()) {
+                    set_threads.set(v);
+                }
+            } else {
+                // try parse non-array fallback
+                if let Ok(v) = serde_wasm_bindgen::from_value::<Vec<serde_json::Value>>(res) {
+                    set_threads.set(v);
+                }
+            }
+        });
+    }
+
+    // When a thread is selected, load its messages
+    let on_select_thread = {
+        let set_selected_thread_id = set_selected_thread_id.clone();
+        let set_messages = set_messages.clone();
+        move |tid: String| {
+            set_selected_thread_id.set(Some(tid.clone()));
+            spawn_local(async move {
+                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "thread_id": tid, "limit": 400 })).unwrap();
+                let res = invoke("list_messages_for_thread", args).await;
+                if let Ok(v) = serde_wasm_bindgen::from_value::<Vec<serde_json::Value>>(res) {
+                    set_messages.set(v);
+                }
+            });
+        }
+    };
+
     view! {
-        <main class="container">
-            <div class="status-list">
-                <div class="status-row">
-                    <span class={ move || if ws_connected.get() { "dot dot-ok" } else { "dot dot-bad" } }></span>
-                    <span>"Bridge WS"</span>
-                    <span class="muted">{ move || if ws_connected.get() { "Connected".to_string() } else { "Disconnected".to_string() } }</span>
+        <main class="app">
+            <aside class="sidebar">
+                <div class="status-list">
+                    <div class="status-row">
+                        <span class={ move || if ws_connected.get() { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                        <span>"Bridge WS"</span>
+                        <span class="muted">{ move || if ws_connected.get() { "Connected".to_string() } else { "Disconnected".to_string() } }</span>
+                    </div>
+                    <div class="status-row">
+                        <span class={ move || if convex_status.get().map(|s| s.healthy).unwrap_or(false) { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                        <span>"Convex"</span>
+                        <span class="muted">{ move || convex_status.get().map(|s| s.url).unwrap_or_else(|| "".into()) }</span>
+                    </div>
+                    <div class="status-row">
+                        <span class={ move || if bridge_status.get().and_then(|s| s.codex_pid).is_some() { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                        <span>"Codex"</span>
+                        <span class="muted">{ move || bridge_status.get().and_then(|s| s.codex_pid).map(|p| format!("PID {p}" )).unwrap_or_else(|| "Not running".into()) }</span>
+                    </div>
                 </div>
-                <div class="status-row">
-                    <span class={ move || if convex_status.get().map(|s| s.healthy).unwrap_or(false) { "dot dot-ok" } else { "dot dot-bad" } }></span>
-                    <span>"Convex"</span>
-                    <span class="muted">{ move || convex_status.get().map(|s| s.url).unwrap_or_else(|| "".into()) }</span>
+                <div class="threads">
+                    <div class="threads-title">"Recent Threads"</div>
+                    <div class="thread-list">
+                        { move || threads.get().into_iter().map(|row| {
+                            let tid = row.get("thread_id").and_then(|x| x.as_str()).map(|s| s.to_string())
+                                .or_else(|| row.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                                .or_else(|| row.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                                .unwrap_or_default();
+                            let title = row.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                            let is_selected = selected_thread_id.get().as_deref() == Some(&tid);
+                            view! {
+                                <div class={ move || if is_selected { "thread-item selected" } else { "thread-item" } }
+                                     on:click={
+                                        let tid = tid.clone();
+                                        let on_select_thread = on_select_thread.clone();
+                                        move |_| on_select_thread(tid.clone())
+                                     }>
+                                    <div class="thread-title">{ title.clone() }</div>
+                                </div>
+                            }
+                        }).collect::<Vec<_>>() }
+                    </div>
                 </div>
-                <div class="status-row">
-                    <span class={ move || if bridge_status.get().and_then(|s| s.codex_pid).is_some() { "dot dot-ok" } else { "dot dot-bad" } }></span>
-                    <span>"Codex"</span>
-                    <span class="muted">{ move || bridge_status.get().and_then(|s| s.codex_pid).map(|p| format!("PID {p}" )).unwrap_or_else(|| "Not running".into()) }</span>
+            </aside>
+            <section class="content">
+                <div class="messages">
+                    { move || messages.get().into_iter().map(|m| {
+                        let role = m.get("role").and_then(|x| x.as_str()).unwrap_or("assistant");
+                        let text = m.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                        let cls = if role == "user" { "msg user" } else { "msg assistant" };
+                        view! {
+                            <div class={ cls }><div class="bubble">{ text }</div></div>
+                        }
+                    }).collect::<Vec<_>>() }
                 </div>
-            </div>
+            </section>
         </main>
     }
 }

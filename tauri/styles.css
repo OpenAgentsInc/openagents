@@ -57,6 +57,10 @@
 
 .container { margin: 0; padding: 0; min-height: 100vh; display: grid; place-items: center; background: var(--background); color: var(--foreground); }
 
+.app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; width: 100vw; }
+.sidebar { border-right: 1px solid var(--border); padding: 16px; overflow: auto; }
+.content { padding: 16px; overflow: auto; }
+
 .thread-count { font-size: 64px; line-height: 1; letter-spacing: 0.5px; }
 
 .status-list { display: grid; gap: 12px; min-width: 360px; }
@@ -65,6 +69,19 @@
 .dot-ok { background: #04A545; }
 .dot-bad { background: #e7040f; }
 .muted { color: #8a8f98; }
+
+.threads { margin-top: 16px; }
+.threads-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #8a8f98; margin-bottom: 8px; }
+.thread-list { display: grid; gap: 6px; }
+.thread-item { padding: 10px 12px; border: 1px solid var(--border); cursor: pointer; }
+.thread-item.selected { outline: 1px solid #f7f8f8; }
+.thread-title { font-size: 14px; }
+
+.messages { display: grid; gap: 8px; max-width: 860px; margin: 0 auto; }
+.msg { display: flex; }
+.msg.user { justify-content: flex-end; }
+.msg.assistant { justify-content: flex-start; }
+.bubble { display: inline-block; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; max-width: 80ch; white-space: pre-wrap; }
 
 .logo {
   height: 6em;
