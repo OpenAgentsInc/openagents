@@ -79,6 +79,11 @@ struct Opts {
     /// Interface to bind Convex on (e.g., 0.0.0.0 for remote access, 127.0.0.1 for loopback only)
     #[arg(long, env = "OPENAGENTS_CONVEX_INTERFACE", default_value = "0.0.0.0")]
     convex_interface: String,
+
+    /// Manage local Convex lifecycle: start/monitor/bootstrap. Disabled by default.
+    /// Set to 1 to have the bridge supervise Convex (handy on dev boxes without a separate tab).
+    #[arg(long, env = "OPENAGENTS_MANAGE_CONVEX", default_value_t = false)]
+    manage_convex: bool,
 }
 
 const MAX_HISTORY_LINES: usize = 2000;
@@ -103,7 +108,7 @@ async fn main() -> Result<()> {
     let opts = Opts::parse();
 
     // Start Convex in the background so the WebSocket server can come up immediately.
-    {
+    if opts.manage_convex {
         let opts_clone = opts.clone();
         tokio::spawn(async move {
             match ensure_convex_running(&opts_clone).await {
@@ -122,11 +127,15 @@ async fn main() -> Result<()> {
                 }
             }
         });
+    } else {
+        info!("msg" = "OPENAGENTS_MANAGE_CONVEX=0 — bridge will not manage Convex; expecting an external process");
     }
-    // Optional destructive clear of all Convex data before ingest (opt-in)
-    if std::env::var("OPENAGENTS_CONVEX_CLEAR").ok().as_deref() == Some("1") {
-        if let Err(e) = run_convex_clear_all(opts.convex_port).await {
-            error!(?e, "convex clearAll failed");
+    // Optional destructive clear of all Convex data before ingest (opt-in), only if we manage Convex
+    if opts.manage_convex {
+        if std::env::var("OPENAGENTS_CONVEX_CLEAR").ok().as_deref() == Some("1") {
+            if let Err(e) = run_convex_clear_all(opts.convex_port).await {
+                error!(?e, "convex clearAll failed");
+            }
         }
     }
 
