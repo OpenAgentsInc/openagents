@@ -95,6 +95,36 @@ Bullet list of the recommended flow, commands to run, files to read, etc.
 - ProjectsProvider requests the project list via WS on mount and seeds the persisted store, preserving instant rehydrate. See `expo/providers/projects.tsx`.
 - The app currently reads Projects from WS; Skills are local files used by humans/agents (future UI can expose them with the same pattern).
 
+## Convex mapping (proposed + in progress)
+
+To unify persistence and enable multi‑client sync, Projects and Skills are also mirrored into Convex tables. Files under the user’s OpenAgents home remain the source of truth; the bridge syncs them into Convex on startup and on file changes.
+
+- Source of truth: on‑disk folders under `~/.openagents/projects/` and `~/.openagents/skills/` (plus repo `skills/` for registry defaults).
+- Sync direction: Filesystem → Convex (initial). Future two‑way edits will write to disk first, then update Convex.
+- App reads: via Convex queries/subscriptions for Projects/Skills once the migration is complete.
+
+Tables (Convex)
+- `projects`
+  - Fields: `id` (string), `name`, `workingDir`, `repo` (object), `agentFile?`, `instructions?`, `createdAt`, `updatedAt`.
+  - Indexes: `by_id (id)`, `by_name (name)`.
+- `skills`
+  - Fields: `skillId` (string), `name`, `description`, `license?`, `allowed_tools?`, `metadata?`, `source` ('user' | 'registry' | 'project'), `projectId?`, `path?`, `createdAt`, `updatedAt`.
+  - Indexes: `by_skill_source_project (skillId, source, projectId)`, `by_project (projectId)`.
+
+Server functions (Convex)
+- `projects:list`, `projects:byId`, `projects:upsertFromFs`, `projects:remove`
+- `skills:listAll`, `skills:listByScope`, `skills:upsertFromFs`, `skills:bulkUpsertFromFs`, `skills:removeByScope`
+
+Scopes for Skills
+- `user`: personal skills under `~/.openagents/skills`.
+- `registry`: repo‑bundled skills under `skills/` in this repo (baseline set; personal overrides on id conflicts).
+- `project`: skills bundled inside a project’s repo (e.g., `<project workingDir>/skills/…`). These are only active for that project; stored with `projectId`.
+
+Migration plan
+1) Bridge watchers read folders and call `skills:bulkUpsertFromFs` and `projects:upsertFromFs` on changes.
+2) App switches Projects/Skills providers to use Convex queries (keep local store for instant rehydrate).
+3) Optional: add Convex mutations for in‑app editing that write to disk via bridge, then re‑sync into Convex.
+
 ## Examples
 
 - Project example folder: `~/.openagents/projects/tricoder/PROJECT.md`

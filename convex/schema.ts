@@ -14,6 +14,47 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  // Projects: mirrored from ~/.openagents/projects/<id>/PROJECT.md (filesystem is source of truth)
+  // - id: folder name / slug identifier for the project
+  // - repo: optional metadata for Git remotes
+  projects: defineTable({
+    id: v.string(),
+    name: v.string(),
+    workingDir: v.string(),
+    repo: v.optional(v.object({
+      provider: v.optional(v.string()),
+      remote: v.optional(v.string()),
+      url: v.optional(v.string()),
+      branch: v.optional(v.string()),
+    })),
+    agentFile: v.optional(v.string()),
+    instructions: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    // Optional chaining keeps older Convex versions tolerant if index() is not available at typecheck time
+    .index?.('by_id', ['id'])
+    .index?.('by_name', ['name']),
+
+  // Skills: merged view of personal (~/.openagents/skills), repo registry (./skills), and project-scoped (<workingDir>/skills)
+  // - skillId: lowercase hyphen-case id (= folder name)
+  // - source: 'user' | 'registry' | 'project'
+  // - projectId: present only when source === 'project'
+  skills: defineTable({
+    skillId: v.string(),
+    name: v.string(),
+    description: v.string(),
+    license: v.optional(v.string()),
+    allowed_tools: v.optional(v.array(v.string())),
+    metadata: v.optional(v.any()),
+    source: v.string(), // 'user' | 'registry' | 'project'
+    projectId: v.optional(v.string()),
+    path: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index?.('by_skill_source_project', ['skillId', 'source', 'projectId'])
+    .index?.('by_project', ['projectId']),
   messages: defineTable({
     threadId: v.string(),
     role: v.optional(v.string()), // 'user' | 'assistant' | 'system' (optional for non-message items)
