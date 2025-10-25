@@ -1,4 +1,22 @@
+#[cfg(feature = "jsonl_components")]
 use crate::jsonl::{JsonlMessage, MessageRow};
+#[cfg(not(feature = "jsonl_components"))]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+struct MessageRow {
+    #[allow(dead_code)] id: Option<String>,
+    role: Option<String>,
+    kind: Option<String>,
+    text: Option<String>,
+    #[allow(dead_code)] data: Option<serde_json::Value>,
+    ts: f64,
+}
+#[cfg(not(feature = "jsonl_components"))]
+impl MessageRow {
+    fn stable_key(&self) -> String {
+        let ts_bits = self.ts.to_bits();
+        format!("{}-{ts_bits}", self.kind.clone().unwrap_or_else(|| "message".into()))
+    }
+}
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
@@ -11,6 +29,8 @@ use web_sys::{MessageEvent, WebSocket};
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "event"], js_name = listen)]
+    async fn tauri_listen(event: &str, handler: &js_sys::Function) -> JsValue;
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -138,18 +158,42 @@ pub fn App() -> impl IntoView {
         });
     }
 
+    // Listen for live message updates from Tauri backend subscription
+    {
+        let set_messages = set_messages.clone();
+        spawn_local(async move {
+            let handler = Closure::wrap(Box::new(move |e: JsValue| {
+                if let Ok(payload) = js_sys::Reflect::get(&e, &JsValue::from_str("payload")) {
+                    if let Ok(rows) = serde_wasm_bindgen::from_value::<Vec<MessageRow>>(payload) {
+                        set_messages.set(rows);
+                    }
+                }
+            }) as Box<dyn FnMut(JsValue)>);
+            let _unlisten = tauri_listen("convex:messages", handler.as_ref().unchecked_ref()).await;
+            handler.forget();
+        });
+    }
+
     // When a thread is selected, load its messages
     let on_select_thread = {
         let set_selected_thread_id = set_selected_thread_id.clone();
         let set_messages = set_messages.clone();
         move |tid: String| {
             set_selected_thread_id.set(Some(tid.clone()));
+            set_messages.set(vec![]);
+            let tid_fetch = tid.clone();
             spawn_local(async move {
-                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "thread_id": tid, "limit": 400 })).unwrap();
+                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "thread_id": tid_fetch, "limit": 400 })).unwrap();
                 let res = invoke("list_messages_for_thread", args).await;
                 if let Ok(v) = serde_wasm_bindgen::from_value::<Vec<MessageRow>>(res) {
                     set_messages.set(v);
                 }
+            });
+            // Start live subscription; updates are delivered via 'convex:messages' events
+            let tid_sub = tid.clone();
+            spawn_local(async move {
+                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "thread_id": tid_sub, "limit": 400 })).unwrap();
+                let _ = invoke("subscribe_thread_messages", args).await;
             });
         }
     };
@@ -203,7 +247,17 @@ pub fn App() -> impl IntoView {
                     <For
                         each=move || messages.get()
                         key=|row: &MessageRow| row.stable_key()
-                        view=move |row| view! { <JsonlMessage row=row /> }
+                        children=move |row| {
+                            #[cfg(feature = "jsonl_components")]
+                            { view! { <JsonlMessage row=row /> } }
+                            #[cfg(not(feature = "jsonl_components"))]
+                            {
+                                let role = row.role.clone().unwrap_or_else(|| "assistant".into());
+                                let text = row.text.clone().unwrap_or_default();
+                                let cls = if role == "user" { "msg user" } else { "msg assistant" };
+                                view! { <div class=cls><div class="bubble">{text}</div></div> }
+                            }
+                        }
                     />
                 </div>
             </section>
