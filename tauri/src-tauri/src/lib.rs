@@ -233,18 +233,18 @@ async fn ensure_bridge_running() {
     let bin = repo.join("target").join("debug").join(if cfg!(windows) { "codex-bridge.exe" } else { "codex-bridge" });
     println!("[tauri/bootstrap] bridge bin exists? {} — {}", bin.exists(), bin.display());
 
-    // Prefer direct binary if present, otherwise cargo run
-    let mut cmd = if bin.exists() {
-        let mut c = std::process::Command::new(bin);
-        c.arg("--bind").arg("0.0.0.0:8787");
-        c
-    } else {
+    // In dev, prefer `cargo run -p codex-bridge` to ensure the latest code is used.
+    // This avoids stale binaries that don't reflect recent changes.
+    let mut cmd = {
         let mut c = std::process::Command::new("cargo");
         c.args(["run", "-q", "-p", "codex-bridge", "--", "--bind", "0.0.0.0:8787"]);
         c
     };
     cmd.current_dir(&repo)
         .env("RUST_LOG", "info")
+        // Ensure the bridge does not manage Convex or attempt bootstrap when spawned by the app.
+        .env("OPENAGENTS_MANAGE_CONVEX", "0")
+        .env("OPENAGENTS_BOOTSTRAP", "0")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit());
