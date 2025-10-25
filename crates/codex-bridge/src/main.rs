@@ -1213,7 +1213,7 @@ async fn enqueue_historical_on_start(state: Arc<AppState>) {
     for h in &initial {
         if let Err(e) = enqueue_single_thread(&state, h).await { warn!(?e, id=%h.id, "enqueue thread failed") } else { ok += 1; }
     }
-    info!(count = ok, base=%base, msg="initial enqueue to spool");
+    info!(count = ok, base=%base, msg="initial history import queued");
 
     // Continue with larger batch in the background
     let state2 = state.clone();
@@ -1229,7 +1229,7 @@ async fn enqueue_historical_on_start(state: Arc<AppState>) {
             // Yield frequently so we don't block the runtime
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
-        if cnt > 0 { info!(count = cnt, msg = "enqueue remaining history to spool"); }
+        if cnt > 0 { info!(count = cnt, msg = "import remaining history"); }
     });
 }
 

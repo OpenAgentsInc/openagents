@@ -6,15 +6,24 @@ type CreateArgs = { threadId: string; role?: string; kind?: string; text?: strin
 export const forThread = queryGeneric(async ({ db }, args: ForThreadArgs) => {
   const { threadId } = args;
   const limit = Math.max(1, Math.min(args.limit ?? 400, 800));
-  // Prefer indexed, descending read of the newest N messages to stay under Convex read byte limits
-  const builder = db
-    .query("messages")
-    .withIndex?.('by_thread_ts', (q: any) => q.eq('threadId', threadId))
-    ?? db.query("messages").filter((q) => q.eq(q.field("threadId"), threadId));
-  const ordered = (builder as any).order?.('desc') ?? builder;
-  const page = (ordered as any).take?.(limit) ?? (await (ordered as any).collect());
-  const rows = Array.isArray(page) ? page.slice(0, limit).reverse() : [];
-  return rows;
+  // Use index + descending + take for newest N
+  try {
+    // @ts-ignore withIndex/order/take exist on Convex query builders
+    const rows = await db
+      .query("messages")
+      .withIndex('by_thread_ts', (q: any) => q.eq('threadId', threadId))
+      .order('desc')
+      .take(limit);
+    return Array.isArray(rows) ? rows.reverse() : [];
+  } catch {
+    // Fallback to full collect (rare) with server-side clamp
+    const rows = await db
+      .query("messages")
+      .filter((q) => q.eq(q.field("threadId"), threadId))
+      .order('desc' as any)
+      .collect();
+    return (rows as any[]).slice(0, limit).reverse();
+  }
 });
 
 export const create = mutationGeneric(async ({ db }, args: CreateArgs) => {
