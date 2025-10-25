@@ -31,9 +31,9 @@ export function ReasoningHeadline({ text }: { text: string }) {
     <View style={{ marginTop: 8 }}>
       <Markdown
       style={{
-        body: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 16 },
-        paragraph: { color: Colors.secondary, marginTop: 0, marginBottom: 2 },
-        strong: { fontFamily: Typography.bold, color: Colors.secondary },
+        body: { color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 16 },
+        paragraph: { color: Colors.tertiary, marginTop: 0, marginBottom: 2 },
+        strong: { fontFamily: Typography.bold, color: Colors.tertiary },
         code_inline: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 4, paddingVertical: 2 },
         code_block: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 0 },
         fence: { backgroundColor: Colors.black, color: Colors.secondary, borderWidth: 1, borderColor: Colors.border, padding: 0 },
