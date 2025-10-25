@@ -179,6 +179,12 @@ async fn convex_health(url: &str) -> Result<bool> {
 
 async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     let bin = opts.convex_bin.clone().unwrap_or_else(default_convex_bin);
+    if !bin.exists() {
+        // Try to fetch/install the local backend binary via Convex CLI (bunx convex dev).
+        if let Err(e) = ensure_local_backend_present().await {
+            warn!(?e, path=%bin.display(), "convex local_backend missing and auto-install failed");
+        }
+    }
     let db = opts.convex_db.clone().unwrap_or_else(default_convex_db);
     let port = opts.convex_port;
     let interface = opts.convex_interface.clone();
@@ -327,6 +333,56 @@ async fn ensure_bun_installed() -> Result<PathBuf> {
     }
     // Verify
     if bun_bin.exists() { Ok(bun_bin) } else { anyhow::bail!("bun not found after install") }
+}
+
+async fn ensure_local_backend_present() -> Result<()> {
+    // Ensure bun is present (we invoke convex CLI via bunx)
+    let bun_bin = ensure_bun_installed().await?;
+    // Ask convex CLI to fetch/upgrade local backend binary into its cache
+    // We use --once and --skip-push to avoid long-running watchers or pushing functions.
+    let root = repo_root();
+    info!(dir=%root.display(), msg="ensuring Convex local backend binary via convex CLI");
+    let status = Command::new(&bun_bin)
+        .args(["x", "convex", "dev", "--once", "--skip-push", "--local-force-upgrade"])
+        .current_dir(&root)
+        .status()
+        .await
+        .context("bunx convex dev bootstrap failed to spawn")?;
+    if !status.success() {
+        anyhow::bail!("bunx convex dev bootstrap failed (exit)");
+    }
+    // Copy the cached binary to ~/.openagents/bin/local_backend for our supervisor to use
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    // Default convex cache directory (~/.cache/convex/binaries/<version>/convex-local-backend)
+    let cache_root = PathBuf::from(&home).join(".cache/convex/binaries");
+    let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&cache_root) {
+        for e in entries.flatten() {
+            let p = e.path().join(if cfg!(windows) { "convex-local-backend.exe" } else { "convex-local-backend" });
+            if p.exists() {
+                if let Ok(meta) = std::fs::metadata(&p) {
+                    if let Ok(modt) = meta.modified() { candidates.push((modt, p)); }
+                }
+            }
+        }
+    }
+    if candidates.is_empty() {
+        anyhow::bail!("convex CLI did not provision a local backend binary in cache");
+    }
+    candidates.sort_by_key(|(t, _)| *t);
+    let src = candidates.last().unwrap().1.clone();
+    let dest = default_convex_bin();
+    if let Some(parent) = dest.parent() { let _ = std::fs::create_dir_all(parent); }
+    std::fs::copy(&src, &dest).context("copy convex local_backend to ~/.openagents/bin")?;
+    #[cfg(unix)] {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(mut perms) = std::fs::metadata(&dest).map(|m| m.permissions()) {
+            perms.set_mode(0o755);
+            let _ = std::fs::set_permissions(&dest, perms);
+        }
+    }
+    info!(from=%src.display(), to=%dest.display(), msg="installed Convex local backend binary");
+    Ok(())
 }
 
 fn list_sqlite_tables(db_path: &PathBuf) -> Result<Vec<String>> {
