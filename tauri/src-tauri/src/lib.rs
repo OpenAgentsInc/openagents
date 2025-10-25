@@ -40,9 +40,13 @@ struct ThreadSummary {
 
 #[derive(serde::Serialize)]
 struct MessageRow {
+    id: Option<String>,
+    #[serde(rename = "threadId")]
+    thread_id: Option<String>,
     role: Option<String>,
     kind: Option<String>,
     text: Option<String>,
+    data: Option<serde_json::Value>,
     ts: f64,
 }
 
@@ -115,11 +119,14 @@ async fn list_messages_for_thread(thread_id: String, limit: Option<u32>, convex_
             let mut out = Vec::with_capacity(items.len());
             for item in items {
                 let json: serde_json::Value = item.into();
+                let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
                 let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
                 let kind = json.get("kind").and_then(|x| x.as_str()).map(|s| s.to_string());
                 let text = json.get("text").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let data = json.get("data").cloned();
                 let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
-                out.push(MessageRow { role, kind, text, ts });
+                out.push(MessageRow { id, thread_id, role, kind, text, data, ts });
             }
             Ok(out)
         }
