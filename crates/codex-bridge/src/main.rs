@@ -50,9 +50,10 @@ struct Opts {
     #[arg(trailing_var_arg = true)]
     extra: Vec<String>,
 
-    /// Start a local Convex (SQLite) backend on loopback before serving WS
-    #[arg(long, env = "OPENAGENTS_WITH_CONVEX", default_value_t = false)]
-    with_convex: bool,
+    /// Bootstrap developer dependencies (Bun) and run Convex deploy/dev once.
+    /// Enabled by default; set OPENAGENTS_BOOTSTRAP=0 to skip.
+    #[arg(long, env = "OPENAGENTS_BOOTSTRAP", default_value_t = true)]
+    bootstrap: bool,
 
     /// Path to the Convex local backend binary (defaults to ~/.openagents/bin/local_backend)
     #[arg(long, env = "OPENAGENTS_CONVEX_BIN")]
@@ -92,16 +93,20 @@ async fn main() -> Result<()> {
     init_tracing();
     let opts = Opts::parse();
 
-    // Optional: supervise/start local Convex backend
-    if opts.with_convex {
-        if let Err(e) = ensure_convex_running(&opts).await {
-            error!(?e, "failed to ensure local Convex is running");
+    // Always supervise/start local Convex backend
+    if let Err(e) = ensure_convex_running(&opts).await {
+        error!(?e, "failed to ensure local Convex is running");
+    }
+    // Bootstrap Bun + Convex functions once so the app can subscribe immediately
+    if opts.bootstrap {
+        if let Err(e) = bootstrap_convex(&opts).await {
+            error!(?e, "convex bootstrap failed");
         }
-        // Optional destructive clear of all Convex data before ingest
-        if std::env::var("OPENAGENTS_CONVEX_CLEAR").ok().as_deref() == Some("1") {
-            if let Err(e) = run_convex_clear_all(opts.convex_port).await {
-                error!(?e, "convex clearAll failed");
-            }
+    }
+    // Optional destructive clear of all Convex data before ingest (opt-in)
+    if std::env::var("OPENAGENTS_CONVEX_CLEAR").ok().as_deref() == Some("1") {
+        if let Err(e) = run_convex_clear_all(opts.convex_port).await {
+            error!(?e, "convex clearAll failed");
         }
     }
 
@@ -160,6 +165,8 @@ fn default_convex_db() -> PathBuf {
     }
     PathBuf::from("data.sqlite3")
 }
+
+fn repo_root() -> PathBuf { detect_repo_root(None) }
 
 async fn convex_health(url: &str) -> Result<bool> {
     let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build()?;
@@ -250,6 +257,77 @@ async fn kill_listeners_on_port(port: u16) -> Result<()> {
 
 #[cfg(not(unix))]
 async fn kill_listeners_on_port(_port: u16) -> Result<()> { Ok(()) }
+
+async fn bootstrap_convex(opts: &Opts) -> Result<()> {
+    // 1) Ensure .env.local exists with URL + ADMIN KEY for local dev
+    ensure_env_local(opts.convex_port)?;
+    // 2) Ensure Bun is installed or install it to ~/.bun/bin
+    let bun_bin = ensure_bun_installed().await?;
+    // 3) bun install (idempotent)
+    let root = repo_root();
+    info!(dir=%root.display(), msg="running bun install");
+    let status = Command::new(&bun_bin)
+        .arg("install")
+        .current_dir(&root)
+        .status()
+        .await
+        .context("bun install failed to spawn")?;
+    if !status.success() { anyhow::bail!("bun install failed"); }
+    // 4) bun run convex:dev:once (uses scripts/convex-cli.sh + .env.local)
+    info!(port = opts.convex_port, msg="deploying Convex functions (dev:once)");
+    let status = Command::new(&bun_bin)
+        .args(["run", "convex:dev:once"]) 
+        .current_dir(&root)
+        .status()
+        .await
+        .context("bun run convex:dev:once failed to spawn")?;
+    if !status.success() { anyhow::bail!("convex dev:once failed"); }
+    Ok(())
+}
+
+fn ensure_env_local(port: u16) -> Result<()> {
+    use std::io::Write;
+    let root = repo_root();
+    let path = root.join(".env.local");
+    if path.exists() { return Ok(()); }
+    let url = format!("http://127.0.0.1:{}", port);
+    // Default local admin key. This matches our self-hosted dev defaults.
+    let admin = "carnitas|017c5405aba48afe1d1681528424e4528026e69e3b99e400ef23f2f3741a11db225497db09";
+    let mut f = std::fs::File::create(&path).context("create .env.local")?;
+    writeln!(f, "CONVEX_SELF_HOSTED_URL={}", url).ok();
+    writeln!(f, "CONVEX_URL={}", url).ok();
+    writeln!(f, "CONVEX_ADMIN_KEY={}", admin).ok();
+    writeln!(f, "CONVEX_SELF_HOSTED_ADMIN_KEY={}", admin).ok();
+    info!(path=%path.display(), msg="wrote default .env.local for Convex dev");
+    Ok(())
+}
+
+async fn ensure_bun_installed() -> Result<PathBuf> {
+    // If bun is on PATH, use it; otherwise install to ~/.bun/bin/bun
+    let from_path = which::which("bun").ok();
+    if let Some(p) = from_path { return Ok(p); }
+    // Try ~/.bun/bin/bun
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    let bun_bin = PathBuf::from(&home).join(".bun/bin/bun");
+    if bun_bin.exists() { return Ok(bun_bin); }
+    info!("msg" = "bun not found; installing via bun.sh");
+    // Install Bun non-interactively
+    let install_cmd = format!("curl -fsSL https://bun.sh/install | bash");
+    #[cfg(unix)]
+    {
+        let status = Command::new("bash")
+            .arg("-lc")
+            .arg(&install_cmd)
+            .status()
+            .await
+            .context("failed running bun installer")?;
+        if !status.success() {
+            anyhow::bail!("bun installer failed");
+        }
+    }
+    // Verify
+    if bun_bin.exists() { Ok(bun_bin) } else { anyhow::bail!("bun not found after install") }
+}
 
 fn list_sqlite_tables(db_path: &PathBuf) -> Result<Vec<String>> {
     let conn = rusqlite::Connection::open(db_path)?;

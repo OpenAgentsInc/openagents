@@ -42,6 +42,11 @@ Basics to connect to your local Codex:
    - `git clone https://github.com/OpenAgentsInc/openagents && cd openagents`
 2) Run the bridge (requires Rust toolchain):
    - `cargo bridge`
+   - What this does the first time:
+     - Starts a local Convex backend on `0.0.0.0:7788`
+     - Ensures Bun is installed (via bun.sh) and runs `bun install`
+     - Deploys Convex schema/functions (`bun run convex:dev:once`) using a generated `.env.local`
+     - Launches the Codex WebSocket bridge
 3) Install the app via TestFlight and connect:
    - Join TestFlight: https://testflight.apple.com/join/dvQdns5B
    - In the app, open the sidebar → Settings → set Bridge Host to your computer’s IP
@@ -51,14 +56,13 @@ IP tips: Tailscale VPN works well to put devices on the same private network. It
 
 Any setup issues, DM us or open an issue.
 
+Requirements: Rust toolchain, `bash` + `curl` (for Bun install) and a working Node/npm. If Bun is already installed, we’ll use it.
+
 ## Local Convex Persistence (Required)
 
 The app and bridge use a self‑hosted Convex backend (SQLite) for all threads and messages. The mobile app subscribes to Convex for live updates; the bridge mirrors Codex JSONL into Convex and also consumes pending runs from Convex to drive the Codex CLI. JSONL rollouts remain the source of truth for Codex resume.
 
-- To have the bridge start Convex automatically:
-  - `cargo run -p codex-bridge -- --with-convex`
-- To deploy Convex schema/functions:
-  - See docs/convex.md for steps using `bun run convex:dev:once`
+- Zero‑setup: just run `cargo bridge`. The bridge will start Convex, install Bun if needed, create `.env.local` for you, and deploy the Convex functions automatically.
 - The Convex screen in the app (Drawer → Convex) shows connection status and a live list once functions are deployed.
 
-Details: docs/convex.md
+Details and advanced notes: docs/convex.md

@@ -126,7 +126,7 @@ Options
    - Shape: download or build the official Convex backend binary once, store under `~/.openagents/bin/convex-backend`, and spawn it from our bridge when needed.
    - Pros: minimal coupling; we track an upstream release tag; easy to replace/upgrade; works with SQLite; preserves Convex’s operational model.
    - Cons: separate artifact management (download/verify); platform‑specific builds.
-   - UX: add `cargo run -p codex-bridge -- --start-convex` flag (aliased in `cargo bridge`), or a Settings toggle “Start local Convex automatically”. Health‑check on `127.0.0.1:7788`.
+   - UX: `cargo bridge` always starts Convex automatically. Health‑check on `127.0.0.1:7788`.
 
 2) Git submodule + small runner crate in this repo
    - Shape: add `get-convex/convex-backend` as a git submodule; create `crates/oa-convex` that depends on minimal internal crates (e.g., `local_backend`) to produce a trimmed runner binary (e.g. `oa-convex`). SQLite only, loopback bind by default.
