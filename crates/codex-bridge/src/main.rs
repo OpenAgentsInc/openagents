@@ -127,6 +127,16 @@ async fn main() -> Result<()> {
 
     // Live-reload: watch ~/.openagents/skills and broadcast updates
     tokio::spawn(watch_skills_and_broadcast(state.clone()));
+    // Watch ~/.openagents/projects for changes and sync to Convex (also scans project-scoped skills)
+    tokio::spawn(watch_projects_and_sync(state.clone()));
+    // Initial sync of Projects and Skills (filesystem → Convex)
+    {
+        let st = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = sync_projects_to_convex(st.clone()).await { warn!(?e, "initial projects sync failed"); }
+            if let Err(e) = sync_skills_to_convex(st.clone()).await { warn!(?e, "initial skills sync failed"); }
+        });
+    }
     // Background: enqueue historical threads/messages to the mirror spool on startup
     tokio::spawn(enqueue_historical_on_start(state.clone()));
 
@@ -1358,8 +1368,11 @@ async fn watch_skills_and_broadcast(state: Arc<AppState>) {
                 let _ = rcev.try_recv(); let _ = rcev.try_recv();
                 match crate::skills::list_skills() {
                     Ok(items) => {
+                        // Broadcast for legacy clients
                         let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string();
                         let _ = state.tx.send(line);
+                        // Also mirror to Convex (user + registry scopes)
+                        if let Err(e) = sync_skills_to_convex(state.clone()).await { warn!(?e, "skills convex sync failed on change"); }
                     }
                     Err(e) => { error!(?e, "skills list failed on change"); }
                 }
@@ -1636,5 +1649,136 @@ fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
     match v.get("resume") {
         Some(JsonValue::String(s)) if !s.is_empty() => Some(s.clone()),
         _ => None,
+    }
+}
+
+// ========== Filesystem → Convex sync for Projects and Skills ==========
+
+async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
+    let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
+    let mut client = ConvexClient::new(&url).await?;
+    let items = crate::projects::list_projects().unwrap_or_default();
+    let mut ok = 0usize;
+    for p in items.iter() {
+        let now = now_ms() as f64;
+        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+        args.insert("id".into(), Value::from(p.id.clone()));
+        args.insert("name".into(), Value::from(p.name.clone()));
+        args.insert("workingDir".into(), Value::from(p.working_dir.clone()));
+        // repo optional object fields
+        if let Some(repo) = &p.repo {
+            let mut robj: BTreeMap<String, Value> = BTreeMap::new();
+            if let Some(v) = &repo.provider { robj.insert("provider".into(), Value::from(v.clone())); }
+            if let Some(v) = &repo.remote { robj.insert("remote".into(), Value::from(v.clone())); }
+            if let Some(v) = &repo.url { robj.insert("url".into(), Value::from(v.clone())); }
+            if let Some(v) = &repo.branch { robj.insert("branch".into(), Value::from(v.clone())); }
+            // Value::Object is accepted by convex::Value via From<BTreeMap<..>>
+            args.insert("repo".into(), Value::from(robj));
+        }
+        if let Some(v) = &p.agent_file { args.insert("agentFile".into(), Value::from(v.clone())); }
+        if let Some(v) = &p.instructions { args.insert("instructions".into(), Value::from(v.clone())); }
+        args.insert("createdAt".into(), Value::from(p.created_at.map(|x| x as f64).unwrap_or(now)));
+        args.insert("updatedAt".into(), Value::from(p.updated_at.map(|x| x as f64).unwrap_or(now)));
+        match client.mutation("projects:upsertFromFs", args).await {
+            Ok(_) => { ok += 1; }
+            Err(e) => { warn!(?e, id=%p.id, "convex projects:upsertFromFs failed"); }
+        }
+    }
+    // Also mirror project-scoped skills under each workingDir/skills
+    if let Err(e) = sync_project_scoped_skills(state.clone(), &mut client).await {
+        warn!(?e, "project-scoped skills sync failed");
+    }
+    Ok(ok)
+}
+
+async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
+    let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
+    let mut client = ConvexClient::new(&url).await?;
+    let mut ok = 0usize;
+    // Personal + registry skills
+    let list = crate::skills::list_skills().unwrap_or_default();
+    for s in list.iter() {
+        let source = s.source.clone().unwrap_or_else(|| "user".into());
+        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+        args.insert("skillId".into(), Value::from(s.id.clone()));
+        args.insert("name".into(), Value::from(s.name.clone()));
+        args.insert("description".into(), Value::from(s.description.clone()));
+        if let Some(v) = s.meta.license.as_ref() { args.insert("license".into(), Value::from(v.clone())); }
+        if let Some(arr) = s.meta.allowed_tools.as_ref() { args.insert("allowed_tools".into(), Value::from(arr.clone())); }
+        if let Some(m) = s.meta.metadata.as_ref() { args.insert("metadata".into(), Value::from(m.clone())); }
+        args.insert("source".into(), Value::from(source));
+        args.insert("createdAt".into(), Value::from(now_ms() as f64));
+        args.insert("updatedAt".into(), Value::from(now_ms() as f64));
+        match client.mutation("skills:upsertFromFs", args).await {
+            Ok(_) => { ok += 1; }
+            Err(e) => { warn!(?e, id=%s.id, "convex skills:upsertFromFs failed"); }
+        }
+    }
+    // Project-scoped skills
+    if let Err(e) = sync_project_scoped_skills(state.clone(), &mut client).await {
+        warn!(?e, "project-scoped skills sync failed");
+    }
+    Ok(ok)
+}
+
+async fn sync_project_scoped_skills(state: Arc<AppState>, client: &mut convex::ConvexClient) -> anyhow::Result<()> {
+    use convex::Value;
+    use std::collections::BTreeMap;
+    let projects = crate::projects::list_projects().unwrap_or_default();
+    for p in projects.iter() {
+        if p.working_dir.trim().is_empty() { continue; }
+        let dir = std::path::Path::new(&p.working_dir).join("skills");
+        if !dir.is_dir() { continue; }
+        let skills = match crate::skills::list_skills_from_dir(&dir, "project") { Ok(v) => v, Err(_) => Vec::new() };
+        for s in skills.iter() {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("skillId".into(), Value::from(s.id.clone()));
+            args.insert("name".into(), Value::from(s.name.clone()));
+            args.insert("description".into(), Value::from(s.description.clone()));
+            if let Some(v) = s.meta.license.as_ref() { args.insert("license".into(), Value::from(v.clone())); }
+            if let Some(arr) = s.meta.allowed_tools.as_ref() { args.insert("allowed_tools".into(), Value::from(arr.clone())); }
+            if let Some(m) = s.meta.metadata.as_ref() { args.insert("metadata".into(), Value::from(m.clone())); }
+            args.insert("source".into(), Value::from("project"));
+            args.insert("projectId".into(), Value::from(p.id.clone()));
+            args.insert("path".into(), Value::from(dir.to_string_lossy().to_string()));
+            args.insert("createdAt".into(), Value::from(now_ms() as f64));
+            args.insert("updatedAt".into(), Value::from(now_ms() as f64));
+            let _ = client.mutation("skills:upsertFromFs", args).await;
+        }
+    }
+    Ok(())
+}
+
+async fn watch_projects_and_sync(state: Arc<AppState>) {
+    use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+    use std::sync::mpsc::channel;
+    let proj_dir = crate::projects::projects_dir();
+    if let Err(e) = std::fs::create_dir_all(&proj_dir) { error!(?e, "projects mkdir failed"); }
+    if !proj_dir.is_dir() { return; }
+    let (txev, rcev) = channel();
+    let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let _ = txev.send(res);
+    }) {
+        Ok(w) => w,
+        Err(e) => { error!(?e, "projects watcher create failed"); return; }
+    };
+    if let Err(e) = watcher.watch(&proj_dir, RecursiveMode::Recursive) {
+        error!(dir=%proj_dir.display(), ?e, "projects watcher watch failed");
+        return;
+    }
+    info!(dir=%proj_dir.display(), msg="projects watcher started");
+    loop {
+        match rcev.recv() {
+            Ok(_evt) => {
+                // Debounce quick bursts
+                let _ = rcev.try_recv(); let _ = rcev.try_recv();
+                if let Err(e) = sync_projects_to_convex(state.clone()).await { warn!(?e, "projects convex sync failed on change"); }
+            }
+            Err(_disconnected) => break,
+        }
     }
 }

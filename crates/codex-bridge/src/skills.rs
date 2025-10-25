@@ -74,6 +74,15 @@ fn append_skills_from(dir: &std::path::Path, source: &str, out: &mut Vec<Skill>)
     Ok(())
 }
 
+/// List skills from a specific directory (Claude-compatible folders containing SKILL.md).
+/// `source` is tagged onto each skill (e.g., "user", "registry", or "project").
+pub fn list_skills_from_dir(dir: &Path, source: &str) -> Result<Vec<Skill>> {
+    let mut out: Vec<Skill> = Vec::new();
+    append_skills_from(dir, source, &mut out)?;
+    out.sort_by(|a,b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
 fn map_fm_to_skill(dir: &Path, fm: &yaml::Value) -> Result<Skill> {
     let id = dir.file_name().and_then(|x| x.to_str()).unwrap_or("").to_string();
     let name = fm.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
