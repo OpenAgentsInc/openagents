@@ -1,7 +1,7 @@
-import React from 'react'
-import Markdown from 'react-native-markdown-display'
-import { Colors } from '@/constants/theme'
-import { Typography } from '@/constants/typography'
+import React from "react"
+import Markdown from "react-native-markdown-display"
+import { Colors } from "@/constants/theme"
+import { Typography } from "@/constants/typography"
 
 export function UserMessageRow({ text }: { text: string; numberOfLines?: number }) {
   const t = String(text || '')
@@ -10,15 +10,15 @@ export function UserMessageRow({ text }: { text: string; numberOfLines?: number 
   return (
     <Markdown
       style={{
-        body: { color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 },
-        paragraph: { color: Colors.foreground, marginTop: 0, marginBottom: 0 },
+        body: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 },
+        paragraph: { color: Colors.secondary, marginTop: 0, marginBottom: 0 },
         blockquote: {
           borderLeftWidth: 3,
           borderColor: Colors.border,
           // Nudge the quote left so the vertical rule extends left,
           // but keep text aligned by compensating padding.
-          marginLeft: -8,
-          paddingLeft: 18,
+          marginLeft: -12,
+          paddingLeft: 12,
           marginTop: 6,
           marginBottom: 8,
           backgroundColor: Colors.card,
