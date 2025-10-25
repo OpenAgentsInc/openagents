@@ -237,14 +237,19 @@ async fn ensure_bridge_running() {
     // This avoids stale binaries that don't reflect recent changes.
     let mut cmd = {
         let mut c = std::process::Command::new("cargo");
-        c.args(["run", "-q", "-p", "codex-bridge", "--", "--bind", "0.0.0.0:8787"]);
+        c.args([
+            "run", "-q", "-p", "codex-bridge", "--",
+            "--bind", "0.0.0.0:8787",
+            "--manage-convex", "false",
+            "--bootstrap", "false",
+        ]);
         c
     };
     cmd.current_dir(&repo)
         .env("RUST_LOG", "info")
         // Ensure the bridge does not manage Convex or attempt bootstrap when spawned by the app.
-        .env("OPENAGENTS_MANAGE_CONVEX", "0")
-        .env("OPENAGENTS_BOOTSTRAP", "0")
+        .env("OPENAGENTS_MANAGE_CONVEX", "false")
+        .env("OPENAGENTS_BOOTSTRAP", "false")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit());
