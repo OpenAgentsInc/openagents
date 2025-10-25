@@ -22,7 +22,7 @@ export default defineSchema({
     data: v.optional(v.any()),
     ts: v.number(),
     createdAt: v.number(),
-  }),
+  }).index?.('by_thread_ts', ['threadId', 'ts']),
   runs: defineTable({
     threadDocId: v.string(), // convex threads doc _id (string form)
     projectId: v.optional(v.string()),
