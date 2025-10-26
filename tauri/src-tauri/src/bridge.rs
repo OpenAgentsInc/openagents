@@ -134,8 +134,3 @@ pub fn detect_repo_root(start: Option<std::path::PathBuf>) -> std::path::PathBuf
     let original = cur.clone();
     loop { if is_repo_root(&cur) { return cur; } if !cur.pop() { return original; } }
 }
-//! Bootstrap utilities for the Tauri app (Convex sidecar + bridge).
-//!
-//! Starts a local Convex sidecar, deploys functions once, probes ports to
-//! emit `convex:local_status` and `bridge:ready` events, and spawns the Rust
-//! `codex-bridge` in dev for a seamless desktop experience.
