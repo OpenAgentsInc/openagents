@@ -4,6 +4,7 @@ use leptos::prelude::*;
 pub fn ChatComposer<F>(
     on_send: F,
     #[prop(optional)] placeholder: Option<String>,
+    #[prop(optional)] node_ref: leptos::prelude::NodeRef<leptos::html::Input>,
 ) -> impl IntoView
 where
     F: Fn(String) + 'static + Clone,
@@ -46,6 +47,7 @@ where
             <input
                 class="compose-input"
                 type="text"
+                node_ref=node_ref
                 prop:value=move || value.get()
                 on:input=move |ev| set_value.set(event_target_value(&ev))
                 placeholder=holder
