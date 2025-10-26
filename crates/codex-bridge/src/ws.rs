@@ -535,7 +535,6 @@ mod tests {
     }
 }
 
-// Minimal local demo helpers (left here until moved to a util/db module)
 fn create_demo_table(db_path: &PathBuf) -> Result<()> {
     let conn = rusqlite::Connection::open(db_path)?;
     conn.execute("CREATE TABLE IF NOT EXISTS oa_demo (id INTEGER PRIMARY KEY, k TEXT, v TEXT)", rusqlite::params![])?; Ok(())
