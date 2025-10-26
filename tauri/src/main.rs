@@ -1,4 +1,5 @@
 mod app;
+mod composer;
 #[cfg(feature = "jsonl_components")]
 mod library;
 #[cfg(feature = "jsonl_components")] mod jsonl;
