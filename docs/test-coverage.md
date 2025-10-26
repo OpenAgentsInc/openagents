@@ -19,7 +19,13 @@ Referenced refactor context: Issue #1320 “Real-time Codex chat streaming in De
     - New: unit tests for valid SKILL.md parsing (license, allowed-tools, metadata, source tagging) and invalid schema rejection.
   - events.rs
     - New: serde round‑trip tests for key variants (thread.started, turn.completed with usage, error) and ThreadItem variants (command_execution, file_change). Confirms tag strings and snake_case enums/fields.
-  - Notes: `main.rs` is monolithic and untested (as expected; difficult to isolate without refactor).
+  - controls.rs
+    - New: parser tests for `run.submit`, project save/delete, status verbs, and rejection of multi‑line/non‑JSON payloads.
+  - ws.rs
+    - New: payload parsing tests for `cd` directory extraction and `resume` token.
+  - util.rs
+    - New: unit tests for `expand_home` and `detect_repo_root` heuristics.
+  - Notes: `main.rs` has been slimmed; most logic now lives in modules. Some legacy stubs remain and produce warnings — cleanup in progress per #1320.
 
 - crates/oa-validate
   - CLI tool only. No tests present. Includes logic for compiling JSON Schemas, scanning directories, and validating YAML frontmatter for projects/skills.

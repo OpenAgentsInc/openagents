@@ -31,21 +31,19 @@ Architecture At A Glance
 
 Key Codepaths (by layer)
 - Bridge
-  - WebSocket and process orchestration: `crates/codex-bridge/src/main.rs:1`
+  - WebSocket and process orchestration: `crates/codex-bridge/src/ws.rs`
   - Projects (FS schema + IO): `crates/codex-bridge/src/projects.rs:1`
   - Skills (FS schema + IO): `crates/codex-bridge/src/skills.rs:1`
   - JSONL history parsing: `crates/codex-bridge/src/history.rs:1`
   - Convex write points (threads/messages during stream):
-    - Streaming helpers live in `crates/codex-bridge/src/convex_write.rs` (upsert/finalize, log compaction)
-    - The stdout forwarder invokes those helpers when mapping assistant/reasoning and tool rows
+    - Helpers in `crates/codex-bridge/src/convex_write.rs` (upsert/finalize, log compaction)
+    - The stdout forwarder in `ws.rs` invokes those helpers when mapping assistant/reasoning and tool rows
   - FS→Convex sync (Projects/Skills):
-    - Sync functions: `crates/codex-bridge/src/main.rs:1688`
-    - Projects watcher: `crates/codex-bridge/src/main.rs:1871`
-    - Skills watcher: `crates/codex-bridge/src/main.rs:1388`
+    - `crates/codex-bridge/src/watchers.rs` (sync + notify watchers)
   - Historical backfill (Codex JSONL → Convex):
-    - Startup backfill: `crates/codex-bridge/src/main.rs:1458`
-    - On‑demand WS control `{"control":"convex.backfill"}`: handler at `crates/codex-bridge/src/main.rs:594`
-  - Run submission (Bridge spawns Codex and writes stdin): control `run.submit` at `crates/codex-bridge/src/main.rs:1561` with handling at `crates/codex-bridge/src/main.rs:648`
+    - Startup backfill queue: `crates/codex-bridge/src/watchers.rs` (`enqueue_historical_on_start`)
+    - On‑demand WS control `{"control":"convex.backfill"}`: handler in `ws.rs`
+  - Run submission (Bridge spawns Codex and writes stdin): control `run.submit` handled in `ws.rs` using `codex_runner.rs`
 
 - Convex (functions + schema)
   - Schema and indexes: `convex/schema.ts:1`
@@ -64,7 +62,7 @@ Key Codepaths (by layer)
   - Desktop (Tauri)
   - Convex sidecar lifecycle + auto‑deploy: `tauri/src-tauri/src/bridge.rs`
   - Commands to list/subscribe threads/messages: `tauri/src-tauri/src/convex.rs`, `subscriptions.rs`
-  - Bridge bootstrap and “bridge:ready” event: `tauri/src-tauri/src/bridge.rs`
+  - Bridge bootstrap and `bridge:ready` event: `tauri/src-tauri/src/bridge.rs`
 
 Data Model Conventions
 - Threads
@@ -146,9 +144,9 @@ Quick References (files)
 - Bridge provider (WS): `expo/providers/ws.tsx:1`
 - Convex provider (URL derivation): `expo/providers/convex.tsx:1`
 - Thread screen (send/subscribe): `expo/app/convex/thread/[id].tsx:1`
-- Bridge JSONL → Convex writes: `crates/codex-bridge/src/main.rs:1196`
-- Projects/Skills watchers: `crates/codex-bridge/src/main.rs:1388`, `crates/codex-bridge/src/main.rs:1871`
-- Historical backfill entry: `crates/codex-bridge/src/main.rs:1458`
+- Bridge JSONL → Convex writes: `crates/codex-bridge/src/convex_write.rs` (called from `ws.rs`)
+- Projects/Skills/Sessions watchers: `crates/codex-bridge/src/watchers.rs`
+- Historical backfill entry: `crates/codex-bridge/src/watchers.rs` (`enqueue_historical_on_start`)
 
 FAQ
 - Q: Why do some threads use a Convex doc `_id` as `threadId` and others a UUID from Codex?
