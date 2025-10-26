@@ -93,16 +93,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
     let mut rows: Vec<ThreadSummary> = Vec::new();
     match res {
         FunctionResult::Value(Value::Array(items)) => {
-            for item in items {
-                let json: serde_json::Value = item.into();
-                let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                if id.is_empty() { continue; }
-                let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
-                let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
-                let count = json.get("messageCount").and_then(|x| x.as_i64());
-                rows.push(ThreadSummary { id, thread_id, title, updated_at, count });
-            }
+            for item in items { let json: serde_json::Value = item.into(); if let Some(r) = map_thread_item(&json) { rows.push(r); } }
             println!("[tauri/threads] list_recent_threads -> {} rows", rows.len());
             Ok(rows)
         }
@@ -266,7 +257,7 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
                     let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()).or_else(|| Some(id.clone()));
                     let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
-                    let count = json.get("messageCount").and_then(|x| x.as_i64());
+                    let count = json.get("messageCount").and_then(|x| x.as_i64()).or_else(|| json.get("messageCount").and_then(|x| x.as_f64()).map(|f| f as i64));
                     rows.push(ThreadSummary { id, thread_id, title, updated_at, count });
                 }
                 println!("[tauri/threads] subscribe_recent_threads batch -> {} rows", rows.len());
@@ -587,4 +578,20 @@ fn detect_repo_root(start: Option<std::path::PathBuf>) -> std::path::PathBuf {
         if is_repo_root(&cur) { return cur; }
         if !cur.pop() { return original; }
     }
+}
+// Helpers kept internal so we can test the mapping logic without network calls
+fn select_thread_key(thread_id: &str, doc_id: Option<&str>) -> String {
+    doc_id.map(|s| s.to_string()).unwrap_or_else(|| thread_id.to_string())
+}
+
+fn map_thread_item(json: &serde_json::Value) -> Option<ThreadSummary> {
+    let id = json.get("_id").and_then(|x| x.as_str())?.to_string();
+    let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
+    let count = json
+        .get("messageCount")
+        .and_then(|x| x.as_i64())
+        .or_else(|| json.get("messageCount").and_then(|x| x.as_f64()).map(|f| f as i64));
+    Some(ThreadSummary { id, thread_id, title, updated_at, count })
 }
