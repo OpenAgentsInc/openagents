@@ -300,7 +300,9 @@ pub fn App() -> impl IntoView {
                             let title = row.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
                             let updated = row.get("updated_at").and_then(|x| x.as_f64()).unwrap_or(0.0);
                             let ts = if updated > 0.0 { Some(updated) } else { None };
-                            let count = row.get("count").and_then(|x| x.as_i64());
+                            let count = row.get("count").and_then(|x| x.as_i64())
+                                .or_else(|| row.get("messageCount").and_then(|x| x.as_i64()))
+                                .or_else(|| row.get("message_count").and_then(|x| x.as_i64()));
                             let is_selected = selected_thread_id.get().as_deref() == Some(&tid);
                             view! {
                                 <div class={ move || if is_selected { "thread-item selected" } else { "thread-item" } }
