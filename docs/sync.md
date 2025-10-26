@@ -158,3 +158,47 @@ FAQ
 - Q: Should mobile/desktop read JSONL directly?
   - A: No. They read from Convex (subscriptions) and use Bridge only for control messages. JSONL remains for resume and import.
 
+Structure Recommendations (reduce file bloat)
+- Goal: improve maintainability and avoid oversized single files by splitting domains and responsibilities. The structure below keeps syncing logic cohesive and testable.
+
+- Bridge (Rust)
+  - Split `crates/codex-bridge/src/main.rs` into modules:
+    - `ws.rs` — Axum WebSocket server + control routing
+    - `codex_runner.rs` — spawn/respawn, stdin/stdout forwarding, config preface
+    - `convex_write.rs` — helpers to map JSONL → Convex mutations (threads/messages)
+    - `fs_watch.rs` — Projects/Skills watchers (reuse notify wiring for sessions watcher)
+    - `history_scan.rs` — Codex sessions scan/parse utilities (from `history.rs`)
+    - `sessions_watch.rs` — new: incremental watcher for `~/.codex/sessions` (track offsets; idempotent upserts)
+  - Move `projects.rs` and `skills.rs` under `crates/codex-bridge/src/fs_sync/` to group FS‑backed models.
+  - Optional shared crate: `crates/openagents-sync/` with JSONL parsing + Convex write helpers used by both Bridge and (future) side tools.
+
+- Convex (functions)
+  - Group by domain folders with barrel exports:
+    - `convex/threads/queries.ts`, `convex/threads/mutations.ts`
+    - `convex/messages/queries.ts`, `convex/messages/mutations.ts`, `convex/messages/aggregates.ts`
+    - `convex/projects/*.ts`, `convex/skills/*.ts`
+  - Keep `convex/schema.ts` at root; avoid mega files by splitting domain logic.
+
+- Mobile (Expo)
+  - Create domain providers under `expo/providers/convex/` (threads.tsx, messages.tsx) so `expo/app/*` screens stay thin.
+  - Split `expo/app/convex/thread/[id].tsx` into smaller components: `MessageList.tsx`, `Composer.tsx`, `ThreadMeta.tsx` in `expo/components/thread/`.
+
+- Desktop (Tauri)
+  - Split `tauri/src-tauri/src/lib.rs` into modules:
+    - `convex.rs` (sidecar, deploy, status emitter)
+    - `bridge.rs` (bridge bootstrap/status)
+    - `subscriptions.rs` (thread/message subscriptions)
+    - `commands.rs` (invoke handlers)
+
+- Docs
+  - Move sync docs into `docs/sync/`:
+    - `docs/sync/overview.md` (this page’s high‑level content)
+    - `docs/sync/bridge-to-convex.md` (live ingestion mapping)
+    - `docs/sync/jsonl-backfill.md` (historical import)
+    - `docs/sync/sessions-watcher.md` (design + ops)
+  - Keep short single‑purpose pages; link from a brief `docs/sync.md` index.
+
+- Hygiene
+  - Cap file sizes (~500–800 lines) and extract modules once exceeded.
+  - Add lightweight unit tests for JSONL→Convex mappers and history parsing.
+  - Prefer feature‑flagged modules for experimental watchers to limit main surface.
