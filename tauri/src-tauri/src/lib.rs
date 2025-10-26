@@ -52,6 +52,8 @@ struct ThreadSummary {
     thread_id: Option<String>,
     title: String,
     updated_at: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    count: Option<i64>,
 }
 
 #[derive(serde::Serialize)]
@@ -97,7 +99,8 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
                 let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
                 let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
                 let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
-                rows.push(ThreadSummary { id, thread_id, title, updated_at });
+                let count = json.get("messageCount").and_then(|x| x.as_i64());
+                rows.push(ThreadSummary { id, thread_id, title, updated_at, count });
             }
             Ok(rows)
         }
@@ -176,21 +179,21 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
         .or_else(|| std::env::var("CONVEX_URL").ok())
         .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
 
-    let mut client = convex::ConvexClient::new(&url)
-        .await
-        .map_err(|e| format!("convex connect error: {e}"))?;
-
-    let mut args: BTreeMap<String, Value> = BTreeMap::new();
-    let key = docId.unwrap_or(threadId.clone());
-    args.insert("threadId".into(), Value::from(key));
-    if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
-
-    let mut sub = client
-        .subscribe("messages:forThread", args)
-        .await
-        .map_err(|e| format!("convex subscribe error: {e}"))?;
-
     tauri::async_runtime::spawn(async move {
+        // Create client and subscription within the task so the connection stays alive
+        let mut client = match convex::ConvexClient::new(&url).await {
+            Ok(c) => c,
+            Err(e) => { eprintln!("[subscribe_thread_messages] convex connect error: {}", e); return; }
+        };
+        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+        let key = docId.unwrap_or(threadId.clone());
+        args.insert("threadId".into(), Value::from(key));
+        if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
+        let mut sub = match client.subscribe("messages:forThread", args).await {
+            Ok(s) => s,
+            Err(e) => { eprintln!("[subscribe_thread_messages] convex subscribe error: {}", e); return; }
+        };
+
         while let Some(result) = sub.next().await {
             if let FunctionResult::Value(Value::Array(items)) = result {
                 let mut rows: Vec<MessageRow> = Vec::with_capacity(items.len());
@@ -256,7 +259,8 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
                     let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()).or_else(|| Some(id.clone()));
                     let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
-                    rows.push(ThreadSummary { id, thread_id, title, updated_at });
+                    let count = json.get("messageCount").and_then(|x| x.as_i64());
+                    rows.push(ThreadSummary { id, thread_id, title, updated_at, count });
                 }
                 let _ = window.emit("convex:threads", &rows);
             }
