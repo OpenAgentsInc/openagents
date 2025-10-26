@@ -51,3 +51,26 @@ pub fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
     let original = cur.clone();
     loop { if is_repo_root(&cur) { return cur; } if !cur.pop() { return original; } }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expands_home_prefix() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+        assert_eq!(expand_home("~/abc").to_string_lossy(), format!("{home}/abc"));
+        assert_eq!(expand_home("~").to_string_lossy(), home);
+        assert_eq!(expand_home("/x").to_string_lossy(), "/x");
+    }
+
+    #[test]
+    fn detects_repo_root_shape() {
+        let td = tempfile::tempdir().unwrap();
+        let p = td.path();
+        std::fs::create_dir_all(p.join("expo")).unwrap();
+        std::fs::create_dir_all(p.join("crates")).unwrap();
+        let got = detect_repo_root(Some(p.to_path_buf()));
+        assert_eq!(got, p);
+    }
+}
