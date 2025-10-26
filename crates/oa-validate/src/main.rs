@@ -1,3 +1,8 @@
+//! CLI to validate OpenAgents Project/Skill frontmatter against JSON Schemas.
+//!
+//! Accepts file paths or scans default `~/.openagents/{projects,skills}` when
+//! none are provided. Exits non‑zero if any file fails validation.
+
 use anyhow::*;
 use clap::Parser;
 use serde_json as json;
@@ -189,7 +194,3 @@ fn collect_special_files<P: AsRef<Path>>(dir: P, special_name: &str) -> Result<V
     }
     Ok(out)
 }
-//! CLI to validate OpenAgents Project/Skill frontmatter against JSON Schemas.
-//!
-//! Accepts file paths or scans default `~/.openagents/{projects,skills}` when
-//! none are provided. Exits non‑zero if any file fails validation.

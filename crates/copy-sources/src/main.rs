@@ -1,3 +1,8 @@
+//! Copy/Export helper to collect a filtered set of repository files.
+//!
+//! Walks the workspace, skipping large/binary artifacts, and prints a base64‑
+//! encoded archive for lightweight sharing or clipboard tooling.
+
 use base64::Engine;
 use std::{
     env, fs,
@@ -197,7 +202,3 @@ fn main() {
         println!("No clipboard available; printing to stdout.\n{}", output);
     }
 }
-//! Copy/Export helper to collect a filtered set of repository files.
-//!
-//! Walks the workspace, skipping large/binary artifacts, and prints a base64‑
-//! encoded archive for lightweight sharing or clipboard tooling.

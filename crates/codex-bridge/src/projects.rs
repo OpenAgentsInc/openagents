@@ -1,3 +1,8 @@
+//! File‑backed Projects model (FS <-> structs) for bridge/clients.
+//!
+//! Reads and writes Project folders under `~/.openagents/projects`, validating
+//! YAML frontmatter in `PROJECT.md` against the canonical JSON schema.
+
 use anyhow::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -204,7 +209,3 @@ fn validate_against_schema(schema_json: &str, yaml_val: &yaml::Value) -> bool {
     let schema_val: serde_json::Value = if let Some(v) = serde_json::from_str(schema_json).ok() { v } else { return false };
     if let Some(compiled) = JSONSchema::compile(&schema_val).ok() { compiled.is_valid(&json_val) } else { false }
 }
-//! File‑backed Projects model (FS <-> structs) for bridge/clients.
-//!
-//! Reads and writes Project folders under `~/.openagents/projects`, validating
-//! YAML frontmatter in `PROJECT.md` against the canonical JSON schema.

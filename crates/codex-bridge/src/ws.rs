@@ -204,7 +204,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         if let Some(stdin) = child.stdin.take() { *stdin_state.child_stdin.lock().await = Some(stdin); }
                                         if let Err(e) = start_stream_forwarders(child, stdin_state.clone()).await { error!(?e, "run.submit: forwarders failed"); }
                                         let mut cfg = serde_json::json!({ "sandbox": "danger-full-access", "approval": "never" });
-                                        if let Some(cd) = desired_cd.as_deref() { cfg["cd"] = serde_json::Value::String(cd.to_string()); }
+                                        if let Some(cd) = desired_cd.as_deref() {
+                                            let cdv: serde_json::Value = serde_json::Value::String(cd.to_owned());
+                                            cfg["cd"] = cdv;
+                                        }
                                         if let Some(pid) = project_id.as_deref() { cfg["project"] = serde_json::json!({ "id": pid }); }
                                         let payload = format!("{}\n{}\n", cfg.to_string(), text);
                                         if let Some(mut stdin) = stdin_state.child_stdin.lock().await.take() {

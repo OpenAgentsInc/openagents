@@ -1,3 +1,8 @@
+//! File‑backed Skills model (FS <-> structs) for bridge/clients.
+//!
+//! Reads skill folders containing `SKILL.md` from user and registry locations,
+//! validates YAML frontmatter against the schema, and exposes list helpers.
+
 use anyhow::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::{Path, PathBuf}};
@@ -182,7 +187,3 @@ description: Desc
         assert_eq!(items.len(), 0, "invalid skill should be skipped");
     }
 }
-//! File‑backed Skills model (FS <-> structs) for bridge/clients.
-//!
-//! Reads skill folders containing `SKILL.md` from user and registry locations,
-//! validates YAML frontmatter against the schema, and exposes list helpers.
