@@ -266,6 +266,7 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 async fn enqueue_run(threadDocId: String, text: String, role: Option<String>, projectId: Option<String>, resumeId: Option<String>, convex_url: Option<String>) -> Result<(), String> {
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
@@ -295,6 +296,7 @@ async fn enqueue_run(threadDocId: String, text: String, role: Option<String>, pr
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 async fn create_thread(title: Option<String>, projectId: Option<String>, convex_url: Option<String>) -> Result<(), String> {
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
@@ -354,7 +356,7 @@ pub fn run() {
                         loop {
                             let healthy = is_port_open(port);
                             if last != Some(healthy) {
-                                let _ = handle.emit("convex.local_status", serde_json::json!({ "healthy": healthy, "url": url }));
+                                let _ = handle.emit("convex:local_status", serde_json::json!({ "healthy": healthy, "url": url }));
                                 last = Some(healthy);
                             }
                             std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -366,15 +368,15 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 ensure_bridge_running().await;
             });
-            // Emit a bridge.ready event as soon as the WS port is open so the UI connects once.
+            // Emit a bridge:ready event as soon as the WS port is open so the UI connects once.
             {
                 use tauri::Manager;
                 let handle = app.app_handle().clone();
                 tauri::async_runtime::spawn(async move {
                     for _ in 0..50u32 { // ~5s probe window
                         if is_port_open(8787) {
-                            let _ = handle.emit("bridge.ready", ());
-                            println!("[tauri/bootstrap] bridge.ready emitted");
+                            let _ = handle.emit("bridge:ready", ());
+                            println!("[tauri/bootstrap] bridge:ready emitted");
                             break;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -490,7 +492,7 @@ fn deploy_convex_functions_once(handle: tauri::AppHandle) {
         return;
     }
     // Emit healthy status immediately once we know the port is reachable
-    let _ = handle.emit("convex.local_status", serde_json::json!({
+    let _ = handle.emit("convex:local_status", serde_json::json!({
         "healthy": true,
         "url": format!("http://127.0.0.1:{}", port)
     }));
@@ -572,4 +574,3 @@ fn detect_repo_root(start: Option<std::path::PathBuf>) -> std::path::PathBuf {
         if !cur.pop() { return original; }
     }
 }
-
