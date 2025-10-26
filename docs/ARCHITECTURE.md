@@ -15,6 +15,10 @@ High‑Level Data Flow
   3) As Codex emits JSONL, the bridge parses key events and writes normalized rows into Convex (assistant messages, reasoning, tool rows).
   4) Apps subscribe to Convex queries and render updates in realtime.
 
+- Desktop (Tauri) send path specifics:
+  - The Tauri backend optimistically persists the user message via `messages:create` before enqueuing the run so the UI updates immediately.
+  - The bridge defaults `resumeId` to `last` when not provided, ensuring Codex continues the latest session in that thread.
+
 - Streaming (agent → apps):
   - The bridge writes partial assistant/reason text via `messages:upsertStreamed` and finalizes via `messages:finalizeStreamed` at turn completion. Desktop and mobile subscribe and show live text growth.
 
@@ -55,7 +59,7 @@ Desktop (Tauri)
   - `bridge.rs`: starts Convex sidecar and emits `convex:local_status` & `bridge:ready` events; spawns the CLI bridge in dev.
   - `convex.rs`: pure mapping helpers and commands (list threads/messages, count, mapping/hide rules).
   - `subscriptions.rs`: live Convex subscriptions, emitting `convex:threads` and `convex:messages` to the webview.
-  - `commands.rs`: mutations (`runs:enqueue`, `threads:create`).
+  - `commands.rs`: mutations (`runs:enqueue`, `threads:create`) and optimistic user message persistence via `messages:create`.
 - Webview UI (Leptos, `tauri/src/`):
   - `app.rs`: connects to `/ws`, renders threads/messages, controls composer, and logs status.
   - `library.rs`, `jsonl.rs`, `composer.rs`: component library and rendering primitives.
@@ -109,4 +113,3 @@ Development Quickstart
 - Bridge: from repo root `cargo run -p codex-bridge -- --bind 0.0.0.0:8787` (or `cargo bridge` alias if configured).
 - Desktop: `cd tauri && cargo tauri dev` (starts Convex sidecar and the bridge in dev; webview connects automatically after `bridge:ready`).
 - Mobile: `cd expo && bun install && bun run start` (then `bun run ios|android|web`).
-
