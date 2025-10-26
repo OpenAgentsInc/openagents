@@ -84,11 +84,6 @@ pub async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize
     Ok(ok)
 }
 
-/// Placeholder for project-scoped skills sync (e.g., `<project>/skills`).
-/// Currently unused; kept for future expansion.
-pub async fn sync_project_scoped_skills(_state: Arc<AppState>, _client: &mut convex::ConvexClient) -> anyhow::Result<()> {
-    Ok(())
-}
 
 /// Watch the Projects directory and trigger a best-effort sync on changes.
 ///

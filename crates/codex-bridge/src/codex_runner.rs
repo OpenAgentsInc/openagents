@@ -69,7 +69,7 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     let bin = resolve_codex_bin(opts)?;
     let mut args: Vec<String> = Vec::new();
     // Exec mode with JSON lines to stdout
-    let mut cli_args = opts
+    let cli_args = opts
         .codex_args
         .clone()
         .unwrap_or_else(|| "exec --json".to_string());
@@ -111,4 +111,3 @@ fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
     let original = cur.clone();
     loop { if is_repo_root(&cur) { return cur; } if !cur.pop() { return original; } }
 }
-

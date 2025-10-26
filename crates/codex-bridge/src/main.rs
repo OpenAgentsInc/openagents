@@ -139,7 +139,6 @@ async fn main() -> Result<()> {
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
         history: Mutex::new(Vec::new()),
-        history_cache: Mutex::new(crate::history::HistoryCache::new(400, std::time::Duration::from_secs(6))),
         current_convex_thread: Mutex::new(None),
         stream_track: Mutex::new(std::collections::HashMap::new()),
     });
@@ -187,7 +186,6 @@ fn init_tracing() {
         .with(fmt::layer())
         .try_init();
 }
-
 
 
 

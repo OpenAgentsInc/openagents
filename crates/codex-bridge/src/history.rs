@@ -498,7 +498,7 @@ mod tests {
         let items = scan_history(&base, 5).unwrap();
         assert_eq!(items.len(), 5, "should limit to 5 newest sessions");
         assert!(items.iter().all(|it| it.id.starts_with("rollout-")));
-        let mut mtimes = items.iter().map(|i| i.mtime).collect::<Vec<_>>();
+        let mtimes = items.iter().map(|i| i.mtime).collect::<Vec<_>>();
         let mut sorted = mtimes.clone();
         sorted.sort_by(|a,b| b.cmp(a));
         assert_eq!(mtimes, sorted);

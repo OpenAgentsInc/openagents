@@ -34,7 +34,6 @@ pub struct AppState {
     pub last_thread_id: Mutex<Option<String>>,
     // Replay buffer for new websocket clients
     pub history: Mutex<Vec<String>>,
-    pub history_cache: Mutex<crate::history::HistoryCache>,
     // Current Convex thread doc id being processed (for mapping thread.started -> Convex threadId)
     pub current_convex_thread: Mutex<Option<String>>,
     // Streaming message trackers (per thread, per kind). Key: "<threadId>|assistant" or "<threadId>|reason".
