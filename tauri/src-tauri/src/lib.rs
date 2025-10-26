@@ -232,9 +232,13 @@ pub fn run() {
                 });
                 // Dev quality-of-life: once the backend is up, push functions in the background
                 // so you don't need a separate terminal. Logs are inherited into this console.
-                tauri::async_runtime::spawn(async move {
-                    deploy_convex_functions_once();
-                });
+                {
+                    use tauri::Manager;
+                    let handle = app.app_handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        deploy_convex_functions_once(handle);
+                    });
+                }
                 // Emit a local convex status event to the UI using the sidecar URL (3210)
                 // so the dot reflects the embedded backend instead of the bridge's default (7788).
                 {
@@ -360,7 +364,7 @@ fn read_env_local_var(key: &str) -> Option<String> {
     None
 }
 
-fn deploy_convex_functions_once() {
+fn deploy_convex_functions_once(handle: tauri::AppHandle) {
     // Wait for sidecar port to be open
     let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     for _ in 0..200 { // ~20s
@@ -373,6 +377,11 @@ fn deploy_convex_functions_once() {
         println!("[tauri/convex] backend not reachable on 127.0.0.1:{}; skipping auto-deploy", port);
         return;
     }
+    // Emit healthy status immediately once we know the port is reachable
+    let _ = handle.emit("convex.local_status", serde_json::json!({
+        "healthy": true,
+        "url": format!("http://127.0.0.1:{}", port)
+    }));
     // Resolve admin key
     let admin = std::env::var("CONVEX_ADMIN_KEY")
         .ok()
