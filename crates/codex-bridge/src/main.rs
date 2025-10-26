@@ -60,8 +60,8 @@ struct Opts {
     extra: Vec<String>,
 
     /// Bootstrap developer dependencies (Bun) and run Convex deploy/dev once.
-    /// Disabled by default to avoid slowing startup; set OPENAGENTS_BOOTSTRAP=1 to enable.
-    #[arg(long, env = "OPENAGENTS_BOOTSTRAP", default_value_t = false)]
+    /// Enabled by default for CLI (cargo bridge). Tauri disables via --bootstrap=false.
+    #[arg(long, env = "OPENAGENTS_BOOTSTRAP", default_value_t = true)]
     bootstrap: bool,
 
     /// Path to the Convex local backend binary (defaults to ~/.openagents/bin/local_backend)
@@ -80,9 +80,9 @@ struct Opts {
     #[arg(long, env = "OPENAGENTS_CONVEX_INTERFACE", default_value = "0.0.0.0")]
     convex_interface: String,
 
-    /// Manage local Convex lifecycle: start/monitor/bootstrap. Disabled by default.
-    /// Set to 1 to have the bridge supervise Convex (handy on dev boxes without a separate tab).
-    #[arg(long, env = "OPENAGENTS_MANAGE_CONVEX", default_value_t = false)]
+    /// Manage local Convex lifecycle: start/monitor/bootstrap. Enabled by default for CLI.
+    /// Tauri disables with --manage-convex=false because it runs its own sidecar on 3210.
+    #[arg(long, env = "OPENAGENTS_MANAGE_CONVEX", default_value_t = true)]
     manage_convex: bool,
 }
 
