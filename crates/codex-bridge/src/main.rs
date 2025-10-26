@@ -100,6 +100,15 @@ struct AppState {
     history_cache: Mutex<crate::history::HistoryCache>,
     // Current Convex thread doc id being processed (for mapping thread.started -> Convex threadId)
     current_convex_thread: Mutex<Option<String>>,
+    // Streaming message trackers (per thread, per kind). Key: "<threadId>|assistant" or "<threadId>|reason".
+    stream_track: Mutex<std::collections::HashMap<String, StreamEntry>>,
+}
+
+#[derive(Debug, Clone)]
+struct StreamEntry {
+    item_id: String,
+    last_text: String,
+    seq: u64,
 }
 
 #[tokio::main]
@@ -149,6 +158,7 @@ async fn main() -> Result<()> {
         history: Mutex::new(Vec::new()),
         history_cache: Mutex::new(crate::history::HistoryCache::new(400, std::time::Duration::from_secs(6))),
         current_convex_thread: Mutex::new(None),
+        stream_track: Mutex::new(std::collections::HashMap::new()),
     });
 
     // Start readers for stdout/stderr → broadcast + console
@@ -167,6 +177,8 @@ async fn main() -> Result<()> {
                 if let Err(e) = sync_skills_to_convex(st.clone()).await { warn!(?e, "initial skills sync failed"); }
             });
         }
+        // Watch Codex sessions for external runs and mirror to Convex (best-effort)
+        tokio::spawn(watch_sessions_and_tail(state.clone()));
     } else {
         info!("msg" = "OPENAGENTS_CONVEX_SYNC=0 — FS→Convex sync disabled");
     }
@@ -1130,6 +1142,13 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                         }
                     }
                 }
+                if matches!(t.as_deref(), Some("turn.completed")) {
+                    let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                    let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
+                    if !target_tid.is_empty() {
+                        finalize_streaming_for_thread(&state_for_stdout, &target_tid).await;
+                    }
+                }
                 // Mirror agent/user messages when present in newer shapes
                 if t.as_deref() == Some("response_item") {
                     if let Some(payload) = v.get("payload") {
@@ -1143,23 +1162,8 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                 let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                                 let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                                 if !target_tid.is_empty() {
-                                    let role_s = if role == "assistant" { "assistant" } else if role == "user" { "user" } else { "" };
-                                    if !role_s.is_empty() {
-                                        use convex::{ConvexClient, Value};
-                                        use std::collections::BTreeMap;
-                                        let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                                        if let Ok(mut client) = ConvexClient::new(&url).await {
-                                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                            args.insert("threadId".into(), Value::from(target_tid.clone()));
-                                            args.insert("role".into(), Value::from(role_s));
-                                            args.insert("kind".into(), Value::from("message"));
-                                            args.insert("text".into(), Value::from(txt));
-                                            args.insert("ts".into(), Value::from(now_ms() as f64));
-                                            match client.mutation("messages:create", args).await {
-                                                Ok(_) => info!(thread_id=%target_tid, role="assistant", msg="convex message:create ok"),
-                                                Err(e) => warn!(?e, thread_id=%target_tid, msg="convex message:create failed"),
-                                            }
-                                        }
+                                    if role == "assistant" {
+                                        stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", &txt).await;
                                     }
                                 }
                             }
@@ -1172,22 +1176,7 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                             if !txt.trim().is_empty() {
                                 let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                                 let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                                if !target_tid.is_empty() {
-                                    use convex::{ConvexClient, Value};
-                                    use std::collections::BTreeMap;
-                                    let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                                    if let Ok(mut client) = ConvexClient::new(&url).await {
-                                        let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                        args.insert("threadId".into(), Value::from(target_tid.clone()));
-                                        args.insert("kind".into(), Value::from("reason"));
-                                        args.insert("text".into(), Value::from(txt));
-                                        args.insert("ts".into(), Value::from(now_ms() as f64));
-                                        match client.mutation("messages:create", args).await {
-                                            Ok(_) => info!(thread_id=%target_tid, kind="reason", msg="convex message:create ok"),
-                                            Err(e) => warn!(?e, thread_id=%target_tid, kind="reason", msg="convex message:create failed"),
-                                        }
-                                    }
-                                }
+                                if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt).await; }
                             }
                         }
                     }
@@ -1204,19 +1193,18 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                                     if !target_tid.is_empty() {
-                                        use convex::{ConvexClient, Value};
-                                        use std::collections::BTreeMap;
-                                        let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                                        if let Ok(mut client) = ConvexClient::new(&url).await {
-                                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                            args.insert("threadId".into(), Value::from(target_tid.clone()));
-                                            args.insert("role".into(), Value::from("assistant"));
-                                            args.insert("kind".into(), Value::from("message"));
-                                            args.insert("text".into(), Value::from(text));
-                                            args.insert("ts".into(), Value::from(now_ms() as f64));
-                                            match client.mutation("messages:create", args).await {
-                                                Ok(_) => info!(thread_id=%target_tid, role="assistant", msg="convex message:create ok (item.agent_message)"),
-                                                Err(e) => warn!(?e, thread_id=%target_tid, role="assistant", msg="convex message:create failed (item.agent_message)"),
+                                        if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "assistant", text).await {
+                                            use convex::{ConvexClient, Value};
+                                            use std::collections::BTreeMap;
+                                            let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                            if let Ok(mut client) = ConvexClient::new(&url).await {
+                                                let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                                args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                                args.insert("role".into(), Value::from("assistant"));
+                                                args.insert("kind".into(), Value::from("message"));
+                                                args.insert("text".into(), Value::from(text));
+                                                args.insert("ts".into(), Value::from(now_ms() as f64));
+                                                let _ = client.mutation("messages:create", args).await;
                                             }
                                         }
                                     }
@@ -1233,18 +1221,17 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
                                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                                     if !target_tid.is_empty() {
-                                        use convex::{ConvexClient, Value};
-                                        use std::collections::BTreeMap;
-                                        let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                                        if let Ok(mut client) = ConvexClient::new(&url).await {
-                                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                            args.insert("threadId".into(), Value::from(target_tid.clone()));
-                                            args.insert("kind".into(), Value::from("reason"));
-                                            args.insert("text".into(), Value::from(text));
-                                            args.insert("ts".into(), Value::from(now_ms() as f64));
-                                            match client.mutation("messages:create", args).await {
-                                                Ok(_) => info!(thread_id=%target_tid, kind="reason", msg="convex message:create ok (item.reasoning)"),
-                                                Err(e) => warn!(?e, thread_id=%target_tid, kind="reason", msg="convex message:create failed (item.reasoning)"),
+                                        if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "reason", &text).await {
+                                            use convex::{ConvexClient, Value};
+                                            use std::collections::BTreeMap;
+                                            let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                            if let Ok(mut client) = ConvexClient::new(&url).await {
+                                                let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                                args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                                args.insert("kind".into(), Value::from("reason"));
+                                                args.insert("text".into(), Value::from(text));
+                                                args.insert("ts".into(), Value::from(now_ms() as f64));
+                                                let _ = client.mutation("messages:create", args).await;
                                             }
                                         }
                                     }
@@ -1331,6 +1318,91 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
     });
 
     Ok(())
+}
+
+// Streaming helpers: upsert/append/finalize a live message per (threadId, kind)
+async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &str, full_text: &str) {
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
+    let key = format!("{}|{}", thread_id, kind);
+    let mut guard = state.stream_track.lock().await;
+    let entry = guard.entry(key.clone()).or_insert_with(|| StreamEntry {
+        item_id: format!("{}:{}", kind, now_ms()),
+        last_text: String::new(),
+        seq: 0,
+    });
+    let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
+    if entry.last_text.is_empty() {
+        // Create or overwrite initial
+        if let Ok(mut client) = ConvexClient::new(&url).await {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("threadId".into(), Value::from(thread_id.to_string()));
+            args.insert("itemId".into(), Value::from(entry.item_id.clone()));
+            if kind == "assistant" { args.insert("role".into(), Value::from("assistant")); args.insert("kind".into(), Value::from("message")); }
+            else if kind == "reason" { args.insert("kind".into(), Value::from("reason")); }
+            args.insert("text".into(), Value::from(""));
+            args.insert("ts".into(), Value::from(now_ms() as f64));
+            args.insert("seq".into(), Value::from(entry.seq as f64));
+            let _ = client.mutation("messages:upsertStreamed", args).await;
+        }
+    }
+    // Append delta if longer; otherwise overwrite
+    if full_text.len() > entry.last_text.len() {
+        let delta = &full_text[entry.last_text.len()..];
+        entry.seq += 1;
+        if let Ok(mut client) = ConvexClient::new(&url).await {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("threadId".into(), Value::from(thread_id.to_string()));
+            args.insert("itemId".into(), Value::from(entry.item_id.clone()));
+            args.insert("textDelta".into(), Value::from(delta.to_string()));
+            args.insert("seq".into(), Value::from(entry.seq as f64));
+            let _ = client.mutation("messages:appendStreamed", args).await;
+        }
+        entry.last_text = full_text.to_string();
+    } else if full_text != entry.last_text {
+        entry.seq += 1;
+        if let Ok(mut client) = ConvexClient::new(&url).await {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("threadId".into(), Value::from(thread_id.to_string()));
+            args.insert("itemId".into(), Value::from(entry.item_id.clone()));
+            // Replace text by calling upsert again with the full text
+            args.insert("text".into(), Value::from(full_text.to_string()));
+            args.insert("seq".into(), Value::from(entry.seq as f64));
+            let _ = client.mutation("messages:upsertStreamed", args).await;
+        }
+        entry.last_text = full_text.to_string();
+    }
+}
+
+async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &str, final_text: &str) -> bool {
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
+    let key = format!("{}|{}", thread_id, kind);
+    let mut guard = state.stream_track.lock().await;
+    if let Some(entry) = guard.remove(&key) {
+        let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
+        if let Ok(mut client) = ConvexClient::new(&url).await {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("threadId".into(), Value::from(thread_id.to_string()));
+            args.insert("itemId".into(), Value::from(entry.item_id));
+            args.insert("text".into(), Value::from(final_text.to_string()));
+            let _ = client.mutation("messages:finalizeStreamed", args).await;
+        }
+        return true;
+    }
+    false
+}
+
+async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
+    let kinds = ["assistant", "reason"];
+    for k in kinds.iter() {
+        // finalize with last_text
+        let key = format!("{}|{}", thread_id, k);
+        let last_text = { state.stream_track.lock().await.get(&key).map(|e| e.last_text.clone()) };
+        if let Some(text) = last_text {
+            let _ = try_finalize_stream_kind(state, thread_id, k, &text).await;
+        }
+    }
 }
 
 fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64 }
@@ -1896,4 +1968,68 @@ async fn watch_projects_and_sync(state: Arc<AppState>) {
             Err(_disconnected) => break,
         }
     }
+}
+
+async fn watch_sessions_and_tail(state: Arc<AppState>) {
+    use notify::{RecommendedWatcher, RecursiveMode, Watcher, EventKind};
+    use std::sync::mpsc::channel;
+    let base = std::path::PathBuf::from(sessions_base_dir());
+    if !base.is_dir() { return; }
+    let (txev, rcev) = channel();
+    let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let _ = txev.send(res);
+    }) {
+        Ok(w) => w,
+        Err(e) => { error!(?e, "sessions watcher create failed"); return; }
+    };
+    if let Err(e) = watcher.watch(&base, RecursiveMode::Recursive) {
+        error!(dir=%base.display(), ?e, "sessions watcher watch failed");
+        return;
+    }
+    info!(dir=%base.display(), msg="sessions watcher started");
+    loop {
+        match rcev.recv() {
+            Ok(Ok(evt)) => {
+                // Focus on .jsonl file creates/modifications
+                let is_change = matches!(evt.kind, EventKind::Modify(_) | EventKind::Create(_));
+                if !is_change { continue; }
+                for path in evt.paths.into_iter() {
+                    if path.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; }
+                    if let Err(e) = mirror_session_tail_to_convex(state.clone(), &path).await { warn!(?e, "sessions mirror failed"); }
+                }
+            }
+            Ok(Err(e)) => { warn!(?e, "sessions watcher event error"); }
+            Err(_disconnected) => break,
+        }
+    }
+}
+
+async fn mirror_session_tail_to_convex(state: Arc<AppState>, path: &std::path::Path) -> anyhow::Result<()> {
+    // Parse thread summary and last messages, then stream the latest assistant/reason text.
+    let th = match crate::history::parse_thread(path) { Ok(v) => v, Err(_) => return Ok(()) };
+    // Upsert thread row (resumeId used as threadId)
+    if let Some(resume_id) = th.resume_id.clone() {
+        use convex::{ConvexClient, Value};
+        use std::collections::BTreeMap;
+        let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
+        if let Ok(mut client) = ConvexClient::new(&url).await {
+            let mut targs: BTreeMap<String, Value> = BTreeMap::new();
+            targs.insert("threadId".into(), Value::from(resume_id.clone()));
+            targs.insert("resumeId".into(), Value::from(resume_id.clone()));
+            targs.insert("title".into(), Value::from(th.title.clone()));
+            targs.insert("createdAt".into(), Value::from(now_ms() as f64));
+            targs.insert("updatedAt".into(), Value::from(now_ms() as f64));
+            let _ = client.mutation("threads:upsertFromStream", targs).await;
+        }
+        // Pick the latest assistant message text and reasoning text if present
+        let mut last_assistant: Option<String> = None;
+        let mut last_reason: Option<String> = None;
+        for it in th.items.iter() {
+            if it.kind == "message" && it.role.as_deref() == Some("assistant") { last_assistant = Some(it.text.clone()); }
+            if it.kind == "reason" { last_reason = Some(it.text.clone()); }
+        }
+        if let Some(txt) = last_assistant { stream_upsert_or_append(&state, &resume_id, "assistant", &txt).await; }
+        if let Some(txt) = last_reason { stream_upsert_or_append(&state, &resume_id, "reason", &txt).await; }
+    }
+    Ok(())
 }

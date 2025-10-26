@@ -62,9 +62,17 @@ export default defineSchema({
     kind: v.string(), // 'message' | 'reason' | 'cmd' | 'file' | 'search' | 'mcp' | 'todo' | 'turn' | etc
     text: v.optional(v.string()),
     data: v.optional(v.any()),
+    // Streaming support (optional to preserve compatibility)
+    itemId: v.optional(v.string()),
+    partial: v.optional(v.boolean()),
+    seq: v.optional(v.number()),
     ts: v.number(),
     createdAt: v.number(),
-  }).index?.('by_thread_ts', ['threadId', 'ts']),
+    // Optional updatedAt to reflect streaming patches
+    updatedAt: v.optional(v.number()),
+  })
+    .index?.('by_thread_ts', ['threadId', 'ts'])
+    .index?.('by_thread_item', ['threadId', 'itemId']),
   runs: defineTable({
     threadDocId: v.string(), // convex threads doc _id (string form)
     projectId: v.optional(v.string()),
