@@ -16,7 +16,7 @@ High‑Level Data Flow
   4) Apps subscribe to Convex queries and render updates in realtime.
 
 - Desktop (Tauri) send path specifics:
-  - The Tauri backend optimistically persists the user message via `messages:create` before enqueuing the run so the UI updates immediately.
+  - The Convex function `runs:enqueue` persists the user message; the Tauri backend does not insert a duplicate.
   - The bridge defaults `resumeId` to `last` when not provided, ensuring Codex continues the latest session in that thread.
 
 - Streaming (agent → apps):
@@ -59,7 +59,7 @@ Desktop (Tauri)
   - `bridge.rs`: starts Convex sidecar and emits `convex:local_status` & `bridge:ready` events; spawns the CLI bridge in dev.
   - `convex.rs`: pure mapping helpers and commands (list threads/messages, count, mapping/hide rules).
   - `subscriptions.rs`: live Convex subscriptions, emitting `convex:threads` and `convex:messages` to the webview.
-  - `commands.rs`: mutations (`runs:enqueue`, `threads:create`) and optimistic user message persistence via `messages:create`.
+  - `commands.rs`: mutations (`runs:enqueue`, `threads:create`). User message persistence is handled in `runs:enqueue` (no client‑side duplication).
 - Webview UI (Leptos, `tauri/src/`):
   - `app.rs`: connects to `/ws`, renders threads/messages, controls composer, and logs status.
   - `library.rs`, `jsonl.rs`, `composer.rs`: component library and rendering primitives.
