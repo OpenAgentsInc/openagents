@@ -161,7 +161,7 @@ async fn main() -> Result<()> {
     });
 
     // Start readers for stdout/stderr → broadcast + console
-    start_stream_forwarders(child, state.clone()).await?;
+    crate::ws::start_stream_forwarders(child, state.clone()).await?;
 
     // Live-reload + sync (optional toggle via OPENAGENTS_CONVEX_SYNC=0 to disable)
     let sync_enabled = std::env::var("OPENAGENTS_CONVEX_SYNC").ok().map(|v| v != "0").unwrap_or(true);
