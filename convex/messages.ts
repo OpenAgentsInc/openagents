@@ -3,7 +3,6 @@ import { queryGeneric, mutationGeneric } from "convex/server";
 type ForThreadArgs = { threadId: string; limit?: number | bigint | string; since?: number | bigint | string };
 type CreateArgs = { threadId: string; role?: string; kind?: string; text?: string; data?: any; ts?: number };
 type UpsertStreamedArgs = { threadId: string; itemId: string; role?: string; kind?: string; text?: string; ts?: number; seq?: number };
-type AppendStreamedArgs = { threadId: string; itemId: string; textDelta: string; seq?: number };
 type FinalizeStreamedArgs = { threadId: string; itemId: string; text?: string };
 
 function toNum(v: unknown, fallback: number): number {
@@ -100,26 +99,6 @@ export const upsertStreamed = mutationGeneric(async ({ db }, args: UpsertStreame
 });
 
 // Append a delta to an existing streamed message. No-op if not found.
-export const appendStreamed = mutationGeneric(async ({ db }, args: AppendStreamedArgs) => {
-  let rows: any[] = [];
-  try {
-    // @ts-ignore composite index
-    rows = await db
-      .query('messages')
-      .withIndex('by_thread_item', (q: any) => q.eq('threadId', args.threadId).eq('itemId', args.itemId))
-      .collect();
-  } catch {
-    rows = await db
-      .query('messages')
-      .filter((q) => q.and(q.eq(q.field('threadId'), args.threadId), q.eq(q.field('itemId'), args.itemId)))
-      .collect();
-  }
-  if (rows.length === 0) return null;
-  const row = rows[0] as any;
-  const nextText = String(row.text || '') + String(args.textDelta || '');
-  await db.patch(row._id, { text: nextText, partial: true, seq: typeof args.seq === 'number' ? args.seq : (row.seq ?? 0), updatedAt: Date.now() } as any);
-  return row._id;
-});
 
 // Finalize a streamed message (partial=false). Optionally set final text.
 export const finalizeStreamed = mutationGeneric(async ({ db }, args: FinalizeStreamedArgs) => {
