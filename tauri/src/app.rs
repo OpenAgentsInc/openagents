@@ -439,8 +439,4 @@ pub fn App() -> impl IntoView {
         </main>
     }
 }
-//! Leptos desktop UI: threads list, messages view, and WebSocket bridge.
-//!
-//! This SPA connects to the local bridge (`ws://127.0.0.1:8787/ws`), renders
-//! recent threads and live messages, and integrates with the Tauri backend via
-//! `invoke` for Convex queries, subscriptions, and mutations.
+// Module docs are at the top of this file.
