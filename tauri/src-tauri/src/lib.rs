@@ -130,13 +130,15 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
             let mut out = Vec::with_capacity(items.len());
             for item in items {
                 let json: serde_json::Value = item.into();
-                // Filter: hide initial user instructions/preface messages
+                // Filter: hide initial user/environment prefaces from the list view
                 let text_s = json.get("text").and_then(|x| x.as_str()).unwrap_or("");
                 let kind_s = json.get("kind").and_then(|x| x.as_str()).unwrap_or("");
                 let role_s = json.get("role").and_then(|x| x.as_str()).unwrap_or("");
-                let hide = text_s.trim_start().starts_with("<user_instructions>")
-                    || kind_s == "preface" || kind_s == "instructions"
-                    || (role_s == "system" && text_s.contains("Repository Guidelines"));
+                let trimmed = text_s.trim_start();
+                let hide = trimmed.starts_with("<user_instructions>")
+                    || trimmed.starts_with("<environment_context>")
+                    || kind_s == "preface" || kind_s == "instructions" || kind_s == "env" || kind_s == "context"
+                    || (role_s == "system" && (text_s.contains("Repository Guidelines") || text_s.contains("<environment_context>")));
                 if hide { continue; }
                 let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
                 let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
@@ -188,9 +190,11 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
                     let text_s = json.get("text").and_then(|x| x.as_str()).unwrap_or("");
                     let kind_s = json.get("kind").and_then(|x| x.as_str()).unwrap_or("");
                     let role_s = json.get("role").and_then(|x| x.as_str()).unwrap_or("");
-                    let hide = text_s.trim_start().starts_with("<user_instructions>")
-                        || kind_s == "preface" || kind_s == "instructions"
-                        || (role_s == "system" && text_s.contains("Repository Guidelines"));
+                    let trimmed = text_s.trim_start();
+                    let hide = trimmed.starts_with("<user_instructions>")
+                        || trimmed.starts_with("<environment_context>")
+                        || kind_s == "preface" || kind_s == "instructions" || kind_s == "env" || kind_s == "context"
+                        || (role_s == "system" && (text_s.contains("Repository Guidelines") || text_s.contains("<environment_context>")));
                     if hide { continue; }
                     let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
                     let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
