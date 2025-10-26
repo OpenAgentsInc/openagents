@@ -119,6 +119,15 @@ pub fn App() -> impl IntoView {
             let handler = Closure::wrap(Box::new(move |e: JsValue| {
                 if let Ok(payload) = js_sys::Reflect::get(&e, &JsValue::from_str("payload")) {
                     if let Ok(rows) = serde_wasm_bindgen::from_value::<Vec<serde_json::Value>>(payload) {
+                        // Debug: log counts to console
+                        web_sys::console::log_1(&JsValue::from_str(&format!("threads batch {} items", rows.len())));
+                        if let Some(first) = rows.get(0) {
+                            let count = first.get("count").and_then(|x| x.as_i64())
+                                .or_else(|| first.get("messageCount").and_then(|x| x.as_i64()))
+                                .or_else(|| first.get("message_count").and_then(|x| x.as_i64()))
+                                .unwrap_or(-1);
+                            web_sys::console::log_1(&JsValue::from_str(&format!("first row count={}", count)));
+                        }
                         set_threads.set(rows);
                     }
                 }
