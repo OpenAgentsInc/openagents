@@ -262,6 +262,119 @@ async fn enqueue_run(threadDocId: String, text: String, role: Option<String>, pr
     }
 }
 
+#[tauri::command]
+async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
+    use convex::{FunctionResult, Value};
+    use futures::StreamExt;
+    use std::collections::{BTreeMap, HashSet};
+    use std::sync::{Arc, Mutex};
+
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let mut sub = client
+        .subscribe("threads:list", BTreeMap::new())
+        .await
+        .map_err(|e| format!("convex subscribe error: {e}"))?;
+
+    let watchers: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    let window_outer = window.clone();
+    let url_outer = url.clone();
+
+    tauri::async_runtime::spawn(async move {
+        while let Some(result) = sub.next().await {
+            if let FunctionResult::Value(Value::Array(items)) = result {
+                // Build filtered list (count > 0), keep zeros for watcher
+                let mut rows: Vec<ThreadSummary> = Vec::new();
+                let mut zeros: Vec<String> = Vec::new();
+                for item in items {
+                    let json: serde_json::Value = item.into();
+                    let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    if id.is_empty() { continue; }
+                    let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()).or_else(|| Some(id.clone()));
+                    let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                    if let Some(tid) = thread_id.clone() { args.insert("threadId".into(), Value::from(tid.clone())); }
+                    let count = match client.query("messages:countForThread", args).await {
+                        Ok(FunctionResult::Value(v)) => { let j: serde_json::Value = v.into(); j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0) },
+                        _ => 0,
+                    };
+                    if count > 0 {
+                        rows.push(ThreadSummary { id, thread_id, title, updated_at });
+                    } else if let Some(tid) = thread_id { zeros.push(tid); }
+                }
+                rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
+                let cap = limit.unwrap_or(10) as usize;
+                if rows.len() > cap { rows.truncate(cap); }
+                let _ = window_outer.emit("convex:threads", &rows);
+
+                // Begin watchers for zero-message threads; when first message arrives, refresh list once
+                for tid in zeros.into_iter() {
+                    let mut seen = watchers.lock().unwrap();
+                    if seen.contains(&tid) { continue; }
+                    seen.insert(tid.clone());
+                    drop(seen);
+                    let window_inner = window_outer.clone();
+                    let url_inner = url_outer.clone();
+                    let watchers_inner = watchers.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Ok(mut c2) = convex::ConvexClient::new(&url_inner).await {
+                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                            args.insert("threadId".into(), Value::from(tid.clone()));
+                            args.insert("limit".into(), Value::from(1i64));
+                            if let Ok(mut s2) = c2.subscribe("messages:forThread", args).await {
+                                while let Some(res) = s2.next().await {
+                                    if let FunctionResult::Value(Value::Array(msgs)) = res {
+                                        if !msgs.is_empty() {
+                                            // Refresh thread list and emit
+                                            if let Ok(mut c3) = convex::ConvexClient::new(&url_inner).await {
+                                                if let Ok(FunctionResult::Value(Value::Array(items))) = c3.query("threads:list", BTreeMap::new()).await {
+                                                    let mut rows: Vec<ThreadSummary> = Vec::new();
+                                                    for item in items {
+                                                        let json: serde_json::Value = item.into();
+                                                        let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                                        if id.is_empty() { continue; }
+                                                        let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()).or_else(|| Some(id.clone()));
+                                                        let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                                        let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                                                        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                                        if let Some(tid2) = thread_id.clone() { args.insert("threadId".into(), Value::from(tid2)); }
+                                                        let count = match c3.query("messages:countForThread", args).await {
+                                                            Ok(FunctionResult::Value(v)) => { let j: serde_json::Value = v.into(); j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0) },
+                                                            _ => 0,
+                                                        };
+                                                        if count > 0 { rows.push( ThreadSummary { id, thread_id, title, updated_at } ); }
+                                                    }
+                                                    rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
+                                                    let cap = limit.unwrap_or(10) as usize;
+                                                    if rows.len() > cap { rows.truncate(cap); }
+                                                    let _ = window_inner.emit("convex:threads", &rows);
+                                                }
+                                            }
+                                            let mut lock = watchers_inner.lock().unwrap();
+                                            lock.remove(&tid);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
 use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -334,7 +447,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages, get_local_convex_status, enqueue_run])
+        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages, subscribe_recent_threads, get_local_convex_status, enqueue_run])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
