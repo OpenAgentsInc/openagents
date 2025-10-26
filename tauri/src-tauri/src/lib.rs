@@ -242,21 +242,17 @@ pub fn run() {
                     let handle = app.app_handle().clone();
                     let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
                     tauri::async_runtime::spawn(async move {
-                        // probe up to ~10s
-                        for _ in 0..100u32 {
-                            if is_port_open(port) {
-                                let _ = handle.emit("convex.local_status", serde_json::json!({
-                                    "healthy": true,
-                                    "url": format!("http://127.0.0.1:{}", port)
-                                }));
-                                return;
+                        // Periodically monitor port and emit status transitions
+                        let url = format!("http://127.0.0.1:{}", port);
+                        let mut last = None;
+                        loop {
+                            let healthy = is_port_open(port);
+                            if last != Some(healthy) {
+                                let _ = handle.emit("convex.local_status", serde_json::json!({ "healthy": healthy, "url": url }));
+                                last = Some(healthy);
                             }
-                            std::thread::sleep(std::time::Duration::from_millis(100));
+                            std::thread::sleep(std::time::Duration::from_millis(1000));
                         }
-                        let _ = handle.emit("convex.local_status", serde_json::json!({
-                            "healthy": false,
-                            "url": format!("http://127.0.0.1:{}", port)
-                        }));
                     });
                 }
             }
