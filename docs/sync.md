@@ -10,7 +10,7 @@ Summary
 - Live ingestion (today):
   - When a run is triggered through our Bridge, the Bridge streams Codex JSONL and writes normalized rows directly into Convex in real time (threads/messages).
   - Mobile/Desktop UIs subscribe to Convex queries and render live updates.
-  - Desktop (Tauri) optimistically persists the user message to Convex (`messages:create`) before enqueuing the run so the message appears immediately in the UI.
+  - Desktop (Tauri) defers user message persistence to the Convex mutation `runs:enqueue` to avoid duplicates.
   - If `resumeId` is not provided, the Bridge uses `last` by default so Codex continues the current session.
 - Historical ingestion:
   - On startup, the Bridge backfills recent Codex JSONL sessions into Convex; an on‑demand WS control can trigger a larger backfill.
@@ -30,7 +30,7 @@ Architecture At A Glance
 - Desktop (Tauri)
   - Bundles/launches a local Convex backend (sidecar) and auto‑deploys functions
   - Provides Rust commands that query/subscribe to Convex and emit UI events
-  - On send: `enqueue_run` first calls `messages:create` (user message), then `runs:enqueue`
+  - On send: `enqueue_run` calls `runs:enqueue`; that mutation persists the user message
 
 Key Codepaths (by layer)
 - Bridge

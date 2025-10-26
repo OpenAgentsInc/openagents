@@ -523,6 +523,7 @@ mod tests {
         assert_eq!(map_tool_kind("mcp_tool_call"), Some("mcp"));
         assert_eq!(map_tool_kind("todo_list"), Some("todo"));
         assert_eq!(map_tool_kind("other"), None);
+        assert_eq!(map_tool_kind("user_message"), None);
     }
 
     #[test]
