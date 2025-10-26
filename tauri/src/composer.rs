@@ -59,3 +59,7 @@ where
         </div>
     }
 }
+//! Chat composer input for the desktop UI (Leptos).
+//!
+//! Provides a bottom‑fixed text input with Enter‑to‑send behavior and a hook
+//! for autofocus when switching threads, to keep typing flow uninterrupted.

@@ -7,6 +7,7 @@ use tracing::info;
 
 use crate::Opts;
 
+/// Wrapper for a spawned Codex child process with I/O handles.
 pub struct ChildWithIo {
     pub pid: u32,
     pub stdin: Option<tokio::process::ChildStdin>,
@@ -14,6 +15,7 @@ pub struct ChildWithIo {
     pub stderr: Option<tokio::process::ChildStderr>,
 }
 
+/// Spawn the long‑lived Codex process used for initial bootstrap and broadcast.
 pub async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, tokio::sync::broadcast::Sender<String>)> {
     let (bin, args) = build_bin_and_args(opts)?;
     let workdir = detect_repo_root(None);
@@ -32,6 +34,7 @@ pub async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, tokio::sync::broad
     Ok((ChildWithIo { pid, stdin, stdout, stderr }, tx))
 }
 
+/// Spawn a short‑lived Codex child for one prompt, optionally resuming a thread.
 pub async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Option<PathBuf>, resume_id: Option<&str>) -> Result<ChildWithIo> {
     let (bin, mut args) = build_bin_and_args(opts)?;
     if let Some(rid) = resume_id {
@@ -55,6 +58,7 @@ pub async fn spawn_codex_child_only_with_dir(opts: &Opts, workdir_override: Opti
     Ok(ChildWithIo { pid, stdin, stdout, stderr })
 }
 
+/// Resolve the codex binary and build default arguments for exec/json mode.
 fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     let bin = resolve_codex_bin(opts)?;
     let mut args: Vec<String> = Vec::new();
@@ -80,22 +84,30 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     Ok((bin, args))
 }
 
+/// Locate the codex binary via options, environment, or PATH.
 fn resolve_codex_bin(opts: &Opts) -> Result<PathBuf> {
     if let Some(bin) = opts.codex_bin.clone() { return Ok(bin); }
     if let Ok(env) = std::env::var("CODEX_BIN") { return Ok(PathBuf::from(env)); }
     which::which("codex").map_err(|e| anyhow::anyhow!("codex binary not found in PATH: {e}"))
 }
 
+/// Probe whether the CLI supports the `resume` subcommand.
 fn cli_supports_resume(bin: &PathBuf) -> bool {
     use std::process::Command as StdCommand;
     let out = StdCommand::new(bin).arg("--help").output();
     match out { Ok(o) => String::from_utf8_lossy(&o.stdout).contains("resume"), Err(_) => false }
 }
 
+/// Detect the repository root to set Codex working directory appropriately.
 fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
     fn is_repo_root(p: &Path) -> bool { p.join("expo").is_dir() && p.join("crates").is_dir() }
     let mut cur = start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let original = cur.clone();
     loop { if is_repo_root(&cur) { return cur; } if !cur.pop() { return original; } }
 }
+//! Codex CLI process management for the bridge.
+//!
+//! Spawns the Codex CLI with a JSON output mode, exposes stdin/stdout/stderr
+//! handles for streaming, and respawns lightweight children for subsequent
+//! prompts when the previous stdin has been closed.
 

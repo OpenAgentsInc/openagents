@@ -25,18 +25,22 @@ pub struct Skill {
     pub source: Option<String>,
 }
 
+/// Resolve the base OpenAgents home directory (env or ~/.openagents).
 pub fn openagents_home() -> PathBuf {
     if let Some(p) = std::env::var("OPENAGENTS_HOME").ok() { return PathBuf::from(p); }
     if let Some(home) = std::env::var("HOME").ok() { return PathBuf::from(home).join(".openagents"); }
     PathBuf::from(".openagents")
 }
 
+/// Return the user Skills directory path.
 pub fn skills_dir() -> PathBuf { openagents_home().join("skills") }
 
+/// Create the Skills directory if missing.
 pub fn ensure_dirs() -> Result<()> {
     fs::create_dir_all(skills_dir()).context("create skills dir")
 }
 
+/// Enumerate all skills from user and registry folders (dedup by id).
 pub fn list_skills() -> Result<Vec<Skill>> {
     let mut out: Vec<Skill> = Vec::new();
     // 1) User-local skills (~/.openagents/skills)
@@ -55,6 +59,7 @@ pub fn list_skills() -> Result<Vec<Skill>> {
     Ok(dedup)
 }
 
+/// Append skills found under `dir` (source tag applied) into `out`.
 fn append_skills_from(dir: &std::path::Path, source: &str, out: &mut Vec<Skill>) -> Result<()> {
     if !dir.exists() { return Ok(()); }
     for ent in fs::read_dir(&dir).context("read skills dir")? {
@@ -112,6 +117,7 @@ fn validate_against_schema(schema_json: &str, yaml_val: &yaml::Value) -> bool {
     if let Some(compiled) = JSONSchema::compile(&schema_val).ok() { compiled.is_valid(&json_val) } else { false }
 }
 
+/// Candidate registry skills directories: env override or ./skills in repo.
 pub fn registry_skills_dirs() -> Vec<PathBuf> {
     // Priority: explicit env, then ./skills under current working directory if present
     let mut out = Vec::new();
@@ -176,3 +182,7 @@ description: Desc
         assert_eq!(items.len(), 0, "invalid skill should be skipped");
     }
 }
+//! File‑backed Skills model (FS <-> structs) for bridge/clients.
+//!
+//! Reads skill folders containing `SKILL.md` from user and registry locations,
+//! validates YAML frontmatter against the schema, and exposes list helpers.

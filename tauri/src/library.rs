@@ -248,3 +248,7 @@ fn UnusedSample() -> impl IntoView {
         <div class="jsonl-row"><TurnEventRow phase=Some("started".into()) usage=None message=None show_usage=false duration_ms=None/></div>
     }
 }
+//! Component library showcase for desktop JSONL components.
+//!
+//! Provides a simple sidebar + content view that demonstrates how each JSONL
+//! row type renders with example data, mirroring the mobile Library screen.

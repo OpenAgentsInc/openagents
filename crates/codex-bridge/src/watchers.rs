@@ -13,6 +13,11 @@ use crate::convex_write::stream_upsert_or_append;
 use crate::state::AppState;
 use crate::util::now_ms;
 
+/// Full one-shot sync of Projects from disk into Convex.
+///
+/// - Reads `~/.openagents/projects/**/PROJECT.md` (and legacy single-file variants)
+/// - Validates frontmatter, maps fields, and upserts rows via `projects:upsertFromFs`.
+/// - Returns the number of successful upserts.
 pub async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
@@ -46,6 +51,11 @@ pub async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usi
     Ok(ok)
 }
 
+/// Full one-shot sync of Skills from disk into Convex.
+///
+/// Sources:
+/// - User skills under `~/.openagents/skills/**/SKILL.md`
+/// - Registry skills under `<repo>/skills/**/SKILL.md`
 pub async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
@@ -74,11 +84,15 @@ pub async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize
     Ok(ok)
 }
 
+/// Placeholder for project-scoped skills sync (e.g., `<project>/skills`).
+/// Currently unused; kept for future expansion.
 pub async fn sync_project_scoped_skills(_state: Arc<AppState>, _client: &mut convex::ConvexClient) -> anyhow::Result<()> {
-    // Placeholder for project-scoped skills sync; currently not used.
     Ok(())
 }
 
+/// Watch the Projects directory and trigger a best-effort sync on changes.
+///
+/// Debounces bursts by draining a few queued events each iteration.
 pub async fn watch_projects_and_sync(state: Arc<AppState>) {
     let proj_dir = crate::projects::projects_dir();
     if let Err(e) = std::fs::create_dir_all(&proj_dir) { error!(?e, "projects mkdir failed"); }
@@ -90,6 +104,8 @@ pub async fn watch_projects_and_sync(state: Arc<AppState>) {
     loop { match rcev.recv() { Ok(_evt) => { let _ = rcev.try_recv(); let _ = rcev.try_recv(); if let Err(e) = sync_projects_to_convex(state.clone()).await { warn!(?e, "projects convex sync failed on change"); } }, Err(_disconnected) => break } }
 }
 
+/// Watch user and registry Skills directories and broadcast a fresh skills list
+/// to connected clients. Also mirrors to Convex on change.
 pub async fn watch_skills_and_broadcast(state: Arc<AppState>) {
     let user_dir = crate::skills::skills_dir();
     let registry_dirs = crate::skills::registry_skills_dirs();
@@ -126,6 +142,8 @@ pub async fn enqueue_historical_on_start(state: Arc<AppState>) {
     });
 }
 
+/// Watch the Codex sessions directory (`~/.codex/sessions`) and tail JSONL files
+/// to mirror assistant/reason text into Convex so external runs appear live.
 pub async fn watch_sessions_and_tail(state: Arc<AppState>) {
     let base = PathBuf::from(sessions_base_dir());
     if !base.is_dir() { return; }
@@ -136,6 +154,7 @@ pub async fn watch_sessions_and_tail(state: Arc<AppState>) {
     loop { match rcev.recv() { Ok(Ok(evt)) => { let is_change = matches!(evt.kind, EventKind::Modify(_) | EventKind::Create(_)); if !is_change { continue; } for path in evt.paths.into_iter() { if path.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; } if let Err(e) = mirror_session_tail_to_convex(state.clone(), &path).await { warn!(?e, "sessions mirror failed"); } } }, Ok(Err(e)) => { warn!(?e, "sessions watcher event error"); }, Err(_disconnected) => break } }
 }
 
+/// Enqueue a single historical thread (by parsed HistoryItem) into Convex.
 async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::HistoryItem) -> anyhow::Result<()> {
     let path = Path::new(&h.path);
     let th = crate::history::parse_thread(path)?;
@@ -168,6 +187,7 @@ async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::Histor
     Ok(())
 }
 
+/// Parse a session JSONL file and upsert the latest assistant/reason text for streaming parity.
 async fn mirror_session_tail_to_convex(state: Arc<AppState>, path: &Path) -> anyhow::Result<()> {
     let th = match crate::history::parse_thread(path) { Ok(v) => v, Err(_) => return Ok(()) };
     if let Some(resume_id) = th.resume_id.clone() {

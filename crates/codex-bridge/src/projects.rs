@@ -29,18 +29,23 @@ pub struct Project {
     pub updated_at: Option<u64>,
 }
 
+/// Resolve the base OpenAgents home directory (env or ~/.openagents).
 pub fn openagents_home() -> PathBuf {
     if let Some(p) = std::env::var("OPENAGENTS_HOME").ok() { return PathBuf::from(p); }
     if let Some(home) = std::env::var("HOME").ok() { return PathBuf::from(home).join(".openagents"); }
     PathBuf::from(".openagents")
 }
 
+/// Return the user Projects directory path.
 pub fn projects_dir() -> PathBuf { openagents_home().join("projects") }
 
+/// Create the Projects directory if missing.
 pub fn ensure_dirs() -> Result<()> {
     fs::create_dir_all(projects_dir()).context("create projects dir")
 }
 
+/// Enumerate all Projects, supporting both folder (`PROJECT.md`) and
+/// legacy single‑file (`*.project.md`) formats.
 pub fn list_projects() -> Result<Vec<Project>> {
     let dir = projects_dir();
     let mut out: Vec<Project> = Vec::new();
@@ -87,6 +92,7 @@ pub fn list_projects() -> Result<Vec<Project>> {
     Ok(out)
 }
 
+/// Save or create a Project folder with validated `PROJECT.md` frontmatter.
 pub fn save_project(p: &Project) -> Result<()> {
     ensure_dirs()?;
     let dir = projects_dir().join(&p.id);
@@ -101,6 +107,7 @@ pub fn save_project(p: &Project) -> Result<()> {
     fs::write(path, s).context("write project file")
 }
 
+/// Delete a Project by id (folder if present, else legacy single‑file fallback).
 pub fn delete_project(id: &str) -> Result<()> {
     // Prefer directory removal; fallback to file removal for legacy
     let dir = projects_dir().join(id);
@@ -197,3 +204,7 @@ fn validate_against_schema(schema_json: &str, yaml_val: &yaml::Value) -> bool {
     let schema_val: serde_json::Value = if let Some(v) = serde_json::from_str(schema_json).ok() { v } else { return false };
     if let Some(compiled) = JSONSchema::compile(&schema_val).ok() { compiled.is_valid(&json_val) } else { false }
 }
+//! File‑backed Projects model (FS <-> structs) for bridge/clients.
+//!
+//! Reads and writes Project folders under `~/.openagents/projects`, validating
+//! YAML frontmatter in `PROJECT.md` against the canonical JSON schema.

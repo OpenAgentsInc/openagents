@@ -1,4 +1,7 @@
 //! Mutations and thread creation commands for the Tauri backend.
+//!
+//! These commands wrap Convex mutations (`runs:enqueue`, `threads:create`) and
+//! are invoked from the webview via `window.__TAURI__.core.invoke`.
 
 #[tauri::command]
 #[allow(non_snake_case)]
@@ -41,4 +44,3 @@ pub async fn create_thread(title: Option<String>, projectId: Option<String>, con
         Err(e) => Err(format!("convex mutation error: {e}")),
     }
 }
-

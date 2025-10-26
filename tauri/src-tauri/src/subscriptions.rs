@@ -1,4 +1,7 @@
 //! Live subscription commands for Convex streams.
+//!
+//! These commands establish server‑pushed subscriptions from Convex to the
+//! desktop webview and re‑emit rows as compact payloads via `window.emit`.
 
 use crate::convex::{map_message_row, map_thread_item, select_thread_key, MessageRow, ThreadSummary};
 use convex::{FunctionResult, Value};
@@ -96,4 +99,3 @@ pub async fn subscribe_recent_threads(
     });
     Ok(())
 }
-
