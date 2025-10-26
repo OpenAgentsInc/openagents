@@ -381,19 +381,8 @@ pub fn App() -> impl IntoView {
         let messages_ro = messages;
         let _can_send = move || selected_thread_doc_id.get().is_some();
         let do_send = move |text: String| {
-            // Persist via Convex mutation
             if let Some(doc_id) = selected_thread_doc_id.get() {
-                let text2 = text.clone();
-                let doc_id_clone = doc_id.clone();
-                spawn_local(async move {
-                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({
-                        "threadDocId": doc_id_clone,
-                        "text": text2,
-                        "role": "user",
-                    })).unwrap();
-                    let _ = invoke("enqueue_run", args).await;
-                });
-                // Send control message to bridge
+                // Send control message to bridge (unified with mobile)
                 if let Some(win) = web_sys::window() {
                     if let Ok(v) = js_sys::Reflect::get(&win, &JsValue::from_str("__BRIDGE_WS")) {
                         if let Ok(ws) = v.dyn_into::<WebSocket>() {
