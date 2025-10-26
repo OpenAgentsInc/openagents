@@ -210,3 +210,24 @@ async fn mirror_session_tail_to_convex(state: Arc<AppState>, path: &Path) -> any
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn picks_env_override_for_sessions_dir() {
+        unsafe { std::env::set_var("CODEXD_HISTORY_DIR", "/tmp/sessions_override") };
+        assert_eq!(sessions_base_dir(), "/tmp/sessions_override");
+        unsafe { std::env::remove_var("CODEXD_HISTORY_DIR") };
+    }
+
+    #[test]
+    fn falls_back_to_home_sessions_dir() {
+        // Ensure env override not set
+        unsafe { std::env::remove_var("CODEXD_HISTORY_DIR") };
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+        let expect = if home == "." { ".".to_string() } else { format!("{home}/.codex/sessions") };
+        assert_eq!(sessions_base_dir(), expect);
+    }
+}
