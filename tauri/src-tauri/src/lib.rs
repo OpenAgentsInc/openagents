@@ -11,7 +11,7 @@ async fn get_thread_count(convex_url: Option<String>) -> Result<usize, String> {
 
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:7788".to_string());
+        .unwrap_or_else(|| "http://127.0.0.1:3210".to_string());
 
     let mut client = convex::ConvexClient::new(&url)
         .await
@@ -57,7 +57,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
 
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:7788".to_string());
+        .unwrap_or_else(|| "http://127.0.0.1:3210".to_string());
 
     let mut client = convex::ConvexClient::new(&url)
         .await
@@ -100,7 +100,7 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
 
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:7788".to_string());
+        .unwrap_or_else(|| "http://127.0.0.1:3210".to_string());
 
     let mut client = convex::ConvexClient::new(&url)
         .await
@@ -146,7 +146,7 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
 
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:7788".to_string());
+        .unwrap_or_else(|| "http://127.0.0.1:3210".to_string());
 
     let mut client = convex::ConvexClient::new(&url)
         .await
@@ -190,6 +190,13 @@ use tauri::Emitter;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            // Try to start a local Convex backend (binary sidecar) on 127.0.0.1:3210.
+            // This is offline-first and avoids the CLI `convex dev` path.
+            if std::env::var("OPENAGENTS_SKIP_EMBEDDED_CONVEX").ok().as_deref() != Some("1") {
+                tauri::async_runtime::spawn(async move {
+                    start_convex_sidecar();
+                });
+            }
             // Start codex-bridge automatically in the background on app launch.
             tauri::async_runtime::spawn(async move {
                 ensure_bridge_running().await;
@@ -225,6 +232,51 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+fn start_convex_sidecar() {
+    // Probe 127.0.0.1:3210; if not open, try to spawn a local backend binary.
+    if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 3210)).is_ok() {
+        println!("[tauri/convex] detected local backend on 127.0.0.1:3210");
+        return;
+    }
+    let bin_candidates: Vec<std::path::PathBuf> = {
+        let mut v = Vec::new();
+        if let Ok(p) = std::env::var("OPENAGENTS_CONVEX_BIN") { v.push(std::path::PathBuf::from(p)); }
+        // Repo-local dev path
+        let repo = detect_repo_root(None);
+        v.push(repo.join("tauri").join("src-tauri").join("bin").join(if cfg!(windows) { "local_backend.exe" } else { "local_backend" }));
+        // User install path used previously
+        if let Ok(home) = std::env::var("HOME") { v.push(std::path::PathBuf::from(home).join(".openagents/bin/local_backend")); }
+        v
+    };
+    let bin = bin_candidates.into_iter().find(|p| p.exists()).unwrap_or_else(|| std::path::PathBuf::from("local_backend"));
+    if !bin.exists() {
+        println!("[tauri/convex] local backend binary not found (set OPENAGENTS_CONVEX_BIN or place tauri/src-tauri/bin/local_backend)");
+        return;
+    }
+    let db_path = default_convex_db_path();
+    if let Some(parent) = db_path.parent() { let _ = std::fs::create_dir_all(parent); }
+    let mut cmd = std::process::Command::new(&bin);
+    cmd.arg(&db_path)
+        .arg("--db").arg("sqlite")
+        .arg("--interface").arg("127.0.0.1")
+        .arg("--port").arg("3210")
+        .arg("--disable-beacon")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit());
+    match cmd.spawn() {
+        Ok(child) => println!("[tauri/convex] spawned local backend pid={} bin={} db={}", child.id(), bin.display(), db_path.display()),
+        Err(e) => println!("[tauri/convex] failed to spawn local backend: {} bin={} db={}", e, bin.display(), db_path.display()),
+    }
+}
+
+fn default_convex_db_path() -> std::path::PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        return std::path::PathBuf::from(home).join(".openagents/convex/data.sqlite3");
+    }
+    std::path::PathBuf::from("data.sqlite3")
+}
+
 async fn ensure_bridge_running() {
     // If the bridge port is open we assume it's already running
     if is_port_open(8787) { return; }
@@ -240,7 +292,8 @@ async fn ensure_bridge_running() {
         c.args([
             "run", "-q", "-p", "codex-bridge", "--",
             "--bind", "0.0.0.0:8787",
-            "--manage-convex", "false",
+            // Run the local Convex backend binary, but do not push functions.
+            "--manage-convex", "true",
             "--bootstrap", "false",
         ]);
         c
@@ -248,7 +301,7 @@ async fn ensure_bridge_running() {
     cmd.current_dir(&repo)
         .env("RUST_LOG", "info")
         // Ensure the bridge does not manage Convex or attempt bootstrap when spawned by the app.
-        .env("OPENAGENTS_MANAGE_CONVEX", "false")
+        .env("OPENAGENTS_MANAGE_CONVEX", "true")
         .env("OPENAGENTS_BOOTSTRAP", "false")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::inherit())
