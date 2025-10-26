@@ -195,10 +195,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     match crate::projects::list_projects() { Ok(list) => list.into_iter().find(|p| p.id == *pid).map(|p| p.working_dir), Err(_) => None }
                                 });
                                 { *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone()); }
+                                let resume_arg = compute_resume_arg(resume_id.as_deref());
                                 match spawn_codex_child_only_with_dir(
                                     &stdin_state.opts,
                                     desired_cd.clone().map(|s| std::path::PathBuf::from(s)),
-                                    resume_id.as_deref(),
+                                    resume_arg.as_deref(),
                                 ).await {
                                     Ok(mut child) => {
                                         if let Some(stdin) = child.stdin.take() { *stdin_state.child_stdin.lock().await = Some(stdin); }
@@ -476,6 +477,16 @@ fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
     match v.get("resume") { Some(JsonValue::String(s)) if !s.is_empty() => Some(s.clone()), _ => None }
 }
 
+/// Compute a resume argument for Codex CLI from an optional resume token.
+/// Defaults to "last" if none provided to keep threads flowing.
+fn compute_resume_arg(resume: Option<&str>) -> Option<String> {
+    match resume {
+        Some("new") | Some("none") => None,
+        Some(s) if !s.is_empty() => Some(s.to_string()),
+        _ => Some("last".to_string()),
+    }
+}
+
 /// Map a raw item type to the internal message kind used in Convex.
 fn map_tool_kind(kind: &str) -> Option<&'static str> {
     match kind {
@@ -512,6 +523,15 @@ mod tests {
         assert_eq!(map_tool_kind("mcp_tool_call"), Some("mcp"));
         assert_eq!(map_tool_kind("todo_list"), Some("todo"));
         assert_eq!(map_tool_kind("other"), None);
+    }
+
+    #[test]
+    fn computes_resume_defaults() {
+        assert_eq!(compute_resume_arg(None).as_deref(), Some("last"));
+        assert_eq!(compute_resume_arg(Some("last")).as_deref(), Some("last"));
+        assert_eq!(compute_resume_arg(Some("new")).as_deref(), None);
+        assert_eq!(compute_resume_arg(Some("none")).as_deref(), None);
+        assert_eq!(compute_resume_arg(Some("abc")).as_deref(), Some("abc"));
     }
 }
 
