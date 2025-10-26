@@ -48,6 +48,8 @@ struct ThreadSummary {
     thread_id: Option<String>,
     title: String,
     updated_at: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    count: Option<i64>,
 }
 
 #[derive(serde::Serialize)]
@@ -92,7 +94,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
                 let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
                 let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
                 let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
-                rows.push(ThreadSummary { id, thread_id, title, updated_at });
+                rows.push(ThreadSummary { id, thread_id, title, updated_at, count: None });
             }
             // Sort by updated_at desc
             rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
@@ -109,7 +111,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
                     }
                     _ => 0,
                 };
-                if count > 0 { filtered.push(row); }
+                if count > 0 { filtered.push(ThreadSummary { count: Some(count), ..row }); }
                 if filtered.len() >= (limit.unwrap_or(10) as usize) { break; }
             }
             Ok(filtered)
@@ -307,7 +309,7 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
                         _ => 0,
                     };
                     if count > 0 {
-                        rows.push(ThreadSummary { id, thread_id, title, updated_at });
+                        rows.push(ThreadSummary { id, thread_id, title, updated_at, count: Some(count) });
                     } else if let Some(tid) = thread_id { zeros.push(tid); }
                 }
                 rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
@@ -350,7 +352,7 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
                                                             Ok(FunctionResult::Value(v)) => { let j: serde_json::Value = v.into(); j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0) },
                                                             _ => 0,
                                                         };
-                                                        if count > 0 { rows.push( ThreadSummary { id, thread_id, title, updated_at } ); }
+                                                        if count > 0 { rows.push( ThreadSummary { id, thread_id, title, updated_at, count: Some(count) } ); }
                                                     }
                                                     rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
                                                     let cap = limit.unwrap_or(10) as usize;
@@ -373,6 +375,32 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
     });
 
     Ok(())
+}
+
+#[tauri::command]
+async fn create_thread(title: Option<String>, projectId: Option<String>, convex_url: Option<String>) -> Result<(), String> {
+    use convex::{FunctionResult, Value};
+    use std::collections::BTreeMap;
+
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+    if let Some(t) = title { args.insert("title".into(), Value::from(t)); }
+    if let Some(p) = projectId { args.insert("projectId".into(), Value::from(p)); }
+
+    match client.mutation("threads:create", args).await {
+        Ok(FunctionResult::Value(_)) => Ok(()),
+        Ok(FunctionResult::ErrorMessage(msg)) => Err(msg),
+        Ok(FunctionResult::ConvexError(err)) => Err(err.to_string()),
+        Err(e) => Err(format!("convex mutation error: {e}")),
+    }
 }
 
 use tauri::Emitter;
@@ -447,7 +475,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages, subscribe_recent_threads, get_local_convex_status, enqueue_run])
+        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages, subscribe_recent_threads, get_local_convex_status, enqueue_run, create_thread])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

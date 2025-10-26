@@ -238,6 +238,12 @@ pub fn App() -> impl IntoView {
         let threads = threads;
         let selected_thread_id = selected_thread_id;
         let on_select_thread = on_select_thread.clone();
+        // create thread (subscription will update list; no auto-select)
+        let create_new_thread = move || {
+            spawn_local(async move {
+                let _ = invoke("create_thread", JsValue::NULL).await;
+            });
+        };
         move || -> AnyView {
             view! {
                 <div class="status-list">
@@ -259,6 +265,9 @@ pub fn App() -> impl IntoView {
                 </div>
                 <div class="threads">
                     <div class="threads-title">"Recent Threads"</div>
+                    <div class="thread-new">
+                        <button class="compose-send" on:click=move |_| create_new_thread()>{"New"}</button>
+                    </div>
                     <div class="thread-list">
                         { move || threads.get().into_iter().map(|row| {
                             let tid = row.get("thread_id").and_then(|x| x.as_str()).map(|s| s.to_string())
@@ -267,6 +276,9 @@ pub fn App() -> impl IntoView {
                                 .unwrap_or_default();
                             let doc_id = row.get("id").and_then(|x| x.as_str()).map(|s| s.to_string());
                             let title = row.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                            let updated = row.get("updated_at").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                            let ts = if updated > 0.0 { Some(updated) } else { None };
+                            let count = row.get("count").and_then(|x| x.as_i64());
                             let is_selected = selected_thread_id.get().as_deref() == Some(&tid);
                             view! {
                                 <div class={ move || if is_selected { "thread-item selected" } else { "thread-item" } }
@@ -276,7 +288,17 @@ pub fn App() -> impl IntoView {
                                         let on_select_thread = on_select_thread.clone();
                                         move |_| on_select_thread(tid.clone(), doc_id.clone())
                                      }>
-                                    <div class="thread-title">{ title.clone() }</div>
+                                    <div class="thread-row-flex">
+                                        <div class="thread-text">
+                                            <div class="thread-title">{ title.clone() }</div>
+                                            { ts.map(|ms| {
+                                                let dt = js_sys::Date::new(&JsValue::from_f64(ms)).to_locale_string("en-US", &JsValue::UNDEFINED);
+                                                let text = dt.as_string().unwrap_or_default();
+                                                view! { <div class="thread-sub">{ text }</div> }
+                                            }) }
+                                        </div>
+                                        { count.map(|c| view! { <div class="thread-badge">{ c }</div> }) }
+                                    </div>
                                 </div>
                             }
                         }).collect::<Vec<_>>() }
@@ -325,15 +347,6 @@ pub fn App() -> impl IntoView {
         let lib_page = lib_page;
         let messages_ro = messages;
         let _can_send = move || selected_thread_doc_id.get().is_some();
-        let messages_ref = create_node_ref::<leptos::html::Div>();
-        create_effect(move |_| {
-            let _ = messages_ro.get();
-            if let Some(node) = messages_ref.get() {
-                if let Ok(el) = node.unchecked_into::<web_sys::Element>().dyn_into::<web_sys::HtmlElement>() {
-                    el.set_scroll_top(el.scroll_height());
-                }
-            }
-        });
         let do_send = move |text: String| {
             // Persist via Convex mutation
             if let Some(doc_id) = selected_thread_doc_id.get() {
@@ -367,7 +380,7 @@ pub fn App() -> impl IntoView {
                 view! { <LibraryContent page=lib_page /> }.into_any()
             } else {
                 view! {
-                    <div class="messages" node_ref=messages_ref>{ render_messages(messages_ro) }</div>
+                    <div class="messages">{ render_messages(messages_ro) }</div>
                     <div class="composer-wrap">
                         <crate::composer::ChatComposer on_send=do_send placeholder="Ask Codex".to_string()/>
                     </div>

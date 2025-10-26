@@ -83,7 +83,12 @@
 .thread-list { display: grid; gap: 6px; }
 .thread-item { padding: 10px 12px; border: 1px solid var(--border); cursor: pointer; }
 .thread-item.selected { outline: 1px solid #f7f8f8; }
-.thread-title { font-size: 14px; }
+.thread-row-flex { display: flex; align-items: center; gap: 8px; }
+.thread-text { flex: 1; min-width: 0; }
+.thread-title { font-size: 14px; color: var(--foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thread-sub { font-size: 11px; color: var(--tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thread-badge { min-width: 18px; padding: 2px 6px; font-size: 11px; border: 1px solid var(--border); color: var(--quaternary, #b6e3ff); text-align: center; }
+.thread-new { padding: 6px 0; }
 
 .messages { display: flex; flex-direction: column; gap: 12px; max-width: 860px; margin: 0 auto; flex: 1; overflow: auto; }
 

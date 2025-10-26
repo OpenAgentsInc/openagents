@@ -9,7 +9,6 @@ use crate::jsonl::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LibraryPage {
-    Index,
     Markdown,
     UserMessage,
     ReasoningHeadline,
