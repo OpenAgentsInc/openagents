@@ -242,7 +242,7 @@ pub fn App() -> impl IntoView {
                 <div class="status-list">
                     <div class="status-row">
                         <span class={ move || if ws_connected.get() { "dot dot-ok" } else { "dot dot-bad" } }></span>
-                        <span>"Bridge WS"</span>
+                        <span>"Bridge"</span>
                         <span class="muted">{ move || if ws_connected.get() { "Connected".to_string() } else { "Disconnected".to_string() } }</span>
                     </div>
                     <div class="status-row">
