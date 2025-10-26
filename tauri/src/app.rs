@@ -52,6 +52,7 @@ pub fn App() -> impl IntoView {
     let (ws_connected, set_ws_connected) = signal(false);
     let (threads, set_threads) = signal::<Vec<serde_json::Value>>(vec![]);
     let (selected_thread_id, set_selected_thread_id) = signal::<Option<String>>(None);
+    let (selected_thread_doc_id, set_selected_thread_doc_id) = signal::<Option<String>>(None);
     let (messages, set_messages) = signal::<Vec<MessageRow>>(vec![]);
     let (convex_status, set_convex_status) = signal::<Option<ConvexStatus>>(None);
     let (bridge_status, set_bridge_status) = signal::<Option<BridgeStatus>>(None);
@@ -70,11 +71,11 @@ pub fn App() -> impl IntoView {
             let ws = match WebSocket::new("ws://127.0.0.1:8787/ws") { Ok(ws) => ws, Err(_) => { let delay = (250 * (attempt as i32)).min(1500); let local_pref = local_convex_seen.clone(); schedule(delay, move || connect(set_ws_connected, set_convex_status, set_bridge_status, attempt.saturating_add(1), local_pref)); return; }};
             let scheduled = Rc::new(Cell::new(false));
             // onopen
-            { let set_ws_connected = set_ws_connected.clone(); let ws_clone = ws.clone(); let onopen = Closure::wrap(Box::new(move || { set_ws_connected.set(true); /* don't request bridge convex.status; prefer local sidecar */ let _ = ws_clone.send_with_str("{\"control\":\"bridge.status\"}"); }) as Box<dyn Fn()>); ws.set_onopen(Some(onopen.as_ref().unchecked_ref())); onopen.forget(); }
+            { let set_ws_connected = set_ws_connected.clone(); let ws_clone = ws.clone(); let onopen = Closure::wrap(Box::new(move || { set_ws_connected.set(true); if let Some(win) = web_sys::window() { let _ = js_sys::Reflect::set(&win, &JsValue::from_str("__BRIDGE_WS"), &JsValue::from(ws_clone.clone())); } /* don't request bridge convex.status; prefer local sidecar */ let _ = ws_clone.send_with_str("{\"control\":\"bridge.status\"}"); }) as Box<dyn Fn()>); ws.set_onopen(Some(onopen.as_ref().unchecked_ref())); onopen.forget(); }
             // onmessage
             { let set_convex_status = set_convex_status.clone(); let set_bridge_status = set_bridge_status.clone(); let local_pref = local_convex_seen.clone(); let onmessage = Closure::wrap(Box::new(move |e: MessageEvent| { if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() { let s: String = txt.into(); if let Ok(v) = serde_json::from_str::<JsonValue>(&s) { if let Some(t) = v.get("type").and_then(|x| x.as_str()) { match t { "bridge.convex_status" => { if !local_pref.get() { let healthy = v.get("healthy").and_then(|x| x.as_bool()).unwrap_or(false); let url = v.get("url").and_then(|x| x.as_str()).unwrap_or("").to_string(); set_convex_status.set(Some(ConvexStatus { healthy, url })); } } "bridge.status" => { let bs: BridgeStatus = serde_json::from_value(v).unwrap_or_default(); set_bridge_status.set(Some(bs)); } _ => {} } } } } }) as Box<dyn FnMut(MessageEvent)>); ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref())); onmessage.forget(); }
             // onclose/onerror → single retry
-            { let set_ws_connected_c = set_ws_connected.clone(); let scheduled_flag = scheduled.clone(); let local_pref = local_convex_seen.clone(); let onclose = Closure::wrap(Box::new(move || { if scheduled_flag.replace(true) { return; } set_ws_connected_c.set(false); let lp = local_pref.clone(); schedule(500, move || connect(set_ws_connected_c, set_convex_status, set_bridge_status, 2, lp)); }) as Box<dyn Fn()>); ws.set_onclose(Some(onclose.as_ref().unchecked_ref())); onclose.forget(); let set_ws_connected_e = set_ws_connected.clone(); let set_convex_status_e = set_convex_status.clone(); let set_bridge_status_e = set_bridge_status.clone(); let scheduled_flag_err = scheduled.clone(); let local_pref_err = local_convex_seen.clone(); let onerror = Closure::wrap(Box::new(move || { if scheduled_flag_err.replace(true) { return; } set_ws_connected_e.set(false); let lp = local_pref_err.clone(); schedule(500, move || connect(set_ws_connected_e, set_convex_status_e, set_bridge_status_e, 2, lp)); }) as Box<dyn Fn()>); ws.set_onerror(Some(onerror.as_ref().unchecked_ref())); onerror.forget(); }
+            { let set_ws_connected_c = set_ws_connected.clone(); let scheduled_flag = scheduled.clone(); let local_pref = local_convex_seen.clone(); let onclose = Closure::wrap(Box::new(move || { if scheduled_flag.replace(true) { return; } set_ws_connected_c.set(false); if let Some(win) = web_sys::window() { let _ = js_sys::Reflect::set(&win, &JsValue::from_str("__BRIDGE_WS"), &JsValue::UNDEFINED); } let lp = local_pref.clone(); schedule(500, move || connect(set_ws_connected_c, set_convex_status, set_bridge_status, 2, lp)); }) as Box<dyn Fn()>); ws.set_onclose(Some(onclose.as_ref().unchecked_ref())); onclose.forget(); let set_ws_connected_e = set_ws_connected.clone(); let set_convex_status_e = set_convex_status.clone(); let set_bridge_status_e = set_bridge_status.clone(); let scheduled_flag_err = scheduled.clone(); let local_pref_err = local_convex_seen.clone(); let onerror = Closure::wrap(Box::new(move || { if scheduled_flag_err.replace(true) { return; } set_ws_connected_e.set(false); if let Some(win) = web_sys::window() { let _ = js_sys::Reflect::set(&win, &JsValue::from_str("__BRIDGE_WS"), &JsValue::UNDEFINED); } let lp = local_pref_err.clone(); schedule(500, move || connect(set_ws_connected_e, set_convex_status_e, set_bridge_status_e, 2, lp)); }) as Box<dyn Fn()>); ws.set_onerror(Some(onerror.as_ref().unchecked_ref())); onerror.forget(); }
         }
         // Listen for backend readiness
         let handler = Closure::wrap(Box::new({ let set_ws_connected = set_ws_connected.clone(); let set_convex_status = set_convex_status.clone(); let set_bridge_status = set_bridge_status.clone(); let local_pref = local_convex_seen.clone(); move |_e: JsValue| { let lp = local_pref.clone(); connect(set_ws_connected, set_convex_status, set_bridge_status, 1, lp); } }) as Box<dyn FnMut(JsValue)>);
@@ -151,9 +152,11 @@ pub fn App() -> impl IntoView {
     // When a thread is selected, load its messages
     let on_select_thread = {
         let set_selected_thread_id = set_selected_thread_id.clone();
+        let set_selected_thread_doc_id = set_selected_thread_doc_id.clone();
         let set_messages = set_messages.clone();
-        move |tid: String| {
+        move |tid: String, doc_id_opt: Option<String>| {
             set_selected_thread_id.set(Some(tid.clone()));
+            set_selected_thread_doc_id.set(doc_id_opt);
             set_messages.set(vec![]);
             let tid_fetch = tid.clone();
             spawn_local(async move {
@@ -240,14 +243,16 @@ pub fn App() -> impl IntoView {
                                 .or_else(|| row.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()))
                                 .or_else(|| row.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()))
                                 .unwrap_or_default();
+                            let doc_id = row.get("id").and_then(|x| x.as_str()).map(|s| s.to_string());
                             let title = row.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
                             let is_selected = selected_thread_id.get().as_deref() == Some(&tid);
                             view! {
                                 <div class={ move || if is_selected { "thread-item selected" } else { "thread-item" } }
                                      on:click={
                                         let tid = tid.clone();
+                                        let doc_id = doc_id.clone();
                                         let on_select_thread = on_select_thread.clone();
-                                        move |_| on_select_thread(tid.clone())
+                                        move |_| on_select_thread(tid.clone(), doc_id.clone())
                                      }>
                                     <div class="thread-title">{ title.clone() }</div>
                                 </div>
@@ -297,11 +302,45 @@ pub fn App() -> impl IntoView {
     let main_content = {
         let lib_page = lib_page;
         let messages_ro = messages;
+        let can_send = move || selected_thread_doc_id.get().is_some();
+        let do_send = move |text: String| {
+            // Persist via Convex mutation
+            if let Some(doc_id) = selected_thread_doc_id.get() {
+                let text2 = text.clone();
+                let doc_id_clone = doc_id.clone();
+                spawn_local(async move {
+                    let args = serde_wasm_bindgen::to_value(&serde_json::json!({
+                        "threadDocId": doc_id_clone,
+                        "text": text2,
+                        "role": "user",
+                    })).unwrap();
+                    let _ = invoke("enqueue_run", args).await;
+                });
+                // Send control message to bridge
+                if let Some(win) = web_sys::window() {
+                    if let Ok(v) = js_sys::Reflect::get(&win, &JsValue::from_str("__BRIDGE_WS")) {
+                        if let Ok(ws) = v.dyn_into::<WebSocket>() {
+                            let payload = serde_json::json!({
+                                "control": "run.submit",
+                                "threadDocId": doc_id,
+                                "text": text,
+                            });
+                            let _ = ws.send_with_str(&payload.to_string());
+                        }
+                    }
+                }
+            }
+        };
         move || -> AnyView {
             if show_library.get() {
                 view! { <LibraryContent page=lib_page /> }.into_any()
             } else {
-                view! { <div class="messages">{ render_messages(messages_ro) }</div> }.into_any()
+                view! {
+                    <div class="messages">{ render_messages(messages_ro) }</div>
+                    <div style="position: sticky; bottom: 0; background: var(--background); padding-top: 8px;">
+                        <crate::composer::ChatComposer on_send=do_send placeholder="Ask Codex".to_string()/>
+                    </div>
+                }.into_any()
             }
         }
     };

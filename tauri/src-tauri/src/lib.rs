@@ -233,6 +233,35 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
     Ok(())
 }
 
+#[tauri::command]
+async fn enqueue_run(threadDocId: String, text: String, role: Option<String>, projectId: Option<String>, resumeId: Option<String>, convex_url: Option<String>) -> Result<(), String> {
+    use convex::{FunctionResult, Value};
+    use std::collections::BTreeMap;
+
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+    args.insert("threadDocId".into(), Value::from(threadDocId));
+    args.insert("text".into(), Value::from(text));
+    if let Some(r) = role { args.insert("role".into(), Value::from(r)); }
+    if let Some(p) = projectId { args.insert("projectId".into(), Value::from(p)); }
+    if let Some(rid) = resumeId { args.insert("resumeId".into(), Value::from(rid)); }
+
+    match client.mutation("runs:enqueue", args).await {
+        Ok(FunctionResult::Value(_)) => Ok(()),
+        Ok(FunctionResult::ErrorMessage(msg)) => Err(msg),
+        Ok(FunctionResult::ConvexError(err)) => Err(err.to_string()),
+        Err(e) => Err(format!("convex mutation error: {e}")),
+    }
+}
+
 use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -305,7 +334,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages, get_local_convex_status])
+        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages, get_local_convex_status, enqueue_run])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

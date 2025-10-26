@@ -112,8 +112,7 @@ a { color: inherit; text-decoration: none; }
 /* Not used */
 h1 { margin: 0; }
 
-/* No inputs/buttons in minimal UI */
-input, button { display: none; }
+/* Allow inputs/buttons for the chat composer */
 
 #greet-input {
   margin-right: 5px;
@@ -250,3 +249,9 @@ input, button { display: none; }
 
 .jsonl-plain { color: var(--secondary); font-size: 13px; white-space: pre-wrap; }
 html, body { margin: 0; padding: 0; height: 100%; background: var(--background); color: var(--foreground); }
+
+/* Chat composer */
+.composer { display: flex; gap: 8px; align-items: center; border: 1px solid var(--border); background: var(--card); padding: 8px; }
+.compose-input { flex: 1; background: transparent; border: none; color: var(--foreground); font-family: 'Berkeley Mono'; font-size: 14px; outline: none; }
+.compose-send { width: 36px; height: 28px; border: 1px solid var(--border); background: var(--foreground); color: var(--black, #000); cursor: pointer; }
+.compose-send:disabled { background: var(--border); color: var(--foreground); cursor: default; }
