@@ -84,6 +84,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
 
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
     if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
+    println!("[tauri/threads] list_recent_threads limit={:?} url={}", limit, url);
     let res = client
         .query("threads:listWithCounts", args)
         .await
@@ -102,6 +103,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
                 let count = json.get("messageCount").and_then(|x| x.as_i64());
                 rows.push(ThreadSummary { id, thread_id, title, updated_at, count });
             }
+            println!("[tauri/threads] list_recent_threads -> {} rows", rows.len());
             Ok(rows)
         }
         FunctionResult::Value(_) => Ok(Vec::new()),
@@ -125,6 +127,7 @@ async fn list_messages_for_thread(threadId: String, docId: Option<String>, limit
         .await
         .map_err(|e| format!("convex connect error: {e}"))?;
 
+    println!("[tauri/messages] list_messages_for_thread threadId={} docId={:?} limit={:?} url={}", threadId, docId, limit, url);
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
     let key = docId.unwrap_or(threadId);
     args.insert("threadId".into(), Value::from(key));
@@ -159,6 +162,7 @@ async fn list_messages_for_thread(threadId: String, docId: Option<String>, limit
                 let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
                 out.push(MessageRow { id, thread_id, role, kind, text, data, ts });
             }
+            println!("[tauri/messages] list_messages_for_thread -> {} items", out.len());
             Ok(out)
         }
         FunctionResult::Value(_) => Ok(Vec::new()),
@@ -185,6 +189,7 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
             Ok(c) => c,
             Err(e) => { eprintln!("[subscribe_thread_messages] convex connect error: {}", e); return; }
         };
+        println!("[tauri/messages] subscribe_thread_messages start threadId={} docId={:?} limit={:?} url={}", threadId, docId, limit, url);
         let mut args: BTreeMap<String, Value> = BTreeMap::new();
         let key = docId.unwrap_or(threadId.clone());
         args.insert("threadId".into(), Value::from(key));
@@ -217,6 +222,7 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
                     let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
                     rows.push(MessageRow { id, thread_id, role, kind, text, data, ts });
                 }
+                println!("[tauri/messages] subscribe_thread_messages batch -> {} items", rows.len());
                 let _ = window.emit("convex:messages", &rows);
             }
         }
@@ -240,6 +246,7 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
         .await
         .map_err(|e| format!("convex connect error: {e}"))?;
 
+    println!("[tauri/threads] subscribe_recent_threads start limit={:?} url={}", limit, url);
     let mut args2: BTreeMap<String, Value> = BTreeMap::new();
     if let Some(l) = limit { args2.insert("limit".into(), Value::from(l as i64)); }
     let mut sub = client
@@ -262,6 +269,7 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
                     let count = json.get("messageCount").and_then(|x| x.as_i64());
                     rows.push(ThreadSummary { id, thread_id, title, updated_at, count });
                 }
+                println!("[tauri/threads] subscribe_recent_threads batch -> {} rows", rows.len());
                 let _ = window.emit("convex:threads", &rows);
             }
         }
@@ -285,6 +293,7 @@ async fn enqueue_run(threadDocId: String, text: String, role: Option<String>, pr
         .await
         .map_err(|e| format!("convex connect error: {e}"))?;
 
+    println!("[tauri/runs] enqueue_run threadDocId={} role={:?} projectId={:?} resumeId={:?} text_len={} url={}", threadDocId, role, projectId, resumeId, text.len(), url);
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
     args.insert("threadDocId".into(), Value::from(threadDocId));
     args.insert("text".into(), Value::from(text));
@@ -293,10 +302,10 @@ async fn enqueue_run(threadDocId: String, text: String, role: Option<String>, pr
     if let Some(rid) = resumeId { args.insert("resumeId".into(), Value::from(rid)); }
 
     match client.mutation("runs:enqueue", args).await {
-        Ok(FunctionResult::Value(_)) => Ok(()),
-        Ok(FunctionResult::ErrorMessage(msg)) => Err(msg),
-        Ok(FunctionResult::ConvexError(err)) => Err(err.to_string()),
-        Err(e) => Err(format!("convex mutation error: {e}")),
+        Ok(FunctionResult::Value(_)) => { println!("[tauri/runs] enqueue_run -> ok"); Ok(()) },
+        Ok(FunctionResult::ErrorMessage(msg)) => { eprintln!("[tauri/runs] enqueue_run error: {}", msg); Err(msg) },
+        Ok(FunctionResult::ConvexError(err)) => { eprintln!("[tauri/runs] enqueue_run convex error: {}", err); Err(err.to_string()) },
+        Err(e) => { eprintln!("[tauri/runs] enqueue_run mutation error: {}", e); Err(format!("convex mutation error: {e}")) },
     }
 }
 
