@@ -1,3 +1,8 @@
+//! UI primitives for rendering JSONL‑derived rows (desktop demo components).
+//!
+//! Contains small structs that map message payloads and Leptos components that
+//! render Markdown, reasoning blocks, command/file cards, and other rows.
+
 use leptos::prelude::*;
 use pulldown_cmark::{html, Options, Parser};
 use serde::de::DeserializeOwned;
@@ -757,7 +762,3 @@ pub fn JsonlMessage(row: MessageRow) -> impl IntoView {
         </div>
     }
 }
-//! UI primitives for rendering JSONL‑derived rows (desktop demo components).
-//!
-//! Contains small structs that map message payloads and Leptos components that
-//! render Markdown, reasoning blocks, command/file cards, and other rows.
