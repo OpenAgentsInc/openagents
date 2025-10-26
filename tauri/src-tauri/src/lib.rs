@@ -31,6 +31,16 @@ async fn get_thread_count(convex_url: Option<String>) -> Result<usize, String> {
 }
 
 #[derive(serde::Serialize)]
+struct SimpleStatus { healthy: bool, url: String }
+
+#[tauri::command]
+fn get_local_convex_status() -> SimpleStatus {
+    let url = "http://127.0.0.1:3210".to_string();
+    let healthy = is_port_open(3210);
+    SimpleStatus { healthy, url }
+}
+
+#[derive(serde::Serialize)]
 struct ThreadSummary {
     id: String,
     thread_id: Option<String>,
@@ -120,6 +130,14 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
             let mut out = Vec::with_capacity(items.len());
             for item in items {
                 let json: serde_json::Value = item.into();
+                // Filter: hide initial user instructions/preface messages
+                let text_s = json.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                let kind_s = json.get("kind").and_then(|x| x.as_str()).unwrap_or("");
+                let role_s = json.get("role").and_then(|x| x.as_str()).unwrap_or("");
+                let hide = text_s.trim_start().starts_with("<user_instructions>")
+                    || kind_s == "preface" || kind_s == "instructions"
+                    || (role_s == "system" && text_s.contains("Repository Guidelines"));
+                if hide { continue; }
                 let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
                 let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
                 let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
@@ -167,6 +185,13 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
                 let mut rows: Vec<MessageRow> = Vec::with_capacity(items.len());
                 for item in items {
                     let json: serde_json::Value = item.into();
+                    let text_s = json.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                    let kind_s = json.get("kind").and_then(|x| x.as_str()).unwrap_or("");
+                    let role_s = json.get("role").and_then(|x| x.as_str()).unwrap_or("");
+                    let hide = text_s.trim_start().starts_with("<user_instructions>")
+                        || kind_s == "preface" || kind_s == "instructions"
+                        || (role_s == "system" && text_s.contains("Repository Guidelines"));
+                    if hide { continue; }
                     let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
                     let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
                     let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
@@ -196,6 +221,34 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     start_convex_sidecar();
                 });
+                // Dev quality-of-life: once the backend is up, push functions in the background
+                // so you don't need a separate terminal. Logs are inherited into this console.
+                tauri::async_runtime::spawn(async move {
+                    deploy_convex_functions_once();
+                });
+                // Emit a local convex status event to the UI using the sidecar URL (3210)
+                // so the dot reflects the embedded backend instead of the bridge's default (7788).
+                {
+                    use tauri::Manager;
+                    let handle = app.app_handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        // probe up to ~10s
+                        for _ in 0..100u32 {
+                            if is_port_open(3210) {
+                                let _ = handle.emit("convex.local_status", serde_json::json!({
+                                    "healthy": true,
+                                    "url": "http://127.0.0.1:3210"
+                                }));
+                                return;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                        let _ = handle.emit("convex.local_status", serde_json::json!({
+                            "healthy": false,
+                            "url": "http://127.0.0.1:3210"
+                        }));
+                    });
+                }
             }
             // Start codex-bridge automatically in the background on app launch.
             tauri::async_runtime::spawn(async move {
@@ -227,7 +280,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages])
+        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages, get_local_convex_status])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -275,6 +328,58 @@ fn default_convex_db_path() -> std::path::PathBuf {
         return std::path::PathBuf::from(home).join(".openagents/convex/data.sqlite3");
     }
     std::path::PathBuf::from("data.sqlite3")
+}
+
+fn read_env_local_var(key: &str) -> Option<String> {
+    let root = detect_repo_root(None);
+    let path = root.join(".env.local");
+    if !path.exists() { return None; }
+    if let Ok(text) = std::fs::read_to_string(path) {
+        for line in text.lines() {
+            let line = line.trim();
+            if line.starts_with('#') || line.is_empty() { continue; }
+            if let Some(idx) = line.find('=') {
+                let (k, v) = (&line[..idx], &line[idx+1..]);
+                if k.trim() == key { return Some(v.trim().to_string()); }
+            }
+        }
+    }
+    None
+}
+
+fn deploy_convex_functions_once() {
+    // Wait for 3210 to be open
+    for _ in 0..200 { // ~20s
+        if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 3210)).is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 3210)).is_err() {
+        println!("[tauri/convex] backend not reachable on 127.0.0.1:3210; skipping auto-deploy");
+        return;
+    }
+    // Resolve admin key
+    let admin = std::env::var("CONVEX_ADMIN_KEY")
+        .ok()
+        .or_else(|| read_env_local_var("CONVEX_ADMIN_KEY"))
+        .or_else(|| read_env_local_var("CONVEX_SELF_HOSTED_ADMIN_KEY"))
+        .unwrap_or_else(|| "carnitas|017c5405aba48afe1d1681528424e4528026e69e3b99e400ef23f2f3741a11db225497db09".to_string());
+    let root = detect_repo_root(None);
+    let mut cmd = std::process::Command::new("bun");
+    cmd.args(["run", "convex:dev:once"]) // calls scripts/convex-cli.sh dev:once
+        .current_dir(&root)
+        .env("CONVEX_URL", "http://127.0.0.1:3210")
+        .env("CONVEX_SELF_HOSTED_URL", "http://127.0.0.1:3210")
+        .env("CONVEX_ADMIN_KEY", &admin)
+        .env("CONVEX_SELF_HOSTED_ADMIN_KEY", &admin)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit());
+    match cmd.spawn() {
+        Ok(child) => println!("[tauri/convex] deploying functions (dev:once) pid={}", child.id()),
+        Err(e) => println!("[tauri/convex] failed to spawn bun convex:dev:once: {}", e),
+    }
 }
 
 async fn ensure_bridge_running() {
