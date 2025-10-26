@@ -59,6 +59,8 @@ pub fn App() -> impl IntoView {
     let (bridge_status, set_bridge_status) = signal::<Option<BridgeStatus>>(None);
     use std::rc::Rc; use std::cell::Cell;
     let local_convex_override = Rc::new(Cell::new(false));
+    // Ref to the composer input for autofocus on thread switches
+    let composer_ref = NodeRef::new();
 
     // Connect to the local bridge websocket only after backend signals readiness (reduces failed attempts)
     {
@@ -196,6 +198,24 @@ pub fn App() -> impl IntoView {
                 let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "threadId": tid_sub, "docId": doc_id_sub, "limit": 400 })).unwrap();
                 let _ = invoke("subscribe_thread_messages", args).await;
             });
+            // Autofocus composer (query by class for robustness)
+            if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                if let Ok(Some(el)) = doc.query_selector(".compose-input") {
+                    let _ = el.dyn_into::<web_sys::HtmlElement>().map(|e| e.focus());
+                } else {
+                    // delayed attempt if not mounted yet
+                    if let Some(win) = web_sys::window() {
+                        let cb = Closure::once_into_js(Box::new(move || {
+                            if let Some(doc2) = web_sys::window().and_then(|w| w.document()) {
+                                if let Ok(Some(el2)) = doc2.query_selector(".compose-input") {
+                                    let _ = el2.dyn_into::<web_sys::HtmlElement>().map(|e| e.focus());
+                                }
+                            }
+                        }) as Box<dyn FnOnce()>);
+                        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(cb.as_ref().unchecked_ref(), 60);
+                    }
+                }
+            }
         }
     };
 
@@ -384,7 +404,7 @@ pub fn App() -> impl IntoView {
                 view! {
                     <div class="messages">{ render_messages(messages_ro) }</div>
                     <div class="composer-wrap">
-                        <crate::composer::ChatComposer on_send=do_send placeholder="Ask Codex".to_string()/>
+                        <crate::composer::ChatComposer on_send=do_send placeholder="Ask Codex".to_string() node_ref=composer_ref/>
                     </div>
                 }.into_any()
             }
