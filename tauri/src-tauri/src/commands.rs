@@ -12,6 +12,35 @@ pub async fn enqueue_run(threadDocId: String, text: String, role: Option<String>
     let url = convex_url.or_else(|| std::env::var("CONVEX_URL").ok()).unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
     let mut client = convex::ConvexClient::new(&url).await.map_err(|e| format!("convex connect error: {e}"))?;
     println!("[tauri/runs] enqueue_run threadDocId={} role={:?} projectId={:?} resumeId={:?} text_len={} url={}", threadDocId, role, projectId, resumeId, text.len(), url);
+
+    // Optimistically persist the user message to Convex so the UI updates immediately.
+    // The bridge handles assistant/reason/tool rows during the run.
+    {
+        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+        let ts_ms: f64 = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as f64;
+        args.insert("threadId".into(), Value::from(threadDocId.clone()));
+        args.insert("role".into(), Value::from(role.as_deref().unwrap_or("user")));
+        args.insert("kind".into(), Value::from("message"));
+        args.insert("text".into(), Value::from(text.clone()));
+        args.insert("ts".into(), Value::from(ts_ms));
+        match client.mutation("messages:create", args).await {
+            Ok(FunctionResult::Value(_)) => {
+                println!("[tauri/runs] messages:create -> ok (user message persisted)");
+            }
+            Ok(FunctionResult::ErrorMessage(msg)) => {
+                eprintln!("[tauri/runs] messages:create error: {}", msg);
+            }
+            Ok(FunctionResult::ConvexError(err)) => {
+                eprintln!("[tauri/runs] messages:create convex error: {}", err);
+            }
+            Err(e) => {
+                eprintln!("[tauri/runs] messages:create mutation error: {}", e);
+            }
+        }
+    }
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
     args.insert("threadDocId".into(), Value::from(threadDocId));
     args.insert("text".into(), Value::from(text));
