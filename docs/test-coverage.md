@@ -23,9 +23,12 @@ Referenced refactor context: Issue #1320 “Real-time Codex chat streaming in De
     - New: parser tests for `run.submit`, project save/delete, status verbs, and rejection of multi‑line/non‑JSON payloads.
   - ws.rs
     - New: payload parsing tests for `cd` directory extraction and `resume` token.
+    - New: tool-row mapping test for `command_execution`/`file_change`/`web_search`/`mcp_tool_call`/`todo_list`.
   - util.rs
     - New: unit tests for `expand_home` and `detect_repo_root` heuristics.
-  - Notes: `main.rs` has been slimmed; most logic now lives in modules. Some legacy stubs remain and produce warnings — cleanup in progress per #1320.
+  - watchers.rs
+    - New: unit tests for `sessions_base_dir` env override and HOME fallback.
+  - Notes: `main.rs` has been slimmed; most logic now lives in modules. Some legacy stubs remain (dead_code warnings) — slated for removal per #1320.
 
 - crates/oa-validate
   - CLI tool only. No tests present. Includes logic for compiling JSON Schemas, scanning directories, and validating YAML frontmatter for projects/skills.

@@ -23,6 +23,13 @@ use clap::Parser;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use tracing_subscriber::prelude::*;
+// Imports required by legacy helpers that are slated for removal; kept to
+// avoid compile errors while tests run against other modules.
+use std::time::Duration;
+use std::path::Path;
+use std::process::{Stdio};
+use tokio::process::Command as TokioCommand;
+use crate::bootstrap::{default_convex_bin, default_convex_db};
 
 mod bootstrap;
 mod convex_write;
@@ -233,7 +240,7 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     // Spawn process
     std::fs::create_dir_all(db.parent().unwrap_or_else(|| Path::new(".")))
         .ok();
-    let mut cmd = Command::new(&bin);
+    let mut cmd = TokioCommand::new(&bin);
     cmd.arg(&db)
         .arg("--db").arg("sqlite")
         .arg("--interface").arg(&interface)
@@ -299,7 +306,7 @@ async fn bootstrap_convex(opts: &Opts) -> Result<()> {
     // 3) bun install (idempotent)
     let root = crate::util::detect_repo_root(None);
     info!(dir=%root.display(), msg="running bun install");
-    let status = Command::new(&bun_bin)
+    let status = TokioCommand::new(&bun_bin)
         .arg("install")
         .current_dir(&root)
         .status()
@@ -308,7 +315,7 @@ async fn bootstrap_convex(opts: &Opts) -> Result<()> {
     if !status.success() { anyhow::bail!("bun install failed"); }
     // 4) bun run convex:dev:once (uses scripts/convex-cli.sh + .env.local)
     info!(port = opts.convex_port, msg="deploying Convex functions (dev:once)");
-    let status = Command::new(&bun_bin)
+    let status = TokioCommand::new(&bun_bin)
         .args(["run", "convex:dev:once"]) 
         .current_dir(&root)
         .status()
@@ -348,7 +355,7 @@ async fn ensure_bun_installed() -> Result<PathBuf> {
     let install_cmd = format!("curl -fsSL https://bun.sh/install | bash");
     #[cfg(unix)]
     {
-        let status = Command::new("bash")
+        let status = TokioCommand::new("bash")
             .arg("-lc")
             .arg(&install_cmd)
             .status()
@@ -369,7 +376,7 @@ async fn ensure_local_backend_present() -> Result<()> {
     // We use --once and --skip-push to avoid long-running watchers or pushing functions.
     let root = crate::util::detect_repo_root(None);
     info!(dir=%root.display(), msg="ensuring Convex local backend binary via convex CLI");
-    let status = Command::new(&bun_bin)
+    let status = TokioCommand::new(&bun_bin)
         .args(["x", "convex", "dev", "--once", "--skip-push", "--local-force-upgrade"])
         .current_dir(&root)
         .status()

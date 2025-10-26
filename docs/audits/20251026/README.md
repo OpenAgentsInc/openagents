@@ -148,4 +148,10 @@ Appendix: References
 - Test coverage audit: docs/test-coverage.md
 - Permissions: docs/permissions.md
 - Projects/Skills schema: docs/projects-and-skills-schema.md
-
+Updates in this pass (2025‑10‑26)
+- Bridge entrypoint docs clarified to reflect current model (WS control + JSONL broadcast for legacy; Convex as the persistence layer).
+- Added unit tests:
+  - ws.rs kind mapping for tool rows (cmd/file/search/mcp/todo).
+  - watchers.rs `sessions_base_dir` env override and HOME fallback.
+- Tauri/desktop UI is already wired with counts and composer autofocus; badges render and update.
+- Leftover legacy helpers in `crates/codex-bridge/src/main.rs` are still present (now gated by imports to keep build/tests green). They are slated for removal as part of #1320 cleanup.
