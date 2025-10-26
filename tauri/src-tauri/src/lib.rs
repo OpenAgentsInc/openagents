@@ -1,4 +1,8 @@
+// Tauri backend: Convex helpers and bootstrap
+// Provides thread/message queries, live subscriptions, and bridge/bootstrap wiring.
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -84,7 +88,6 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
     let mut rows: Vec<ThreadSummary> = Vec::new();
     match res {
         FunctionResult::Value(Value::Array(items)) => {
-            // Collect summaries
             for item in items {
                 let json: serde_json::Value = item.into();
                 let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
@@ -92,9 +95,8 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
                 let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
                 let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
                 let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
-                rows.push(ThreadSummary { id, thread_id, title, updated_at, count: None });
+                rows.push(ThreadSummary { id, thread_id, title, updated_at });
             }
-            // Sort by updated_at desc and cap
             rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
             let cap = limit.unwrap_or(10) as usize;
             if rows.len() > cap { rows.truncate(cap); }
@@ -121,22 +123,175 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
         .await
         .map_err(|e| format!("convex connect error: {e}"))?;
 
-    rows.push(ThreadSummary { id, thread_id, title, updated_at });
-                }
-                rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
-                let cap = limit.unwrap_or(10) as usize;
-                if rows.len() > cap { rows.truncate(cap); }
-                let _ = window_outer.emit("convex:threads", &rows);
+    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+    args.insert("threadId".into(), Value::from(threadId));
+    if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
 
-                                            }
-                        }
-                    });
+    let res = client
+        .query("messages:forThread", args)
+        .await
+        .map_err(|e| format!("convex query error: {e}"))?;
+
+    match res {
+        FunctionResult::Value(Value::Array(items)) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                let json: serde_json::Value = item.into();
+                // Hide preface/system meta
+                let text_s = json.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                let kind_s = json.get("kind").and_then(|x| x.as_str()).unwrap_or("");
+                let role_s = json.get("role").and_then(|x| x.as_str()).unwrap_or("");
+                let trimmed = text_s.trim_start();
+                let hide = trimmed.starts_with("<user_instructions>")
+                    || trimmed.starts_with("<environment_context>")
+                    || kind_s == "preface" || kind_s == "instructions" || kind_s == "env" || kind_s == "context"
+                    || (role_s == "system" && (text_s.contains("Repository Guidelines") || text_s.contains("<environment_context>")));
+                if hide { continue; }
+                let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let kind = json.get("kind").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let text = json.get("text").and_then(|x| x.as_str()).map(|s| s.to_string());
+                let data = json.get("data").cloned();
+                let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                out.push(MessageRow { id, thread_id, role, kind, text, data, ts });
+            }
+            Ok(out)
+        }
+        FunctionResult::Value(_) => Ok(Vec::new()),
+        FunctionResult::ErrorMessage(msg) => Err(msg),
+        FunctionResult::ConvexError(err) => Err(err.to_string()),
+    }
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: String, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
+    use convex::{FunctionResult, Value};
+    use futures::StreamExt;
+    use std::collections::BTreeMap;
+
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+    args.insert("threadId".into(), Value::from(threadId.clone()));
+    if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
+
+    let mut sub = client
+        .subscribe("messages:forThread", args)
+        .await
+        .map_err(|e| format!("convex subscribe error: {e}"))?;
+
+    tauri::async_runtime::spawn(async move {
+        while let Some(result) = sub.next().await {
+            if let FunctionResult::Value(Value::Array(items)) = result {
+                let mut rows: Vec<MessageRow> = Vec::with_capacity(items.len());
+                for item in items {
+                    let json: serde_json::Value = item.into();
+                    let text_s = json.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                    let kind_s = json.get("kind").and_then(|x| x.as_str()).unwrap_or("");
+                    let role_s = json.get("role").and_then(|x| x.as_str()).unwrap_or("");
+                    let trimmed = text_s.trim_start();
+                    let hide = trimmed.starts_with("<user_instructions>")
+                        || trimmed.starts_with("<environment_context>")
+                        || kind_s == "preface" || kind_s == "instructions" || kind_s == "env" || kind_s == "context"
+                        || (role_s == "system" && (text_s.contains("Repository Guidelines") || text_s.contains("<environment_context>")));
+                    if hide { continue; }
+                    let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let kind = json.get("kind").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let text = json.get("text").and_then(|x| x.as_str()).map(|s| s.to_string());
+                    let data = json.get("data").cloned();
+                    let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                    rows.push(MessageRow { id, thread_id, role, kind, text, data, ts });
                 }
+                let _ = window.emit("convex:messages", &rows);
             }
         }
     });
 
     Ok(())
+}
+
+#[tauri::command]
+async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
+    use convex::{FunctionResult, Value};
+    use futures::StreamExt;
+    use std::collections::BTreeMap;
+
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let mut sub = client
+        .subscribe("threads:list", BTreeMap::new())
+        .await
+        .map_err(|e| format!("convex subscribe error: {e}"))?;
+
+    tauri::async_runtime::spawn(async move {
+        while let Some(result) = sub.next().await {
+            if let FunctionResult::Value(Value::Array(items)) = result {
+                let mut rows: Vec<ThreadSummary> = Vec::new();
+                for item in items {
+                    let json: serde_json::Value = item.into();
+                    let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    if id.is_empty() { continue; }
+                    let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()).or_else(|| Some(id.clone()));
+                    let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                    rows.push(ThreadSummary { id, thread_id, title, updated_at });
+                }
+                rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
+                let cap = limit.unwrap_or(10) as usize;
+                if rows.len() > cap { rows.truncate(cap); }
+                let _ = window.emit("convex:threads", &rows);
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn enqueue_run(threadDocId: String, text: String, role: Option<String>, projectId: Option<String>, resumeId: Option<String>, convex_url: Option<String>) -> Result<(), String> {
+    use convex::{FunctionResult, Value};
+    use std::collections::BTreeMap;
+
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
+    let url = convex_url
+        .or_else(|| std::env::var("CONVEX_URL").ok())
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
+
+    let mut client = convex::ConvexClient::new(&url)
+        .await
+        .map_err(|e| format!("convex connect error: {e}"))?;
+
+    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+    args.insert("threadDocId".into(), Value::from(threadDocId));
+    args.insert("text".into(), Value::from(text));
+    if let Some(r) = role { args.insert("role".into(), Value::from(r)); }
+    if let Some(p) = projectId { args.insert("projectId".into(), Value::from(p)); }
+    if let Some(rid) = resumeId { args.insert("resumeId".into(), Value::from(rid)); }
+
+    match client.mutation("runs:enqueue", args).await {
+        Ok(FunctionResult::Value(_)) => Ok(()),
+        Ok(FunctionResult::ErrorMessage(msg)) => Err(msg),
+        Ok(FunctionResult::ConvexError(err)) => Err(err.to_string()),
+        Err(e) => Err(format!("convex mutation error: {e}")),
+    }
 }
 
 #[tauri::command]
@@ -237,7 +392,17 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_thread_count, list_recent_threads, list_messages_for_thread, subscribe_thread_messages, subscribe_recent_threads, get_local_convex_status, enqueue_run, create_thread])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            get_thread_count,
+            list_recent_threads,
+            list_messages_for_thread,
+            subscribe_thread_messages,
+            subscribe_recent_threads,
+            get_local_convex_status,
+            enqueue_run,
+            create_thread
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -367,7 +532,7 @@ async fn ensure_bridge_running() {
         c.args([
             "run", "-q", "-p", "codex-bridge", "--",
             "--bind", "0.0.0.0:8787",
-            // Bridge should not manage Convex; Tauri sidecar handles it on 3210.
+            // Bridge should not manage Convex; Tauri sidecar handles it.
             "--manage-convex", "false",
             "--bootstrap", "false",
         ]);
@@ -375,7 +540,6 @@ async fn ensure_bridge_running() {
     };
     cmd.current_dir(&repo)
         .env("RUST_LOG", "info")
-        // Ensure the bridge does not manage Convex or attempt bootstrap when spawned by the app.
         .env("OPENAGENTS_MANAGE_CONVEX", "false")
         .env("OPENAGENTS_BOOTSTRAP", "false")
         .stdin(std::process::Stdio::null())
@@ -408,3 +572,4 @@ fn detect_repo_root(start: Option<std::path::PathBuf>) -> std::path::PathBuf {
         if !cur.pop() { return original; }
     }
 }
+
