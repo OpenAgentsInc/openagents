@@ -350,6 +350,8 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
     Ok(ThreadResponse { title, items, instructions, resume_id, started_ts })
 }
 
+// tests are defined at the bottom of this file
+
 fn now_ts() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
 
 pub fn derive_started_ts_from_path(path: &Path) -> Option<u64> {
@@ -461,6 +463,15 @@ mod tests {
 
     fn write_file(p: &Path, lines: &[&str]) { let mut f = fs::File::create(p).unwrap(); for l in lines { writeln!(f, "{}", l).unwrap(); } }
 
+    fn write_jsonl_vals(vals: &[serde_json::Value]) -> tempfile::NamedTempFile {
+        let mut tf = tempfile::NamedTempFile::new().unwrap();
+        for v in vals {
+            let s = serde_json::to_string(v).unwrap();
+            writeln!(tf, "{}", s).unwrap();
+        }
+        tf
+    }
+
     #[test]
     fn scan_history_filters_new_format_and_limits() {
         let td = tempfile::tempdir().unwrap();
@@ -524,5 +535,52 @@ mod tests {
         // since_mtime at max should return empty
         let delta = cache.get(&base, 10, Some(max_m)).unwrap();
         assert!(delta.is_empty());
+    }
+
+    #[test]
+    fn parse_thread_maps_response_item_message_and_reasoning() {
+        let lines = vec![
+            serde_json::json!({"type":"thread.started","thread_id":"abc-123"}),
+            serde_json::json!({
+                "type":"response_item",
+                "payload": {
+                    "type":"message","role":"assistant",
+                    "content":[{"type":"text","text":"Hello"},{"type":"text","text":" world"}]
+                }
+            }),
+            serde_json::json!({
+                "type":"response_item",
+                "payload": {
+                    "type":"reasoning",
+                    "summary":[{"type":"summary_text","text":"Thinking..."}]
+                }
+            }),
+        ];
+        let tf = write_jsonl_vals(&lines);
+        let resp = parse_thread(tf.path()).expect("parse ok");
+        assert_eq!(resp.resume_id.as_deref(), Some("abc-123"));
+        assert_eq!(resp.items.len(), 2);
+        assert_eq!(resp.items[0].kind, "message");
+        assert_eq!(resp.items[0].role.as_deref(), Some("assistant"));
+        assert!(resp.items[0].text.contains("Hello"));
+        assert_eq!(resp.items[1].kind, "reason");
+        assert_eq!(resp.items[1].text, "Thinking...");
+    }
+
+    #[test]
+    fn parse_thread_maps_item_completed_variants() {
+        let lines = vec![
+            serde_json::json!({"type":"thread.started","thread_id":"t-1"}),
+            serde_json::json!({"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Done."}}),
+            serde_json::json!({"type":"item.completed","item":{"id":"item_1","type":"reasoning","text":"Why..."}}),
+        ];
+        let tf = write_jsonl_vals(&lines);
+        let resp = parse_thread(tf.path()).expect("parse ok");
+        assert_eq!(resp.items.len(), 2);
+        assert_eq!(resp.items[0].kind, "message");
+        assert_eq!(resp.items[0].role.as_deref(), Some("assistant"));
+        assert_eq!(resp.items[0].text, "Done.");
+        assert_eq!(resp.items[1].kind, "reason");
+        assert_eq!(resp.items[1].text, "Why...");
     }
 }
