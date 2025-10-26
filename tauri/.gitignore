@@ -1,4 +1,3 @@
 /dist/
 /target/
 /Cargo.lock
-src-tauri/bin/local_backend

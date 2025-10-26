@@ -301,7 +301,12 @@ fn start_convex_sidecar() {
         if let Ok(home) = std::env::var("HOME") { v.push(std::path::PathBuf::from(home).join(".openagents/bin/local_backend")); }
         v
     };
-    let bin = bin_candidates.into_iter().find(|p| p.exists()).unwrap_or_else(|| std::path::PathBuf::from("local_backend"));
+    // Pick a candidate that exists and looks like a real binary (>1MB)
+    let bin = bin_candidates.into_iter().find(|p| {
+        if let Ok(meta) = std::fs::metadata(p) {
+            meta.is_file() && meta.len() > 1_000_000
+        } else { false }
+    }).unwrap_or_else(|| std::path::PathBuf::from("local_backend"));
     if !bin.exists() {
         println!("[tauri/convex] local backend binary not found (set OPENAGENTS_CONVEX_BIN or place tauri/src-tauri/bin/local_backend)");
         return;
