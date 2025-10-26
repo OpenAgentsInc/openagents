@@ -5,6 +5,44 @@ export const list = queryGeneric(async ({ db }) => {
   return await db.query("threads").order("desc").collect();
 });
 
+// Return newest threads with an aggregate count of primary chat messages.
+// Filters out threads with zero messages. Limit defaults to 10.
+export const listWithCounts = queryGeneric(async ({ db }, args?: { limit?: number | bigint | string }) => {
+  const toNum = (v: unknown, d: number) => {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'bigint') return Number(v);
+    if (typeof v === 'string') { const n = Number(v); return Number.isFinite(n) ? n : d; }
+    return d;
+  };
+  const limit = Math.max(1, Math.min(toNum(args?.limit, 10), 100));
+  // Load recent threads (descending by updatedAt)
+  const threads = await db.query('threads').order('desc').collect();
+  const out: any[] = [];
+  for (const row of threads) {
+    // Count primary messages for this thread
+    let count = 0;
+    try {
+      // @ts-ignore withIndex/order/filter are available on Convex query builders
+      const msgs = await db
+        .query('messages')
+        .withIndex('by_thread_ts', (q: any) => q.eq('threadId', String((row as any)?._id || (row as any)?.threadId || '')))
+        .filter((q: any) =>
+          q.or(
+            q.eq(q.field('kind'), 'message'),
+            q.or(q.eq(q.field('role'), 'assistant'), q.eq(q.field('role'), 'user'))
+          )
+        )
+        .collect();
+      count = Array.isArray(msgs) ? msgs.length : 0;
+    } catch {}
+    if (count > 0) {
+      out.push({ ...(row as any), messageCount: count });
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+});
+
 export const byId = queryGeneric(async ({ db }, args: { id: GenericId<"threads"> | string }) => {
   // Convex generics: allow either a typed id or raw string; db.get expects a typed id.
   // We fall back to scanning if we weren't given a typed id.
