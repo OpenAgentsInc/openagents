@@ -71,9 +71,9 @@
 
 .thread-count { font-size: 64px; line-height: 1; letter-spacing: 0.5px; }
 
-.status-list { display: grid; gap: 12px; width: 100%; min-width: 0; }
-.status-row { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); }
-.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.status-list { display: grid; gap: 6px; width: 100%; min-width: 0; }
+.status-row { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .dot-ok { background: #04A545; }
 .dot-bad { background: #e7040f; }
 .muted { color: #8a8f98; }
