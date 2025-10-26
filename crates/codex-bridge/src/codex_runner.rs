@@ -1,3 +1,9 @@
+//! Codex CLI process management for the bridge.
+//!
+//! Spawns the Codex CLI with a JSON output mode, exposes stdin/stdout/stderr
+//! handles for streaming, and respawns lightweight children for subsequent
+//! prompts when the previous stdin has been closed.
+
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -105,9 +111,4 @@ fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
     let original = cur.clone();
     loop { if is_repo_root(&cur) { return cur; } if !cur.pop() { return original; } }
 }
-//! Codex CLI process management for the bridge.
-//!
-//! Spawns the Codex CLI with a JSON output mode, exposes stdin/stdout/stderr
-//! handles for streaming, and respawns lightweight children for subsequent
-//! prompts when the previous stdin has been closed.
 
