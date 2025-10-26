@@ -178,11 +178,12 @@ pub fn App() -> impl IntoView {
         let set_messages = set_messages.clone();
         move |tid: String, doc_id_opt: Option<String>| {
             set_selected_thread_id.set(Some(tid.clone()));
-            set_selected_thread_doc_id.set(doc_id_opt);
+            set_selected_thread_doc_id.set(doc_id_opt.clone());
             set_messages.set(vec![]);
             let tid_fetch = tid.clone();
+            let doc_id_fetch = doc_id_opt.clone();
             spawn_local(async move {
-                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "threadId": tid_fetch, "limit": 400 })).unwrap();
+                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "threadId": tid_fetch, "docId": doc_id_fetch, "limit": 400 })).unwrap();
                 let res = invoke("list_messages_for_thread", args).await;
                 if let Ok(v) = serde_wasm_bindgen::from_value::<Vec<MessageRow>>(res) {
                     set_messages.set(v);
@@ -190,8 +191,9 @@ pub fn App() -> impl IntoView {
             });
             // Start live subscription; updates are delivered via 'convex:messages' events
             let tid_sub = tid.clone();
+            let doc_id_sub = doc_id_opt.clone();
             spawn_local(async move {
-                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "threadId": tid_sub, "limit": 400 })).unwrap();
+                let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "threadId": tid_sub, "docId": doc_id_sub, "limit": 400 })).unwrap();
                 let _ = invoke("subscribe_thread_messages", args).await;
             });
         }
