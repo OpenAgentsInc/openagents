@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
+    "convex:fetch-backend": "bash ./scripts/fetch-convex-backend.sh",
     "convex:dev": "bash ./scripts/convex-cli.sh dev",
     "convex:dev:once": "bash ./scripts/convex-cli.sh dev:once",
     "convex:deploy": "bash ./scripts/convex-cli.sh deploy"
