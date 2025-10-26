@@ -114,3 +114,24 @@ pub fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compacts_large_delta_lines() {
+        let long = "{".to_string() + &"x".repeat(30_000);
+        assert!(summarize_exec_delta_for_log(&long).is_some());
+        let small = "{\"type\":\"ok\"}";
+        assert!(summarize_exec_delta_for_log(small).is_none());
+    }
+
+    #[test]
+    fn maps_function_result() {
+        let v = convex_result_to_json(convex::FunctionResult::Value(convex::Value::from(5_i64)));
+        assert!(!v.is_null());
+        let e = convex_result_to_json(convex::FunctionResult::ErrorMessage("bad".into()));
+        assert_eq!(e.get("$error").and_then(|x| x.as_str()), Some("bad"));
+    }
+}
