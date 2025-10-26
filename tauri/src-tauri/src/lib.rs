@@ -48,8 +48,6 @@ struct ThreadSummary {
     thread_id: Option<String>,
     title: String,
     updated_at: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    count: Option<i64>,
 }
 
 #[derive(serde::Serialize)]
@@ -96,25 +94,11 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
                 let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
                 rows.push(ThreadSummary { id, thread_id, title, updated_at, count: None });
             }
-            // Sort by updated_at desc
+            // Sort by updated_at desc and cap
             rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
-            // Filter out threads with 0 messages (count assistant/user/message kinds)
-            let mut filtered: Vec<ThreadSummary> = Vec::new();
-            for row in rows.into_iter() {
-                let key = row.thread_id.clone().unwrap_or_else(|| row.id.clone());
-                let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                args.insert("threadId".into(), Value::from(key));
-                let count = match client.query("messages:countForThread", args).await {
-                    Ok(FunctionResult::Value(v)) => {
-                        let j: serde_json::Value = v.into();
-                        j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0)
-                    }
-                    _ => 0,
-                };
-                if count > 0 { filtered.push(ThreadSummary { count: Some(count), ..row }); }
-                if filtered.len() >= (limit.unwrap_or(10) as usize) { break; }
-            }
-            Ok(filtered)
+            let cap = limit.unwrap_or(10) as usize;
+            if rows.len() > cap { rows.truncate(cap); }
+            Ok(rows)
         }
         FunctionResult::Value(_) => Ok(Vec::new()),
         FunctionResult::ErrorMessage(msg) => Err(msg),
@@ -137,236 +121,14 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
         .await
         .map_err(|e| format!("convex connect error: {e}"))?;
 
-    let mut args: BTreeMap<String, Value> = BTreeMap::new();
-    args.insert("threadId".into(), Value::from(threadId));
-    if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
-
-    let res = client
-        .query("messages:forThread", args)
-        .await
-        .map_err(|e| format!("convex query error: {e}"))?;
-
-    match res {
-        FunctionResult::Value(Value::Array(items)) => {
-            let mut out = Vec::with_capacity(items.len());
-            for item in items {
-                let json: serde_json::Value = item.into();
-                // Filter: hide initial user/environment prefaces from the list view
-                let text_s = json.get("text").and_then(|x| x.as_str()).unwrap_or("");
-                let kind_s = json.get("kind").and_then(|x| x.as_str()).unwrap_or("");
-                let role_s = json.get("role").and_then(|x| x.as_str()).unwrap_or("");
-                let trimmed = text_s.trim_start();
-                let hide = trimmed.starts_with("<user_instructions>")
-                    || trimmed.starts_with("<environment_context>")
-                    || kind_s == "preface" || kind_s == "instructions" || kind_s == "env" || kind_s == "context"
-                    || (role_s == "system" && (text_s.contains("Repository Guidelines") || text_s.contains("<environment_context>")));
-                if hide { continue; }
-                let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
-                let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
-                let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
-                let kind = json.get("kind").and_then(|x| x.as_str()).map(|s| s.to_string());
-                let text = json.get("text").and_then(|x| x.as_str()).map(|s| s.to_string());
-                let data = json.get("data").cloned();
-                let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
-                out.push(MessageRow { id, thread_id, role, kind, text, data, ts });
-            }
-            Ok(out)
-        }
-        FunctionResult::Value(_) => Ok(Vec::new()),
-        FunctionResult::ErrorMessage(msg) => Err(msg),
-        FunctionResult::ConvexError(err) => Err(err.to_string()),
-    }
-}
-
-#[tauri::command]
-#[allow(non_snake_case)]
-async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: String, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
-    use convex::{FunctionResult, Value};
-    use futures::StreamExt;
-    use std::collections::BTreeMap;
-
-    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
-    let url = convex_url
-        .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
-
-    let mut client = convex::ConvexClient::new(&url)
-        .await
-        .map_err(|e| format!("convex connect error: {e}"))?;
-
-    let mut args: BTreeMap<String, Value> = BTreeMap::new();
-    args.insert("threadId".into(), Value::from(threadId.clone()));
-    if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
-
-    let mut sub = client
-        .subscribe("messages:forThread", args)
-        .await
-        .map_err(|e| format!("convex subscribe error: {e}"))?;
-
-    tauri::async_runtime::spawn(async move {
-        while let Some(result) = sub.next().await {
-            if let FunctionResult::Value(Value::Array(items)) = result {
-                let mut rows: Vec<MessageRow> = Vec::with_capacity(items.len());
-                for item in items {
-                    let json: serde_json::Value = item.into();
-                    let text_s = json.get("text").and_then(|x| x.as_str()).unwrap_or("");
-                    let kind_s = json.get("kind").and_then(|x| x.as_str()).unwrap_or("");
-                    let role_s = json.get("role").and_then(|x| x.as_str()).unwrap_or("");
-                    let trimmed = text_s.trim_start();
-                    let hide = trimmed.starts_with("<user_instructions>")
-                        || trimmed.starts_with("<environment_context>")
-                        || kind_s == "preface" || kind_s == "instructions" || kind_s == "env" || kind_s == "context"
-                        || (role_s == "system" && (text_s.contains("Repository Guidelines") || text_s.contains("<environment_context>")));
-                    if hide { continue; }
-                    let id = json.get("_id").and_then(|x| x.as_str()).map(|s| s.to_string());
-                    let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
-                    let role = json.get("role").and_then(|x| x.as_str()).map(|s| s.to_string());
-                    let kind = json.get("kind").and_then(|x| x.as_str()).map(|s| s.to_string());
-                    let text = json.get("text").and_then(|x| x.as_str()).map(|s| s.to_string());
-                    let data = json.get("data").cloned();
-                    let ts = json.get("ts").and_then(|x| x.as_f64()).unwrap_or(0.0);
-                    rows.push(MessageRow { id, thread_id, role, kind, text, data, ts });
-                }
-                let _ = window.emit("convex:messages", &rows);
-            }
-        }
-    });
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn enqueue_run(threadDocId: String, text: String, role: Option<String>, projectId: Option<String>, resumeId: Option<String>, convex_url: Option<String>) -> Result<(), String> {
-    use convex::{FunctionResult, Value};
-    use std::collections::BTreeMap;
-
-    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
-    let url = convex_url
-        .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
-
-    let mut client = convex::ConvexClient::new(&url)
-        .await
-        .map_err(|e| format!("convex connect error: {e}"))?;
-
-    let mut args: BTreeMap<String, Value> = BTreeMap::new();
-    args.insert("threadDocId".into(), Value::from(threadDocId));
-    args.insert("text".into(), Value::from(text));
-    if let Some(r) = role { args.insert("role".into(), Value::from(r)); }
-    if let Some(p) = projectId { args.insert("projectId".into(), Value::from(p)); }
-    if let Some(rid) = resumeId { args.insert("resumeId".into(), Value::from(rid)); }
-
-    match client.mutation("runs:enqueue", args).await {
-        Ok(FunctionResult::Value(_)) => Ok(()),
-        Ok(FunctionResult::ErrorMessage(msg)) => Err(msg),
-        Ok(FunctionResult::ConvexError(err)) => Err(err.to_string()),
-        Err(e) => Err(format!("convex mutation error: {e}")),
-    }
-}
-
-#[tauri::command]
-async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
-    use convex::{FunctionResult, Value};
-    use futures::StreamExt;
-    use std::collections::{BTreeMap, HashSet};
-    use std::sync::{Arc, Mutex};
-
-    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
-    let url = convex_url
-        .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
-
-    let mut client = convex::ConvexClient::new(&url)
-        .await
-        .map_err(|e| format!("convex connect error: {e}"))?;
-
-    let mut sub = client
-        .subscribe("threads:list", BTreeMap::new())
-        .await
-        .map_err(|e| format!("convex subscribe error: {e}"))?;
-
-    let watchers: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-    let window_outer = window.clone();
-    let url_outer = url.clone();
-
-    tauri::async_runtime::spawn(async move {
-        while let Some(result) = sub.next().await {
-            if let FunctionResult::Value(Value::Array(items)) = result {
-                // Build filtered list (count > 0), keep zeros for watcher
-                let mut rows: Vec<ThreadSummary> = Vec::new();
-                let mut zeros: Vec<String> = Vec::new();
-                for item in items {
-                    let json: serde_json::Value = item.into();
-                    let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    if id.is_empty() { continue; }
-                    let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()).or_else(|| Some(id.clone()));
-                    let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
-                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                    if let Some(tid) = thread_id.clone() { args.insert("threadId".into(), Value::from(tid.clone())); }
-                    let count = match client.query("messages:countForThread", args).await {
-                        Ok(FunctionResult::Value(v)) => { let j: serde_json::Value = v.into(); j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0) },
-                        _ => 0,
-                    };
-                    if count > 0 {
-                        rows.push(ThreadSummary { id, thread_id, title, updated_at, count: Some(count) });
-                    } else if let Some(tid) = thread_id { zeros.push(tid); }
+    rows.push(ThreadSummary { id, thread_id, title, updated_at });
                 }
                 rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
                 let cap = limit.unwrap_or(10) as usize;
                 if rows.len() > cap { rows.truncate(cap); }
                 let _ = window_outer.emit("convex:threads", &rows);
 
-                // Begin watchers for zero-message threads; when first message arrives, refresh list once
-                for tid in zeros.into_iter() {
-                    let mut seen = watchers.lock().unwrap();
-                    if seen.contains(&tid) { continue; }
-                    seen.insert(tid.clone());
-                    drop(seen);
-                    let window_inner = window_outer.clone();
-                    let url_inner = url_outer.clone();
-                    let watchers_inner = watchers.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Ok(mut c2) = convex::ConvexClient::new(&url_inner).await {
-                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                            args.insert("threadId".into(), Value::from(tid.clone()));
-                            args.insert("limit".into(), Value::from(1i64));
-                            if let Ok(mut s2) = c2.subscribe("messages:forThread", args).await {
-                                while let Some(res) = s2.next().await {
-                                    if let FunctionResult::Value(Value::Array(msgs)) = res {
-                                        if !msgs.is_empty() {
-                                            // Refresh thread list and emit
-                                            if let Ok(mut c3) = convex::ConvexClient::new(&url_inner).await {
-                                                if let Ok(FunctionResult::Value(Value::Array(items))) = c3.query("threads:list", BTreeMap::new()).await {
-                                                    let mut rows: Vec<ThreadSummary> = Vec::new();
-                                                    for item in items {
-                                                        let json: serde_json::Value = item.into();
-                                                        let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                                                        if id.is_empty() { continue; }
-                                                        let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()).or_else(|| Some(id.clone()));
-                                                        let title = json.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                                                        let updated_at = json.get("updatedAt").and_then(|x| x.as_f64()).unwrap_or(0.0);
-                                                        let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                                        if let Some(tid2) = thread_id.clone() { args.insert("threadId".into(), Value::from(tid2)); }
-                                                        let count = match c3.query("messages:countForThread", args).await {
-                                                            Ok(FunctionResult::Value(v)) => { let j: serde_json::Value = v.into(); j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0) },
-                                                            _ => 0,
-                                                        };
-                                                        if count > 0 { rows.push( ThreadSummary { id, thread_id, title, updated_at, count: Some(count) } ); }
-                                                    }
-                                                    rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
-                                                    let cap = limit.unwrap_or(10) as usize;
-                                                    if rows.len() > cap { rows.truncate(cap); }
-                                                    let _ = window_inner.emit("convex:threads", &rows);
-                                                }
                                             }
-                                            let mut lock = watchers_inner.lock().unwrap();
-                                            lock.remove(&tid);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
                         }
                     });
                 }
