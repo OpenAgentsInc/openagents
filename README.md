@@ -35,36 +35,62 @@ Like a tricorder but for coding
 
 You can submit PRs but they'd better be good.
 
-## Quick Start
+## Version Compatibility
 
-Basics to connect to your local Codex:
+- v0.1.0 and v0.1.1 (mobile only): require the legacy bridge flow below. You must check out the old commit to match that app build: `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`.
+- v0.2.0+ (desktop/tauri and forward): use the Desktop (Tauri) flow. The bridge is auto‑spawned, Convex runs as an embedded sidecar on 3210, and functions deploy automatically during `cargo tauri dev`.
 
-1) Clone the repo:
+## Desktop (Tauri) — v0.2+
+
+Single‑terminal offline‑first dev.
+
+1) Clone and fetch Convex sidecar once
    - `git clone https://github.com/OpenAgentsInc/openagents && cd openagents`
-   - One more thing: main branch is no longer compatible with 0.1.0. Before running the bridge, check out the pinned commit:
-     - `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`
+   - `bun run convex:fetch-backend` (downloads/installs Convex local backend to `tauri/src-tauri/bin/local_backend`)
+2) Start the desktop app
+   - `cd tauri && cargo tauri dev`
+   - What happens:
+     - Spawns the Convex backend on `127.0.0.1:3210` (SQLite in `~/.openagents/convex`)
+     - Auto‑deploys Convex functions (same terminal; no additional tabs)
+     - Spawns `codex-bridge` and connects the UI to `ws://127.0.0.1:8787/ws`
+3) Use it
+   - Left sidebar shows Bridge WS, Convex (http://127.0.0.1:3210), and Codex PID
+   - Recent threads load; click a thread to view messages (preface/instructions are hidden)
+
+Options
+- Disable embedded Convex: `OPENAGENTS_SKIP_EMBEDDED_CONVEX=1 cargo tauri dev`
+- Override URL: set `CONVEX_URL` (defaults to `http://127.0.0.1:3210` for desktop)
+
+## Legacy Bridge (Mobile) — v0.1.0 / v0.1.1
+
+If you are using the early mobile builds (v0.1.x), use this legacy flow (ports/paths differ):
+
+1) Clone and check out the legacy commit:
+   - `git clone https://github.com/OpenAgentsInc/openagents && cd openagents`
+   - `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`
 2) Run the bridge (requires Rust toolchain):
    - `cargo bridge`
-   - What this does the first time:
+   - First run bootstrap:
      - Starts a local Convex backend on `0.0.0.0:7788`
-    - Ensures Bun is installed (via bun.sh) and runs `bun install`
-    - Downloads and installs the Convex local backend binary if missing
-    - Deploys Convex schema/functions (`bun run convex:dev:once`) using a generated `.env.local`
+     - Ensures Bun is installed, runs `bun install`
+     - Installs the Convex local backend binary if missing
+     - Deploys Convex schema/functions (`bun run convex:dev:once`) using a generated `.env.local`
      - Launches the Codex WebSocket bridge
-3) Install the app via TestFlight and connect:
+3) Install the mobile app via TestFlight and connect:
    - Join TestFlight: https://testflight.apple.com/join/dvQdns5B
    - In the app, open the sidebar → Settings → set Bridge Host to your computer’s IP
-   - The red dot turns green when connected — you’re ready to go
+   - The red dot turns green when connected
 
 IP tips: Tailscale VPN works well to put devices on the same private network. It’s free and avoids local network headaches.
 
 Any setup issues, DM us or open an issue.
 
-Requirements: Rust toolchain, `bash` + `curl` (for Bun install) and a working Node/npm. If Bun is already installed, we’ll use it.
+Requirements (dev): Rust toolchain, `bash` + `curl` (for Bun install) and a working Node/npm. If Bun is already installed, we’ll use it.
 
 Notes:
 - You also need the Codex CLI installed and on your `PATH` (`codex --version`).
-- No manual `.env.local` setup is needed — the bridge writes it on first run.
+- Desktop (v0.2+): no manual `.env.local` needed; Tauri sets env when deploying functions to the sidecar.
+- Mobile (v0.1.x): `.env.local` is generated on the first `cargo bridge` run (port 7788).
 
 ## Troubleshooting
 
@@ -86,11 +112,11 @@ Notes:
 - Bind interface for Convex: set `OPENAGENTS_CONVEX_INTERFACE=127.0.0.1` to restrict to loopback (default is `0.0.0.0`).
 - Skip bootstrap (if you manage Bun/Convex manually): set `OPENAGENTS_BOOTSTRAP=0`.
 
-## Local Convex Persistence (Required)
+## Local Convex Persistence
 
-The app and bridge use a self‑hosted Convex backend (SQLite) for all threads and messages. The mobile app subscribes to Convex for live updates; the bridge mirrors Codex JSONL into Convex and also consumes pending runs from Convex to drive the Codex CLI. JSONL rollouts remain the source of truth for Codex resume.
+All builds use a self‑hosted Convex backend (SQLite) for threads and messages.
 
-- Zero‑setup: just run `cargo bridge`. The bridge will start Convex, install Bun if needed, create `.env.local` for you, and deploy the Convex functions automatically.
-- The Convex screen in the app (Drawer → Convex) shows connection status and a live list once functions are deployed.
+- Desktop (v0.2+): the Convex backend is an embedded sidecar listening on `127.0.0.1:3210`. Functions are auto‑deployed on `cargo tauri dev`.
+- Mobile (v0.1.x): the bridge starts Convex on `0.0.0.0:7788` and deploys functions on first run.
 
-Details and advanced notes: docs/convex.md
+More details: docs/convex-sidecar.md (desktop), docs/convex.md (general)
