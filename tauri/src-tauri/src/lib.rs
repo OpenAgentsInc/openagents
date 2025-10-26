@@ -5,19 +5,15 @@
 
 mod convex;
 mod commands;
+mod subscriptions;
 mod bridge;
 
 #[tauri::command]
 fn greet(name: &str) -> String { format!("Hello, {}! You've been greeted from Rust!", name) }
 
 // Import Convex-facing commands and data types
-use crate::convex::{
-    get_thread_count,
-    list_recent_threads,
-    list_messages_for_thread,
-    subscribe_recent_threads,
-    subscribe_thread_messages,
-};
+use crate::convex::{get_thread_count, list_recent_threads, list_messages_for_thread};
+use crate::subscriptions::{subscribe_recent_threads, subscribe_thread_messages};
 
 #[derive(serde::Serialize)]
 struct SimpleStatus { healthy: bool, url: String }
