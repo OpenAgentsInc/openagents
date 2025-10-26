@@ -8,8 +8,6 @@ fn main() {
     let export_dir = crate_dir.join("../../expo/lib/generated");
     let _ = fs::create_dir_all(&export_dir);
 
-    // Re-run if the build script or events change (to regenerate bindings).
+    // Re-run if the build script changes.
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src/events.rs");
 }
-
