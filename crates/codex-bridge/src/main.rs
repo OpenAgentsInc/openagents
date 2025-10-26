@@ -1322,6 +1322,8 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
 
 // Streaming helpers: upsert/append/finalize a live message per (threadId, kind)
 async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &str, full_text: &str) {
+    // Snapshot-based streaming: every JSONL event is a complete snapshot.
+    // We upsert (replace) the text for a single logical in-flight message keyed by (threadId, kind).
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
     let key = format!("{}|{}", thread_id, kind);
@@ -1331,46 +1333,19 @@ async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &str, 
         last_text: String::new(),
         seq: 0,
     });
+    entry.seq += 1;
+    entry.last_text = full_text.to_string();
     let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
-    if entry.last_text.is_empty() {
-        // Create or overwrite initial
-        if let Ok(mut client) = ConvexClient::new(&url).await {
-            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-            args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("itemId".into(), Value::from(entry.item_id.clone()));
-            if kind == "assistant" { args.insert("role".into(), Value::from("assistant")); args.insert("kind".into(), Value::from("message")); }
-            else if kind == "reason" { args.insert("kind".into(), Value::from("reason")); }
-            args.insert("text".into(), Value::from(""));
-            args.insert("ts".into(), Value::from(now_ms() as f64));
-            args.insert("seq".into(), Value::from(entry.seq as f64));
-            let _ = client.mutation("messages:upsertStreamed", args).await;
-        }
-    }
-    // Append delta if longer; otherwise overwrite
-    if full_text.len() > entry.last_text.len() {
-        let delta = &full_text[entry.last_text.len()..];
-        entry.seq += 1;
-        if let Ok(mut client) = ConvexClient::new(&url).await {
-            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-            args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("itemId".into(), Value::from(entry.item_id.clone()));
-            args.insert("textDelta".into(), Value::from(delta.to_string()));
-            args.insert("seq".into(), Value::from(entry.seq as f64));
-            let _ = client.mutation("messages:appendStreamed", args).await;
-        }
-        entry.last_text = full_text.to_string();
-    } else if full_text != entry.last_text {
-        entry.seq += 1;
-        if let Ok(mut client) = ConvexClient::new(&url).await {
-            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-            args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("itemId".into(), Value::from(entry.item_id.clone()));
-            // Replace text by calling upsert again with the full text
-            args.insert("text".into(), Value::from(full_text.to_string()));
-            args.insert("seq".into(), Value::from(entry.seq as f64));
-            let _ = client.mutation("messages:upsertStreamed", args).await;
-        }
-        entry.last_text = full_text.to_string();
+    if let Ok(mut client) = ConvexClient::new(&url).await {
+        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+        args.insert("threadId".into(), Value::from(thread_id.to_string()));
+        args.insert("itemId".into(), Value::from(entry.item_id.clone()));
+        if kind == "assistant" { args.insert("role".into(), Value::from("assistant")); args.insert("kind".into(), Value::from("message")); }
+        else if kind == "reason" { args.insert("kind".into(), Value::from("reason")); }
+        args.insert("text".into(), Value::from(full_text.to_string()));
+        args.insert("ts".into(), Value::from(now_ms() as f64));
+        args.insert("seq".into(), Value::from(entry.seq as f64));
+        let _ = client.mutation("messages:upsertStreamed", args).await;
     }
 }
 
