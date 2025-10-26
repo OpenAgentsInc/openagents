@@ -2,6 +2,9 @@ import { queryGeneric, mutationGeneric } from "convex/server";
 
 type ForThreadArgs = { threadId: string; limit?: number | bigint | string; since?: number | bigint | string };
 type CreateArgs = { threadId: string; role?: string; kind?: string; text?: string; data?: any; ts?: number };
+type UpsertStreamedArgs = { threadId: string; itemId: string; role?: string; kind?: string; text?: string; ts?: number; seq?: number };
+type AppendStreamedArgs = { threadId: string; itemId: string; textDelta: string; seq?: number };
+type FinalizeStreamedArgs = { threadId: string; itemId: string; text?: string };
 
 function toNum(v: unknown, fallback: number): number {
   if (typeof v === 'number') return v;
@@ -49,6 +52,94 @@ export const create = mutationGeneric(async ({ db }, args: CreateArgs) => {
     createdAt: ts,
   });
   return id;
+});
+
+// Create or overwrite a streamed message for (threadId, itemId).
+// Sets partial=true. If a row already exists, patches text (replace) and seq/updatedAt.
+export const upsertStreamed = mutationGeneric(async ({ db }, args: UpsertStreamedArgs) => {
+  const now = typeof args.ts === 'number' ? args.ts : Date.now();
+  const kind = args.kind || 'message';
+  let rows: any[] = [];
+  try {
+    // @ts-ignore composite index
+    rows = await db
+      .query('messages')
+      .withIndex('by_thread_item', (q: any) => q.eq('threadId', args.threadId).eq('itemId', args.itemId))
+      .collect();
+  } catch {
+    rows = await db
+      .query('messages')
+      .filter((q) => q.and(q.eq(q.field('threadId'), args.threadId), q.eq(q.field('itemId'), args.itemId)))
+      .collect();
+  }
+  if (rows.length > 0) {
+    const doc = rows[0] as any;
+    await db.patch(doc._id, {
+      role: args.role ?? doc.role,
+      kind,
+      text: args.text ?? doc.text,
+      partial: true,
+      seq: typeof args.seq === 'number' ? args.seq : (doc.seq ?? 0),
+      updatedAt: now,
+    } as any);
+    return doc._id;
+  }
+  const id = await db.insert('messages', {
+    threadId: args.threadId,
+    itemId: args.itemId,
+    role: args.role,
+    kind,
+    text: args.text ?? '',
+    partial: true,
+    seq: typeof args.seq === 'number' ? args.seq : 0,
+    ts: now,
+    createdAt: now,
+    updatedAt: now,
+  } as any);
+  return id;
+});
+
+// Append a delta to an existing streamed message. No-op if not found.
+export const appendStreamed = mutationGeneric(async ({ db }, args: AppendStreamedArgs) => {
+  let rows: any[] = [];
+  try {
+    // @ts-ignore composite index
+    rows = await db
+      .query('messages')
+      .withIndex('by_thread_item', (q: any) => q.eq('threadId', args.threadId).eq('itemId', args.itemId))
+      .collect();
+  } catch {
+    rows = await db
+      .query('messages')
+      .filter((q) => q.and(q.eq(q.field('threadId'), args.threadId), q.eq(q.field('itemId'), args.itemId)))
+      .collect();
+  }
+  if (rows.length === 0) return null;
+  const row = rows[0] as any;
+  const nextText = String(row.text || '') + String(args.textDelta || '');
+  await db.patch(row._id, { text: nextText, partial: true, seq: typeof args.seq === 'number' ? args.seq : (row.seq ?? 0), updatedAt: Date.now() } as any);
+  return row._id;
+});
+
+// Finalize a streamed message (partial=false). Optionally set final text.
+export const finalizeStreamed = mutationGeneric(async ({ db }, args: FinalizeStreamedArgs) => {
+  let rows: any[] = [];
+  try {
+    // @ts-ignore composite index
+    rows = await db
+      .query('messages')
+      .withIndex('by_thread_item', (q: any) => q.eq('threadId', args.threadId).eq('itemId', args.itemId))
+      .collect();
+  } catch {
+    rows = await db
+      .query('messages')
+      .filter((q) => q.and(q.eq(q.field('threadId'), args.threadId), q.eq(q.field('itemId'), args.itemId)))
+      .collect();
+  }
+  if (rows.length === 0) return null;
+  const row = rows[0] as any;
+  await db.patch(row._id, { text: typeof args.text === 'string' ? args.text : row.text, partial: false, updatedAt: Date.now() } as any);
+  return row._id;
 });
 
 export const byId = queryGeneric(async ({ db }, args: { id: string }) => {
