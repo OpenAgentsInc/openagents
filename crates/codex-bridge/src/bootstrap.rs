@@ -1,3 +1,9 @@
+//! Local Convex backend lifecycle helpers for the bridge.
+//!
+//! This module provides utilities to locate defaults (binary path, DB path),
+//! probe health, start the local backend in supervised mode, and run a one‑shot
+//! function deploy. It is used both by the CLI bridge and by the Tauri sidecar.
+
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -143,9 +149,4 @@ async fn ensure_local_backend_present() -> Result<()> {
     let _ = cmd.spawn();
     Ok(())
 }
-//! Local Convex backend lifecycle helpers for the bridge.
-//!
-//! This module provides utilities to locate defaults (binary path, DB path),
-//! probe health, start the local backend in supervised mode, and run a one‑shot
-//! function deploy. It is used both by the CLI bridge and by the Tauri sidecar.
 
