@@ -315,10 +315,10 @@ pub fn App() -> impl IntoView {
         <main class="app">
             <aside class="sidebar">
                 { sidebar_tabs }
-                { sidebar_body() }
+                { move || sidebar_body() }
             </aside>
             <section class="content">
-                { main_content() }
+                { move || main_content() }
             </section>
         </main>
     }
