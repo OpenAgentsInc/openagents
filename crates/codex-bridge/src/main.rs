@@ -6,6 +6,15 @@ use clap::Parser;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use tracing_subscriber::prelude::*;
+// Imports required by legacy helpers retained in this file (cleanup pending)
+use std::time::Duration;
+use std::path::Path;
+use std::process::Stdio;
+use tokio::process::Command;
+use tokio::io::BufReader;
+use crate::bootstrap::{default_convex_bin, default_convex_db};
+use crate::convex_write::{finalize_streaming_for_thread, stream_upsert_or_append, summarize_exec_delta_for_log, try_finalize_stream_kind};
+use crate::util::now_ms;
 
 mod bootstrap;
 mod convex_write;
@@ -245,7 +254,7 @@ async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         Ok(())
     } else {
         // If failed to become healthy, try to kill child and report
-        let _ = child.kill().await;
+        let _ = child.kill();
         error!(url=%base, "convex.ensure: failed to report healthy in time");
         anyhow::bail!("convex health probe failed")
     }
@@ -452,6 +461,8 @@ fn insert_demo_thread(db_path: &PathBuf) -> Result<()> {
 
 // codex spawn helpers moved to codex_runner.rs
 
+/* legacy copy removed; use crate::ws::start_stream_forwarders */
+/*
 async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -> Result<()> {
     let stdout = child.stdout.take().context("missing stdout")?;
     let stderr = child.stderr.take().context("missing stderr")?;
@@ -697,56 +708,11 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
 
     Ok(())
 }
+*/
 
     // streaming helpers moved to convex_write.rs
 
-/* moved to watchers.rs
-async fn watch_skills_and_broadcast(state: Arc<AppState>) {
-    use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-    use std::sync::mpsc::channel;
-    let user_dir = crate::skills::skills_dir();
-    let registry_dirs = crate::skills::registry_skills_dirs();
-    let mut watched: Vec<std::path::PathBuf> = Vec::new();
-    if let Err(e) = std::fs::create_dir_all(&user_dir) { error!(?e, "skills mkdir failed"); }
-    if user_dir.is_dir() { watched.push(user_dir.clone()); }
-    for d in registry_dirs { if d.is_dir() { watched.push(d); } }
-
-    if watched.is_empty() { return; }
-    let (txev, rcev) = channel();
-    let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        let _ = txev.send(res);
-    }) {
-        Ok(w) => w,
-        Err(e) => { error!(?e, "skills watcher create failed"); return; }
-    };
-    for d in &watched {
-        if let Err(e) = watcher.watch(d, RecursiveMode::Recursive) {
-            error!(dir=%d.display(), ?e, "skills watcher watch failed");
-        } else {
-            info!(dir=%d.display(), msg="skills watcher started");
-        }
-    }
-    // Blocking loop; debounced
-    loop {
-        match rcev.recv() {
-            Ok(_evt) => {
-                // Drain quick bursts
-                let _ = rcev.try_recv(); let _ = rcev.try_recv();
-                match crate::skills::list_skills() {
-                    Ok(items) => {
-                        // Broadcast for legacy clients
-                        let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string();
-                        let _ = state.tx.send(line);
-                        // Also mirror to Convex (user + registry scopes)
-                        if let Err(e) = sync_skills_to_convex(state.clone()).await { warn!(?e, "skills convex sync failed on change"); }
-                    }
-                    Err(e) => { error!(?e, "skills list failed on change"); }
-                }
-            }
-            Err(_disconnected) => break,
-        }
-    }
-}
+// watchers moved to watchers.rs
 
 // Ingest/backfill helpers moved to watchers.rs and util.rs
 
@@ -759,4 +725,3 @@ async fn watch_skills_and_broadcast(state: Arc<AppState>) {
 // Filesystem → Convex sync now lives in watchers.rs
 
 // Project-scoped skills sync moved to watchers.rs
-
