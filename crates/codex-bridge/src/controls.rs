@@ -50,3 +50,43 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_simple_verbs() {
+        assert!(matches!(parse_control_command("{\"control\":\"interrupt\"}"), Some(ControlCommand::Interrupt)));
+        assert!(matches!(parse_control_command("{\"control\":\"projects\"}"), Some(ControlCommand::Projects)));
+        assert!(matches!(parse_control_command("{\"control\":\"skills\"}"), Some(ControlCommand::Skills)));
+        assert!(matches!(parse_control_command("{\"control\":\"bridge.status\"}"), Some(ControlCommand::BridgeStatus)));
+        assert!(matches!(parse_control_command("{\"control\":\"convex.status\"}"), Some(ControlCommand::ConvexStatus)));
+    }
+
+    #[test]
+    fn parses_project_save_delete() {
+        let save = parse_control_command("{\"control\":\"project.save\",\"project\":{\"id\":\"p1\",\"name\":\"N\",\"workingDir\":\"/tmp\"}}");
+        match save { Some(ControlCommand::ProjectSave { project }) => { assert_eq!(project.id, "p1"); }, _ => panic!("bad parse") }
+        let del = parse_control_command("{\"control\":\"project.delete\",\"id\":\"p1\"}");
+        assert!(matches!(del, Some(ControlCommand::ProjectDelete { id }) if id=="p1"));
+    }
+
+    #[test]
+    fn parses_run_submit() {
+        let s = parse_control_command("{\"control\":\"run.submit\",\"threadDocId\":\"t1\",\"text\":\"hi\",\"projectId\":\"p\",\"resumeId\":\"last\"}");
+        match s { Some(ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id }) => {
+            assert_eq!(thread_doc_id, "t1");
+            assert_eq!(text, "hi");
+            assert_eq!(project_id.as_deref(), Some("p"));
+            assert_eq!(resume_id.as_deref(), Some("last"));
+        }, _ => panic!("bad parse") }
+    }
+
+    #[test]
+    fn rejects_non_json_or_multi_line() {
+        assert!(parse_control_command("hello").is_none());
+        let multi = "{\"control\":\"interrupt\"}\n{\"control\":\"projects\"}";
+        assert!(parse_control_command(multi).is_none());
+    }
+}
