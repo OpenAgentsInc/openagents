@@ -1,5 +1,7 @@
 #[cfg(feature = "jsonl_components")]
 use crate::jsonl::{JsonlMessage, MessageRow};
+#[cfg(feature = "jsonl_components")]
+use crate::library::{LibraryContent, LibraryPage, LibrarySidebar};
 #[cfg(not(feature = "jsonl_components"))]
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 struct MessageRow {
@@ -170,68 +172,160 @@ pub fn App() -> impl IntoView {
         }
     };
 
+    // Local tab state: App vs Components (Library)
+    #[cfg(feature = "jsonl_components")]
+    let (show_library, set_show_library) = signal(false);
+    #[cfg(feature = "jsonl_components")]
+    let (lib_page, set_lib_page) = signal(LibraryPage::Markdown);
+
     view! {
         <main class="app">
             <aside class="sidebar">
-                <div class="status-list">
-                    <div class="status-row">
-                        <span class={ move || if ws_connected.get() { "dot dot-ok" } else { "dot dot-bad" } }></span>
-                        <span>"Bridge WS"</span>
-                        <span class="muted">{ move || if ws_connected.get() { "Connected".to_string() } else { "Disconnected".to_string() } }</span>
+                // Top-level tabs (App vs Components)
+                #[cfg(feature = "jsonl_components")]
+                { view! {
+                    <div class="threads" style="margin-bottom: 12px;">
+                        <div class="thread-list">
+                            <div class=move || if !show_library.get() { "thread-item selected" } else { "thread-item" }
+                                 on:click=move |_| set_show_library.set(false)>
+                                <div class="thread-title">{"Messages"}</div>
+                            </div>
+                            <div class=move || if show_library.get() { "thread-item selected" } else { "thread-item" }
+                                 on:click=move |_| set_show_library.set(true)>
+                                <div class="thread-title">{"Components"}</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="status-row">
-                        <span class={ move || if convex_status.get().map(|s| s.healthy).unwrap_or(false) { "dot dot-ok" } else { "dot dot-bad" } }></span>
-                        <span>"Convex"</span>
-                        <span class="muted">{ move || convex_status.get().map(|s| s.url).unwrap_or_else(|| "".into()) }</span>
-                    </div>
-                    <div class="status-row">
-                        <span class={ move || if bridge_status.get().and_then(|s| s.codex_pid).is_some() { "dot dot-ok" } else { "dot dot-bad" } }></span>
-                        <span>"Codex"</span>
-                        <span class="muted">{ move || bridge_status.get().and_then(|s| s.codex_pid).map(|p| format!("PID {p}" )).unwrap_or_else(|| "Not running".into()) }</span>
-                    </div>
-                </div>
-                <div class="threads">
-                    <div class="threads-title">"Recent Threads"</div>
-                    <div class="thread-list">
-                        { move || threads.get().into_iter().map(|row| {
-                            let tid = row.get("thread_id").and_then(|x| x.as_str()).map(|s| s.to_string())
-                                .or_else(|| row.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()))
-                                .or_else(|| row.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()))
-                                .unwrap_or_default();
-                            let title = row.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                            let is_selected = selected_thread_id.get().as_deref() == Some(&tid);
-                            view! {
-                                <div class={ move || if is_selected { "thread-item selected" } else { "thread-item" } }
-                                     on:click={
-                                        let tid = tid.clone();
-                                        let on_select_thread = on_select_thread.clone();
-                                        move |_| on_select_thread(tid.clone())
-                                     }>
-                                    <div class="thread-title">{ title.clone() }</div>
-                                </div>
-                            }
-                        }).collect::<Vec<_>>() }
-                    </div>
-                </div>
+                } }
+
+                // Sidebar content: status + threads OR library index
+                #[cfg(feature = "jsonl_components")]
+                { move || if show_library.get() {
+                    view! { <LibrarySidebar selected=lib_page on_select=set_lib_page /> }.into_any()
+                } else {
+                    view! {
+                        <div class="status-list">
+                            <div class="status-row">
+                                <span class={ move || if ws_connected.get() { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                                <span>"Bridge WS"</span>
+                                <span class="muted">{ move || if ws_connected.get() { "Connected".to_string() } else { "Disconnected".to_string() } }</span>
+                            </div>
+                            <div class="status-row">
+                                <span class={ move || if convex_status.get().map(|s| s.healthy).unwrap_or(false) { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                                <span>"Convex"</span>
+                                <span class="muted">{ move || convex_status.get().map(|s| s.url).unwrap_or_else(|| "".into()) }</span>
+                            </div>
+                            <div class="status-row">
+                                <span class={ move || if bridge_status.get().and_then(|s| s.codex_pid).is_some() { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                                <span>"Codex"</span>
+                                <span class="muted">{ move || bridge_status.get().and_then(|s| s.codex_pid).map(|p| format!("PID {p}" )).unwrap_or_else(|| "Not running".into()) }</span>
+                            </div>
+                        </div>
+                        <div class="threads">
+                            <div class="threads-title">"Recent Threads"</div>
+                            <div class="thread-list">
+                                { move || threads.get().into_iter().map(|row| {
+                                    let tid = row.get("thread_id").and_then(|x| x.as_str()).map(|s| s.to_string())
+                                        .or_else(|| row.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                                        .or_else(|| row.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                                        .unwrap_or_default();
+                                    let title = row.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let is_selected = selected_thread_id.get().as_deref() == Some(&tid);
+                                    view! {
+                                        <div class={ move || if is_selected { "thread-item selected" } else { "thread-item" } }
+                                             on:click={
+                                                let tid = tid.clone();
+                                                let on_select_thread = on_select_thread.clone();
+                                                move |_| on_select_thread(tid.clone())
+                                             }>
+                                            <div class="thread-title">{ title.clone() }</div>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>() }
+                            </div>
+                        </div>
+                    }.into_any()
+                } }
+
+                #[cfg(not(feature = "jsonl_components"))]
+                {
+                    view! {
+                        <div class="status-list">
+                            <div class="status-row">
+                                <span class={ move || if ws_connected.get() { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                                <span>"Bridge WS"</span>
+                                <span class="muted">{ move || if ws_connected.get() { "Connected".to_string() } else { "Disconnected".to_string() } }</span>
+                            </div>
+                            <div class="status-row">
+                                <span class={ move || if convex_status.get().map(|s| s.healthy).unwrap_or(false) { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                                <span>"Convex"</span>
+                                <span class="muted">{ move || convex_status.get().map(|s| s.url).unwrap_or_else(|| "".into()) }</span>
+                            </div>
+                            <div class="status-row">
+                                <span class={ move || if bridge_status.get().and_then(|s| s.codex_pid).is_some() { "dot dot-ok" } else { "dot dot-bad" } }></span>
+                                <span>"Codex"</span>
+                                <span class="muted">{ move || bridge_status.get().and_then(|s| s.codex_pid).map(|p| format!("PID {p}" )).unwrap_or_else(|| "Not running".into()) }</span>
+                            </div>
+                        </div>
+                        <div class="threads">
+                            <div class="threads-title">"Recent Threads"</div>
+                            <div class="thread-list">
+                                { move || threads.get().into_iter().map(|row| {
+                                    let tid = row.get("thread_id").and_then(|x| x.as_str()).map(|s| s.to_string())
+                                        .or_else(|| row.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                                        .or_else(|| row.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                                        .unwrap_or_default();
+                                    let title = row.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let is_selected = selected_thread_id.get().as_deref() == Some(&tid);
+                                    view! {
+                                        <div class={ move || if is_selected { "thread-item selected" } else { "thread-item" } }
+                                             on:click={
+                                                let tid = tid.clone();
+                                                let on_select_thread = on_select_thread.clone();
+                                                move |_| on_select_thread(tid.clone())
+                                             }>
+                                            <div class="thread-title">{ title.clone() }</div>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>() }
+                            </div>
+                        </div>
+                    }
+                }
             </aside>
             <section class="content">
-                <div class="messages">
-                    <For
-                        each=move || messages.get()
-                        key=|row: &MessageRow| row.stable_key()
-                        children=move |row| {
-                            #[cfg(feature = "jsonl_components")]
-                            { view! { <JsonlMessage row=row /> } }
-                            #[cfg(not(feature = "jsonl_components"))]
-                            {
-                                let role = row.role.clone().unwrap_or_else(|| "assistant".into());
-                                let text = row.text.clone().unwrap_or_default();
-                                let cls = if role == "user" { "msg user" } else { "msg assistant" };
-                                view! { <div class=cls><div class="bubble">{text}</div></div> }
-                            }
-                        }
-                    />
-                </div>
+                #[cfg(feature = "jsonl_components")]
+                { move || if show_library.get() {
+                    view! { <LibraryContent page=lib_page /> }.into_any()
+                } else {
+                    view! {
+                        <div class="messages">
+                            <For
+                                each=move || messages.get()
+                                key=|row: &MessageRow| row.stable_key()
+                                children=move |row| { view! { <JsonlMessage row=row /> } }
+                            />
+                        </div>
+                    }.into_any()
+                } }
+
+                #[cfg(not(feature = "jsonl_components"))]
+                {
+                    view! {
+                        <div class="messages">
+                            <For
+                                each=move || messages.get()
+                                key=|row: &MessageRow| row.stable_key()
+                                children=move |row| {
+                                    let role = row.role.clone().unwrap_or_else(|| "assistant".into());
+                                    let text = row.text.clone().unwrap_or_default();
+                                    let cls = if role == "user" { "msg user" } else { "msg assistant" };
+                                    view! { <div class=cls><div class="bubble">{text}</div></div> }
+                                }
+                            />
+                        </div>
+                    }
+                }
             </section>
         </main>
     }
