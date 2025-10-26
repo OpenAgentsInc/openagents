@@ -1,9 +1,19 @@
 //! codex-bridge binary entrypoint.
 //!
-//! Boots the local Convex backend (if configured), spawns the Codex CLI, then
-//! serves an Axum WebSocket endpoint at `/ws` that receives control messages
-//! and broadcasts Codex JSONL output to connected clients. Ingestion and FS
-//! watchers are delegated to submodules to keep this file thin.
+//! What this process does now:
+//! - Optionally manages a self‑hosted Convex backend (SQLite) for persistence
+//!   when running standalone (CLI). Desktop (Tauri) typically runs its own
+//!   sidecar and disables bridge‑side management via flags.
+//! - Spawns the Codex CLI with JSONL output enabled and tails stdout/stderr.
+//! - Exposes a WebSocket at `/ws` used primarily for control messages
+//!   (e.g., `run.submit`, status probes, projects/skills syncing). For
+//!   backwards‑compatibility and mobile usage, the raw JSONL lines are still
+//!   broadcast to connected clients.
+//! - Normalizes Codex JSONL into structured mutations and writes them into
+//!   Convex (threads, messages, tool rows). Mobile can continue using the
+//!   broadcast feed; Desktop consumes the Convex data model.
+//! - Filesystem watchers (projects/skills/sessions) mirror local changes into
+//!   Convex. The heavy lifting lives in submodules to keep this entry thin.
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -13,15 +23,6 @@ use clap::Parser;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use tracing_subscriber::prelude::*;
-// Imports required by legacy helpers retained in this file (cleanup pending)
-use std::time::Duration;
-use std::path::Path;
-use std::process::Stdio;
-use tokio::process::Command;
-use tokio::io::BufReader;
-use crate::bootstrap::{default_convex_bin, default_convex_db};
-use crate::convex_write::{finalize_streaming_for_thread, stream_upsert_or_append, summarize_exec_delta_for_log, try_finalize_stream_kind};
-use crate::util::now_ms;
 
 mod bootstrap;
 mod convex_write;
@@ -91,9 +92,7 @@ struct Opts {
     manage_convex: bool,
 }
 
-const MAX_HISTORY_LINES: usize = 2000;
-
-use crate::state::{AppState, StreamEntry};
+use crate::state::AppState;
 
 #[tokio::main]
 async fn main() -> Result<()> {

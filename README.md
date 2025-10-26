@@ -119,3 +119,10 @@ All builds use a self‑hosted Convex backend (SQLite) for threads and messages.
 - Mobile (v0.1.x): the bridge starts Convex on `0.0.0.0:7788` and deploys functions on first run.
 
 More details: docs/convex-sidecar.md (desktop), docs/convex.md (general)
+
+## Addendum (2025-10-26)
+
+- Bridge docs clarified: Updated the `codex-bridge` entry comment to reflect the current architecture — WS is primarily for control and legacy JSONL streaming, while all persistence goes to Convex (threads, messages, tool rows). Filesystem watchers mirror projects/skills/sessions into Convex.
+- Tauri sidebar: “New” thread button remains at the top of the Recent Threads block for quick thread creation; composer autofocus on selection is wired.
+- Styling: Thread count badge keeps a fixed minimum width for better alignment and the status rows use a compact 12px type to keep the header condensed.
+- Housekeeping: Verified no references to the removed legacy `events.rs`; remaining bridge helpers live in dedicated modules (`bootstrap`, `ws`, `convex_write`, `watchers`).
