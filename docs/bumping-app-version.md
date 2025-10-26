@@ -61,13 +61,56 @@ Example changes:
 }
 ```
 
-## 4) Update docs that reference the channel/version
+## 4) Update Tauri (Desktop) version
+
+Desktop builds use Tauri’s version for bundle artifacts and the Cargo crate versions for the Rust packages. Update all of the following to keep them consistent:
+
+- App bundle version (controls DMG/MSI names and app metadata)
+  - File: `tauri/src-tauri/tauri.conf.json`
+  - Field: `version`
+
+- Tauri backend crate version (affects the `Compiling openagents vX.Y.Z` line)
+  - File: `tauri/src-tauri/Cargo.toml`
+  - Section: `[package]`, Field: `version`
+
+- UI (WASM) crate version (optional but recommended to keep in sync)
+  - File: `tauri/Cargo.toml`
+  - Section: `[package]`, Field: `version`
+
+Example changes:
+
+```json
+// tauri/src-tauri/tauri.conf.json
+{
+  "version": "0.2.0"
+}
+```
+
+```toml
+# tauri/src-tauri/Cargo.toml
+[package]
+version = "0.2.0"
+
+# tauri/Cargo.toml
+[package]
+version = "0.2.0"
+```
+
+Verify by running a release build and checking the artifact names include the new version:
+
+```bash
+cd tauri
+cargo tauri build
+# Expect: OpenAgents_0.2.0_*.dmg (macOS), matching conf.json version
+```
+
+## 5) Update docs that reference the channel/version
 
 - Keep internal docs accurate when bumping:
   - `AGENTS.md` — references to channel and example `update:ios` command.
   - `docs/architecture-and-performance.md` — the OTA runtime version note.
 
-## 5) Verify targeted changes only (no blanket replace)
+## 6) Verify targeted changes only (no blanket replace)
 
 Use ripgrep to confirm you updated only the intended places and avoided unrelated projects, lockfiles, or VCS data.
 
@@ -103,17 +146,20 @@ Notes:
   - Docs: `AGENTS.md`, `docs/architecture-and-performance.md`
 - Avoid editing lockfiles (`Cargo.lock`, `expo/bun.lock`, `bun.lockb`) and third-party package versions.
 
-## 6) Commit (and optionally push)
+## 7) Commit (and optionally push)
 
 Stage the specific files you changed and create a focused commit:
 
 ```bash
-git add expo/app.json expo/eas.json expo/package.json AGENTS.md docs/architecture-and-performance.md
+git add \
+  expo/app.json expo/eas.json expo/package.json \
+  tauri/src-tauri/tauri.conf.json tauri/src-tauri/Cargo.toml tauri/Cargo.toml \
+  AGENTS.md docs/architecture-and-performance.md
 git commit -m "Bump app version to v0.2.0"
 # Optional: git push
 ```
 
-## 7) Publish an OTA (iOS default)
+## 8) Publish an OTA (iOS default)
 
 Unless Android is explicitly requested, prefer iOS-only OTA updates:
 
