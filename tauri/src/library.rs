@@ -54,12 +54,14 @@ pub fn LibrarySidebar(selected: ReadSignal<LibraryPage>, on_select: WriteSignal<
             <div class="threads-title">"Component Library"</div>
             <div class="thread-list">
                 { items().into_iter().map(|it| {
-                    let is_selected = selected.get() == it.page;
                     let page = it.page.clone();
                     let title = it.title;
                     let subtitle = it.subtitle;
                     view! {
-                        <div class={ move || if is_selected { "thread-item selected" } else { "thread-item" } }
+                        <div class={ {
+                            let cmp = page.clone();
+                            move || if selected.get() == cmp { "thread-item selected" } else { "thread-item" }
+                        } }
                              on:click={
                                 let page = page.clone();
                                 let on_select = on_select.clone();

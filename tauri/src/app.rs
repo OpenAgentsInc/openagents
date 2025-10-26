@@ -80,7 +80,7 @@ pub fn App() -> impl IntoView {
         }
         // Listen for backend readiness
         let handler = Closure::wrap(Box::new({ let set_ws_connected = set_ws_connected.clone(); let set_convex_status = set_convex_status.clone(); let set_bridge_status = set_bridge_status.clone(); let local_pref = local_convex_seen.clone(); move |_e: JsValue| { let lp = local_pref.clone(); connect(set_ws_connected, set_convex_status, set_bridge_status, 1, lp); } }) as Box<dyn FnMut(JsValue)>);
-        let _ = tauri_listen("bridge.ready", handler.as_ref().unchecked_ref());
+        let _ = tauri_listen("bridge:ready", handler.as_ref().unchecked_ref());
         handler.forget();
         // Safety fallback: if no event in 1s, attempt once (no reactive read to avoid warnings)
         let attempted = Rc::new(Cell::new(false));
@@ -166,7 +166,7 @@ pub fn App() -> impl IntoView {
                     }
                 }
             }) as Box<dyn FnMut(JsValue)>);
-            let _unlisten = tauri_listen("convex.local_status", handler.as_ref().unchecked_ref()).await;
+            let _unlisten = tauri_listen("convex:local_status", handler.as_ref().unchecked_ref()).await;
             handler.forget();
         });
     }
