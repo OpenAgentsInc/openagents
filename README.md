@@ -42,17 +42,16 @@ You can submit PRs but they'd better be good.
 
 ## Desktop (Tauri) — v0.2+
 
-Single‑terminal offline‑first dev.
+Single command, offline‑first dev.
 
-1) Clone and fetch Convex sidecar once
+1) Clone and run
    - `git clone https://github.com/OpenAgentsInc/openagents && cd openagents`
-   - `bun run convex:fetch-backend` (downloads/installs Convex local backend to `tauri/src-tauri/bin/local_backend`)
-2) Start the desktop app
-   - `cd tauri && cargo tauri dev`
-   - What happens:
-     - Spawns the Convex backend on `127.0.0.1:3210` (SQLite in `~/.openagents/convex`)
-     - Auto‑deploys Convex functions (same terminal; no additional tabs)
-     - Spawns `codex-bridge` and connects the UI to `ws://127.0.0.1:8787/ws`
+   - `bun run desktop:dev`
+   - This script will:
+     - Fetch/install the Convex local backend binary into `tauri/src-tauri/bin/local_backend` if missing
+     - Start the Convex backend on `127.0.0.1:3210` (SQLite in `~/.openagents/convex`)
+     - Auto‑deploy Convex functions (same terminal)
+     - Launch `cargo tauri dev` (bridge auto‑spawns, UI connects to `ws://127.0.0.1:8787/ws`)
 3) Use it
    - Left sidebar shows Bridge WS, Convex (http://127.0.0.1:3210), and Codex PID
    - Recent threads load; click a thread to view messages (preface/instructions are hidden)
