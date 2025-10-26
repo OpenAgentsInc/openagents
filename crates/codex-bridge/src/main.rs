@@ -38,6 +38,8 @@ fn convex_result_to_json(res: convex::FunctionResult) -> serde_json::Value {
 mod history;
 mod projects;
 mod skills;
+mod controls;
+mod state;
 // spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
@@ -92,28 +94,7 @@ struct Opts {
 
 const MAX_HISTORY_LINES: usize = 2000;
 
-struct AppState {
-    tx: broadcast::Sender<String>,
-    child_stdin: Mutex<Option<tokio::process::ChildStdin>>, // drop after first write to signal EOF
-    child_pid: Mutex<Option<u32>>,
-    opts: Opts,
-    // Track last seen session id so we can resume on subsequent prompts
-    last_thread_id: Mutex<Option<String>>,
-    // Replay buffer for new websocket clients
-    history: Mutex<Vec<String>>,
-    history_cache: Mutex<crate::history::HistoryCache>,
-    // Current Convex thread doc id being processed (for mapping thread.started -> Convex threadId)
-    current_convex_thread: Mutex<Option<String>>,
-    // Streaming message trackers (per thread, per kind). Key: "<threadId>|assistant" or "<threadId>|reason".
-    stream_track: Mutex<std::collections::HashMap<String, StreamEntry>>,
-}
-
-#[derive(Debug, Clone)]
-struct StreamEntry {
-    item_id: String,
-    last_text: String,
-    seq: u64,
-}
+use crate::state::{AppState, StreamEntry};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -528,16 +509,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         while let Some(Ok(msg)) = stream.next().await {
             match msg {
                 Message::Text(t) => {
-                    if let Some(cmd) = parse_control_command(&t) {
+                    if let Some(cmd) = crate::controls::parse_control_command(&t) {
                         info!(?cmd, "ws control command");
                         match cmd {
-                            ControlCommand::Interrupt => {
+                            crate::controls::ControlCommand::Interrupt => {
                                 if let Err(e) = interrupt_running_child(&stdin_state).await {
                                     error!(?e, "failed to interrupt codex child");
                                 }
                             }
                             // History/Thread controls removed — Convex-only UI now
-                            ControlCommand::Projects => {
+                            crate::controls::ControlCommand::Projects => {
                                 match crate::projects::list_projects() {
                                     Ok(items) => {
                                         let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
@@ -546,7 +527,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     Err(e) => { error!(?e, "projects list failed via ws"); }
                                 }
                             }
-                            ControlCommand::Skills => {
+                            crate::controls::ControlCommand::Skills => {
                                 match crate::skills::list_skills() {
                                     Ok(items) => {
                                         let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string();
@@ -555,7 +536,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     Err(e) => { error!(?e, "skills list failed via ws"); }
                                 }
                             }
-                            ControlCommand::BridgeStatus => {
+                            crate::controls::ControlCommand::BridgeStatus => {
                                 let codex_pid = { *stdin_state.child_pid.lock().await };
                                 let last_thread_id = { stdin_state.last_thread_id.lock().await.clone() };
                                 let bind = stdin_state.opts.bind.clone();
@@ -571,7 +552,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 }).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
-                            ControlCommand::ConvexStatus => {
+                            crate::controls::ControlCommand::ConvexStatus => {
                                 let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
                                 let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
                                 let healthy = convex_health(&url).await.unwrap_or(false);
@@ -579,7 +560,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
-                            ControlCommand::ConvexCreateDemo => {
+                            crate::controls::ControlCommand::ConvexCreateDemo => {
                                 let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
                                 let _ = create_demo_table(&db);
                                 let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
@@ -588,7 +569,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
-                            ControlCommand::ConvexCreateThreads => {
+                            crate::controls::ControlCommand::ConvexCreateThreads => {
                                 let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
                                 let _ = create_threads_table(&db);
                                 let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
@@ -597,7 +578,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
-                            ControlCommand::ConvexCreateDemoThread => {
+                            crate::controls::ControlCommand::ConvexCreateDemoThread => {
                                 let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
                                 let _ = create_threads_table(&db);
                                 let _ = insert_demo_thread(&db);
@@ -607,7 +588,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
-                            ControlCommand::ConvexBackfill => {
+                            crate::controls::ControlCommand::ConvexBackfill => {
                                 let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
                                     std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
                                 });
@@ -661,7 +642,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     Err(e) => { error!(?e, "backfill scan failed"); }
                                 }
                             }
-                            ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id } => {
+                            crate::controls::ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id } => {
                                 // Map to project working dir
                                 let desired_cd = project_id.as_ref().and_then(|pid| {
                                     match crate::projects::list_projects() { Ok(list) => list.into_iter().find(|p| p.id == *pid).map(|p| p.working_dir), Err(_) => None }
@@ -689,7 +670,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     Err(e) => { error!(?e, "run.submit: spawn failed"); }
                                 }
                             }
-                            ControlCommand::ProjectSave { project } => {
+                            crate::controls::ControlCommand::ProjectSave { project } => {
                                 match crate::projects::save_project(&project) {
                                     Ok(_) => {
                                         if let Ok(items) = crate::projects::list_projects() {
@@ -700,7 +681,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     Err(e) => { error!(?e, "project save failed via ws"); }
                                 }
                             }
-                            ControlCommand::ProjectDelete { id } => {
+                            crate::controls::ControlCommand::ProjectDelete { id } => {
                                 match crate::projects::delete_project(&id) {
                                     Ok(_) => {
                                         if let Ok(items) = crate::projects::list_projects() {
