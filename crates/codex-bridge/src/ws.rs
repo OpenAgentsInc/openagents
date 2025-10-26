@@ -196,6 +196,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 });
                                 { *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone()); }
                                 let resume_arg = compute_resume_arg(resume_id.as_deref());
+                                // Persist the user message to Convex so all clients see it immediately.
+                                {
+                                    use convex::{ConvexClient, Value};
+                                    use std::collections::BTreeMap;
+                                    let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                    if let Ok(mut client) = ConvexClient::new(&url).await {
+                                        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                        args.insert("threadId".into(), Value::from(thread_doc_id.clone()));
+                                        args.insert("role".into(), Value::from("user"));
+                                        args.insert("kind".into(), Value::from("message"));
+                                        args.insert("text".into(), Value::from(text.clone()));
+                                        args.insert("ts".into(), Value::from(now_ms() as f64));
+                                        let _ = client.mutation("messages:create", args).await;
+                                    }
+                                }
                                 match spawn_codex_child_only_with_dir(
                                     &stdin_state.opts,
                                     desired_cd.clone().map(|s| std::path::PathBuf::from(s)),
