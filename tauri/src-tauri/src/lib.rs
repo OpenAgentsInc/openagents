@@ -292,8 +292,8 @@ async fn ensure_bridge_running() {
         c.args([
             "run", "-q", "-p", "codex-bridge", "--",
             "--bind", "0.0.0.0:8787",
-            // Run the local Convex backend binary, but do not push functions.
-            "--manage-convex", "true",
+            // Bridge should not manage Convex; Tauri sidecar handles it on 3210.
+            "--manage-convex", "false",
             "--bootstrap", "false",
         ]);
         c
@@ -301,7 +301,7 @@ async fn ensure_bridge_running() {
     cmd.current_dir(&repo)
         .env("RUST_LOG", "info")
         // Ensure the bridge does not manage Convex or attempt bootstrap when spawned by the app.
-        .env("OPENAGENTS_MANAGE_CONVEX", "true")
+        .env("OPENAGENTS_MANAGE_CONVEX", "false")
         .env("OPENAGENTS_BOOTSTRAP", "false")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::inherit())
