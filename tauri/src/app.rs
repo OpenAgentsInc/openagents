@@ -109,6 +109,27 @@ pub fn App() -> impl IntoView {
         });
     }
 
+    // Live subscription for recent threads (filtered to count>0). Also get updates when first message appears.
+    {
+        let set_threads = set_threads.clone();
+        spawn_local(async move {
+            let handler = Closure::wrap(Box::new(move |e: JsValue| {
+                if let Ok(payload) = js_sys::Reflect::get(&e, &JsValue::from_str("payload")) {
+                    if let Ok(rows) = serde_wasm_bindgen::from_value::<Vec<serde_json::Value>>(payload) {
+                        set_threads.set(rows);
+                    }
+                }
+            }) as Box<dyn FnMut(JsValue)>);
+            let _unlisten = tauri_listen("convex:threads", handler.as_ref().unchecked_ref()).await;
+            handler.forget();
+        });
+        // Start server-side subscription
+        spawn_local(async move {
+            let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "limit": 10 })).unwrap();
+            let _ = invoke("subscribe_recent_threads", args).await;
+        });
+    }
+
     // Listen for live message updates from Tauri backend subscription
     {
         let set_messages = set_messages.clone();
