@@ -67,7 +67,7 @@
 
 .app { display: grid; grid-template-columns: 380px 1fr; gap: 16px; height: 100vh; width: 100vw; padding: 12px 16px; box-sizing: border-box; }
 .sidebar { border-right: 1px solid var(--border); padding: 12px; overflow: auto; }
-.content { padding: 12px 0; overflow: auto; }
+.content { padding: 12px 0; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
 .thread-count { font-size: 64px; line-height: 1; letter-spacing: 0.5px; }
 
@@ -85,7 +85,10 @@
 .thread-item.selected { outline: 1px solid #f7f8f8; }
 .thread-title { font-size: 14px; }
 
-.messages { display: flex; flex-direction: column; gap: 12px; max-width: 860px; margin: 0 auto; }
+.messages { display: flex; flex-direction: column; gap: 12px; max-width: 860px; margin: 0 auto; flex: 1; overflow: auto; }
+
+/* Composer container stays anchored to bottom of content */
+.composer-wrap { border-top: 1px solid var(--border); background: var(--background); padding-top: 8px; }
 .msg { display: flex; }
 .msg.user { justify-content: flex-end; }
 .msg.assistant { justify-content: flex-start; }

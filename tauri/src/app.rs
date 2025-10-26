@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use web_sys::{MessageEvent, WebSocket};
 
 #[wasm_bindgen]
@@ -323,7 +324,16 @@ pub fn App() -> impl IntoView {
     let main_content = {
         let lib_page = lib_page;
         let messages_ro = messages;
-        let can_send = move || selected_thread_doc_id.get().is_some();
+        let _can_send = move || selected_thread_doc_id.get().is_some();
+        let messages_ref = create_node_ref::<leptos::html::Div>();
+        create_effect(move |_| {
+            let _ = messages_ro.get();
+            if let Some(node) = messages_ref.get() {
+                if let Ok(el) = node.unchecked_into::<web_sys::Element>().dyn_into::<web_sys::HtmlElement>() {
+                    el.set_scroll_top(el.scroll_height());
+                }
+            }
+        });
         let do_send = move |text: String| {
             // Persist via Convex mutation
             if let Some(doc_id) = selected_thread_doc_id.get() {
@@ -357,8 +367,8 @@ pub fn App() -> impl IntoView {
                 view! { <LibraryContent page=lib_page /> }.into_any()
             } else {
                 view! {
-                    <div class="messages">{ render_messages(messages_ro) }</div>
-                    <div style="position: sticky; bottom: 0; background: var(--background); padding-top: 8px;">
+                    <div class="messages" node_ref=messages_ref>{ render_messages(messages_ro) }</div>
+                    <div class="composer-wrap">
                         <crate::composer::ChatComposer on_send=do_send placeholder="Ask Codex".to_string()/>
                     </div>
                 }.into_any()
