@@ -30,3 +30,24 @@ pub fn list_sqlite_tables(db_path: &PathBuf) -> anyhow::Result<Vec<String>> {
     Ok(out)
 }
 
+/// Destructive helper to clear Convex data (admin function).
+pub async fn run_convex_clear_all(port: u16) -> anyhow::Result<()> {
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
+    let url = format!("http://127.0.0.1:{}", port);
+    let mut client = ConvexClient::new(&url).await?;
+    let args: BTreeMap<String, Value> = BTreeMap::new();
+    let _ = client.mutation("admin:clearAll", args).await?;
+    Ok(())
+}
+
+/// Detect the repository root directory so tools run from the right place.
+/// Heuristics:
+/// - Prefer the nearest ancestor that contains both `expo/` and `crates/` directories.
+/// - If not found, fall back to the process current_dir.
+pub fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
+    fn is_repo_root(p: &std::path::Path) -> bool { p.join("expo").is_dir() && p.join("crates").is_dir() }
+    let mut cur = start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let original = cur.clone();
+    loop { if is_repo_root(&cur) { return cur; } if !cur.pop() { return original; } }
+}
