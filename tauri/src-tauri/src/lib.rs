@@ -110,7 +110,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
 
 #[tauri::command]
 #[allow(non_snake_case)]
-async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_url: Option<String>) -> Result<Vec<MessageRow>, String> {
+async fn list_messages_for_thread(threadId: String, docId: Option<String>, limit: Option<u32>, convex_url: Option<String>) -> Result<Vec<MessageRow>, String> {
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
 
@@ -124,7 +124,8 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
         .map_err(|e| format!("convex connect error: {e}"))?;
 
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
-    args.insert("threadId".into(), Value::from(threadId));
+    let key = docId.unwrap_or(threadId);
+    args.insert("threadId".into(), Value::from(key));
     if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
 
     let res = client
@@ -166,7 +167,7 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
 
 #[tauri::command]
 #[allow(non_snake_case)]
-async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: String, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
+async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: String, docId: Option<String>, limit: Option<u32>, convex_url: Option<String>) -> Result<(), String> {
     use convex::{FunctionResult, Value};
     use futures::StreamExt;
     use std::collections::BTreeMap;
@@ -181,7 +182,8 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
         .map_err(|e| format!("convex connect error: {e}"))?;
 
     let mut args: BTreeMap<String, Value> = BTreeMap::new();
-    args.insert("threadId".into(), Value::from(threadId.clone()));
+    let key = docId.unwrap_or(threadId.clone());
+    args.insert("threadId".into(), Value::from(key));
     if let Some(l) = limit { args.insert("limit".into(), Value::from(l as i64)); }
 
     let mut sub = client
