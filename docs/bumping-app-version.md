@@ -24,7 +24,7 @@ Example:
 ```json
 {
   "expo": {
-    "version": "0.1.2"
+    "version": "0.2.0"
   }
 }
 ```
@@ -46,7 +46,7 @@ Example changes:
 {
   "build": {
     "production": {
-      "channel": "v0.1.2"
+      "channel": "v0.2.0"
     }
   }
 }
@@ -54,9 +54,9 @@ Example changes:
 // expo/package.json
 {
   "scripts": {
-    "update:ios": "eas update --channel v0.1.2 --environment production --platform ios --message",
-    "update:android": "eas update --channel v0.1.2 --environment production --platform android --message",
-    "update:both": "eas update --channel v0.1.2 --environment production --message"
+    "update:ios": "eas update --channel v0.2.0 --environment production --platform ios --message",
+    "update:android": "eas update --channel v0.2.0 --environment production --platform android --message",
+    "update:both": "eas update --channel v0.2.0 --environment production --message"
   }
 }
 ```
@@ -80,7 +80,7 @@ rg -n --hidden \
   --glob '!**/bun.lock' \
   --glob '!**/bun.lockb' \
   --glob '!Cargo.lock' \
-  '\\bv?0\\.1\\.2\\b'
+  '\\bv?0\\.2\\.0\\b'
 ```
 
 If you are bumping from a prior version, also search for the old strings to clean up lingering mentions in docs only (do not touch lockfiles):
@@ -92,7 +92,7 @@ rg -n --hidden \
   --glob '!**/bun.lock' \
   --glob '!**/bun.lockb' \
   --glob '!Cargo.lock' \
-  '\\bv?0\\.1\\.1\\b'
+  '\\bv?0\\.1\\.2\\b'
 ```
 
 Notes:
@@ -109,7 +109,7 @@ Stage the specific files you changed and create a focused commit:
 
 ```bash
 git add expo/app.json expo/eas.json expo/package.json AGENTS.md docs/architecture-and-performance.md
-git commit -m "Bump app version to v0.1.2"
+git commit -m "Bump app version to v0.2.0"
 # Optional: git push
 ```
 
@@ -123,4 +123,3 @@ bun run update:ios -- "<concise change summary>"
 ```
 
 The EAS channel must match `vX.Y.Z` exactly, and runtime version derives from `expo/app.json`.
-
