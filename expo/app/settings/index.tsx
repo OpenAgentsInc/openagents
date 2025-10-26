@@ -8,12 +8,30 @@ import { useHeaderTitle } from '@/lib/header-store'
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
   const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, attachPreface, setAttachPreface } = useBridge()
+  const convexUrl = React.useMemo(() => {
+    try {
+      const val = String(bridgeHost || '').trim()
+      const stripped = val
+        .replace(/^ws:\/\//i, '')
+        .replace(/^wss:\/\//i, '')
+        .replace(/^http:\/\//i, '')
+        .replace(/^https:\/\//i, '')
+        .replace(/\/$/, '')
+        .replace(/\/ws$/i, '')
+        .replace(/\/$/, '')
+      const hostOnly = (stripped.split(':')[0] || '127.0.0.1')
+      return `http://${hostOnly}:7788`
+    } catch {
+      return 'http://127.0.0.1:7788'
+    }
+  }, [bridgeHost])
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
       <Text style={styles.label}>Bridge Host (host:port)</Text>
       <TextInput value={bridgeHost} onChangeText={setBridgeHost} autoCapitalize='none' autoCorrect={false} placeholder='localhost:8787' placeholderTextColor={Colors.secondary} style={styles.input} />
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>WS endpoint: {`ws://${bridgeHost}/ws`}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {`ws://${bridgeHost}/ws`}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>Convex URL: {convexUrl}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
         <StatusPill connected={connected} />
