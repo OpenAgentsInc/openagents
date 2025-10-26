@@ -97,10 +97,25 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
                 let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
                 rows.push(ThreadSummary { id, thread_id, title, updated_at });
             }
+            // Sort newest-first and filter out threads with zero primary chat messages.
             rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
             let cap = limit.unwrap_or(10) as usize;
-            if rows.len() > cap { rows.truncate(cap); }
-            Ok(rows)
+            let mut filtered: Vec<ThreadSummary> = Vec::with_capacity(cap);
+            for row in rows.into_iter() {
+                let key = row.thread_id.clone().unwrap_or_else(|| row.id.clone());
+                let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                args.insert("threadId".into(), Value::from(key));
+                let count = match client.query("messages:countForThread", args).await {
+                    Ok(FunctionResult::Value(v)) => {
+                        let j: serde_json::Value = v.into();
+                        j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0)
+                    }
+                    _ => 0,
+                };
+                if count > 0 { filtered.push(row); }
+                if filtered.len() >= cap { break; }
+            }
+            Ok(filtered)
         }
         FunctionResult::Value(_) => Ok(Vec::new()),
         FunctionResult::ErrorMessage(msg) => Err(msg),
@@ -246,6 +261,7 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
     tauri::async_runtime::spawn(async move {
         while let Some(result) = sub.next().await {
             if let FunctionResult::Value(Value::Array(items)) = result {
+                // Newest-first, then filter by count>0 up to cap
                 let mut rows: Vec<ThreadSummary> = Vec::new();
                 for item in items {
                     let json: serde_json::Value = item.into();
@@ -258,8 +274,19 @@ async fn subscribe_recent_threads(window: tauri::WebviewWindow, limit: Option<u3
                 }
                 rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
                 let cap = limit.unwrap_or(10) as usize;
-                if rows.len() > cap { rows.truncate(cap); }
-                let _ = window.emit("convex:threads", &rows);
+                let mut filtered: Vec<ThreadSummary> = Vec::with_capacity(cap);
+                for row in rows.into_iter() {
+                    let key = row.thread_id.clone().unwrap_or_else(|| row.id.clone());
+                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                    args.insert("threadId".into(), Value::from(key));
+                    let count = match client.query("messages:countForThread", args).await {
+                        Ok(FunctionResult::Value(v)) => { let j: serde_json::Value = v.into(); j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0) },
+                        _ => 0,
+                    };
+                    if count > 0 { filtered.push(row); }
+                    if filtered.len() >= cap { break; }
+                }
+                let _ = window.emit("convex:threads", &filtered);
             }
         }
     });
