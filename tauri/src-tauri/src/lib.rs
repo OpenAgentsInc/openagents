@@ -9,9 +9,10 @@ async fn get_thread_count(convex_url: Option<String>) -> Result<usize, String> {
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
 
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:3210".to_string());
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
 
     let mut client = convex::ConvexClient::new(&url)
         .await
@@ -35,8 +36,9 @@ struct SimpleStatus { healthy: bool, url: String }
 
 #[tauri::command]
 fn get_local_convex_status() -> SimpleStatus {
-    let url = "http://127.0.0.1:3210".to_string();
-    let healthy = is_port_open(3210);
+    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
+    let url = format!("http://127.0.0.1:{}", port);
+    let healthy = is_port_open(port);
     SimpleStatus { healthy, url }
 }
 
@@ -65,9 +67,10 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
 
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:3210".to_string());
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
 
     let mut client = convex::ConvexClient::new(&url)
         .await
@@ -108,9 +111,10 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
 
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:3210".to_string());
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
 
     let mut client = convex::ConvexClient::new(&url)
         .await
@@ -164,9 +168,10 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
     use futures::StreamExt;
     use std::collections::BTreeMap;
 
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
-        .unwrap_or_else(|| "http://127.0.0.1:3210".to_string());
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
 
     let mut client = convex::ConvexClient::new(&url)
         .await
@@ -235,13 +240,14 @@ pub fn run() {
                 {
                     use tauri::Manager;
                     let handle = app.app_handle().clone();
+                    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
                     tauri::async_runtime::spawn(async move {
                         // probe up to ~10s
                         for _ in 0..100u32 {
-                            if is_port_open(3210) {
+                            if is_port_open(port) {
                                 let _ = handle.emit("convex.local_status", serde_json::json!({
                                     "healthy": true,
-                                    "url": "http://127.0.0.1:3210"
+                                    "url": format!("http://127.0.0.1:{}", port)
                                 }));
                                 return;
                             }
@@ -249,7 +255,7 @@ pub fn run() {
                         }
                         let _ = handle.emit("convex.local_status", serde_json::json!({
                             "healthy": false,
-                            "url": "http://127.0.0.1:3210"
+                            "url": format!("http://127.0.0.1:{}", port)
                         }));
                     });
                 }
@@ -318,10 +324,12 @@ fn start_convex_sidecar() {
     let db_path = default_convex_db_path();
     if let Some(parent) = db_path.parent() { let _ = std::fs::create_dir_all(parent); }
     let mut cmd = std::process::Command::new(&bin);
+    let interface = std::env::var("OPENAGENTS_CONVEX_INTERFACE").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     cmd.arg(&db_path)
         .arg("--db").arg("sqlite")
-        .arg("--interface").arg("127.0.0.1")
-        .arg("--port").arg("3210")
+        .arg("--interface").arg(interface)
+        .arg("--port").arg(port.to_string())
         .arg("--disable-beacon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::inherit())
@@ -357,15 +365,16 @@ fn read_env_local_var(key: &str) -> Option<String> {
 }
 
 fn deploy_convex_functions_once() {
-    // Wait for 3210 to be open
+    // Wait for sidecar port to be open
+    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     for _ in 0..200 { // ~20s
-        if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 3210)).is_ok() {
+        if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port)).is_ok() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 3210)).is_err() {
-        println!("[tauri/convex] backend not reachable on 127.0.0.1:3210; skipping auto-deploy");
+    if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port)).is_err() {
+        println!("[tauri/convex] backend not reachable on 127.0.0.1:{}; skipping auto-deploy", port);
         return;
     }
     // Resolve admin key
@@ -378,8 +387,8 @@ fn deploy_convex_functions_once() {
     let mut cmd = std::process::Command::new("bun");
     cmd.args(["run", "convex:dev:once"]) // calls scripts/convex-cli.sh dev:once
         .current_dir(&root)
-        .env("CONVEX_URL", "http://127.0.0.1:3210")
-        .env("CONVEX_SELF_HOSTED_URL", "http://127.0.0.1:3210")
+        .env("CONVEX_URL", format!("http://127.0.0.1:{}", port))
+        .env("CONVEX_SELF_HOSTED_URL", format!("http://127.0.0.1:{}", port))
         .env("CONVEX_ADMIN_KEY", &admin)
         .env("CONVEX_SELF_HOSTED_ADMIN_KEY", &admin)
         .stdin(std::process::Stdio::null())
