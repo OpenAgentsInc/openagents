@@ -292,9 +292,10 @@ pub fn run() {
 }
 
 fn start_convex_sidecar() {
-    // Probe 127.0.0.1:3210; if not open, try to spawn a local backend binary.
-    if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 3210)).is_ok() {
-        println!("[tauri/convex] detected local backend on 127.0.0.1:3210");
+    // Use dynamic port (defaults to 7788) so desktop + mobile share the same Convex.
+    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
+    if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port)).is_ok() {
+        println!("[tauri/convex] detected local backend on 127.0.0.1:{}", port);
         return;
     }
     let bin_candidates: Vec<std::path::PathBuf> = {
@@ -321,7 +322,6 @@ fn start_convex_sidecar() {
     if let Some(parent) = db_path.parent() { let _ = std::fs::create_dir_all(parent); }
     let mut cmd = std::process::Command::new(&bin);
     let interface = std::env::var("OPENAGENTS_CONVEX_INTERFACE").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     cmd.arg(&db_path)
         .arg("--db").arg("sqlite")
         .arg("--interface").arg(interface)
