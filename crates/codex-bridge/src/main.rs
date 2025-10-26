@@ -22,6 +22,10 @@ use chrono::TimeZone;
 use tracing_subscriber::prelude::*;
 use std::time::Duration;
 
+mod bootstrap;
+mod codex_runner;
+use crate::codex_runner::ChildWithIo;
+
 // Helper: convert Convex FunctionResult into plain JSON for inspection
 fn convex_result_to_json(res: convex::FunctionResult) -> serde_json::Value {
     match res {
@@ -120,11 +124,11 @@ async fn main() -> Result<()> {
     if opts.manage_convex {
         let opts_clone = opts.clone();
         tokio::spawn(async move {
-            match ensure_convex_running(&opts_clone).await {
+            match bootstrap::ensure_convex_running(&opts_clone).await {
                 Ok(()) => {
                     // Only attempt bootstrap when the backend is healthy
                     if opts_clone.bootstrap {
-                        if let Err(e) = bootstrap_convex(&opts_clone).await {
+                        if let Err(e) = bootstrap::bootstrap_convex(&opts_clone).await {
                             error!(?e, "convex bootstrap failed");
                         }
                     } else {
@@ -148,7 +152,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let (mut child, tx) = spawn_codex(&opts).await?;
+    let (mut child, tx) = codex_runner::spawn_codex(&opts).await?;
     let state = Arc::new(AppState {
         tx,
         child_stdin: Mutex::new(Some(child.stdin.take().context("child stdin missing")?)),
@@ -664,7 +668,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 });
                                 { *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone()); }
                                 // Ensure child running with desired dir/resume
-                                match spawn_codex_child_only_with_dir(
+                                match codex_runner::spawn_codex_child_only_with_dir(
                                     &stdin_state.opts,
                                     desired_cd.clone().map(|s| std::path::PathBuf::from(s)),
                                     resume_id.as_deref(),
@@ -735,7 +739,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             _ => resume_id.clone(),
                         };
                         // Defer closing previous stdin until we know the new child spawned.
-                        match spawn_codex_child_only_with_dir(
+                        match codex_runner::spawn_codex_child_only_with_dir(
                             &stdin_state.opts,
                             desired_cd.clone(),
                             resume_arg.as_deref(),
@@ -802,7 +806,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
                     if need_respawn {
                         let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
-                        match spawn_codex_child_only_with_dir(
+                        match codex_runner::spawn_codex_child_only_with_dir(
                             &stdin_state.opts,
                             None,
                             resume_id.as_deref(),
@@ -855,12 +859,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("msg" = "websocket disconnected");
 }
 
-struct ChildWithIo {
-    pid: u32,
-    stdin: Option<tokio::process::ChildStdin>,
-    stdout: Option<tokio::process::ChildStdout>,
-    stderr: Option<tokio::process::ChildStderr>,
-}
+// ChildWithIo is provided by codex_runner module
 
 async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<String>)> {
     let (bin, args) = build_bin_and_args(opts)?; // initial spawn: never add resume here
