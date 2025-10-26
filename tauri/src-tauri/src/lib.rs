@@ -84,6 +84,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
     let mut rows: Vec<ThreadSummary> = Vec::new();
     match res {
         FunctionResult::Value(Value::Array(items)) => {
+            // Collect summaries
             for item in items {
                 let json: serde_json::Value = item.into();
                 let id = json.get("_id").and_then(|x| x.as_str()).unwrap_or("").to_string();
@@ -93,11 +94,25 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
                 let thread_id = json.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
                 rows.push(ThreadSummary { id, thread_id, title, updated_at });
             }
-            // Sort by updated_at desc and clamp to limit (default 10)
+            // Sort by updated_at desc
             rows.sort_by(|a, b| b.updated_at.total_cmp(&a.updated_at));
-            let take = limit.unwrap_or(10) as usize;
-            if rows.len() > take { rows.truncate(take); }
-            Ok(rows)
+            // Filter out threads with 0 messages (count assistant/user/message kinds)
+            let mut filtered: Vec<ThreadSummary> = Vec::new();
+            for row in rows.into_iter() {
+                let key = row.thread_id.clone().unwrap_or_else(|| row.id.clone());
+                let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                args.insert("threadId".into(), Value::from(key));
+                let count = match client.query("messages:countForThread", args).await {
+                    Ok(FunctionResult::Value(v)) => {
+                        let j: serde_json::Value = v.into();
+                        j.as_i64().or_else(|| j.as_f64().map(|f| f as i64)).unwrap_or(0)
+                    }
+                    _ => 0,
+                };
+                if count > 0 { filtered.push(row); }
+                if filtered.len() >= (limit.unwrap_or(10) as usize) { break; }
+            }
+            Ok(filtered)
         }
         FunctionResult::Value(_) => Ok(Vec::new()),
         FunctionResult::ErrorMessage(msg) => Err(msg),
