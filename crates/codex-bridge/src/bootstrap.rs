@@ -7,6 +7,7 @@ use tracing::{error, info, warn};
 
 use crate::Opts;
 
+/// Default path where we install or expect the local Convex backend binary.
 pub fn default_convex_bin() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         return PathBuf::from(home).join(".openagents/bin/local_backend");
@@ -14,6 +15,7 @@ pub fn default_convex_bin() -> PathBuf {
     PathBuf::from("local_backend")
 }
 
+/// Default sqlite DB location for the local backend when not provided.
 pub fn default_convex_db() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         return PathBuf::from(home).join(".openagents/convex/data.sqlite3");
@@ -21,12 +23,14 @@ pub fn default_convex_db() -> PathBuf {
     PathBuf::from("data.sqlite3")
 }
 
+/// Quick health probe against the local backend instance.
 pub async fn convex_health(url: &str) -> Result<bool> {
     let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build()?;
     let resp = client.get(format!("{}/instance_version", url)).send().await;
     Ok(matches!(resp, Ok(r) if r.status().is_success()))
 }
 
+/// Start (or restart) the local backend as needed and wait until healthy.
 pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     info!(port = opts.convex_port, interface = %opts.convex_interface, "convex.ensure: begin");
     let bin = opts.convex_bin.clone().unwrap_or_else(default_convex_bin);
@@ -84,6 +88,7 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
 }
 
 #[cfg(unix)]
+/// Best‑effort helper to terminate any listeners on `port` (Unix only).
 pub async fn kill_listeners_on_port(port: u16) -> Result<()> {
     use std::process::Command as StdCommand;
     let output = StdCommand::new("lsof").args(["-i", &format!(":{}", port), "-sTCP:LISTEN", "-t"]).output();
@@ -94,6 +99,7 @@ pub async fn kill_listeners_on_port(port: u16) -> Result<()> {
     Ok(())
 }
 
+/// Idempotent “dev:once” deploy of Convex functions when the backend is healthy.
 pub async fn bootstrap_convex(opts: &Opts) -> Result<()> {
     use std::process::Stdio;
     let port = opts.convex_port;
@@ -120,6 +126,7 @@ pub async fn bootstrap_convex(opts: &Opts) -> Result<()> {
     Ok(())
 }
 
+/// Heuristic repo root detector to run `bun run` from the correct directory.
 fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
     fn is_repo_root(p: &Path) -> bool { p.join("expo").is_dir() && p.join("crates").is_dir() }
     let mut cur = start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
@@ -128,6 +135,7 @@ fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
 }
 
 // Attempts to run `bunx convex dev` once to install local backend if missing. Best effort.
+/// Fire‑and‑forget attempt to provision the local backend via `bunx convex dev`.
 async fn ensure_local_backend_present() -> Result<()> {
     use std::process::Stdio;
     let mut cmd = std::process::Command::new("bunx");
@@ -135,4 +143,9 @@ async fn ensure_local_backend_present() -> Result<()> {
     let _ = cmd.spawn();
     Ok(())
 }
+//! Local Convex backend lifecycle helpers for the bridge.
+//!
+//! This module provides utilities to locate defaults (binary path, DB path),
+//! probe health, start the local backend in supervised mode, and run a one‑shot
+//! function deploy. It is used both by the CLI bridge and by the Tauri sidecar.
 

@@ -1,3 +1,10 @@
+//! codex-bridge binary entrypoint.
+//!
+//! Boots the local Convex backend (if configured), spawns the Codex CLI, then
+//! serves an Axum WebSocket endpoint at `/ws` that receives control messages
+//! and broadcasts Codex JSONL output to connected clients. Ingestion and FS
+//! watchers are delegated to submodules to keep this file thin.
+
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};

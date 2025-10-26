@@ -584,3 +584,8 @@ mod tests {
         assert_eq!(resp.items[1].text, "Why...");
     }
 }
+//! Lightweight JSONL history scanner and parser for Codex sessions.
+//!
+//! Provides utilities to scan the `~/.codex/sessions` tree for recent threads,
+//! and to parse a single JSONL file into normalized thread items suitable for
+//! mirroring into Convex or showing in quick history lists.

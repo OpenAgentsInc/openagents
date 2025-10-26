@@ -25,10 +25,13 @@ use crate::convex_write::{
 use crate::state::AppState;
 use crate::util::{expand_home, list_sqlite_tables, now_ms};
 
+/// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
+/// Per-socket task: splits sink/stream, forwards broadcast lines to client, and
+/// processes incoming control messages (interrupt, projects/skills, status, run.submit, etc.).
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("msg" = "websocket connected");
 
@@ -284,6 +287,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("msg" = "websocket disconnected");
 }
 
+/// Spawn tasks to read Codex stdout/stderr and forward to both console and broadcast channel.
 pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -> Result<()> {
     let stdout = child.stdout.take().context("missing stdout")?;
     let stderr = child.stderr.take().context("missing stderr")?;
@@ -390,6 +394,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
     Ok(())
 }
 
+/// Send SIGINT (or taskkill) to the Codex process group to abort a running turn.
 async fn interrupt_running_child(state: &Arc<AppState>) -> Result<()> {
     let pid_opt = { state.child_pid.lock().await.clone() };
     match pid_opt {
@@ -402,6 +407,7 @@ async fn interrupt_running_child(state: &Arc<AppState>) -> Result<()> {
 }
 
 #[cfg(unix)]
+/// UNIX: send SIGINT to the whole process group so child and descendants stop.
 fn send_interrupt_signal(pid: u32) -> Result<()> {
     use std::io::ErrorKind;
     let pid_i32: i32 = pid.try_into().context("pid out of range for SIGINT")?;
@@ -414,11 +420,13 @@ fn send_interrupt_signal(pid: u32) -> Result<()> {
 }
 
 #[cfg(windows)]
+/// Windows: use `taskkill /T` to terminate the process tree.
 fn send_interrupt_signal(pid: u32) -> Result<()> {
     let status = std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/T"]).status().context("failed to spawn taskkill for interrupt")?;
     if status.success() { Ok(()) } else { Err(anyhow::anyhow!("taskkill exited with status {status:?}")) }
 }
 
+/// Best‑effort helper to pull a `cd` path out of the first JSON line in a WS payload.
 fn extract_cd_from_ws_payload(payload: &str) -> Option<PathBuf> {
     let first_line = payload.lines().next()?.trim();
     if !first_line.starts_with('{') { return None; }
@@ -428,6 +436,7 @@ fn extract_cd_from_ws_payload(payload: &str) -> Option<PathBuf> {
     Some(expand_home(cd))
 }
 
+/// Best‑effort helper to pull a `resume` token out of the first JSON line.
 fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
     let first_line = payload.lines().next()?.trim();
     if !first_line.starts_with('{') { return None; }
