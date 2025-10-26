@@ -384,7 +384,36 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         }}
                     }
                 }
-                // ... other tool rows elided for brevity in this extraction
+                // Tool rows: command/file/search/mcp/todo via item.*
+                if let Some(ty) = t.as_deref() {
+                    if ty.starts_with("item.") {
+                        if let Some(payload) = v
+                            .get("item")
+                            .or_else(|| v.get("payload").and_then(|p| p.get("item")))
+                        {
+                            let kind = payload.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                            let map_kind = map_tool_kind(kind);
+                            if let Some(k) = map_kind {
+                                let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
+                                if !target_tid.is_empty() {
+                                    let payload_str = payload.to_string();
+                                    use convex::{ConvexClient, Value};
+                                    use std::collections::BTreeMap;
+                                    let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                    if let Ok(mut client) = ConvexClient::new(&url).await {
+                                        let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                        args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                        args.insert("kind".into(), Value::from(k));
+                                        args.insert("text".into(), Value::from(payload_str));
+                                        args.insert("ts".into(), Value::from(now_ms() as f64));
+                                        let _ = client.mutation("messages:create", args).await;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             // Broadcast raw line
             let _ = tx_out.send(line.clone());
@@ -447,6 +476,18 @@ fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
     match v.get("resume") { Some(JsonValue::String(s)) if !s.is_empty() => Some(s.clone()), _ => None }
 }
 
+/// Map a raw item type to the internal message kind used in Convex.
+fn map_tool_kind(kind: &str) -> Option<&'static str> {
+    match kind {
+        "command_execution" => Some("cmd"),
+        "file_change" => Some("file"),
+        "web_search" => Some("search"),
+        "mcp_tool_call" => Some("mcp"),
+        "todo_list" => Some("todo"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,6 +502,16 @@ mod tests {
     fn parses_resume_line() {
         assert_eq!(extract_resume_from_ws_payload("{\"resume\":\"last\"}"), Some("last".into()));
         assert!(extract_resume_from_ws_payload("{\"foo\":1}").is_none());
+    }
+
+    #[test]
+    fn maps_tool_kinds() {
+        assert_eq!(map_tool_kind("command_execution"), Some("cmd"));
+        assert_eq!(map_tool_kind("file_change"), Some("file"));
+        assert_eq!(map_tool_kind("web_search"), Some("search"));
+        assert_eq!(map_tool_kind("mcp_tool_call"), Some("mcp"));
+        assert_eq!(map_tool_kind("todo_list"), Some("todo"));
+        assert_eq!(map_tool_kind("other"), None);
     }
 }
 
