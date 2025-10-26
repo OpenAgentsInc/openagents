@@ -21,8 +21,10 @@ use tracing::{error, info, warn};
 use chrono::TimeZone;
 use tracing_subscriber::prelude::*;
 use std::time::Duration;
+use crate::convex_write::{stream_upsert_or_append, try_finalize_stream_kind, finalize_streaming_for_thread, summarize_exec_delta_for_log};
 
 mod bootstrap;
+mod convex_write;
 mod codex_runner;
 use crate::codex_runner::ChildWithIo;
 
@@ -35,11 +37,21 @@ fn convex_result_to_json(res: convex::FunctionResult) -> serde_json::Value {
     }
 }
 
+#[inline]
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 mod history;
 mod projects;
 mod skills;
 mod controls;
 mod state;
+mod util;
+mod ws;
 // spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
@@ -171,7 +183,7 @@ async fn main() -> Result<()> {
     tokio::spawn(enqueue_historical_on_start(state.clone()));
 
     // HTTP submit endpoint for app → bridge turn submission
-    let app = Router::new().route("/ws", get(ws_handler)).with_state(state);
+    let app = Router::new().route("/ws", get(crate::ws::ws_handler)).with_state(state);
 
     let bind_addr = opts.bind.clone();
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
@@ -1300,117 +1312,7 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
     Ok(())
 }
 
-// Streaming helpers: upsert/append/finalize a live message per (threadId, kind)
-async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &str, full_text: &str) {
-    // Snapshot-based streaming: every JSONL event is a complete snapshot.
-    // We upsert (replace) the text for a single logical in-flight message keyed by (threadId, kind).
-    use convex::{ConvexClient, Value};
-    use std::collections::BTreeMap;
-    let key = format!("{}|{}", thread_id, kind);
-    let mut guard = state.stream_track.lock().await;
-    let entry = guard.entry(key.clone()).or_insert_with(|| StreamEntry {
-        item_id: format!("{}:{}", kind, now_ms()),
-        last_text: String::new(),
-        seq: 0,
-    });
-    entry.seq += 1;
-    entry.last_text = full_text.to_string();
-    let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
-    if let Ok(mut client) = ConvexClient::new(&url).await {
-        let mut args: BTreeMap<String, Value> = BTreeMap::new();
-        args.insert("threadId".into(), Value::from(thread_id.to_string()));
-        args.insert("itemId".into(), Value::from(entry.item_id.clone()));
-        if kind == "assistant" { args.insert("role".into(), Value::from("assistant")); args.insert("kind".into(), Value::from("message")); }
-        else if kind == "reason" { args.insert("kind".into(), Value::from("reason")); }
-        args.insert("text".into(), Value::from(full_text.to_string()));
-        args.insert("ts".into(), Value::from(now_ms() as f64));
-        args.insert("seq".into(), Value::from(entry.seq as f64));
-        let _ = client.mutation("messages:upsertStreamed", args).await;
-    }
-}
-
-async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &str, final_text: &str) -> bool {
-    use convex::{ConvexClient, Value};
-    use std::collections::BTreeMap;
-    let key = format!("{}|{}", thread_id, kind);
-    let mut guard = state.stream_track.lock().await;
-    if let Some(entry) = guard.remove(&key) {
-        let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
-        if let Ok(mut client) = ConvexClient::new(&url).await {
-            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-            args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("itemId".into(), Value::from(entry.item_id));
-            args.insert("text".into(), Value::from(final_text.to_string()));
-            let _ = client.mutation("messages:finalizeStreamed", args).await;
-        }
-        return true;
-    }
-    false
-}
-
-async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
-    let kinds = ["assistant", "reason"];
-    for k in kinds.iter() {
-        // finalize with last_text
-        let key = format!("{}|{}", thread_id, k);
-        let last_text = { state.stream_track.lock().await.get(&key).map(|e| e.last_text.clone()) };
-        if let Some(text) = last_text {
-            let _ = try_finalize_stream_kind(state, thread_id, k, &text).await;
-        }
-    }
-}
-
-fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64 }
-
-fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
-    // Try to parse line as JSON and compact large delta arrays for logging only
-    let mut root: JsonValue = match serde_json::from_str(line) {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-
-    // Check top-level and nested msg without overlapping borrows
-    let is_top = root.get("type").and_then(|t| t.as_str()) == Some("exec_command_output_delta");
-    let mut_target: Option<&mut JsonValue> = if is_top {
-        Some(&mut root)
-    } else {
-        let msg_opt = {
-            if let Some(obj) = root.as_object_mut() {
-                obj.get_mut("msg")
-            } else {
-                None
-            }
-        };
-        if let Some(m) = msg_opt {
-            if m.get("type").and_then(|t| t.as_str()) == Some("exec_command_output_delta") {
-                Some(m)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    };
-    let tgt = match mut_target {
-        Some(t) => t,
-        None => return None,
-    };
-
-    // Replace large fields
-    if let Some(arr) = tgt.get_mut("chunk").and_then(|v| v.as_array_mut()) {
-        let len = arr.len();
-        *tgt.get_mut("chunk").unwrap() = JsonValue::String(format!("[{} elements]", len));
-    }
-    if let Some(arr) = tgt.get_mut("chunk_bytes").and_then(|v| v.as_array_mut()) {
-        let len = arr.len();
-        *tgt.get_mut("chunk_bytes").unwrap() = JsonValue::String(format!("[{} elements]", len));
-    }
-
-    Some(match serde_json::to_string(&root) {
-        Ok(s) => s,
-        Err(_) => return None,
-    })
-}
+    // streaming helpers moved to convex_write.rs
 
 async fn watch_skills_and_broadcast(state: Arc<AppState>) {
     use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -1573,6 +1475,7 @@ async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::Histor
 }
 
 #[derive(Debug, Clone)]
+/* legacy control parser removed — use crate::controls */
 enum ControlCommand {
     Interrupt,
     Projects,
