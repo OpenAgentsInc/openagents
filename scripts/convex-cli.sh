@@ -4,16 +4,16 @@ set -euo pipefail
 ACTION="${1:-dev}"
 shift || true
 
-URL=""
-ADMIN=""
+URL="${CONVEX_URL:-}"
+ADMIN="${CONVEX_ADMIN_KEY:-${CONVEX_SELF_HOSTED_ADMIN_KEY:-}}"
 if [ -f ".env.local" ]; then
-  URL=$(grep -E '^CONVEX_SELF_HOSTED_URL=' .env.local | sed -E 's/^[^=]+=//; s/\r$//') || true
-  ADMIN=$(grep -E '^CONVEX_SELF_HOSTED_ADMIN_KEY=' .env.local | sed -E 's/^[^=]+=//; s/\r$//') || true
+  if [ -z "${URL}" ]; then URL=$(grep -E '^CONVEX_SELF_HOSTED_URL=' .env.local | sed -E 's/^[^=]+=//; s/\r$//') || true; fi
   if [ -z "${URL}" ]; then URL=$(grep -E '^CONVEX_URL=' .env.local | sed -E 's/^[^=]+=//; s/\r$//') || true; fi
+  if [ -z "${ADMIN}" ]; then ADMIN=$(grep -E '^CONVEX_SELF_HOSTED_ADMIN_KEY=' .env.local | sed -E 's/^[^=]+=//; s/\r$//') || true; fi
   if [ -z "${ADMIN}" ]; then ADMIN=$(grep -E '^CONVEX_ADMIN_KEY=' .env.local | sed -E 's/^[^=]+=//; s/\r$//') || true; fi
 fi
 
-if [ -z "${URL}" ]; then URL="http://127.0.0.1:7788"; fi
+if [ -z "${URL}" ]; then URL="http://127.0.0.1:3210"; fi
 if [ -z "${ADMIN}" ]; then
   echo "error: missing CONVEX_SELF_HOSTED_ADMIN_KEY or CONVEX_ADMIN_KEY in .env.local" >&2
   exit 1
@@ -34,4 +34,3 @@ case "${ACTION}" in
     exit 2
     ;;
 esac
-
