@@ -89,4 +89,18 @@ mod tests {
         let multi = "{\"control\":\"interrupt\"}\n{\"control\":\"projects\"}";
         assert!(parse_control_command(multi).is_none());
     }
+
+    #[test]
+    fn rejects_missing_control_field() {
+        assert!(parse_control_command("{\"foo\":1}").is_none());
+        assert!(parse_control_command("{} ").is_none());
+    }
+
+    #[test]
+    fn rejects_malformed_run_submit() {
+        // Missing threadDocId
+        assert!(parse_control_command("{\"control\":\"run.submit\",\"text\":\"hi\"}").is_none());
+        // Wrong types
+        assert!(parse_control_command("{\"control\":\"run.submit\",\"threadDocId\":1,\"text\":true}").is_none());
+    }
 }
