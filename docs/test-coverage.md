@@ -2,7 +2,7 @@
 
 Scope: Rust crates under `crates/` and Tauri backend under `tauri/src-tauri`. Expo app intentionally excluded per request.
 
-Referenced refactor context: Issue #1320 “Real-time Codex chat streaming in Desktop + Mobile (Convex-backed) + folder refactor” and its comments indicate an in‑progress extraction for streaming logic and module splits on both the bridge (Rust) and Tauri.
+Referenced refactor context: Issue #1320 “Real-time Codex chat streaming in Desktop + Mobile (Convex-backed) + folder refactor” — split work has begun and partial streaming is live in both Tauri and the bridge.
 
 ## Current Test Inventory
 
@@ -66,31 +66,44 @@ Referenced refactor context: Issue #1320 “Real-time Codex chat streaming in De
   - `is_binary_ext` matrix; `should_skip_file` correctness.
   - `walk_filtered` excludes directories (node_modules, target, etc.) and includes expected config files. Use temp dirs with small fixtures.
 
-## Recommendations (Refactor‑Aided, from #1320)
+## Status + Next (from #1320)
+
+Done (this branch):
+- Tauri split: `convex.rs`, `subscriptions.rs`, `commands.rs`, `bridge.rs` with unit tests for mapping/hide rules.
+- Bridge split (phase 1): `bootstrap.rs`, `codex_runner.rs`, `state.rs`, `controls.rs` created; main wired to use them.
+- Streaming: bridge writes `messages:upsertStreamed`/`finalizeStreamed`; sessions tailer follows `~/.codex/sessions` and mirrors to Convex.
+- Docs: desktop build guide, coverage plan, and version bump steps updated; desktop version bumped to 0.2.0.
+
+Planned (next commits):
+- Bridge split (phase 2): `ws.rs` (handlers), `convex_write.rs` (JSONL→Convex mappers), `watchers.rs` (projects/skills/sessions), and removal of legacy duplicates in main.
+- Tests: unit tests for control parsing, JSONL mapping branches (assistant, reason, tool rows), sessions tailer integration (feature-gated where needed).
+
+## Recommendations (Refactor‑Aided)
 
 Refactor pieces to unlock proper unit tests and narrow integration tests:
 
-- codex-bridge module split (per #1320)
+- codex-bridge module split
   - `ws.rs`: WS route wiring with pure message framing helpers. Test message framing and control routing without sockets by feeding json payloads through handlers.
   - `codex_runner.rs`: command builder that injects flags (`--dangerously-bypass-approvals-and-sandbox`, sandbox config, model overrides). Unit test builder yields expected argv/env given input options.
   - `convex_write.rs`: pure mappers for JSONL item snapshots → Convex upsert/finalize args. Unit test with golden JSONL snippets for assistant/reason, command, file changes.
   - `fs_watch.rs`: pure debounce/edge rules for watchers with a trait‑based clock/scheduler; unit test timing/coalescing without touching the filesystem.
-  - `sessions_watch.rs`: tailer state machine (offset tracking, last itemId), fed by an in‑memory line source; unit test incremental upsert/finalize behavior.
+  - `sessions_watch.rs`: tailer state machine (offset tracking, last itemId), fed by an in‑memory line source; unit test incremental upsert/finalize behavior. (implemented: initial tailer; tests pending)
   - `history_scan.rs`: existing `history.rs` parsing utilities can move here; maintain and extend current tests.
 
-- tauri split (per #1320)
+- tauri split
   - `convex.rs`: keep mapping/filter helpers and command wrappers thin; unit test helpers directly (counts, docId preference, filtering rules).
   - `subscriptions.rs`: lift subscription loops and event emission; add a small adapter boundary so the core loop is testable with a fake stream of Convex `Value::Array` items.
   - `commands.rs`: keep parameter plumbing minimal; logic lives in helpers.
 
 ## Suggested New Test Cases (Examples)
 
-- codex-bridge/history
-  - Old vs. new JSONL formats: ensure `file_is_new_format` rejects early for old sessions with legacy shapes or non‑JSON lines.
-  - Long outputs: sample truncation logic for command outputs (`sample` ≤ 240 chars) and `output_len` correctness.
-  - Title inference: bold‑delimited title vs. fallback to first 6 words.
+- codex-bridge/history + convex_write
+  - Old vs. new JSONL formats: ensure `file_is_new_format` rejects early for old sessions with legacy shapes or non‑JSON lines. (unit)
+  - Long outputs: summarize/compact large `exec_command_output_delta` for logs; no panic on >24KB bodies. (unit)
+  - Title inference: bold‑delimited title vs. fallback to first 6 words. (unit)
+  - Streaming: `upsertStreamed`/`finalizeStreamed` argument building for assistant vs. reason (with itemId, partial, seq). (unit)
 
-- codex-bridge/skills
+- codex-bridge/skills (added)
   - Allowed tools normalization: handle non‑string entries ignored; empty list vs. missing; preserves order.
   - Metadata pass‑through: nested structures retained via serde conversion.
   - Registry + user merge: two skills with same folder name id, user wins; stable sort by lowercase name.
@@ -110,6 +123,8 @@ Refactor pieces to unlock proper unit tests and narrow integration tests:
 
 - Workspace crates: `cargo test --workspace`
 - Tauri backend: `cd tauri/src-tauri && cargo test`
+
+CI Note: Once tests are in place for bridge modules, enable coverage in CI via `cargo tarpaulin` and fail PRs under a minimum threshold for changed files.
 
 ## Coverage Measurement
 

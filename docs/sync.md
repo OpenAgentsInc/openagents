@@ -12,8 +12,8 @@ Summary
   - Mobile/Desktop UIs subscribe to Convex queries and render live updates.
 - Historical ingestion:
   - On startup, the Bridge backfills recent Codex JSONL sessions into Convex; an on‑demand WS control can trigger a larger backfill.
-- What’s not covered yet:
-  - Continuous FS watching of the Codex sessions directory for external agent runs (e.g., “base Claude Code”) after startup. This is the main gap if other processes write JSONL files outside our Bridge’s control.
+- What’s not covered yet (now addressed):
+  - Continuous FS watching of the Codex sessions directory for external agent runs (e.g., “base Claude Code”) after startup. Implemented via a `notify` watcher that tails `~/.codex/sessions` and upserts stream rows into Convex. Tests pending (see coverage doc).
 
 Architecture At A Glance
 - Bridge (Axum WS + Convex client)
@@ -36,8 +36,8 @@ Key Codepaths (by layer)
   - Skills (FS schema + IO): `crates/codex-bridge/src/skills.rs:1`
   - JSONL history parsing: `crates/codex-bridge/src/history.rs:1`
   - Convex write points (threads/messages during stream):
-    - agent/user/reasoning → `messages:create` writes at `crates/codex-bridge/src/main.rs:1196`
-    - command/other items → specialized mappings at `crates/codex-bridge/src/main.rs:1239`
+    - Streaming helpers live in `crates/codex-bridge/src/convex_write.rs` (upsert/finalize, log compaction)
+    - The stdout forwarder invokes those helpers when mapping assistant/reasoning and tool rows
   - FS→Convex sync (Projects/Skills):
     - Sync functions: `crates/codex-bridge/src/main.rs:1688`
     - Projects watcher: `crates/codex-bridge/src/main.rs:1871`
@@ -61,10 +61,10 @@ Key Codepaths (by layer)
   - Projects provider (Convex + local store): `expo/providers/projects.tsx:1`
   - Skills provider (Convex + local store): `expo/providers/skills.tsx:1`
 
-- Desktop (Tauri)
-  - Convex sidecar lifecycle + auto‑deploy: `tauri/src-tauri/src/lib.rs:332`
-  - Commands to list/subscribe threads/messages: `tauri/src-tauri/src/lib.rs:96`
-  - Bridge bootstrap and “bridge:ready” event: `tauri/src-tauri/src/lib.rs:416`
+  - Desktop (Tauri)
+  - Convex sidecar lifecycle + auto‑deploy: `tauri/src-tauri/src/bridge.rs`
+  - Commands to list/subscribe threads/messages: `tauri/src-tauri/src/convex.rs`, `subscriptions.rs`
+  - Bridge bootstrap and “bridge:ready” event: `tauri/src-tauri/src/bridge.rs`
 
 Data Model Conventions
 - Threads
