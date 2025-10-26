@@ -13,7 +13,7 @@ use axum::{extract::State, extract::WebSocketUpgrade, response::IntoResponse};
 use futures::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::bootstrap::{convex_health, default_convex_db};
 use crate::codex_runner::{spawn_codex_child_only_with_dir, ChildWithIo};
@@ -284,7 +284,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("msg" = "websocket disconnected");
 }
 
-async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -> Result<()> {
+pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -> Result<()> {
     let stdout = child.stdout.take().context("missing stdout")?;
     let stderr = child.stderr.take().context("missing stderr")?;
 
@@ -433,6 +433,23 @@ fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
     if !first_line.starts_with('{') { return None; }
     let v: JsonValue = serde_json::from_str(first_line).ok()?;
     match v.get("resume") { Some(JsonValue::String(s)) if !s.is_empty() => Some(s.clone()), _ => None }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_cd_line() {
+        let p = extract_cd_from_ws_payload("{\"cd\":\"~/code\"}");
+        assert!(p.is_some());
+    }
+
+    #[test]
+    fn parses_resume_line() {
+        assert_eq!(extract_resume_from_ws_payload("{\"resume\":\"last\"}"), Some("last".into()));
+        assert!(extract_resume_from_ws_payload("{\"foo\":1}").is_none());
+    }
 }
 
 // Minimal local demo helpers (left here until moved to a util/db module)
