@@ -125,3 +125,54 @@ pub fn registry_skills_dirs() -> Vec<PathBuf> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_skill(dir: &Path, folder: &str, yaml_fm: &str, body: &str) -> PathBuf {
+        let root = dir.join(folder);
+        fs::create_dir_all(&root).expect("mk skill dir");
+        let p = root.join("SKILL.md");
+        let content = format!("---\n{}\n---\n\n{}\n", yaml_fm, body);
+        fs::write(&p, content).expect("write skill");
+        root
+    }
+
+    #[test]
+    fn list_skills_from_dir_parses_valid_skill() {
+        let td = tempfile::tempdir().unwrap();
+        let yaml = r#"
+name: hello-world
+description: Hello skill
+license: MIT
+allowed-tools: [fs, shell]
+metadata:
+  level: 1
+"#;
+        write_skill(td.path(), "hello-world", yaml, "# Body\nContent");
+        let items = list_skills_from_dir(td.path(), "user").expect("list ok");
+        assert_eq!(items.len(), 1);
+        let s = &items[0];
+        assert_eq!(s.id, "hello-world");
+        assert_eq!(s.name, "hello-world");
+        assert_eq!(s.description, "Hello skill");
+        assert_eq!(s.source.as_deref(), Some("user"));
+        assert_eq!(s.meta.license.as_deref(), Some("MIT"));
+        assert_eq!(s.meta.allowed_tools.as_ref().map(|v| v.len()), Some(2));
+        assert!(s.meta.metadata.is_some());
+    }
+
+    #[test]
+    fn list_skills_from_dir_skips_invalid_schema() {
+        let td = tempfile::tempdir().unwrap();
+        // Missing/invalid name (fails kebab-case pattern)
+        let yaml = r#"
+name: NotKebab
+description: Desc
+"#;
+        write_skill(td.path(), "NotKebab", yaml, "");
+        let items = list_skills_from_dir(td.path(), "user").expect("list ok");
+        assert_eq!(items.len(), 0, "invalid skill should be skipped");
+    }
+}
