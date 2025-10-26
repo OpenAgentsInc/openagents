@@ -3,7 +3,7 @@
 //! This module isolates all Convex list/subscribe logic so it can be
 //! unit-tested and refactored independently from window/bootstrap code.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::Emitter;
 
 #[derive(Serialize)]
