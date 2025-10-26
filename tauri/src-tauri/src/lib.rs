@@ -9,7 +9,7 @@ async fn get_thread_count(convex_url: Option<String>) -> Result<usize, String> {
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
 
-    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(3210);
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
         .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
@@ -36,7 +36,7 @@ struct SimpleStatus { healthy: bool, url: String }
 
 #[tauri::command]
 fn get_local_convex_status() -> SimpleStatus {
-    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(3210);
+    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = format!("http://127.0.0.1:{}", port);
     let healthy = is_port_open(port);
     SimpleStatus { healthy, url }
@@ -67,7 +67,7 @@ async fn list_recent_threads(limit: Option<u32>, convex_url: Option<String>) -> 
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
 
-    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(3210);
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
         .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
@@ -126,7 +126,7 @@ async fn list_messages_for_thread(threadId: String, limit: Option<u32>, convex_u
     use convex::{FunctionResult, Value};
     use std::collections::BTreeMap;
 
-    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(3210);
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
         .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
@@ -183,7 +183,7 @@ async fn subscribe_thread_messages(window: tauri::WebviewWindow, threadId: Strin
     use futures::StreamExt;
     use std::collections::BTreeMap;
 
-    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(3210);
+    let default_port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     let url = convex_url
         .or_else(|| std::env::var("CONVEX_URL").ok())
         .unwrap_or_else(|| format!("http://127.0.0.1:{}", default_port));
@@ -255,11 +255,11 @@ pub fn run() {
                     });
                 }
                 // Emit a local convex status event to the UI using the sidecar URL (3210)
-                // so the dot reflects the embedded backend instead of the bridge's default.
+                // so the dot reflects the embedded backend instead of the bridge's default (7788).
                 {
                     use tauri::Manager;
                     let handle = app.app_handle().clone();
-                    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(3210);
+                    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
                     tauri::async_runtime::spawn(async move {
                         // Periodically monitor port and emit status transitions
                         let url = format!("http://127.0.0.1:{}", port);
@@ -311,8 +311,8 @@ pub fn run() {
 }
 
 fn start_convex_sidecar() {
-    // Use dynamic port (defaults to 3210) so desktop + mobile share the same Convex.
-    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(3210);
+    // Use dynamic port (defaults to 7788) so desktop + mobile share the same Convex.
+    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port)).is_ok() {
         println!("[tauri/convex] detected local backend on 127.0.0.1:{}", port);
         return;
@@ -381,7 +381,7 @@ fn read_env_local_var(key: &str) -> Option<String> {
 
 fn deploy_convex_functions_once(handle: tauri::AppHandle) {
     // Wait for sidecar port to be open
-    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(3210);
+    let port: u16 = std::env::var("OPENAGENTS_CONVEX_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(7788);
     for _ in 0..200 { // ~20s
         if std::net::TcpStream::connect((std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port)).is_ok() {
             break;
