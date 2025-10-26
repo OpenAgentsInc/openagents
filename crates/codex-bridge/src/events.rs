@@ -110,3 +110,96 @@ pub struct Usage {
 pub struct ThreadError {
     pub message: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_thread_started_round_trip() {
+        let ev = ThreadEvent::ThreadStarted { thread_id: "abc".into() };
+        let json = serde_json::to_value(&ev).expect("serialize");
+        assert_eq!(json.get("type").and_then(|x| x.as_str()), Some("thread.started"));
+        assert_eq!(json.get("thread_id").and_then(|x| x.as_str()), Some("abc"));
+        let back: ThreadEvent = serde_json::from_value(json).expect("deserialize");
+        match back {
+            ThreadEvent::ThreadStarted { thread_id } => assert_eq!(thread_id, "abc"),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn item_command_execution_serialization() {
+        let it = ThreadItem::CommandExecution {
+            id: "i1".into(),
+            command: "echo hi".into(),
+            aggregated_output: "hi".into(),
+            exit_code: Some(0),
+            status: CommandStatus::InProgress,
+        };
+        let json = serde_json::to_value(&it).expect("serialize");
+        assert_eq!(json.get("type").and_then(|x| x.as_str()), Some("command_execution"));
+        assert_eq!(json.get("status").and_then(|x| x.as_str()), Some("in_progress"));
+        assert_eq!(json.get("exit_code").and_then(|x| x.as_i64()), Some(0));
+        let back: ThreadItem = serde_json::from_value(json).expect("deserialize");
+        match back {
+            ThreadItem::CommandExecution { id, command, aggregated_output, exit_code, status } => {
+                assert_eq!(id, "i1");
+                assert_eq!(command, "echo hi");
+                assert_eq!(aggregated_output, "hi");
+                assert_eq!(exit_code, Some(0));
+                matches!(status, CommandStatus::InProgress);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn item_file_change_serialization() {
+        let it = ThreadItem::FileChange {
+            id: "f1".into(),
+            changes: vec![
+                FileUpdateChange { path: "a.txt".into(), kind: PatchChangeKind::Add },
+                FileUpdateChange { path: "b.txt".into(), kind: PatchChangeKind::Update },
+            ],
+            status: PatchApplyStatus::Completed,
+        };
+        let json = serde_json::to_value(&it).expect("serialize");
+        assert_eq!(json.get("type").and_then(|x| x.as_str()), Some("file_change"));
+        assert_eq!(json.get("status").and_then(|x| x.as_str()), Some("completed"));
+        let changes = json.get("changes").and_then(|x| x.as_array()).expect("changes arr");
+        assert_eq!(changes[0].get("kind").and_then(|x| x.as_str()), Some("add"));
+        assert_eq!(changes[1].get("kind").and_then(|x| x.as_str()), Some("update"));
+        let back: ThreadItem = serde_json::from_value(json).expect("deserialize");
+        match back { ThreadItem::FileChange { id, changes, status } => {
+            assert_eq!(id, "f1");
+            assert_eq!(changes.len(), 2);
+            matches!(status, PatchApplyStatus::Completed);
+        }, _ => panic!("wrong variant") }
+    }
+
+    #[test]
+    fn event_turn_completed_with_usage() {
+        let ev = ThreadEvent::TurnCompleted { usage: Usage { input_tokens: 10, cached_input_tokens: 2, output_tokens: 7 } };
+        let json = serde_json::to_value(&ev).expect("serialize");
+        assert_eq!(json.get("type").and_then(|x| x.as_str()), Some("turn.completed"));
+        let usage = json.get("usage").expect("usage");
+        assert_eq!(usage.get("input_tokens").and_then(|x| x.as_i64()), Some(10));
+        let back: ThreadEvent = serde_json::from_value(json).expect("deserialize");
+        match back { ThreadEvent::TurnCompleted { usage } => {
+            assert_eq!(usage.input_tokens, 10);
+            assert_eq!(usage.cached_input_tokens, 2);
+            assert_eq!(usage.output_tokens, 7);
+        }, _ => panic!("wrong variant") }
+    }
+
+    #[test]
+    fn event_error_round_trip() {
+        let ev = ThreadEvent::Error { message: "boom".into() };
+        let json = serde_json::to_value(&ev).expect("serialize");
+        assert_eq!(json.get("type").and_then(|x| x.as_str()), Some("error"));
+        assert_eq!(json.get("message").and_then(|x| x.as_str()), Some("boom"));
+        let back: ThreadEvent = serde_json::from_value(json).expect("deserialize");
+        match back { ThreadEvent::Error { message } => assert_eq!(message, "boom"), _ => panic!("wrong variant") }
+    }
+}
