@@ -27,6 +27,7 @@ mod bootstrap;
 mod convex_write;
 mod codex_runner;
 use crate::codex_runner::ChildWithIo;
+use crate::watchers::{watch_projects_and_sync, watch_sessions_and_tail, watch_skills_and_broadcast, sync_projects_to_convex, sync_skills_to_convex};
 
 // Helper: convert Convex FunctionResult into plain JSON for inspection
 fn convex_result_to_json(res: convex::FunctionResult) -> serde_json::Value {
@@ -52,6 +53,7 @@ mod controls;
 mod state;
 mod util;
 mod ws;
+mod watchers;
 // spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
@@ -139,7 +141,7 @@ async fn main() -> Result<()> {
     // Optional destructive clear of all Convex data before ingest (opt-in), only if we manage Convex
     if opts.manage_convex {
         if std::env::var("OPENAGENTS_CONVEX_CLEAR").ok().as_deref() == Some("1") {
-            if let Err(e) = run_convex_clear_all(opts.convex_port).await {
+            if let Err(e) = crate::util::run_convex_clear_all(opts.convex_port).await {
                 error!(?e, "convex clearAll failed");
             }
         }
@@ -180,7 +182,7 @@ async fn main() -> Result<()> {
         info!("msg" = "OPENAGENTS_CONVEX_SYNC=0 — FS→Convex sync disabled");
     }
     // Background: enqueue historical threads/messages to the mirror spool on startup
-    tokio::spawn(enqueue_historical_on_start(state.clone()));
+    tokio::spawn(crate::watchers::enqueue_historical_on_start(state.clone()));
 
     // HTTP submit endpoint for app → bridge turn submission
     let app = Router::new().route("/ws", get(crate::ws::ws_handler)).with_state(state);
@@ -216,7 +218,7 @@ fn default_convex_db() -> PathBuf {
     PathBuf::from("data.sqlite3")
 }
 
-fn repo_root() -> PathBuf { detect_repo_root(None) }
+// legacy helper removed (use bootstrap/codex_runner detect_repo_root internally)
 
 async fn convex_health(url: &str) -> Result<bool> {
     let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build()?;
@@ -323,7 +325,7 @@ async fn bootstrap_convex(opts: &Opts) -> Result<()> {
     // 2) Ensure Bun is installed or install it to ~/.bun/bin
     let bun_bin = ensure_bun_installed().await?;
     // 3) bun install (idempotent)
-    let root = repo_root();
+    let root = crate::util::detect_repo_root(None);
     info!(dir=%root.display(), msg="running bun install");
     let status = Command::new(&bun_bin)
         .arg("install")
@@ -346,7 +348,7 @@ async fn bootstrap_convex(opts: &Opts) -> Result<()> {
 
 fn ensure_env_local(port: u16) -> Result<()> {
     use std::io::Write;
-    let root = repo_root();
+    let root = crate::util::detect_repo_root(None);
     let path = root.join(".env.local");
     if path.exists() { return Ok(()); }
     let url = format!("http://127.0.0.1:{}", port);
@@ -393,7 +395,7 @@ async fn ensure_local_backend_present() -> Result<()> {
     let bun_bin = ensure_bun_installed().await?;
     // Ask convex CLI to fetch/upgrade local backend binary into its cache
     // We use --once and --skip-push to avoid long-running watchers or pushing functions.
-    let root = repo_root();
+    let root = crate::util::detect_repo_root(None);
     info!(dir=%root.display(), msg="ensuring Convex local backend binary via convex CLI");
     let status = Command::new(&bun_bin)
         .args(["x", "convex", "dev", "--once", "--skip-push", "--local-force-upgrade"])
@@ -486,585 +488,12 @@ fn insert_demo_thread(db_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
-}
+// ws handlers moved to ws.rs
 
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
-    info!("msg" = "websocket connected");
-
-    // Broadcast reader → socket
-    let mut rx = state.tx.subscribe();
-    let (mut sink, mut stream) = socket.split();
-    let history = { state.history.lock().await.clone() };
-    let mut sink_task = tokio::spawn(async move {
-        for line in history {
-            if sink.send(Message::Text(line.into())).await.is_err() {
-                return;
-            }
-        }
-        loop {
-            match rx.recv().await {
-                Ok(line) => {
-                    if sink.send(Message::Text(line.into())).await.is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    });
-
-    // Socket → child stdin
-    let stdin_state = state.clone();
-    let mut read_task = tokio::spawn(async move {
-        while let Some(Ok(msg)) = stream.next().await {
-            match msg {
-                Message::Text(t) => {
-                    if let Some(cmd) = crate::controls::parse_control_command(&t) {
-                        info!(?cmd, "ws control command");
-                        match cmd {
-                            crate::controls::ControlCommand::Interrupt => {
-                                if let Err(e) = interrupt_running_child(&stdin_state).await {
-                                    error!(?e, "failed to interrupt codex child");
-                                }
-                            }
-                            // History/Thread controls removed — Convex-only UI now
-                            crate::controls::ControlCommand::Projects => {
-                                match crate::projects::list_projects() {
-                                    Ok(items) => {
-                                        let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
-                                        let _ = stdin_state.tx.send(line);
-                                    }
-                                    Err(e) => { error!(?e, "projects list failed via ws"); }
-                                }
-                            }
-                            crate::controls::ControlCommand::Skills => {
-                                match crate::skills::list_skills() {
-                                    Ok(items) => {
-                                        let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string();
-                                        let _ = stdin_state.tx.send(line);
-                                    }
-                                    Err(e) => { error!(?e, "skills list failed via ws"); }
-                                }
-                            }
-                            crate::controls::ControlCommand::BridgeStatus => {
-                                let codex_pid = { *stdin_state.child_pid.lock().await };
-                                let last_thread_id = { stdin_state.last_thread_id.lock().await.clone() };
-                                let bind = stdin_state.opts.bind.clone();
-                                let convex_url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                let convex_healthy = convex_health(&convex_url).await.unwrap_or(false);
-                                let line = serde_json::json!({
-                                    "type": "bridge.status",
-                                    "bind": bind,
-                                    "codex_pid": codex_pid,
-                                    "last_thread_id": last_thread_id,
-                                    "convex_url": convex_url,
-                                    "convex_healthy": convex_healthy
-                                }).to_string();
-                                let _ = stdin_state.tx.send(line);
-                            }
-                            crate::controls::ControlCommand::ConvexStatus => {
-                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
-                                let healthy = convex_health(&url).await.unwrap_or(false);
-                                let tables = if healthy { list_sqlite_tables(&db).unwrap_or_default() } else { Vec::new() };
-                                let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
-                                let _ = stdin_state.tx.send(line);
-                            }
-                            crate::controls::ControlCommand::ConvexCreateDemo => {
-                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
-                                let _ = create_demo_table(&db);
-                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                let healthy = convex_health(&url).await.unwrap_or(false);
-                                let tables = list_sqlite_tables(&db).unwrap_or_default();
-                                let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
-                                let _ = stdin_state.tx.send(line);
-                            }
-                            crate::controls::ControlCommand::ConvexCreateThreads => {
-                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
-                                let _ = create_threads_table(&db);
-                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                let healthy = convex_health(&url).await.unwrap_or(false);
-                                let tables = list_sqlite_tables(&db).unwrap_or_default();
-                                let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
-                                let _ = stdin_state.tx.send(line);
-                            }
-                            crate::controls::ControlCommand::ConvexCreateDemoThread => {
-                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
-                                let _ = create_threads_table(&db);
-                                let _ = insert_demo_thread(&db);
-                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                let healthy = convex_health(&url).await.unwrap_or(false);
-                                let tables = list_sqlite_tables(&db).unwrap_or_default();
-                                let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
-                                let _ = stdin_state.tx.send(line);
-                            }
-                            crate::controls::ControlCommand::ConvexBackfill => {
-                                let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
-                                    std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
-                                });
-                                let limit = 400usize;
-                                match stdin_state.history_cache.lock().await.get(std::path::Path::new(&base), limit, None) {
-                                    Ok(items) => {
-                                        use convex::{ConvexClient, Value};
-                                        use std::collections::BTreeMap;
-                                        let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                        let mut client = match ConvexClient::new(&url).await { Ok(c)=>c, Err(e)=>{ error!(?e, "convex client init failed for backfill");
-                                            let line = serde_json::json!({"type":"bridge.convex_backfill","status":"error","error":"convex init failed"}).to_string(); let _ = stdin_state.tx.send(line); continue; } };
-                                        for h in items.clone() {
-                                            if let Some(path) = crate::history::resolve_session_path(std::path::Path::new(&base), Some(&h.id), Some(&h.path)) {
-                                                if let Ok(th) = crate::history::parse_thread(std::path::Path::new(&path)) {
-                                                    let resume_id = th.resume_id.clone().unwrap_or(h.id.clone());
-                                                    let title = th.title.clone();
-                                                    // Compute strict started_ms as in enqueue_single_thread
-                                                    let started_ms = th.started_ts.map(|t| t * 1000)
-                                                        .or_else(|| crate::history::derive_started_ts_from_path(std::path::Path::new(&path)).map(|t| t * 1000))
-                                                        .unwrap_or_else(|| {
-                                                            let today = chrono::Local::now().date_naive();
-                                                            let ndt = chrono::NaiveDateTime::new(today, chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-                                                            if let Some(dt) = chrono::Local.from_local_datetime(&ndt).single() { (dt.timestamp() as u64) * 1000 } else { 0 }
-                                                        });
-                                                    // Upsert thread into Convex using resume_id as threadId for historical rows
-                                                    let mut targs: BTreeMap<String, Value> = BTreeMap::new();
-                                                    targs.insert("threadId".into(), Value::from(resume_id.clone()));
-                                                    targs.insert("resumeId".into(), Value::from(resume_id.clone()));
-                                                    targs.insert("title".into(), Value::from(title.clone()));
-                                                    targs.insert("createdAt".into(), Value::from(started_ms as f64));
-                                                    targs.insert("updatedAt".into(), Value::from(started_ms as f64));
-                                                    let _ = client.mutation("threads:upsertFromStream", targs).await;
-                                                    for it in th.items {
-                                                        if it.kind == "message" {
-                                                            let role = it.role.as_deref().unwrap_or("assistant");
-                                                            let text = it.text;
-                                                            let mut margs: BTreeMap<String, Value> = BTreeMap::new();
-                                                            margs.insert("threadId".into(), Value::from(resume_id.clone()));
-                                                            margs.insert("role".into(), Value::from(role));
-                                                            margs.insert("kind".into(), Value::from("message"));
-                                                            margs.insert("text".into(), Value::from(text));
-                                                            margs.insert("ts".into(), Value::from((it.ts as u64 * 1000) as f64));
-                                                            let _ = client.mutation("messages:create", margs).await;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        let _ = stdin_state.tx.send(serde_json::json!({"type":"bridge.convex_backfill","status":"enqueued","count": items.len()}).to_string());
-                                    }
-                                    Err(e) => { error!(?e, "backfill scan failed"); }
-                                }
-                            }
-                            crate::controls::ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id } => {
-                                // Map to project working dir
-                                let desired_cd = project_id.as_ref().and_then(|pid| {
-                                    match crate::projects::list_projects() { Ok(list) => list.into_iter().find(|p| p.id == *pid).map(|p| p.working_dir), Err(_) => None }
-                                });
-                                { *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone()); }
-                                // Ensure child running with desired dir/resume
-                                match codex_runner::spawn_codex_child_only_with_dir(
-                                    &stdin_state.opts,
-                                    desired_cd.clone().map(|s| std::path::PathBuf::from(s)),
-                                    resume_id.as_deref(),
-                                ).await {
-                                    Ok(mut child) => {
-                                        if let Some(stdin) = child.stdin.take() { *stdin_state.child_stdin.lock().await = Some(stdin); }
-                                        if let Err(e) = start_stream_forwarders(child, stdin_state.clone()).await { error!(?e, "run.submit: forwarders failed"); }
-                                        // Write config + text
-                                        let mut cfg = serde_json::json!({ "sandbox": "danger-full-access", "approval": "never" });
-                                        if let Some(cd) = desired_cd.as_deref() { cfg["cd"] = serde_json::Value::String(cd.to_string()); }
-                                        if let Some(pid) = project_id.as_deref() { cfg["project"] = serde_json::json!({ "id": pid }); }
-                                        let payload = format!("{}\n{}\n", cfg.to_string(), text);
-                                        if let Some(mut stdin) = stdin_state.child_stdin.lock().await.take() {
-                                            if let Err(e) = stdin.write_all(payload.as_bytes()).await { error!(?e, "run.submit: write failed"); }
-                                            let _ = stdin.flush().await; drop(stdin);
-                                        }
-                                    }
-                                    Err(e) => { error!(?e, "run.submit: spawn failed"); }
-                                }
-                            }
-                            crate::controls::ControlCommand::ProjectSave { project } => {
-                                match crate::projects::save_project(&project) {
-                                    Ok(_) => {
-                                        if let Ok(items) = crate::projects::list_projects() {
-                                            let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
-                                            let _ = stdin_state.tx.send(line);
-                                        }
-                                    }
-                                    Err(e) => { error!(?e, "project save failed via ws"); }
-                                }
-                            }
-                            crate::controls::ControlCommand::ProjectDelete { id } => {
-                                match crate::projects::delete_project(&id) {
-                                    Ok(_) => {
-                                        if let Ok(items) = crate::projects::list_projects() {
-                                            let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
-                                            let _ = stdin_state.tx.send(line);
-                                        }
-                                    }
-                                    Err(e) => { error!(?e, "project delete failed via ws"); }
-                                }
-                            }
-                        }
-                        continue;
-                    }
-                    let preview = if t.len() > 180 {
-                        format!("{}…", &t[..180].replace('\n', "\\n"))
-                    } else {
-                        t.replace('\n', "\\n")
-                    };
-                    info!(
-                        "msg" = "ws text received",
-                        size = t.len(),
-                        preview = preview
-                    );
-                    let desired_cd = extract_cd_from_ws_payload(&t);
-                    let desired_resume = extract_resume_from_ws_payload(&t); // "last" | session id | "new"/"none" (start fresh)
-                    info!(?desired_cd, ?desired_resume, msg = "parsed ws preface");
-                    // Ensure we have a live codex stdin; respawn if needed
-                    let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
-                    if need_respawn || desired_cd.is_some() {
-                        // Decide on resume: prefer explicit resume id from preface; otherwise use last captured thread id
-                        let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
-                        let resume_arg: Option<String> = match desired_resume.as_deref() {
-                            Some("new") | Some("none") => None,
-                            Some("last") => resume_id.clone(),
-                            Some(s) if !s.is_empty() => Some(s.to_string()),
-                            _ => resume_id.clone(),
-                        };
-                        // Defer closing previous stdin until we know the new child spawned.
-                        match codex_runner::spawn_codex_child_only_with_dir(
-                            &stdin_state.opts,
-                            desired_cd.clone(),
-                            resume_arg.as_deref(),
-                        )
-                        .await
-                        {
-                            Ok(mut child) => {
-                                // Close previous stdin only after we have a new child
-                                if desired_cd.is_some() {
-                                    let mut g = stdin_state.child_stdin.lock().await;
-                                    let _ = g.take();
-                                }
-                                {
-                                    let mut pid_lock = stdin_state.child_pid.lock().await;
-                                    *pid_lock = Some(child.pid);
-                                }
-                                if let Some(stdin) = child.stdin.take() {
-                                    *stdin_state.child_stdin.lock().await = Some(stdin);
-                                } else {
-                                    error!("respawned codex missing stdin");
-                                }
-                                // start forwarding for new child
-                                if let Err(e) =
-                                    start_stream_forwarders(child, stdin_state.clone()).await
-                                {
-                                    error!(?e, "failed starting forwarders for respawned codex");
-                                }
-                            }
-                            Err(e) => {
-                                error!(?e, "failed to respawn codex");
-                            }
-                        }
-                    }
-
-                    let mut guard = stdin_state.child_stdin.lock().await;
-                    if let Some(mut stdin) = guard.take() {
-                        let mut data = t.to_string();
-                        // Always-resume mode: no injection fallback
-                        if !data.ends_with('\n') {
-                            data.push('\n');
-                        }
-                        let write_preview = if data.len() > 160 {
-                            format!("{}…", &data[..160].replace('\n', "\\n"))
-                        } else {
-                            data.replace('\n', "\\n")
-                        };
-                        info!(
-                            "msg" = "writing to child stdin",
-                            bytes = write_preview.len(),
-                            preview = write_preview
-                        );
-                        if let Err(e) = stdin.write_all(data.as_bytes()).await {
-                            error!(?e, "failed to write to codex stdin");
-                            break;
-                        }
-                        let _ = stdin.flush().await;
-                        drop(stdin); // close to send EOF
-                    } else {
-                        error!("stdin already closed; ignoring input");
-                    }
-                }
-                Message::Binary(b) => {
-                    info!("msg" = "ws binary received", size = b.len());
-                    let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
-                    if need_respawn {
-                        let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
-                        match codex_runner::spawn_codex_child_only_with_dir(
-                            &stdin_state.opts,
-                            None,
-                            resume_id.as_deref(),
-                        )
-                        .await
-                        {
-                            Ok(mut child) => {
-                                {
-                                    let mut pid_lock = stdin_state.child_pid.lock().await;
-                                    *pid_lock = Some(child.pid);
-                                }
-                                if let Some(stdin) = child.stdin.take() {
-                                    *stdin_state.child_stdin.lock().await = Some(stdin);
-                                }
-                                if let Err(e) =
-                                    start_stream_forwarders(child, stdin_state.clone()).await
-                                {
-                                    error!(?e, "failed starting forwarders for respawned codex");
-                                }
-                            }
-                            Err(e) => {
-                                error!(?e, "failed to respawn codex");
-                            }
-                        }
-                    }
-
-                    let mut guard = stdin_state.child_stdin.lock().await;
-                    if let Some(mut stdin) = guard.take() {
-                        if let Err(e) = stdin.write_all(&b).await {
-                            error!(?e, "failed to write binary to codex stdin");
-                            break;
-                        }
-                        let _ = stdin.flush().await;
-                        drop(stdin);
-                    } else {
-                        error!("stdin already closed; ignoring binary");
-                    }
-                }
-                Message::Close(_) => break,
-                Message::Ping(_) | Message::Pong(_) => {}
-            }
-        }
-    });
-
-    // Await either task end
-    tokio::select! {
-        _ = (&mut sink_task) => { read_task.abort(); },
-        _ = (&mut read_task) => { sink_task.abort(); },
-    }
-    info!("msg" = "websocket disconnected");
-}
 
 // ChildWithIo is provided by codex_runner module
 
-async fn spawn_codex(opts: &Opts) -> Result<(ChildWithIo, broadcast::Sender<String>)> {
-    let (bin, args) = build_bin_and_args(opts)?; // initial spawn: never add resume here
-    let workdir = detect_repo_root(None);
-    info!(
-        "bin" = %bin.display(),
-        "args" = ?args,
-        "workdir" = %workdir.display(),
-        "msg" = "spawning codex"
-    );
-    let mut command = Command::new(&bin);
-    command
-        .current_dir(&workdir)
-        .args(&args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(unix)]
-    unsafe {
-        command.pre_exec(|| {
-            // Put the child in its own process group so we can signal the group
-            let res = libc::setpgid(0, 0);
-            if res != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-    let mut child = command.spawn().context("failed to spawn codex")?;
-
-    let pid = child.id().context("child pid missing")?;
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-
-    let (tx, _rx) = broadcast::channel::<String>(1024);
-
-    tokio::spawn(async move {
-        match child.wait().await {
-            Ok(status) => info!(?status, "codex exited"),
-            Err(e) => error!(?e, "codex wait failed"),
-        }
-    });
-
-    Ok((
-        ChildWithIo {
-            pid,
-            stdin,
-            stdout,
-            stderr,
-        },
-        tx,
-    ))
-}
-
-// Note: single-purpose respawns are handled by spawn_codex_child_only_with_dir.
-
-async fn spawn_codex_child_only_with_dir(
-    opts: &Opts,
-    workdir_override: Option<PathBuf>,
-    resume_id: Option<&str>,
-) -> Result<ChildWithIo> {
-    let (bin, mut args) = build_bin_and_args(opts)?;
-    // Attach resume args when requested; automatically fall back if the CLI
-    // doesn't support exec resume on this machine.
-    if let Some(rid) = resume_id {
-        let supports = cli_supports_resume(&bin);
-        if supports {
-            if rid == "last" {
-                info!(msg = "enabling resume --last");
-                args.push("resume".into());
-                args.push("--last".into());
-                // No positional dash: exec reads from stdin when no prompt arg is provided
-            } else {
-                info!(resume = rid, msg = "enabling resume by id");
-                args.push("resume".into());
-                args.push(rid.into());
-                // No positional dash: exec reads from stdin when no prompt arg is provided
-            }
-        } else {
-            info!(
-                requested = rid,
-                msg = "exec resume not supported by codex binary; spawning without resume"
-            );
-        }
-    }
-    let workdir = workdir_override.unwrap_or_else(|| detect_repo_root(None));
-    info!(
-        "bin" = %bin.display(),
-        "args" = ?args,
-        "workdir" = %workdir.display(),
-        "msg" = "respawn codex for new prompt"
-    );
-    let mut command = Command::new(&bin);
-    command
-        .current_dir(&workdir)
-        .args(&args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(unix)]
-    unsafe {
-        command.pre_exec(|| {
-            let res = libc::setpgid(0, 0);
-            if res != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-    let mut child = command.spawn().context("failed to spawn codex")?;
-    let pid = child.id().context("child pid missing")?;
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    tokio::spawn(async move {
-        match child.wait().await {
-            Ok(status) => info!(?status, "codex exited"),
-            Err(e) => error!(?e, "codex wait failed"),
-        }
-    });
-    Ok(ChildWithIo {
-        pid,
-        stdin,
-        stdout,
-        stderr,
-    })
-}
-
-fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
-    let bin = match &opts.codex_bin {
-        Some(p) => p.clone(),
-        None => which::which("codex").unwrap_or_else(|_| PathBuf::from("codex")),
-    };
-
-    let mut args: Vec<String> = if let Some(args_str) = &opts.codex_args {
-        shlex::split(args_str).ok_or_else(|| anyhow!("failed to parse CODEX_ARGS"))?
-    } else {
-        vec!["exec".into(), "--json".into()]
-    };
-    // Do not attach resume here; we add it per-message when respawning after a
-    // prior thread id is known.
-    if !opts.extra.is_empty() {
-        args.extend(opts.extra.clone());
-    }
-
-    fn contains_flag(args: &[String], short: &str, long: &str) -> bool {
-        args.iter().any(|a| {
-            a == short
-                || a == long
-                || a.starts_with(&format!("{short}="))
-                || a.starts_with(&format!("{long}="))
-        })
-    }
-    fn contains_substring(args: &[String], needle: &str) -> bool {
-        args.iter().any(|a| a.contains(needle))
-    }
-
-    let mut pre_flags: Vec<String> = Vec::new();
-    if !contains_flag(&args, "-m", "--model") {
-        pre_flags.push("-m".into());
-        pre_flags.push("gpt-5".into());
-    }
-    if !contains_substring(&args, "model_reasoning_effort=") {
-        pre_flags.push("-c".into());
-        pre_flags.push("model_reasoning_effort=\"high\"".into());
-    }
-    if !args
-        .iter()
-        .any(|a| a == "--dangerously-bypass-approvals-and-sandbox")
-    {
-        pre_flags.push("--dangerously-bypass-approvals-and-sandbox".into());
-    }
-    // Ensure explicit sandbox + approvals flags so the CLI reports the correct state
-    if !contains_flag(&args, "-s", "--sandbox") {
-        pre_flags.push("-s".into());
-        pre_flags.push("danger-full-access".into());
-    }
-    // Do not add explicit approvals when using bypass; the bypass implies no approvals
-    // Strongly hint full disk access and override default preset via config
-    if !contains_substring(&args, "sandbox_permissions=") {
-        pre_flags.push("-c".into());
-        pre_flags.push(r#"sandbox_permissions=["disk-full-access"]"#.into());
-    }
-    if !contains_substring(&args, "sandbox_mode=") {
-        pre_flags.push("-c".into());
-        pre_flags.push(r#"sandbox_mode="danger-full-access""#.into());
-    }
-    if !contains_substring(&args, "approval_policy=") {
-        pre_flags.push("-c".into());
-        pre_flags.push(r#"approval_policy="never""#.into());
-    }
-
-    if !pre_flags.is_empty() {
-        let mut updated = pre_flags;
-        updated.extend(args);
-        args = updated;
-    }
-
-    Ok((bin, args))
-}
-
-fn cli_supports_resume(bin: &PathBuf) -> bool {
-    // Strict detection: only treat as supported if `codex exec resume --help` succeeds.
-    match std::process::Command::new(bin)
-        .args(["exec", "resume", "--help"]) // exists only on resume-capable builds
-        .output()
-    {
-        Ok(o) => o.status.success(),
-        Err(_) => false,
-    }
-}
+// codex spawn helpers moved to codex_runner.rs
 
 async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -> Result<()> {
     let stdout = child.stdout.take().context("missing stdout")?;
@@ -1314,6 +743,7 @@ async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState>) -
 
     // streaming helpers moved to convex_write.rs
 
+/* moved to watchers.rs
 async fn watch_skills_and_broadcast(state: Arc<AppState>) {
     use notify::{RecommendedWatcher, RecursiveMode, Watcher};
     use std::sync::mpsc::channel;
@@ -1891,3 +1321,4 @@ async fn mirror_session_tail_to_convex(state: Arc<AppState>, path: &std::path::P
     }
     Ok(())
 }
+*/
