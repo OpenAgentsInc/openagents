@@ -154,6 +154,7 @@ instructions: |
 - Respect concurrent work: assume other agents may be active on this branch. Do not run destructive or history‑rewriting commands (e.g., `git reset --hard`, `git clean -fdx`, force pushes, or rebases) unless explicitly instructed.
 - Keep commits focused: limit diffs to the smallest set of files necessary; avoid touching unrelated files.
 - Review before committing: use `git status` and `git diff --staged` to confirm only intended paths are included.
+- Branching policy: do not create branches unless the user explicitly directs you to. Default to committing on `main` and opening PRs only when requested.
 
 ## Agent Workflow Requirements (Expo TypeScript)
 - If you touch TypeScript/TSX under `expo/`, run the type checker via `bun run typecheck`.

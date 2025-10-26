@@ -9,22 +9,30 @@ OUT_BIN="$ROOT_DIR/tauri/src-tauri/bin/local_backend"
 
 echo "[fetch-convex] root=$ROOT_DIR"
 
-# Ensure bun is available
+# Ensure Bun is available
 if ! command -v bun >/dev/null 2>&1; then
   echo "[fetch-convex] error: bun is required (https://bun.sh)." >&2
   exit 1
 fi
 
-echo "[fetch-convex] requesting convex local backend via bunx convex dev --once --skip-push --local-force-upgrade"
+echo "[fetch-convex] requesting convex local backend via bunx convex dev --configure --dev-deployment local --once --skip-push --local-force-upgrade"
 (
   cd "$ROOT_DIR"
-  bun x convex dev --once --skip-push --local-force-upgrade || true
+  bun x convex dev --configure --dev-deployment local --once --skip-push --local-force-upgrade || true
 )
 
 # Find the newest cached local backend binary
 CACHE_ROOT="$HOME/.cache/convex/binaries"
 if [ ! -d "$CACHE_ROOT" ]; then
-  echo "[fetch-convex] error: convex cache not found at $CACHE_ROOT" >&2
+  echo "[fetch-convex] convex cache not found at $CACHE_ROOT; trying ~/.openagents/bin/local_backend fallback"
+  if [ -f "$HOME/.openagents/bin/local_backend" ]; then
+    mkdir -p "$(dirname "$OUT_BIN")"
+    cp -f "$HOME/.openagents/bin/local_backend" "$OUT_BIN"
+    chmod +x "$OUT_BIN" || true
+    echo "[fetch-convex] installed from ~/.openagents/bin/local_backend -> $OUT_BIN"
+    exit 0
+  fi
+  echo "[fetch-convex] error: no cache and no ~/.openagents/bin/local_backend; please install Convex CLI then re-run." >&2
   exit 2
 fi
 
