@@ -17,8 +17,6 @@ use crate::convex::{
     list_messages_for_thread,
     subscribe_recent_threads,
     subscribe_thread_messages,
-    MessageRow,
-    ThreadSummary,
 };
 
 #[derive(serde::Serialize)]
@@ -125,6 +123,6 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-use crate::bridge::{deploy_convex_functions_once, detect_repo_root, ensure_bridge_running, is_port_open, start_convex_sidecar};
+use crate::bridge::{deploy_convex_functions_once, ensure_bridge_running, is_port_open, start_convex_sidecar};
 
 // (helper/sidecar functions moved to bridge.rs)
