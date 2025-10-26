@@ -58,4 +58,3 @@ chmod +x "$OUT_BIN" || true
 echo "[fetch-convex] installed -> $OUT_BIN"
 
 exit 0
-
