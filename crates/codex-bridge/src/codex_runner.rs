@@ -70,6 +70,7 @@ pub async fn spawn_codex(
 }
 
 /// Spawn a short‑lived Codex child for one prompt, optionally resuming a thread.
+#[allow(dead_code)]
 pub async fn spawn_codex_child_only_with_dir(
     opts: &Opts,
     workdir_override: Option<PathBuf>,

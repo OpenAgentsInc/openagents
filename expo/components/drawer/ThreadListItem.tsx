@@ -40,6 +40,36 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   const updatedAt = (row?.updatedAt ?? row?.createdAt ?? 0) as number
   const countFromRow = typeof (row as any)?.messageCount === 'number' ? (row as any).messageCount as number : undefined
   const count = countFromRow ?? ((useQuery as any)('messages:countForThread', { threadId }) as number | undefined)
+  // Subscribe to recent messages for this thread to derive a last-message snippet for the drawer label
+  const recent = (useQuery as any)('messages:forThread', { threadId, limit: 50 }) as any[] | undefined | null
+  const lastSnippet = React.useMemo(() => {
+    const arr: any[] = Array.isArray(recent) ? recent : []
+    // Consider only chat messages
+    const msgs = arr.filter((m) => (m?.kind || (m?.role ? 'message' : '')) === 'message')
+    if (msgs.length === 0) return row?.title ? String(row.title) : 'New Thread'
+    // Pick the one with the largest timestamp if available
+    let last = msgs[msgs.length - 1]
+    try {
+      if (msgs.length > 1) {
+        const byTs = [...msgs]
+        byTs.sort((a, b) => (Number(a?.ts || 0) - Number(b?.ts || 0)))
+        last = byTs[byTs.length - 1]
+      }
+    } catch {}
+    const raw = String(last?.text || '')
+    // Basic markdown cleanup and truncation to keep it concise in the drawer
+    const cleaned = raw
+      .replace(/```[\s\S]*?```/g, '') // remove fenced code blocks
+      .replace(/`([^`]*)`/g, '$1') // inline code
+      .replace(/^#+\s*/gm, '') // headings
+      .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+      .replace(/\*([^*]+)\*/g, '$1') // emphasis
+      .replace(/\[(.*?)\]\([^)]*\)/g, '$1') // links [text](url)
+      .replace(/\s+/g, ' ') // collapse whitespace
+      .trim()
+    const maxLen = 48
+    return cleaned.length > maxLen ? `${cleaned.slice(0, maxLen - 1)}…` : (cleaned || 'New Thread')
+  }, [recent, row?.title])
   const open = () => {
     if (onPress) { try { onPress() } catch {} ; return }
     try { router.push(`/convex/thread/${encodeURIComponent(String(row._id || row.id))}`) } catch {}
@@ -47,6 +77,6 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   // Filter out threads that have zero primary chat messages when count is known
   if (typeof count === 'number' && count <= 0) return null
   return (
-    <ThreadListItemBase title={row?.title || 'Thread'} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
+    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
   )
 }

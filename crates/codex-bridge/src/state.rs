@@ -27,6 +27,7 @@ pub struct StreamEntry {
 /// Global bridge state shared across WS handlers and background tasks.
 pub struct AppState {
     pub tx: broadcast::Sender<String>,
+    #[allow(dead_code)]
     pub child_stdin: Mutex<Option<tokio::process::ChildStdin>>, // drop after first write to signal EOF
     pub child_pid: Mutex<Option<u32>>,
     pub opts: Opts,

@@ -44,7 +44,8 @@ export function ConvexProviderLocal({ children }: { children: React.ReactNode })
 
   const client = React.useMemo(() => {
     try { console.log('[convex] client url =', convexUrl) } catch {}
-    return new ConvexReactClient(convexUrl, { verbose: true })
+    // Quiet the Convex client's internal WebSocket debug output
+    return new ConvexReactClient(convexUrl, { verbose: false })
   }, [convexUrl])
 
   return <ConvexProvider client={client}>{children}</ConvexProvider>

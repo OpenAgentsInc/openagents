@@ -27,17 +27,21 @@ export default function SettingsScreen() {
         .replace(/\/$/, '')
         .replace(/\/ws$/i, '')
         .replace(/\/$/, '')
-      const hostOnly = (stripped.split(':')[0] || '127.0.0.1')
+      if (!stripped) return ''
+      const hostOnly = (stripped.split(':')[0] || '')
+      if (!hostOnly) return ''
       return `http://${hostOnly}:7788`
     } catch {
-      return 'http://127.0.0.1:7788'
+      return ''
     }
   }, [bridgeHost])
   const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
   const [httpStatus, setHttpStatus] = React.useState<string>('')
   React.useEffect(() => {
     let cancelled = false
-    const url = String(convexUrl || derivedConvexUrl).replace(/\/$/, '') + '/instance_version'
+    const base = String(convexUrl || derivedConvexUrl).trim()
+    if (!base) { setHttpStatus(''); return }
+    const url = base.replace(/\/$/, '') + '/instance_version'
     try {
       fetch(url).then(r => r.text().then(body => {
         if (cancelled) return
@@ -60,6 +64,13 @@ export default function SettingsScreen() {
           value={bridgeCode}
           onChangeText={(v) => {
             setBridgeCode(v)
+            const trimmed = String(v || '').trim()
+            if (!trimmed) {
+              try { disconnect() } catch {}
+              setBridgeHost('')
+              setConvexUrl('')
+              return
+            }
             const parsed = parseBridgeCode(v)
             if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
             if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
@@ -72,12 +83,12 @@ export default function SettingsScreen() {
           placeholderTextColor={Colors.secondary}
           style={[styles.input, { paddingRight: 44 }]}
         />
-        <Pressable onPress={() => setBridgeCode('')} accessibilityLabel='Clear bridge code' style={styles.clearIconArea}>
+        <Pressable onPress={() => { try { disconnect() } catch {}; setBridgeCode(''); setBridgeHost(''); setConvexUrl(''); }} accessibilityLabel='Clear bridge code' style={styles.clearIconArea}>
           <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
         </Pressable>
       </View>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {`ws://${bridgeHost}/ws`}</Text>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>Convex base: {convexUrl || derivedConvexUrl}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {bridgeHost ? `ws://${bridgeHost}/ws` : '(not configured)'}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>Convex base: {convexUrl || derivedConvexUrl || '(not configured)'}</Text>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>Convex status: {convexStatus}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}

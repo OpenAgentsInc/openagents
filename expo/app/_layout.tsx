@@ -17,7 +17,6 @@ import {
 } from "@/constants/typography"
 import { useAutoUpdate } from "@/hooks/use-auto-update"
 import { useAppLogStore } from "@/lib/app-log"
-import { useOnboarding } from "@/lib/onboarding-store"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
 import { ConvexProviderLocal } from "@/providers/convex"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
@@ -225,13 +224,17 @@ function DrawerWrapper() {
   const { open, setOpen } = useDrawer();
   const isRTL = I18nManager.isRTL;
   const router = useRouter();
-  const onboarding = useOnboarding();
+  const { connected } = useBridge();
+  const pathname = (require('expo-router') as any).usePathname?.() as string | undefined;
+  // Connection-gated onboarding: show onboarding while disconnected; hide when connected
   React.useEffect(() => {
-    if (!onboarding.rehydrated) return;
-    if (!onboarding.completed) {
-      try { router.push('/onboarding' as any) } catch {}
+    const path = String(pathname || '')
+    if (!connected) {
+      if (!path.startsWith('/onboarding')) {
+        try { router.push('/onboarding' as any) } catch {}
+      }
     }
-  }, [onboarding.rehydrated, onboarding.completed]);
+  }, [connected, pathname]);
 
   const ConnectionDot = () => {
     const { connected } = useBridge();

@@ -14,6 +14,7 @@ import net from "node:net";
 import http from "node:http";
 import WebSocket from "ws";
 // spawnSync already imported above
+const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v") || process.env.TRICODER_VERBOSE === "1";
 
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
@@ -58,23 +59,22 @@ function main() {
       const isUrl = line.startsWith("ws://") || line.startsWith("wss://");
       if (isUrl && !bridgeUrl) {
         bridgeUrl = line.trim();
-        // Log public bridge URL
-        console.log(chalk.dim(`[bridge-public] ${bridgeUrl}`));
+        if (VERBOSE) console.log(chalk.dim(`[bridge-public] ${bridgeUrl}`));
         // After bridge URL, launch Convex tunnel
         launchConvexTunnel(repoRoot, (url) => {
           convexUrl = url;
-          console.log(chalk.dim(`[convex-public] ${convexUrl}`));
+          if (VERBOSE) console.log(chalk.dim(`[convex-public] ${convexUrl}`));
           maybePrintPairCode(bridgeUrl!, convexUrl!);
           // Public probes
-          try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch {}
-          try { if (convexUrl) probePublicConvex(convexUrl); } catch {}
+          if (VERBOSE) { try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch {} }
+          if (VERBOSE) { try { if (convexUrl) probePublicConvex(convexUrl); } catch {} }
           // Connectivity summary
-          console.log(chalk.dim(`[pair] bridge=${bridgeUrl} convex=${convexUrl}`));
+          if (VERBOSE) console.log(chalk.dim(`[pair] bridge=${bridgeUrl} convex=${convexUrl}`));
           // Seed a demo thread via bridge controls to ensure history appears
-          try { seedDemoViaBridgeControl(); } catch {}
+          if (VERBOSE) { try { seedDemoViaBridgeControl(); } catch {} }
         });
         // Start local health probes (status changes only)
-        startLocalProbes(repoRoot);
+        if (VERBOSE) startLocalProbes(repoRoot);
       }
     }
   });
@@ -82,12 +82,13 @@ function main() {
   // Aggregate noisy bore logs
   let bridgeConnNew = 0, bridgeConnExit = 0;
   setInterval(() => {
-    if (bridgeConnNew || bridgeConnExit) {
+    if (VERBOSE && (bridgeConnNew || bridgeConnExit)) {
       console.log(chalk.dim(`[bridge-tunnel] ${bridgeConnNew} new, ${bridgeConnExit} exited (last 10s)`));
       bridgeConnNew = 0; bridgeConnExit = 0;
     }
   }, 10000);
   child.stderr.on("data", (chunk: string) => {
+    if (!VERBOSE) return;
     for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
       if (/bore_cli::client: new connection/.test(line)) { bridgeConnNew++; continue; }
       if (/bore_cli::client: connection exited/.test(line)) { bridgeConnExit++; continue; }
@@ -115,11 +116,11 @@ function main() {
     try {
       const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'pipe' });
       const ok = probe.status === 0;
-      console.log(ok ? chalk.dim('[codex] codex binary found in PATH') : chalk.yellow('[codex] codex binary NOT found — assistant responses will not stream'));
+      if (VERBOSE) console.log(ok ? chalk.dim('[codex] codex binary found in PATH') : chalk.yellow('[codex] codex binary NOT found — assistant responses will not stream'));
       // Bridge status via WS
-      try { bridgeStatus(); } catch {}
+      if (VERBOSE) { try { bridgeStatus(); } catch {} }
       // Start persistent WS tail to print bridge + codex events
-      try { startBridgeEventTail(); } catch {}
+      if (VERBOSE) { try { startBridgeEventTail(); } catch {} }
     } catch {}
   }
 }
@@ -149,12 +150,13 @@ function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
   child.stderr.setEncoding("utf8");
   let convexConnNew = 0, convexConnExit = 0;
   setInterval(() => {
-    if (convexConnNew || convexConnExit) {
+    if (VERBOSE && (convexConnNew || convexConnExit)) {
       console.log(chalk.dim(`[convex-tunnel] ${convexConnNew} new, ${convexConnExit} exited (last 10s)`));
       convexConnNew = 0; convexConnExit = 0;
     }
   }, 10000);
   child.stderr.on("data", (chunk: string) => {
+    if (!VERBOSE) return;
     for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
       if (/bore_cli::client: new connection/.test(line)) { convexConnNew++; continue; }
       if (/bore_cli::client: connection exited/.test(line)) { convexConnExit++; continue; }
@@ -178,7 +180,7 @@ function ensureBridgeRunning(repoRoot: string) {
     // Probe whether current bridge supports echo. If not, or if forced, restart it.
     const supports = await probeBridgeEchoOnce(700).catch(() => false);
     if (force || !supports) {
-      console.log(chalk.dim(`Restarting local bridge with debug enabled (${force ? 'forced' : 'no echo support'})…`));
+      if (VERBOSE) console.log(chalk.dim(`Restarting local bridge with debug enabled (${force ? 'forced' : 'no echo support'})…`));
       try { restartBridgeProcess(repoRoot); } catch {}
     }
   });
@@ -199,7 +201,7 @@ function startLocalProbes(repoRoot: string) {
     s.once("connect", () => { ok = true; try { s.end(); } catch {} });
     s.once("error", () => { ok = false; });
     s.once("close", () => {
-      if (lastBridgeOk !== ok) {
+      if (VERBOSE && lastBridgeOk !== ok) {
         lastBridgeOk = ok;
         console.log(ok ? chalk.dim("[bridge-local] 127.0.0.1:8787 reachable") : chalk.dim("[bridge-local] 127.0.0.1:8787 not reachable"));
       }
@@ -209,20 +211,20 @@ function startLocalProbes(repoRoot: string) {
   const probeConvex = () => {
     const req = http.get({ host: "127.0.0.1", port: 7788, path: "/instance_version", timeout: 700 }, (res) => {
       const ok = res.statusCode !== undefined && res.statusCode >= 200 && res.statusCode < 300;
-      if (lastConvexOk !== ok) {
+      if (VERBOSE && lastConvexOk !== ok) {
         lastConvexOk = ok;
         console.log(ok ? chalk.dim("[convex-local] http://127.0.0.1:7788 healthy") : chalk.dim("[convex-local] http://127.0.0.1:7788 unreachable"));
       }
       res.resume();
       // On first healthy, try function push once via root script (best effort)
-      if (ok && (probeConvex as any)._firstDone !== true) {
+      if (VERBOSE && ok && (probeConvex as any)._firstDone !== true) {
         (probeConvex as any)._firstDone = true;
         tryPushConvexFunctions(repoRoot);
       }
     });
     req.on("error", () => {
       const ok = false;
-      if (lastConvexOk !== ok) {
+      if (VERBOSE && lastConvexOk !== ok) {
         lastConvexOk = ok;
         console.log(chalk.dim("[convex-local] http://127.0.0.1:7788 unreachable"));
       }
@@ -239,27 +241,27 @@ function startLocalProbes(repoRoot: string) {
 function tryPushConvexFunctions(repoRoot: string) {
   try {
     // Try root package script first; if missing, fall back to bunx convex dev
-    console.log(chalk.dim(`[convex-bootstrap] pushing functions…`));
+    if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] pushing functions…`));
     const child = spawn("bun", ["run", "convex:dev:once"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.setEncoding("utf8");
-    child.stdout.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
+    child.stdout.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
     child.stderr.setEncoding("utf8");
-    child.stderr.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
+    child.stderr.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
     child.on("exit", (code) => {
       if (code !== 0) {
-        console.log(chalk.dim(`[convex-bootstrap] script missing or failed; trying 'bunx convex dev' one-shot…`));
+        if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] script missing or failed; trying 'bunx convex dev' one-shot…`));
         const fallback = spawn("bunx", ["convex", "dev"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
         fallback.stdout.setEncoding("utf8");
-        fallback.stdout.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
+        fallback.stdout.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
         fallback.stderr.setEncoding("utf8");
-        fallback.stderr.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
-        fallback.on("exit", (c2) => console.log(chalk.dim(`[convex-bootstrap] done (fallback code ${c2 ?? 0})`)));
+        fallback.stderr.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
+        fallback.on("exit", (c2) => { if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] done (fallback code ${c2 ?? 0})`)) });
       } else {
-        console.log(chalk.dim(`[convex-bootstrap] done (code ${code ?? 0})`));
+        if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] done (code ${code ?? 0})`));
       }
     });
   } catch (e: any) {
-    console.log(chalk.dim(`[convex-bootstrap] skipped: ${e?.message || e}`));
+    if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] skipped: ${e?.message || e}`));
   }
 }
 
@@ -274,15 +276,13 @@ function probePublicConvex(base: string) {
       res.on("data", (c) => (body += c));
       res.on("end", () => {
         const snippet = body.trim().slice(0, 80).replace(/\s+/g, " ");
-        console.log(chalk.dim(`[convex-public-check] GET ${u.hostname}:${u.port}/instance_version -> ${code} ${snippet ? `body: ${snippet}` : ""}`));
+        if (VERBOSE) console.log(chalk.dim(`[convex-public-check] GET ${u.hostname}:${u.port}/instance_version -> ${code} ${snippet ? `body: ${snippet}` : ""}`));
       });
     });
-    req.on("error", (e: any) => {
-      console.log(chalk.dim(`[convex-public-check] error: ${e?.message || e}`));
-    });
+    req.on("error", (e: any) => { if (VERBOSE) console.log(chalk.dim(`[convex-public-check] error: ${e?.message || e}`)); });
     req.setTimeout(2500, () => { try { req.destroy(); } catch {} });
   } catch (e: any) {
-    console.log(chalk.dim(`[convex-public-check] invalid URL: ${String(e?.message || e)}`));
+    if (VERBOSE) console.log(chalk.dim(`[convex-public-check] invalid URL: ${String(e?.message || e)}`));
   }
 }
 
@@ -309,16 +309,14 @@ function probePublicBridge(wsUrl: string) {
       buf += String(chunk);
       if (buf.includes("\r\n\r\n")) {
         const first = buf.split(/\r?\n/)[0] || "";
-        console.log(chalk.dim(`[bridge-public-check] ${first}`));
+        if (VERBOSE) console.log(chalk.dim(`[bridge-public-check] ${first}`));
         try { s.destroy(); } catch {}
       }
     });
-    s.on("error", (e: any) => {
-      console.log(chalk.dim(`[bridge-public-check] error: ${e?.message || e}`));
-    });
+    s.on("error", (e: any) => { if (VERBOSE) console.log(chalk.dim(`[bridge-public-check] error: ${e?.message || e}`)); });
     setTimeout(() => { try { s.destroy(); } catch {} }, 2500);
   } catch (e: any) {
-    console.log(chalk.dim(`[bridge-public-check] invalid URL: ${String(e?.message || e)}`));
+    if (VERBOSE) console.log(chalk.dim(`[bridge-public-check] invalid URL: ${String(e?.message || e)}`));
   }
 }
 
@@ -341,13 +339,13 @@ function seedDemoViaBridgeControl() {
       const obj = JSON.parse(s);
       if (obj?.type === "bridge.convex_status") {
         const url = (obj.url || obj.convex_url || "") as string;
-        console.log(chalk.dim(`[bridge-control] convex.status -> ${obj.healthy ? "healthy" : "unhealthy"} url=${url}`));
+        if (VERBOSE) console.log(chalk.dim(`[bridge-control] convex.status -> ${obj.healthy ? "healthy" : "unhealthy"} url=${url}`));
       }
       if (obj?.type === "bridge.status") {
-        console.log(chalk.dim(`[bridge-status] bind=${obj.bind} convex_healthy=${obj.convex_healthy} codex_pid=${obj.codex_pid || 'none'}`));
+        if (VERBOSE) console.log(chalk.dim(`[bridge-status] bind=${obj.bind} convex_healthy=${obj.convex_healthy} codex_pid=${obj.codex_pid || 'none'}`));
       }
       if (obj?.type === "bridge.projects") {
-        console.log(chalk.dim(`[bridge-control] projects -> ${Array.isArray(obj.items) ? obj.items.length : 0} items`));
+        if (VERBOSE) console.log(chalk.dim(`[bridge-control] projects -> ${Array.isArray(obj.items) ? obj.items.length : 0} items`));
       }
     } catch {}
   });
@@ -380,7 +378,7 @@ function startBridgeEventTail() {
         try {
           const obj = JSON.parse(s);
           const t = obj?.type || obj?.msg?.type || '';
-          if (String(t).startsWith('bridge.')) {
+          if (VERBOSE && String(t).startsWith('bridge.')) {
             // Print richer details for common debug events
             if (t === 'bridge.control' && typeof obj.raw === 'string') {
               console.log(chalk.dim(`[bridge-control] raw=${obj.raw}`));
@@ -406,11 +404,11 @@ function startBridgeEventTail() {
             return;
           }
           // surface codex JSONL events succinctly
-          if (t && /agent_message|assistant|message|reason|exec_begin|exec/.test(String(t))) {
+          if (VERBOSE && t && /agent_message|assistant|message|reason|exec_begin|exec/.test(String(t))) {
             console.log(chalk.dim(`[codex] ${t}`));
             return;
           }
-          if (t === 'bridge.codex_raw' && typeof obj.line === 'string') {
+          if (VERBOSE && t === 'bridge.codex_raw' && typeof obj.line === 'string') {
             console.log(chalk.dim(`[codex-raw] ${obj.line}`));
             return;
           }
@@ -426,18 +424,18 @@ function startBridgeEventTail() {
 }
 
 function startBridgeProcess(repoRoot: string) {
-  console.log(chalk.dim("Starting local bridge (cargo bridge)…"));
+  if (VERBOSE) console.log(chalk.dim("Starting local bridge (cargo bridge)…"));
   const child = spawn("cargo", ["bridge"], {
     cwd: repoRoot,
-    stdio: "inherit",
+    stdio: VERBOSE ? "inherit" : ["ignore", "ignore", "ignore"],
     env: {
       ...process.env,
       // Quiet verbose deps; keep our bridge at info
-      RUST_LOG: process.env.RUST_LOG || "info,convex=warn,convex::base_client=warn,tungstenite=warn,notify=warn",
+      RUST_LOG: process.env.RUST_LOG || (VERBOSE ? "info,convex=warn,convex::base_client=warn,tungstenite=warn,notify=warn" : "warn"),
       // Disable FS→Convex sync to avoid large startup imports/noise in dev
       OPENAGENTS_CONVEX_SYNC: process.env.OPENAGENTS_CONVEX_SYNC || "0",
-      BRIDGE_DEBUG_WS: process.env.BRIDGE_DEBUG_WS || "1",
-      BRIDGE_DEBUG_CODEX: process.env.BRIDGE_DEBUG_CODEX || "1",
+      BRIDGE_DEBUG_WS: process.env.BRIDGE_DEBUG_WS || (VERBOSE ? "1" : "0"),
+      BRIDGE_DEBUG_CODEX: process.env.BRIDGE_DEBUG_CODEX || (VERBOSE ? "1" : "0"),
     },
   });
   child.on("error", () => {});
