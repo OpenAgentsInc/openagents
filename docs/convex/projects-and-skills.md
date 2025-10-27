@@ -1,4 +1,3 @@
-<!-- Moved from docs/convex-projects-and-skills.md -->
 ---
 title: Projects & Skills in Convex
 ---

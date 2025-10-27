@@ -167,6 +167,7 @@ instructions: |
   2) Stage only your intended files (path‑spec add).
   3) Ask the user before attempting any local cleanup.
 - When moving docs or code across folders, prefer Git moves in a focused commit and update all references in the same commit.
+- Do not add trivial provenance comments to files (e.g., `<!-- Moved from ... -->`). Use meaningful, persistent documentation and rely on Git history for move provenance.
 
 ### Staging and committing checklist
 - Before commit: `git status` shows only intended files under “Changes to be committed”.

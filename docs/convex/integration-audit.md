@@ -1,4 +1,3 @@
-<!-- Moved from docs/convex-integration-audit.md -->
 # Convex Integration Audit (self‑hosted persistence for OpenAgents)
 
 Goal

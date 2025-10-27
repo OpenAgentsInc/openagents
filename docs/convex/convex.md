@@ -1,4 +1,3 @@
-<!-- Moved from docs/convex.md -->
 # Convex Integration (Local, Self‑Hosted)
 
 This repo uses a local, self‑hosted Convex backend as an optional persistence layer alongside Codex JSONL rollouts. Convex gives us:
