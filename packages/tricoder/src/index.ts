@@ -94,7 +94,13 @@ function printEnvAssessment(repoRoot: string | null) {
   } else {
     console.log("- " + warn("bun/npx missing; Convex CLI bootstrap may be skipped"));
   }
-  console.log("- " + (codex ? ok("codex binary present (assistant replies available)") : warn("codex binary not found (assistant replies won’t stream)")));
+  if (codex) {
+    console.log("- " + ok("codex binary present"));
+  } else {
+    console.log("- " + bad("codex binary NOT detected"));
+    console.log(chalk.red("Install Codex CLI: https://developers.openai.com/codex/cli"));
+    process.exit(1);
+  }
   console.log("");
 }
 
