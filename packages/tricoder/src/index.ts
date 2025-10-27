@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { buildTunnelArgs } from "./args.js";
 import net from "node:net";
+import http from "node:http";
 
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
@@ -60,6 +61,8 @@ function main() {
           convexUrl = url;
           maybePrintPairCode(bridgeUrl!, convexUrl!);
         });
+        // Start local health probes (status changes only)
+        startLocalProbes();
       }
     }
   });
@@ -137,6 +140,47 @@ function ensureBridgeRunning(repoRoot: string) {
   });
   // timeout after brief period
   setTimeout(() => { try { if (!connected) sock.destroy(); } catch {} }, 400);
+}
+
+function startLocalProbes() {
+  let lastBridgeOk: boolean | null = null;
+  let lastConvexOk: boolean | null = null;
+  const probeBridge = () => {
+    const s = net.createConnection({ host: "127.0.0.1", port: 8787 });
+    let ok = false;
+    s.once("connect", () => { ok = true; try { s.end(); } catch {} });
+    s.once("error", () => { ok = false; });
+    s.once("close", () => {
+      if (lastBridgeOk !== ok) {
+        lastBridgeOk = ok;
+        console.log(ok ? chalk.dim("[bridge-local] 127.0.0.1:8787 reachable") : chalk.dim("[bridge-local] 127.0.0.1:8787 not reachable"));
+      }
+    });
+    setTimeout(() => { try { s.destroy(); } catch {} }, 500);
+  };
+  const probeConvex = () => {
+    const req = http.get({ host: "127.0.0.1", port: 7788, path: "/instance_version", timeout: 700 }, (res) => {
+      const ok = res.statusCode !== undefined && res.statusCode >= 200 && res.statusCode < 300;
+      if (lastConvexOk !== ok) {
+        lastConvexOk = ok;
+        console.log(ok ? chalk.dim("[convex-local] http://127.0.0.1:7788 healthy") : chalk.dim("[convex-local] http://127.0.0.1:7788 unreachable"));
+      }
+      res.resume();
+    });
+    req.on("error", () => {
+      const ok = false;
+      if (lastConvexOk !== ok) {
+        lastConvexOk = ok;
+        console.log(chalk.dim("[convex-local] http://127.0.0.1:7788 unreachable"));
+      }
+    });
+    req.setTimeout(800, () => { try { req.destroy(); } catch {} });
+  };
+  // Kick immediately and then poll
+  probeBridge();
+  probeConvex();
+  setInterval(probeBridge, 5000);
+  setInterval(probeConvex, 5000);
 }
 
 main();
