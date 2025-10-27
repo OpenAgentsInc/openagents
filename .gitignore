@@ -6,3 +6,6 @@ convex/.env.local
 convex/_generated/
 .env.local
 local_backend
+node_modules
+dist
+*.tgz
