@@ -14,6 +14,20 @@ const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v"
 const ASSUME_YES = process.argv.includes("--yes") || process.argv.includes("-y") || process.env.TRICODER_YES === "1";
 const LOCAL_ONLY = process.argv.includes("--local-only") || process.env.TRICODER_LOCAL_ONLY === "1";
 
+function lite(s: string) { return chalk.hex('#9CA3AF')(s); }
+let RESOURCES_PRINTED = false;
+function printResourcesOnce() {
+  if (RESOURCES_PRINTED) return;
+  RESOURCES_PRINTED = true;
+  console.log("");
+  console.log(lite("Resources:"));
+  console.log(lite(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
+  console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
+  console.log(lite(" - Android coming soon"));
+  console.log(lite(" - All code is open-source here: https://github.com/OpenAgentsInc/openagents"));
+  console.log(lite(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
+}
+
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
   const root = dirname(dir) === dir ? dir : undefined;
@@ -87,6 +101,15 @@ function printEnvAssessment(repoRoot: string | null) {
 function main() {
   console.info(chalk.bold("OpenAgents Tricoder - Desktop Bridge"));
   let repoRoot = findRepoRoot(process.cwd());
+  // Brief overview and resources before assessment
+  console.log(chalk.cyanBright("\nSetup overview"));
+  console.log(lite(" - Checks your environment (Rust, git, Bun/NPM, codex)"));
+  console.log(lite(" - Clones/updates the OpenAgents repo if missing (~/.openagents/openagents)"));
+  console.log(lite(" - Builds the Rust bridge and tunnel, then starts the bridge"));
+  console.log(lite(" - Starts the local Convex backend and deploys functions (best effort)"));
+  console.log(lite(" - Optionally opens public tunnels and prints a pairing code"));
+  console.log(chalk.yellowBright("\nNote: First setup may take ~5 minutes on slower machines due to local Rust builds."));
+  printResourcesOnce();
   // Always print a quick assessment so users see what's missing
   printEnvAssessment(repoRoot);
 
@@ -197,14 +220,8 @@ function main() {
     // Security notice
     console.log(chalk.yellowBright("\nWarning: This code is your private bridge token — never share it with anyone."));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
-    // Helpful resources (light gray)
-    const lite = (s: string) => chalk.hex('#9CA3AF')(s); // light gray
-    console.log(lite("Resources:"));
-    console.log(lite(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
-    console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
-    console.log(lite(" - Android coming soon"));
-    console.log(lite(" - All code is open-source here: https://github.com/OpenAgentsInc/openagents"));
-    console.log(lite(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
+    // Helpful resources (light gray, once)
+    printResourcesOnce();
     // Check for codex binary presence — required for assistant responses
     try {
       const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'pipe' });
