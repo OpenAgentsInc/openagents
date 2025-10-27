@@ -183,3 +183,39 @@ Phase 3: Optional backgrounding
 
 Notes related to the incident: On Linux, running multiple `cargo run` processes in parallel (bridge + two tunnels) can spike CPU/RAM and trigger OOM or thermal shutdowns. The above plan avoids concurrent compiles, prefers prebuilt downloads, and caps build parallelism by default on Linux.
 
+## Addendum — Implementation Notes and Recommendations
+
+- Binary resolution order and prompts
+  - Prefer prebuilt downloads per target triple into `~/.openagents/bin` with SHA256 verification.
+  - If Rust toolchain is missing and a download is unavailable, prompt clearly before installing Rust (respect `--yes`).
+  - If Rust is present, build sequentially with capped jobs; never spawn concurrent `cargo run` builds.
+
+- Detection logic (repo vs non‑repo)
+  - Inside repo: use workspace `cargo run -p codex-bridge` and `-p oa-tunnel` for dev ergonomics.
+  - Outside repo: never require cloning; resolve to cached or downloaded binaries. Only fall back to building if the user explicitly opts in or `--force-build` is set.
+
+- Convex bootstrap
+  - Keep Convex out of the critical path for first paint: start bridge first, then background Convex setup with a concise spinner + health line.
+  - Use Bun if present; otherwise fall back to `npx convex dev` automatically. Skip quietly when neither is available and print a one‑line hint.
+
+- Port selection and pairing payload
+  - Probe and select free local ports within small ranges. Include selected ports in the base64 pairing payload so the app can connect without guessing.
+  - When tunnels are disabled (`--local-only`), still print a local‑only pairing payload for LAN use.
+
+- Safety on Linux and small hosts
+  - Default `--jobs 2` for local builds on Linux; consider `nice`/`ionice` when available.
+  - Detect <1 GB free RAM: require `--yes` or emit a prominent warning before compiling.
+
+- Security posture
+  - Keep the Rust bridge as the single `/ws` endpoint. Tricoder must not create a Node WS server.
+  - Surface a short security banner when exposing public tunnels (third‑party service, plaintext if not yet TLS, private code caution).
+
+- Future TLS and token auth
+  - Plan for `wss://` by either fronting Bore with a TLS terminator or baking TLS into our vendored tunnel. Gate `/ws` by an optional token in `OPENAGENTS_HOME` and accept via `?token=` or `Authorization: Bearer`.
+
+- UX polish
+  - Always print an environment assessment at start (platform, repo found, Rust, Bun/NPM, codex presence).
+  - Keep default logs succinct; show tails only with `--verbose`.
+  - Offer `--uninstall` to remove cached binaries.
+
+These align with the repo’s policies and should make `npx tricoder` behave predictably on a fresh computer without requiring the OpenAgents repo. In the interim, we can keep the “inside‑repo” path while we stand up releases for prebuilt binaries.
