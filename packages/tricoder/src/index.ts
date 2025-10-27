@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { buildTunnelArgs } from "./args.js";
 import net from "node:net";
 import http from "node:http";
+import WebSocket from "ws";
 
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
@@ -68,6 +69,8 @@ function main() {
           try { if (convexUrl) probePublicConvex(convexUrl); } catch {}
           // Connectivity summary
           console.log(chalk.dim(`[pair] bridge=${bridgeUrl} convex=${convexUrl}`));
+          // Seed a demo thread via bridge controls to ensure history appears
+          try { seedDemoViaBridgeControl(); } catch {}
         });
         // Start local health probes (status changes only)
         startLocalProbes(repoRoot);
@@ -299,6 +302,33 @@ function probePublicBridge(wsUrl: string) {
   } catch (e: any) {
     console.log(chalk.dim(`[bridge-public-check] invalid URL: ${String(e?.message || e)}`));
   }
+}
+
+function seedDemoViaBridgeControl() {
+  const ws = new WebSocket("ws://127.0.0.1:8787/ws");
+  let done = false;
+  const timer = setTimeout(() => { try { ws.close(); } catch {} }, 4000);
+  ws.on("open", () => {
+    try {
+      ws.send(JSON.stringify({ control: "convex.create_demo_thread" }));
+      ws.send(JSON.stringify({ control: "convex.status" }));
+    } catch {}
+  });
+  ws.on("message", (data: WebSocket.RawData) => {
+    const s = String(data || "").trim();
+    if (!s.startsWith("{")) return;
+    try {
+      const obj = JSON.parse(s);
+      if (obj?.type === "bridge.convex_status") {
+        console.log(chalk.dim(`[bridge-control] convex.status -> ${obj.healthy ? "healthy" : "unhealthy"} url=${obj.convex_url || ""}`));
+      }
+      if (obj?.type === "bridge.projects") {
+        console.log(chalk.dim(`[bridge-control] projects -> ${Array.isArray(obj.items) ? obj.items.length : 0} items`));
+      }
+    } catch {}
+  });
+  ws.on("close", () => { if (!done) clearTimeout(timer); done = true; });
+  ws.on("error", () => { if (!done) clearTimeout(timer); done = true; });
 }
 
 main();
