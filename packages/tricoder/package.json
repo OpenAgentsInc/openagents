@@ -1,10 +1,10 @@
 {
   "name": "tricoder",
-  "version": "0.0.1-alpha",
+  "version": "0.2.0-alpha.1",
   "type": "module",
   "author": "OpenAgents, Inc.",
   "license": "Apache-2.0",
-  "description": "Tricoder CLI (placeholder) for OpenAgents — prints desktop bridge connection instructions.",
+  "description": "OpenAgents Tricoder bridge",
   "repository": {
     "type": "git",
     "url": "https://github.com/OpenAgentsInc/openagents.git",
