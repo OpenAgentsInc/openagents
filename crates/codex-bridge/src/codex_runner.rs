@@ -128,6 +128,73 @@ pub async fn spawn_codex_child_only_with_dir(
     })
 }
 
+/// Spawn a Codex child for a single prompt, passing the prompt as a positional
+/// CLI argument instead of stdin. This avoids ambiguity with `exec resume` when
+/// older CLI builds treat `-` as a positional session id.
+pub async fn spawn_codex_child_with_prompt(
+    opts: &Opts,
+    workdir_override: Option<PathBuf>,
+    resume_id: Option<&str>,
+    prompt: &str,
+    use_resume: bool,
+) -> Result<ChildWithIo> {
+    let (bin, mut args) = build_bin_and_args(opts)?;
+    if use_resume {
+        // Only add resume flags when supported; otherwise start a fresh session
+        if cli_supports_resume(&bin) {
+            if let Some(rid) = resume_id {
+                if rid == "last" {
+                    args.push("resume".into());
+                    args.push("--last".into());
+                } else {
+                    args.push("resume".into());
+                    args.push(rid.into());
+                }
+            } else {
+                args.push("resume".into());
+                args.push("--last".into());
+            }
+        }
+    }
+    // Pass the prompt text as a single positional argument; do not use stdin.
+    args.push(prompt.to_string());
+    let workdir = workdir_override.unwrap_or_else(|| detect_repo_root(None));
+    info!("bin" = %bin.display(), "args" = ?args, "workdir" = %workdir.display(), "msg" = "respawn codex with positional prompt");
+    let mut command = Command::new(&bin);
+    command
+        .current_dir(&workdir)
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    unsafe {
+        command.pre_exec(|| {
+            let res = libc::setpgid(0, 0);
+            if res != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().context("failed to spawn codex")?;
+    let pid = child.id().context("child pid missing")?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    tokio::spawn(async move {
+        match child.wait().await {
+            Ok(status) => tracing::info!(?status, "codex exited"),
+            Err(e) => tracing::error!(?e, "codex wait failed"),
+        }
+    });
+    Ok(ChildWithIo {
+        pid,
+        stdin: None,
+        stdout,
+        stderr,
+    })
+}
+
 /// Resolve the codex binary and build default arguments for exec/json mode.
 fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
     let bin = resolve_codex_bin(opts)?;
