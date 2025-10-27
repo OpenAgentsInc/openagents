@@ -52,6 +52,7 @@ pub async fn run_convex_clear_all(port: u16) -> anyhow::Result<()> {
 /// Heuristics:
 /// - Prefer the nearest ancestor that contains both `expo/` and `crates/` directories.
 /// - If not found, fall back to the process current_dir.
+#[allow(dead_code)]
 pub fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
     fn is_repo_root(p: &std::path::Path) -> bool {
         p.join("expo").is_dir() && p.join("crates").is_dir()

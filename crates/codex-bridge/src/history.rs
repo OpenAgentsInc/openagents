@@ -587,6 +587,7 @@ pub fn derive_started_ts_from_path(path: &Path) -> Option<u64> {
 
 // Simple in-memory cache for history listing to avoid repeated full scans
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct HistoryCache {
     pub last_scan_at: Option<Instant>,
     pub last_seen_mtime: u64,
@@ -608,6 +609,7 @@ impl Default for HistoryCache {
 }
 
 impl HistoryCache {
+    #[allow(dead_code)]
     pub fn new(max_len: usize, ttl: Duration) -> Self {
         Self {
             last_scan_at: None,
@@ -617,6 +619,7 @@ impl HistoryCache {
             ttl,
         }
     }
+    #[allow(dead_code)]
     pub fn get(
         &mut self,
         base: &Path,

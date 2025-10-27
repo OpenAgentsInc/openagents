@@ -10,6 +10,7 @@ use tracing::{info, warn};
 use crate::state::AppState;
 
 /// Convert Convex FunctionResult to JSON for logging or test inspection.
+#[allow(dead_code)]
 pub fn convex_result_to_json(res: convex::FunctionResult) -> serde_json::Value {
     match res {
         convex::FunctionResult::Value(v) => serde_json::Value::from(v),
