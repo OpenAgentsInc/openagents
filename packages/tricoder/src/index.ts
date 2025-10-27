@@ -13,6 +13,7 @@ import { buildTunnelArgs } from "./args.js"
 const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v") || process.env.TRICODER_VERBOSE === "1";
 const ASSUME_YES = process.argv.includes("--yes") || process.argv.includes("-y") || process.env.TRICODER_YES === "1";
 const LOCAL_ONLY = process.argv.includes("--local-only") || process.env.TRICODER_LOCAL_ONLY === "1";
+let CONVEX_DL_PCT = -1;
 
 function lite(s: string) { return chalk.hex('#9CA3AF')(s); }
 let RESOURCES_PRINTED = false;
@@ -323,6 +324,7 @@ function ensureConvexBinaryWithProgress() {
     if (p < 0 || p > 100) return;
     if (p <= lastPct) return;
     lastPct = p;
+    CONVEX_DL_PCT = p;
     try { process.stdout.write("\r" + chalk.cyanBright(`⬇️  Convex backend download: ${p}%`)); } catch {}
   };
   const maybeParse = (s: string) => {
@@ -504,7 +506,8 @@ function monitorConvexSetupOnce(repoRoot: string) {
   let spun = false
   const spin = setInterval(() => {
     spun = true
-    try { process.stdout.write("\r" + chalk.cyanBright(`⏳ ${startMsg} ${frames[fi]}`)) } catch {}
+    const extra = CONVEX_DL_PCT >= 0 ? chalk.cyanBright(` ⬇️ ${CONVEX_DL_PCT}%`) : ""
+    try { process.stdout.write("\r" + chalk.cyanBright(`⏳ ${startMsg} ${frames[fi]}`) + extra) } catch {}
     fi = (fi + 1) % frames.length
   }, 120)
   const start = Date.now()
