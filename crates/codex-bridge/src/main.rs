@@ -18,28 +18,28 @@
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 use clap::Parser;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use tracing_subscriber::prelude::*;
 
 mod bootstrap;
-mod convex_write;
 mod codex_runner;
+mod convex_write;
 use crate::watchers::{
-    sync_projects_to_convex, sync_skills_to_convex, watch_projects_and_sync, watch_sessions_and_tail,
-    watch_skills_and_broadcast,
+    sync_projects_to_convex, sync_skills_to_convex, watch_projects_and_sync,
+    watch_sessions_and_tail, watch_skills_and_broadcast,
 };
 
+mod controls;
 mod history;
 mod projects;
 mod skills;
-mod controls;
 mod state;
 mod util;
-mod ws;
 mod watchers;
+mod ws;
 // spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
@@ -111,16 +111,23 @@ async fn main() -> Result<()> {
                             error!(?e, "convex bootstrap failed");
                         }
                     } else {
-                        info!("msg" = "OPENAGENTS_BOOTSTRAP disabled — skipping convex function push");
+                        info!(
+                            "msg" = "OPENAGENTS_BOOTSTRAP disabled — skipping convex function push"
+                        );
                     }
                 }
                 Err(e) => {
-                    error!(?e, "failed to ensure local Convex is running; skipping bootstrap");
+                    error!(
+                        ?e,
+                        "failed to ensure local Convex is running; skipping bootstrap"
+                    );
                 }
             }
         });
     } else {
-        info!("msg" = "OPENAGENTS_MANAGE_CONVEX=0 — bridge will not manage Convex; expecting an external process");
+        info!(
+            "msg" = "OPENAGENTS_MANAGE_CONVEX=0 — bridge will not manage Convex; expecting an external process"
+        );
     }
     // Optional destructive clear of all Convex data before ingest (opt-in), only if we manage Convex
     if opts.manage_convex {
@@ -147,7 +154,10 @@ async fn main() -> Result<()> {
     crate::ws::start_stream_forwarders(child, state.clone()).await?;
 
     // Live-reload + sync (optional toggle via OPENAGENTS_CONVEX_SYNC=0 to disable)
-    let sync_enabled = std::env::var("OPENAGENTS_CONVEX_SYNC").ok().map(|v| v != "0").unwrap_or(true);
+    let sync_enabled = std::env::var("OPENAGENTS_CONVEX_SYNC")
+        .ok()
+        .map(|v| v != "0")
+        .unwrap_or(true);
     if sync_enabled {
         tokio::spawn(watch_skills_and_broadcast(state.clone()));
         tokio::spawn(watch_projects_and_sync(state.clone()));
@@ -155,8 +165,12 @@ async fn main() -> Result<()> {
         {
             let st = state.clone();
             tokio::spawn(async move {
-                if let Err(e) = sync_projects_to_convex(st.clone()).await { warn!(?e, "initial projects sync failed"); }
-                if let Err(e) = sync_skills_to_convex(st.clone()).await { warn!(?e, "initial skills sync failed"); }
+                if let Err(e) = sync_projects_to_convex(st.clone()).await {
+                    warn!(?e, "initial projects sync failed");
+                }
+                if let Err(e) = sync_skills_to_convex(st.clone()).await {
+                    warn!(?e, "initial skills sync failed");
+                }
             });
         }
         // Watch Codex sessions for external runs and mirror to Convex (best-effort)
@@ -168,7 +182,9 @@ async fn main() -> Result<()> {
     tokio::spawn(crate::watchers::enqueue_historical_on_start(state.clone()));
 
     // HTTP submit endpoint for app → bridge turn submission
-    let app = Router::new().route("/ws", get(crate::ws::ws_handler)).with_state(state);
+    let app = Router::new()
+        .route("/ws", get(crate::ws::ws_handler))
+        .with_state(state);
 
     let bind_addr = opts.bind.clone();
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
@@ -186,27 +202,3 @@ fn init_tracing() {
         .with(fmt::layer())
         .try_init();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

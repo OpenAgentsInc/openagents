@@ -24,16 +24,23 @@ pub fn convex_result_to_json(res: convex::FunctionResult) -> serde_json::Value {
 ///
 /// The assistant and reasoning items are updated token-by-token. We buffer
 /// last state in AppState::stream_track to reduce writes and attach a seq.
-pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &str, full_text: &str) {
+pub async fn stream_upsert_or_append(
+    state: &AppState,
+    thread_id: &str,
+    kind: &str,
+    full_text: &str,
+) {
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
     let mut guard = state.stream_track.lock().await;
     let key = format!("{}|{}", thread_id, kind);
-    let entry = guard.entry(key.clone()).or_insert_with(|| crate::state::StreamEntry {
-        item_id: String::new(),
-        last_text: String::new(),
-        seq: 0,
-    });
+    let entry = guard
+        .entry(key.clone())
+        .or_insert_with(|| crate::state::StreamEntry {
+            item_id: String::new(),
+            last_text: String::new(),
+            seq: 0,
+        });
     entry.seq = entry.seq.saturating_add(1);
     entry.last_text = full_text.to_string();
     let seq_now = entry.seq;
@@ -47,7 +54,9 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
         args.insert("text".into(), Value::from(full_text));
         args.insert("partial".into(), Value::from(true));
         args.insert("seq".into(), Value::from(seq_now as i64));
-        if !item_id.is_empty() { args.insert("itemId".into(), Value::from(item_id)); }
+        if !item_id.is_empty() {
+            args.insert("itemId".into(), Value::from(item_id));
+        }
         match client.mutation("messages:upsertStreamed", args).await {
             Ok(_) => {}
             Err(e) => warn!(?e, thread_id, kind, "convex upsertStreamed failed"),
@@ -58,14 +67,21 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
 /// Try to finalize a streamed item for a given (thread, kind). If no prior
 /// streaming entry exists, returns false so the caller can create a snapshot
 /// message instead.
-pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &str, final_text: &str) -> bool {
+pub async fn try_finalize_stream_kind(
+    state: &AppState,
+    thread_id: &str,
+    kind: &str,
+    final_text: &str,
+) -> bool {
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
     let mut guard = state.stream_track.lock().await;
     let key = format!("{}|{}", thread_id, kind);
     let existed = guard.remove(&key).is_some();
     drop(guard);
-    if !existed { return false; }
+    if !existed {
+        return false;
+    }
     let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
     if let Ok(mut client) = ConvexClient::new(&url).await {
         let mut args: BTreeMap<String, Value> = BTreeMap::new();
@@ -91,7 +107,11 @@ pub async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
                 let mut parts = k.split('|');
                 let tid = parts.next()?;
                 let kind = parts.next()?;
-                if tid == thread_id { Some((tid.to_string(), kind.to_string())) } else { None }
+                if tid == thread_id {
+                    Some((tid.to_string(), kind.to_string()))
+                } else {
+                    None
+                }
             })
             .collect()
     };
@@ -100,7 +120,10 @@ pub async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
         let text = {
             let guard = state.stream_track.lock().await;
             let key = format!("{}|{}", tid, k);
-            guard.get(&key).map(|e| e.last_text.clone()).unwrap_or_default()
+            guard
+                .get(&key)
+                .map(|e| e.last_text.clone())
+                .unwrap_or_default()
         };
         let _ = try_finalize_stream_kind(state, thread_id, &k, &text).await;
     }

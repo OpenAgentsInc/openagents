@@ -33,14 +33,26 @@ pub async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usi
         args.insert("workingDir".into(), Value::from(p.working_dir.clone()));
         if let Some(repo) = &p.repo {
             let mut robj: BTreeMap<String, Value> = BTreeMap::new();
-            if let Some(v) = &repo.provider { robj.insert("provider".into(), Value::from(v.clone())); }
-            if let Some(v) = &repo.remote { robj.insert("remote".into(), Value::from(v.clone())); }
-            if let Some(v) = &repo.url { robj.insert("url".into(), Value::from(v.clone())); }
-            if let Some(v) = &repo.branch { robj.insert("branch".into(), Value::from(v.clone())); }
+            if let Some(v) = &repo.provider {
+                robj.insert("provider".into(), Value::from(v.clone()));
+            }
+            if let Some(v) = &repo.remote {
+                robj.insert("remote".into(), Value::from(v.clone()));
+            }
+            if let Some(v) = &repo.url {
+                robj.insert("url".into(), Value::from(v.clone()));
+            }
+            if let Some(v) = &repo.branch {
+                robj.insert("branch".into(), Value::from(v.clone()));
+            }
             args.insert("repo".into(), Value::Object(robj));
         }
-        if let Some(v) = &p.agent_file { args.insert("agentFile".into(), Value::from(v.clone())); }
-        if let Some(v) = &p.instructions { args.insert("instructions".into(), Value::from(v.clone())); }
+        if let Some(v) = &p.agent_file {
+            args.insert("agentFile".into(), Value::from(v.clone()));
+        }
+        if let Some(v) = &p.instructions {
+            args.insert("instructions".into(), Value::from(v.clone()));
+        }
         args.insert("createdAt".into(), Value::from(now));
         args.insert("updatedAt".into(), Value::from(now));
         match client.mutation("projects:upsertFromFs", args).await {
@@ -68,8 +80,12 @@ pub async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize
         args.insert("id".into(), Value::from(s.id.clone()));
         args.insert("name".into(), Value::from(s.name.clone()));
         args.insert("description".into(), Value::from(s.description.clone()));
-        if let Some(v) = s.source.as_deref() { args.insert("source".into(), Value::from(v)); }
-        if let Some(v) = s.meta.license.as_deref() { args.insert("license".into(), Value::from(v)); }
+        if let Some(v) = s.source.as_deref() {
+            args.insert("source".into(), Value::from(v));
+        }
+        if let Some(v) = s.meta.license.as_deref() {
+            args.insert("license".into(), Value::from(v));
+        }
         if let Some(v) = s.meta.allowed_tools.as_ref() {
             let arr: Vec<Value> = v.iter().cloned().map(Value::from).collect();
             args.insert("allowedTools".into(), Value::from(arr));
@@ -84,19 +100,45 @@ pub async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize
     Ok(ok)
 }
 
-
 /// Watch the Projects directory and trigger a best-effort sync on changes.
 ///
 /// Debounces bursts by draining a few queued events each iteration.
 pub async fn watch_projects_and_sync(state: Arc<AppState>) {
     let proj_dir = crate::projects::projects_dir();
-    if let Err(e) = std::fs::create_dir_all(&proj_dir) { error!(?e, "projects mkdir failed"); }
-    if !proj_dir.is_dir() { return; }
+    if let Err(e) = std::fs::create_dir_all(&proj_dir) {
+        error!(?e, "projects mkdir failed");
+    }
+    if !proj_dir.is_dir() {
+        return;
+    }
     let (txev, rcev) = std::sync::mpsc::channel();
-    let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| { let _ = txev.send(res); }) { Ok(w) => w, Err(e) => { error!(?e, "projects watcher create failed"); return; } };
-    if let Err(e) = watcher.watch(&proj_dir, RecursiveMode::Recursive) { error!(dir=%proj_dir.display(), ?e, "projects watcher watch failed"); return; }
+    let mut watcher: RecommendedWatcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            let _ = txev.send(res);
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                error!(?e, "projects watcher create failed");
+                return;
+            }
+        };
+    if let Err(e) = watcher.watch(&proj_dir, RecursiveMode::Recursive) {
+        error!(dir=%proj_dir.display(), ?e, "projects watcher watch failed");
+        return;
+    }
     info!(dir=%proj_dir.display(), msg="projects watcher started");
-    loop { match rcev.recv() { Ok(_evt) => { let _ = rcev.try_recv(); let _ = rcev.try_recv(); if let Err(e) = sync_projects_to_convex(state.clone()).await { warn!(?e, "projects convex sync failed on change"); } }, Err(_disconnected) => break } }
+    loop {
+        match rcev.recv() {
+            Ok(_evt) => {
+                let _ = rcev.try_recv();
+                let _ = rcev.try_recv();
+                if let Err(e) = sync_projects_to_convex(state.clone()).await {
+                    warn!(?e, "projects convex sync failed on change");
+                }
+            }
+            Err(_disconnected) => break,
+        }
+    }
 }
 
 /// Watch user and registry Skills directories and broadcast a fresh skills list
@@ -105,35 +147,114 @@ pub async fn watch_skills_and_broadcast(state: Arc<AppState>) {
     let user_dir = crate::skills::skills_dir();
     let registry_dirs = crate::skills::registry_skills_dirs();
     let mut watched: Vec<PathBuf> = Vec::new();
-    if let Err(e) = std::fs::create_dir_all(&user_dir) { error!(?e, "skills mkdir failed"); }
-    if user_dir.is_dir() { watched.push(user_dir.clone()); }
-    for d in registry_dirs { if d.is_dir() { watched.push(d); } }
-    if watched.is_empty() { return; }
+    if let Err(e) = std::fs::create_dir_all(&user_dir) {
+        error!(?e, "skills mkdir failed");
+    }
+    if user_dir.is_dir() {
+        watched.push(user_dir.clone());
+    }
+    for d in registry_dirs {
+        if d.is_dir() {
+            watched.push(d);
+        }
+    }
+    if watched.is_empty() {
+        return;
+    }
     let (txev, rcev) = std::sync::mpsc::channel();
-    let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| { let _ = txev.send(res); }) { Ok(w) => w, Err(e) => { error!(?e, "skills watcher create failed"); return; } };
-    for d in &watched { if let Err(e) = watcher.watch(d, RecursiveMode::Recursive) { error!(dir=%d.display(), ?e, "skills watcher watch failed"); } else { info!(dir=%d.display(), msg="skills watcher started"); } }
-    loop { match rcev.recv() { Ok(_evt) => { let _ = rcev.try_recv(); let _ = rcev.try_recv(); match crate::skills::list_skills() { Ok(items) => { let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string(); let _ = state.tx.send(line); if let Err(e) = sync_skills_to_convex(state.clone()).await { warn!(?e, "skills convex sync failed on change"); } }, Err(e) => { error!(?e, "skills list failed on change"); } } }, Err(_disconnected) => break } }
+    let mut watcher: RecommendedWatcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            let _ = txev.send(res);
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                error!(?e, "skills watcher create failed");
+                return;
+            }
+        };
+    for d in &watched {
+        if let Err(e) = watcher.watch(d, RecursiveMode::Recursive) {
+            error!(dir=%d.display(), ?e, "skills watcher watch failed");
+        } else {
+            info!(dir=%d.display(), msg="skills watcher started");
+        }
+    }
+    loop {
+        match rcev.recv() {
+            Ok(_evt) => {
+                let _ = rcev.try_recv();
+                let _ = rcev.try_recv();
+                match crate::skills::list_skills() {
+                    Ok(items) => {
+                        let line =
+                            serde_json::json!({"type":"bridge.skills","items": items}).to_string();
+                        let _ = state.tx.send(line);
+                        if let Err(e) = sync_skills_to_convex(state.clone()).await {
+                            warn!(?e, "skills convex sync failed on change");
+                        }
+                    }
+                    Err(e) => {
+                        error!(?e, "skills list failed on change");
+                    }
+                }
+            }
+            Err(_disconnected) => break,
+        }
+    }
 }
 
 fn sessions_base_dir() -> String {
-    std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into()))
+    std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
+        std::env::var("HOME")
+            .map(|h| format!("{}/.codex/sessions", h))
+            .unwrap_or_else(|_| ".".into())
+    })
 }
 
 pub async fn enqueue_historical_on_start(state: Arc<AppState>) {
     let base = sessions_base_dir();
     let base_path_owned = PathBuf::from(&base);
     let base_path = base_path_owned.as_path();
-    let initial = match crate::history::scan_history(base_path, 10) { Ok(v) => v, Err(e) => { warn!(?e, "initial history scan failed"); Vec::new() } };
+    let initial = match crate::history::scan_history(base_path, 10) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(?e, "initial history scan failed");
+            Vec::new()
+        }
+    };
     let mut ok = 0usize;
-    for h in &initial { if let Err(e) = enqueue_single_thread(&state, h).await { warn!(?e, id=%h.id, "enqueue thread failed") } else { ok += 1; } }
+    for h in &initial {
+        if let Err(e) = enqueue_single_thread(&state, h).await {
+            warn!(?e, id=%h.id, "enqueue thread failed")
+        } else {
+            ok += 1;
+        }
+    }
     info!(count = ok, base=%base, msg="initial history import queued");
     let state2 = state.clone();
     let base_path2 = base_path_owned.clone();
     tokio::spawn(async move {
-        let rest = match crate::history::scan_history(base_path2.as_path(), 2000) { Ok(mut all) => { if all.len() > 10 { all.drain(0..10); all } else { Vec::new() } }, Err(_e) => Vec::new(), };
+        let rest = match crate::history::scan_history(base_path2.as_path(), 2000) {
+            Ok(mut all) => {
+                if all.len() > 10 {
+                    all.drain(0..10);
+                    all
+                } else {
+                    Vec::new()
+                }
+            }
+            Err(_e) => Vec::new(),
+        };
         let mut cnt = 0usize;
-        for h in rest { let _ = enqueue_single_thread(&state2, &h).await.map(|_| { cnt += 1; }); tokio::time::sleep(std::time::Duration::from_millis(5)).await; }
-        if cnt > 0 { info!(count = cnt, msg = "import remaining history"); }
+        for h in rest {
+            let _ = enqueue_single_thread(&state2, &h).await.map(|_| {
+                cnt += 1;
+            });
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        if cnt > 0 {
+            info!(count = cnt, msg = "import remaining history");
+        }
     });
 }
 
@@ -141,22 +262,61 @@ pub async fn enqueue_historical_on_start(state: Arc<AppState>) {
 /// to mirror assistant/reason text into Convex so external runs appear live.
 pub async fn watch_sessions_and_tail(state: Arc<AppState>) {
     let base = PathBuf::from(sessions_base_dir());
-    if !base.is_dir() { return; }
+    if !base.is_dir() {
+        return;
+    }
     let (txev, rcev) = std::sync::mpsc::channel();
-    let mut watcher: RecommendedWatcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| { let _ = txev.send(res); }) { Ok(w) => w, Err(e) => { error!(?e, "sessions watcher create failed"); return; } };
-    if let Err(e) = watcher.watch(&base, RecursiveMode::Recursive) { error!(dir=%base.display(), ?e, "sessions watcher watch failed"); return; }
+    let mut watcher: RecommendedWatcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            let _ = txev.send(res);
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                error!(?e, "sessions watcher create failed");
+                return;
+            }
+        };
+    if let Err(e) = watcher.watch(&base, RecursiveMode::Recursive) {
+        error!(dir=%base.display(), ?e, "sessions watcher watch failed");
+        return;
+    }
     info!(dir=%base.display(), msg="sessions watcher started");
-    loop { match rcev.recv() { Ok(Ok(evt)) => { let is_change = matches!(evt.kind, EventKind::Modify(_) | EventKind::Create(_)); if !is_change { continue; } for path in evt.paths.into_iter() { if path.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; } if let Err(e) = mirror_session_tail_to_convex(state.clone(), &path).await { warn!(?e, "sessions mirror failed"); } } }, Ok(Err(e)) => { warn!(?e, "sessions watcher event error"); }, Err(_disconnected) => break } }
+    loop {
+        match rcev.recv() {
+            Ok(Ok(evt)) => {
+                let is_change = matches!(evt.kind, EventKind::Modify(_) | EventKind::Create(_));
+                if !is_change {
+                    continue;
+                }
+                for path in evt.paths.into_iter() {
+                    if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                        continue;
+                    }
+                    if let Err(e) = mirror_session_tail_to_convex(state.clone(), &path).await {
+                        warn!(?e, "sessions mirror failed");
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                warn!(?e, "sessions watcher event error");
+            }
+            Err(_disconnected) => break,
+        }
+    }
 }
 
 /// Enqueue a single historical thread (by parsed HistoryItem) into Convex.
-async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::HistoryItem) -> anyhow::Result<()> {
+async fn enqueue_single_thread(
+    state: &Arc<AppState>,
+    h: &crate::history::HistoryItem,
+) -> anyhow::Result<()> {
     let path = Path::new(&h.path);
     let th = crate::history::parse_thread(path)?;
     let resume_id = th.resume_id.clone().unwrap_or(h.id.clone());
     let title = th.title.clone();
     let started_ms = th.started_ts.map(|t| t * 1000).unwrap_or_else(now_ms);
-    use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
     let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
     let mut client = ConvexClient::new(&url).await?;
     let mut targs: BTreeMap<String, Value> = BTreeMap::new();
@@ -184,9 +344,13 @@ async fn enqueue_single_thread(state: &Arc<AppState>, h: &crate::history::Histor
 
 /// Parse a session JSONL file and upsert the latest assistant/reason text for streaming parity.
 async fn mirror_session_tail_to_convex(state: Arc<AppState>, path: &Path) -> anyhow::Result<()> {
-    let th = match crate::history::parse_thread(path) { Ok(v) => v, Err(_) => return Ok(()) };
+    let th = match crate::history::parse_thread(path) {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
     if let Some(resume_id) = th.resume_id.clone() {
-        use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
+        use convex::{ConvexClient, Value};
+        use std::collections::BTreeMap;
         let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
         if let Ok(mut client) = ConvexClient::new(&url).await {
             let mut targs: BTreeMap<String, Value> = BTreeMap::new();
@@ -199,9 +363,20 @@ async fn mirror_session_tail_to_convex(state: Arc<AppState>, path: &Path) -> any
         }
         let mut last_assistant: Option<String> = None;
         let mut last_reason: Option<String> = None;
-        for it in th.items.iter() { if it.kind == "message" && it.role.as_deref() == Some("assistant") { last_assistant = Some(it.text.clone()); } if it.kind == "reason" { last_reason = Some(it.text.clone()); } }
-        if let Some(txt) = last_assistant { stream_upsert_or_append(&state, &resume_id, "assistant", &txt).await; }
-        if let Some(txt) = last_reason { stream_upsert_or_append(&state, &resume_id, "reason", &txt).await; }
+        for it in th.items.iter() {
+            if it.kind == "message" && it.role.as_deref() == Some("assistant") {
+                last_assistant = Some(it.text.clone());
+            }
+            if it.kind == "reason" {
+                last_reason = Some(it.text.clone());
+            }
+        }
+        if let Some(txt) = last_assistant {
+            stream_upsert_or_append(&state, &resume_id, "assistant", &txt).await;
+        }
+        if let Some(txt) = last_reason {
+            stream_upsert_or_append(&state, &resume_id, "reason", &txt).await;
+        }
     }
     Ok(())
 }
@@ -222,7 +397,11 @@ mod tests {
         // Ensure env override not set
         unsafe { std::env::remove_var("CODEXD_HISTORY_DIR") };
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-        let expect = if home == "." { ".".to_string() } else { format!("{home}/.codex/sessions") };
+        let expect = if home == "." {
+            ".".to_string()
+        } else {
+            format!("{home}/.codex/sessions")
+        };
         assert_eq!(sessions_base_dir(), expect);
     }
 }

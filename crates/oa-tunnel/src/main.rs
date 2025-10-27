@@ -1,10 +1,14 @@
-use clap::Parser;
 use bore_cli::client::Client;
-use tracing::{info, error};
+use clap::Parser;
+use tracing::{error, info};
 use tracing_subscriber::prelude::*;
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "oa-tunnel", about = "OpenAgents tunnel launcher (bore client)", version)]
+#[command(
+    name = "oa-tunnel",
+    about = "OpenAgents tunnel launcher (bore client)",
+    version
+)]
 struct Opts {
     /// Local host to forward
     #[arg(long, default_value = "127.0.0.1")]

@@ -8,13 +8,13 @@ use anyhow::*;
 use chrono::TimeZone;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
+use std::result::Result as StdResult;
 use std::{
     fs,
     io::{BufRead, BufReader},
     path::Path,
-    time::{Duration, SystemTime, Instant},
+    time::{Duration, Instant, SystemTime},
 };
-use std::result::Result as StdResult;
 use tracing::info;
 
 #[derive(Debug, Serialize, Clone)]
@@ -67,11 +67,22 @@ pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
             for ent in rd.flatten() {
                 let p = ent.path();
                 scanned_files += 1;
-                if p.is_dir() { stack.push(p); continue; }
-                if p.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; }
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                    continue;
+                }
                 scanned_jsonl += 1;
-                if !file_is_new_format(&p) { skipped_old += 1; continue; }
-                let md = match ent.metadata() { StdResult::Ok(m) => m, StdResult::Err(_) => continue };
+                if !file_is_new_format(&p) {
+                    skipped_old += 1;
+                    continue;
+                }
+                let md = match ent.metadata() {
+                    StdResult::Ok(m) => m,
+                    StdResult::Err(_) => continue,
+                };
                 let mtime = md
                     .modified()
                     .ok()
@@ -80,7 +91,11 @@ pub fn scan_history(base: &Path, limit: usize) -> Result<Vec<HistoryItem>> {
                     .unwrap_or(0);
                 let (title, snippet, has_instr, tail) = extract_title_and_snippet_ext(&p)
                     .unwrap_or_else(|| ("Session".into(), "".into(), false, Vec::new()));
-                let id = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                let id = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
                 items.push(HistoryItem {
                     id,
                     path: p.to_string_lossy().to_string(),
@@ -131,10 +146,17 @@ fn extract_title_and_snippet_ext(p: &Path) -> Option<(String, String, bool, Vec<
     let f = fs::File::open(p).ok()?;
     let r = BufReader::new(f);
     for line in r.lines().filter_map(Result::ok) {
-        let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
+        let v: JsonValue = match serde_json::from_str(&line) {
+            StdResult::Ok(v) => v,
+            StdResult::Err(_) => continue,
+        };
         match v.get("type").and_then(|x| x.as_str()) {
             Some("session_meta") => {
-                if v.get("payload").and_then(|m| m.get("instructions")).and_then(|x| x.as_str()).is_some() {
+                if v.get("payload")
+                    .and_then(|m| m.get("instructions"))
+                    .and_then(|x| x.as_str())
+                    .is_some()
+                {
                     has_instructions = true;
                 }
             }
@@ -144,27 +166,58 @@ fn extract_title_and_snippet_ext(p: &Path) -> Option<(String, String, bool, Vec<
                     if kind == Some("agent_message") {
                         if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                             last_assistant = Some(text.to_string());
-                            tail.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: Some("assistant".into()), text: text.to_string() });
-                            if tail.len() > 20 { tail.remove(0); }
+                            tail.push(ThreadItem {
+                                ts: now_ts(),
+                                kind: "message".into(),
+                                role: Some("assistant".into()),
+                                text: text.to_string(),
+                            });
+                            if tail.len() > 20 {
+                                tail.remove(0);
+                            }
                         }
                     } else if kind == Some("user_message") {
                         if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                             last_user = Some(text.to_string());
-                            tail.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: Some("user".into()), text: text.to_string() });
-                            if tail.len() > 20 { tail.remove(0); }
+                            tail.push(ThreadItem {
+                                ts: now_ts(),
+                                kind: "message".into(),
+                                role: Some("user".into()),
+                                text: text.to_string(),
+                            });
+                            if tail.len() > 20 {
+                                tail.remove(0);
+                            }
                         }
                     } else if kind == Some("reasoning") {
                         if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
                             last_reasoning = Some(text.to_string());
-                            tail.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
-                            if tail.len() > 20 { tail.remove(0); }
+                            tail.push(ThreadItem {
+                                ts: now_ts(),
+                                kind: "reason".into(),
+                                role: None,
+                                text: text.to_string(),
+                            });
+                            if tail.len() > 20 {
+                                tail.remove(0);
+                            }
                         }
                     } else if kind == Some("command_execution") {
                         let cmd = item.get("command").and_then(|x| x.as_str()).unwrap_or("");
-                        let out = item.get("aggregated_output").and_then(|x| x.as_str()).unwrap_or("");
+                        let out = item
+                            .get("aggregated_output")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("");
                         let exit_code = item.get("exit_code").and_then(|x| x.as_i64()).unwrap_or(0);
-                        let status = item.get("status").and_then(|x| x.as_str()).unwrap_or("completed");
-                        let sample = if out.len() > 240 { format!("{}", &out[..240]) } else { out.to_string() };
+                        let status = item
+                            .get("status")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("completed");
+                        let sample = if out.len() > 240 {
+                            format!("{}", &out[..240])
+                        } else {
+                            out.to_string()
+                        };
                         let payload = serde_json::json!({
                             "command": cmd,
                             "status": status,
@@ -172,20 +225,31 @@ fn extract_title_and_snippet_ext(p: &Path) -> Option<(String, String, bool, Vec<
                             "sample": sample,
                             "output_len": out.len()
                         });
-                        tail.push(ThreadItem { ts: now_ts(), kind: "cmd".into(), role: None, text: payload.to_string() });
-                        if tail.len() > 20 { tail.remove(0); }
+                        tail.push(ThreadItem {
+                            ts: now_ts(),
+                            kind: "cmd".into(),
+                            role: None,
+                            text: payload.to_string(),
+                        });
+                        if tail.len() > 20 {
+                            tail.remove(0);
+                        }
                     }
                 }
             }
             _ => {}
         }
     }
-    let snippet = last_assistant.clone()
+    let snippet = last_assistant
+        .clone()
         .or(last_user.clone())
         .or(last_reasoning.clone())
         .unwrap_or_else(|| "(no messages)".into());
     // Prefer a more semantic title source before falling back
-    let title_source = last_assistant.or(last_reasoning).or(last_user).unwrap_or_else(|| "Thread".into());
+    let title_source = last_assistant
+        .or(last_reasoning)
+        .or(last_user)
+        .unwrap_or_else(|| "Thread".into());
     let title = infer_title(&title_source);
     Some((title, snippet, has_instructions, tail))
 }
@@ -202,7 +266,9 @@ fn infer_title(s: &str) -> String {
 pub fn resolve_session_path(base: &Path, id: Option<&str>, hint: Option<&str>) -> Option<String> {
     if let Some(h) = hint {
         let ph = Path::new(h);
-        if ph.exists() && h.starts_with(&*base.to_string_lossy()) { return Some(h.to_string()); }
+        if ph.exists() && h.starts_with(&*base.to_string_lossy()) {
+            return Some(h.to_string());
+        }
     }
     let target = id?;
     let mut stack = vec![base.to_path_buf()];
@@ -210,8 +276,13 @@ pub fn resolve_session_path(base: &Path, id: Option<&str>, hint: Option<&str>) -
         if let StdResult::Ok(rd) = fs::read_dir(&dir) {
             for ent in rd.flatten() {
                 let p = ent.path();
-                if p.is_dir() { stack.push(p); continue; }
-                if p.file_name().and_then(|n| n.to_str()) == Some(target) { return Some(p.to_string_lossy().to_string()); }
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.file_name().and_then(|n| n.to_str()) == Some(target) {
+                    return Some(p.to_string_lossy().to_string());
+                }
             }
         }
     }
@@ -227,7 +298,10 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
     let mut resume_id: Option<String> = None;
     let mut started_ts: Option<u64> = None;
     for line in r.lines().filter_map(Result::ok) {
-        let v: JsonValue = match serde_json::from_str(&line) { StdResult::Ok(v) => v, StdResult::Err(_) => continue };
+        let v: JsonValue = match serde_json::from_str(&line) {
+            StdResult::Ok(v) => v,
+            StdResult::Err(_) => continue,
+        };
         match v.get("type").and_then(|x| x.as_str()) {
             Some("thread.started") => {
                 if let Some(id) = v.get("thread_id").and_then(|x| x.as_str()) {
@@ -239,7 +313,11 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
                 }
             }
             Some("session_meta") => {
-                if let Some(instr) = v.get("payload").and_then(|m| m.get("instructions")).and_then(|x| x.as_str()) {
+                if let Some(instr) = v
+                    .get("payload")
+                    .and_then(|m| m.get("instructions"))
+                    .and_then(|x| x.as_str())
+                {
                     instructions = Some(instr.to_string());
                 }
             }
@@ -254,31 +332,58 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
                             if let Some(arr) = payload.get("content").and_then(|x| x.as_array()) {
                                 for part in arr {
                                     if let Some(t) = part.get("text").and_then(|x| x.as_str()) {
-                                        if !txt.is_empty() { txt.push_str("\n"); }
+                                        if !txt.is_empty() {
+                                            txt.push_str("\n");
+                                        }
                                         txt.push_str(t);
                                     }
                                 }
                             }
                             if !txt.trim().is_empty() {
-                                let role_s = if role == "assistant" { Some("assistant".to_string()) } else if role == "user" { Some("user".to_string()) } else { None };
-                                if role_s.as_deref() == Some("assistant") && first_assistant.is_none() { first_assistant = Some(txt.clone()); }
-                                items.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: role_s, text: txt });
+                                let role_s = if role == "assistant" {
+                                    Some("assistant".to_string())
+                                } else if role == "user" {
+                                    Some("user".to_string())
+                                } else {
+                                    None
+                                };
+                                if role_s.as_deref() == Some("assistant")
+                                    && first_assistant.is_none()
+                                {
+                                    first_assistant = Some(txt.clone());
+                                }
+                                items.push(ThreadItem {
+                                    ts: now_ts(),
+                                    kind: "message".into(),
+                                    role: role_s,
+                                    text: txt,
+                                });
                             }
                         }
                         Some("reasoning") => {
                             // Prefer summary text if available
-                            if let Some(summary) = payload.get("summary").and_then(|x| x.as_array()) {
+                            if let Some(summary) = payload.get("summary").and_then(|x| x.as_array())
+                            {
                                 let mut txt = String::new();
                                 for s in summary {
-                                    if s.get("type").and_then(|x| x.as_str()) == Some("summary_text") {
+                                    if s.get("type").and_then(|x| x.as_str())
+                                        == Some("summary_text")
+                                    {
                                         if let Some(t) = s.get("text").and_then(|x| x.as_str()) {
-                                            if !txt.is_empty() { txt.push_str("\n"); }
+                                            if !txt.is_empty() {
+                                                txt.push_str("\n");
+                                            }
                                             txt.push_str(t);
                                         }
                                     }
                                 }
                                 if !txt.trim().is_empty() {
-                                    items.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: txt });
+                                    items.push(ThreadItem {
+                                        ts: now_ts(),
+                                        kind: "reason".into(),
+                                        role: None,
+                                        text: txt,
+                                    });
                                 }
                             }
                         }
@@ -290,7 +395,12 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
                 if let Some(p) = v.get("payload") {
                     if p.get("type").and_then(|x| x.as_str()) == Some("agent_reasoning") {
                         if let Some(text) = p.get("text").and_then(|x| x.as_str()) {
-                            items.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
+                            items.push(ThreadItem {
+                                ts: now_ts(),
+                                kind: "reason".into(),
+                                role: None,
+                                text: text.to_string(),
+                            });
                         }
                     }
                 }
@@ -307,7 +417,12 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
                             "sample": "",
                             "output_len": 0
                         });
-                        items.push(ThreadItem { ts: now_ts(), kind: "cmd".into(), role: None, text: payload.to_string() });
+                        items.push(ThreadItem {
+                            ts: now_ts(),
+                            kind: "cmd".into(),
+                            role: None,
+                            text: payload.to_string(),
+                        });
                     }
                 }
             }
@@ -316,26 +431,54 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
                     match item.get("type").and_then(|x| x.as_str()) {
                         Some("agent_message") => {
                             if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
-                                if first_assistant.is_none() { first_assistant = Some(text.to_string()); }
-                                items.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: Some("assistant".into()), text: text.to_string() });
+                                if first_assistant.is_none() {
+                                    first_assistant = Some(text.to_string());
+                                }
+                                items.push(ThreadItem {
+                                    ts: now_ts(),
+                                    kind: "message".into(),
+                                    role: Some("assistant".into()),
+                                    text: text.to_string(),
+                                });
                             }
                         }
                         Some("user_message") => {
                             if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
-                                items.push(ThreadItem { ts: now_ts(), kind: "message".into(), role: Some("user".into()), text: text.to_string() });
+                                items.push(ThreadItem {
+                                    ts: now_ts(),
+                                    kind: "message".into(),
+                                    role: Some("user".into()),
+                                    text: text.to_string(),
+                                });
                             }
                         }
                         Some("reasoning") => {
                             if let Some(text) = item.get("text").and_then(|x| x.as_str()) {
-                                items.push(ThreadItem { ts: now_ts(), kind: "reason".into(), role: None, text: text.to_string() });
+                                items.push(ThreadItem {
+                                    ts: now_ts(),
+                                    kind: "reason".into(),
+                                    role: None,
+                                    text: text.to_string(),
+                                });
                             }
                         }
                         Some("command_execution") => {
                             let cmd = item.get("command").and_then(|x| x.as_str()).unwrap_or("");
-                            let out = item.get("aggregated_output").and_then(|x| x.as_str()).unwrap_or("");
-                            let exit_code = item.get("exit_code").and_then(|x| x.as_i64()).unwrap_or(0);
-                            let status = item.get("status").and_then(|x| x.as_str()).unwrap_or("completed");
-                            let sample = if out.len() > 240 { format!("{}", &out[..240]) } else { out.to_string() };
+                            let out = item
+                                .get("aggregated_output")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("");
+                            let exit_code =
+                                item.get("exit_code").and_then(|x| x.as_i64()).unwrap_or(0);
+                            let status = item
+                                .get("status")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("completed");
+                            let sample = if out.len() > 240 {
+                                format!("{}", &out[..240])
+                            } else {
+                                out.to_string()
+                            };
                             let payload = serde_json::json!({
                                 "command": cmd,
                                 "status": status,
@@ -343,7 +486,12 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
                                 "sample": sample,
                                 "output_len": out.len()
                             });
-                            items.push(ThreadItem { ts: now_ts(), kind: "cmd".into(), role: None, text: payload.to_string() });
+                            items.push(ThreadItem {
+                                ts: now_ts(),
+                                kind: "cmd".into(),
+                                role: None,
+                                text: payload.to_string(),
+                            });
                         }
                         _ => {}
                     }
@@ -353,12 +501,23 @@ pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
         }
     }
     let title = infer_title(first_assistant.as_deref().unwrap_or("Thread"));
-    Ok(ThreadResponse { title, items, instructions, resume_id, started_ts })
+    Ok(ThreadResponse {
+        title,
+        items,
+        instructions,
+        resume_id,
+        started_ts,
+    })
 }
 
 // tests are defined at the bottom of this file
 
-fn now_ts() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() }
+fn now_ts() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
 
 pub fn derive_started_ts_from_path(path: &Path) -> Option<u64> {
     // Try from filename like rollout-YYYY-MM-DDTHH-MM-SS-....jsonl
@@ -371,7 +530,8 @@ pub fn derive_started_ts_from_path(path: &Path) -> Option<u64> {
                 let m = parts.get(1)?.parse::<u32>().ok()?;
                 // parts[2] includes DDTHH; split on 'T'
                 let dd_thh = parts.get(2)?.to_string();
-                let mut dd = 0u32; let mut hh = 0u32;
+                let mut dd = 0u32;
+                let mut hh = 0u32;
                 if let Some((dd_s, hh_s)) = dd_thh.split_once('T') {
                     dd = dd_s.parse::<u32>().ok()?;
                     hh = hh_s.parse::<u32>().ok()?;
@@ -382,13 +542,19 @@ pub fn derive_started_ts_from_path(path: &Path) -> Option<u64> {
                 let nt = chrono::NaiveTime::from_hms_opt(hh, mm, ss)?;
                 let ndt = chrono::NaiveDateTime::new(nd, nt);
                 // Interpret as local time
-                let ts = chrono::Local.from_local_datetime(&ndt).single()?.timestamp() as u64;
+                let ts = chrono::Local
+                    .from_local_datetime(&ndt)
+                    .single()?
+                    .timestamp() as u64;
                 return Some(ts);
             }
         }
     }
     // Fallback: try from directories .../<YYYY>/<MM>/<DD>/...
-    let comps: Vec<String> = path.components().filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string())).collect();
+    let comps: Vec<String> = path
+        .components()
+        .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+        .collect();
     // Look for patterns ending with /YYYY/MM/DD/
     for w in comps.windows(3) {
         if w.len() == 3 {
@@ -400,8 +566,14 @@ pub fn derive_started_ts_from_path(path: &Path) -> Option<u64> {
                 let m = mm.unwrap();
                 let d = dd.unwrap();
                 if (2000..=2100).contains(&y) && (1..=12).contains(&m) && (1..=31).contains(&d) {
-                    let nd = match chrono::NaiveDate::from_ymd_opt(y, m, d) { Some(v)=>v, None=>continue };
-                    let nt = match chrono::NaiveTime::from_hms_opt(0, 0, 0) { Some(v)=>v, None=>continue };
+                    let nd = match chrono::NaiveDate::from_ymd_opt(y, m, d) {
+                        Some(v) => v,
+                        None => continue,
+                    };
+                    let nt = match chrono::NaiveTime::from_hms_opt(0, 0, 0) {
+                        Some(v) => v,
+                        None => continue,
+                    };
                     let ndt = chrono::NaiveDateTime::new(nd, nt);
                     if let Some(dt) = chrono::Local.from_local_datetime(&ndt).single() {
                         return Some(dt.timestamp() as u64);
@@ -425,31 +597,64 @@ pub struct HistoryCache {
 
 impl Default for HistoryCache {
     fn default() -> Self {
-        Self { last_scan_at: None, last_seen_mtime: 0, top: Vec::new(), max_len: 400, ttl: Duration::from_secs(6) }
+        Self {
+            last_scan_at: None,
+            last_seen_mtime: 0,
+            top: Vec::new(),
+            max_len: 400,
+            ttl: Duration::from_secs(6),
+        }
     }
 }
 
 impl HistoryCache {
-    pub fn new(max_len: usize, ttl: Duration) -> Self { Self { last_scan_at: None, last_seen_mtime: 0, top: Vec::new(), max_len, ttl } }
-    pub fn get(&mut self, base: &Path, limit: usize, since_mtime: Option<u64>) -> Result<Vec<HistoryItem>> {
+    pub fn new(max_len: usize, ttl: Duration) -> Self {
+        Self {
+            last_scan_at: None,
+            last_seen_mtime: 0,
+            top: Vec::new(),
+            max_len,
+            ttl,
+        }
+    }
+    pub fn get(
+        &mut self,
+        base: &Path,
+        limit: usize,
+        since_mtime: Option<u64>,
+    ) -> Result<Vec<HistoryItem>> {
         let now = Instant::now();
-        let ttl_ok = self.last_scan_at.map(|t| now.duration_since(t) < self.ttl).unwrap_or(false);
+        let ttl_ok = self
+            .last_scan_at
+            .map(|t| now.duration_since(t) < self.ttl)
+            .unwrap_or(false);
         let need_refresh = !ttl_ok;
         if need_refresh {
             // Refresh cache with a full scan; keep only top max_len
             let mut items = scan_history(base, self.max_len)?;
             if !items.is_empty() {
-                self.last_seen_mtime = items.iter().map(|i| i.mtime).max().unwrap_or(self.last_seen_mtime);
+                self.last_seen_mtime = items
+                    .iter()
+                    .map(|i| i.mtime)
+                    .max()
+                    .unwrap_or(self.last_seen_mtime);
             }
             self.top = items.drain(..).collect();
             self.last_scan_at = Some(now);
         }
         let mut out: Vec<HistoryItem> = match since_mtime {
-            Some(since) => self.top.iter().filter(|it| it.mtime > since).cloned().collect(),
+            Some(since) => self
+                .top
+                .iter()
+                .filter(|it| it.mtime > since)
+                .cloned()
+                .collect(),
             None => self.top.iter().cloned().collect(),
         };
         out.sort_by(|a, b| b.mtime.cmp(&a.mtime));
-        if out.len() > limit { out.truncate(limit); }
+        if out.len() > limit {
+            out.truncate(limit);
+        }
         info!(
             fast_path = %(!need_refresh),
             cached = %ttl_ok,
@@ -467,7 +672,12 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    fn write_file(p: &Path, lines: &[&str]) { let mut f = fs::File::create(p).unwrap(); for l in lines { writeln!(f, "{}", l).unwrap(); } }
+    fn write_file(p: &Path, lines: &[&str]) {
+        let mut f = fs::File::create(p).unwrap();
+        for l in lines {
+            writeln!(f, "{}", l).unwrap();
+        }
+    }
 
     fn write_jsonl_vals(vals: &[serde_json::Value]) -> tempfile::NamedTempFile {
         let mut tf = tempfile::NamedTempFile::new().unwrap();
@@ -485,14 +695,20 @@ mod tests {
         fs::create_dir_all(&base).unwrap();
         // Old-format file (should be ignored)
         let old = base.join("old.jsonl");
-        write_file(&old, &[r#"{"id":"x","msg":{"type":"agent_message","message":"old format"}}"#]);
+        write_file(
+            &old,
+            &[r#"{"id":"x","msg":{"type":"agent_message","message":"old format"}}"#],
+        );
         // 6 new-format files; only 5 should be returned
         for i in 0..6u32 {
             let p = base.join(format!("rollout-{}.jsonl", i));
-            write_file(&p, &[
-                r#"{"type":"thread.started","thread_id":"t"}"#,
-                r#"{"type":"item.completed","item":{"id":"a","type":"agent_message","text":"**Title** message here"}}"#,
-            ]);
+            write_file(
+                &p,
+                &[
+                    r#"{"type":"thread.started","thread_id":"t"}"#,
+                    r#"{"type":"item.completed","item":{"id":"a","type":"agent_message","text":"**Title** message here"}}"#,
+                ],
+            );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         let items = scan_history(&base, 5).unwrap();
@@ -500,7 +716,7 @@ mod tests {
         assert!(items.iter().all(|it| it.id.starts_with("rollout-")));
         let mtimes = items.iter().map(|i| i.mtime).collect::<Vec<_>>();
         let mut sorted = mtimes.clone();
-        sorted.sort_by(|a,b| b.cmp(a));
+        sorted.sort_by(|a, b| b.cmp(a));
         assert_eq!(mtimes, sorted);
     }
 
@@ -508,16 +724,27 @@ mod tests {
     fn parse_thread_extracts_items() {
         let td = tempfile::tempdir().unwrap();
         let p = td.path().join("rollout.jsonl");
-        write_file(&p, &[
-            r#"{"type":"thread.started","thread_id":"t"}"#,
-            r#"{"type":"item.started","item":{"id":"c1","type":"command_execution","command":"echo hello","aggregated_output":"","status":"in_progress"}}"#,
-            r#"{"type":"item.completed","item":{"id":"m1","type":"user_message","text":"Hi"}}"#,
-            r#"{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"**Done**."}}"#,
-        ]);
+        write_file(
+            &p,
+            &[
+                r#"{"type":"thread.started","thread_id":"t"}"#,
+                r#"{"type":"item.started","item":{"id":"c1","type":"command_execution","command":"echo hello","aggregated_output":"","status":"in_progress"}}"#,
+                r#"{"type":"item.completed","item":{"id":"m1","type":"user_message","text":"Hi"}}"#,
+                r#"{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"**Done**."}}"#,
+            ],
+        );
         let th = parse_thread(&p).unwrap();
         assert_eq!(th.title, "Done");
-        assert!(th.items.iter().any(|i| i.kind == "cmd" && i.text.contains("echo hello")));
-        assert!(th.items.iter().any(|i| i.kind == "message" && i.role.as_deref() == Some("assistant")));
+        assert!(
+            th.items
+                .iter()
+                .any(|i| i.kind == "cmd" && i.text.contains("echo hello"))
+        );
+        assert!(
+            th.items
+                .iter()
+                .any(|i| i.kind == "message" && i.role.as_deref() == Some("assistant"))
+        );
     }
 
     #[test]
@@ -528,10 +755,13 @@ mod tests {
         // Create 3 new-format files
         for i in 0..3u32 {
             let p = base.join(format!("rollout-{}.jsonl", i));
-            write_file(&p, &[
-                r#"{"type":"thread.started","thread_id":"t"}"#,
-                r#"{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"**Hello**."}}"#,
-            ]);
+            write_file(
+                &p,
+                &[
+                    r#"{"type":"thread.started","thread_id":"t"}"#,
+                    r#"{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"**Hello**."}}"#,
+                ],
+            );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         let mut cache = HistoryCache::new(50, std::time::Duration::from_secs(60));

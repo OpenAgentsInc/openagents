@@ -16,8 +16,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{error, info};
 
 use crate::bootstrap::{convex_health, default_convex_db};
-use crate::codex_runner::{spawn_codex_child_only_with_dir, ChildWithIo};
-use crate::controls::{parse_control_command, ControlCommand};
+use crate::codex_runner::{ChildWithIo, spawn_codex_child_only_with_dir};
+use crate::controls::{ControlCommand, parse_control_command};
 use crate::convex_write::{
     finalize_streaming_for_thread, stream_upsert_or_append, summarize_exec_delta_for_log,
     try_finalize_stream_kind,
@@ -26,7 +26,10 @@ use crate::state::AppState;
 use crate::util::{expand_home, list_sqlite_tables, now_ms};
 
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
-pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
+pub async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
@@ -66,8 +69,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     if let Some(cmd) = parse_control_command(&t) {
                         info!(?cmd, "ws control command");
                         // Broadcast control receipt for visibility to connected tails (tricoder)
-                        let ctrl = if t.len() > 160 { format!("{}…", &t[..160]) } else { t.clone() };
-                        let dbg = serde_json::json!({"type":"bridge.control","raw": ctrl}).to_string();
+                        let ctrl: String = if t.len() > 160 {
+                            format!("{}…", &t[..160])
+                        } else {
+                            t.to_string()
+                        };
+                        let dbg =
+                            serde_json::json!({"type":"bridge.control","raw": ctrl}).to_string();
                         let _ = stdin_state.tx.send(dbg);
                         match cmd {
                             ControlCommand::Interrupt => {
@@ -75,30 +83,35 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     error!(?e, "failed to interrupt codex child");
                                 }
                             }
-                            ControlCommand::Projects => {
-                                match crate::projects::list_projects() {
-                                    Ok(items) => {
-                                        let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
-                                        let _ = stdin_state.tx.send(line);
-                                    }
-                                    Err(e) => { error!(?e, "projects list failed via ws"); }
+                            ControlCommand::Projects => match crate::projects::list_projects() {
+                                Ok(items) => {
+                                    let line = serde_json::json!({"type":"bridge.projects","items": items}).to_string();
+                                    let _ = stdin_state.tx.send(line);
                                 }
-                            }
+                                Err(e) => {
+                                    error!(?e, "projects list failed via ws");
+                                }
+                            },
                             ControlCommand::Skills => {
                                 match crate::skills::list_skills() {
                                     Ok(items) => {
                                         let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string();
                                         let _ = stdin_state.tx.send(line);
                                     }
-                                    Err(e) => { error!(?e, "skills list failed via ws"); }
+                                    Err(e) => {
+                                        error!(?e, "skills list failed via ws");
+                                    }
                                 }
                             }
                             ControlCommand::BridgeStatus => {
                                 let codex_pid = { *stdin_state.child_pid.lock().await };
-                                let last_thread_id = { stdin_state.last_thread_id.lock().await.clone() };
+                                let last_thread_id =
+                                    { stdin_state.last_thread_id.lock().await.clone() };
                                 let bind = stdin_state.opts.bind.clone();
-                                let convex_url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                let convex_healthy = convex_health(&convex_url).await.unwrap_or(false);
+                                let convex_url =
+                                    format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let convex_healthy =
+                                    convex_health(&convex_url).await.unwrap_or(false);
                                 let line = serde_json::json!({
                                     "type": "bridge.status",
                                     "bind": bind,
@@ -106,83 +119,175 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     "last_thread_id": last_thread_id,
                                     "convex_url": convex_url,
                                     "convex_healthy": convex_healthy
-                                }).to_string();
+                                })
+                                .to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::ConvexStatus => {
-                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(crate::bootstrap::default_convex_db);
+                                let url =
+                                    format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let db = stdin_state
+                                    .opts
+                                    .convex_db
+                                    .clone()
+                                    .unwrap_or_else(crate::bootstrap::default_convex_db);
                                 let healthy = convex_health(&url).await.unwrap_or(false);
-                                let tables = if healthy { list_sqlite_tables(&db).unwrap_or_default() } else { Vec::new() };
+                                let tables = if healthy {
+                                    list_sqlite_tables(&db).unwrap_or_default()
+                                } else {
+                                    Vec::new()
+                                };
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::ConvexCreateDemo => {
-                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
+                                let db = stdin_state
+                                    .opts
+                                    .convex_db
+                                    .clone()
+                                    .unwrap_or_else(default_convex_db);
                                 let _ = create_demo_table(&db);
-                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let url =
+                                    format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
                                 let healthy = convex_health(&url).await.unwrap_or(false);
                                 let tables = list_sqlite_tables(&db).unwrap_or_default();
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::ConvexCreateThreads => {
-                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
+                                let db = stdin_state
+                                    .opts
+                                    .convex_db
+                                    .clone()
+                                    .unwrap_or_else(default_convex_db);
                                 let _ = create_threads_table(&db);
-                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let url =
+                                    format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
                                 let healthy = convex_health(&url).await.unwrap_or(false);
                                 let tables = list_sqlite_tables(&db).unwrap_or_default();
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::ConvexCreateDemoThread => {
-                                let db = stdin_state.opts.convex_db.clone().unwrap_or_else(default_convex_db);
+                                let db = stdin_state
+                                    .opts
+                                    .convex_db
+                                    .clone()
+                                    .unwrap_or_else(default_convex_db);
                                 let _ = create_threads_table(&db);
                                 let _ = insert_demo_thread(&db);
-                                let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                let url =
+                                    format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
                                 let healthy = convex_health(&url).await.unwrap_or(false);
                                 let tables = list_sqlite_tables(&db).unwrap_or_default();
                                 let line = serde_json::json!({"type":"bridge.convex_status","healthy": healthy, "url": url, "db": db, "tables": tables}).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::ConvexBackfill => {
-                                let base = std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
-                                    std::env::var("HOME").map(|h| format!("{}/.codex/sessions", h)).unwrap_or_else(|_| ".".into())
-                                });
+                                let base =
+                                    std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
+                                        std::env::var("HOME")
+                                            .map(|h| format!("{}/.codex/sessions", h))
+                                            .unwrap_or_else(|_| ".".into())
+                                    });
                                 let limit = 400usize;
-                                match crate::history::scan_history(std::path::Path::new(&base), limit) {
+                                match crate::history::scan_history(
+                                    std::path::Path::new(&base),
+                                    limit,
+                                ) {
                                     Ok(items) => {
                                         use convex::{ConvexClient, Value};
                                         use std::collections::BTreeMap;
-                                        let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
-                                        let mut client = match ConvexClient::new(&url).await { Ok(c)=>c, Err(e)=>{ error!(?e, "convex client init failed for backfill");
-                                            let line = serde_json::json!({"type":"bridge.convex_backfill","status":"error","error":"convex init failed"}).to_string(); let _ = stdin_state.tx.send(line); continue; } };
+                                        let url = format!(
+                                            "http://127.0.0.1:{}",
+                                            stdin_state.opts.convex_port
+                                        );
+                                        let mut client = match ConvexClient::new(&url).await {
+                                            Ok(c) => c,
+                                            Err(e) => {
+                                                error!(
+                                                    ?e,
+                                                    "convex client init failed for backfill"
+                                                );
+                                                let line = serde_json::json!({"type":"bridge.convex_backfill","status":"error","error":"convex init failed"}).to_string();
+                                                let _ = stdin_state.tx.send(line);
+                                                continue;
+                                            }
+                                        };
                                         for h in items.clone() {
-                                            if let Some(path) = crate::history::resolve_session_path(std::path::Path::new(&base), Some(&h.id), Some(&h.path)) {
-                                                if let Ok(th) = crate::history::parse_thread(std::path::Path::new(&path)) {
-                                                    let resume_id = th.resume_id.clone().unwrap_or(h.id.clone());
+                                            if let Some(path) = crate::history::resolve_session_path(
+                                                std::path::Path::new(&base),
+                                                Some(&h.id),
+                                                Some(&h.path),
+                                            ) {
+                                                if let Ok(th) = crate::history::parse_thread(
+                                                    std::path::Path::new(&path),
+                                                ) {
+                                                    let resume_id = th
+                                                        .resume_id
+                                                        .clone()
+                                                        .unwrap_or(h.id.clone());
                                                     let title = th.title.clone();
                                                     let started_ms = th.started_ts.map(|t| t * 1000)
                                                         .or_else(|| crate::history::derive_started_ts_from_path(std::path::Path::new(&path)).map(|t| t * 1000))
                                                         .unwrap_or_else(|| now_ms());
-                                                    let mut targs: BTreeMap<String, Value> = BTreeMap::new();
-                                                    targs.insert("threadId".into(), Value::from(resume_id.clone()));
-                                                    targs.insert("resumeId".into(), Value::from(resume_id.clone()));
-                                                    targs.insert("title".into(), Value::from(title.clone()));
-                                                    targs.insert("createdAt".into(), Value::from(started_ms as f64));
-                                                    targs.insert("updatedAt".into(), Value::from(started_ms as f64));
-                                                    let _ = client.mutation("threads:upsertFromStream", targs).await;
+                                                    let mut targs: BTreeMap<String, Value> =
+                                                        BTreeMap::new();
+                                                    targs.insert(
+                                                        "threadId".into(),
+                                                        Value::from(resume_id.clone()),
+                                                    );
+                                                    targs.insert(
+                                                        "resumeId".into(),
+                                                        Value::from(resume_id.clone()),
+                                                    );
+                                                    targs.insert(
+                                                        "title".into(),
+                                                        Value::from(title.clone()),
+                                                    );
+                                                    targs.insert(
+                                                        "createdAt".into(),
+                                                        Value::from(started_ms as f64),
+                                                    );
+                                                    targs.insert(
+                                                        "updatedAt".into(),
+                                                        Value::from(started_ms as f64),
+                                                    );
+                                                    let _ = client
+                                                        .mutation("threads:upsertFromStream", targs)
+                                                        .await;
                                                     for it in th.items {
                                                         if it.kind == "message" {
-                                                            let role = it.role.as_deref().unwrap_or("assistant");
+                                                            let role = it
+                                                                .role
+                                                                .as_deref()
+                                                                .unwrap_or("assistant");
                                                             let text = it.text;
-                                                            let mut margs: BTreeMap<String, Value> = BTreeMap::new();
-                                                            margs.insert("threadId".into(), Value::from(resume_id.clone()));
-                                                            margs.insert("role".into(), Value::from(role));
-                                                            margs.insert("kind".into(), Value::from("message"));
-                                                            margs.insert("text".into(), Value::from(text));
-                                                            margs.insert("ts".into(), Value::from(now_ms() as f64));
-                                                            let _ = client.mutation("messages:create", margs).await;
+                                                            let mut margs: BTreeMap<String, Value> =
+                                                                BTreeMap::new();
+                                                            margs.insert(
+                                                                "threadId".into(),
+                                                                Value::from(resume_id.clone()),
+                                                            );
+                                                            margs.insert(
+                                                                "role".into(),
+                                                                Value::from(role),
+                                                            );
+                                                            margs.insert(
+                                                                "kind".into(),
+                                                                Value::from("message"),
+                                                            );
+                                                            margs.insert(
+                                                                "text".into(),
+                                                                Value::from(text),
+                                                            );
+                                                            margs.insert(
+                                                                "ts".into(),
+                                                                Value::from(now_ms() as f64),
+                                                            );
+                                                            let _ = client
+                                                                .mutation("messages:create", margs)
+                                                                .await;
                                                         }
                                                     }
                                                 }
@@ -190,24 +295,46 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         }
                                         let _ = stdin_state.tx.send(serde_json::json!({"type":"bridge.convex_backfill","status":"enqueued","count": items.len()}).to_string());
                                     }
-                                    Err(e) => { error!(?e, "backfill scan failed"); }
+                                    Err(e) => {
+                                        error!(?e, "backfill scan failed");
+                                    }
                                 }
                             }
-                            ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id } => {
+                            ControlCommand::RunSubmit {
+                                thread_doc_id,
+                                text,
+                                project_id,
+                                resume_id,
+                            } => {
                                 // Map to project working dir
                                 let desired_cd = project_id.as_ref().and_then(|pid| {
-                                    match crate::projects::list_projects() { Ok(list) => list.into_iter().find(|p| p.id == *pid).map(|p| p.working_dir), Err(_) => None }
+                                    match crate::projects::list_projects() {
+                                        Ok(list) => list
+                                            .into_iter()
+                                            .find(|p| p.id == *pid)
+                                            .map(|p| p.working_dir),
+                                        Err(_) => None,
+                                    }
                                 });
-                                { *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone()); }
+                                {
+                                    *stdin_state.current_convex_thread.lock().await =
+                                        Some(thread_doc_id.clone());
+                                }
                                 let resume_arg = compute_resume_arg(resume_id.as_deref());
                                 // Persist the user message to Convex so all clients see it immediately.
                                 {
                                     use convex::{ConvexClient, Value};
                                     use std::collections::BTreeMap;
-                                    let url = format!("http://127.0.0.1:{}", stdin_state.opts.convex_port);
+                                    let url = format!(
+                                        "http://127.0.0.1:{}",
+                                        stdin_state.opts.convex_port
+                                    );
                                     if let Ok(mut client) = ConvexClient::new(&url).await {
                                         let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                        args.insert("threadId".into(), Value::from(thread_doc_id.clone()));
+                                        args.insert(
+                                            "threadId".into(),
+                                            Value::from(thread_doc_id.clone()),
+                                        );
                                         args.insert("role".into(), Value::from("user"));
                                         args.insert("kind".into(), Value::from("message"));
                                         args.insert("text".into(), Value::from(text.clone()));
@@ -219,25 +346,46 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     &stdin_state.opts,
                                     desired_cd.clone().map(|s| std::path::PathBuf::from(s)),
                                     resume_arg.as_deref(),
-                                ).await {
+                                )
+                                .await
+                                {
                                     Ok(mut child) => {
-                                        if let Some(stdin) = child.stdin.take() { *stdin_state.child_stdin.lock().await = Some(stdin); }
-                                        if let Err(e) = start_stream_forwarders(child, stdin_state.clone()).await { error!(?e, "run.submit: forwarders failed"); }
+                                        if let Some(stdin) = child.stdin.take() {
+                                            *stdin_state.child_stdin.lock().await = Some(stdin);
+                                        }
+                                        if let Err(e) =
+                                            start_stream_forwarders(child, stdin_state.clone())
+                                                .await
+                                        {
+                                            error!(?e, "run.submit: forwarders failed");
+                                        }
                                         let mut cfg = serde_json::json!({ "sandbox": "danger-full-access", "approval": "never" });
                                         if let Some(cd) = desired_cd.as_deref() {
-                                            let cdv: serde_json::Value = serde_json::Value::String(cd.to_owned());
+                                            let cdv: serde_json::Value =
+                                                serde_json::Value::String(cd.to_owned());
                                             cfg["cd"] = cdv;
                                         }
-                                        if let Some(pid) = project_id.as_deref() { cfg["project"] = serde_json::json!({ "id": pid }); }
+                                        if let Some(pid) = project_id.as_deref() {
+                                            cfg["project"] = serde_json::json!({ "id": pid });
+                                        }
                                         let payload = format!("{}\n{}\n", cfg.to_string(), text);
-                                        if let Some(mut stdin) = stdin_state.child_stdin.lock().await.take() {
-                                            if let Err(e) = stdin.write_all(payload.as_bytes()).await { error!(?e, "run.submit: write failed"); }
-                                            let _ = stdin.flush().await; drop(stdin);
+                                        if let Some(mut stdin) =
+                                            stdin_state.child_stdin.lock().await.take()
+                                        {
+                                            if let Err(e) =
+                                                stdin.write_all(payload.as_bytes()).await
+                                            {
+                                                error!(?e, "run.submit: write failed");
+                                            }
+                                            let _ = stdin.flush().await;
+                                            drop(stdin);
                                             let dbg = serde_json::json!({"type":"bridge.run_submit","threadDocId": thread_doc_id, "cd": desired_cd, "resumeId": resume_id, "len": text.len()}).to_string();
                                             let _ = stdin_state.tx.send(dbg);
                                         }
                                     }
-                                    Err(e) => { error!(?e, "run.submit: spawn failed"); }
+                                    Err(e) => {
+                                        error!(?e, "run.submit: spawn failed");
+                                    }
                                 }
                             }
                             ControlCommand::ProjectSave { project } => {
@@ -248,7 +396,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             let _ = stdin_state.tx.send(line);
                                         }
                                     }
-                                    Err(e) => { error!(?e, "project save failed via ws"); }
+                                    Err(e) => {
+                                        error!(?e, "project save failed via ws");
+                                    }
                                 }
                             }
                             ControlCommand::ProjectDelete { id } => {
@@ -259,14 +409,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             let _ = stdin_state.tx.send(line);
                                         }
                                     }
-                                    Err(e) => { error!(?e, "project delete failed via ws"); }
+                                    Err(e) => {
+                                        error!(?e, "project delete failed via ws");
+                                    }
                                 }
                             }
                         }
                         continue;
                     }
-                    let preview = if t.len() > 180 { format!("{}…", &t[..180].replace('\n', "\\n")) } else { t.replace('\n', "\\n") };
-                    info!("msg" = "ws text received", size = t.len(), preview = preview);
+                    let preview = if t.len() > 180 {
+                        format!("{}…", &t[..180].replace('\n', "\\n"))
+                    } else {
+                        t.replace('\n', "\\n")
+                    };
+                    info!(
+                        "msg" = "ws text received",
+                        size = t.len(),
+                        preview = preview
+                    );
                     let desired_cd = extract_cd_from_ws_payload(&t);
                     let desired_resume = extract_resume_from_ws_payload(&t);
                     info!(?desired_cd, ?desired_resume, msg = "parsed ws preface");
@@ -279,24 +439,59 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             Some(s) if !s.is_empty() => Some(s.to_string()),
                             _ => resume_id.clone(),
                         };
-                        match spawn_codex_child_only_with_dir(&stdin_state.opts, desired_cd.clone(), resume_arg.as_deref()).await {
+                        match spawn_codex_child_only_with_dir(
+                            &stdin_state.opts,
+                            desired_cd.clone(),
+                            resume_arg.as_deref(),
+                        )
+                        .await
+                        {
                             Ok(mut child) => {
-                                if let Some(stdin) = child.stdin.take() { *stdin_state.child_stdin.lock().await = Some(stdin); }
-                                if let Err(e) = start_stream_forwarders(child, stdin_state.clone()).await { error!(?e, "failed starting forwarders for respawned codex"); }
+                                if let Some(stdin) = child.stdin.take() {
+                                    *stdin_state.child_stdin.lock().await = Some(stdin);
+                                }
+                                if let Err(e) =
+                                    start_stream_forwarders(child, stdin_state.clone()).await
+                                {
+                                    error!(?e, "failed starting forwarders for respawned codex");
+                                }
                             }
-                            Err(e) => { error!(?e, "failed to respawn codex"); }
+                            Err(e) => {
+                                error!(?e, "failed to respawn codex");
+                            }
                         }
                     }
                     let mut guard = stdin_state.child_stdin.lock().await;
                     if let Some(mut stdin) = guard.take() {
                         let mut data = t.to_string();
-                        let json_first_line = data.lines().next().unwrap_or("").trim_start().starts_with('{');
-                        if !json_first_line { data.push('\n'); }
-                        let preview = if data.len() > 240 { format!("{}…", &data[..240].replace('\n', "\\n")) } else { data.replace('\n', "\\n") };
-                        info!("msg" = "ws write to stdin", size = data.len(), preview = preview);
-                        if let Err(e) = stdin.write_all(data.as_bytes()).await { error!(?e, "failed to write to codex stdin"); break; }
-                        let _ = stdin.flush().await; drop(stdin);
-                    } else { error!("stdin already closed; ignoring input"); }
+                        let json_first_line = data
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .trim_start()
+                            .starts_with('{');
+                        if !json_first_line {
+                            data.push('\n');
+                        }
+                        let preview = if data.len() > 240 {
+                            format!("{}…", &data[..240].replace('\n', "\\n"))
+                        } else {
+                            data.replace('\n', "\\n")
+                        };
+                        info!(
+                            "msg" = "ws write to stdin",
+                            size = data.len(),
+                            preview = preview
+                        );
+                        if let Err(e) = stdin.write_all(data.as_bytes()).await {
+                            error!(?e, "failed to write to codex stdin");
+                            break;
+                        }
+                        let _ = stdin.flush().await;
+                        drop(stdin);
+                    } else {
+                        error!("stdin already closed; ignoring input");
+                    }
                 }
                 Message::Binary(_b) => { /* binary not used */ }
                 Message::Close(_) => break,
@@ -324,103 +519,273 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let low = line.trim().to_ascii_lowercase();
-            if low.contains("reading prompt from stdin") || low == "no prompt provided via stdin." { continue; }
-            if low.contains("codex_core::exec: exec error") { continue; }
+            if low.contains("reading prompt from stdin") || low == "no prompt provided via stdin." {
+                continue;
+            }
+            if low.contains("codex_core::exec: exec error") {
+                continue;
+            }
             let log = summarize_exec_delta_for_log(&line).unwrap_or_else(|| line.clone());
             println!("{}", log);
-            if line.contains("\"sandbox\"") || line.contains("sandbox") { info!("msg" = "observed sandbox string from stdout", raw = %line); }
+            if line.contains("\"sandbox\"") || line.contains("sandbox") {
+                info!("msg" = "observed sandbox string from stdout", raw = %line);
+            }
+            // Optional raw echo for debugging Codex JSONL mapping
+            if std::env::var("BRIDGE_DEBUG_CODEX").ok().as_deref() == Some("1") {
+                let snippet = if line.len() > 200 {
+                    format!("{}…", &line[..200])
+                } else {
+                    line.clone()
+                };
+                let dbg =
+                    serde_json::json!({"type":"bridge.codex_raw","line": snippet}).to_string();
+                let _ = tx_out.send(dbg);
+            }
             if let Ok(v) = serde_json::from_str::<JsonValue>(&line) {
-                let t = v.get("type").and_then(|x| x.as_str()).map(|s| s.to_string()).or_else(|| v.get("msg").and_then(|m| m.get("type")).and_then(|x| x.as_str()).map(|s| s.to_string()));
+                let t = v
+                    .get("type")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        v.get("msg")
+                            .and_then(|m| m.get("type"))
+                            .and_then(|x| x.as_str())
+                            .map(|s| s.to_string())
+                    });
                 if matches!(t.as_deref(), Some("thread.started")) {
-                    let id = v.get("thread_id").and_then(|x| x.as_str()).or_else(|| v.get("msg").and_then(|m| m.get("thread_id")).and_then(|x| x.as_str()));
+                    let id = v.get("thread_id").and_then(|x| x.as_str()).or_else(|| {
+                        v.get("msg")
+                            .and_then(|m| m.get("thread_id"))
+                            .and_then(|x| x.as_str())
+                    });
                     if let Some(val) = id {
-                        let _ = state_for_stdout.last_thread_id.lock().await.insert(val.to_string());
+                        let _ = state_for_stdout
+                            .last_thread_id
+                            .lock()
+                            .await
+                            .insert(val.to_string());
                         info!(thread_id=%val, msg="captured thread id for resume");
-                        let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
-                        use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
+                        let convex_tid_opt =
+                            { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        use convex::{ConvexClient, Value};
+                        use std::collections::BTreeMap;
                         let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
                         if let Ok(mut client) = ConvexClient::new(&url).await {
                             let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                            if let Some(ctid) = convex_tid_opt.as_deref() { args.insert("threadId".into(), Value::from(ctid)); }
+                            if let Some(ctid) = convex_tid_opt.as_deref() {
+                                args.insert("threadId".into(), Value::from(ctid));
+                            }
                             args.insert("resumeId".into(), Value::from(val));
                             args.insert("title".into(), Value::from("Thread"));
                             args.insert("createdAt".into(), Value::from(now_ms() as f64));
                             args.insert("updatedAt".into(), Value::from(now_ms() as f64));
                             let _ = client.mutation("threads:upsertFromStream", args).await;
-                            }
-                            // Broadcast a debug event for visibility in tools
-                            let dbg = serde_json::json!({
+                        }
+                        // Broadcast a debug event for visibility in tools
+                        let dbg = serde_json::json!({
                                 "type": "bridge.codex_event",
                                 "event_type": "thread.started",
                                 "thread_id": v.get("thread_id").and_then(|x| x.as_str()).or_else(|| v.get("msg").and_then(|m| m.get("thread_id")).and_then(|x| x.as_str())).unwrap_or("")
                             }).to_string();
-                            let _ = tx_out.send(dbg);
-                        }
+                        let _ = tx_out.send(dbg);
                     }
-                    if matches!(t.as_deref(), Some("turn.completed")) {
-                    let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
-                    let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                    if !target_tid.is_empty() { finalize_streaming_for_thread(&state_for_stdout, &target_tid).await; }
                 }
-                if matches!(t.as_deref(), Some("agent_message.delta")) || matches!(t.as_deref(), Some("assistant.delta")) || matches!(t.as_deref(), Some("message.delta")) {
+                if matches!(t.as_deref(), Some("turn.completed")) {
+                    let convex_tid_opt =
+                        { state_for_stdout.current_convex_thread.lock().await.clone() };
+                    let target_tid = if let Some(s) = convex_tid_opt {
+                        s
+                    } else {
+                        state_for_stdout
+                            .last_thread_id
+                            .lock()
+                            .await
+                            .clone()
+                            .unwrap_or_default()
+                    };
+                    if !target_tid.is_empty() {
+                        finalize_streaming_for_thread(&state_for_stdout, &target_tid).await;
+                    }
+                }
+                if matches!(t.as_deref(), Some("agent_message.delta"))
+                    || matches!(t.as_deref(), Some("assistant.delta"))
+                    || matches!(t.as_deref(), Some("message.delta"))
+                {
                     // Handle both { type, payload } and { msg: { type, payload } } shapes
-                    let payload = v.get("payload").or_else(|| v.get("msg").and_then(|m| m.get("payload")));
-                    let txt = payload.and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
-                    let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", &txt).await; info!(len=txt.len(), thread=%target_tid, "assistant.delta mapped");
-                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                    let payload = v
+                        .get("payload")
+                        .or_else(|| v.get("msg").and_then(|m| m.get("payload")));
+                    let txt = payload
+                        .and_then(|p| p.get("text"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let convex_tid_opt =
+                        { state_for_stdout.current_convex_thread.lock().await.clone() };
+                    let target_tid = if let Some(s) = convex_tid_opt {
+                        s
+                    } else {
+                        state_for_stdout
+                            .last_thread_id
+                            .lock()
+                            .await
+                            .clone()
+                            .unwrap_or_default()
+                    };
+                    if !target_tid.is_empty() {
+                        stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", &txt)
+                            .await;
+                        info!(len=txt.len(), thread=%target_tid, "assistant.delta mapped");
+                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.delta","len":txt.len(),"thread":target_tid}).to_string();
+                        let _ = tx_out.send(dbg);
                     }
                 }
-                if matches!(t.as_deref(), Some("reasoning.delta")) || matches!(t.as_deref(), Some("reason.delta")) {
-                    let payload = v.get("payload").or_else(|| v.get("msg").and_then(|m| m.get("payload")));
-                    let txt = payload.and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
-                    let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt).await; info!(len=txt.len(), thread=%target_tid, "reason.delta mapped");
-                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                if matches!(t.as_deref(), Some("reasoning.delta"))
+                    || matches!(t.as_deref(), Some("reason.delta"))
+                {
+                    let payload = v
+                        .get("payload")
+                        .or_else(|| v.get("msg").and_then(|m| m.get("payload")));
+                    let txt = payload
+                        .and_then(|p| p.get("text"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let convex_tid_opt =
+                        { state_for_stdout.current_convex_thread.lock().await.clone() };
+                    let target_tid = if let Some(s) = convex_tid_opt {
+                        s
+                    } else {
+                        state_for_stdout
+                            .last_thread_id
+                            .lock()
+                            .await
+                            .clone()
+                            .unwrap_or_default()
+                    };
+                    if !target_tid.is_empty() {
+                        stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt)
+                            .await;
+                        info!(len=txt.len(), thread=%target_tid, "reason.delta mapped");
+                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.delta","len":txt.len(),"thread":target_tid}).to_string();
+                        let _ = tx_out.send(dbg);
                     }
                 }
-                if matches!(t.as_deref(), Some("agent_message")) || matches!(t.as_deref(), Some("assistant")) || matches!(t.as_deref(), Some("message")) {
-                    let payload = v.get("payload").or_else(|| v.get("msg").and_then(|m| m.get("payload")));
-                    let text_owned = payload.and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
-                    let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                    if !target_tid.is_empty() { if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "assistant", &text_owned).await {
-                        use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
-                        let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                        if let Ok(mut client) = ConvexClient::new(&url).await {
-                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                            args.insert("threadId".into(), Value::from(target_tid.clone()));
-                            args.insert("role".into(), Value::from("assistant"));
-                            args.insert("kind".into(), Value::from("message"));
-                            args.insert("text".into(), Value::from(text_owned));
-                            args.insert("ts".into(), Value::from(now_ms() as f64));
-                            let _ = client.mutation("messages:create", args).await;
-                        }
-                        info!(thread=%target_tid, "assistant.finalized created snapshot");
-                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
-                    } else { info!(thread=%target_tid, "assistant.finalized finalized streamed item"); }}
-                }
-                if matches!(t.as_deref(), Some("reasoning")) {
-                    let mut text_owned = v.get("payload").and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    if text_owned.trim().is_empty() { if let Some(arr) = v.get("payload").and_then(|p| p.get("summary")).and_then(|x| x.as_array()) {
-                        for part in arr { if let Some(t) = part.get("text").and_then(|x| x.as_str()) { if !text_owned.is_empty() { text_owned.push('\n'); } text_owned.push_str(t); } }
-                    }}
-                    if !text_owned.trim().is_empty() { let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
-                        let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                        if !target_tid.is_empty() { if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "reason", &text_owned).await {
-                            use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
-                            let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                if matches!(t.as_deref(), Some("agent_message"))
+                    || matches!(t.as_deref(), Some("assistant"))
+                    || matches!(t.as_deref(), Some("message"))
+                {
+                    let payload = v
+                        .get("payload")
+                        .or_else(|| v.get("msg").and_then(|m| m.get("payload")));
+                    let text_owned = payload
+                        .and_then(|p| p.get("text"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let convex_tid_opt =
+                        { state_for_stdout.current_convex_thread.lock().await.clone() };
+                    let target_tid = if let Some(s) = convex_tid_opt {
+                        s
+                    } else {
+                        state_for_stdout
+                            .last_thread_id
+                            .lock()
+                            .await
+                            .clone()
+                            .unwrap_or_default()
+                    };
+                    if !target_tid.is_empty() {
+                        if !try_finalize_stream_kind(
+                            &state_for_stdout,
+                            &target_tid,
+                            "assistant",
+                            &text_owned,
+                        )
+                        .await
+                        {
+                            use convex::{ConvexClient, Value};
+                            use std::collections::BTreeMap;
+                            let url =
+                                format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
                             if let Ok(mut client) = ConvexClient::new(&url).await {
                                 let mut args: BTreeMap<String, Value> = BTreeMap::new();
                                 args.insert("threadId".into(), Value::from(target_tid.clone()));
-                                args.insert("kind".into(), Value::from("reason"));
+                                args.insert("role".into(), Value::from("assistant"));
+                                args.insert("kind".into(), Value::from("message"));
                                 args.insert("text".into(), Value::from(text_owned));
                                 args.insert("ts".into(), Value::from(now_ms() as f64));
                                 let _ = client.mutation("messages:create", args).await;
                             }
-                        }}
+                            info!(thread=%target_tid, "assistant.finalized created snapshot");
+                            let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string();
+                            let _ = tx_out.send(dbg);
+                        } else {
+                            info!(thread=%target_tid, "assistant.finalized finalized streamed item");
+                        }
+                    }
+                }
+                if matches!(t.as_deref(), Some("reasoning")) {
+                    let mut text_owned = v
+                        .get("payload")
+                        .and_then(|p| p.get("text"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if text_owned.trim().is_empty() {
+                        if let Some(arr) = v
+                            .get("payload")
+                            .and_then(|p| p.get("summary"))
+                            .and_then(|x| x.as_array())
+                        {
+                            for part in arr {
+                                if let Some(t) = part.get("text").and_then(|x| x.as_str()) {
+                                    if !text_owned.is_empty() {
+                                        text_owned.push('\n');
+                                    }
+                                    text_owned.push_str(t);
+                                }
+                            }
+                        }
+                    }
+                    if !text_owned.trim().is_empty() {
+                        let convex_tid_opt =
+                            { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        let target_tid = if let Some(s) = convex_tid_opt {
+                            s
+                        } else {
+                            state_for_stdout
+                                .last_thread_id
+                                .lock()
+                                .await
+                                .clone()
+                                .unwrap_or_default()
+                        };
+                        if !target_tid.is_empty() {
+                            if !try_finalize_stream_kind(
+                                &state_for_stdout,
+                                &target_tid,
+                                "reason",
+                                &text_owned,
+                            )
+                            .await
+                            {
+                                use convex::{ConvexClient, Value};
+                                use std::collections::BTreeMap;
+                                let url = format!(
+                                    "http://127.0.0.1:{}",
+                                    state_for_stdout.opts.convex_port
+                                );
+                                if let Ok(mut client) = ConvexClient::new(&url).await {
+                                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                    args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                    args.insert("kind".into(), Value::from("reason"));
+                                    args.insert("text".into(), Value::from(text_owned));
+                                    args.insert("ts".into(), Value::from(now_ms() as f64));
+                                    let _ = client.mutation("messages:create", args).await;
+                                }
+                            }
+                        }
                     }
                 }
                 // Tool rows: command/file/search/mcp/todo via item.*
@@ -433,16 +798,32 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             let kind = payload.get("type").and_then(|x| x.as_str()).unwrap_or("");
                             let map_kind = map_tool_kind(kind);
                             if let Some(k) = map_kind {
-                                let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
-                                let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
+                                let convex_tid_opt =
+                                    { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                let target_tid = if let Some(s) = convex_tid_opt {
+                                    s
+                                } else {
+                                    state_for_stdout
+                                        .last_thread_id
+                                        .lock()
+                                        .await
+                                        .clone()
+                                        .unwrap_or_default()
+                                };
                                 if !target_tid.is_empty() {
                                     let payload_str = payload.to_string();
                                     use convex::{ConvexClient, Value};
                                     use std::collections::BTreeMap;
-                                    let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                    let url = format!(
+                                        "http://127.0.0.1:{}",
+                                        state_for_stdout.opts.convex_port
+                                    );
                                     if let Ok(mut client) = ConvexClient::new(&url).await {
                                         let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                        args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                        args.insert(
+                                            "threadId".into(),
+                                            Value::from(target_tid.clone()),
+                                        );
                                         args.insert("kind".into(), Value::from(k));
                                         args.insert("text".into(), Value::from(payload_str));
                                         args.insert("ts".into(), Value::from(now_ms() as f64));
@@ -460,7 +841,9 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
         // Drain stderr to console
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
-        while let Ok(Some(line)) = lines.next_line().await { eprintln!("[codex/stderr] {}", line); }
+        while let Ok(Some(line)) = lines.next_line().await {
+            eprintln!("[codex/stderr] {}", line);
+        }
     });
     Ok(())
 }
@@ -470,10 +853,16 @@ async fn interrupt_running_child(state: &Arc<AppState>) -> Result<()> {
     let pid_opt = { state.child_pid.lock().await.clone() };
     match pid_opt {
         Some(pid) => match send_interrupt_signal(pid) {
-            Ok(_) => { info!(pid, "sent interrupt signal to codex child"); Ok(()) }
+            Ok(_) => {
+                info!(pid, "sent interrupt signal to codex child");
+                Ok(())
+            }
             Err(e) => Err(e.context("failed to send interrupt signal to codex child")),
         },
-        None => { info!("msg" = "no child pid recorded when interrupt requested"); Ok(()) }
+        None => {
+            info!("msg" = "no child pid recorded when interrupt requested");
+            Ok(())
+        }
     }
 }
 
@@ -484,35 +873,55 @@ fn send_interrupt_signal(pid: u32) -> Result<()> {
     let pid_i32: i32 = pid.try_into().context("pid out of range for SIGINT")?;
     let target = -pid_i32;
     let res = unsafe { libc::kill(target, libc::SIGINT) };
-    if res == 0 { return Ok(()); }
+    if res == 0 {
+        return Ok(());
+    }
     let err = std::io::Error::last_os_error();
-    if err.kind() == ErrorKind::NotFound { return Ok(()); }
+    if err.kind() == ErrorKind::NotFound {
+        return Ok(());
+    }
     Err(anyhow::Error::from(err).context("libc::kill(SIGINT) failed"))
 }
 
 #[cfg(windows)]
 /// Windows: use `taskkill /T` to terminate the process tree.
 fn send_interrupt_signal(pid: u32) -> Result<()> {
-    let status = std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/T"]).status().context("failed to spawn taskkill for interrupt")?;
-    if status.success() { Ok(()) } else { Err(anyhow::anyhow!("taskkill exited with status {status:?}")) }
+    let status = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T"])
+        .status()
+        .context("failed to spawn taskkill for interrupt")?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("taskkill exited with status {status:?}"))
+    }
 }
 
 /// Best‑effort helper to pull a `cd` path out of the first JSON line in a WS payload.
 fn extract_cd_from_ws_payload(payload: &str) -> Option<PathBuf> {
     let first_line = payload.lines().next()?.trim();
-    if !first_line.starts_with('{') { return None; }
+    if !first_line.starts_with('{') {
+        return None;
+    }
     let v: JsonValue = serde_json::from_str(first_line).ok()?;
     let cd = v.get("cd").and_then(|s| s.as_str())?;
-    if cd.is_empty() { return None; }
+    if cd.is_empty() {
+        return None;
+    }
     Some(expand_home(cd))
 }
 
 /// Best‑effort helper to pull a `resume` token out of the first JSON line.
 fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
     let first_line = payload.lines().next()?.trim();
-    if !first_line.starts_with('{') { return None; }
+    if !first_line.starts_with('{') {
+        return None;
+    }
     let v: JsonValue = serde_json::from_str(first_line).ok()?;
-    match v.get("resume") { Some(JsonValue::String(s)) if !s.is_empty() => Some(s.clone()), _ => None }
+    match v.get("resume") {
+        Some(JsonValue::String(s)) if !s.is_empty() => Some(s.clone()),
+        _ => None,
+    }
 }
 
 /// Compute a resume argument for Codex CLI from an optional resume token.
@@ -549,7 +958,10 @@ mod tests {
 
     #[test]
     fn parses_resume_line() {
-        assert_eq!(extract_resume_from_ws_payload("{\"resume\":\"last\"}"), Some("last".into()));
+        assert_eq!(
+            extract_resume_from_ws_payload("{\"resume\":\"last\"}"),
+            Some("last".into())
+        );
         assert!(extract_resume_from_ws_payload("{\"foo\":1}").is_none());
     }
 
@@ -576,14 +988,20 @@ mod tests {
 
 fn create_demo_table(db_path: &PathBuf) -> Result<()> {
     let conn = rusqlite::Connection::open(db_path)?;
-    conn.execute("CREATE TABLE IF NOT EXISTS oa_demo (id INTEGER PRIMARY KEY, k TEXT, v TEXT)", rusqlite::params![])?; Ok(())
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS oa_demo (id INTEGER PRIMARY KEY, k TEXT, v TEXT)",
+        rusqlite::params![],
+    )?;
+    Ok(())
 }
 fn create_threads_table(db_path: &PathBuf) -> Result<()> {
     let conn = rusqlite::Connection::open(db_path)?;
-    conn.execute("CREATE TABLE IF NOT EXISTS threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, title TEXT, resume_id TEXT, project_id TEXT, source TEXT, created_at INTEGER, updated_at INTEGER)", rusqlite::params![])?; Ok(())
+    conn.execute("CREATE TABLE IF NOT EXISTS threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, title TEXT, resume_id TEXT, project_id TEXT, source TEXT, created_at INTEGER, updated_at INTEGER)", rusqlite::params![])?;
+    Ok(())
 }
 fn insert_demo_thread(db_path: &PathBuf) -> Result<()> {
     let conn = rusqlite::Connection::open(db_path)?;
     let id = format!("demo-{}", now_ms());
-    conn.execute("INSERT OR REPLACE INTO threads (id, rollout_path, title, resume_id, project_id, source, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)", rusqlite::params![id, "~/.codex/sessions/demo.jsonl", "Demo Thread", "", "", "demo", now_ms() as i64, now_ms() as i64])?; Ok(())
+    conn.execute("INSERT OR REPLACE INTO threads (id, rollout_path, title, resume_id, project_id, source, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)", rusqlite::params![id, "~/.codex/sessions/demo.jsonl", "Demo Thread", "", "", "demo", now_ms() as i64, now_ms() as i64])?;
+    Ok(())
 }

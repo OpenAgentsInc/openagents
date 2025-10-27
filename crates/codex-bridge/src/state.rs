@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 
 use crate::Opts;
 
