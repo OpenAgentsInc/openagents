@@ -25,10 +25,8 @@ export const useAutoUpdate = () => {
 
   useEffect(() => {
     if (__DEV__) return
-
-    const interval = setInterval(handleCheckUpdate, 5000)
-    void handleCheckUpdate()
-    return () => clearInterval(interval)
+    // Check once shortly after startup. Excessive polling can stress expo-updates DB on iOS.
+    const t = setTimeout(() => { void handleCheckUpdate() }, 3000)
+    return () => clearTimeout(t)
   }, [])
 }
-
