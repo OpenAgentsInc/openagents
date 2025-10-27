@@ -21,7 +21,7 @@ import { useOnboarding } from "@/lib/onboarding-store"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
 import { ConvexProviderLocal } from "@/providers/convex"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
-import { ProjectsProvider, useProjects } from "@/providers/projects"
+import { ProjectsProvider } from "@/providers/projects"
 import { SkillsProvider } from "@/providers/skills"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
@@ -29,9 +29,7 @@ import { ThemeProvider } from "@react-navigation/native"
 
 function DrawerContent() {
   const router = useRouter();
-  const { projects, setActive } = useProjects();
   const { setOpen } = useDrawer();
-  const createThread = (require('convex/react') as any).useMutation('threads:create') as (args?: { title?: string; projectId?: string }) => Promise<string>;
   // Convex-only history
   const convexThreads = (useQuery as any)('threads:listWithCounts', {}) as any[] | undefined | null
   const topThreads = React.useMemo(() => {
@@ -54,6 +52,7 @@ function DrawerContent() {
           </View>
           <View style={{ paddingHorizontal: 16, gap: 4 }}>
             <View style={{ height: 8 }} />
+            {/** Projects section temporarily disabled for v1
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="folder-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Projects</Text>
@@ -75,12 +74,13 @@ function DrawerContent() {
                 <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{p.name}</Text>
               </Pressable>
             ))}
+            */}
             <View style={{ height: 8 }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="time-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
               {convexThreads === undefined ? (
-                <ActivityIndicator size="small" color={Colors.secondary} />
+                <ActivityIndicator size="small" color={Colors.secondary} style={{ transform: [{ scale: 0.75 }] }} />
               ) : null}
             </View>
             {Array.isArray(convexThreads) && (

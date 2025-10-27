@@ -432,7 +432,10 @@ function startBridgeProcess(repoRoot: string) {
     stdio: "inherit",
     env: {
       ...process.env,
-      RUST_LOG: process.env.RUST_LOG || "info",
+      // Quiet verbose deps; keep our bridge at info
+      RUST_LOG: process.env.RUST_LOG || "info,convex=warn,convex::base_client=warn,tungstenite=warn,notify=warn",
+      // Disable FS→Convex sync to avoid large startup imports/noise in dev
+      OPENAGENTS_CONVEX_SYNC: process.env.OPENAGENTS_CONVEX_SYNC || "0",
       BRIDGE_DEBUG_WS: process.env.BRIDGE_DEBUG_WS || "1",
       BRIDGE_DEBUG_CODEX: process.env.BRIDGE_DEBUG_CODEX || "1",
     },
