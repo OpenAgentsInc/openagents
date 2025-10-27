@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
+import { useQuery } from 'convex/react'
 import { parseBridgeCode } from '@/lib/pairing'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
@@ -31,6 +32,12 @@ export default function SettingsScreen() {
       return 'http://127.0.0.1:7788'
     }
   }, [bridgeHost])
+  const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
+  const convexStatus = React.useMemo(() => {
+    if (convexThreads === undefined) return 'connecting'
+    if (convexThreads === null) return 'function missing or error'
+    return Array.isArray(convexThreads) ? `ok (${convexThreads.length} threads)` : 'ok'
+  }, [convexThreads])
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
@@ -52,6 +59,8 @@ export default function SettingsScreen() {
         style={styles.input}
       />
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {`ws://${bridgeHost}/ws`}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>Convex base: {convexUrl || derivedConvexUrl}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>Convex status: {convexStatus}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
         <StatusPill connected={connected} />
