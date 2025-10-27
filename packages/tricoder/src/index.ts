@@ -176,7 +176,16 @@ function ensureBridgeRunning(repoRoot: string) {
   sock.once("error", () => {
     // Not listening; try to start it
     console.log(chalk.dim("Starting local bridge (cargo bridge)…"));
-    const child = spawn("cargo", ["bridge"], { cwd: repoRoot, stdio: "inherit" });
+    const child = spawn("cargo", ["bridge"], {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        RUST_LOG: process.env.RUST_LOG || "info",
+        BRIDGE_DEBUG_WS: process.env.BRIDGE_DEBUG_WS || "1",
+        BRIDGE_DEBUG_CODEX: process.env.BRIDGE_DEBUG_CODEX || "1",
+      },
+    });
     child.on("error", () => {});
   });
   // timeout after brief period
@@ -372,12 +381,37 @@ function startBridgeEventTail() {
           const obj = JSON.parse(s);
           const t = obj?.type || obj?.msg?.type || '';
           if (String(t).startsWith('bridge.')) {
+            // Print richer details for common debug events
+            if (t === 'bridge.control' && typeof obj.raw === 'string') {
+              console.log(chalk.dim(`[bridge-control] raw=${obj.raw}`));
+              return;
+            }
+            if (t === 'bridge.ws_in' && typeof obj.preview === 'string') {
+              console.log(chalk.dim(`[bridge-in] ${obj.preview}`));
+              return;
+            }
+            if (t === 'bridge.run_submit') {
+              console.log(chalk.dim(`[bridge] bridge.run_submit threadDocId=${obj.threadDocId || ''} len=${obj.len || 0}`));
+              return;
+            }
+            if (t === 'bridge.client_connected' || t === 'bridge.client_disconnected') {
+              console.log(chalk.dim(`[bridge] ${t}`));
+              return;
+            }
+            if (t === 'bridge.echo') {
+              console.log(chalk.dim(`[bridge-echo] tag=${obj.tag || ''} payload=${obj.payload || ''}`));
+              return;
+            }
             console.log(chalk.dim(`[bridge] ${t}`));
             return;
           }
           // surface codex JSONL events succinctly
           if (t && /agent_message|assistant|message|reason|exec_begin|exec/.test(String(t))) {
             console.log(chalk.dim(`[codex] ${t}`));
+            return;
+          }
+          if (t === 'bridge.codex_raw' && typeof obj.line === 'string') {
+            console.log(chalk.dim(`[codex-raw] ${obj.line}`));
             return;
           }
         } catch { /* ignore non-json */ }
