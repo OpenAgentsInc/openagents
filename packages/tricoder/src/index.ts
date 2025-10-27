@@ -108,6 +108,7 @@ function main() {
   console.log(lite(" - Builds the Rust bridge and tunnel, then starts the bridge"));
   console.log(lite(" - Starts the local Convex backend and deploys functions (best effort)"));
   console.log(lite(" - Optionally opens public tunnels and prints a pairing code"));
+  console.log(chalk.yellowBright("\nImportant: The mobile app and desktop features won’t fully work until the Convex backend is installed and healthy."));
   console.log(chalk.yellowBright("\nNote: First setup may take ~5 minutes on slower machines due to local Rust builds."));
   printResourcesOnce();
   // Always print a quick assessment so users see what's missing
@@ -223,6 +224,7 @@ function main() {
     // Security notice
     console.log(chalk.yellowBright("\nWarning: This code is your private bridge token — never share it with anyone."));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
+    console.log(chalk.yellowBright("Heads up: The app depends on the local Convex backend. If you don’t see threads/messages updating yet, wait until Convex reports healthy and functions finish deploying."));
     // Helpful resources (light gray, once)
     printResourcesOnce();
     // Check for codex binary presence — required for assistant responses
