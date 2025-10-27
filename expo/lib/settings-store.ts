@@ -6,11 +6,13 @@ export type Approvals = 'never' | 'on-request' | 'on-failure'
 
 type SettingsState = {
   bridgeHost: string
+  convexUrl: string
   readOnly: boolean
   networkEnabled: boolean
   approvals: Approvals
   attachPreface: boolean
   setBridgeHost: (v: string) => void
+  setConvexUrl: (v: string) => void
   setReadOnly: (v: boolean) => void
   setNetworkEnabled: (v: boolean) => void
   setApprovals: (v: Approvals) => void
@@ -21,11 +23,13 @@ export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
       bridgeHost: 'localhost:8787',
+      convexUrl: '',
       readOnly: false,
       networkEnabled: true,
       approvals: 'never',
       attachPreface: true,
       setBridgeHost: (v) => set({ bridgeHost: v }),
+      setConvexUrl: (v) => set({ convexUrl: v }),
       setReadOnly: (v) => set({ readOnly: v }),
       setNetworkEnabled: (v) => set({ networkEnabled: v }),
       setApprovals: (v) => set({ approvals: v }),
@@ -48,4 +52,3 @@ export const useSettings = create<SettingsState>()(
     }
   )
 )
-

@@ -1,6 +1,7 @@
 import React from 'react'
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
 import { useBridge } from '@/providers/ws'
+import { useSettings } from '@/lib/settings-store'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
@@ -8,7 +9,9 @@ import { useHeaderTitle } from '@/lib/header-store'
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
   const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, attachPreface, setAttachPreface } = useBridge()
-  const convexUrl = React.useMemo(() => {
+  const convexUrl = useSettings((s) => s.convexUrl)
+  const setConvexUrl = useSettings((s) => s.setConvexUrl)
+  const derivedConvexUrl = React.useMemo(() => {
     try {
       const val = String(bridgeHost || '').trim()
       const stripped = val
@@ -31,7 +34,8 @@ export default function SettingsScreen() {
       <Text style={styles.label}>Bridge Host (host:port)</Text>
       <TextInput value={bridgeHost} onChangeText={setBridgeHost} autoCapitalize='none' autoCorrect={false} placeholder='localhost:8787' placeholderTextColor={Colors.secondary} style={styles.input} />
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {`ws://${bridgeHost}/ws`}</Text>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>Convex URL: {convexUrl}</Text>
+      <Text style={styles.label}>Convex URL (optional override)</Text>
+      <TextInput value={convexUrl} onChangeText={setConvexUrl} autoCapitalize='none' autoCorrect={false} placeholder={derivedConvexUrl} placeholderTextColor={Colors.secondary} style={styles.input} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
         <StatusPill connected={connected} />
