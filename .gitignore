@@ -9,3 +9,5 @@ local_backend
 node_modules
 dist
 *.tgz
+src-tauri/
+packages/tricoder/tmp.ts
