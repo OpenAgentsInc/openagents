@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-import chalk from "chalk";
-import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { buildTunnelArgs } from "./args.js";
-import net from "node:net";
-import http from "node:http";
-import WebSocket from "ws";
+import chalk from "chalk"
+import { spawn, spawnSync } from "node:child_process"
+import { existsSync } from "node:fs"
+import http from "node:http"
+import net from "node:net"
+import { dirname, join } from "node:path"
+import WebSocket from "ws"
+import { buildTunnelArgs } from "./args.js"
+
 // spawnSync already imported above
 const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v") || process.env.TRICODER_VERBOSE === "1";
 
@@ -60,12 +61,12 @@ function main() {
           if (VERBOSE) console.log(chalk.dim(`[convex-public] ${convexUrl}`));
           maybePrintPairCode(bridgeUrl!, convexUrl!);
           // Public probes
-          if (VERBOSE) { try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch {} }
-          if (VERBOSE) { try { if (convexUrl) probePublicConvex(convexUrl); } catch {} }
+          if (VERBOSE) { try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch { } }
+          if (VERBOSE) { try { if (convexUrl) probePublicConvex(convexUrl); } catch { } }
           // Connectivity summary
           if (VERBOSE) console.log(chalk.dim(`[pair] bridge=${bridgeUrl} convex=${convexUrl}`));
           // Seed a demo thread via bridge controls to ensure history appears
-          if (VERBOSE) { try { seedDemoViaBridgeControl(); } catch {} }
+          if (VERBOSE) { try { seedDemoViaBridgeControl(); } catch { } }
         });
         // Start local health probes (status changes only)
         if (VERBOSE) startLocalProbes(repoRoot);
@@ -112,9 +113,9 @@ function main() {
     const lite = (s: string) => chalk.hex('#9CA3AF')(s); // light gray
     console.log(lite("Resources:"));
     console.log(lite(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
-    console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
-    console.log(lite(" - Android coming soon"));
     console.log(lite(" - All code is open-source here: https://github.com/OpenAgentsInc/openagents"));
+    console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
+    console.log(lite("    - Android coming soon (sooner if you @ us on X"));
     console.log(lite(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
     // Check for codex binary presence — required for assistant responses
     try {
@@ -122,10 +123,10 @@ function main() {
       const ok = probe.status === 0;
       if (VERBOSE) console.log(ok ? chalk.dim('[codex] codex binary found in PATH') : chalk.yellow('[codex] codex binary NOT found — assistant responses will not stream'));
       // Bridge status via WS
-      if (VERBOSE) { try { bridgeStatus(); } catch {} }
+      if (VERBOSE) { try { bridgeStatus(); } catch { } }
       // Start persistent WS tail to print bridge + codex events
-      if (VERBOSE) { try { startBridgeEventTail(); } catch {} }
-    } catch {}
+      if (VERBOSE) { try { startBridgeEventTail(); } catch { } }
+    } catch { }
   }
 }
 
@@ -179,13 +180,13 @@ function ensureBridgeRunning(repoRoot: string) {
   const sock = net.createConnection({ host: "127.0.0.1", port: 8787 });
   let connected = false;
   sock.once("connect", async () => {
-    connected = true; try { sock.end(); } catch {}
+    connected = true; try { sock.end(); } catch { }
     const force = (process.env.TRICODER_FORCE_RESTART || '1') !== '0';
     // Probe whether current bridge supports echo. If not, or if forced, restart it.
     const supports = await probeBridgeEchoOnce(700).catch(() => false);
     if (force || !supports) {
       if (VERBOSE) console.log(chalk.dim(`Restarting local bridge with debug enabled (${force ? 'forced' : 'no echo support'})…`));
-      try { restartBridgeProcess(repoRoot); } catch {}
+      try { restartBridgeProcess(repoRoot); } catch { }
     }
   });
   sock.once("error", () => {
@@ -193,7 +194,7 @@ function ensureBridgeRunning(repoRoot: string) {
     startBridgeProcess(repoRoot);
   });
   // timeout after brief period
-  setTimeout(() => { try { if (!connected) sock.destroy(); } catch {} }, 500);
+  setTimeout(() => { try { if (!connected) sock.destroy(); } catch { } }, 500);
 }
 
 function startLocalProbes(repoRoot: string) {
@@ -202,7 +203,7 @@ function startLocalProbes(repoRoot: string) {
   const probeBridge = () => {
     const s = net.createConnection({ host: "127.0.0.1", port: 8787 });
     let ok = false;
-    s.once("connect", () => { ok = true; try { s.end(); } catch {} });
+    s.once("connect", () => { ok = true; try { s.end(); } catch { } });
     s.once("error", () => { ok = false; });
     s.once("close", () => {
       if (VERBOSE && lastBridgeOk !== ok) {
@@ -210,7 +211,7 @@ function startLocalProbes(repoRoot: string) {
         console.log(ok ? chalk.dim("[bridge-local] 127.0.0.1:8787 reachable") : chalk.dim("[bridge-local] 127.0.0.1:8787 not reachable"));
       }
     });
-    setTimeout(() => { try { s.destroy(); } catch {} }, 500);
+    setTimeout(() => { try { s.destroy(); } catch { } }, 500);
   };
   const probeConvex = () => {
     const req = http.get({ host: "127.0.0.1", port: 7788, path: "/instance_version", timeout: 700 }, (res) => {
@@ -233,7 +234,7 @@ function startLocalProbes(repoRoot: string) {
         console.log(chalk.dim("[convex-local] http://127.0.0.1:7788 unreachable"));
       }
     });
-    req.setTimeout(800, () => { try { req.destroy(); } catch {} });
+    req.setTimeout(800, () => { try { req.destroy(); } catch { } });
   };
   // Kick immediately and then poll
   probeBridge();
@@ -284,7 +285,7 @@ function probePublicConvex(base: string) {
       });
     });
     req.on("error", (e: any) => { if (VERBOSE) console.log(chalk.dim(`[convex-public-check] error: ${e?.message || e}`)); });
-    req.setTimeout(2500, () => { try { req.destroy(); } catch {} });
+    req.setTimeout(2500, () => { try { req.destroy(); } catch { } });
   } catch (e: any) {
     if (VERBOSE) console.log(chalk.dim(`[convex-public-check] invalid URL: ${String(e?.message || e)}`));
   }
@@ -314,11 +315,11 @@ function probePublicBridge(wsUrl: string) {
       if (buf.includes("\r\n\r\n")) {
         const first = buf.split(/\r?\n/)[0] || "";
         if (VERBOSE) console.log(chalk.dim(`[bridge-public-check] ${first}`));
-        try { s.destroy(); } catch {}
+        try { s.destroy(); } catch { }
       }
     });
     s.on("error", (e: any) => { if (VERBOSE) console.log(chalk.dim(`[bridge-public-check] error: ${e?.message || e}`)); });
-    setTimeout(() => { try { s.destroy(); } catch {} }, 2500);
+    setTimeout(() => { try { s.destroy(); } catch { } }, 2500);
   } catch (e: any) {
     if (VERBOSE) console.log(chalk.dim(`[bridge-public-check] invalid URL: ${String(e?.message || e)}`));
   }
@@ -327,14 +328,14 @@ function probePublicBridge(wsUrl: string) {
 function seedDemoViaBridgeControl() {
   const ws = new WebSocket("ws://127.0.0.1:8787/ws");
   let done = false;
-  const timer = setTimeout(() => { try { ws.close(); } catch {} }, 4000);
+  const timer = setTimeout(() => { try { ws.close(); } catch { } }, 4000);
   ws.on("open", () => {
     try {
       ws.send(JSON.stringify({ control: "convex.create_demo" }));
       ws.send(JSON.stringify({ control: "convex.create_demo_thread" }));
       ws.send(JSON.stringify({ control: "convex.create_threads" }));
       ws.send(JSON.stringify({ control: "convex.status" }));
-    } catch {}
+    } catch { }
   });
   ws.on("message", (data: WebSocket.RawData) => {
     const s = String(data || "").trim();
@@ -351,7 +352,7 @@ function seedDemoViaBridgeControl() {
       if (obj?.type === "bridge.projects") {
         if (VERBOSE) console.log(chalk.dim(`[bridge-control] projects -> ${Array.isArray(obj.items) ? obj.items.length : 0} items`));
       }
-    } catch {}
+    } catch { }
   });
   ws.on("close", () => { if (!done) clearTimeout(timer); done = true; });
   ws.on("error", () => { if (!done) clearTimeout(timer); done = true; });
@@ -359,12 +360,12 @@ function seedDemoViaBridgeControl() {
 
 function bridgeStatus() {
   const ws = new WebSocket("ws://127.0.0.1:8787/ws");
-  const timer = setTimeout(() => { try { ws.close(); } catch {} }, 1800);
+  const timer = setTimeout(() => { try { ws.close(); } catch { } }, 1800);
   ws.on("open", () => {
-    try { ws.send(JSON.stringify({ control: 'bridge.status' })); } catch {}
+    try { ws.send(JSON.stringify({ control: 'bridge.status' })); } catch { }
   });
-  ws.on("error", () => { try { clearTimeout(timer); ws.close(); } catch {} });
-  ws.on("close", () => { try { clearTimeout(timer); } catch {} });
+  ws.on("error", () => { try { clearTimeout(timer); ws.close(); } catch { } });
+  ws.on("close", () => { try { clearTimeout(timer); } catch { } });
 }
 
 function startBridgeEventTail() {
@@ -420,7 +421,7 @@ function startBridgeEventTail() {
       }
     });
     ws.on("close", () => { if (!closed) setTimeout(connect, 1200); });
-    ws.on("error", () => { try { ws.close(); } catch {}; if (!closed) setTimeout(connect, 1500); });
+    ws.on("error", () => { try { ws.close(); } catch { }; if (!closed) setTimeout(connect, 1500); });
   };
   connect();
   // Return a stopper in case we want to end later (not used for dev)
@@ -442,7 +443,7 @@ function startBridgeProcess(repoRoot: string) {
       BRIDGE_DEBUG_CODEX: process.env.BRIDGE_DEBUG_CODEX || (VERBOSE ? "1" : "0"),
     },
   });
-  child.on("error", () => {});
+  child.on("error", () => { });
 }
 
 function restartBridgeProcess(repoRoot: string) {
@@ -451,12 +452,12 @@ function restartBridgeProcess(repoRoot: string) {
     const out = spawnSync(process.platform === 'darwin' || process.platform === 'linux' ? 'lsof' : 'netstat',
       process.platform === 'darwin' || process.platform === 'linux'
         ? ['-i', ':8787', '-sTCP:LISTEN', '-t']
-        : [] , { encoding: 'utf8' })
+        : [], { encoding: 'utf8' })
     const pids = String(out.stdout || '').split(/\s+/).filter(Boolean)
     for (const pid of pids) {
-      try { process.kill(Number(pid), 'SIGTERM') } catch {}
+      try { process.kill(Number(pid), 'SIGTERM') } catch { }
     }
-  } catch {}
+  } catch { }
   setTimeout(() => startBridgeProcess(repoRoot), 400);
 }
 
@@ -464,17 +465,17 @@ async function probeBridgeEchoOnce(timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     const ws = new WebSocket("ws://127.0.0.1:8787/ws");
     let done = false;
-    const timer = setTimeout(() => { if (!done) { done = true; try { ws.close(); } catch {}; resolve(false); } }, timeoutMs);
+    const timer = setTimeout(() => { if (!done) { done = true; try { ws.close(); } catch { }; resolve(false); } }, timeoutMs);
     ws.on("open", () => {
-      try { ws.send(JSON.stringify({ control: 'echo', tag: 'probe', payload: 'ok' })) } catch {}
+      try { ws.send(JSON.stringify({ control: 'echo', tag: 'probe', payload: 'ok' })) } catch { }
     });
     ws.on("message", (data) => {
       const s = String(data || '').trim();
       if (!s.startsWith('{')) return;
       try {
         const obj = JSON.parse(s);
-        if (obj?.type === 'bridge.echo' && (obj?.tag === 'probe')) { if (!done) { done = true; clearTimeout(timer); try { ws.close(); } catch {}; resolve(true); } }
-      } catch {}
+        if (obj?.type === 'bridge.echo' && (obj?.tag === 'probe')) { if (!done) { done = true; clearTimeout(timer); try { ws.close(); } catch { }; resolve(true); } }
+      } catch { }
     });
     ws.on("error", () => { if (!done) { done = true; clearTimeout(timer); resolve(false); } });
     ws.on("close", () => { if (!done) { done = true; clearTimeout(timer); resolve(false); } });
