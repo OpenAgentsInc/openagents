@@ -194,10 +194,20 @@ fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
 async fn ensure_local_backend_present() -> Result<()> {
     use std::process::Stdio;
     let mut cmd = std::process::Command::new("bunx");
-    cmd.args(["convex", "dev"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    cmd.env("CI", "1");
+    cmd.args([
+        "convex",
+        "dev",
+        "--configure",
+        "--dev-deployment",
+        "local",
+        "--once",
+        "--skip-push",
+        "--local-force-upgrade",
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
     let _ = cmd.spawn();
     Ok(())
 }
