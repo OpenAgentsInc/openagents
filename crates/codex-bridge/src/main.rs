@@ -90,6 +90,13 @@ struct Opts {
     /// Tauri disables with --manage-convex=false because it runs its own sidecar on 3210.
     #[arg(long, env = "OPENAGENTS_MANAGE_CONVEX", default_value_t = true)]
     manage_convex: bool,
+
+    /// Optional WebSocket token required for `/ws` upgrades. When set, incoming
+    /// clients must provide a matching token via `Authorization: Bearer` or
+    /// `?token=` query parameter. If unset here, we also attempt to load it from
+    /// `~/.openagents/bridge.json` (key: `token`).
+    #[arg(long, env = "OPENAGENTS_BRIDGE_TOKEN")]
+    ws_token: Option<String>,
 }
 
 use crate::state::AppState;
@@ -97,7 +104,34 @@ use crate::state::AppState;
 #[tokio::main]
 async fn main() -> Result<()> {
     init_tracing();
-    let opts = Opts::parse();
+    let mut opts = Opts::parse();
+
+    // If no token provided via env/flag, try to read from ~/.openagents/bridge.json
+    if opts.ws_token.is_none() {
+        match crate::util::read_bridge_token_from_home() {
+            Ok(Some(tok)) => {
+                opts.ws_token = Some(tok);
+            }
+            Ok(None) => {
+                // No configured token — generate one and persist to ~/.openagents/bridge.json
+                let tok = crate::util::generate_bridge_token();
+                if let Err(e) = crate::util::write_bridge_token_to_home(&tok) {
+                    warn!(?e, "failed to persist generated bridge token; in-memory only");
+                }
+                opts.ws_token = Some(tok);
+                info!("msg" = "generated bridge token (persisted to ~/.openagents/bridge.json)");
+            }
+            Err(e) => {
+                warn!(?e, "failed to read bridge token from config; generating new token");
+                let tok = crate::util::generate_bridge_token();
+                if let Err(e2) = crate::util::write_bridge_token_to_home(&tok) {
+                    warn!(?e2, "failed to persist generated bridge token; in-memory only");
+                }
+                opts.ws_token = Some(tok);
+                info!("msg" = "generated bridge token (persisted to ~/.openagents/bridge.json)");
+            }
+        }
+    }
 
     // Start Convex in the background so the WebSocket server can come up immediately.
     if opts.manage_convex {

@@ -25,6 +25,9 @@ rusqlite = { version = "0.31" }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 convex = "0.10.1"
 maplit = "1.0.2"
+rand = "0.9.2"
+getrandom = "0.3.4"
 
 [dev-dependencies]
 tempfile = "3.10.1"
+tokio-tungstenite = "0.28.0"
