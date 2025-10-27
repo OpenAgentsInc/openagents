@@ -105,6 +105,8 @@ function main() {
     const code = encodePairCode(payload);
     console.log("\nPaste this single code into the mobile app Settings → Bridge Code:\n");
     console.log(chalk.greenBright(code));
+    // Security notice
+    console.log(chalk.yellowBright("\nWarning: This code is your private bridge token — never share it with anyone."));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
     // Helpful resources (dark gray)
     const lite = (s: string) => chalk.hex('#9CA3AF')(s); // light gray
