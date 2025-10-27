@@ -47,6 +47,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const bridgeHost = useSettings((s) => s.bridgeHost)
   const setBridgeHost = useSettings((s) => s.setBridgeHost)
   const [connected, setConnected] = useState(false);
+  const [autoReconnect, setAutoReconnect] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<MsgHandler>(null);
   const pendingBufferRef = useRef<string[]>([]); // buffer chunks when no handler is attached
@@ -72,7 +73,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const sanitizeHost = useCallback((raw: string): string => {
     try {
       const val = String(raw || '').trim();
-      if (!val) return 'localhost:8787';
+      if (!val) return '';
       const stripped = val
         .replace(/^ws:\/\//i, '')
         .replace(/^wss:\/\//i, '')
@@ -81,21 +82,27 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         .replace(/\/$/, '')
         .replace(/\/ws$/i, '')
         .replace(/\/$/, '');
-      return stripped || 'localhost:8787';
+      return stripped || '';
     } catch {
-      return 'localhost:8787';
+      return '';
     }
   }, []);
 
   const effectiveHost = sanitizeHost(bridgeHost);
 
   const disconnect = useCallback(() => {
+    setAutoReconnect(false);
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;
     setConnected(false);
   }, []);
 
   const connect = useCallback(() => {
+    setAutoReconnect(true);
+    if (!effectiveHost) {
+      // No host configured; do not attempt to connect
+      return;
+    }
     try { wsRef.current?.close(); } catch {}
     try {
       const wsUrl = `ws://${effectiveHost}/ws`;
@@ -141,6 +148,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   // Helper: wait until the WebSocket is OPEN (or time out)
   const awaitConnected = useCallback(async (timeoutMs: number = 8000) => {
+    if (!effectiveHost) throw new Error('ws host not configured');
+    if (!autoReconnect) throw new Error('ws auto-reconnect paused');
     const start = Date.now();
     // Kick a connect attempt if nothing is connected
     try { if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) connect(); } catch {}
@@ -155,18 +164,20 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       };
       tick();
     });
-  }, [connect]);
+  }, [connect, effectiveHost, autoReconnect]);
 
   // Try a single auto-connect after hydration using the saved URL.
   useEffect(() => {
     if (!hydrated) return;
     if (autoTriedRef.current) return;
     if (connected || wsRef.current) return;
+    if (!effectiveHost) return;
+    if (!autoReconnect) return;
     autoTriedRef.current = true;
     // Best-effort: ignore errors; UI still has manual Connect.
     connect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, bridgeHost]);
+  }, [hydrated, bridgeHost, effectiveHost, autoReconnect]);
 
   // Auto-reconnect loop: every 3s when disconnected, try to connect.
   useEffect(() => {
@@ -175,13 +186,15 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       try {
         const ws = wsRef.current;
         if (connected) return;
+        if (!effectiveHost) return; // do not auto-reconnect when host is cleared
+        if (!autoReconnect) return; // paused by user via disconnect
         // Don't stomp an in-flight connection
         if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
         connect();
       } catch {}
     }, 3000);
     return () => clearInterval(interval);
-  }, [connected, connect, hydrated, effectiveHost]);
+  }, [connected, connect, hydrated, effectiveHost, autoReconnect]);
 
   useEffect(() => () => { try { wsRef.current?.close(); } catch {} }, []);
 
@@ -325,8 +338,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     () => ({
       bridgeHost, // expose raw for UI editing; connect uses effectiveHost
       setBridgeHost,
-      wsUrl: `ws://${effectiveHost}/ws`,
-      httpBase: `http://${effectiveHost}`,
+      wsUrl: effectiveHost ? `ws://${effectiveHost}/ws` : '',
+      httpBase: effectiveHost ? `http://${effectiveHost}` : '',
       connected,
       connect,
       disconnect,

@@ -12,11 +12,11 @@ use axum::extract::ws::{Message, WebSocket};
 use axum::{extract::State, extract::WebSocketUpgrade, response::IntoResponse};
 use futures::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{error, info};
 
 use crate::bootstrap::{convex_health, default_convex_db};
-use crate::codex_runner::{ChildWithIo, spawn_codex_child_only_with_dir, spawn_codex_child_with_prompt};
+use crate::codex_runner::{ChildWithIo, spawn_codex_child_with_prompt};
 use crate::controls::{ControlCommand, parse_control_command};
 use crate::convex_write::{
     finalize_streaming_for_thread, stream_upsert_or_append, summarize_exec_delta_for_log,
@@ -947,6 +947,7 @@ fn extract_resume_from_ws_payload(payload: &str) -> Option<String> {
 
 /// Compute a resume argument for Codex CLI from an optional resume token.
 /// Defaults to "last" if none provided to keep threads flowing.
+#[allow(dead_code)]
 fn compute_resume_arg(resume: Option<&str>) -> Option<String> {
     match resume {
         Some("new") | Some("none") => None,

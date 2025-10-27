@@ -175,11 +175,11 @@ async fn main() -> Result<()> {
         }
         // Watch Codex sessions for external runs and mirror to Convex (best-effort)
         tokio::spawn(watch_sessions_and_tail(state.clone()));
+        // Background: enqueue historical threads/messages to the mirror spool on startup
+        tokio::spawn(crate::watchers::enqueue_historical_on_start(state.clone()));
     } else {
         info!("msg" = "OPENAGENTS_CONVEX_SYNC=0 — FS→Convex sync disabled");
     }
-    // Background: enqueue historical threads/messages to the mirror spool on startup
-    tokio::spawn(crate::watchers::enqueue_historical_on_start(state.clone()));
 
     // HTTP submit endpoint for app → bridge turn submission
     let app = Router::new()
