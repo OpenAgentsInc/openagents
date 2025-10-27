@@ -333,52 +333,38 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         Err(_) => None,
                                     }
                                 });
+                                // Remember target Convex thread id for writes
                                 {
                                     *stdin_state.current_convex_thread.lock().await =
                                         Some(thread_doc_id.clone());
                                 }
-                                let resume_arg = compute_resume_arg(resume_id.as_deref());
-                                // The app already persisted the user message via runs:enqueue; avoid duplicating here.
-                                match spawn_codex_child_only_with_dir(
+                                // Only resume when we have an explicit id or a captured last thread
+                                let last_id = { stdin_state.last_thread_id.lock().await.clone() };
+                                let resume_arg = match resume_id.as_deref() {
+                                    Some("new") | Some("none") => None,
+                                    Some("last") => last_id,
+                                    Some(s) if !s.is_empty() => Some(s.to_string()),
+                                    _ => last_id,
+                                };
+                                let use_resume = resume_arg.is_some();
+                                match spawn_codex_child_with_prompt(
                                     &stdin_state.opts,
                                     desired_cd.clone().map(|s| std::path::PathBuf::from(s)),
                                     resume_arg.as_deref(),
+                                    &text,
+                                    use_resume,
                                 )
                                 .await
                                 {
-                                    Ok(mut child) => {
-                                        if let Some(stdin) = child.stdin.take() {
-                                            *stdin_state.child_stdin.lock().await = Some(stdin);
-                                        }
+                                    Ok(child) => {
                                         if let Err(e) =
                                             start_stream_forwarders(child, stdin_state.clone())
                                                 .await
                                         {
                                             error!(?e, "run.submit: forwarders failed");
                                         }
-                                        let mut cfg = serde_json::json!({ "sandbox": "danger-full-access", "approval": "never" });
-                                        if let Some(cd) = desired_cd.as_deref() {
-                                            let cdv: serde_json::Value =
-                                                serde_json::Value::String(cd.to_owned());
-                                            cfg["cd"] = cdv;
-                                        }
-                                        if let Some(pid) = project_id.as_deref() {
-                                            cfg["project"] = serde_json::json!({ "id": pid });
-                                        }
-                                        let payload = format!("{}\n{}\n", cfg.to_string(), text);
-                                        if let Some(mut stdin) =
-                                            stdin_state.child_stdin.lock().await.take()
-                                        {
-                                            if let Err(e) =
-                                                stdin.write_all(payload.as_bytes()).await
-                                            {
-                                                error!(?e, "run.submit: write failed");
-                                            }
-                                            let _ = stdin.flush().await;
-                                            drop(stdin);
-                                            let dbg = serde_json::json!({"type":"bridge.run_submit","threadDocId": thread_doc_id, "cd": desired_cd, "resumeId": resume_id, "len": text.len()}).to_string();
-                                            let _ = stdin_state.tx.send(dbg);
-                                        }
+                                        let dbg = serde_json::json!({"type":"bridge.run_submit","threadDocId": thread_doc_id, "cd": desired_cd, "resumeId": resume_id, "len": text.len()}).to_string();
+                                        let _ = stdin_state.tx.send(dbg);
                                     }
                                     Err(e) => {
                                         error!(?e, "run.submit: spawn failed");
