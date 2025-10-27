@@ -38,13 +38,13 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   const router = useRouter()
   const threadId = String(row?.threadId || row?._id || row?.id || '')
   const updatedAt = (row?.updatedAt ?? row?.createdAt ?? 0) as number
-  const count = (useQuery as any)('messages:countForThread', { threadId }) as number | undefined
+  const countFromRow = typeof (row as any)?.messageCount === 'number' ? (row as any).messageCount as number : undefined
+  const count = countFromRow ?? ((useQuery as any)('messages:countForThread', { threadId }) as number | undefined)
   const open = () => {
     if (onPress) { try { onPress() } catch {} ; return }
     try { router.push(`/convex/thread/${encodeURIComponent(String(row._id || row.id))}`) } catch {}
   }
-  // Filter out threads that have zero primary chat messages
-  if (typeof count === 'number' && count <= 0) return null
+  // Show all threads; if count is known, display it
   return (
     <ThreadListItemBase title={row?.title || 'Thread'} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
   )

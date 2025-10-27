@@ -33,7 +33,7 @@ function DrawerContent() {
   const { setOpen } = useDrawer();
   const createThread = (require('convex/react') as any).useMutation('threads:create') as (args?: { title?: string; projectId?: string }) => Promise<string>;
   // Convex-only history
-  const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
+  const convexThreads = (useQuery as any)('threads:listWithCounts', {}) as any[] | undefined | null
   const topThreads = React.useMemo(() => {
     if (!Array.isArray(convexThreads)) return null
     const copy = convexThreads.slice()
