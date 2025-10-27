@@ -112,6 +112,10 @@ function main() {
     console.log("\nPaste this single code into the mobile app Settings → Bridge Code:\n");
     console.log(chalk.greenBright(code));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
+    // Helpful resources (dark gray)
+    console.log(chalk.gray("Resources:"));
+    console.log(chalk.gray(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
+    console.log(chalk.gray(" - Or open an issue: https://github.com/OpenAgentsInc/openagents"));
     // Check for codex binary presence — required for assistant responses
     try {
       const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'pipe' });
