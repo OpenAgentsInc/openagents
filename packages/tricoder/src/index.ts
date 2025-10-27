@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { buildTunnelArgs } from "./args.js";
+import net from "node:net";
 
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
@@ -35,10 +36,13 @@ function main() {
     return;
   }
 
+  // Ensure the Rust bridge is running locally (best effort)
+  ensureBridgeRunning(repoRoot);
+
   // Launch Bridge tunnel (local 8787)
   const child = spawn("cargo", buildTunnelArgs(8787, "bore.pub"), {
     cwd: repoRoot,
-    stdio: ["ignore", "pipe", "inherit"],
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
   let bridgeUrl: string | null = null;
@@ -57,6 +61,12 @@ function main() {
           maybePrintPairCode(bridgeUrl!, convexUrl!);
         });
       }
+    }
+  });
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
+      console.error(chalk.dim(`[bridge-tunnel] ${line}`));
     }
   });
 
@@ -83,7 +93,7 @@ function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
   // Run a second tunnel for Convex (local 7788). We'll emit an HTTP URL for override.
   const child = spawn("cargo", buildTunnelArgs(7788, "bore.pub"), {
     cwd: repoRoot,
-    stdio: ["ignore", "pipe", "inherit"],
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
   let printed = false;
@@ -101,12 +111,32 @@ function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
       }
     }
   });
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
+      console.error(chalk.dim(`[convex-tunnel] ${line}`));
+    }
+  });
 }
 
 function encodePairCode(obj: any): string {
   const json = JSON.stringify(obj);
   const b64 = Buffer.from(json, "utf8").toString("base64");
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function ensureBridgeRunning(repoRoot: string) {
+  const sock = net.createConnection({ host: "127.0.0.1", port: 8787 });
+  let connected = false;
+  sock.once("connect", () => { connected = true; try { sock.end(); } catch {} });
+  sock.once("error", () => {
+    // Not listening; try to start it
+    console.log(chalk.dim("Starting local bridge (cargo bridge)…"));
+    const child = spawn("cargo", ["bridge"], { cwd: repoRoot, stdio: "inherit" });
+    child.on("error", () => {});
+  });
+  // timeout after brief period
+  setTimeout(() => { try { if (!connected) sock.destroy(); } catch {} }, 400);
 }
 
 main();
