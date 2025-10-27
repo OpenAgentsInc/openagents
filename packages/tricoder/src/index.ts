@@ -21,11 +21,11 @@ function printResourcesOnce() {
   RESOURCES_PRINTED = true;
   console.log("");
   console.log(lite("Resources:"));
-  console.log(lite(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
-  console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
-  console.log(lite(" - Android coming soon"));
   console.log(lite(" - All code is open-source here: https://github.com/OpenAgentsInc/openagents"));
-  console.log(lite(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
+  console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
+  console.log(lite("   - Android coming soon"));
+  console.log(lite(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
+  console.log(lite(" - Any bugs please open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
 }
 
 function findRepoRoot(startDir: string): string | null {
