@@ -9,6 +9,7 @@ import {
   setActiveProject,
   upsertProject,
   removeProject,
+  useProjectsStore,
   type Project,
   type ProjectId,
 } from '@/lib/projects-store';
@@ -65,7 +66,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           model: x.model,
           sandbox: x.sandbox,
         })) as Project[]
-        try { const mod = await import('@/lib/projects-store'); (mod as any).useProjectsStore.getState().setAll(arr) } catch {}
+        try { useProjectsStore.getState().setAll(arr) } catch {}
         setProjects(listProjects())
         setActiveState(getActiveProject())
       }
