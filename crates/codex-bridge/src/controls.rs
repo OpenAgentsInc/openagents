@@ -11,6 +11,7 @@ pub enum ControlCommand {
     Projects,
     Skills,
     BridgeStatus,
+    Echo { payload: Option<String>, tag: Option<String> },
     ConvexStatus,
     ConvexCreateDemo,
     ConvexCreateThreads,
@@ -38,6 +39,11 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         "interrupt" => Some(ControlCommand::Interrupt),
         "projects" => Some(ControlCommand::Projects),
         "skills" => Some(ControlCommand::Skills),
+        "echo" | "debug.echo" | "debug.ping" => {
+            let payload = v.get("payload").and_then(|x| x.as_str()).map(|s| s.to_string());
+            let tag = v.get("tag").and_then(|x| x.as_str()).map(|s| s.to_string());
+            Some(ControlCommand::Echo { payload, tag })
+        }
         "bridge.status" => Some(ControlCommand::BridgeStatus),
         "convex.status" => Some(ControlCommand::ConvexStatus),
         "convex.create_demo" => Some(ControlCommand::ConvexCreateDemo),
