@@ -34,11 +34,23 @@ export default function SettingsScreen() {
     }
   }, [bridgeHost])
   const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
+  const [httpStatus, setHttpStatus] = React.useState<string>('')
+  React.useEffect(() => {
+    let cancelled = false
+    const url = String(convexUrl || derivedConvexUrl).replace(/\/$/, '') + '/instance_version'
+    try {
+      fetch(url).then(r => r.text().then(body => {
+        if (cancelled) return
+        setHttpStatus(`${r.status} ${body.trim()}`)
+      })).catch(() => { if (!cancelled) setHttpStatus('error') })
+    } catch { setHttpStatus('error') }
+    return () => { cancelled = true }
+  }, [convexUrl, derivedConvexUrl])
   const convexStatus = React.useMemo(() => {
-    if (convexThreads === undefined) return 'connecting'
-    if (convexThreads === null) return 'function missing or error'
+    if (convexThreads === undefined) return `connecting (http ${httpStatus || '...'})`
+    if (convexThreads === null) return `function missing or error (http ${httpStatus || '...'})`
     return Array.isArray(convexThreads) ? `ok (${convexThreads.length} threads)` : 'ok'
-  }, [convexThreads])
+  }, [convexThreads, httpStatus])
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
