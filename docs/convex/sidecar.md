@@ -1,3 +1,4 @@
+<!-- Moved from docs/convex-sidecar.md -->
 Convex Sidecar (Desktop)
 
 Goal

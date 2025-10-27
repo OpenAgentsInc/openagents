@@ -1,14 +1,13 @@
-Restored placeholder for docs/convex/README.md
+# Convex Docs
 
-Context
-- This directory was previously present locally but untracked. Its contents were removed during a local cleanup. Since it was never committed, git history cannot recover it.
-- This placeholder recreates the directory and filenames we know existed so other agents can restore content.
+This folder groups all Convex docs for the OpenAgents project: setup, design notes, audits, and integration details.
 
-What to add back
-- Overview of local/self-hosted Convex setup
-- How the bridge manages Convex (ports, DB paths, health checks)
-- App wiring and subscriptions
-- One-time function deploy instructions and `.env.local` guidance
+Contents
+- `bridge-setup.md` — How the Convex backend starts and becomes ready when running `npx tricoder`.
+- `convex.md` — Integration overview (local backend, app wiring, why Convex).
+- `sidecar.md` — Tauri sidecar notes for bundling a backend with the desktop app.
+- `integration-audit.md` — Design/audit write‑up.
+- `projects-and-skills.md` — Projects/Skills modeling and mirroring plan.
 
-Please replace this file with the original content when available.
+If you were linked here from the old paths, files have moved from `docs/` root to `docs/convex/`.
 
