@@ -7,14 +7,7 @@
  */
 
 function main() {
-  console.log("OpenAgents — Desktop Bridge Placeholder\n");
-  console.log("This command is a placeholder for the upcoming CLI.\n");
-  console.log("To use OpenAgents today:");
-  console.log("  1) Clone the repo: https://github.com/OpenAgentsInc/openagents");
-  console.log("  2) From the repo root, start the bridge: cargo bridge");
-  console.log("  3) In the mobile app Settings, set Bridge URL to ws://localhost:8787/ws");
-  console.log("  4) Open Session in the app and start chatting\n");
-  console.log("Tip: If desktop and phone aren’t on the same LAN, use Tailscale.");
+  console.log("OpenAgents Tricoder — Desktop Bridge Placeholder\n");
 }
 
 // Intentionally avoid referencing Node's `process` type so @types/node isn't required.

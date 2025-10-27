@@ -1,9 +1,9 @@
 {
-  "name": "openagents",
+  "name": "@openagentsinc/tricoder",
   "version": "0.0.0",
   "type": "module",
   "bin": {
-    "openagents": "dist/index.js"
+    "tricoder": "dist/index.js"
   },
   "files": [
     "dist"
@@ -17,6 +17,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }
-
