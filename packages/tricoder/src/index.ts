@@ -310,7 +310,9 @@ function seedDemoViaBridgeControl() {
   const timer = setTimeout(() => { try { ws.close(); } catch {} }, 4000);
   ws.on("open", () => {
     try {
+      ws.send(JSON.stringify({ control: "convex.create_demo" }));
       ws.send(JSON.stringify({ control: "convex.create_demo_thread" }));
+      ws.send(JSON.stringify({ control: "convex.create_threads" }));
       ws.send(JSON.stringify({ control: "convex.status" }));
     } catch {}
   });
