@@ -13,6 +13,7 @@ import { buildTunnelArgs } from "./args.js";
 import net from "node:net";
 import http from "node:http";
 import WebSocket from "ws";
+import { spawnSync } from "node:child_process";
 
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
@@ -110,6 +111,14 @@ function main() {
     console.log("\nPaste this single code into the mobile app Settings → Bridge Code:\n");
     console.log(chalk.greenBright(code));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
+    // Check for codex binary presence — required for assistant responses
+    try {
+      const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'pipe' });
+      const ok = probe.status === 0;
+      console.log(ok ? chalk.dim('[codex] codex binary found in PATH') : chalk.yellow('[codex] codex binary NOT found — assistant responses will not stream'));
+      // Bridge status via WS
+      try { bridgeStatus(); } catch {}
+    } catch {}
   }
 }
 
@@ -324,6 +333,9 @@ function seedDemoViaBridgeControl() {
       if (obj?.type === "bridge.convex_status") {
         console.log(chalk.dim(`[bridge-control] convex.status -> ${obj.healthy ? "healthy" : "unhealthy"} url=${obj.convex_url || ""}`));
       }
+      if (obj?.type === "bridge.status") {
+        console.log(chalk.dim(`[bridge-status] bind=${obj.bind} convex_healthy=${obj.convex_healthy} codex_pid=${obj.codex_pid || 'none'}`));
+      }
       if (obj?.type === "bridge.projects") {
         console.log(chalk.dim(`[bridge-control] projects -> ${Array.isArray(obj.items) ? obj.items.length : 0} items`));
       }
@@ -331,6 +343,14 @@ function seedDemoViaBridgeControl() {
   });
   ws.on("close", () => { if (!done) clearTimeout(timer); done = true; });
   ws.on("error", () => { if (!done) clearTimeout(timer); done = true; });
+}
+
+function bridgeStatus() {
+  const ws = new WebSocket("ws://127.0.0.1:8787/ws");
+  ws.on("open", () => {
+    try { ws.send(JSON.stringify({ control: 'bridge.status' })); } catch {}
+    setTimeout(() => { try { ws.close(); } catch {} }, 1500);
+  });
 }
 
 main();
