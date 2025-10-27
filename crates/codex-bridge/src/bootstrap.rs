@@ -31,7 +31,9 @@ pub fn default_convex_db() -> PathBuf {
 
 /// Quick health probe against the local backend instance.
 pub async fn convex_health(url: &str) -> Result<bool> {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build()?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()?;
     let resp = client.get(format!("{}/instance_version", url)).send().await;
     Ok(matches!(resp, Ok(r) if r.status().is_success()))
 }
@@ -54,7 +56,10 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         if opts.convex_interface.trim() != "127.0.0.1" {
             info!(url=%base, desired_interface=%opts.convex_interface, "convex healthy on loopback; restarting on desired interface");
             if let Err(e) = kill_listeners_on_port(port).await {
-                warn!(?e, port, "failed killing existing convex on port; will try spawn anyway");
+                warn!(
+                    ?e,
+                    port, "failed killing existing convex on port; will try spawn anyway"
+                );
             }
             tokio::time::sleep(Duration::from_millis(300)).await;
         } else {
@@ -65,11 +70,17 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     std::fs::create_dir_all(db.parent().unwrap_or_else(|| Path::new("."))).ok();
     let mut cmd = Command::new(&bin);
     cmd.arg(&db)
-        .arg("--db").arg("sqlite")
-        .arg("--interface").arg(&interface)
-        .arg("--port").arg(port.to_string())
-        .arg("--local-storage").arg(
-            std::env::var("HOME").map(|h| format!("{}/.openagents/convex/storage", h)).unwrap_or_else(|_| "convex_local_storage".to_string())
+        .arg("--db")
+        .arg("sqlite")
+        .arg("--interface")
+        .arg(&interface)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--local-storage")
+        .arg(
+            std::env::var("HOME")
+                .map(|h| format!("{}/.openagents/convex/storage", h))
+                .unwrap_or_else(|_| "convex_local_storage".to_string()),
         )
         .arg("--disable-beacon")
         .stdin(std::process::Stdio::null())
@@ -79,8 +90,13 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     let mut child = cmd.spawn().context("spawn convex local_backend")?;
     let mut ok = false;
     for i in 0..40 {
-        if convex_health(&base).await.unwrap_or(false) { ok = true; break; }
-        if i % 2 == 0 { info!(attempt=i+1, url=%base, "convex.ensure: waiting for health"); }
+        if convex_health(&base).await.unwrap_or(false) {
+            ok = true;
+            break;
+        }
+        if i % 2 == 0 {
+            info!(attempt=i+1, url=%base, "convex.ensure: waiting for health");
+        }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     if ok {
@@ -97,11 +113,27 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
 /// Best‑effort helper to terminate any listeners on `port` (Unix only).
 pub async fn kill_listeners_on_port(port: u16) -> Result<()> {
     use std::process::Command as StdCommand;
-    let output = StdCommand::new("lsof").args(["-i", &format!(":{}", port), "-sTCP:LISTEN", "-t"]).output();
-    let out = match output { Ok(o) => o, Err(e) => return Err(anyhow::Error::from(e).context("lsof not available to kill listeners")) };
-    if !out.status.success() { return Ok(()); }
-    let pids = String::from_utf8_lossy(&out.stdout).lines().filter_map(|s| s.trim().parse::<i32>().ok()).collect::<Vec<_>>();
-    for pid in pids { let _ = StdCommand::new("kill").args(["-TERM", &pid.to_string()]).status(); }
+    let output = StdCommand::new("lsof")
+        .args(["-i", &format!(":{}", port), "-sTCP:LISTEN", "-t"])
+        .output();
+    let out = match output {
+        Ok(o) => o,
+        Err(e) => {
+            return Err(anyhow::Error::from(e).context("lsof not available to kill listeners"));
+        }
+    };
+    if !out.status.success() {
+        return Ok(());
+    }
+    let pids = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|s| s.trim().parse::<i32>().ok())
+        .collect::<Vec<_>>();
+    for pid in pids {
+        let _ = StdCommand::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+    }
     Ok(())
 }
 
@@ -117,10 +149,14 @@ pub async fn bootstrap_convex(opts: &Opts) -> Result<()> {
     let admin = std::env::var("CONVEX_ADMIN_KEY")
         .ok()
         .or_else(|| std::env::var("CONVEX_SELF_HOSTED_ADMIN_KEY").ok())
-        .unwrap_or_else(|| "carnitas|017c5405aba48afe1d1681528424e4528026e69e3b99e400ef23f2f3741a11db225497db09".to_string());
+        .unwrap_or_else(|| {
+            "carnitas|017c5405aba48afe1d1681528424e4528026e69e3b99e400ef23f2f3741a11db225497db09"
+                .to_string()
+        });
     let root = detect_repo_root(None);
     let mut cmd = std::process::Command::new("bun");
-    cmd.args(["run", "convex:dev:once"]).current_dir(&root)
+    cmd.args(["run", "convex:dev:once"])
+        .current_dir(&root)
         .env("CONVEX_URL", &url)
         .env("CONVEX_SELF_HOSTED_URL", &url)
         .env("CONVEX_ADMIN_KEY", &admin)
@@ -128,16 +164,29 @@ pub async fn bootstrap_convex(opts: &Opts) -> Result<()> {
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
-    match cmd.spawn() { Ok(child) => info!(pid=?child.id(), "convex dev:once spawned"), Err(e) => warn!(?e, "convex dev:once spawn failed") }
+    match cmd.spawn() {
+        Ok(child) => info!(pid=?child.id(), "convex dev:once spawned"),
+        Err(e) => warn!(?e, "convex dev:once spawn failed"),
+    }
     Ok(())
 }
 
 /// Heuristic repo root detector to run `bun run` from the correct directory.
 fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
-    fn is_repo_root(p: &Path) -> bool { p.join("expo").is_dir() && p.join("crates").is_dir() }
-    let mut cur = start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    fn is_repo_root(p: &Path) -> bool {
+        p.join("expo").is_dir() && p.join("crates").is_dir()
+    }
+    let mut cur =
+        start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let original = cur.clone();
-    loop { if is_repo_root(&cur) { return cur; } if !cur.pop() { return original; } }
+    loop {
+        if is_repo_root(&cur) {
+            return cur;
+        }
+        if !cur.pop() {
+            return original;
+        }
+    }
 }
 
 // Attempts to run `bunx convex dev` once to install local backend if missing. Best effort.
@@ -145,8 +194,10 @@ fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
 async fn ensure_local_backend_present() -> Result<()> {
     use std::process::Stdio;
     let mut cmd = std::process::Command::new("bunx");
-    cmd.args(["convex", "dev"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.args(["convex", "dev"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     let _ = cmd.spawn();
     Ok(())
 }
-

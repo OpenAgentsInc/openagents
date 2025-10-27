@@ -16,9 +16,18 @@ pub enum ControlCommand {
     ConvexCreateThreads,
     ConvexCreateDemoThread,
     ConvexBackfill,
-    ProjectSave { project: crate::projects::Project },
-    ProjectDelete { id: String },
-    RunSubmit { thread_doc_id: String, text: String, project_id: Option<String>, resume_id: Option<String> },
+    ProjectSave {
+        project: crate::projects::Project,
+    },
+    ProjectDelete {
+        id: String,
+    },
+    RunSubmit {
+        thread_doc_id: String,
+        text: String,
+        project_id: Option<String>,
+        resume_id: Option<String>,
+    },
 }
 
 /// Parse a control command from a raw JSON string. Returns None on errors.
@@ -36,16 +45,38 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
         "convex.create_demo_thread" => Some(ControlCommand::ConvexCreateDemoThread),
         "convex.backfill" => Some(ControlCommand::ConvexBackfill),
         "project.save" => {
-            let proj: crate::projects::Project = serde_json::from_value(v.get("project")?.clone()).ok()?;
+            let proj: crate::projects::Project =
+                serde_json::from_value(v.get("project")?.clone()).ok()?;
             Some(ControlCommand::ProjectSave { project: proj })
         }
-        "project.delete" => v.get("id").and_then(|x| x.as_str()).map(|id| ControlCommand::ProjectDelete { id: id.to_string() }),
+        "project.delete" => v
+            .get("id")
+            .and_then(|x| x.as_str())
+            .map(|id| ControlCommand::ProjectDelete { id: id.to_string() }),
         "run.submit" => {
-            let thread_doc_id = v.get("threadDocId").and_then(|x| x.as_str()).map(|s| s.to_string())?;
-            let text = v.get("text").and_then(|x| x.as_str()).map(|s| s.to_string()).unwrap_or_default();
-            let project_id = v.get("projectId").and_then(|x| x.as_str()).map(|s| s.to_string());
-            let resume_id = v.get("resumeId").and_then(|x| x.as_str()).map(|s| s.to_string());
-            Some(ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id })
+            let thread_doc_id = v
+                .get("threadDocId")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())?;
+            let text = v
+                .get("text")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            let project_id = v
+                .get("projectId")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
+            let resume_id = v
+                .get("resumeId")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
+            Some(ControlCommand::RunSubmit {
+                thread_doc_id,
+                text,
+                project_id,
+                resume_id,
+            })
         }
         _ => None,
     }
@@ -57,30 +88,62 @@ mod tests {
 
     #[test]
     fn parses_simple_verbs() {
-        assert!(matches!(parse_control_command("{\"control\":\"interrupt\"}"), Some(ControlCommand::Interrupt)));
-        assert!(matches!(parse_control_command("{\"control\":\"projects\"}"), Some(ControlCommand::Projects)));
-        assert!(matches!(parse_control_command("{\"control\":\"skills\"}"), Some(ControlCommand::Skills)));
-        assert!(matches!(parse_control_command("{\"control\":\"bridge.status\"}"), Some(ControlCommand::BridgeStatus)));
-        assert!(matches!(parse_control_command("{\"control\":\"convex.status\"}"), Some(ControlCommand::ConvexStatus)));
+        assert!(matches!(
+            parse_control_command("{\"control\":\"interrupt\"}"),
+            Some(ControlCommand::Interrupt)
+        ));
+        assert!(matches!(
+            parse_control_command("{\"control\":\"projects\"}"),
+            Some(ControlCommand::Projects)
+        ));
+        assert!(matches!(
+            parse_control_command("{\"control\":\"skills\"}"),
+            Some(ControlCommand::Skills)
+        ));
+        assert!(matches!(
+            parse_control_command("{\"control\":\"bridge.status\"}"),
+            Some(ControlCommand::BridgeStatus)
+        ));
+        assert!(matches!(
+            parse_control_command("{\"control\":\"convex.status\"}"),
+            Some(ControlCommand::ConvexStatus)
+        ));
     }
 
     #[test]
     fn parses_project_save_delete() {
-        let save = parse_control_command("{\"control\":\"project.save\",\"project\":{\"id\":\"p1\",\"name\":\"N\",\"workingDir\":\"/tmp\"}}");
-        match save { Some(ControlCommand::ProjectSave { project }) => { assert_eq!(project.id, "p1"); }, _ => panic!("bad parse") }
+        let save = parse_control_command(
+            "{\"control\":\"project.save\",\"project\":{\"id\":\"p1\",\"name\":\"N\",\"workingDir\":\"/tmp\"}}",
+        );
+        match save {
+            Some(ControlCommand::ProjectSave { project }) => {
+                assert_eq!(project.id, "p1");
+            }
+            _ => panic!("bad parse"),
+        }
         let del = parse_control_command("{\"control\":\"project.delete\",\"id\":\"p1\"}");
         assert!(matches!(del, Some(ControlCommand::ProjectDelete { id }) if id=="p1"));
     }
 
     #[test]
     fn parses_run_submit() {
-        let s = parse_control_command("{\"control\":\"run.submit\",\"threadDocId\":\"t1\",\"text\":\"hi\",\"projectId\":\"p\",\"resumeId\":\"last\"}");
-        match s { Some(ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id }) => {
-            assert_eq!(thread_doc_id, "t1");
-            assert_eq!(text, "hi");
-            assert_eq!(project_id.as_deref(), Some("p"));
-            assert_eq!(resume_id.as_deref(), Some("last"));
-        }, _ => panic!("bad parse") }
+        let s = parse_control_command(
+            "{\"control\":\"run.submit\",\"threadDocId\":\"t1\",\"text\":\"hi\",\"projectId\":\"p\",\"resumeId\":\"last\"}",
+        );
+        match s {
+            Some(ControlCommand::RunSubmit {
+                thread_doc_id,
+                text,
+                project_id,
+                resume_id,
+            }) => {
+                assert_eq!(thread_doc_id, "t1");
+                assert_eq!(text, "hi");
+                assert_eq!(project_id.as_deref(), Some("p"));
+                assert_eq!(resume_id.as_deref(), Some("last"));
+            }
+            _ => panic!("bad parse"),
+        }
     }
 
     #[test]
@@ -101,6 +164,9 @@ mod tests {
         // Missing threadDocId
         assert!(parse_control_command("{\"control\":\"run.submit\",\"text\":\"hi\"}").is_none());
         // Wrong types
-        assert!(parse_control_command("{\"control\":\"run.submit\",\"threadDocId\":1,\"text\":true}").is_none());
+        assert!(
+            parse_control_command("{\"control\":\"run.submit\",\"threadDocId\":1,\"text\":true}")
+                .is_none()
+        );
     }
 }
