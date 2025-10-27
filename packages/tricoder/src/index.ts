@@ -104,7 +104,7 @@ function main() {
       token: null as string | null,
     };
     const code = encodePairCode(payload);
-    console.log("\nPaste this single code into the mobile app Settings → Bridge Code:\n");
+    console.log("\nPaste this code into the mobile app Settings → Bridge Code:\n");
     console.log(chalk.greenBright(code));
     // Security notice
     console.log(chalk.yellowBright("\nWarning: This code is your private bridge token — never share it with anyone."));
@@ -115,8 +115,8 @@ function main() {
     console.log(lite(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
     console.log(lite(" - All code is open-source here: https://github.com/OpenAgentsInc/openagents"));
     console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
-    console.log(lite("    - Android coming soon (sooner if you @ us on X"));
-    console.log(lite(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
+    console.log(lite("    - Android coming soon (sooner if you @ us on X)"));
+    console.log(lite(" - Any problems please open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
     // Check for codex binary presence — required for assistant responses
     try {
       const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'pipe' });
