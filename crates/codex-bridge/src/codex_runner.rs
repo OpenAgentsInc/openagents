@@ -172,7 +172,9 @@ fn resolve_codex_bin(opts: &Opts) -> Result<PathBuf> {
 /// Probe whether the CLI supports the `resume` subcommand.
 fn cli_supports_resume(bin: &PathBuf) -> bool {
     use std::process::Command as StdCommand;
-    let out = StdCommand::new(bin).arg("--help").output();
+    // Check help for the exec subcommand specifically to avoid matching the
+    // interactive top-level `resume` command present in older builds.
+    let out = StdCommand::new(bin).args(["exec", "--help"]).output();
     match out {
         Ok(o) => String::from_utf8_lossy(&o.stdout).contains("resume"),
         Err(_) => false,
