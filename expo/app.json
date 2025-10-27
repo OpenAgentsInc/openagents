@@ -34,6 +34,12 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "./plugins/ios-provisioning-profile",
+        {
+          "teamId": "HQWSG26L43"
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
