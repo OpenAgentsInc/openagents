@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
 import { parseBridgeCode } from '@/lib/pairing'
+import { useQuery } from 'convex/react'
 import { Ionicons } from '@expo/vector-icons'
 
 export default function Onboarding() {
@@ -71,7 +72,18 @@ export default function Onboarding() {
 
   const hasHost = React.useMemo(() => String(bridgeHost || '').trim().length > 0, [bridgeHost])
   const isConnecting = !!connecting
-  const statusText = connected ? 'Connected' : (isConnecting ? 'Connecting…' : (hasHost ? 'Disconnected' : 'Enter Bridge Code'))
+  const convexThreads = (useQuery as any)(connected ? 'threads:list' : 'threads:list', connected ? {} : 'skip') as any[] | undefined | null
+  const convexReady = React.useMemo(() => Array.isArray(convexThreads), [convexThreads])
+  const convexLoading = connected && convexThreads === undefined
+  const convexError = connected && convexThreads === null
+  const statusText = (() => {
+    if (isConnecting) return 'Connecting…'
+    if (!connected) return hasHost ? 'Disconnected' : 'Enter Bridge Code'
+    if (convexLoading) return 'Bridge connected — starting Convex…'
+    if (convexError) return 'Bridge connected — Convex unavailable'
+    if (convexReady) return 'Connected'
+    return 'Disconnected'
+  })()
 
   const trimmedCode = React.useMemo(() => String(bridgeCode || '').trim(), [bridgeCode])
   const likelyCode = React.useMemo(() => {
@@ -84,17 +96,17 @@ export default function Onboarding() {
     try { return !!parseBridgeCode(trimmedCode) } catch { return false }
   }, [trimmedCode])
 
-  // Auto-advance when connected
+  // Auto-advance only when both sides are ready
   React.useEffect(() => {
-    if (!connected) return
+    if (!connected || !convexReady) return
     try { router.replace('/thread?focus=1&new=1' as any) } catch {}
-  }, [connected])
+  }, [connected, convexReady])
 
   return (
     <View style={styles.container}>
       <View style={styles.statusRow}>
         <Text style={styles.statusText}>{statusText}</Text>
-        {isConnecting ? (<ActivityIndicator size="small" color={Colors.foreground} />) : null}
+        {(isConnecting || convexLoading) ? (<ActivityIndicator size="small" color={Colors.foreground} />) : null}
       </View>
       <View style={{ height: 16 }} />
       <Text style={styles.label}>Bridge Code</Text>
