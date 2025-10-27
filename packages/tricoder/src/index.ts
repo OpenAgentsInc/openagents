@@ -356,7 +356,6 @@ function ensureConvexBinaryWithProgress() {
     }
   };
   child.on('exit', () => done());
-  setTimeout(() => { try { child.kill(); } catch {} }, 120000); // safety timeout
 }
 
 function findNewestBackendBinary(root: string): string | null {
@@ -515,18 +514,69 @@ function monitorConvexSetupOnce(repoRoot: string) {
     if (spun) { try { process.stdout.write("\r\x1b[K") } catch {} }
     console.log(chalk.greenBright(`✔ Convex backend ready in ${okSeconds}s.`))
   }
+  const timeoutMs = 120000; // 2 minutes
+  const startAt = Date.now();
   const check = () => {
     const req = http.get({ host: "127.0.0.1", port: 7788, path: "/instance_version", timeout: 1500 }, (res) => {
       if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
         finish(Math.round((Date.now() - start) / 1000))
       } else {
+        if (Date.now() - startAt > timeoutMs) return onTimeout();
         setTimeout(check, 1000)
       }
       res.resume()
     })
-    req.on("error", () => setTimeout(check, 1200))
+    req.on("error", () => {
+      if (Date.now() - startAt > timeoutMs) return onTimeout();
+      setTimeout(check, 1200)
+    })
   }
   check()
+
+  const onTimeout = () => {
+    try { clearInterval(spin) } catch {}
+    if (spun) { try { process.stdout.write("\r\x1b[K") } catch {} }
+    console.log(chalk.redBright("✘ Convex backend did not become healthy within 2 minutes."))
+    // Try a direct start using the installed binary if present
+    try {
+      const bin = join(os.homedir(), ".openagents", "bin", process.platform === 'win32' ? 'local_backend.exe' : 'local_backend')
+      if (existsSync(bin)) {
+        console.log(chalk.cyanBright("Attempting to start the Convex backend directly…"))
+        const db = join(os.homedir(), ".openagents", "convex", "data.sqlite3")
+        const storage = join(os.homedir(), ".openagents", "convex", "storage")
+        const child = spawn(bin, [
+          db,
+          "--db", "sqlite",
+          "--interface", "0.0.0.0",
+          "--port", "7788",
+          "--local-storage", storage,
+          "--disable-beacon",
+        ], { stdio: "ignore" })
+        setTimeout(() => {
+          const req2 = http.get({ host: "127.0.0.1", port: 7788, path: "/instance_version", timeout: 1500 }, (res2) => {
+            if (res2.statusCode && res2.statusCode >= 200 && res2.statusCode < 300) {
+              console.log(chalk.greenBright("✔ Convex backend started."))
+            } else {
+              printConvexHelp()
+            }
+            res2.resume()
+          })
+          req2.on('error', () => printConvexHelp())
+        }, 1500)
+      } else {
+        printConvexHelp()
+      }
+    } catch {
+      printConvexHelp()
+    }
+  }
+
+  function printConvexHelp() {
+    console.log(chalk.yellow("If this persists, try one of the following:"))
+    console.log(lite(" - Ensure Bun or Node/NPM are installed so tricoder can fetch the backend"))
+    console.log(lite(" - Run: bunx convex dev  (or: npx -y convex dev) once to install the local backend"))
+    console.log(lite(" - Then re-run: npx tricoder"))
+  }
 }
 
 function tryPushConvexFunctions(repoRoot: string, announce?: boolean) {
