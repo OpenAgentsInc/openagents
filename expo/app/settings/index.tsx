@@ -42,18 +42,16 @@ export default function SettingsScreen() {
           const parsed = parseBridgeCode(v)
           if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
           if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
+          // Auto-connect when a valid host is present
+          try { if (parsed?.bridgeHost) connect() } catch {}
         }}
         autoCapitalize='none'
         autoCorrect={false}
-        placeholder='openagents://pair?j=...'
+        placeholder='paste code here'
         placeholderTextColor={Colors.secondary}
         style={styles.input}
       />
-      <Text style={styles.label}>Bridge Host (host:port)</Text>
-      <TextInput value={bridgeHost} onChangeText={setBridgeHost} autoCapitalize='none' autoCorrect={false} placeholder='localhost:8787' placeholderTextColor={Colors.secondary} style={styles.input} />
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {`ws://${bridgeHost}/ws`}</Text>
-      <Text style={styles.label}>Convex URL (optional override)</Text>
-      <TextInput value={convexUrl} onChangeText={setConvexUrl} autoCapitalize='none' autoCorrect={false} placeholder={derivedConvexUrl} placeholderTextColor={Colors.secondary} style={styles.input} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
         <StatusPill connected={connected} />

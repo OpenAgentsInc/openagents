@@ -73,9 +73,8 @@ function main() {
       token: null as string | null,
     };
     const code = encodePairCode(payload);
-    const uri = `openagents://pair?j=${code}`;
     console.log("\nPaste this single code into the mobile app Settings → Bridge Code:\n");
-    console.log(chalk.greenBright(uri));
+    console.log(chalk.greenBright(code));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
   }
 }
