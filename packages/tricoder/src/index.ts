@@ -118,6 +118,8 @@ function main() {
       console.log(ok ? chalk.dim('[codex] codex binary found in PATH') : chalk.yellow('[codex] codex binary NOT found — assistant responses will not stream'));
       // Bridge status via WS
       try { bridgeStatus(); } catch {}
+      // Start persistent WS tail to print bridge + codex events
+      try { startBridgeEventTail(); } catch {}
     } catch {}
   }
 }
@@ -351,6 +353,41 @@ function bridgeStatus() {
     try { ws.send(JSON.stringify({ control: 'bridge.status' })); } catch {}
     setTimeout(() => { try { ws.close(); } catch {} }, 1500);
   });
+}
+
+function startBridgeEventTail() {
+  let closed = false;
+  const connect = () => {
+    if (closed) return;
+    const ws = new WebSocket("ws://127.0.0.1:8787/ws");
+    ws.on("open", () => {
+      // no-op: we just tail broadcast feed
+    });
+    ws.on("message", (data: WebSocket.RawData) => {
+      const s = String(data || "").trim();
+      if (!s) return;
+      if (s.startsWith("{")) {
+        try {
+          const obj = JSON.parse(s);
+          const t = obj?.type || obj?.msg?.type || '';
+          if (String(t).startsWith('bridge.')) {
+            console.log(chalk.dim(`[bridge] ${t}`));
+            return;
+          }
+          // surface codex JSONL events succinctly
+          if (t && /agent_message|assistant|message|reason|exec_begin|exec/.test(String(t))) {
+            console.log(chalk.dim(`[codex] ${t}`));
+            return;
+          }
+        } catch { /* ignore non-json */ }
+      }
+    });
+    ws.on("close", () => { if (!closed) setTimeout(connect, 1200); });
+    ws.on("error", () => { try { ws.close(); } catch {}; if (!closed) setTimeout(connect, 1500); });
+  };
+  connect();
+  // Return a stopper in case we want to end later (not used for dev)
+  return () => { closed = true; };
 }
 
 main();
