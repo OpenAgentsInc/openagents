@@ -1,5 +1,5 @@
 {
-  "name": "@openagentsinc/tricoder",
+  "name": "tricoder",
   "version": "0.0.0",
   "type": "module",
   "bin": {
