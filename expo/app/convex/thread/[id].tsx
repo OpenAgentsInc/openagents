@@ -22,7 +22,27 @@ export default function ConvexThreadDetail() {
 
   // Load thread (for title) — tolerate null while loading
   const thread = (useQuery as any)('threads:byId', { id }) as any
-  useHeaderTitle(thread?.title ? String(thread.title) : 'Thread')
+  const [headerTitle, setHeaderTitle] = React.useState<string>(() => (isNew ? 'New Thread' : ''))
+
+  // Keep the header stable: prefer the loaded title, fall back to "New Thread" for brand-new flows,
+  // otherwise retain the last known title instead of flashing a generic placeholder.
+  React.useEffect(() => {
+    setHeaderTitle((prev) => {
+      if (thread?.title) return String(thread.title)
+      if (isNew) return 'New Thread'
+      return prev
+    })
+  }, [thread?.title, isNew])
+
+  const lastThreadIdRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (lastThreadIdRef.current !== id) {
+      lastThreadIdRef.current = id || null
+      setHeaderTitle(thread?.title ? String(thread.title) : (isNew ? 'New Thread' : ''))
+    }
+  }, [id, isNew, thread?.title])
+
+  useHeaderTitle(headerTitle)
 
   // Live messages subscription for this thread: use the thread.threadId, not the Convex doc _id
   const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || (isNew ? String(id || '') : ''), limit: 400 }) as any[] | undefined | null
