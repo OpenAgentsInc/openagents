@@ -31,7 +31,8 @@ pub async fn spawn_codex(
     let mut command = Command::new(&bin);
     command
         .current_dir(&workdir)
-        .args(&args)
+        // Bootstrap exec uses stdin for prompt: append "-" at end
+        .args(args.iter().cloned().chain(std::iter::once("-".to_string())))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -92,7 +93,9 @@ pub async fn spawn_codex_child_only_with_dir(
     let mut command = Command::new(&bin);
     command
         .current_dir(&workdir)
-        .args(&args)
+        // For child prompt, always read from stdin; ensure "-" is last to keep
+        // correct order with optional `resume`.
+        .args(args.iter().cloned().chain(std::iter::once("-".to_string())))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -150,8 +153,8 @@ fn build_bin_and_args(opts: &Opts) -> Result<(PathBuf, Vec<String>)> {
         }
     }
     args.extend(cli_args.split_whitespace().map(|s| s.to_string()));
-    // Dash to read stdin for prompt
-    args.push("-".into());
+    // Note: do not append "-" here. Callers decide placement to avoid
+    // invalid order with `exec resume` (must be: exec --json resume … -).
     Ok((bin, args))
 }
 
