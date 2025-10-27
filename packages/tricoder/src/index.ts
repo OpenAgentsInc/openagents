@@ -251,16 +251,30 @@ function startLocalProbes(repoRoot: string) {
 function monitorConvexSetupOnce(repoRoot: string) {
   const backendPath = join(os.homedir(), ".openagents", "bin", "local_backend")
   const exists = existsSync(backendPath)
-  if (!exists) {
-    console.log(chalk.hex('#9CA3AF')("Setting up local Convex backend (first run downloads a small binary)…"))
-  } else {
-    console.log(chalk.hex('#9CA3AF')("Starting local Convex backend…"))
-  }
+  const startMsg = !exists
+    ? "Setting up local Convex backend (first run downloads a small binary)…"
+    : "Starting local Convex backend…"
+  // Add a blank line before the status and show a spinner while waiting
+  console.log("")
+  const frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+  let fi = 0
+  let spun = false
+  const spin = setInterval(() => {
+    spun = true
+    try { process.stdout.write("\r" + chalk.cyanBright(`⏳ ${startMsg} ${frames[fi]}`)) } catch {}
+    fi = (fi + 1) % frames.length
+  }, 120)
   const start = Date.now()
+  const finish = (okSeconds: number) => {
+    try { clearInterval(spin) } catch {}
+    // Clear spinner line
+    if (spun) { try { process.stdout.write("\r\x1b[K") } catch {} }
+    console.log(chalk.greenBright(`✔ Convex backend ready in ${okSeconds}s.`))
+  }
   const check = () => {
     const req = http.get({ host: "127.0.0.1", port: 7788, path: "/instance_version", timeout: 1500 }, (res) => {
       if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-        console.log(chalk.hex('#9CA3AF')(`Convex backend ready in ${Math.round((Date.now()-start)/1000)}s.`))
+        finish(Math.round((Date.now() - start) / 1000))
       } else {
         setTimeout(check, 1000)
       }
