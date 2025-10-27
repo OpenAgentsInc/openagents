@@ -63,6 +63,9 @@ function main() {
           convexUrl = url;
           console.log(chalk.dim(`[convex-public] ${convexUrl}`));
           maybePrintPairCode(bridgeUrl!, convexUrl!);
+          // Public probes
+          try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch {}
+          try { if (convexUrl) probePublicConvex(convexUrl); } catch {}
         });
         // Start local health probes (status changes only)
         startLocalProbes();
@@ -184,6 +187,65 @@ function startLocalProbes() {
   probeConvex();
   setInterval(probeBridge, 5000);
   setInterval(probeConvex, 5000);
+}
+
+function probePublicConvex(base: string) {
+  try {
+    const u = new URL(base);
+    const opts: http.RequestOptions = { host: u.hostname, port: Number(u.port || 80), path: "/instance_version", timeout: 2000 };
+    const req = http.get(opts, (res) => {
+      const code = res.statusCode || 0;
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => (body += c));
+      res.on("end", () => {
+        const snippet = body.trim().slice(0, 80).replace(/\s+/g, " ");
+        console.log(chalk.dim(`[convex-public-check] GET ${u.hostname}:${u.port}/instance_version -> ${code} ${snippet ? `body: ${snippet}` : ""}`));
+      });
+    });
+    req.on("error", (e: any) => {
+      console.log(chalk.dim(`[convex-public-check] error: ${e?.message || e}`));
+    });
+    req.setTimeout(2500, () => { try { req.destroy(); } catch {} });
+  } catch (e: any) {
+    console.log(chalk.dim(`[convex-public-check] invalid URL: ${String(e?.message || e)}`));
+  }
+}
+
+function probePublicBridge(wsUrl: string) {
+  try {
+    const u = new URL(wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:"));
+    const host = u.hostname;
+    const port = Number(u.port || (u.protocol === "https:" ? 443 : 80));
+    const path = u.pathname || "/ws";
+    const key = Buffer.from(Math.random().toString()).toString("base64");
+    const headers =
+      `GET ${path} HTTP/1.1\r\n` +
+      `Host: ${host}\r\n` +
+      `Upgrade: websocket\r\n` +
+      `Connection: Upgrade\r\n` +
+      `Sec-WebSocket-Key: ${key}\r\n` +
+      `Sec-WebSocket-Version: 13\r\n` +
+      `\r\n`;
+    const s = net.createConnection({ host, port }, () => {
+      s.write(headers);
+    });
+    let buf = "";
+    s.on("data", (chunk) => {
+      buf += String(chunk);
+      if (buf.includes("\r\n\r\n")) {
+        const first = buf.split(/\r?\n/)[0] || "";
+        console.log(chalk.dim(`[bridge-public-check] ${first}`));
+        try { s.destroy(); } catch {}
+      }
+    });
+    s.on("error", (e: any) => {
+      console.log(chalk.dim(`[bridge-public-check] error: ${e?.message || e}`));
+    });
+    setTimeout(() => { try { s.destroy(); } catch {} }, 2500);
+  } catch (e: any) {
+    console.log(chalk.dim(`[bridge-public-check] invalid URL: ${String(e?.message || e)}`));
+  }
 }
 
 main();
