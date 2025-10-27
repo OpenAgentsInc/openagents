@@ -350,19 +350,23 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                     if !target_tid.is_empty() { finalize_streaming_for_thread(&state_for_stdout, &target_tid).await; }
                 }
                 if matches!(t.as_deref(), Some("agent_message.delta")) || matches!(t.as_deref(), Some("assistant.delta")) || matches!(t.as_deref(), Some("message.delta")) {
-                    let txt = v.get("payload").and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    // Handle both { type, payload } and { msg: { type, payload } } shapes
+                    let payload = v.get("payload").or_else(|| v.get("msg").and_then(|m| m.get("payload")));
+                    let txt = payload.and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", &txt).await; }
+                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", &txt).await; info!(len=txt.len(), thread=%target_tid, "assistant.delta mapped"); }
                 }
                 if matches!(t.as_deref(), Some("reasoning.delta")) || matches!(t.as_deref(), Some("reason.delta")) {
-                    let txt = v.get("payload").and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let payload = v.get("payload").or_else(|| v.get("msg").and_then(|m| m.get("payload")));
+                    let txt = payload.and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt).await; }
+                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt).await; info!(len=txt.len(), thread=%target_tid, "reason.delta mapped"); }
                 }
                 if matches!(t.as_deref(), Some("agent_message")) || matches!(t.as_deref(), Some("assistant")) || matches!(t.as_deref(), Some("message")) {
-                    let text_owned = v.get("payload").and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
+                    let payload = v.get("payload").or_else(|| v.get("msg").and_then(|m| m.get("payload")));
+                    let text_owned = payload.and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                     if !target_tid.is_empty() { if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "assistant", &text_owned).await {
@@ -377,7 +381,8 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             args.insert("ts".into(), Value::from(now_ms() as f64));
                             let _ = client.mutation("messages:create", args).await;
                         }
-                    }}
+                        info!(thread=%target_tid, "assistant.finalized created snapshot");
+                    } else { info!(thread=%target_tid, "assistant.finalized finalized streamed item"); }}
                 }
                 if matches!(t.as_deref(), Some("reasoning")) {
                     let mut text_owned = v.get("payload").and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
