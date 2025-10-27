@@ -9,6 +9,7 @@ import chalk from "chalk";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { buildTunnelArgs } from "./args.js";
 
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
@@ -58,7 +59,7 @@ function main() {
 
 function launchConvexTunnel(repoRoot: string) {
   // Run a second tunnel for Convex (local 7788). We'll print an HTTP URL for the Settings override.
-  const child = spawn("cargo", ["run", "-q", "-p", "oa-tunnel", "--", "--to", "bore.pub", "--local_port", "7788"], {
+  const child = spawn("cargo", buildTunnelArgs(7788, "bore.pub"), {
     cwd: repoRoot,
     stdio: ["ignore", "pipe", "inherit"],
   });
