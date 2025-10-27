@@ -2,6 +2,9 @@
   "name": "openagents-convex",
   "private": true,
   "version": "0.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "desktop:dev": "bash ./scripts/dev-desktop.sh",
     "convex:fetch-backend": "bash ./scripts/fetch-convex-backend.sh",
