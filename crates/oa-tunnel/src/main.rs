@@ -29,7 +29,7 @@ struct Opts {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    init_tracing();
+    // Parse CLI first; delay tracing so early bore logs don't precede the URL line.
     let opts = Opts::parse();
 
     let client = Client::new(
@@ -43,7 +43,10 @@ async fn main() -> anyhow::Result<()> {
 
     let remote_port = client.remote_port();
     println!("ws://{}:{}/ws", opts.to, remote_port);
-    info!(remote_port, "listening via bore");
+
+    // Enable tracing after printing the URL; direct logs to stderr to keep stdout clean.
+    init_tracing();
+    info!(%remote_port, "tunnel listening via bore");
 
     if let Err(e) = client.listen().await {
         error!(?e, "bore client exited with error");
@@ -55,6 +58,6 @@ fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt};
     let _ = tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .with(fmt::layer())
+        .with(fmt::layer().with_writer(std::io::stderr))
         .try_init();
 }

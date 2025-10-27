@@ -39,19 +39,17 @@ function main() {
     stdio: ["ignore", "pipe", "inherit"],
   });
 
-  let firstLinePrinted = false;
+  let printedUrl = false;
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk: string) => {
     const lines = chunk.split(/\r?\n/).filter(Boolean);
     for (const line of lines) {
-      if (!firstLinePrinted) {
-        firstLinePrinted = true;
+      const isUrl = line.startsWith("ws://") || line.startsWith("wss://");
+      if (isUrl && !printedUrl) {
+        printedUrl = true;
         console.log("\nPaste this into the mobile app Settings → Bridge URL:\n");
         console.log(chalk.greenBright(line));
         console.log("\nTunnel is active. Leave this running to stay connected.\n");
-      } else {
-        // Forward any subsequent informational lines if desired
-        // console.log(line);
       }
     }
   });
