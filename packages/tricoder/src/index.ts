@@ -66,9 +66,11 @@ function main() {
           // Public probes
           try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch {}
           try { if (convexUrl) probePublicConvex(convexUrl); } catch {}
+          // Connectivity summary
+          console.log(chalk.dim(`[pair] bridge=${bridgeUrl} convex=${convexUrl}`));
         });
         // Start local health probes (status changes only)
-        startLocalProbes();
+        startLocalProbes(repoRoot);
       }
     }
   });
@@ -167,7 +169,7 @@ function ensureBridgeRunning(repoRoot: string) {
   setTimeout(() => { try { if (!connected) sock.destroy(); } catch {} }, 400);
 }
 
-function startLocalProbes() {
+function startLocalProbes(repoRoot: string) {
   let lastBridgeOk: boolean | null = null;
   let lastConvexOk: boolean | null = null;
   const probeBridge = () => {
@@ -194,7 +196,7 @@ function startLocalProbes() {
       // On first healthy, try function push once via root script (best effort)
       if (ok && (probeConvex as any)._firstDone !== true) {
         (probeConvex as any)._firstDone = true;
-        tryPushConvexFunctions();
+        tryPushConvexFunctions(repoRoot);
       }
     });
     req.on("error", () => {
@@ -213,15 +215,28 @@ function startLocalProbes() {
   setInterval(probeConvex, 5000);
 }
 
-function tryPushConvexFunctions() {
+function tryPushConvexFunctions(repoRoot: string) {
   try {
-    console.log(chalk.dim(`[convex-bootstrap] pushing functions (bun run convex:dev:once)…`));
-    const child = spawn("bun", ["run", "convex:dev:once"], { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
+    // Try root package script first; if missing, fall back to bunx convex dev
+    console.log(chalk.dim(`[convex-bootstrap] pushing functions…`));
+    const child = spawn("bun", ["run", "convex:dev:once"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
-    child.on("exit", (code) => console.log(chalk.dim(`[convex-bootstrap] done (code ${code ?? 0})`)));
+    child.on("exit", (code) => {
+      if (code !== 0) {
+        console.log(chalk.dim(`[convex-bootstrap] script missing or failed; trying 'bunx convex dev' one-shot…`));
+        const fallback = spawn("bunx", ["convex", "dev"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
+        fallback.stdout.setEncoding("utf8");
+        fallback.stdout.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
+        fallback.stderr.setEncoding("utf8");
+        fallback.stderr.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
+        fallback.on("exit", (c2) => console.log(chalk.dim(`[convex-bootstrap] done (fallback code ${c2 ?? 0})`)));
+      } else {
+        console.log(chalk.dim(`[convex-bootstrap] done (code ${code ?? 0})`));
+      }
+    });
   } catch (e: any) {
     console.log(chalk.dim(`[convex-bootstrap] skipped: ${e?.message || e}`));
   }
