@@ -356,10 +356,12 @@ function seedDemoViaBridgeControl() {
 
 function bridgeStatus() {
   const ws = new WebSocket("ws://127.0.0.1:8787/ws");
+  const timer = setTimeout(() => { try { ws.close(); } catch {} }, 1800);
   ws.on("open", () => {
     try { ws.send(JSON.stringify({ control: 'bridge.status' })); } catch {}
-    setTimeout(() => { try { ws.close(); } catch {} }, 1500);
   });
+  ws.on("error", () => { try { clearTimeout(timer); ws.close(); } catch {} });
+  ws.on("close", () => { try { clearTimeout(timer); } catch {} });
 }
 
 function startBridgeEventTail() {
