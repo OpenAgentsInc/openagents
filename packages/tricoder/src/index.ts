@@ -1,10 +1,4 @@
 #!/usr/bin/env node
-/**
- * OpenAgents NPX placeholder (no Node WebSockets, no bridge spawn).
- *
- * For now, `npx tricoder` only prints guidance. The Rust bridge
- * remains the single source of truth and is started separately.
- */
 import chalk from "chalk";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -115,7 +109,8 @@ function main() {
     // Helpful resources (dark gray)
     console.log(chalk.gray("Resources:"));
     console.log(chalk.gray(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
-    console.log(chalk.gray(" - Or open an issue: https://github.com/OpenAgentsInc/openagents"));
+    console.log(chalk.gray(" - All code is opensource here: https://github.com/OpenAgentsInc/openagents"));
+    console.log(chalk.gray(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
     // Check for codex binary presence — required for assistant responses
     try {
       const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'pipe' });
