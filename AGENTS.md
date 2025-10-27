@@ -157,6 +157,14 @@ instructions: |
 - Review before committing: use `git status` and `git diff --staged` to confirm only intended paths are included.
 - Branching policy: do not create branches unless the user explicitly directs you to. Default to committing on `main` and opening PRs only when requested.
 
+### Local Working Tree Safety (STRICT)
+- Do not modify, revert, or delete files you did not touch for the current task — even locally. Avoid commands like `git checkout -- <path>`, `git restore --source=HEAD <path>`, or editor auto-reverts on unrelated paths.
+- Never delete untracked files or directories (e.g., `rm -rf docs/...`). Untracked content may be in-progress work by another agent.
+- Do not use destructive commands: `git reset --hard`, `git clean -fdx`, `git stash*` (already disallowed), or any history rewriting.
+- If the working tree contains unrelated changes, proceed by staging only your intended files (explicit paths). Leave unrelated changes untouched and unmodified.
+- If your work would collide with those local changes or you suspect name collisions (e.g., a new folder vs. an existing tracked file), STOP and ask for guidance instead of attempting “local cleanup”.
+- Before committing, verify your staged set does not include or revert other agents’ files. Use `git status --porcelain` and `git diff --staged` to double-check.
+
 ## Agent Workflow Requirements (Expo TypeScript)
 - If you touch TypeScript/TSX under `expo/`, run the type checker via `bun run typecheck`.
 - Do not finish work until the typecheck passes with no warnings.
