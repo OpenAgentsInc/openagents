@@ -31,10 +31,12 @@
     "access": "public"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "chalk": "^5.3.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/node": "^22.8.6",
     "@types/ws": "^8.5.12",
     "tsx": "^4.19.1",

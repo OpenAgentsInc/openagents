@@ -2,12 +2,14 @@
 import chalk from "chalk"
 import os from "node:os"
 import { spawn, spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, copyFileSync, chmodSync, readdirSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, copyFileSync, chmodSync, readdirSync, statSync, createWriteStream } from "node:fs"
 import http from "node:http"
+import https from "node:https"
 import net from "node:net"
 import { dirname, join } from "node:path"
 import WebSocket from "ws"
 import { buildTunnelArgs } from "./args.js"
+import AdmZip from "adm-zip"
 
 // spawnSync already imported above
 const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v") || process.env.TRICODER_VERBOSE === "1";
@@ -314,55 +316,43 @@ function ensureConvexBinaryWithProgress() {
   if (existsSync(outBin)) return;
   const haveBunx = hasCmd('bunx');
   const haveNpx = hasCmd('npx');
-  if (!haveBunx && !haveNpx) return; // will fall back to bridge bootstrap later
   console.log("");
   console.log(chalk.cyanBright("Downloading Convex local backend (first-time only)…"));
-  let lastPct = -1;
-  const args = ["convex", "dev", "--configure", "--dev-deployment", "local", "--once", "--skip-push", "--local-force-upgrade"];
-  const env = { ...process.env, CI: '1' } as Record<string,string>;
-  const child = haveBunx
-    ? spawn("bunx", args, { stdio: ["ignore", "pipe", "pipe"], env })
-    : spawn("npx", ["-y", ...args], { stdio: ["ignore", "pipe", "pipe"], env });
-  const show = (p: number) => {
-    if (p < 0 || p > 100) return;
-    if (p <= lastPct) return;
-    lastPct = p;
-    CONVEX_DL_PCT = p;
-    try { process.stdout.write("\r" + chalk.cyanBright(`⬇️  Convex backend download: ${p}%`)); } catch {}
-  };
-  const maybeParse = (s: string) => {
-    // Look for any NN% patterns in CLI output
-    const m = s.match(/(\d{1,3})%/);
-    if (m) {
-      const pct = Math.max(0, Math.min(100, parseInt(m[1], 10)));
-      show(pct);
-    }
-  };
-  child.stdout?.setEncoding('utf8');
-  child.stdout?.on('data', (d) => { String(d).split(/\r?\n/).forEach(maybeParse); });
-  child.stderr?.setEncoding('utf8');
-  child.stderr?.on('data', (d) => { String(d).split(/\r?\n/).forEach(maybeParse); });
-  const done = () => {
-    try { process.stdout.write("\r\x1b[K"); } catch {}
-    // Attempt to locate the cached backend and copy to ~/.openagents/bin/local_backend
-    const cacheRoot = join(home, '.cache', 'convex', 'binaries');
-    const candidate = findNewestBackendBinary(cacheRoot);
-    if (candidate) {
-      try {
-        mkdirSync(outDir, { recursive: true });
-        copyFileSync(candidate, outBin);
-        try { chmodSync(outBin, 0o755); } catch {}
-        console.log(chalk.greenBright("✔ Convex backend installed."));
-      } catch (e: any) {
-        console.log(chalk.yellow(`Convex backend cached but copy failed: ${e?.message || e}`));
+  // Try direct download first; fallback to bunx/npx only if that fails
+  directDownloadConvexBackend(outBin).then((ok) => {
+    if (ok) return;
+    if (!haveBunx && !haveNpx) return; // will fall back to bridge bootstrap later
+    let lastPct = -1;
+    const args = ["convex", "dev", "--configure", "--dev-deployment", "local", "--once", "--skip-push", "--local-force-upgrade"];
+    const env = { ...process.env, CI: '1' } as Record<string,string>;
+    const child = haveBunx
+      ? spawn("bunx", args, { stdio: ["ignore", "pipe", "pipe"], env })
+      : spawn("npx", ["-y", ...args], { stdio: ["ignore", "pipe", "pipe"], env });
+    const show = (p: number) => {
+      if (p < 0 || p > 100) return;
+      if (p <= lastPct) return;
+      lastPct = p; CONVEX_DL_PCT = p;
+      try { process.stdout.write("\r" + chalk.cyanBright(`⬇️  Convex backend download: ${p}%`)); } catch {}
+    };
+    const maybeParse = (s: string) => {
+      const m = s.match(/(\d{1,3})%/);
+      if (m) { const pct = Math.max(0, Math.min(100, parseInt(m[1], 10))); show(pct); }
+    };
+    child.stdout?.setEncoding('utf8'); child.stdout?.on('data', (d) => { String(d).split(/\r?\n/).forEach(maybeParse); });
+    child.stderr?.setEncoding('utf8'); child.stderr?.on('data', (d) => { String(d).split(/\r?\n/).forEach(maybeParse); });
+    const done = () => {
+      try { process.stdout.write("\r\x1b[K"); } catch {}
+      const cacheRoot = join(home, '.cache', 'convex', 'binaries');
+      const candidate = findNewestBackendBinary(cacheRoot);
+      if (candidate) {
+        try { mkdirSync(outDir, { recursive: true }); copyFileSync(candidate, outBin); try { chmodSync(outBin, 0o755); } catch {}; console.log(chalk.greenBright("✔ Convex backend installed.")); } catch (e: any) { console.log(chalk.yellow(`Convex backend cached but copy failed: ${e?.message || e}`)); }
+      } else {
+        console.log(chalk.yellow("Convex CLI finished but backend binary not found in cache (will let the bridge retry)."));
       }
-    } else {
-      console.log(chalk.yellow("Convex CLI finished but backend binary not found in cache (will let the bridge retry)."));
-    }
-  };
-  child.on('exit', () => done());
-  // Safety timeout in case the CLI becomes interactive or stalls
-  setTimeout(() => { try { child.kill(); } catch {} }, 180000);
+    };
+    child.on('exit', () => done());
+    setTimeout(() => { try { child.kill(); } catch {} }, 180000);
+  }).catch(() => { /* ignore; bridge will retry */ });
 }
 
 function findNewestBackendBinary(root: string): string | null {
@@ -383,6 +373,85 @@ function findNewestBackendBinary(root: string): string | null {
     }
     return best?.path || null;
   } catch { return null; }
+}
+
+async function directDownloadConvexBackend(outBin: string): Promise<boolean> {
+  try {
+    const triple = (() => {
+      switch (process.platform) {
+        case 'darwin':
+          return process.arch === 'arm64' ? 'aarch64-apple-darwin' : (process.arch === 'x64' ? 'x86_64-apple-darwin' : null);
+        case 'linux':
+          return process.arch === 'arm64' ? 'aarch64-unknown-linux-gnu' : (process.arch === 'x64' ? 'x86_64-unknown-linux-gnu' : null);
+        case 'win32':
+          return 'x86_64-pc-windows-msvc';
+        default: return null;
+      }
+    })();
+    if (!triple) return false;
+    const filename = `convex-local-backend-${triple}.zip`;
+    const version = await findLatestConvexVersionWithBinary(filename);
+    if (!version) return false;
+    const url = `https://github.com/get-convex/convex-backend/releases/download/${version}/${filename}`;
+    const tmpZip = join(os.tmpdir(), `convex-${Date.now()}.zip`);
+    await downloadWithProgress(url, tmpZip, (pct) => { CONVEX_DL_PCT = pct; try { process.stdout.write("\r" + chalk.cyanBright(`⬇️  Convex backend download: ${pct}%`)); } catch {} });
+    const zip = new AdmZip(tmpZip);
+    const entries = zip.getEntries();
+    const entry = entries.find(e => /convex-local-backend(\.exe)?$/.test(e.entryName));
+    if (!entry) return false;
+    const outDir = dirname(outBin); mkdirSync(outDir, { recursive: true });
+    zip.extractEntryTo(entry, outDir, false, true);
+    const extractedPath = join(outDir, entry.entryName);
+    if (extractedPath !== outBin) {
+      try { copyFileSync(extractedPath, outBin); } catch {}
+    }
+    try { chmodSync(outBin, 0o755); } catch {}
+    try { process.stdout.write("\r\x1b[K"); } catch {}
+    console.log(chalk.greenBright("✔ Convex backend installed."));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findLatestConvexVersionWithBinary(filename: string): Promise<string | null> {
+  let nextUrl: string | '' = 'https://api.github.com/repos/get-convex/convex-backend/releases?per_page=30';
+  while (nextUrl) {
+    const res = await fetch(nextUrl as any, { headers: { 'User-Agent': 'openagents-tricoder' } } as any);
+    if (!res.ok) return null;
+    const releases = await res.json() as any[];
+    for (const r of releases) {
+      if (r.prerelease || r.draft) continue;
+      const assets = Array.isArray(r.assets) ? r.assets : [];
+      if (assets.find((a: any) => a.name === filename)) {
+        return r.tag_name as string;
+      }
+    }
+    const link = res.headers.get('Link') || res.headers.get('link');
+    if (!link) break;
+    const m = /<([^>]+)>;\s*rel="next"/.exec(link);
+    nextUrl = m ? (m[1] as string) : '';
+  }
+  return null;
+}
+
+async function downloadWithProgress(url: string, dest: string, onPct: (pct: number) => void): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'openagents-tricoder' } }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        downloadWithProgress(res.headers.location, dest, onPct).then(resolve, reject); return;
+      }
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) { reject(new Error(`HTTP ${res.statusCode}`)); return; }
+      const total = Number(res.headers['content-length'] || 0);
+      let done = 0;
+      const out = createWriteStream(dest);
+      res.on('data', (chunk) => { done += chunk.length; if (total > 0) { const pct = Math.min(100, Math.max(0, Math.round((done / total) * 100))); onPct(pct); } });
+      res.pipe(out);
+      out.on('finish', () => { try { out.close(); } catch {}; onPct(100); resolve(); });
+      res.on('error', (e) => { try { out.destroy(); } catch {}; reject(e); });
+    });
+    req.on('error', reject);
+  });
 }
 
 function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
