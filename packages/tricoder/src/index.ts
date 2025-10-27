@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import chalk from "chalk"
+import os from "node:os"
 import { spawn, spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import http from "node:http"
@@ -109,14 +110,14 @@ function main() {
     // Security notice
     console.log(chalk.yellowBright("\nWarning: This code is your private bridge token — never share it with anyone."));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
-    // Helpful resources (dark gray)
+    // Helpful resources (light gray)
     const lite = (s: string) => chalk.hex('#9CA3AF')(s); // light gray
     console.log(lite("Resources:"));
     console.log(lite(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
-    console.log(lite(" - All code is open-source here: https://github.com/OpenAgentsInc/openagents"));
     console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
-    console.log(lite("    - Android coming soon (sooner if you @ us on X)"));
-    console.log(lite(" - Any problems please open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
+    console.log(lite(" - Android coming soon"));
+    console.log(lite(" - All code is open-source here: https://github.com/OpenAgentsInc/openagents"));
+    console.log(lite(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
     // Check for codex binary presence — required for assistant responses
     try {
       const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'pipe' });
@@ -127,6 +128,10 @@ function main() {
       // Start persistent WS tail to print bridge + codex events
       if (VERBOSE) { try { startBridgeEventTail(); } catch { } }
     } catch { }
+    // In quiet mode, provide a concise Convex setup guide while backend initializes
+    if (!VERBOSE) {
+      try { monitorConvexSetupOnce(repoRoot) } catch { }
+    }
   }
 }
 
@@ -222,9 +227,9 @@ function startLocalProbes(repoRoot: string) {
       }
       res.resume();
       // On first healthy, try function push once via root script (best effort)
-      if (VERBOSE && ok && (probeConvex as any)._firstDone !== true) {
+      if (ok && (probeConvex as any)._firstDone !== true) {
         (probeConvex as any)._firstDone = true;
-        tryPushConvexFunctions(repoRoot);
+        tryPushConvexFunctions(repoRoot, !VERBOSE);
       }
     });
     req.on("error", () => {
@@ -243,10 +248,33 @@ function startLocalProbes(repoRoot: string) {
   setInterval(probeConvex, 5000);
 }
 
-function tryPushConvexFunctions(repoRoot: string) {
+function monitorConvexSetupOnce(repoRoot: string) {
+  const backendPath = join(os.homedir(), ".openagents", "bin", "local_backend")
+  const exists = existsSync(backendPath)
+  if (!exists) {
+    console.log(chalk.hex('#9CA3AF')("Setting up local Convex backend (first run downloads a small binary)…"))
+  } else {
+    console.log(chalk.hex('#9CA3AF')("Starting local Convex backend…"))
+  }
+  const start = Date.now()
+  const check = () => {
+    const req = http.get({ host: "127.0.0.1", port: 7788, path: "/instance_version", timeout: 1500 }, (res) => {
+      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+        console.log(chalk.hex('#9CA3AF')(`Convex backend ready in ${Math.round((Date.now()-start)/1000)}s.`))
+      } else {
+        setTimeout(check, 1000)
+      }
+      res.resume()
+    })
+    req.on("error", () => setTimeout(check, 1200))
+  }
+  check()
+}
+
+function tryPushConvexFunctions(repoRoot: string, announce?: boolean) {
   try {
     // Try root package script first; if missing, fall back to bunx convex dev
-    if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] pushing functions…`));
+    if (announce || VERBOSE) console.log(chalk.dim(`[convex] Deploying functions…`));
     const child = spawn("bun", ["run", "convex:dev:once"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
@@ -260,13 +288,13 @@ function tryPushConvexFunctions(repoRoot: string) {
         fallback.stdout.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
         fallback.stderr.setEncoding("utf8");
         fallback.stderr.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
-        fallback.on("exit", (c2) => { if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] done (fallback code ${c2 ?? 0})`)) });
+        fallback.on("exit", (c2) => { if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy finished (code ${c2 ?? 0})`)) });
       } else {
-        if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] done (code ${code ?? 0})`));
+        if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy finished (code ${code ?? 0})`));
       }
     });
   } catch (e: any) {
-    if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] skipped: ${e?.message || e}`));
+    if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy skipped: ${e?.message || e}`));
   }
 }
 
