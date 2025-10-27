@@ -26,13 +26,26 @@ export function ConvexProviderLocal({ children }: { children: React.ReactNode })
   const convexOverride = useSettings((s) => s.convexUrl)
   const convexUrl = React.useMemo(() => {
     const ov = String(convexOverride || '').trim()
-    if (ov) return ov
+    if (ov) {
+      try {
+        const u = new URL(ov)
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          const norm = u.toString().replace(/\/$/, '')
+          return norm
+        }
+      } catch {
+        // ignore invalid while user is typing; fall back below
+      }
+    }
     const hostPort = sanitizeHost(bridgeHost)
     const hostOnly = hostPort.split(':')[0] || '127.0.0.1'
     return `http://${hostOnly}:7788`
   }, [bridgeHost, convexOverride])
 
-  const client = React.useMemo(() => new ConvexReactClient(convexUrl, { verbose: false }), [convexUrl])
+  const client = React.useMemo(() => {
+    try { console.log('[convex] client url =', convexUrl) } catch {}
+    return new ConvexReactClient(convexUrl, { verbose: true })
+  }, [convexUrl])
 
   return <ConvexProvider client={client}>{children}</ConvexProvider>
 }
