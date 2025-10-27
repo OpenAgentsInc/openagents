@@ -110,6 +110,7 @@ export default function Onboarding() {
       </View>
       <View style={{ height: 16 }} />
       <Text style={styles.label}>Bridge Code</Text>
+      <Text style={styles.hint}>Run `npx tricoder@0.2.0` from your desktop</Text>
       <View style={styles.inputWrapper}>
         <TextInput
           value={bridgeCode}
@@ -171,6 +172,7 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusText: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 },
   label: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 4 },
+  hint: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 },
   inputWrapper: { position: 'relative', alignSelf: 'center', width: '100%', maxWidth: 680 },
   input: { borderWidth: 1, borderColor: Colors.border, padding: 12, borderRadius: 0, backgroundColor: Colors.card, color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, marginBottom: 8 },
   clearIconArea: { position: 'absolute', right: 8, top: 0, bottom: 8, width: 28, alignItems: 'center', justifyContent: 'center' },
