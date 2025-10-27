@@ -17,9 +17,6 @@ function main() {
   console.log("Tip: If desktop and phone aren’t on the same LAN, use Tailscale.");
 }
 
-try {
-  main();
-} catch (err) {
-  console.error(err);
-  process.exit(1);
-}
+// Intentionally avoid referencing Node's `process` type so @types/node isn't required.
+// If something throws here, Node will print the stack and exit.
+main();
