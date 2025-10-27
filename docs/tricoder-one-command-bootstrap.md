@@ -183,6 +183,7 @@ Phase 3: Optional backgrounding
 
 Notes related to the incident: On Linux, running multiple `cargo run` processes in parallel (bridge + two tunnels) can spike CPU/RAM and trigger OOM or thermal shutdowns. The above plan avoids concurrent compiles, prefers prebuilt downloads, and caps build parallelism by default on Linux.
 
+ 
 ## Addendum — Implementation Notes and Recommendations
 
 - Binary resolution order and prompts
@@ -219,3 +220,50 @@ Notes related to the incident: On Linux, running multiple `cargo run` processes 
   - Offer `--uninstall` to remove cached binaries.
 
 These align with the repo’s policies and should make `npx tricoder` behave predictably on a fresh computer without requiring the OpenAgents repo. In the interim, we can keep the “inside‑repo” path while we stand up releases for prebuilt binaries.
+
+## Second Addendum — Commentary and Decisions
+
+This builds on the first addendum’s implementation notes. Key clarifications and decisions to keep `npx tricoder` robust across environments:
+
+- Linux binary compatibility (glibc vs musl)
+  - Ship two Linux flavors where feasible: `x86_64-unknown-linux-gnu` (glibc) and `x86_64-unknown-linux-musl` (static) to avoid old‑glibc issues on distros like CentOS/Ubuntu LTS. Prefer musl when available; fall back to glibc if dynamic linking is required.
+  - Document minimum glibc version in the release notes when using glibc builds.
+
+- Windows specifics
+  - Distribute `.exe` binaries and ensure child process cleanup uses platform‑appropriate termination: `taskkill /PID <pid> /T` on exit in addition to Node signal handling.
+  - Avoid Unix‑specific niceness (nice/ionice); instead, throttle with sequential work and progress updates.
+
+- Corporate proxies and offline hosts
+  - Respect `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` for all downloads.
+  - When building, pass through `CARGO_HTTP_PROXY`/`CARGO_HTTP_DEBUG` if set.
+  - Provide `--no-install` and a clear offline mode that skips downloads and explains what’s missing.
+
+- Integrity and release verification
+  - Always publish SHA256 sums and verify on client; expose a single JSON manifest per release with filenames, sizes, and checksums.
+  - Optional signature (minisign or cosign) is a stretch goal; the checksum manifest is sufficient for v0.
+
+- Download controls and mirrors
+  - Allow `OPENAGENTS_DOWNLOAD_BASE` to override the GitHub Releases origin for air‑gapped mirrors/CDNs.
+  - Use ETag/If‑None‑Match to avoid redundant downloads; stream to disk with progress and low memory footprint.
+
+- Port conflict handling
+  - Probe 8787/7788; if occupied, select the next free port in a short range and print the chosen ports.
+  - For “kill and restart” ergonomics, only offer a guided prompt in interactive mode; never auto‑kill without explicit consent.
+
+- Child process lifecycle
+  - On Ctrl‑C and process exit, terminate both tunnels and the bridge with a short timeout; on timeout, issue a forceful kill.
+  - Ensure no orphan processes on all platforms (double‑check Windows process‑tree behavior).
+
+- Security modes
+  - Keep today’s permissive dev flags as the default, but add `--safe` to run the bridge without bypassing sandbox/approvals. Reflect the mode in the printed banner and pairing payload.
+
+- Self‑update guidance
+  - If the running npm version is not the latest, print a one‑liner: `Tip: run npx tricoder@latest for updates`.
+
+- Telemetry
+  - No telemetry. Only local console output, with an opt‑in `--verbose` tail for debugging.
+
+- TLS and WSS (future)
+  - Plan a follow‑up to enable `wss://` by placing a TLS terminator in front of Bore or shipping a TLS‑enabled tunnel. Keep today’s pairing format flexible for `wss://` URLs.
+
+These items keep the bootstrap reliable on constrained Linux hosts, workable behind corporate proxies, and ready for future hardening without changing the basic one‑command UX.
