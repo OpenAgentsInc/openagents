@@ -229,6 +229,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         if let Some(mut stdin) = stdin_state.child_stdin.lock().await.take() {
                                             if let Err(e) = stdin.write_all(payload.as_bytes()).await { error!(?e, "run.submit: write failed"); }
                                             let _ = stdin.flush().await; drop(stdin);
+                                            let dbg = serde_json::json!({"type":"bridge.run_submit","threadDocId": thread_doc_id, "cd": desired_cd, "resumeId": resume_id, "len": text.len()}).to_string();
+                                            let _ = stdin_state.tx.send(dbg);
                                         }
                                     }
                                     Err(e) => { error!(?e, "run.submit: spawn failed"); }
@@ -341,10 +343,17 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             args.insert("createdAt".into(), Value::from(now_ms() as f64));
                             args.insert("updatedAt".into(), Value::from(now_ms() as f64));
                             let _ = client.mutation("threads:upsertFromStream", args).await;
+                            }
+                            // Broadcast a debug event for visibility in tools
+                            let dbg = serde_json::json!({
+                                "type": "bridge.codex_event",
+                                "event_type": "thread.started",
+                                "thread_id": v.get("thread_id").and_then(|x| x.as_str()).or_else(|| v.get("msg").and_then(|m| m.get("thread_id")).and_then(|x| x.as_str())).unwrap_or("")
+                            }).to_string();
+                            let _ = tx_out.send(dbg);
                         }
                     }
-                }
-                if matches!(t.as_deref(), Some("turn.completed")) {
+                    if matches!(t.as_deref(), Some("turn.completed")) {
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                     if !target_tid.is_empty() { finalize_streaming_for_thread(&state_for_stdout, &target_tid).await; }
@@ -355,14 +364,18 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                     let txt = payload.and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", &txt).await; info!(len=txt.len(), thread=%target_tid, "assistant.delta mapped"); }
+                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", &txt).await; info!(len=txt.len(), thread=%target_tid, "assistant.delta mapped");
+                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                    }
                 }
                 if matches!(t.as_deref(), Some("reasoning.delta")) || matches!(t.as_deref(), Some("reason.delta")) {
                     let payload = v.get("payload").or_else(|| v.get("msg").and_then(|m| m.get("payload")));
                     let txt = payload.and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
-                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt).await; info!(len=txt.len(), thread=%target_tid, "reason.delta mapped"); }
+                    if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt).await; info!(len=txt.len(), thread=%target_tid, "reason.delta mapped");
+                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                    }
                 }
                 if matches!(t.as_deref(), Some("agent_message")) || matches!(t.as_deref(), Some("assistant")) || matches!(t.as_deref(), Some("message")) {
                     let payload = v.get("payload").or_else(|| v.get("msg").and_then(|m| m.get("payload")));
@@ -382,6 +395,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             let _ = client.mutation("messages:create", args).await;
                         }
                         info!(thread=%target_tid, "assistant.finalized created snapshot");
+                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                     } else { info!(thread=%target_tid, "assistant.finalized finalized streamed item"); }}
                 }
                 if matches!(t.as_deref(), Some("reasoning")) {
