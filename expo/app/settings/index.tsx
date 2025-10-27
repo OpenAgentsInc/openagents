@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons'
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
-  const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, attachPreface, setAttachPreface } = useBridge()
+  const { bridgeHost, setBridgeHost, connected, connect, disconnect } = useBridge()
   const bridgeCode = useSettings((s) => s.bridgeCode)
   const setBridgeCode = useSettings((s) => s.setBridgeCode)
   const convexUrl = useSettings((s) => s.convexUrl)
@@ -94,12 +94,14 @@ export default function SettingsScreen() {
         {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
         <StatusPill connected={connected} />
       </View>
+      {/** Preferences hidden: Attach preface defaults to ON and is not user-configurable in this version
       <Text style={styles.title}>Preferences</Text>
       <Text style={styles.label}>Attach preface to prompts</Text>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Segmented title='Off' active={!attachPreface} onPress={() => setAttachPreface(false)} />
         <Segmented title='On' active={attachPreface} onPress={() => setAttachPreface(true)} />
       </View>
+      */}
     </View>
   )
 }

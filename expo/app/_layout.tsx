@@ -142,6 +142,7 @@ function DrawerContent() {
             <Ionicons name="help-circle-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Help</Text>
           </Pressable>
+          {/** Component Library link disabled in drawer for v1
           <Pressable
             onPress={closeAnd(() => router.push('/library'))}
             accessibilityRole="button"
@@ -151,6 +152,7 @@ function DrawerContent() {
             <Ionicons name="book-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
           </Pressable>
+          */}
           {/** Logs link disabled in drawer
           <Pressable
             onPress={closeAnd(() => router.push('/logs'))}
