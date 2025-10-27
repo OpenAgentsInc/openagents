@@ -109,6 +109,8 @@ function main() {
     // Helpful resources (dark gray)
     console.log(chalk.gray("Resources:"));
     console.log(chalk.gray(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
+    console.log(chalk.gray(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
+    console.log(chalk.gray(" - Android coming soon"));
     console.log(chalk.gray(" - All code is opensource here: https://github.com/OpenAgentsInc/openagents"));
     console.log(chalk.gray(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
     // Check for codex binary presence — required for assistant responses
