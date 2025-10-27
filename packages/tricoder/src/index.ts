@@ -130,7 +130,7 @@ function main() {
     } catch { }
     // In quiet mode, provide a concise Convex setup guide while backend initializes
     if (!VERBOSE) {
-      try { monitorConvexSetupOnce(repoRoot) } catch { }
+      try { monitorConvexSetupOnce(repoRoot as string) } catch { }
     }
   }
 }
