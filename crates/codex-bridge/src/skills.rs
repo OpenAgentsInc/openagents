@@ -112,6 +112,7 @@ fn append_skills_from(dir: &std::path::Path, source: &str, out: &mut Vec<Skill>)
 
 /// List skills from a specific directory (Claude-compatible folders containing SKILL.md).
 /// `source` is tagged onto each skill (e.g., "user", "registry", or "project").
+#[allow(dead_code)]
 pub fn list_skills_from_dir(dir: &Path, source: &str) -> Result<Vec<Skill>> {
     let mut out: Vec<Skill> = Vec::new();
     append_skills_from(dir, source, &mut out)?;
