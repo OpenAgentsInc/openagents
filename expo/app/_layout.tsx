@@ -227,16 +227,18 @@ function DrawerWrapper() {
   const isRTL = I18nManager.isRTL;
   const router = useRouter();
   const { connected } = useBridge();
+  const convexThreads = (useQuery as any)(connected ? 'threads:list' : 'threads:list', connected ? {} : 'skip') as any[] | undefined | null
   const pathname = (require('expo-router') as any).usePathname?.() as string | undefined;
-  // Connection-gated onboarding: show onboarding while disconnected; hide when connected
+  // Connection-gated onboarding: require bridge and convex
   React.useEffect(() => {
     const path = String(pathname || '')
-    if (!connected) {
+    const convexReady = Array.isArray(convexThreads)
+    if (!connected || !convexReady) {
       if (!path.startsWith('/onboarding')) {
         try { router.push('/onboarding' as any) } catch {}
       }
     }
-  }, [connected, pathname]);
+  }, [connected, convexThreads, pathname]);
 
   const ConnectionDot = () => {
     const { connected } = useBridge();
