@@ -349,19 +349,19 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                     if !target_tid.is_empty() { finalize_streaming_for_thread(&state_for_stdout, &target_tid).await; }
                 }
-                if matches!(t.as_deref(), Some("agent_message.delta")) {
+                if matches!(t.as_deref(), Some("agent_message.delta")) || matches!(t.as_deref(), Some("assistant.delta")) || matches!(t.as_deref(), Some("message.delta")) {
                     let txt = v.get("payload").and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                     if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", &txt).await; }
                 }
-                if matches!(t.as_deref(), Some("reasoning.delta")) {
+                if matches!(t.as_deref(), Some("reasoning.delta")) || matches!(t.as_deref(), Some("reason.delta")) {
                     let txt = v.get("payload").and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                     if !target_tid.is_empty() { stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt).await; }
                 }
-                if matches!(t.as_deref(), Some("agent_message")) {
+                if matches!(t.as_deref(), Some("agent_message")) || matches!(t.as_deref(), Some("assistant")) || matches!(t.as_deref(), Some("message")) {
                     let text_owned = v.get("payload").and_then(|p| p.get("text")).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
