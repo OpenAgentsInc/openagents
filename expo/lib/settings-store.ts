@@ -8,6 +8,7 @@ type SettingsState = {
   bridgeHost: string
   bridgeCode: string
   convexUrl: string
+  bridgeAutoReconnect: boolean
   readOnly: boolean
   networkEnabled: boolean
   approvals: Approvals
@@ -15,6 +16,7 @@ type SettingsState = {
   setBridgeHost: (v: string) => void
   setBridgeCode: (v: string) => void
   setConvexUrl: (v: string) => void
+  setBridgeAutoReconnect: (v: boolean) => void
   setReadOnly: (v: boolean) => void
   setNetworkEnabled: (v: boolean) => void
   setApprovals: (v: Approvals) => void
@@ -27,6 +29,7 @@ export const useSettings = create<SettingsState>()(
       bridgeHost: 'localhost:8787',
       bridgeCode: '',
       convexUrl: '',
+      bridgeAutoReconnect: true,
       readOnly: false,
       networkEnabled: true,
       approvals: 'never',
@@ -34,6 +37,7 @@ export const useSettings = create<SettingsState>()(
       setBridgeHost: (v) => set({ bridgeHost: v }),
       setBridgeCode: (v) => set({ bridgeCode: v }),
       setConvexUrl: (v) => set({ convexUrl: v }),
+      setBridgeAutoReconnect: (v) => set({ bridgeAutoReconnect: v }),
       setReadOnly: (v) => set({ readOnly: v }),
       setNetworkEnabled: (v) => set({ networkEnabled: v }),
       setApprovals: (v) => set({ approvals: v }),
