@@ -57,19 +57,13 @@ export default function Onboarding() {
     } catch { setHttpStatus('error') }
     return () => { cancelled = true }
   }, [convexUrl, derivedConvexUrl])
-  // Validate code on mount and whenever it changes to avoid flicker
+  // Validate code on change; do not mutate host/convex or connect automatically
   React.useEffect(() => {
     const trimmed = String(bridgeCode || '').trim()
     if (!trimmed) { setCodeError(''); return }
     const parsed = parseBridgeCode(trimmed)
-    if (!parsed || !parsed.bridgeHost) {
-      setCodeError('Invalid bridge code')
-      try { disconnect() } catch {}
-      setBridgeHost('')
-      setConvexUrl('')
-    } else {
-      setCodeError('')
-    }
+    if (!parsed || !parsed.bridgeHost) setCodeError('Invalid bridge code')
+    else setCodeError('')
   }, [bridgeCode])
   React.useEffect(() => {
     if (httpStatus) { try { console.log('[onboarding] httpStatus:', httpStatus) } catch {} }
@@ -79,6 +73,17 @@ export default function Onboarding() {
   const isConnecting = !!connecting
   const statusText = connected ? 'Connected' : (isConnecting ? 'Connecting…' : (hasHost ? 'Disconnected' : 'Enter Bridge Code'))
 
+  const trimmedCode = React.useMemo(() => String(bridgeCode || '').trim(), [bridgeCode])
+  const likelyCode = React.useMemo(() => {
+    if (!trimmedCode) return false
+    if (trimmedCode.startsWith('openagents://') || trimmedCode.startsWith('oa://') || trimmedCode.startsWith('{')) {
+      try { return !!parseBridgeCode(trimmedCode) } catch { return false }
+    }
+    // Heuristic: base64url for a JSON object often begins with 'ey'
+    if (/^ey[A-Za-z0-9_-]{10,}$/.test(trimmedCode)) return true
+    try { return !!parseBridgeCode(trimmedCode) } catch { return false }
+  }, [trimmedCode])
+
   // Auto-advance when connected
   React.useEffect(() => {
     if (!connected) return
@@ -87,12 +92,11 @@ export default function Onboarding() {
 
   return (
     <View style={styles.container}>
-      {isConnecting ? (<>
-        <ActivityIndicator size="large" color={Colors.foreground} />
-        <View style={{ height: 16 }} />
-      </>) : null}
-      <Text style={styles.title}>{statusText}</Text>
-      <View style={{ height: 24 }} />
+      <View style={styles.statusRow}>
+        <Text style={styles.statusText}>{statusText}</Text>
+        {isConnecting ? (<ActivityIndicator size="small" color={Colors.foreground} />) : null}
+      </View>
+      <View style={{ height: 16 }} />
       <Text style={styles.label}>Bridge Code</Text>
       <View style={styles.inputWrapper}>
         <TextInput
@@ -110,15 +114,10 @@ export default function Onboarding() {
             const parsed = parseBridgeCode(v)
             if (!parsed || !parsed.bridgeHost) {
               setCodeError('Invalid bridge code')
-              try { disconnect() } catch {}
-              setBridgeHost('')
-              setConvexUrl('')
               return
             }
             setCodeError('')
-            if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
-            if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
-            try { connect() } catch {}
+            // Do not auto-connect on input; host/convex will be applied on Connect
           }}
           autoCapitalize='none'
           autoCorrect={false}
@@ -135,10 +134,18 @@ export default function Onboarding() {
       )}
       <View style={{ height: 12 }} />
       <Pressable
-        onPress={() => { if (!connecting && !codeError) { try { connect() } catch {} } }}
+        onPress={() => {
+          if (connecting || codeError || !likelyCode) return
+          try {
+            const parsed = parseBridgeCode(trimmedCode)
+            if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
+            if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
+          } catch {}
+          try { connect() } catch {}
+        }}
         accessibilityRole='button'
         accessibilityState={{ busy: connecting }}
-        style={[styles.connectBtn as any, (connecting ? styles.connectingBtn : undefined) as any, (codeError ? styles.connectDisabled : undefined) as any]}
+        style={[styles.connectBtn as any, (connecting ? styles.connectingBtn : undefined) as any, ((codeError || !likelyCode) ? styles.connectDisabled : undefined) as any]}
       >
         <Text style={styles.connectText}>{connected ? 'Connected' : (connecting ? 'Connecting…' : (codeError ? 'Fix Code' : 'Connect'))}</Text>
       </Pressable>
@@ -149,6 +156,8 @@ export default function Onboarding() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 24 },
   title: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 28, marginBottom: 8, textAlign: 'left' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusText: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 },
   label: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 4 },
   inputWrapper: { position: 'relative', alignSelf: 'center', width: '100%', maxWidth: 680 },
   input: { borderWidth: 1, borderColor: Colors.border, padding: 12, borderRadius: 0, backgroundColor: Colors.card, color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, marginBottom: 8 },

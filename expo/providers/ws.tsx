@@ -155,54 +155,18 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   }, [effectiveHost]);
 
   // Helper: wait until the WebSocket is OPEN (or time out)
-  const awaitConnected = useCallback(async (timeoutMs: number = 8000) => {
-    if (!effectiveHost) throw new Error('ws host not configured');
-    if (!autoReconnect) throw new Error('ws auto-reconnect paused');
-    const start = Date.now();
-    // Kick a connect attempt if nothing is connected
-    try { if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) connect(); } catch {}
-    return new Promise<void>((resolve, reject) => {
-      const tick = () => {
-        try {
-          const ws = wsRef.current;
-          if (ws && ws.readyState === WebSocket.OPEN) { resolve(); return; }
-        } catch {}
-        if (Date.now() - start >= timeoutMs) { reject(new Error('ws not connected')); return; }
-        setTimeout(tick, 150);
-      };
-      tick();
-    });
-  }, [connect, effectiveHost, autoReconnect]);
+  const awaitConnected = useCallback(async (_timeoutMs: number = 8000) => {
+    // Do not auto-connect; only report current state
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) return;
+    throw new Error('ws not connected');
+  }, []);
 
-  // Try a single auto-connect after hydration using the saved URL.
-  useEffect(() => {
-    if (!hydrated) return;
-    if (autoTriedRef.current) return;
-    if (connected || wsRef.current) return;
-    if (!effectiveHost) return;
-    if (!autoReconnect) return;
-    autoTriedRef.current = true;
-    // Best-effort: ignore errors; UI still has manual Connect.
-    connect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, bridgeHost, effectiveHost, autoReconnect]);
+  // Disable auto-connect on mount; user must press Connect explicitly
+  // (left intentionally blank)
 
-  // Auto-reconnect loop: every 3s when disconnected, try to connect.
-  useEffect(() => {
-    if (!hydrated) return;
-    const interval = setInterval(() => {
-      try {
-        const ws = wsRef.current;
-        if (connected) return;
-        if (!effectiveHost) return; // do not auto-reconnect when host is cleared
-        if (!autoReconnect) return; // paused by user via disconnect
-        // Don't stomp an in-flight connection
-        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-        connect();
-      } catch {}
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [connected, connect, hydrated, effectiveHost, autoReconnect]);
+  // Disable periodic auto-reconnect; connections are manual
+  // (left intentionally blank)
 
   useEffect(() => () => { try { wsRef.current?.close(); } catch {} }, []);
 
