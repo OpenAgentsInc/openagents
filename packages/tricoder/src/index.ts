@@ -6,14 +6,14 @@
  * remains the single source of truth and is started separately.
  */
 import chalk from "chalk";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { buildTunnelArgs } from "./args.js";
 import net from "node:net";
 import http from "node:http";
 import WebSocket from "ws";
-import { spawnSync } from "node:child_process";
+// spawnSync already imported above
 
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
@@ -172,24 +172,21 @@ function encodePairCode(obj: any): string {
 function ensureBridgeRunning(repoRoot: string) {
   const sock = net.createConnection({ host: "127.0.0.1", port: 8787 });
   let connected = false;
-  sock.once("connect", () => { connected = true; try { sock.end(); } catch {} });
+  sock.once("connect", async () => {
+    connected = true; try { sock.end(); } catch {}
+    // Probe whether current bridge supports echo. If not, restart it.
+    const supports = await probeBridgeEchoOnce(700).catch(() => false);
+    if (!supports) {
+      console.log(chalk.dim("Restarting local bridge with debug enabled (no echo support)…"));
+      try { restartBridgeProcess(repoRoot); } catch {}
+    }
+  });
   sock.once("error", () => {
-    // Not listening; try to start it
-    console.log(chalk.dim("Starting local bridge (cargo bridge)…"));
-    const child = spawn("cargo", ["bridge"], {
-      cwd: repoRoot,
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        RUST_LOG: process.env.RUST_LOG || "info",
-        BRIDGE_DEBUG_WS: process.env.BRIDGE_DEBUG_WS || "1",
-        BRIDGE_DEBUG_CODEX: process.env.BRIDGE_DEBUG_CODEX || "1",
-      },
-    });
-    child.on("error", () => {});
+    // Not listening; start it
+    startBridgeProcess(repoRoot);
   });
   // timeout after brief period
-  setTimeout(() => { try { if (!connected) sock.destroy(); } catch {} }, 400);
+  setTimeout(() => { try { if (!connected) sock.destroy(); } catch {} }, 500);
 }
 
 function startLocalProbes(repoRoot: string) {
@@ -423,6 +420,57 @@ function startBridgeEventTail() {
   connect();
   // Return a stopper in case we want to end later (not used for dev)
   return () => { closed = true; };
+}
+
+function startBridgeProcess(repoRoot: string) {
+  console.log(chalk.dim("Starting local bridge (cargo bridge)…"));
+  const child = spawn("cargo", ["bridge"], {
+    cwd: repoRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      RUST_LOG: process.env.RUST_LOG || "info",
+      BRIDGE_DEBUG_WS: process.env.BRIDGE_DEBUG_WS || "1",
+      BRIDGE_DEBUG_CODEX: process.env.BRIDGE_DEBUG_CODEX || "1",
+    },
+  });
+  child.on("error", () => {});
+}
+
+function restartBridgeProcess(repoRoot: string) {
+  // Try graceful: send a QUIT via lsof->pid
+  try {
+    const out = spawnSync(process.platform === 'darwin' || process.platform === 'linux' ? 'lsof' : 'netstat',
+      process.platform === 'darwin' || process.platform === 'linux'
+        ? ['-i', ':8787', '-sTCP:LISTEN', '-t']
+        : [] , { encoding: 'utf8' })
+    const pids = String(out.stdout || '').split(/\s+/).filter(Boolean)
+    for (const pid of pids) {
+      try { process.kill(Number(pid), 'SIGTERM') } catch {}
+    }
+  } catch {}
+  setTimeout(() => startBridgeProcess(repoRoot), 400);
+}
+
+async function probeBridgeEchoOnce(timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const ws = new WebSocket("ws://127.0.0.1:8787/ws");
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { done = true; try { ws.close(); } catch {}; resolve(false); } }, timeoutMs);
+    ws.on("open", () => {
+      try { ws.send(JSON.stringify({ control: 'echo', tag: 'probe', payload: 'ok' })) } catch {}
+    });
+    ws.on("message", (data) => {
+      const s = String(data || '').trim();
+      if (!s.startsWith('{')) return;
+      try {
+        const obj = JSON.parse(s);
+        if (obj?.type === 'bridge.echo' && (obj?.tag === 'probe')) { if (!done) { done = true; clearTimeout(timer); try { ws.close(); } catch {}; resolve(true); } }
+      } catch {}
+    });
+    ws.on("error", () => { if (!done) { done = true; clearTimeout(timer); resolve(false); } });
+    ws.on("close", () => { if (!done) { done = true; clearTimeout(timer); resolve(false); } });
+  });
 }
 
 main();
