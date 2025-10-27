@@ -1,6 +1,6 @@
 {
   "name": "tricoder",
-  "version": "0.0.0",
+  "version": "0.0.1-alpha",
   "type": "module",
   "author": "OpenAgents, Inc.",
   "license": "Apache-2.0",
@@ -10,6 +10,8 @@
     "url": "https://github.com/OpenAgentsInc/openagents.git",
     "directory": "packages/tricoder"
   },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "tricoder": "dist/index.js"
   },
@@ -18,6 +20,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npx -y -p typescript tsc -p tsconfig.json && chmod +x dist/index.js",
     "dev": "tsx src/index.ts"
   },
   "engines": {
