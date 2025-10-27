@@ -107,12 +107,13 @@ function main() {
     console.log(chalk.greenBright(code));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
     // Helpful resources (dark gray)
-    console.log(chalk.gray("Resources:"));
-    console.log(chalk.gray(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
-    console.log(chalk.gray(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
-    console.log(chalk.gray(" - Android coming soon"));
-    console.log(chalk.gray(" - All code is opensource here: https://github.com/OpenAgentsInc/openagents"));
-    console.log(chalk.gray(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
+    const lite = (s: string) => chalk.hex('#9CA3AF')(s); // light gray
+    console.log(lite("Resources:"));
+    console.log(lite(" - Any questions? Please @ us on X: https://x.com/OpenAgentsInc"));
+    console.log(lite(" - Download the iOS app on TestFlight: https://testflight.apple.com/join/dvQdns5B"));
+    console.log(lite(" - Android coming soon"));
+    console.log(lite(" - All code is open-source here: https://github.com/OpenAgentsInc/openagents"));
+    console.log(lite(" - Or open an issue: https://github.com/OpenAgentsInc/openagents/issues"));
     // Check for codex binary presence — required for assistant responses
     try {
       const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'pipe' });
