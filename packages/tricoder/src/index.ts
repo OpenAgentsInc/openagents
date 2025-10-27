@@ -73,8 +73,18 @@ function main() {
     }
   });
   child.stderr.setEncoding("utf8");
+  // Aggregate noisy bore logs
+  let bridgeConnNew = 0, bridgeConnExit = 0;
+  setInterval(() => {
+    if (bridgeConnNew || bridgeConnExit) {
+      console.log(chalk.dim(`[bridge-tunnel] ${bridgeConnNew} new, ${bridgeConnExit} exited (last 10s)`));
+      bridgeConnNew = 0; bridgeConnExit = 0;
+    }
+  }, 10000);
   child.stderr.on("data", (chunk: string) => {
     for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
+      if (/bore_cli::client: new connection/.test(line)) { bridgeConnNew++; continue; }
+      if (/bore_cli::client: connection exited/.test(line)) { bridgeConnExit++; continue; }
       console.error(chalk.dim(`[bridge-tunnel] ${line}`));
     }
   });
@@ -121,8 +131,17 @@ function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
     }
   });
   child.stderr.setEncoding("utf8");
+  let convexConnNew = 0, convexConnExit = 0;
+  setInterval(() => {
+    if (convexConnNew || convexConnExit) {
+      console.log(chalk.dim(`[convex-tunnel] ${convexConnNew} new, ${convexConnExit} exited (last 10s)`));
+      convexConnNew = 0; convexConnExit = 0;
+    }
+  }, 10000);
   child.stderr.on("data", (chunk: string) => {
     for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
+      if (/bore_cli::client: new connection/.test(line)) { convexConnNew++; continue; }
+      if (/bore_cli::client: connection exited/.test(line)) { convexConnExit++; continue; }
       console.error(chalk.dim(`[convex-tunnel] ${line}`));
     }
   });
@@ -172,6 +191,11 @@ function startLocalProbes() {
         console.log(ok ? chalk.dim("[convex-local] http://127.0.0.1:7788 healthy") : chalk.dim("[convex-local] http://127.0.0.1:7788 unreachable"));
       }
       res.resume();
+      // On first healthy, try function push once via root script (best effort)
+      if (ok && (probeConvex as any)._firstDone !== true) {
+        (probeConvex as any)._firstDone = true;
+        tryPushConvexFunctions();
+      }
     });
     req.on("error", () => {
       const ok = false;
@@ -187,6 +211,20 @@ function startLocalProbes() {
   probeConvex();
   setInterval(probeBridge, 5000);
   setInterval(probeConvex, 5000);
+}
+
+function tryPushConvexFunctions() {
+  try {
+    console.log(chalk.dim(`[convex-bootstrap] pushing functions (bun run convex:dev:once)…`));
+    const child = spawn("bun", ["run", "convex:dev:once"], { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", d => String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))));
+    child.on("exit", (code) => console.log(chalk.dim(`[convex-bootstrap] done (code ${code ?? 0})`)));
+  } catch (e: any) {
+    console.log(chalk.dim(`[convex-bootstrap] skipped: ${e?.message || e}`));
+  }
 }
 
 function probePublicConvex(base: string) {
