@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{error, info};
 
 use crate::bootstrap::{convex_health, default_convex_db};
-use crate::codex_runner::{ChildWithIo, spawn_codex_child_only_with_dir};
+use crate::codex_runner::{ChildWithIo, spawn_codex_child_only_with_dir, spawn_codex_child_with_prompt};
 use crate::controls::{ControlCommand, parse_control_command};
 use crate::convex_write::{
     finalize_streaming_for_thread, stream_upsert_or_append, summarize_exec_delta_for_log,
@@ -427,67 +427,34 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     let desired_cd = extract_cd_from_ws_payload(&t);
                     let desired_resume = extract_resume_from_ws_payload(&t);
                     info!(?desired_cd, ?desired_resume, msg = "parsed ws preface");
-                    let need_respawn = { stdin_state.child_stdin.lock().await.is_none() };
-                    if need_respawn || desired_cd.is_some() {
-                        let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
-                        let resume_arg: Option<String> = match desired_resume.as_deref() {
-                            Some("new") | Some("none") => None,
-                            Some("last") => resume_id.clone(),
-                            Some(s) if !s.is_empty() => Some(s.to_string()),
-                            _ => resume_id.clone(),
-                        };
-                        match spawn_codex_child_only_with_dir(
-                            &stdin_state.opts,
-                            desired_cd.clone(),
-                            resume_arg.as_deref(),
-                        )
-                        .await
-                        {
-                            Ok(mut child) => {
-                                if let Some(stdin) = child.stdin.take() {
-                                    *stdin_state.child_stdin.lock().await = Some(stdin);
-                                }
-                                if let Err(e) =
-                                    start_stream_forwarders(child, stdin_state.clone()).await
-                                {
-                                    error!(?e, "failed starting forwarders for respawned codex");
-                                }
-                            }
-                            Err(e) => {
-                                error!(?e, "failed to respawn codex");
+                    // Spawn a child process per prompt, passing the prompt as a positional
+                    // arg to avoid ambiguity with `exec resume` and the '-' stdin marker.
+                    let resume_id = { stdin_state.last_thread_id.lock().await.clone() };
+                    let resume_arg: Option<String> = match desired_resume.as_deref() {
+                        Some("new") | Some("none") => None,
+                        Some("last") => resume_id.clone(),
+                        Some(s) if !s.is_empty() => Some(s.to_string()),
+                        _ => resume_id.clone(),
+                    };
+                    let use_resume = resume_arg.is_some();
+                    match spawn_codex_child_with_prompt(
+                        &stdin_state.opts,
+                        desired_cd.clone(),
+                        resume_arg.as_deref(),
+                        &t,
+                        use_resume,
+                    )
+                    .await
+                    {
+                        Ok(child) => {
+                            // No stdin writing; just start forwarders
+                            if let Err(e) = start_stream_forwarders(child, stdin_state.clone()).await {
+                                error!(?e, "failed starting forwarders for codex child");
                             }
                         }
-                    }
-                    let mut guard = stdin_state.child_stdin.lock().await;
-                    if let Some(mut stdin) = guard.take() {
-                        let mut data = t.to_string();
-                        let json_first_line = data
-                            .lines()
-                            .next()
-                            .unwrap_or("")
-                            .trim_start()
-                            .starts_with('{');
-                        if !json_first_line {
-                            data.push('\n');
+                        Err(e) => {
+                            error!(?e, "failed to spawn codex with prompt");
                         }
-                        let preview = if data.len() > 240 {
-                            format!("{}…", &data[..240].replace('\n', "\\n"))
-                        } else {
-                            data.replace('\n', "\\n")
-                        };
-                        info!(
-                            "msg" = "ws write to stdin",
-                            size = data.len(),
-                            preview = preview
-                        );
-                        if let Err(e) = stdin.write_all(data.as_bytes()).await {
-                            error!(?e, "failed to write to codex stdin");
-                            break;
-                        }
-                        let _ = stdin.flush().await;
-                        drop(stdin);
-                    } else {
-                        error!("stdin already closed; ignoring input");
                     }
                 }
                 Message::Binary(_b) => { /* binary not used */ }
@@ -898,10 +865,18 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
             // Broadcast raw line
             let _ = tx_out.send(line.clone());
         }
-        // Drain stderr to console
+        // Drain stderr to console (quiet by default)
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
+        let quiet = std::env::var("BRIDGE_QUIET_STDERR").ok().map(|v| v != "0").unwrap_or(true);
         while let Ok(Some(line)) = lines.next_line().await {
+            if quiet {
+                let low = line.to_ascii_lowercase();
+                if low.contains("error") || low.contains("warn") {
+                    eprintln!("[codex/stderr] {}", line);
+                }
+                continue;
+            }
             eprintln!("[codex/stderr] {}", line);
         }
     });
