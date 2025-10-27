@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, gap: 8, backgroundColor: Colors.background },
   title: { fontSize: 20, fontFamily: Typography.bold, color: Colors.foreground, marginTop: 8 },
   label: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginTop: 8 },
-  inputWrapper: { position: 'relative' },
+  inputWrapper: { position: 'relative', alignSelf: 'center', width: '100%', maxWidth: 680 },
   input: { borderWidth: 1, borderColor: Colors.border, padding: 12, borderRadius: 0, backgroundColor: Colors.card, color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, marginBottom: 8 },
   clearIconArea: { position: 'absolute', right: 8, top: 0, bottom: 8, width: 28, alignItems: 'center', justifyContent: 'center' },
 });

@@ -183,8 +183,17 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   const send = useCallback((payload: string | ArrayBuffer | Blob) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-    ws.send(payload as any);
+    const preview = (() => {
+      try {
+        const s = typeof payload === 'string' ? payload : String(payload as any);
+        return s.length > 160 ? s.slice(0, 160) + '…' : s;
+      } catch { return '' }
+    })();
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      try { appLog('ws.send.skipped', { preview, reason: 'not_open' }); } catch {}
+      return false;
+    }
+    try { ws.send(payload as any); appLog('ws.send', { preview }); } catch (e: any) { appLog('ws.send.error', { error: String(e?.message ?? e) }, 'error'); return false; }
     return true;
   }, []);
 

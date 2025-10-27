@@ -7,10 +7,39 @@ export type PairPayload = {
   token?: string | null
 }
 
+// Tiny base64url decoder with no Node Buffer dependency
 function b64urlDecode(s: string): string {
-  const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4))
-  const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + pad
-  try { return Buffer.from(b64, 'base64').toString('utf8') } catch { return '' }
+  try {
+    const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4))
+    const b64 = (s || '').replace(/-/g, '+').replace(/_/g, '/') + pad
+    const atobFn: ((x: string) => string) | undefined = (globalThis as any).atob
+    if (typeof atobFn === 'function') {
+      const bin = atobFn(b64)
+      let out = ''
+      for (let i = 0; i < bin.length; i++) out += String.fromCharCode(bin.charCodeAt(i) & 0xff)
+      try { return decodeURIComponent(escape(out)) } catch { return out }
+    }
+    // Manual decoder
+    const table = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '')
+    let bytes: number[] = []
+    let i = 0
+    while (i < clean.length) {
+      const enc1 = table.indexOf(clean.charAt(i++))
+      const enc2 = table.indexOf(clean.charAt(i++))
+      const enc3 = table.indexOf(clean.charAt(i++))
+      const enc4 = table.indexOf(clean.charAt(i++))
+      const chr1 = (enc1 << 2) | (enc2 >> 4)
+      const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2)
+      const chr3 = ((enc3 & 3) << 6) | enc4
+      bytes.push(chr1 & 0xff)
+      if (enc3 !== 64 && clean.charAt(i - 2) !== '=') bytes.push(chr2 & 0xff)
+      if (enc4 !== 64 && clean.charAt(i - 1) !== '=') bytes.push(chr3 & 0xff)
+    }
+    let out = ''
+    for (let j = 0; j < bytes.length; j++) out += String.fromCharCode(bytes[j])
+    try { return decodeURIComponent(escape(out)) } catch { return out }
+  } catch { return '' }
 }
 
 export function parseBridgeCode(code: string): { bridgeHost?: string; convexUrl?: string; token?: string | null } | null {
@@ -51,4 +80,3 @@ export function parseBridgeCode(code: string): { bridgeHost?: string; convexUrl?
     return null
   }
 }
-

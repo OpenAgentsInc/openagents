@@ -333,7 +333,8 @@ function seedDemoViaBridgeControl() {
     try {
       const obj = JSON.parse(s);
       if (obj?.type === "bridge.convex_status") {
-        console.log(chalk.dim(`[bridge-control] convex.status -> ${obj.healthy ? "healthy" : "unhealthy"} url=${obj.convex_url || ""}`));
+        const url = (obj.url || obj.convex_url || "") as string;
+        console.log(chalk.dim(`[bridge-control] convex.status -> ${obj.healthy ? "healthy" : "unhealthy"} url=${url}`));
       }
       if (obj?.type === "bridge.status") {
         console.log(chalk.dim(`[bridge-status] bind=${obj.bind} convex_healthy=${obj.convex_healthy} codex_pid=${obj.codex_pid || 'none'}`));
