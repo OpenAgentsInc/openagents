@@ -319,7 +319,10 @@ function ensureConvexBinaryWithProgress() {
   console.log(chalk.cyanBright("Downloading Convex local backend (first-time only)…"));
   let lastPct = -1;
   const args = ["convex", "dev", "--configure", "--dev-deployment", "local", "--once", "--skip-push", "--local-force-upgrade"];
-  const child = haveBunx ? spawn("bunx", args, { stdio: ["ignore", "pipe", "pipe"] }) : spawn("npx", ["-y", ...args], { stdio: ["ignore", "pipe", "pipe"] });
+  const env = { ...process.env, CI: '1' } as Record<string,string>;
+  const child = haveBunx
+    ? spawn("bunx", args, { stdio: ["ignore", "pipe", "pipe"], env })
+    : spawn("npx", ["-y", ...args], { stdio: ["ignore", "pipe", "pipe"], env });
   const show = (p: number) => {
     if (p < 0 || p > 100) return;
     if (p <= lastPct) return;
@@ -358,6 +361,8 @@ function ensureConvexBinaryWithProgress() {
     }
   };
   child.on('exit', () => done());
+  // Safety timeout in case the CLI becomes interactive or stalls
+  setTimeout(() => { try { child.kill(); } catch {} }, 180000);
 }
 
 function findNewestBackendBinary(root: string): string | null {
@@ -595,8 +600,8 @@ function tryPushConvexFunctions(repoRoot: string, announce?: boolean) {
       child.stderr?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
       child.on("exit", (code) => {
         if (code !== 0) {
-          if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] script missing or failed; trying 'bunx convex dev' one-shot…`));
-          const fallback = spawn("bunx", ["convex", "dev"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
+        if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] script missing or failed; trying 'bunx convex dev' one-shot non-interactive…`));
+          const fallback = spawn("bunx", ["convex", "dev", "--configure", "--dev-deployment", "local", "--once", "--skip-push", "--local-force-upgrade"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CI: '1' } });
           fallback.stdout?.setEncoding("utf8");
           fallback.stdout?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
           fallback.stderr?.setEncoding("utf8");
@@ -609,8 +614,8 @@ function tryPushConvexFunctions(repoRoot: string, announce?: boolean) {
       return;
     }
     if (haveNpx) {
-      if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] bun not found; trying 'npx convex dev' one-shot…`));
-      const fallback = spawn("npx", ["-y", "convex", "dev"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
+      if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] bun not found; trying 'npx convex dev' one-shot non-interactive…`));
+      const fallback = spawn("npx", ["-y", "convex", "dev", "--configure", "--dev-deployment", "local", "--once", "--skip-push", "--local-force-upgrade"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CI: '1' } });
       fallback.stdout?.setEncoding("utf8");
       fallback.stdout?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
       fallback.stderr?.setEncoding("utf8");
