@@ -174,10 +174,11 @@ function ensureBridgeRunning(repoRoot: string) {
   let connected = false;
   sock.once("connect", async () => {
     connected = true; try { sock.end(); } catch {}
-    // Probe whether current bridge supports echo. If not, restart it.
+    const force = (process.env.TRICODER_FORCE_RESTART || '1') !== '0';
+    // Probe whether current bridge supports echo. If not, or if forced, restart it.
     const supports = await probeBridgeEchoOnce(700).catch(() => false);
-    if (!supports) {
-      console.log(chalk.dim("Restarting local bridge with debug enabled (no echo support)…"));
+    if (force || !supports) {
+      console.log(chalk.dim(`Restarting local bridge with debug enabled (${force ? 'forced' : 'no echo support'})…`));
       try { restartBridgeProcess(repoRoot); } catch {}
     }
   });
