@@ -26,13 +26,73 @@ function findRepoRoot(startDir: string): string | null {
   return null;
 }
 
+function hasCmd(cmd: string): boolean {
+  try {
+    const res = spawnSync(process.platform === 'win32' ? 'where' : 'which', [cmd], { stdio: 'pipe' });
+    return res.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+function getVersion(cmd: string, args: string[] = ["--version"]): string | null {
+  try {
+    const res = spawnSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    if (res.status === 0) return String(res.stdout || res.stderr || '').trim().split(/\r?\n/)[0] || null;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function printEnvAssessment(repoRoot: string | null) {
+  const header = chalk.bold("Environment assessment");
+  const ok = (s: string) => chalk.green(`✔ ${s}`);
+  const warn = (s: string) => chalk.yellow(`◔ ${s}`);
+  const bad = (s: string) => chalk.red(`✘ ${s}`);
+
+  const platform = `${process.platform} ${process.arch}`;
+  const rust = hasCmd('rustc') && hasCmd('cargo');
+  const rustcV = rust ? getVersion('rustc') : null;
+  const cargoV = rust ? getVersion('cargo') : null;
+  const git = hasCmd('git');
+  const bun = hasCmd('bun');
+  const bunx = hasCmd('bunx');
+  const npx = hasCmd('npx');
+  const codex = hasCmd('codex');
+
+  console.log("");
+  console.log(header);
+  console.log("- " + ok(`Platform ${platform}`));
+  console.log("- " + (repoRoot ? ok(`OpenAgents repo found at ${repoRoot}`) : warn("OpenAgents repo not found (will not be required in future)")));
+  if (rust) {
+    console.log("- " + ok(`Rust toolchain present (${rustcV || 'rustc'}; ${cargoV || 'cargo'})`));
+  } else {
+    console.log("- " + warn("Rust toolchain not found (required today to run the bridge + tunnels)"));
+  }
+  console.log("- " + (git ? ok("git present") : warn("git not found (needed to bootstrap the repo if not present)")));
+  if (bun) {
+    console.log("- " + ok("bun present"));
+  } else if (npx) {
+    console.log("- " + warn("bun not found; will fall back to npx for Convex CLI where possible"));
+  } else {
+    console.log("- " + warn("bun/npx missing; Convex CLI bootstrap may be skipped"));
+  }
+  console.log("- " + (codex ? ok("codex binary present (assistant replies available)") : warn("codex binary not found (assistant replies won’t stream)")));
+  console.log("");
+}
+
 function main() {
   console.info(chalk.bold("OpenAgents Tricoder - Desktop Bridge"));
   const repoRoot = findRepoRoot(process.cwd());
+  // Always print a quick assessment so users see what's missing
+  printEnvAssessment(repoRoot);
+
   if (!repoRoot) {
-    console.log("\nThis internal tunnel flow requires the OpenAgents repo and Rust.");
-    console.log("Clone: https://github.com/OpenAgentsInc/openagents");
-    console.log("Then run from repo root: cargo run -p oa-tunnel -- --to bore.pub\n");
+    console.log(chalk.yellow("No local OpenAgents repo detected."));
+    console.log("- Short-term requirement: repo + Rust to build and run the bridge + tunnels.");
+    console.log("- Planned improvement: single-command bootstrap to download needed binaries without cloning.");
+    console.log("\nTo proceed now: clone the repo and ensure Rust is installed, then re-run:\n  git clone https://github.com/OpenAgentsInc/openagents\n  cd openagents\n  npx tricoder\n");
     return;
   }
 
@@ -287,26 +347,41 @@ function monitorConvexSetupOnce(repoRoot: string) {
 
 function tryPushConvexFunctions(repoRoot: string, announce?: boolean) {
   try {
-    // Try root package script first; if missing, fall back to bunx convex dev
     if (announce || VERBOSE) console.log(chalk.dim(`[convex] Deploying functions…`));
-    const child = spawn("bun", ["run", "convex:dev:once"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
-    child.on("exit", (code) => {
-      if (code !== 0) {
-        if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] script missing or failed; trying 'bunx convex dev' one-shot…`));
-        const fallback = spawn("bunx", ["convex", "dev"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
-        fallback.stdout.setEncoding("utf8");
-        fallback.stdout.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
-        fallback.stderr.setEncoding("utf8");
-        fallback.stderr.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
-        fallback.on("exit", (c2) => { if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy finished (code ${c2 ?? 0})`)) });
-      } else {
-        if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy finished (code ${code ?? 0})`));
-      }
-    });
+    const haveBun = hasCmd('bun');
+    const haveNpx = hasCmd('npx');
+    if (haveBun) {
+      const child = spawn("bun", ["run", "convex:dev:once"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
+      child.stdout?.setEncoding("utf8");
+      child.stdout?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
+      child.stderr?.setEncoding("utf8");
+      child.stderr?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
+      child.on("exit", (code) => {
+        if (code !== 0) {
+          if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] script missing or failed; trying 'bunx convex dev' one-shot…`));
+          const fallback = spawn("bunx", ["convex", "dev"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
+          fallback.stdout?.setEncoding("utf8");
+          fallback.stdout?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
+          fallback.stderr?.setEncoding("utf8");
+          fallback.stderr?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
+          fallback.on("exit", (c2) => { if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy finished (code ${c2 ?? 0})`)) });
+        } else {
+          if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy finished (code ${code ?? 0})`));
+        }
+      });
+      return;
+    }
+    if (haveNpx) {
+      if (VERBOSE) console.log(chalk.dim(`[convex-bootstrap] bun not found; trying 'npx convex dev' one-shot…`));
+      const fallback = spawn("npx", ["-y", "convex", "dev"], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
+      fallback.stdout?.setEncoding("utf8");
+      fallback.stdout?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
+      fallback.stderr?.setEncoding("utf8");
+      fallback.stderr?.on("data", d => { if (!VERBOSE) return; String(d).split(/\r?\n/).forEach(l => l && console.log(chalk.dim(`[convex-bootstrap] ${l}`))) });
+      fallback.on("exit", (c2) => { if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy finished (code ${c2 ?? 0})`)) });
+      return;
+    }
+    if (announce || VERBOSE) console.log(chalk.dim(`[convex] Skipping functions deploy: bun/npx not available`));
   } catch (e: any) {
     if (announce || VERBOSE) console.log(chalk.dim(`[convex] Functions deploy skipped: ${e?.message || e}`));
   }
@@ -471,8 +546,8 @@ function startBridgeEventTail() {
 }
 
 function startBridgeProcess(repoRoot: string) {
-  if (VERBOSE) console.log(chalk.dim("Starting local bridge (cargo bridge)…"));
-  const child = spawn("cargo", ["bridge"], {
+  if (VERBOSE) console.log(chalk.dim("Starting local bridge (cargo run -p codex-bridge)…"));
+  const child = spawn("cargo", ["run", "-p", "codex-bridge", "--", "--bind", "0.0.0.0:8787"], {
     cwd: repoRoot,
     stdio: VERBOSE ? "inherit" : ["ignore", "ignore", "ignore"],
     env: {
