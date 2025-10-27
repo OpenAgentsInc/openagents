@@ -1,6 +1,6 @@
 //! Small utilities shared across bridge modules.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[inline]
 pub fn now_ms() -> u64 {
@@ -70,6 +70,56 @@ pub fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
     }
 }
 
+/// Determine the OpenAgents home directory. Defaults to ~/.openagents unless
+/// overridden by the `OPENAGENTS_HOME` environment variable.
+pub fn openagents_home() -> PathBuf {
+    if let Ok(base) = std::env::var("OPENAGENTS_HOME") {
+        PathBuf::from(base)
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".openagents")
+    } else {
+        PathBuf::from(".openagents")
+    }
+}
+
+/// Attempt to read a WebSocket auth token from `~/.openagents/bridge.json`.
+/// Returns `Ok(Some(token))` when present, `Ok(None)` when the file is missing,
+/// and `Err` for malformed JSON or I/O errors.
+pub fn read_bridge_token_from_home() -> anyhow::Result<Option<String>> {
+    let p = openagents_home().join("bridge.json");
+    if !p.exists() {
+        return Ok(None);
+    }
+    let data = std::fs::read_to_string(&p)?;
+    #[derive(serde::Deserialize)]
+    struct BridgeCfg {
+        token: Option<String>,
+    }
+    let cfg: BridgeCfg = serde_json::from_str(&data)?;
+    Ok(cfg.token)
+}
+
+/// Generate a random 32-byte token encoded as lowercase hex.
+pub fn generate_bridge_token() -> String {
+    let mut buf = [0u8; 32];
+    getrandom::fill(&mut buf).expect("secure RNG");
+    let mut out = String::with_capacity(64);
+    for b in buf {
+        out.push_str(&format!("{:02x}", b));
+    }
+    out
+}
+
+/// Persist the token into `~/.openagents/bridge.json`.
+pub fn write_bridge_token_to_home(token: &str) -> anyhow::Result<()> {
+    let base = openagents_home();
+    std::fs::create_dir_all(&base)?;
+    let path = base.join("bridge.json");
+    let body = serde_json::json!({ "token": token }).to_string();
+    std::fs::write(path, body)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,5 +143,41 @@ mod tests {
         std::fs::create_dir_all(p.join("crates")).unwrap();
         let got = detect_repo_root(Some(p.to_path_buf()));
         assert_eq!(got, p);
+    }
+
+    #[test]
+    fn openagents_home_prefers_env() {
+        let td = tempfile::tempdir().unwrap();
+        let prev = std::env::var("OPENAGENTS_HOME").ok();
+        unsafe { std::env::set_var("OPENAGENTS_HOME", td.path()); }
+        let got = openagents_home();
+        assert_eq!(got, PathBuf::from(td.path()));
+        match prev {
+            Some(v) => unsafe { std::env::set_var("OPENAGENTS_HOME", v); },
+            None => unsafe { std::env::remove_var("OPENAGENTS_HOME"); },
+        }
+    }
+
+    #[test]
+    fn reads_bridge_token_when_present() {
+        let td = tempfile::tempdir().unwrap();
+        let prev = std::env::var("OPENAGENTS_HOME").ok();
+        unsafe { std::env::set_var("OPENAGENTS_HOME", td.path()); }
+        let cfg_path = openagents_home().join("bridge.json");
+        std::fs::create_dir_all(cfg_path.parent().unwrap()).unwrap();
+        std::fs::write(&cfg_path, "{\n  \"token\": \"abc123\"\n}").unwrap();
+        let tok = read_bridge_token_from_home().unwrap();
+        assert_eq!(tok.as_deref(), Some("abc123"));
+        match prev {
+            Some(v) => unsafe { std::env::set_var("OPENAGENTS_HOME", v); },
+            None => unsafe { std::env::remove_var("OPENAGENTS_HOME"); },
+        }
+    }
+
+    #[test]
+    fn generates_hex_token() {
+        let t = generate_bridge_token();
+        assert_eq!(t.len(), 64);
+        assert!(t.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')));
     }
 }

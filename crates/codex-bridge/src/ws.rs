@@ -10,6 +10,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use axum::extract::ws::{Message, WebSocket};
 use axum::{extract::State, extract::WebSocketUpgrade, response::IntoResponse};
+use axum::extract::Query;
+use axum::http::{HeaderMap, StatusCode};
+use std::collections::HashMap;
 use futures::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -29,8 +32,38 @@ use crate::util::{expand_home, list_sqlite_tables, now_ms};
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> axum::response::Response {
+    // If a WS token is configured, enforce it before upgrading.
+    {
+        // Always require a token. The expected token is provisioned at startup and stored in state.
+        let expected = state.opts.ws_token.clone().unwrap_or_default();
+        let supplied = extract_token(&headers, &params);
+        if expected.is_empty() || supplied.as_deref() != Some(expected.as_str()) {
+            let body = serde_json::json!({
+                "error": "unauthorized",
+                "reason": "missing or invalid token",
+            })
+            .to_string();
+            return (StatusCode::UNAUTHORIZED, body).into_response();
+        }
+    }
     ws.on_upgrade(|socket| handle_socket(socket, state))
+}
+
+fn extract_token(headers: &HeaderMap, params: &HashMap<String, String>) -> Option<String> {
+    // Prefer Authorization: Bearer <token>
+    if let Some(h) = headers.get(axum::http::header::AUTHORIZATION) {
+        if let Ok(s) = h.to_str() {
+            let prefix = "Bearer ";
+            if s.starts_with(prefix) {
+                return Some(s[prefix.len()..].to_string());
+            }
+        }
+    }
+    // Fall back to `?token=<token>` query parameter
+    params.get("token").cloned()
 }
 
 /// Per-socket task: splits sink/stream, forwards broadcast lines to client, and
@@ -456,6 +489,99 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
     info!("msg" = "websocket disconnected");
     let _ = state.tx.send(serde_json::json!({"type":"bridge.client_disconnected"}).to_string());
+}
+
+#[cfg(test)]
+mod auth_tests {
+    use super::*;
+    use axum::{routing::get, Router};
+    use axum::http; 
+    use tokio::sync::{broadcast, Mutex};
+    use tokio_tungstenite::tungstenite;
+    use std::net::SocketAddr;
+
+    async fn spawn_server(state: Arc<AppState>) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+        let app = Router::new().route("/ws", get(crate::ws::ws_handler)).with_state(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (addr, task)
+    }
+
+    fn mk_state_with_token(tok: Option<&str>) -> Arc<AppState> {
+        let (tx, _rx) = broadcast::channel(64);
+        let opts = crate::Opts {
+            bind: "127.0.0.1:0".into(),
+            codex_bin: None,
+            codex_args: None,
+            extra: vec![],
+            bootstrap: false,
+            convex_bin: None,
+            convex_port: 0,
+            convex_db: None,
+            convex_interface: "127.0.0.1".into(),
+            manage_convex: false,
+            ws_token: tok.map(|s| s.to_string()),
+        };
+        Arc::new(AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts,
+            last_thread_id: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
+            current_convex_thread: Mutex::new(None),
+            stream_track: Mutex::new(std::collections::HashMap::new()),
+        })
+    }
+
+    #[tokio::test]
+    async fn rejects_when_token_required_and_missing() {
+        let state = mk_state_with_token(Some("secret"));
+        let (addr, _task) = spawn_server(state).await;
+        let url = format!("ws://{}/ws", addr);
+        let res = tokio_tungstenite::connect_async(&url).await;
+        assert!(res.is_err(), "expected handshake to fail without token");
+    }
+
+    #[tokio::test]
+    async fn rejects_when_token_wrong() {
+        let state = mk_state_with_token(Some("secret"));
+        let (addr, _task) = spawn_server(state).await;
+        let url = format!("ws://{}/ws?token=bad", addr);
+        let res = tokio_tungstenite::connect_async(&url).await;
+        assert!(res.is_err(), "expected handshake to fail with wrong token");
+    }
+
+    #[tokio::test]
+    async fn accepts_with_query_token() {
+        let state = mk_state_with_token(Some("secret"));
+        let (addr, _task) = spawn_server(state).await;
+        let url = format!("ws://{}/ws?token=secret", addr);
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(&url).await.expect("handshake ok");
+        ws.close(None).await.ok();
+    }
+
+    #[tokio::test]
+    async fn accepts_with_auth_header() {
+        let state = mk_state_with_token(Some("secret"));
+        let (addr, _task) = spawn_server(state).await;
+        let url = format!("ws://{}/ws", addr);
+        let req = tungstenite::client::IntoClientRequest::into_client_request(url).unwrap();
+        let mut req: http::Request<()> = req;
+        req.headers_mut().insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_str("Bearer secret").unwrap(),
+        );
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(req)
+            .await
+            .expect("handshake ok with header");
+        ws.close(None).await.ok();
+    }
+
+    // No open mode: token is always required; covered by rejects_when_token_required_and_missing
 }
 
 /// Spawn tasks to read Codex stdout/stderr and forward to both console and broadcast channel.
