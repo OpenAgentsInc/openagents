@@ -56,9 +56,12 @@ function main() {
       const isUrl = line.startsWith("ws://") || line.startsWith("wss://");
       if (isUrl && !bridgeUrl) {
         bridgeUrl = line.trim();
+        // Log public bridge URL
+        console.log(chalk.dim(`[bridge-public] ${bridgeUrl}`));
         // After bridge URL, launch Convex tunnel
         launchConvexTunnel(repoRoot, (url) => {
           convexUrl = url;
+          console.log(chalk.dim(`[convex-public] ${convexUrl}`));
           maybePrintPairCode(bridgeUrl!, convexUrl!);
         });
         // Start local health probes (status changes only)
