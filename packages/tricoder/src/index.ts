@@ -35,30 +35,53 @@ function main() {
     return;
   }
 
-  const child = spawn("cargo", ["run", "-q", "-p", "oa-tunnel", "--", "--to", "bore.pub"], {
+  // Launch Bridge tunnel (local 8787)
+  const child = spawn("cargo", buildTunnelArgs(8787, "bore.pub"), {
     cwd: repoRoot,
     stdio: ["ignore", "pipe", "inherit"],
   });
 
-  let printedBridgeUrl = false;
+  let bridgeUrl: string | null = null;
+  let convexUrl: string | null = null;
+  let printedCombined = false;
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk: string) => {
     const lines = chunk.split(/\r?\n/).filter(Boolean);
     for (const line of lines) {
       const isUrl = line.startsWith("ws://") || line.startsWith("wss://");
-      if (isUrl && !printedBridgeUrl) {
-        printedBridgeUrl = true;
-        console.log("\nPaste this into the mobile app Settings → Bridge URL:\n");
-        console.log(chalk.greenBright(line));
-        // After bridge URL, launch convex tunnel
-        launchConvexTunnel(repoRoot);
+      if (isUrl && !bridgeUrl) {
+        bridgeUrl = line.trim();
+        // After bridge URL, launch Convex tunnel
+        launchConvexTunnel(repoRoot, (url) => {
+          convexUrl = url;
+          maybePrintPairCode(bridgeUrl!, convexUrl!);
+        });
       }
     }
   });
+
+  function maybePrintPairCode(b: string, c: string) {
+    if (printedCombined) return;
+    if (!b || !c) return;
+    printedCombined = true;
+    const payload = {
+      v: 1,
+      type: "openagents-bridge",
+      provider: "bore",
+      bridge: b,
+      convex: c,
+      token: null as string | null,
+    };
+    const code = encodePairCode(payload);
+    const uri = `openagents://pair?j=${code}`;
+    console.log("\nPaste this single code into the mobile app Settings → Bridge Code:\n");
+    console.log(chalk.greenBright(uri));
+    console.log("\nTunnel is active. Leave this running to stay connected.\n");
+  }
 }
 
-function launchConvexTunnel(repoRoot: string) {
-  // Run a second tunnel for Convex (local 7788). We'll print an HTTP URL for the Settings override.
+function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
+  // Run a second tunnel for Convex (local 7788). We'll emit an HTTP URL for override.
   const child = spawn("cargo", buildTunnelArgs(7788, "bore.pub"), {
     cwd: repoRoot,
     stdio: ["ignore", "pipe", "inherit"],
@@ -75,12 +98,16 @@ function launchConvexTunnel(repoRoot: string) {
         const host = m[1];
         const port = m[2];
         const httpUrl = `http://${host}:${port}`;
-        console.log("\nOptional: set Convex URL (override) to:\n");
-        console.log(chalk.cyan(httpUrl));
-        console.log("\nTunnel is active. Leave this running to stay connected.\n");
+        onUrl(httpUrl);
       }
     }
   });
+}
+
+function encodePairCode(obj: any): string {
+  const json = JSON.stringify(obj);
+  const b64 = Buffer.from(json, "utf8").toString("base64");
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 main();
