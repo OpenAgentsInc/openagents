@@ -11,6 +11,8 @@ import { buildTunnelArgs } from "./args.js"
 
 // spawnSync already imported above
 const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v") || process.env.TRICODER_VERBOSE === "1";
+const ASSUME_YES = process.argv.includes("--yes") || process.argv.includes("-y") || process.env.TRICODER_YES === "1";
+const LOCAL_ONLY = process.argv.includes("--local-only") || process.env.TRICODER_LOCAL_ONLY === "1";
 
 function findRepoRoot(startDir: string): string | null {
   let dir = startDir;
@@ -84,23 +86,48 @@ function printEnvAssessment(repoRoot: string | null) {
 
 function main() {
   console.info(chalk.bold("OpenAgents Tricoder - Desktop Bridge"));
-  const repoRoot = findRepoRoot(process.cwd());
+  let repoRoot = findRepoRoot(process.cwd());
   // Always print a quick assessment so users see what's missing
   printEnvAssessment(repoRoot);
 
   if (!repoRoot) {
-    console.log(chalk.yellow("No local OpenAgents repo detected."));
-    console.log("- Short-term requirement: repo + Rust to build and run the bridge + tunnels.");
-    console.log("- Planned improvement: single-command bootstrap to download needed binaries without cloning.");
-    console.log("\nTo proceed now: clone the repo and ensure Rust is installed, then re-run:\n  git clone https://github.com/OpenAgentsInc/openagents\n  cd openagents\n  npx tricoder\n");
-    return;
+    // Attempt to clone the repo into ~/.openagents/openagents for a one-command experience
+    const home = os.homedir();
+    const target = join(home, ".openagents", "openagents");
+    console.log(chalk.yellow("No local OpenAgents repo detected — cloning to ~/.openagents/openagents…"));
+    if (!hasCmd('git')) {
+      console.log(chalk.red("git is required to clone the repository. Please install git and re-run."));
+      process.exit(1);
+    }
+    try {
+      // mkdir -p ~/.openagents
+      spawnSync(process.platform === 'win32' ? 'cmd' : 'mkdir', process.platform === 'win32' ? ['/c', 'mkdir', target] : ['-p', target], { stdio: 'ignore' });
+    } catch {}
+    // If target doesn't look like a repo, clone; else pull
+    if (!existsSync(join(target, '.git'))) {
+      const res = spawnSync('git', ['clone', '--depth', '1', 'https://github.com/OpenAgentsInc/openagents', target], { stdio: 'inherit' });
+      if (res.status !== 0) {
+        console.log(chalk.red("Failed to clone the OpenAgents repository."));
+        process.exit(1);
+      }
+    } else {
+      console.log(chalk.dim("Updating existing ~/.openagents/openagents…"));
+      spawnSync('git', ['-C', target, 'pull', '--ff-only'], { stdio: VERBOSE ? 'inherit' : 'ignore' });
+    }
+    repoRoot = target;
   }
+
+  // Ensure Rust toolchain
+  ensureRustToolchain();
+
+  // Optionally prebuild with conservative parallelism (Linux defaults to 2 jobs)
+  prebuildCrates(repoRoot);
 
   // Ensure the Rust bridge is running locally (best effort)
   ensureBridgeRunning(repoRoot);
 
   // Launch Bridge tunnel (local 8787)
-  const child = spawn("cargo", buildTunnelArgs(8787, "bore.pub"), {
+  const child = LOCAL_ONLY ? null : spawn("cargo", buildTunnelArgs(8787, "bore.pub"), {
     cwd: repoRoot,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -108,8 +135,8 @@ function main() {
   let bridgeUrl: string | null = null;
   let convexUrl: string | null = null;
   let printedCombined = false;
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", (chunk: string) => {
+  child?.stdout?.setEncoding("utf8");
+  child?.stdout?.on("data", (chunk: string) => {
     const lines = chunk.split(/\r?\n/).filter(Boolean);
     for (const line of lines) {
       const isUrl = line.startsWith("ws://") || line.startsWith("wss://");
@@ -117,7 +144,7 @@ function main() {
         bridgeUrl = line.trim();
         if (VERBOSE) console.log(chalk.dim(`[bridge-public] ${bridgeUrl}`));
         // After bridge URL, launch Convex tunnel
-        launchConvexTunnel(repoRoot, (url) => {
+        if (!LOCAL_ONLY) launchConvexTunnel(repoRoot, (url) => {
           convexUrl = url;
           if (VERBOSE) console.log(chalk.dim(`[convex-public] ${convexUrl}`));
           maybePrintPairCode(bridgeUrl!, convexUrl!);
@@ -134,7 +161,7 @@ function main() {
       }
     }
   });
-  child.stderr.setEncoding("utf8");
+  child?.stderr?.setEncoding("utf8");
   // Aggregate noisy bore logs
   let bridgeConnNew = 0, bridgeConnExit = 0;
   setInterval(() => {
@@ -143,7 +170,7 @@ function main() {
       bridgeConnNew = 0; bridgeConnExit = 0;
     }
   }, 10000);
-  child.stderr.on("data", (chunk: string) => {
+  child?.stderr?.on("data", (chunk: string) => {
     if (!VERBOSE) return;
     for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
       if (/bore_cli::client: new connection/.test(line)) { bridgeConnNew++; continue; }
@@ -192,6 +219,62 @@ function main() {
     if (!VERBOSE) {
       try { monitorConvexSetupOnce(repoRoot as string) } catch { }
     }
+  }
+}
+
+function ensureRustToolchain() {
+  const rust = hasCmd('rustc') && hasCmd('cargo');
+  if (rust) return;
+  if (process.platform === 'win32') {
+    console.log(chalk.yellow("Rust toolchain not found. Please install Rust from https://rustup.rs and re-run."));
+    process.exit(1);
+  }
+  if (!ASSUME_YES) {
+    const rl = require('node:readline').createInterface({ input: process.stdin, output: process.stdout });
+    const ask = (q: string) => new Promise<string>(res => rl.question(q, (a: string) => res(a)));
+    ask("Rust toolchain not found. Install rustup now? [y/N] ").then((ans: string) => {
+      rl.close();
+      if (!/^y(es)?$/i.test(ans.trim())) {
+        console.log("Aborting; Rust is required.");
+        process.exit(1);
+      }
+      installRustup();
+    });
+  } else {
+    installRustup();
+  }
+}
+
+function installRustup() {
+  console.log(chalk.dim("Installing Rust via rustup (non-interactive)…"));
+  const cmd = spawnSync('sh', ['-c', 'curl https://sh.rustup.rs -sSf | sh -s -- -y'], { stdio: 'inherit' });
+  if (cmd.status !== 0) {
+    console.log(chalk.red("Failed to install rustup. Please install from https://rustup.rs and re-run."));
+    process.exit(1);
+  }
+  // Prepend ~/.cargo/bin to PATH for this process
+  try {
+    const cargoBin = join(os.homedir(), '.cargo', 'bin');
+    process.env.PATH = `${cargoBin}:${process.env.PATH || ''}`;
+  } catch {}
+}
+
+function prebuildCrates(repoRoot: string) {
+  const env = { ...process.env } as Record<string, string>;
+  if (process.platform === 'linux' && !env.CARGO_BUILD_JOBS) env.CARGO_BUILD_JOBS = '2';
+  const run = (args: string[]) => spawnSync('cargo', args, { cwd: repoRoot, stdio: VERBOSE ? 'inherit' : 'ignore', env });
+  // Visual separation, and match the Convex setup cyan
+  console.log("");
+  console.log(chalk.cyanBright("Checking/building required Rust crates (codex-bridge, oa-tunnel)…"));
+  // Build codex-bridge first
+  let r = run(['build', '-p', 'codex-bridge']);
+  if (r.status !== 0) {
+    console.log(chalk.yellow("cargo build -p codex-bridge failed; will rely on on-demand build during run."));
+  }
+  // Then oa-tunnel
+  r = run(['build', '-p', 'oa-tunnel']);
+  if (r.status !== 0) {
+    console.log(chalk.yellow("cargo build -p oa-tunnel failed; will rely on on-demand build during run."));
   }
 }
 
