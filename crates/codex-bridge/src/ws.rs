@@ -338,27 +338,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         Some(thread_doc_id.clone());
                                 }
                                 let resume_arg = compute_resume_arg(resume_id.as_deref());
-                                // Persist the user message to Convex so all clients see it immediately.
-                                {
-                                    use convex::{ConvexClient, Value};
-                                    use std::collections::BTreeMap;
-                                    let url = format!(
-                                        "http://127.0.0.1:{}",
-                                        stdin_state.opts.convex_port
-                                    );
-                                    if let Ok(mut client) = ConvexClient::new(&url).await {
-                                        let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                        args.insert(
-                                            "threadId".into(),
-                                            Value::from(thread_doc_id.clone()),
-                                        );
-                                        args.insert("role".into(), Value::from("user"));
-                                        args.insert("kind".into(), Value::from("message"));
-                                        args.insert("text".into(), Value::from(text.clone()));
-                                        args.insert("ts".into(), Value::from(now_ms() as f64));
-                                        let _ = client.mutation("messages:create", args).await;
-                                    }
-                                }
+                                // The app already persisted the user message via runs:enqueue; avoid duplicating here.
                                 match spawn_codex_child_only_with_dir(
                                     &stdin_state.opts,
                                     desired_cd.clone().map(|s| std::path::PathBuf::from(s)),
@@ -801,6 +781,63 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     args.insert("text".into(), Value::from(text_owned));
                                     args.insert("ts".into(), Value::from(now_ms() as f64));
                                     let _ = client.mutation("messages:create", args).await;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Newer shapes: item.delta / item.completed with item.type = agent_message | reasoning
+                if let Some(ty) = t.as_deref() {
+                    if ty == "item.delta" || ty == "item.completed" {
+                        if let Some(item) = v.get("item").or_else(|| v.get("payload").and_then(|p| p.get("item"))) {
+                            let kind = item.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                            let txt = item.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                            let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                            let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
+                            if !target_tid.is_empty() {
+                                match kind {
+                                    "agent_message" => {
+                                        if ty == "item.delta" {
+                                            stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", txt).await;
+                                            let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                                        } else {
+                                            if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "assistant", txt).await {
+                                                use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
+                                                let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                                if let Ok(mut client) = ConvexClient::new(&url).await {
+                                                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                                    args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                                    args.insert("role".into(), Value::from("assistant"));
+                                                    args.insert("kind".into(), Value::from("message"));
+                                                    args.insert("text".into(), Value::from(txt));
+                                                    args.insert("ts".into(), Value::from(now_ms() as f64));
+                                                    let _ = client.mutation("messages:create", args).await;
+                                                }
+                                            }
+                                            let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                                        }
+                                    }
+                                    "reasoning" => {
+                                        if ty == "item.delta" {
+                                            stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", txt).await;
+                                            let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                                        } else {
+                                            if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "reason", txt).await {
+                                                use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
+                                                let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                                if let Ok(mut client) = ConvexClient::new(&url).await {
+                                                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                                    args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                                    args.insert("kind".into(), Value::from("reason"));
+                                                    args.insert("text".into(), Value::from(txt));
+                                                    args.insert("ts".into(), Value::from(now_ms() as f64));
+                                                    let _ = client.mutation("messages:create", args).await;
+                                                }
+                                            }
+                                            let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
