@@ -7,6 +7,7 @@ import { parseBridgeCode } from '@/lib/pairing'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
+import { Ionicons } from '@expo/vector-icons'
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
@@ -41,23 +42,28 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
-      <Text style={styles.label}>Bridge Code (single string)</Text>
-      <TextInput
-        value={bridgeCode}
-        onChangeText={(v) => {
-          setBridgeCode(v)
-          const parsed = parseBridgeCode(v)
-          if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
-          if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
-          // Auto-connect when a valid host is present
-          try { if (parsed?.bridgeHost) connect() } catch {}
-        }}
-        autoCapitalize='none'
-        autoCorrect={false}
-        placeholder='paste code here'
-        placeholderTextColor={Colors.secondary}
-        style={styles.input}
-      />
+      <Text style={styles.label}>Bridge Code</Text>
+      <View style={styles.inputWrapper}>
+        <TextInput
+          value={bridgeCode}
+          onChangeText={(v) => {
+            setBridgeCode(v)
+            const parsed = parseBridgeCode(v)
+            if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
+            if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
+            // Auto-connect when a valid host is present
+            try { if (parsed?.bridgeHost) connect() } catch {}
+          }}
+          autoCapitalize='none'
+          autoCorrect={false}
+          placeholder='paste code here'
+          placeholderTextColor={Colors.secondary}
+          style={[styles.input, { paddingRight: 44 }]}
+        />
+        <Pressable onPress={() => setBridgeCode('')} accessibilityLabel='Clear bridge code' style={styles.clearIconArea}>
+          <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
+        </Pressable>
+      </View>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {`ws://${bridgeHost}/ws`}</Text>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>Convex base: {convexUrl || derivedConvexUrl}</Text>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>Convex status: {convexStatus}</Text>
@@ -79,7 +85,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, gap: 8, backgroundColor: Colors.background },
   title: { fontSize: 20, fontFamily: Typography.bold, color: Colors.foreground, marginTop: 8 },
   label: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginTop: 8 },
+  inputWrapper: { position: 'relative' },
   input: { borderWidth: 1, borderColor: Colors.border, padding: 12, borderRadius: 0, backgroundColor: Colors.card, color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, marginBottom: 8 },
+  clearIconArea: { position: 'absolute', right: 8, top: 0, bottom: 8, width: 28, alignItems: 'center', justifyContent: 'center' },
 });
 
 function Button({ title, onPress }: { title: string; onPress: () => void }) {
