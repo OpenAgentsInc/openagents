@@ -694,11 +694,12 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             .unwrap_or_default()
                     };
                     if !target_tid.is_empty() {
+                        let final_text = text_owned.clone();
                         if !try_finalize_stream_kind(
                             &state_for_stdout,
                             &target_tid,
                             "assistant",
-                            &text_owned,
+                            &final_text,
                         )
                         .await
                         {
@@ -711,13 +712,15 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 args.insert("threadId".into(), Value::from(target_tid.clone()));
                                 args.insert("role".into(), Value::from("assistant"));
                                 args.insert("kind".into(), Value::from("message"));
-                                args.insert("text".into(), Value::from(text_owned));
+                                args.insert("text".into(), Value::from(final_text.clone()));
                                 args.insert("ts".into(), Value::from(now_ms() as f64));
                                 let _ = client.mutation("messages:create", args).await;
                             }
                             info!(thread=%target_tid, "assistant.finalized created snapshot");
                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string();
                             let _ = tx_out.send(dbg);
+                            let dbg2 = serde_json::json!({"type":"bridge.assistant_written","thread":target_tid, "len": final_text.len()}).to_string();
+                            let _ = tx_out.send(dbg2);
                         } else {
                             info!(thread=%target_tid, "assistant.finalized finalized streamed item");
                         }
@@ -783,6 +786,8 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     let _ = client.mutation("messages:create", args).await;
                                 }
                             }
+                            let dbg2 = serde_json::json!({"type":"bridge.reason_written","thread":target_tid}).to_string();
+                            let _ = tx_out.send(dbg2);
                         }
                     }
                 }
