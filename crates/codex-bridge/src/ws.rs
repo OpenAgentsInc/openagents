@@ -37,6 +37,8 @@ pub async fn ws_handler(
 /// processes incoming control messages (interrupt, projects/skills, status, run.submit, etc.).
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("msg" = "websocket connected");
+    // Debug visibility: announce client connections on the broadcast feed
+    let _ = state.tx.send(serde_json::json!({"type":"bridge.client_connected"}).to_string());
 
     // Broadcast reader → socket
     let mut rx = state.tx.subscribe();
@@ -66,6 +68,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         while let Some(Ok(msg)) = stream.next().await {
             match msg {
                 Message::Text(t) => {
+                    // Optional: echo any inbound text preview for debugging
+                    if std::env::var("BRIDGE_DEBUG_WS").ok().as_deref() == Some("1") {
+                        let preview: String = if t.len() > 160 { format!("{}…", &t[..160]) } else { t.to_string() };
+                        let dbg = serde_json::json!({"type":"bridge.ws_in","preview": preview}).to_string();
+                        let _ = stdin_state.tx.send(dbg);
+                    }
                     if let Some(cmd) = parse_control_command(&t) {
                         info!(?cmd, "ws control command");
                         // Broadcast control receipt for visibility to connected tails (tricoder)
@@ -78,6 +86,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             serde_json::json!({"type":"bridge.control","raw": ctrl}).to_string();
                         let _ = stdin_state.tx.send(dbg);
                         match cmd {
+                            ControlCommand::Echo { payload, tag } => {
+                                let line = serde_json::json!({
+                                    "type": "bridge.echo",
+                                    "ts": now_ms(),
+                                    "tag": tag,
+                                    "payload": payload,
+                                }).to_string();
+                                let _ = stdin_state.tx.send(line);
+                            }
                             ControlCommand::Interrupt => {
                                 if let Err(e) = interrupt_running_child(&stdin_state).await {
                                     error!(?e, "failed to interrupt codex child");
@@ -505,6 +522,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         _ = (&mut read_task) => { sink_task.abort(); },
     }
     info!("msg" = "websocket disconnected");
+    let _ = state.tx.send(serde_json::json!({"type":"bridge.client_disconnected"}).to_string());
 }
 
 /// Spawn tasks to read Codex stdout/stderr and forward to both console and broadcast channel.

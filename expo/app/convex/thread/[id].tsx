@@ -78,6 +78,8 @@ export default function ConvexThreadDetail() {
     autoSentRef.current = true
     ;(async () => {
       try { await enqueueRun({ threadDocId: String(thread._id), text: decodeURIComponent(initial), role: 'user', projectId: thread?.projectId || undefined }) } catch {}
+      // Debug echo to confirm WS path before run.submit
+      try { ws.send(JSON.stringify({ control: 'echo', tag: 'autoSend', threadDocId: String(thread._id), previewLen: decodeURIComponent(initial).length })) } catch {}
       try { ws.send(JSON.stringify({ control: 'run.submit', threadDocId: String(thread._id), text: decodeURIComponent(initial), projectId: thread?.projectId || undefined, resumeId: thread?.resumeId || undefined })) } catch {}
     })()
   }, [isNew, params?.send, thread?._id])
@@ -217,6 +219,7 @@ export default function ConvexThreadDetail() {
                 await enqueueRun({ threadDocId: String(thread._id), text: base, role: 'user', projectId: thread?.projectId || undefined })
               } catch {}
               // Trigger bridge workflow via WebSocket control command (no HTTP)
+              try { ws.send(JSON.stringify({ control: 'echo', tag: 'composer.onSend', threadDocId: String(thread._id), previewLen: base.length })) } catch {}
               try { ws.send(JSON.stringify({ control: 'run.submit', threadDocId: String(thread._id), text: base, projectId: thread?.projectId || undefined, resumeId: thread?.resumeId || undefined })) } catch {}
             }}
             connected={true}
