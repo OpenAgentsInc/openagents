@@ -148,6 +148,7 @@ instructions: |
 - Commits: imperative, concise subject (≤50 chars), e.g., "Add splash screen asset"; include a brief body when needed.
 - PRs: clear description, link issues, note scope, and include screenshots/GIFs for UI changes.
 - Checks: lint passes, app boots via `bun run start`, docs updated when behavior changes.
+- Commit and push as you go: make small, focused commits and push immediately after each commit. Do not leave local, unpushed changes — keep the shared branch updated to minimize merge conflicts and visibility gaps.
 
 ## Multi‑Agent Git Etiquette
 - Do not stage everything: avoid commands like `git add -A`, `git add .`, or `git commit -a`. Explicitly add only the files you changed for the current task.
@@ -156,6 +157,21 @@ instructions: |
 - Keep commits focused: limit diffs to the smallest set of files necessary; avoid touching unrelated files.
 - Review before committing: use `git status` and `git diff --staged` to confirm only intended paths are included.
 - Branching policy: do not create branches unless the user explicitly directs you to. Default to committing on `main` and opening PRs only when requested.
+
+### Absolutely No Destructive Local Ops (must‑follow)
+- Never delete untracked files or folders in the working tree (e.g., `rm -rf docs/convex/`) — even if they look unrelated. Untracked work may be in progress by another agent.
+- Never reset or clean the working tree to drop local changes without explicit user approval. Do not run: `git reset --hard`, `git checkout -- <path>`, `git clean -fdx`, or tooling that implies those operations.
+- Never “restore to HEAD” unrelated files to make a commit look clean. Instead, only stage the files you intentionally changed.
+- If you see unrelated local changes:
+  1) Leave them untouched.
+  2) Stage only your intended files (path‑spec add).
+  3) Ask the user before attempting any local cleanup.
+- When moving docs or code across folders, prefer Git moves in a focused commit and update all references in the same commit.
+
+### Staging and committing checklist
+- Before commit: `git status` shows only intended files under “Changes to be committed”.
+- If you modified files in `expo/`, run `cd expo && bun run typecheck` and ensure it passes.
+- Do not include unrelated reformats or mass renames in the same commit as functional changes.
 
 ### Local Working Tree Safety (STRICT)
 - Do not modify, revert, or delete files you did not touch for the current task — even locally. Avoid commands like `git checkout -- <path>`, `git restore --source=HEAD <path>`, or editor auto-reverts on unrelated paths.
