@@ -1,6 +1,7 @@
 import React from 'react'
 import { ConvexProvider, ConvexReactClient } from 'convex/react'
 import { useBridge } from '@/providers/ws'
+import { useSettings } from '@/lib/settings-store'
 
 function sanitizeHost(raw: string): string {
   try {
@@ -22,11 +23,14 @@ function sanitizeHost(raw: string): string {
 
 export function ConvexProviderLocal({ children }: { children: React.ReactNode }) {
   const { bridgeHost } = useBridge()
+  const convexOverride = useSettings((s) => s.convexUrl)
   const convexUrl = React.useMemo(() => {
+    const ov = String(convexOverride || '').trim()
+    if (ov) return ov
     const hostPort = sanitizeHost(bridgeHost)
     const hostOnly = hostPort.split(':')[0] || '127.0.0.1'
     return `http://${hostOnly}:7788`
-  }, [bridgeHost])
+  }, [bridgeHost, convexOverride])
 
   const client = React.useMemo(() => new ConvexReactClient(convexUrl, { verbose: false }), [convexUrl])
 

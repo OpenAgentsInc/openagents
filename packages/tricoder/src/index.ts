@@ -39,16 +39,43 @@ function main() {
     stdio: ["ignore", "pipe", "inherit"],
   });
 
-  let printedUrl = false;
+  let printedBridgeUrl = false;
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk: string) => {
     const lines = chunk.split(/\r?\n/).filter(Boolean);
     for (const line of lines) {
       const isUrl = line.startsWith("ws://") || line.startsWith("wss://");
-      if (isUrl && !printedUrl) {
-        printedUrl = true;
+      if (isUrl && !printedBridgeUrl) {
+        printedBridgeUrl = true;
         console.log("\nPaste this into the mobile app Settings → Bridge URL:\n");
         console.log(chalk.greenBright(line));
+        // After bridge URL, launch convex tunnel
+        launchConvexTunnel(repoRoot);
+      }
+    }
+  });
+}
+
+function launchConvexTunnel(repoRoot: string) {
+  // Run a second tunnel for Convex (local 7788). We'll print an HTTP URL for the Settings override.
+  const child = spawn("cargo", ["run", "-q", "-p", "oa-tunnel", "--", "--to", "bore.pub", "--local_port", "7788"], {
+    cwd: repoRoot,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+
+  let printed = false;
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => {
+    const lines = chunk.split(/\r?\n/).filter(Boolean);
+    for (const line of lines) {
+      const m = line.match(/^ws:\/\/([^:]+):(\d+)\/ws$/);
+      if (m && !printed) {
+        printed = true;
+        const host = m[1];
+        const port = m[2];
+        const httpUrl = `http://${host}:${port}`;
+        console.log("\nOptional: set Convex URL (override) to:\n");
+        console.log(chalk.cyan(httpUrl));
         console.log("\nTunnel is active. Leave this running to stay connected.\n");
       }
     }
