@@ -65,6 +65,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 Message::Text(t) => {
                     if let Some(cmd) = parse_control_command(&t) {
                         info!(?cmd, "ws control command");
+                        // Broadcast control receipt for visibility to connected tails (tricoder)
+                        let ctrl = if t.len() > 160 { format!("{}…", &t[..160]) } else { t.clone() };
+                        let dbg = serde_json::json!({"type":"bridge.control","raw": ctrl}).to_string();
+                        let _ = stdin_state.tx.send(dbg);
                         match cmd {
                             ControlCommand::Interrupt => {
                                 if let Err(e) = interrupt_running_child(&stdin_state).await {
