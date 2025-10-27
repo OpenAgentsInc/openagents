@@ -12,6 +12,7 @@ type BridgeContextValue = {
   wsUrl: string;   // derived: ws://<bridgeHost>/ws
   httpBase: string; // derived: http://<bridgeHost>
   connected: boolean;
+  connecting: boolean;
   connect: () => void;
   disconnect: () => void;
   send: (payload: string | ArrayBuffer | Blob) => boolean;
@@ -47,7 +48,9 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const bridgeHost = useSettings((s) => s.bridgeHost)
   const setBridgeHost = useSettings((s) => s.setBridgeHost)
   const [connected, setConnected] = useState(false);
-  const [autoReconnect, setAutoReconnect] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const autoReconnect = useSettings((s) => s.bridgeAutoReconnect)
+  const setAutoReconnect = useSettings((s) => s.setBridgeAutoReconnect)
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef<MsgHandler>(null);
   const pendingBufferRef = useRef<string[]>([]); // buffer chunks when no handler is attached
@@ -95,6 +98,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;
     setConnected(false);
+    setConnecting(false);
   }, []);
 
   const connect = useCallback(() => {
@@ -112,8 +116,10 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       try { console.log('[bridge.ws] connect', wsUrl) } catch {}
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
+      setConnecting(true);
       ws.onopen = () => {
         setConnected(true);
+        setConnecting(false);
         appLog('bridge.open');
         try { console.log('[bridge.ws] open') } catch {}
         // Suppress noisy connection status logs in the session feed.
@@ -134,9 +140,11 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       };
       ws.onerror = (_evt: any) => {
         // Suppress noisy error prints; UI shows disconnected state
+        setConnecting(false);
       };
       ws.onclose = () => {
         setConnected(false);
+        setConnecting(false);
         appLog('bridge.close');
       };
     } catch (e: any) {
@@ -341,6 +349,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       wsUrl: effectiveHost ? `ws://${effectiveHost}/ws` : '',
       httpBase: effectiveHost ? `http://${effectiveHost}` : '',
       connected,
+      connecting,
       connect,
       disconnect,
       send,
@@ -366,7 +375,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       resumeNextId,
       setResumeNextId,
     }),
-    [bridgeHost, effectiveHost, connected, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
+    [bridgeHost, effectiveHost, connected, connecting, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
   );
 
   return <BridgeContext.Provider value={value}>{children}</BridgeContext.Provider>;
