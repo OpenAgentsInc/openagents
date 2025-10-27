@@ -101,6 +101,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       const wsUrl = `ws://${effectiveHost}/ws`;
       const httpBase = `http://${effectiveHost}`;
       appLog('bridge.connect', { wsUrl, httpBase });
+      // Keep connection logs minimal
       try { console.log('[bridge.ws] connect', wsUrl) } catch {}
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -124,14 +125,12 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         // Deliver to passive subscribers
         try { subsRef.current.forEach((fn) => { try { if (fn) fn(data) } catch {} }); } catch {}
       };
-      ws.onerror = (evt: any) => {
-        // Keep errors out of the session feed; rely on header dot and dev console
-        try { console.log('[bridge.ws] error', String(evt?.message ?? '')) } catch {}
+      ws.onerror = (_evt: any) => {
+        // Suppress noisy error prints; UI shows disconnected state
       };
       ws.onclose = () => {
         setConnected(false);
         appLog('bridge.close');
-        try { console.log('[bridge.ws] close') } catch {}
       };
     } catch (e: any) {
       // Suppress connection error logs in the feed.
@@ -196,10 +195,9 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     })();
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       try { appLog('ws.send.skipped', { preview, reason: 'not_open' }); } catch {}
-      try { console.log('[bridge.ws] send.skipped', preview) } catch {}
       return false;
     }
-    try { ws.send(payload as any); appLog('ws.send', { preview }); try { console.log('[bridge.ws] send', preview) } catch {} } catch (e: any) { appLog('ws.send.error', { error: String(e?.message ?? e) }, 'error'); try { console.log('[bridge.ws] send.error', String(e?.message ?? e)) } catch {}; return false; }
+    try { ws.send(payload as any); appLog('ws.send', { preview }); } catch (e: any) { appLog('ws.send.error', { error: String(e?.message ?? e) }, 'error'); return false; }
     return true;
   }, []);
 
