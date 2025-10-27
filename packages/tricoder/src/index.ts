@@ -2,7 +2,7 @@
 import chalk from "chalk"
 import os from "node:os"
 import { spawn, spawnSync } from "node:child_process"
-import { existsSync } from "node:fs"
+import { existsSync, mkdirSync, copyFileSync, chmodSync, readdirSync, statSync } from "node:fs"
 import http from "node:http"
 import net from "node:net"
 import { dirname, join } from "node:path"
@@ -139,6 +139,9 @@ function main() {
     }
     repoRoot = target;
   }
+
+  // Ensure Convex backend binary early with visible progress (best effort)
+  try { ensureConvexBinaryWithProgress(); } catch { }
 
   // Ensure Rust toolchain
   ensureRustToolchain();
@@ -293,6 +296,79 @@ function prebuildCrates(repoRoot: string) {
   if (r.status !== 0) {
     console.log(chalk.yellow("cargo build -p oa-tunnel failed; will rely on on-demand build during run."));
   }
+}
+
+function ensureConvexBinaryWithProgress() {
+  const home = os.homedir();
+  const outDir = join(home, ".openagents", "bin");
+  const outBin = join(outDir, process.platform === 'win32' ? 'local_backend.exe' : 'local_backend');
+  if (existsSync(outBin)) return;
+  const haveBunx = hasCmd('bunx');
+  const haveNpx = hasCmd('npx');
+  if (!haveBunx && !haveNpx) return; // will fall back to bridge bootstrap later
+  console.log("");
+  console.log(chalk.cyanBright("Downloading Convex local backend (first-time only)…"));
+  let lastPct = -1;
+  const args = ["convex", "dev", "--configure", "--dev-deployment", "local", "--once", "--skip-push", "--local-force-upgrade"];
+  const child = haveBunx ? spawn("bunx", args, { stdio: ["ignore", "pipe", "pipe"] }) : spawn("npx", ["-y", ...args], { stdio: ["ignore", "pipe", "pipe"] });
+  const show = (p: number) => {
+    if (p < 0 || p > 100) return;
+    if (p <= lastPct) return;
+    lastPct = p;
+    try { process.stdout.write("\r" + chalk.cyanBright(`⬇️  Convex backend download: ${p}%`)); } catch {}
+  };
+  const maybeParse = (s: string) => {
+    // Look for any NN% patterns in CLI output
+    const m = s.match(/(\d{1,3})%/);
+    if (m) {
+      const pct = Math.max(0, Math.min(100, parseInt(m[1], 10)));
+      show(pct);
+    }
+  };
+  child.stdout?.setEncoding('utf8');
+  child.stdout?.on('data', (d) => { String(d).split(/\r?\n/).forEach(maybeParse); });
+  child.stderr?.setEncoding('utf8');
+  child.stderr?.on('data', (d) => { String(d).split(/\r?\n/).forEach(maybeParse); });
+  const done = () => {
+    try { process.stdout.write("\r\x1b[K"); } catch {}
+    // Attempt to locate the cached backend and copy to ~/.openagents/bin/local_backend
+    const cacheRoot = join(home, '.cache', 'convex', 'binaries');
+    const candidate = findNewestBackendBinary(cacheRoot);
+    if (candidate) {
+      try {
+        mkdirSync(outDir, { recursive: true });
+        copyFileSync(candidate, outBin);
+        try { chmodSync(outBin, 0o755); } catch {}
+        console.log(chalk.greenBright("✔ Convex backend installed."));
+      } catch (e: any) {
+        console.log(chalk.yellow(`Convex backend cached but copy failed: ${e?.message || e}`));
+      }
+    } else {
+      console.log(chalk.yellow("Convex CLI finished but backend binary not found in cache (will let the bridge retry)."));
+    }
+  };
+  child.on('exit', () => done());
+  setTimeout(() => { try { child.kill(); } catch {} }, 120000); // safety timeout
+}
+
+function findNewestBackendBinary(root: string): string | null {
+  try {
+    const entries = readdirSync(root, { encoding: 'utf8' }) as unknown as string[];
+    let best: { path: string, mtime: number } | null = null;
+    for (const dir of entries) {
+      const d = join(root, dir);
+      try {
+        const files = readdirSync(d, { encoding: 'utf8' }) as unknown as string[];
+        for (const f of files) {
+          if (!/local_backend(\.exe)?$/.test(f) && !/convex-local-backend(\.exe)?$/.test(f)) continue;
+          const p = join(d, f);
+          const st = statSync(p);
+          if (!best || st.mtimeMs > best.mtime) best = { path: p, mtime: st.mtimeMs };
+        }
+      } catch { }
+    }
+    return best?.path || null;
+  } catch { return null; }
 }
 
 function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
