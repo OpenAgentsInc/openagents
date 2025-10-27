@@ -13,3 +13,4 @@ function main() {
 // Intentionally avoid referencing Node's `process` type so @types/node isn't required.
 // If something throws here, Node will print the stack and exit.
 main();
+
