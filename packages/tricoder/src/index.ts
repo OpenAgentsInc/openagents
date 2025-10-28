@@ -142,12 +142,11 @@ function printEnvAssessment(repoRoot: string | null) {
   console.log("");
 }
 
-function main() {
+async function main() {
   console.info(chalk.bold("OpenAgents Tricoder - Desktop Bridge"));
   // Destructive reset: remove local clones, downloaded binaries, and Convex state
   if (process.argv.includes("--delete")) {
-    try { destructiveReset(); } catch {}
-    // Exit early after reset
+    try { await destructiveReset(); } catch {}
     return;
   }
   let repoRoot = findRepoRoot(process.cwd());
@@ -1014,7 +1013,7 @@ async function probeBridgeEchoOnce(timeoutMs: number): Promise<boolean> {
 
 main();
 
-function destructiveReset() {
+function destructiveReset(): Promise<void> {
   const home = os.homedir();
   const paths: Array<{ path: string; desc: string }> = [
     { path: join(home, ".openagents", "openagents"), desc: "OpenAgents repo clone" },
@@ -1023,15 +1022,21 @@ function destructiveReset() {
   ];
   console.log(chalk.yellow("\nDanger: This will delete local OpenAgents clones, the Convex local backend binary, and local Convex data."));
   if (!ASSUME_YES) {
+    // If non-interactive, require -y
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      console.log(chalk.yellow("No TTY detected. Re-run with --delete -y to confirm."));
+      return Promise.resolve();
+    }
     const rl = require('node:readline').createInterface({ input: process.stdin, output: process.stdout });
     const ask = (q: string) => new Promise<string>(res => rl.question(q, (a: string) => res(a)));
-    ask("Proceed with full reset? [y/N] ").then((ans: string) => {
+    return ask("Proceed with full reset? [y/N] ").then((ans: string) => {
       rl.close();
       if (!/^y(es)?$/i.test((ans||'').trim())) { console.log("Aborted."); return; }
       runDelete(paths);
     });
   } else {
     runDelete(paths);
+    return Promise.resolve();
   }
 }
 
