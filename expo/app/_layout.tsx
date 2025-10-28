@@ -327,6 +327,7 @@ function LinkingBootstrap() {
   const { setBridgeHost, connect } = useBridge();
   const setBridgeCode = useSettings((s) => s.setBridgeCode)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
   React.useEffect(() => {
     let cancelled = false
     const handleUrl = (url: string) => {
@@ -337,6 +338,7 @@ function LinkingBootstrap() {
         try { setBridgeCode(url) } catch {}
         try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
         try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
+        try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
         try { connect() } catch {}
         try { router.push('/onboarding' as any) } catch {}
       } catch {}

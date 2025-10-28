@@ -67,6 +67,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const attachPreface = useSettings((s) => s.attachPreface)
   const setAttachPreface = useSettings((s) => s.setAttachPreface)
   const [resumeNextId, setResumeNextId] = useState<string | null>(null);
+  const bridgeToken = useSettings((s) => s.bridgeToken)
 
   // Hydration is handled by the Zustand settings store; treat as ready
   const [hydrated] = useState(true);
@@ -109,7 +110,11 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     }
     try { wsRef.current?.close(); } catch {}
     try {
-      const wsUrl = `ws://${effectiveHost}/ws`;
+      const tokenPart = (() => {
+        const t = String(bridgeToken || '').trim();
+        return t ? `?token=${encodeURIComponent(t)}` : '';
+      })();
+      const wsUrl = `ws://${effectiveHost}/ws${tokenPart}`;
       const httpBase = `http://${effectiveHost}`;
       appLog('bridge.connect', { wsUrl, httpBase });
       // Keep connection logs minimal

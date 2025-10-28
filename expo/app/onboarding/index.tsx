@@ -18,6 +18,7 @@ export default function Onboarding() {
   const setBridgeCode = useSettings((s) => s.setBridgeCode)
   const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const [codeError, setCodeError] = React.useState<string>('')
 
   // Derive Convex URL from bridge host (same logic as Settings)
@@ -130,6 +131,7 @@ export default function Onboarding() {
               return
             }
             setCodeError('')
+            try { if (parsed?.token) setBridgeToken(parsed.token || '') } catch {}
             // Do not auto-connect on input; host/convex will be applied on Connect
           }}
           autoCapitalize='none'
@@ -165,6 +167,7 @@ export default function Onboarding() {
             const parsed = parseBridgeCode(trimmedCode)
             if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
             if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
+            if (parsed?.token) setBridgeToken(parsed.token || '')
           } catch {}
           try { connect() } catch {}
         }}

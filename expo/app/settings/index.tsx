@@ -18,6 +18,7 @@ export default function SettingsScreen() {
   const setBridgeCode = useSettings((s) => s.setBridgeCode)
   const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const derivedConvexUrl = React.useMemo(() => {
     try {
       const val = String(bridgeHost || '').trim()
@@ -76,6 +77,7 @@ export default function SettingsScreen() {
             const parsed = parseBridgeCode(v)
             if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
             if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
+            if (parsed?.token) setBridgeToken(parsed.token || '')
             // Auto-connect when a valid host is present
             try { if (parsed?.bridgeHost) connect() } catch {}
           }}
