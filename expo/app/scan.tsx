@@ -53,34 +53,36 @@ export default function ScanScreen() {
     return true
   }, [connect, router])
 
+  // Modal scanner effect must not be declared conditionally; gate inside
+  React.useEffect(() => {
+    if (!usingModal) return
+    let cancelled = False
+    let sub: any = null
+    const run = async () => {
+      try {
+        const camAny: any = CameraView as any
+        await camAny.launchScanner?.({})
+        sub = camAny.onModernBarcodeScanned?.(async (evt: any) => {
+          if (cancelled || scanned) return
+          setScanned(true)
+          const data = String((evt && (evt.data || evt.rawValue || evt.text)) || '')
+          const ok = handleData(data)
+          try { camAny.dismissScanner?.() } catch {}
+          // Give the modal a moment to fully dismiss before navigation/render churn
+          await new Promise((r) => setTimeout(r, 150))
+          if (!ok) {
+            setTimeout(async () => {
+              setScanned(false)
+              try { await camAny.launchScanner?.({}) } catch {}
+            }, 400)
+          }
+        })
+      } catch {}
+    }
+    run()
+    return () => { cancelled = true; try { (CameraView as any).dismissScanner?.() } catch {}; try { sub && sub.remove && sub.remove() } catch {} }
+  }, [usingModal, scanned, handleData])
   if (usingModal) {
-    React.useEffect(() => {
-      let cancelled = false
-      let sub: any = null
-      const run = async () => {
-        try {
-          const camAny: any = CameraView as any
-          await camAny.launchScanner?.({})
-          sub = camAny.onModernBarcodeScanned?.(async (evt: any) => {
-            if (cancelled || scanned) return
-            setScanned(true)
-            const data = String((evt && (evt.data || evt.rawValue || evt.text)) || '')
-            const ok = handleData(data)
-            try { camAny.dismissScanner?.() } catch {}
-            // Give the modal a moment to fully dismiss before navigation/render churn
-            await new Promise((r) => setTimeout(r, 150))
-            if (!ok) {
-              setTimeout(async () => {
-                setScanned(false)
-                try { await camAny.launchScanner?.({}) } catch {}
-              }, 400)
-            }
-          })
-        } catch {}
-      }
-      run()
-      return () => { cancelled = true; try { (CameraView as any).dismissScanner?.() } catch {}; try { sub && sub.remove && sub.remove() } catch {} }
-    }, [])
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.foreground} />
