@@ -13,6 +13,7 @@
       "bundleIdentifier": "com.openagents.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "OpenAgents uses the camera to scan pairing QR codes.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
