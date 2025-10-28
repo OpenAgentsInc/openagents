@@ -1,6 +1,6 @@
 import React from 'react'
 import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native'
-import { BarCodeScanner } from 'expo-barcode-scanner'
+import { CameraView, useCameraPermissions } from 'expo-camera'
 import { useRouter } from 'expo-router'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
@@ -14,15 +14,11 @@ export default function ScanScreen() {
   const setBridgeCode = useSettings((s) => s.setBridgeCode)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
-  const [hasPermission, setHasPermission] = React.useState<boolean | null>(null)
+  const [permission, requestPermission] = useCameraPermissions()
   const [scanned, setScanned] = React.useState(false)
 
   React.useEffect(() => {
-    let cancelled = false
-    BarCodeScanner.requestPermissionsAsync().then(({ status }) => {
-      if (!cancelled) setHasPermission(status === 'granted')
-    }).catch(() => { if (!cancelled) setHasPermission(false) })
-    return () => { cancelled = true }
+    if (!permission) { requestPermission().catch(() => {}) }
   }, [])
 
   const handleData = React.useCallback((raw: string) => {
@@ -38,7 +34,7 @@ export default function ScanScreen() {
     return true
   }, [connect, router])
 
-  if (hasPermission === null) {
+  if (!permission) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.foreground} />
@@ -46,7 +42,7 @@ export default function ScanScreen() {
       </View>
     )
   }
-  if (hasPermission === false) {
+  if (!permission.granted) {
     return (
       <View style={styles.center}>
         <Text style={styles.error}>Camera permission denied</Text>
@@ -58,8 +54,9 @@ export default function ScanScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <BarCodeScanner
-        onBarCodeScanned={scanned ? undefined : ({ data }) => {
+      <CameraView
+        barcodeScannerSettings={{ barcodeTypes: ['qr'] as any }}
+        onBarcodeScanned={scanned ? undefined : ({ data }: any) => {
           setScanned(true)
           const ok = handleData(String(data || ''))
           if (!ok) {
