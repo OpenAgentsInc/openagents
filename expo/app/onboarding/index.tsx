@@ -15,7 +15,8 @@ export default function Onboarding() {
   const router = useRouter()
   const { bridgeHost, setBridgeHost, connected, connecting, connect, disconnect } = useBridge()
   const bridgeCode = useSettings((s) => s.bridgeCode)
-  const setBridgeCode = useSettings((s) => s.setBridgeCode)
+  // Use a local input state to avoid programmatic TextInput updates from store
+  const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => String(bridgeCode || ''))
   const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
@@ -114,10 +115,10 @@ export default function Onboarding() {
       <Text style={styles.hint}>Run `npx tricoder@0.2.0` from your desktop</Text>
       <View style={styles.inputWrapper}>
         <TextInput
-          value={bridgeCode}
+          value={bridgeCodeInput}
           onChangeText={(v) => {
             const display = normalizeBridgeCodeInput(v)
-            setBridgeCode(display)
+            setBridgeCodeInput(display)
             const trimmed = String(v || '').trim()
             if (!trimmed) {
               try { disconnect() } catch {}
@@ -153,7 +154,7 @@ export default function Onboarding() {
                 <Ionicons name='qr-code-outline' size={16} color={Colors.secondary} />
               </Pressable>
               <Pressable
-                onPress={() => { try { disconnect() } catch {}; setBridgeCode(''); setBridgeHost(''); setConvexUrl(''); }}
+                onPress={() => { try { disconnect() } catch {}; setBridgeCodeInput(''); setBridgeHost(''); setConvexUrl(''); }}
                 accessibilityLabel='Clear bridge code'
                 style={{ position: 'absolute', right: 0, opacity: hasText ? 1 : 0, pointerEvents: hasText ? 'auto' as any : 'none' }}
               >
@@ -171,10 +172,10 @@ export default function Onboarding() {
         onPress={() => {
           if (connecting || codeError || !likelyCode) return
           try {
-            const parsed = parseBridgeCode(normalizeBridgeCodeInput(trimmedCode))
-            if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
-            if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
-            if (parsed?.token) setBridgeToken(parsed.token || '')
+          const parsed = parseBridgeCode(normalizeBridgeCodeInput(trimmedCode))
+          if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
+          if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
+          if (parsed?.token) setBridgeToken(parsed.token || '')
           } catch {}
           try { connect() } catch {}
         }}
