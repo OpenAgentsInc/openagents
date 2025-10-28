@@ -1034,31 +1034,45 @@ function destructiveReset(): Promise<void> {
 
 function promptYesNoTTY(question: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
-    const rl = createReadlineTTY();
-    rl.question(question, (ans: string) => {
-      try { rl.close(); } catch {}
-      resolve(/^y(es)?$/i.test(String(ans || '').trim()));
+    const rl = tryOpenTTYReadline();
+    if (rl) {
+      rl.question(question, (ans: string) => {
+        try { rl.close(); } catch {}
+        resolve(/^y(es)?$/i.test(String(ans || '').trim()));
+      });
+      return;
+    }
+    // Hard fallback: use stdio even if not a TTY, and keep the process alive
+    try {
+      process.stdout.write(question);
+    } catch {}
+    try { process.stdin.setEncoding('utf8'); } catch {}
+    try { (process.stdin as any).resume?.(); } catch {}
+    process.stdin.once('data', (buf: Buffer | string) => {
+      const s = String(buf || '').trim();
+      resolve(/^y(es)?$/i.test(s));
     });
   });
 }
 
-function createReadlineTTY(): any {
+function tryOpenTTYReadline(): any | null {
   try {
     const fs = require('node:fs');
     const readline = require('node:readline');
-    // Prefer /dev/tty on POSIX to reliably prompt even when stdio is piped
     if (process.platform !== 'win32') {
       try {
         const ttyIn = fs.createReadStream('/dev/tty');
         const ttyOut = fs.createWriteStream('/dev/tty');
         return readline.createInterface({ input: ttyIn, output: ttyOut });
-      } catch { /* fall through to stdio */ }
+      } catch { /* ignore */ }
     }
-    // Fallback: use stdio even if not reported as a TTY (works in many dev shells/tsx)
-    return readline.createInterface({ input: process.stdin, output: process.stdout });
+    if (process.stdin && process.stdout) {
+      const readline = require('node:readline');
+      return readline.createInterface({ input: process.stdin, output: process.stdout });
+    }
+    return null;
   } catch {
-    const readline = require('node:readline');
-    return readline.createInterface({ input: process.stdin, output: process.stdout });
+    return null;
   }
 }
 
