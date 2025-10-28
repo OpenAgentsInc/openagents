@@ -138,9 +138,21 @@ export default function Onboarding() {
           placeholderTextColor={Colors.secondary}
           style={[styles.input, { paddingRight: 44 }]}
         />
-        <Pressable onPress={() => { try { disconnect() } catch {}; setBridgeCode(''); setBridgeHost(''); setConvexUrl(''); }} accessibilityLabel='Clear bridge code' style={styles.clearIconArea}>
-          <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
-        </Pressable>
+        {(() => {
+          const hasText = String(bridgeCode || '').trim().length > 0
+          if (hasText) {
+            return (
+              <Pressable onPress={() => { try { disconnect() } catch {}; setBridgeCode(''); setBridgeHost(''); setConvexUrl(''); }} accessibilityLabel='Clear bridge code' style={styles.clearIconArea}>
+                <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
+              </Pressable>
+            )
+          }
+          return (
+            <Pressable onPress={() => { try { router.push('/scan' as any) } catch {} }} accessibilityLabel='Scan QR code' style={styles.clearIconArea}>
+              <Ionicons name='qr-code-outline' size={16} color={Colors.secondary} />
+            </Pressable>
+          )
+        })()}
       </View>
       {!!codeError && (
         <Text style={styles.errorText}>{codeError}</Text>

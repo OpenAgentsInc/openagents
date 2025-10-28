@@ -2,6 +2,7 @@ import "@/utils/gestureHandler"
 import { useQuery } from "convex/react"
 import * as Haptics from "expo-haptics"
 import { Stack, useRouter } from "expo-router"
+import * as Linking from 'expo-linking'
 import { StatusBar } from "expo-status-bar"
 import React from "react"
 import {
@@ -23,6 +24,8 @@ import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider } from "@/providers/projects"
 import { SkillsProvider } from "@/providers/skills"
 import { BridgeProvider, useBridge } from "@/providers/ws"
+import { useSettings } from "@/lib/settings-store"
+import { parseBridgeCode } from "@/lib/pairing"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
 
@@ -211,6 +214,7 @@ export default function RootLayout() {
             <ProjectsProvider>
               <SkillsProvider>
                 <DrawerProvider>
+                  <LinkingBootstrap />
                   <DrawerWrapper />
                 </DrawerProvider>
               </SkillsProvider>
@@ -316,6 +320,32 @@ function DrawerWrapper() {
       </View>
     </Drawer>
   );
+}
+
+function LinkingBootstrap() {
+  const router = useRouter();
+  const { setBridgeHost, connect } = useBridge();
+  const setBridgeCode = useSettings((s) => s.setBridgeCode)
+  const setConvexUrl = useSettings((s) => s.setConvexUrl)
+  React.useEffect(() => {
+    let cancelled = false
+    const handleUrl = (url: string) => {
+      if (!url || cancelled) return
+      try {
+        const parsed = parseBridgeCode(url)
+        if (!parsed) return
+        try { setBridgeCode(url) } catch {}
+        try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
+        try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
+        try { connect() } catch {}
+        try { router.push('/onboarding' as any) } catch {}
+      } catch {}
+    }
+    try { Linking.getInitialURL().then((u) => { if (u) handleUrl(u) }).catch(() => {}) } catch {}
+    const sub = Linking.addEventListener('url', (evt) => { try { handleUrl(evt.url) } catch {} }) as any
+    return () => { try { cancelled = true; if (sub && typeof sub.remove === 'function') sub.remove() } catch {} }
+  }, [])
+  return null
 }
 
 // Native header removed; title management handled by AppHeader via Zustand store
