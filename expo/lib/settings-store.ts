@@ -28,7 +28,8 @@ type SettingsState = {
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
-      bridgeHost: 'localhost:8787',
+      // No default host; user must paste a Bridge Code or set host manually
+      bridgeHost: '',
       bridgeCode: '',
       convexUrl: '',
       bridgeToken: '',
@@ -48,16 +49,16 @@ export const useSettings = create<SettingsState>()(
       setAttachPreface: (v) => set({ attachPreface: v }),
     }),
     {
-      name: '@openagents/settings-v2',
-      version: 2,
+      name: '@openagents/settings-v3',
+      version: 3,
       storage: createJSONStorage(() => AsyncStorage),
-      // Migrate possible legacy payloads from providers/ws.tsx (stringified object)
+      // Migrate and sanitize legacy values (remove any bore/localhost defaults, clear bad hosts)
       migrate: (persisted: any, from) => {
         try {
           const obj = (persisted && typeof persisted === 'object') ? { ...persisted } : persisted
           if (!obj || typeof obj !== 'object') return persisted
           const host = String(obj.bridgeHost || '').trim()
-          if (/\bbore(\.pub)?\b/.test(host) || host.startsWith('ws://bore') || host.includes('bore.pub')) {
+          if (/\bbore(\.pub)?\b/.test(host) || host.startsWith('ws://bore') || host.includes('bore.pub') || host.startsWith('localhost:') || host.startsWith('127.0.0.1:')) {
             obj.bridgeHost = ''
             obj.bridgeCode = ''
             obj.bridgeToken = ''
