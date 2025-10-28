@@ -76,10 +76,33 @@ pub async fn stream_upsert_or_append(
         if let Some(r) = role_val { args.insert("role".into(), Value::from(r)); }
         args.insert("text".into(), Value::from(full_text));
         args.insert("seq".into(), Value::from(seq_now as i64));
-        args.insert("itemId".into(), Value::from(item_id));
+        args.insert("itemId".into(), Value::from(item_id.clone()));
         match client.mutation("messages:upsertStreamed", args).await {
-            Ok(_) => {}
-            Err(e) => warn!(?e, thread_id, kind, "convex upsertStreamed failed"),
+            Ok(_) => {
+                // Broadcast a concise debug event for tails (tricoder)
+                let _ = state.tx.send(serde_json::json!({
+                    "type": "bridge.convex_write",
+                    "op": "upsertStreamed",
+                    "threadId": thread_id,
+                    "kind": convex_kind,
+                    "itemId": item_id,
+                    "len": full_text.len(),
+                    "ok": true
+                }).to_string());
+            }
+            Err(e) => {
+                warn!(?e, thread_id, kind, "convex upsertStreamed failed");
+                let _ = state.tx.send(serde_json::json!({
+                    "type": "bridge.convex_write",
+                    "op": "upsertStreamed",
+                    "threadId": thread_id,
+                    "kind": convex_kind,
+                    "itemId": item_id,
+                    "len": full_text.len(),
+                    "ok": false,
+                    "error": format!("{}", e)
+                }).to_string());
+            }
         }
     }
 }
@@ -111,8 +134,31 @@ pub async fn try_finalize_stream_kind(
         args.insert("itemId".into(), Value::from(stable_item_id));
         args.insert("text".into(), Value::from(final_text));
         match client.mutation("messages:finalizeStreamed", args).await {
-            Ok(_) => info!(thread_id, kind, "convex finalizeStreamed ok"),
-            Err(e) => warn!(?e, thread_id, kind, "convex finalizeStreamed failed"),
+            Ok(_) => {
+                info!(thread_id, kind, "convex finalizeStreamed ok");
+                let _ = state.tx.send(serde_json::json!({
+                    "type": "bridge.convex_write",
+                    "op": "finalizeStreamed",
+                    "threadId": thread_id,
+                    "kind": kind,
+                    "itemId": stable_item_id,
+                    "len": final_text.len(),
+                    "ok": true
+                }).to_string());
+            }
+            Err(e) => {
+                warn!(?e, thread_id, kind, "convex finalizeStreamed failed");
+                let _ = state.tx.send(serde_json::json!({
+                    "type": "bridge.convex_write",
+                    "op": "finalizeStreamed",
+                    "threadId": thread_id,
+                    "kind": kind,
+                    "itemId": stable_item_id,
+                    "len": final_text.len(),
+                    "ok": false,
+                    "error": format!("{}", e)
+                }).to_string());
+            }
         }
     }
     true
