@@ -1022,21 +1022,48 @@ function destructiveReset(): Promise<void> {
   ];
   console.log(chalk.yellow("\nDanger: This will delete local OpenAgents clones, the Convex local backend binary, and local Convex data."));
   if (!ASSUME_YES) {
-    // If non-interactive, require -y
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      console.log(chalk.yellow("No TTY detected. Re-run with --delete -y to confirm."));
-      return Promise.resolve();
-    }
-    const rl = require('node:readline').createInterface({ input: process.stdin, output: process.stdout });
-    const ask = (q: string) => new Promise<string>(res => rl.question(q, (a: string) => res(a)));
-    return ask("Proceed with full reset? [y/N] ").then((ans: string) => {
-      rl.close();
-      if (!/^y(es)?$/i.test((ans||'').trim())) { console.log("Aborted."); return; }
+    return promptYesNoTTY("Proceed with full reset? [y/N] ").then((ans) => {
+      if (!ans) { console.log("Aborted."); return; }
       runDelete(paths);
     });
   } else {
     runDelete(paths);
     return Promise.resolve();
+  }
+}
+
+function promptYesNoTTY(question: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const rl = createReadlineTTY();
+    if (!rl) {
+      console.log(chalk.yellow("No interactive TTY available. Re-run with -y to confirm."));
+      resolve(false);
+      return;
+    }
+    rl.question(question, (ans: string) => {
+      try { rl.close(); } catch {}
+      resolve(/^y(es)?$/i.test(String(ans || '').trim()));
+    });
+  });
+}
+
+function createReadlineTTY(): any | null {
+  try {
+    const fs = require('node:fs');
+    const readline = require('node:readline');
+    // Prefer /dev/tty on POSIX to reliably prompt even when stdio is piped
+    if (process.platform !== 'win32') {
+      const ttyIn = fs.createReadStream('/dev/tty');
+      const ttyOut = fs.createWriteStream('/dev/tty');
+      return readline.createInterface({ input: ttyIn, output: ttyOut });
+    }
+    // Windows fallback: use default stdio if TTY, else fail and require -y
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      return readline.createInterface({ input: process.stdin, output: process.stdout });
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
