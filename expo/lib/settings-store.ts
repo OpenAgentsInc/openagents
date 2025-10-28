@@ -59,11 +59,12 @@ export const useSettings = create<SettingsState>()(
           const obj = (persisted && typeof persisted === 'object') ? { ...persisted } : persisted
           if (!obj || typeof obj !== 'object') return persisted
           const host = String(obj.bridgeHost || '').trim()
+          // Always start with explicit user connect; turn off auto-reconnect on migration
+          obj.bridgeAutoReconnect = false
           if (/\bbore(\.pub)?\b/.test(host) || host.startsWith('ws://bore') || host.includes('bore.pub') || host.startsWith('localhost:') || host.startsWith('127.0.0.1:')) {
             obj.bridgeHost = ''
             obj.bridgeCode = ''
             obj.bridgeToken = ''
-            obj.bridgeAutoReconnect = false
           }
           return obj
         } catch {
