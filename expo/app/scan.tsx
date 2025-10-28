@@ -11,7 +11,7 @@ import { useSettings } from '@/lib/settings-store'
 export default function ScanScreen() {
   const router = useRouter()
   const { connect, setBridgeHost } = useBridge()
-  const setBridgeCode = useSettings((s) => s.setBridgeCode)
+  // Avoid writing Bridge Code into the input to prevent UIKit text churn on navigation
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const camRef = React.useRef<any>(null)
@@ -35,7 +35,7 @@ export default function ScanScreen() {
     const display = normalizeBridgeCodeInput(String(raw || ''))
     const parsed = parseBridgeCode(display)
     if (!parsed) return false
-    try { setBridgeCode(display) } catch {}
+    // Intentionally do not set bridgeCode here to avoid UITextField churn
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
     try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
@@ -52,12 +52,14 @@ export default function ScanScreen() {
         try {
           const camAny: any = CameraView as any
           await camAny.launchScanner?.({})
-          sub = camAny.onModernBarcodeScanned?.((evt: any) => {
+          sub = camAny.onModernBarcodeScanned?.(async (evt: any) => {
             if (cancelled || scanned) return
             setScanned(true)
             const data = String((evt && (evt.data || evt.rawValue || evt.text)) || '')
             const ok = handleData(data)
             try { camAny.dismissScanner?.() } catch {}
+            // Give the modal a moment to fully dismiss before navigation/render churn
+            await new Promise((r) => setTimeout(r, 150))
             if (!ok) {
               setTimeout(async () => {
                 setScanned(false)

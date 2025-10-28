@@ -325,7 +325,7 @@ function DrawerWrapper() {
 function LinkingBootstrap() {
   const router = useRouter();
   const { setBridgeHost, connect } = useBridge();
-  const setBridgeCode = useSettings((s) => s.setBridgeCode)
+  // Avoid writing Bridge Code into the input field on deep links to prevent UIKit text churn
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
   React.useEffect(() => {
@@ -335,7 +335,7 @@ function LinkingBootstrap() {
       try {
         const parsed = parseBridgeCode(url)
         if (!parsed) return
-        try { setBridgeCode(normalizeBridgeCodeInput(url)) } catch {}
+        // Do not set bridgeCode from deep link to avoid TextInput updates during navigation
         try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
         try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
         try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
