@@ -6,7 +6,7 @@ import { useHeaderTitle } from '@/lib/header-store'
 import { useRouter } from 'expo-router'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
-import { parseBridgeCode } from '@/lib/pairing'
+import { parseBridgeCode, normalizeBridgeCodeInput } from '@/lib/pairing'
 import { useQuery } from 'convex/react'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -116,7 +116,8 @@ export default function Onboarding() {
         <TextInput
           value={bridgeCode}
           onChangeText={(v) => {
-            setBridgeCode(v)
+            const display = normalizeBridgeCodeInput(v)
+            setBridgeCode(display)
             const trimmed = String(v || '').trim()
             if (!trimmed) {
               try { disconnect() } catch {}
@@ -125,7 +126,7 @@ export default function Onboarding() {
               setCodeError('')
               return
             }
-            const parsed = parseBridgeCode(v)
+            const parsed = parseBridgeCode(display)
             if (!parsed || !parsed.bridgeHost) {
               setCodeError('Invalid bridge code')
               return
@@ -164,7 +165,7 @@ export default function Onboarding() {
         onPress={() => {
           if (connecting || codeError || !likelyCode) return
           try {
-            const parsed = parseBridgeCode(trimmedCode)
+            const parsed = parseBridgeCode(normalizeBridgeCodeInput(trimmedCode))
             if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
             if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
             if (parsed?.token) setBridgeToken(parsed.token || '')

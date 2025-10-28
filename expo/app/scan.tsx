@@ -4,7 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import { useRouter } from 'expo-router'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
-import { parseBridgeCode } from '@/lib/pairing'
+import { parseBridgeCode, normalizeBridgeCodeInput } from '@/lib/pairing'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
 
@@ -22,10 +22,10 @@ export default function ScanScreen() {
   }, [])
 
   const handleData = React.useCallback((raw: string) => {
-    const trimmed = String(raw || '').trim()
-    const parsed = parseBridgeCode(trimmed)
+    const display = normalizeBridgeCodeInput(String(raw || ''))
+    const parsed = parseBridgeCode(display)
     if (!parsed) return false
-    try { setBridgeCode(trimmed) } catch {}
+    try { setBridgeCode(display) } catch {}
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
     try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}

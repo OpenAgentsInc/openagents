@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
 import { useQuery } from 'convex/react'
-import { parseBridgeCode } from '@/lib/pairing'
+import { parseBridgeCode, normalizeBridgeCodeInput } from '@/lib/pairing'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
@@ -66,7 +66,8 @@ export default function SettingsScreen() {
         <TextInput
           value={bridgeCode}
           onChangeText={(v) => {
-            setBridgeCode(v)
+            const display = normalizeBridgeCodeInput(v)
+            setBridgeCode(display)
             const trimmed = String(v || '').trim()
             if (!trimmed) {
               try { disconnect() } catch {}
@@ -74,7 +75,7 @@ export default function SettingsScreen() {
               setConvexUrl('')
               return
             }
-            const parsed = parseBridgeCode(v)
+            const parsed = parseBridgeCode(display)
             if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
             if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
             if (parsed?.token) setBridgeToken(parsed.token || '')
