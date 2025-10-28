@@ -144,6 +144,12 @@ function printEnvAssessment(repoRoot: string | null) {
 
 function main() {
   console.info(chalk.bold("OpenAgents Tricoder - Desktop Bridge"));
+  // Destructive reset: remove local clones, downloaded binaries, and Convex state
+  if (process.argv.includes("--delete")) {
+    try { destructiveReset(); } catch {}
+    // Exit early after reset
+    return;
+  }
   let repoRoot = findRepoRoot(process.cwd());
   // Brief overview and resources before assessment
   console.log(chalk.cyanBright("\nSetup overview"));
@@ -1007,6 +1013,58 @@ async function probeBridgeEchoOnce(timeoutMs: number): Promise<boolean> {
 }
 
 main();
+
+function destructiveReset() {
+  const home = os.homedir();
+  const paths: Array<{ path: string; desc: string }> = [
+    { path: join(home, ".openagents", "openagents"), desc: "OpenAgents repo clone" },
+    { path: join(home, ".openagents", "bin", process.platform === 'win32' ? 'local_backend.exe' : 'local_backend'), desc: "Convex local backend binary" },
+    { path: join(home, ".openagents", "convex"), desc: "Convex local data + storage" },
+  ];
+  console.log(chalk.yellow("\nDanger: This will delete local OpenAgents clones, the Convex local backend binary, and local Convex data."));
+  if (!ASSUME_YES) {
+    const rl = require('node:readline').createInterface({ input: process.stdin, output: process.stdout });
+    const ask = (q: string) => new Promise<string>(res => rl.question(q, (a: string) => res(a)));
+    ask("Proceed with full reset? [y/N] ").then((ans: string) => {
+      rl.close();
+      if (!/^y(es)?$/i.test((ans||'').trim())) { console.log("Aborted."); return; }
+      runDelete(paths);
+    });
+  } else {
+    runDelete(paths);
+  }
+}
+
+function runDelete(paths: Array<{ path: string; desc: string }>) {
+  for (const p of paths) {
+    try {
+      if (!existsSync(p.path)) { if (VERBOSE) console.log(chalk.dim(`[delete] skip (missing): ${p.path}`)); continue; }
+      const st = statSync(p.path);
+      if (st.isDirectory()) {
+        rmrf(p.path);
+      } else {
+        try { require('node:fs').unlinkSync(p.path); } catch {}
+      }
+      console.log(chalk.green(`✔ Deleted ${p.desc}: ${p.path}`));
+    } catch (e: any) {
+      console.log(chalk.yellow(`⚠ Failed to delete ${p.path}: ${e?.message || e}`));
+    }
+  }
+  console.log(chalk.greenBright("Done. You can re-run `npx tricoder` for a fresh setup."));
+}
+
+function rmrf(target: string) {
+  try {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const entries = fs.readdirSync(target, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(target, entry.name);
+      if (entry.isDirectory()) rmrf(full); else { try { fs.unlinkSync(full) } catch {} }
+    }
+    try { fs.rmdirSync(target) } catch {}
+  } catch {}
+}
 
 function readBridgeToken(): string | null {
   try {
