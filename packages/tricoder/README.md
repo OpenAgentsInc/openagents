@@ -16,6 +16,7 @@ Flags
   - QR contents (default = code):
     - code (default): base64url code only — smaller QR, intended for in‑app scanner.
     - deeplink: openagents://connect?j=<code> — OS camera opens the app.
+  - Rendering: Tricoder prints an ultra‑compact braille QR by default (~50% width/height). If your terminal supports inline images (iTerm2/WezTerm) or you set `TRICODER_QR_IMAGE=1`, it will render a PNG inline for perfect spacing.
 - --delete
   - Danger: delete local OpenAgents clone and Convex artifacts to start fresh.
   - Removes:
