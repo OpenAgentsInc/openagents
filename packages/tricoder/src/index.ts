@@ -11,6 +11,7 @@ import WebSocket from "ws"
 import { buildTunnelArgs } from "./args.js"
 import AdmZip from "adm-zip"
 import qrcode from "qrcode-terminal"
+import fs from "node:fs"
 
 // spawnSync already imported above
 const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v") || process.env.TRICODER_VERBOSE === "1";
@@ -227,7 +228,7 @@ function main() {
       provider: "bore",
       bridge: b,
       convex: c,
-      token: null as string | null,
+      token: readBridgeToken() as string | null,
     };
     const code = encodePairCode(payload);
     const deeplink = `openagents://connect?j=${code}`;
@@ -949,3 +950,20 @@ async function probeBridgeEchoOnce(timeoutMs: number): Promise<boolean> {
 }
 
 main();
+
+function readBridgeToken(): string | null {
+  try {
+    const envTok = String(process.env.OPENAGENTS_BRIDGE_TOKEN || '').trim();
+    if (envTok) return envTok;
+  } catch {}
+  try {
+    const home = os.homedir();
+    const p = join(home, '.openagents', 'bridge.json');
+    if (!fs.existsSync(p)) return null;
+    const raw = fs.readFileSync(p, 'utf8');
+    const obj = JSON.parse(raw);
+    const t = obj?.token;
+    if (typeof t === 'string' && t.length > 0) return t;
+  } catch {}
+  return null;
+}

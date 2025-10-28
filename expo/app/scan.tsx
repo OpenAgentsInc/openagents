@@ -13,6 +13,7 @@ export default function ScanScreen() {
   const { connect, setBridgeHost } = useBridge()
   const setBridgeCode = useSettings((s) => s.setBridgeCode)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const [hasPermission, setHasPermission] = React.useState<boolean | null>(null)
   const [scanned, setScanned] = React.useState(false)
 
@@ -31,6 +32,7 @@ export default function ScanScreen() {
     try { setBridgeCode(trimmed) } catch {}
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
     try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
+    try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
     try { connect() } catch {}
     try { router.replace('/onboarding' as any) } catch {}
     return true
