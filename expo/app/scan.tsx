@@ -14,8 +14,10 @@ export default function ScanScreen() {
   const setBridgeCode = useSettings((s) => s.setBridgeCode)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
+  const camRef = React.useRef<any>(null)
   const [permission, requestPermission] = useCameraPermissions()
   const [scanned, setScanned] = React.useState(false)
+  const [cameraPaused, setCameraPaused] = React.useState(false)
 
   React.useEffect(() => {
     if (!permission) { requestPermission().catch(() => {}) }
@@ -55,13 +57,16 @@ export default function ScanScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       <CameraView
+        ref={camRef}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] as any }}
-        onBarcodeScanned={scanned ? undefined : ({ data }: any) => {
+        onBarcodeScanned={(scanned || cameraPaused) ? undefined : async ({ data }: any) => {
           setScanned(true)
+          // Immediately pause the camera preview to stop capture and free resources
+          try { await camRef.current?.pausePreview?.(); setCameraPaused(true) } catch {}
           const ok = handleData(String(data || ''))
           if (!ok) {
             // Allow another try after brief pause
-            setTimeout(() => setScanned(false), 800)
+            setTimeout(async () => { try { await camRef.current?.resumePreview?.(); } catch {}; setCameraPaused(false); setScanned(false) }, 800)
           }
         }}
         style={{ flex: 1 }}
