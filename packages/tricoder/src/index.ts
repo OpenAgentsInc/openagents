@@ -18,6 +18,12 @@ const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v"
 const ASSUME_YES = process.argv.includes("--yes") || process.argv.includes("-y") || process.env.TRICODER_YES === "1";
 const LOCAL_ONLY = process.argv.includes("--local-only") || process.env.TRICODER_LOCAL_ONLY === "1";
 const NO_QR = process.argv.includes("--no-qr") || process.env.TRICODER_NO_QR === "1";
+const QR_MODE = (() => {
+  // --qr=deeplink | --qr=code (env: TRICODER_QR)
+  const arg = process.argv.find((a) => a.startsWith('--qr='));
+  const val = (arg ? arg.split('=')[1] : (process.env.TRICODER_QR || '')).toLowerCase();
+  return val === 'code' ? 'code' : 'deeplink';
+})();
 let CONVEX_DL_PCT = -1;
 
 function lite(s: string) { return chalk.hex('#9CA3AF')(s); }
@@ -237,9 +243,14 @@ function main() {
     console.log("");
     if (!NO_QR) {
       try {
-        // Make the QR smaller by encoding just the base64url code and using lower error correction
+        // Prefer deep link QR so OS camera apps can open the app directly.
+        // For smaller QR (app scanner only), pass --qr=code or TRICODER_QR=code.
         try { (qrcode as any).setErrorLevel?.('L') } catch {}
-        qrcode.generate(code, { small: true });
+        if (QR_MODE === 'code') {
+          qrcode.generate(code, { small: true });
+        } else {
+          qrcode.generate(deeplink, { small: true });
+        }
       } catch {}
       console.log("");
     }
