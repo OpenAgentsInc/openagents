@@ -44,8 +44,8 @@ const TUNNEL_MODE = (() => {
 // Broker integration (multi-user). When provided, we mint per-device tunnels via the broker.
 const BROKER_URL = (() => {
   const arg = process.argv.find((a) => a.startsWith('--broker='));
-  const v = (arg ? arg.split('=')[1] : (process.env.TRICODER_BROKER || 'https://tunnel.openagents.com')).trim();
-  return v || 'https://tunnel.openagents.com';
+  const v = (arg ? arg.split('=')[1] : (process.env.TRICODER_BROKER || 'https://cloudburrow-broker.openagents.com')).trim();
+  return v || 'https://cloudburrow-broker.openagents.com';
 })();
 const BROKER_KEY = (() => {
   const arg = process.argv.find((a) => a.startsWith('--broker-key='));
