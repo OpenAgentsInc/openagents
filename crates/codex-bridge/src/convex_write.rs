@@ -45,19 +45,38 @@ pub async fn stream_upsert_or_append(
     entry.seq = entry.seq.saturating_add(1);
     entry.last_text = full_text.to_string();
     let seq_now = entry.seq;
+    // Use a stable per-kind item id so Convex can upsert/finalize reliably
+    let stable_item_id = if kind == "assistant" {
+        "stream:assistant"
+    } else if kind == "reason" {
+        "stream:reason"
+    } else {
+        kind
+    };
+    if entry.item_id.is_empty() {
+        entry.item_id = stable_item_id.to_string();
+    }
     let item_id = entry.item_id.clone();
     drop(guard);
     let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
     if let Ok(mut client) = ConvexClient::new(&url).await {
         let mut args: BTreeMap<String, Value> = BTreeMap::new();
         args.insert("threadId".into(), Value::from(thread_id.to_string()));
-        args.insert("kind".into(), Value::from(kind));
+        // Map bridge kinds to canonical Convex kind/role
+        // - assistant → kind: "message", role: "assistant"
+        // - reason    → kind: "reason"
+        let (convex_kind, role_val) = if kind == "assistant" {
+            ("message", Some("assistant"))
+        } else if kind == "reason" {
+            ("reason", None)
+        } else {
+            (kind, None)
+        };
+        args.insert("kind".into(), Value::from(convex_kind));
+        if let Some(r) = role_val { args.insert("role".into(), Value::from(r)); }
         args.insert("text".into(), Value::from(full_text));
-        args.insert("partial".into(), Value::from(true));
         args.insert("seq".into(), Value::from(seq_now as i64));
-        if !item_id.is_empty() {
-            args.insert("itemId".into(), Value::from(item_id));
-        }
+        args.insert("itemId".into(), Value::from(item_id));
         match client.mutation("messages:upsertStreamed", args).await {
             Ok(_) => {}
             Err(e) => warn!(?e, thread_id, kind, "convex upsertStreamed failed"),
@@ -87,9 +106,10 @@ pub async fn try_finalize_stream_kind(
     if let Ok(mut client) = ConvexClient::new(&url).await {
         let mut args: BTreeMap<String, Value> = BTreeMap::new();
         args.insert("threadId".into(), Value::from(thread_id.to_string()));
-        args.insert("kind".into(), Value::from(kind));
+        // Finalize uses (threadId, itemId) to locate the streamed row
+        let stable_item_id = if kind == "assistant" { "stream:assistant" } else if kind == "reason" { "stream:reason" } else { kind };
+        args.insert("itemId".into(), Value::from(stable_item_id));
         args.insert("text".into(), Value::from(final_text));
-        args.insert("partial".into(), Value::from(false));
         match client.mutation("messages:finalizeStreamed", args).await {
             Ok(_) => info!(thread_id, kind, "convex finalizeStreamed ok"),
             Err(e) => warn!(?e, thread_id, kind, "convex finalizeStreamed failed"),
