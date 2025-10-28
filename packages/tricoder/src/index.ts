@@ -1035,11 +1035,6 @@ function destructiveReset(): Promise<void> {
 function promptYesNoTTY(question: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const rl = createReadlineTTY();
-    if (!rl) {
-      console.log(chalk.yellow("No interactive TTY available. Re-run with -y to confirm."));
-      resolve(false);
-      return;
-    }
     rl.question(question, (ans: string) => {
       try { rl.close(); } catch {}
       resolve(/^y(es)?$/i.test(String(ans || '').trim()));
@@ -1047,23 +1042,23 @@ function promptYesNoTTY(question: string): Promise<boolean> {
   });
 }
 
-function createReadlineTTY(): any | null {
+function createReadlineTTY(): any {
   try {
     const fs = require('node:fs');
     const readline = require('node:readline');
     // Prefer /dev/tty on POSIX to reliably prompt even when stdio is piped
     if (process.platform !== 'win32') {
-      const ttyIn = fs.createReadStream('/dev/tty');
-      const ttyOut = fs.createWriteStream('/dev/tty');
-      return readline.createInterface({ input: ttyIn, output: ttyOut });
+      try {
+        const ttyIn = fs.createReadStream('/dev/tty');
+        const ttyOut = fs.createWriteStream('/dev/tty');
+        return readline.createInterface({ input: ttyIn, output: ttyOut });
+      } catch { /* fall through to stdio */ }
     }
-    // Windows fallback: use default stdio if TTY, else fail and require -y
-    if (process.stdin.isTTY && process.stdout.isTTY) {
-      return readline.createInterface({ input: process.stdin, output: process.stdout });
-    }
-    return null;
+    // Fallback: use stdio even if not reported as a TTY (works in many dev shells/tsx)
+    return readline.createInterface({ input: process.stdin, output: process.stdout });
   } catch {
-    return null;
+    const readline = require('node:readline');
+    return readline.createInterface({ input: process.stdin, output: process.stdout });
   }
 }
 
