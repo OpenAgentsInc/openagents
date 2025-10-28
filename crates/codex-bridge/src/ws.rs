@@ -581,6 +581,18 @@ mod auth_tests {
         ws.close(None).await.ok();
     }
 
+    #[tokio::test]
+    async fn rejects_when_state_has_no_token_even_if_client_supplies_one() {
+        // Defensive: the production binary always provisions a token at startup,
+        // but ensure the handler still rejects when state carries an empty token.
+        let state = mk_state_with_token(None);
+        let (addr, _task) = spawn_server(state).await;
+        // Even with a supplied token, server should reject because expected is empty/open mode is disabled.
+        let url = format!("ws://{}/ws?token=anything", addr);
+        let res = tokio_tungstenite::connect_async(&url).await;
+        assert!(res.is_err(), "expected handshake to fail when server has no token configured");
+    }
+
     // No open mode: token is always required; covered by rejects_when_token_required_and_missing
 }
 
