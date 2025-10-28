@@ -73,6 +73,19 @@ function getVersion(cmd: string, args: string[] = ["--version"]): string | null 
   }
 }
 
+function parseSemver(s: string | null | undefined): [number, number, number] | null {
+  if (!s) return null;
+  const m = String(s).match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function cmpSemver(a: [number, number, number], b: [number, number, number]): number {
+  if (a[0] !== b[0]) return a[0] - b[0];
+  if (a[1] !== b[1]) return a[1] - b[1];
+  return a[2] - b[2];
+}
+
 function printEnvAssessment(repoRoot: string | null) {
   const header = chalk.bold("Environment assessment");
   const ok = (s: string) => chalk.green(`✔ ${s}`);
@@ -88,6 +101,7 @@ function printEnvAssessment(repoRoot: string | null) {
   const bunx = hasCmd('bunx');
   const npx = hasCmd('npx');
   const codex = hasCmd('codex');
+  const codexV = codex ? getVersion('codex', ['--version']) : null;
 
   console.log("");
   console.log(header);
@@ -107,7 +121,19 @@ function printEnvAssessment(repoRoot: string | null) {
     console.log("- " + warn("bun/npx missing; Convex CLI bootstrap may be skipped"));
   }
   if (codex) {
-    console.log("- " + ok("codex binary present"));
+    const minStr = process.env.TRICODER_MIN_CODEX || '0.50.0';
+    const have = codexV || '';
+    const haveT = parseSemver(codexV);
+    const minT = parseSemver(minStr);
+    const cmp = haveT && minT ? cmpSemver(haveT, minT) : 0;
+    if (!have) {
+      console.log("- " + warn("codex present (version unknown)"));
+    } else if (cmp < 0) {
+      const sev = haveT && cmpSemver(haveT, [0,30,0]) < 0 ? chalk.red : chalk.yellow;
+      console.log("- " + sev(`codex ${have} detected — recommended >= ${minStr}. Please upgrade: https://developers.openai.com/codex/cli`));
+    } else {
+      console.log("- " + ok(`codex ${have}`));
+    }
   } else {
     console.log("- " + bad("codex binary NOT detected"));
     console.log(chalk.red("Install Codex CLI: https://developers.openai.com/codex/cli"));
@@ -865,6 +891,15 @@ function startBridgeEventTail() {
             // Print richer details for common debug events
             if (t === 'bridge.control' && typeof obj.raw === 'string') {
               console.log(chalk.dim(`[bridge-control] raw=${obj.raw}`));
+              return;
+            }
+            if (t === 'bridge.convex_write') {
+              const op = obj.op || '';
+              const ok = obj.ok ? 'ok' : 'fail';
+              const kind = obj.kind || '';
+              const len = obj.len || 0;
+              const itemId = obj.itemId || '';
+              console.log(chalk.dim(`[convex-write] ${op} ${ok} kind=${kind} item=${itemId} len=${len}`));
               return;
             }
             if (t === 'bridge.ws_in' && typeof obj.preview === 'string') {
