@@ -11,8 +11,157 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+interface Env {
+  // Shared bearer for simple auth (set as a secret)
+  BROKER_KEY: string
+  // Cloudflare account + zone for API calls (set as secrets/vars)
+  CF_ACCOUNT_ID: string
+  CF_ZONE_ID: string
+  CF_API_TOKEN: string
+  // Base hostname for issued tunnels, e.g. "tunnel.openagents.com" (var)
+  TUNNEL_BASE_HOST?: string
+}
+
+type Json = Record<string, unknown> | Array<unknown> | string | number | boolean | null
+
+const json = (obj: Json, init: ResponseInit = {}) =>
+  new Response(JSON.stringify(obj), { status: 200, headers: { 'content-type': 'application/json' }, ...init })
+
+const notFound = () => new Response('not found', { status: 404 })
+const bad = (msg: string, code = 400) => json({ error: msg }, { status: code })
+
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
-	},
+  async fetch(request, env): Promise<Response> {
+    const url = new URL(request.url)
+    // Simple bearer auth for REST endpoints
+    if (!isAuthorized(request, env)) return new Response('unauthorized', { status: 401 })
+
+    try {
+      if (request.method === 'POST' && url.pathname === '/tunnels') {
+        const body = await safeBody(request)
+        const deviceHint = typeof body?.deviceHint === 'string' ? String(body.deviceHint) : undefined
+        const out = await createTunnelAndDns(env, deviceHint)
+        // IMPORTANT: return token here for Tricoder; do not log it; clients must treat it as secret.
+        return json(out)
+      }
+      if (request.method === 'GET' && /^\/tunnels\//.test(url.pathname)) {
+        const id = url.pathname.split('/')[2]
+        if (!id) return bad('missing tunnelId')
+        const out = await getTunnelStatus(env, id)
+        return json(out)
+      }
+      if (request.method === 'DELETE' && /^\/tunnels\//.test(url.pathname)) {
+        const id = url.pathname.split('/')[2]
+        if (!id) return bad('missing tunnelId')
+        await revokeTunnelAndDns(env, id)
+        return json({ ok: true })
+      }
+      return notFound()
+    } catch (e: any) {
+      return json({ error: String(e?.message || e) }, { status: 500 })
+    }
+  },
 } satisfies ExportedHandler<Env>;
+
+function isAuthorized(req: Request, env: Env): boolean {
+  try {
+    const h = req.headers.get('authorization') || ''
+    if (!h.startsWith('Bearer ')) return false
+    const token = h.slice(7).trim()
+    return !!token && !!env.BROKER_KEY && token === env.BROKER_KEY
+  } catch { return false }
+}
+
+async function safeBody(req: Request): Promise<any> {
+  try { return await req.json() } catch { return {} }
+}
+
+function randLabel(n = 10): string {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let out = ''
+  for (let i = 0; i < n; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)]
+  return out
+}
+
+async function createTunnelAndDns(env: Env, deviceHint?: string): Promise<{ tunnelId: string, hostname: string, token: string, createdAt: string }> {
+  const name = `tricoder-${deviceHint ? sanitize(deviceHint) + '-' : ''}${randLabel(6)}`.slice(0, 48)
+  const base = env.TUNNEL_BASE_HOST || 'tunnel.openagents.com'
+  // 1) Create tunnel
+  const tRes = await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'tunnels'], {
+    method: 'POST',
+    body: { name },
+  }).catch(async () => {
+    // Fallback to older endpoint path
+    return cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel'], { method: 'POST', body: { name } })
+  })
+  const tunnelId = String(tRes?.result?.id || tRes?.result?.tunnel_id || tRes?.id)
+  if (!tunnelId) throw new Error('failed to create tunnel')
+  // 2) Create/assign connector token
+  const tokRes = await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId, 'token'], { method: 'POST' }).catch(async () => {
+    return cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId, 'token'], { method: 'POST' })
+  })
+  const token = String(tokRes?.result?.token || tokRes?.token)
+  if (!token) throw new Error('failed to mint connector token')
+  // 3) DNS CNAME <label>.<base> -> <id>.cfargotunnel.com
+  const label = randLabel(10)
+  const hostname = `${label}.${base}`
+  const content = `${tunnelId}.cfargotunnel.com`
+  await ensureDnsCname(env, hostname, content)
+  const createdAt = new Date().toISOString()
+  return { tunnelId, hostname, token, createdAt }
+}
+
+async function getTunnelStatus(env: Env, tunnelId: string): Promise<Record<string, unknown>> {
+  const res = await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId], { method: 'GET' }).catch(async () => {
+    return cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId], { method: 'GET' })
+  })
+  const r = res?.result || res
+  const conns: any[] = r?.connections || r?.conns || []
+  const connected = Array.isArray(conns) && conns.length > 0
+  return { tunnelId, connected, connections: conns }
+}
+
+async function revokeTunnelAndDns(env: Env, tunnelId: string): Promise<void> {
+  // Delete DNS records pointing at <id>.cfargotunnel.com
+  const content = `${tunnelId}.cfargotunnel.com`
+  const dnsList = await cfApi(env, ['zones', env.CF_ZONE_ID, 'dns_records'], { method: 'GET', query: { type: 'CNAME', content } })
+  const items: any[] = dnsList?.result || []
+  for (const it of items) {
+    try { await cfApi(env, ['zones', env.CF_ZONE_ID, 'dns_records', String(it.id)], { method: 'DELETE' }) } catch {}
+  }
+  await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId], { method: 'DELETE' }).catch(async () => {
+    await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId], { method: 'DELETE' })
+  })
+}
+
+async function ensureDnsCname(env: Env, name: string, content: string): Promise<void> {
+  // If record already exists, do nothing; else create
+  const existing = await cfApi(env, ['zones', env.CF_ZONE_ID, 'dns_records'], { method: 'GET', query: { name, type: 'CNAME' } })
+  const found = (existing?.result || []).find((r: any) => r?.name === name)
+  if (found) return
+  await cfApi(env, ['zones', env.CF_ZONE_ID, 'dns_records'], {
+    method: 'POST',
+    body: { type: 'CNAME', name, content, ttl: 1, proxied: true },
+  })
+}
+
+async function cfApi(env: Env, path: string[], init: { method?: string, body?: any, query?: Record<string, string> }) {
+  const url = new URL('https://api.cloudflare.com/client/v4/')
+  url.pathname += path.map(encodeURIComponent).join('/')
+  if (init?.query) Object.entries(init.query).forEach(([k, v]) => url.searchParams.set(k, v))
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'authorization': `Bearer ${env.CF_API_TOKEN}`,
+  }
+  const res = await fetch(url, { method: init?.method || 'GET', headers, body: init?.body ? JSON.stringify(init.body) : undefined })
+  const data = await res.json<any>().catch(() => ({}))
+  if (!res.ok || data?.success === false) {
+    const msg = data?.errors?.[0]?.message || res.statusText || 'cf api error'
+    throw new Error(`cloudflare api: ${msg}`)
+  }
+  return data
+}
+
+function sanitize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '')
+}
