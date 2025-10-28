@@ -21,6 +21,7 @@ export default function Onboarding() {
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const [codeError, setCodeError] = React.useState<string>('')
+  const [inputDisabled, setInputDisabled] = React.useState<boolean>(false)
 
   // Derive Convex URL from bridge host (same logic as Settings)
   const derivedConvexUrl = React.useMemo(() => {
@@ -136,6 +137,7 @@ export default function Onboarding() {
             try { if (parsed?.token) setBridgeToken(parsed.token || '') } catch {}
             // Do not auto-connect on input; host/convex will be applied on Connect
           }}
+          editable={!connecting && !inputDisabled}
           autoCapitalize='none'
           autoCorrect={false}
           placeholder='paste code here'
@@ -143,7 +145,7 @@ export default function Onboarding() {
           style={[styles.input, { paddingRight: 44 }]}
         />
         {(() => {
-          const hasText = String(bridgeCode || '').trim().length > 0
+          const hasText = String(bridgeCodeInput || '').trim().length > 0
           return (
             <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
               <Pressable
@@ -177,7 +179,11 @@ export default function Onboarding() {
           if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
           if (parsed?.token) setBridgeToken(parsed.token || '')
           } catch {}
-          try { connect() } catch {}
+          try {
+            setInputDisabled(true)
+            setTimeout(() => setInputDisabled(false), 400)
+            connect()
+          } catch {}
         }}
         accessibilityRole='button'
         accessibilityState={{ busy: connecting }}

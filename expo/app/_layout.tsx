@@ -1,4 +1,5 @@
 import "@/utils/gestureHandler"
+import "@/utils/global-error"
 import { useQuery } from "convex/react"
 import * as Haptics from "expo-haptics"
 import { Stack, useRouter } from "expo-router"
@@ -28,6 +29,7 @@ import { useSettings } from "@/lib/settings-store"
 import { parseBridgeCode, normalizeBridgeCodeInput } from "@/lib/pairing"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 function DrawerContent() {
   const router = useRouter();
@@ -267,6 +269,7 @@ function DrawerWrapper() {
     );
   };
   return (
+    <ErrorBoundary catchErrors="always">
     <Drawer
       open={open}
       onOpen={() => setOpen(true)}
@@ -319,6 +322,7 @@ function DrawerWrapper() {
         ) : null}
       </View>
     </Drawer>
+    </ErrorBoundary>
   );
 }
 
@@ -339,8 +343,15 @@ function LinkingBootstrap() {
         try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
         try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
         try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
-        try { connect() } catch {}
-        try { router.push('/onboarding' as any) } catch {}
+        try {
+          InteractionManager.runAfterInteractions(() => {
+            try { connect() } catch {}
+            setTimeout(() => { try { router.push('/onboarding' as any) } catch {} }, 120)
+          })
+        } catch {
+          try { connect() } catch {}
+          try { router.push('/onboarding' as any) } catch {}
+        }
       } catch {}
     }
     try { Linking.getInitialURL().then((u) => { if (u) handleUrl(u) }).catch(() => {}) } catch {}
