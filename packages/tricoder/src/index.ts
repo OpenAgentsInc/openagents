@@ -8,7 +8,7 @@ import https from "node:https"
 import net from "node:net"
 import { dirname, join } from "node:path"
 import WebSocket from "ws"
-import { buildTunnelArgs } from "./args.js"
+// Bore tunnel args removed in Cloudflare named-only mode
 import AdmZip from "adm-zip"
 import qrcode from "qrcode-terminal"
 import * as QR from "qrcode"
@@ -25,6 +25,19 @@ const QR_MODE = (() => {
   const arg = process.argv.find((a) => a.startsWith('--qr='));
   const val = (arg ? arg.split('=')[1] : (process.env.TRICODER_QR || '')).toLowerCase();
   return val === 'code' ? 'code' : 'deeplink';
+})();
+// Cloudflare named tunnel configuration (named-only; no Quick Tunnel)
+const TUNNEL_HOST = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--tunnel-host='));
+  return (arg ? arg.split('=')[1] : (process.env.TRICODER_TUNNEL_HOST || 'tunnel.openagents.com')).trim();
+})();
+const TUNNEL_MODE = (() => {
+  // named | none (local-only). Default named unless explicitly disabled.
+  const arg = process.argv.find((a) => a.startsWith('--tunnel='));
+  const val = (arg ? arg.split('=')[1] : (process.env.TRICODER_TUNNEL_MODE || '')).toLowerCase();
+  if (LOCAL_ONLY) return 'none';
+  if (val === 'none' || val === 'named') return val;
+  return 'named';
 })();
 let CONVEX_DL_PCT = -1;
 
@@ -204,58 +217,20 @@ async function main() {
   // Ensure the Rust bridge is running locally (best effort)
   ensureBridgeRunning(repoRoot);
 
-  // Launch Bridge tunnel (local 8787)
-  const child = LOCAL_ONLY ? null : spawn("cargo", buildTunnelArgs(8787, "bore.pub"), {
-    cwd: repoRoot,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  let bridgeUrl: string | null = null;
-  let convexUrl: string | null = null;
+  // Named Cloudflare tunnel: compute public URLs directly and print pairing code.
+  const bridgeUrl = (TUNNEL_MODE === 'none')
+    ? 'ws://127.0.0.1:8787/ws'
+    : `wss://${TUNNEL_HOST}/ws`;
+  // Convex must run locally; no public Convex URL at this time
+  const convexUrl = 'http://127.0.0.1:7788';
   let printedCombined = false;
-  child?.stdout?.setEncoding("utf8");
-  child?.stdout?.on("data", (chunk: string) => {
-    const lines = chunk.split(/\r?\n/).filter(Boolean);
-    for (const line of lines) {
-      const isUrl = line.startsWith("ws://") || line.startsWith("wss://");
-      if (isUrl && !bridgeUrl) {
-        bridgeUrl = line.trim();
-        if (VERBOSE) console.log(chalk.dim(`[bridge-public] ${bridgeUrl}`));
-        // After bridge URL, launch Convex tunnel
-        if (!LOCAL_ONLY) launchConvexTunnel(repoRoot, (url) => {
-          convexUrl = url;
-          if (VERBOSE) console.log(chalk.dim(`[convex-public] ${convexUrl}`));
-          maybePrintPairCode(bridgeUrl!, convexUrl!);
-          // Public probes
-          if (VERBOSE) { try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch { } }
-          if (VERBOSE) { try { if (convexUrl) probePublicConvex(convexUrl); } catch { } }
-          // Connectivity summary
-          if (VERBOSE) console.log(chalk.dim(`[pair] bridge=${bridgeUrl} convex=${convexUrl}`));
-          // Seed a demo thread via bridge controls to ensure history appears
-          if (VERBOSE) { try { seedDemoViaBridgeControl(); } catch { } }
-        });
-        // Start local health probes (status changes only)
-        if (VERBOSE) startLocalProbes(repoRoot);
-      }
-    }
-  });
-  child?.stderr?.setEncoding("utf8");
-  // Aggregate noisy bore logs
-  let bridgeConnNew = 0, bridgeConnExit = 0;
-  setInterval(() => {
-    if (VERBOSE && (bridgeConnNew || bridgeConnExit)) {
-      console.log(chalk.dim(`[bridge-tunnel] ${bridgeConnNew} new, ${bridgeConnExit} exited (last 10s)`));
-      bridgeConnNew = 0; bridgeConnExit = 0;
-    }
-  }, 10000);
-  child?.stderr?.on("data", (chunk: string) => {
-    if (!VERBOSE) return;
-    for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
-      if (/bore_cli::client: new connection/.test(line)) { bridgeConnNew++; continue; }
-      if (/bore_cli::client: connection exited/.test(line)) { bridgeConnExit++; continue; }
-      console.error(chalk.dim(`[bridge-tunnel] ${line}`));
-    }
-  });
+  // Print once immediately
+  maybePrintPairCode(bridgeUrl, convexUrl);
+  if (VERBOSE) {
+    try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch { }
+    console.log(chalk.dim(`[pair] bridge=${bridgeUrl} convex=${convexUrl}`));
+    startLocalProbes(repoRoot);
+  }
 
   function maybePrintPairCode(b: string, c: string) {
     if (printedCombined) return;
@@ -264,7 +239,7 @@ async function main() {
     const payload = {
       v: 1,
       type: "openagents-bridge",
-      provider: "bore",
+      provider: "cloudflare",
       bridge: b,
       convex: c,
       token: readBridgeToken() as string | null,
@@ -371,11 +346,7 @@ function prebuildCrates(repoRoot: string) {
   if (r.status !== 0) {
     console.log(chalk.yellow("cargo build -p codex-bridge failed; will rely on on-demand build during run."));
   }
-  // Then oa-tunnel
-  r = run(['build', '-p', 'oa-tunnel']);
-  if (r.status !== 0) {
-    console.log(chalk.yellow("cargo build -p oa-tunnel failed; will rely on on-demand build during run."));
-  }
+  // oa-tunnel (bore) no longer required for Cloudflare named-only; skip prebuild
 }
 
 function ensureConvexBinaryWithProgress() {
@@ -548,45 +519,7 @@ async function tryStartConvexBackendIfNeeded(binPath: string): Promise<void> {
   try { spawn(binPath, args, { stdio: 'ignore' }); } catch {}
 }
 
-function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
-  // Run a second tunnel for Convex (local 7788). We'll emit an HTTP URL for override.
-  const child = spawn("cargo", buildTunnelArgs(7788, "bore.pub"), {
-    cwd: repoRoot,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  let printed = false;
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", (chunk: string) => {
-    const lines = chunk.split(/\r?\n/).filter(Boolean);
-    for (const line of lines) {
-      const m = line.match(/^ws:\/\/([^:]+):(\d+)\/ws$/);
-      if (m && !printed) {
-        printed = true;
-        const host = m[1];
-        const port = m[2];
-        const httpUrl = `http://${host}:${port}`;
-        onUrl(httpUrl);
-      }
-    }
-  });
-  child.stderr.setEncoding("utf8");
-  let convexConnNew = 0, convexConnExit = 0;
-  setInterval(() => {
-    if (VERBOSE && (convexConnNew || convexConnExit)) {
-      console.log(chalk.dim(`[convex-tunnel] ${convexConnNew} new, ${convexConnExit} exited (last 10s)`));
-      convexConnNew = 0; convexConnExit = 0;
-    }
-  }, 10000);
-  child.stderr.on("data", (chunk: string) => {
-    if (!VERBOSE) return;
-    for (const line of String(chunk).split(/\r?\n/).filter(Boolean)) {
-      if (/bore_cli::client: new connection/.test(line)) { convexConnNew++; continue; }
-      if (/bore_cli::client: connection exited/.test(line)) { convexConnExit++; continue; }
-      console.error(chalk.dim(`[convex-tunnel] ${line}`));
-    }
-  });
-}
+// No public Convex tunnel; Convex remains local on 127.0.0.1:7788
 
 function encodePairCode(obj: any): string {
   const json = JSON.stringify(obj);
