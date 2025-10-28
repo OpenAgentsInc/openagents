@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native'
+import { View, Text, StyleSheet, ActivityIndicator, Pressable, InteractionManager } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { useRouter } from 'expo-router'
 import { Colors } from '@/constants/theme'
@@ -39,8 +39,17 @@ export default function ScanScreen() {
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
     try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
-    try { connect() } catch {}
-    try { router.replace('/onboarding' as any) } catch {}
+    // Defer connect/navigation until after current interactions to avoid UIKit churn
+    try {
+      InteractionManager.runAfterInteractions(() => {
+        try { connect() } catch {}
+        // Small delay helps when dismissing modal camera before navigation
+        setTimeout(() => { try { router.replace('/onboarding' as any) } catch {} }, 120)
+      })
+    } catch {
+      try { connect() } catch {}
+      try { router.replace('/onboarding' as any) } catch {}
+    }
     return true
   }, [connect, router])
 

@@ -13,7 +13,7 @@ import { useRouter } from 'expo-router'
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
   const router = useRouter()
-  const { bridgeHost, setBridgeHost, connected, connect, disconnect } = useBridge()
+  const { bridgeHost, setBridgeHost, connected, connect, disconnect, connecting } = useBridge()
   const bridgeCode = useSettings((s) => s.bridgeCode)
   const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => String(bridgeCode || ''))
   const convexUrl = useSettings((s) => s.convexUrl)
@@ -80,8 +80,15 @@ export default function SettingsScreen() {
             if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
             if (parsed?.token) setBridgeToken(parsed.token || '')
             // Auto-connect when a valid host is present
-            try { if (parsed?.bridgeHost) connect() } catch {}
+            try {
+              if (parsed?.bridgeHost) {
+                setInputDisabled(true)
+                setTimeout(() => setInputDisabled(false), 400)
+                connect()
+              }
+            } catch {}
           }}
+          editable={!connecting && !inputDisabled}
           autoCapitalize='none'
           autoCorrect={false}
           placeholder='paste code here'
@@ -89,9 +96,9 @@ export default function SettingsScreen() {
           style={[styles.input, { paddingRight: 44 }]}
         />
         {(() => {
-          const hasText = String(bridgeCode || '').trim().length > 0
+          const hasText = String(bridgeCodeInput || '').trim().length > 0
           return (
-            <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
+            <View style={[styles.clearIconArea, { flexDirection: 'row' }]}> 
               <Pressable
                 onPress={() => { try { router.push('/scan' as any) } catch {} }}
                 accessibilityLabel='Scan QR code'
@@ -167,3 +174,4 @@ function StatusPill({ connected }: { connected: boolean }) {
     </View>
   )
 }
+  const [inputDisabled, setInputDisabled] = React.useState(false)

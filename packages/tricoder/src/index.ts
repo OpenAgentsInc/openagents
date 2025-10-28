@@ -276,21 +276,22 @@ async function main() {
     console.log("");
     if (!NO_QR) {
       const qrPayload = (QR_MODE === 'deeplink') ? deeplink : code;
-      // Preferred: inline PNG in iTerm2 (or when forced via TRICODER_QR_IMAGE=1)
-      const wantImg = shouldUseInlineImage();
-      if (wantImg) {
+      // Preferred: inline PNG. Support Kitty graphics protocol (Ghostty/kitty/WezTerm) and iTerm2 OSC 1337.
+      const imgMode = getInlineImageMode();
+      if (imgMode) {
         QR.toBuffer(qrPayload, { type: 'png', errorCorrectionLevel: 'L', margin: 1, scale: 6 })
           .then((buf: Buffer) => {
-            try { printItermInlineImage(buf, 'qr.png'); }
-            catch { printBrailleQR(qrPayload); }
+            try {
+              if (imgMode === 'kitty') printKittyInlineImage(buf);
+              else printItermInlineImage(buf, 'qr.png');
+            } catch {
+              try { printBrailleQR(qrPayload, 2) } catch { try { (qrcode as any).setErrorLevel?.('L') } catch {}; qrcode.generate(qrPayload, { small: true }) }
+            }
             console.log('');
           })
           .catch(() => {
-            try { printBrailleQR(qrPayload); }
-            catch {
-              try { (qrcode as any).setErrorLevel?.('L'); } catch {}
-              qrcode.generate(qrPayload, { small: true });
-            }
+            try { printBrailleQR(qrPayload, 2); }
+            catch { try { (qrcode as any).setErrorLevel?.('L') } catch {}; qrcode.generate(qrPayload, { small: true }); }
             console.log('');
           });
       } else {
@@ -1191,14 +1192,23 @@ function printBrailleQR(text: string, scaleCells: number = 1) {
   console.log(out.trimEnd());
 }
 
-function shouldUseInlineImage(): boolean {
+type ImageProtocol = 'iterm' | 'kitty';
+function getInlineImageMode(): ImageProtocol | null {
   const force = String(process.env.TRICODER_QR_IMAGE || '').trim() === '1';
-  if (force) return true;
   const prog = String(process.env.TERM_PROGRAM || '').toLowerCase();
-  // iTerm2 and WezTerm support iTerm inline images; kitty is not implemented here
-  if (prog.includes('iterm')) return true;
-  if (prog.includes('wezterm')) return true;
-  return false;
+  const term = String(process.env.TERM || '').toLowerCase();
+  const hasKitty = !!process.env.KITTY_WINDOW_ID || term.includes('xterm-kitty') || !!process.env.WEZTERM_EXECUTABLE || prog.includes('ghostty') || prog.includes('wezterm');
+  const hasIterm = prog.includes('iterm');
+  if (force) {
+    // Prefer kitty protocol when available (works for Ghostty/WezTerm/kitty)
+    if (hasKitty) return 'kitty';
+    if (hasIterm) return 'iterm';
+    // If forced but unknown, try kitty first — many modern macOS terminals support it
+    return 'kitty';
+  }
+  if (hasKitty) return 'kitty';
+  if (hasIterm) return 'iterm';
+  return null;
 }
 
 function printItermInlineImage(buf: Buffer, name: string = 'image.png') {
@@ -1207,4 +1217,16 @@ function printItermInlineImage(buf: Buffer, name: string = 'image.png') {
   const esc = `\u001b]1337;File=name=${b64Name};inline=1;width=auto;height=auto;preserveAspectRatio=1:${b64}\u0007`;
   // Print on its own line
   console.log(esc);
+}
+
+// Kitty graphics protocol inline PNG (works in kitty, WezTerm, Ghostty, etc.)
+function printKittyInlineImage(buf: Buffer) {
+  const b64 = buf.toString('base64');
+  // a=T (Transmit), f=100 (PNG), q=2 (dimensions in pixels if provided)
+  // We omit s/v so the terminal chooses a reasonable size; many terminals scale to cell size.
+  const start = "\u001b_G";
+  const end = "\u001b\\";
+  const payload = `a=T,f=100;${b64}`;
+  // Print and terminate with ST. Ensure a newline after for clean prompt.
+  process.stdout.write(start + payload + end + "\n");
 }
