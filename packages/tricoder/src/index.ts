@@ -279,7 +279,7 @@ async function main() {
       // Preferred: inline PNG in iTerm2 (or when forced via TRICODER_QR_IMAGE=1)
       const wantImg = shouldUseInlineImage();
       if (wantImg) {
-        QR.toBuffer(qrPayload, { type: 'png', errorCorrectionLevel: 'L', margin: 1, scale: 3 })
+        QR.toBuffer(qrPayload, { type: 'png', errorCorrectionLevel: 'L', margin: 1, scale: 6 })
           .then((buf: Buffer) => {
             try { printItermInlineImage(buf, 'qr.png'); }
             catch { printBrailleQR(qrPayload); }
@@ -294,7 +294,7 @@ async function main() {
             console.log('');
           });
       } else {
-        try { printBrailleQR(qrPayload) } catch { try { (qrcode as any).setErrorLevel?.('L') } catch {}; qrcode.generate(qrPayload, { small: true }) }
+        try { printBrailleQR(qrPayload, 2) } catch { try { (qrcode as any).setErrorLevel?.('L') } catch {}; qrcode.generate(qrPayload, { small: true }) }
         console.log('');
       }
     }
@@ -1158,7 +1158,7 @@ function readBridgeToken(): string | null {
   return null;
 }
 // Render a very compact QR using Unicode braille (2x4 dots per cell)
-function printBrailleQR(text: string) {
+function printBrailleQR(text: string, scaleCells: number = 1) {
   const qr: any = (QR as any).create(String(text || ''), { errorCorrectionLevel: 'L' });
   const mods = qr.modules || {};
   const size: number = mods.size || (Array.isArray(mods.data) ? (Array.isArray(mods.data[0]) ? mods.data.length : Math.sqrt(mods.data.length)) : 0);
@@ -1171,6 +1171,7 @@ function printBrailleQR(text: string) {
   const margin = 1;
   let out = '';
   for (let y = -margin; y < size + margin; y += 4) {
+    let line = '';
     for (let x = -margin; x < size + margin; x += 2) {
       let bits = 0;
       if (at(x + 0, y + 0)) bits |= 1 << 0; // 1
@@ -1181,9 +1182,12 @@ function printBrailleQR(text: string) {
       if (at(x + 1, y + 1)) bits |= 1 << 4; // 5
       if (at(x + 1, y + 2)) bits |= 1 << 5; // 6
       if (at(x + 1, y + 3)) bits |= 1 << 7; // 8
-      out += bits ? String.fromCodePoint(0x2800 + bits) : ' ';
+      const ch = bits ? String.fromCodePoint(0x2800 + bits) : ' ';
+      const hrep = Math.max(1, scaleCells);
+      for (let k = 0; k < hrep; k++) line += ch;
     }
-    out += '\n';
+    const vrep = Math.max(1, scaleCells);
+    for (let k = 0; k < vrep; k++) out += line + '\n';
   }
   console.log(out.trimEnd());
 }
