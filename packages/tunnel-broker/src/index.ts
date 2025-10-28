@@ -33,17 +33,18 @@ const bad = (msg: string, code = 400) => json({ error: msg }, { status: code })
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url)
-    // Simple bearer auth for REST endpoints
-    if (!isAuthorized(request, env)) return new Response('unauthorized', { status: 401 })
 
     try {
       if (request.method === 'POST' && url.pathname === '/tunnels') {
+        // One-command UX: allow public tunnel creation (no Authorization header required)
         const body = await safeBody(request)
         const deviceHint = typeof body?.deviceHint === 'string' ? String(body.deviceHint) : undefined
         const out = await createTunnelAndDns(env, deviceHint)
         // IMPORTANT: return token here for Tricoder; do not log it; clients must treat it as secret.
         return json(out)
       }
+      // All other endpoints require Authorization unless BROKER_KEY is unset
+      if (env.BROKER_KEY && !isAuthorized(request, env)) return new Response('unauthorized', { status: 401 })
       if (request.method === 'GET' && /^\/tunnels\//.test(url.pathname)) {
         const id = url.pathname.split('/')[2]
         if (!id) return bad('missing tunnelId')
@@ -56,6 +57,11 @@ export default {
         await revokeTunnelAndDns(env, id)
         return json({ ok: true })
       }
+      if (request.method === 'GET' && url.pathname === '/verify') {
+        const v = await cfApi(env, ['user', 'tokens', 'verify'], { method: 'GET' })
+        // Return limited fields for debugging scopes
+        return json({ success: true, token: { status: v?.result?.status, expires_on: v?.result?.expires_on, policies: v?.result?.policies } })
+      }
       return notFound()
     } catch (e: any) {
       return json({ error: String(e?.message || e) }, { status: 500 })
@@ -65,6 +71,7 @@ export default {
 
 function isAuthorized(req: Request, env: Env): boolean {
   try {
+    if (!env.BROKER_KEY) return true; // no key configured → open
     const h = req.headers.get('authorization') || ''
     if (!h.startsWith('Bearer ')) return false
     const token = h.slice(7).trim()
@@ -96,11 +103,24 @@ async function createTunnelAndDns(env: Env, deviceHint?: string): Promise<{ tunn
   })
   const tunnelId = String(tRes?.result?.id || tRes?.result?.tunnel_id || tRes?.id)
   if (!tunnelId) throw new Error('failed to create tunnel')
-  // 2) Create/assign connector token
-  const tokRes = await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId, 'token'], { method: 'POST' }).catch(async () => {
-    return cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId, 'token'], { method: 'POST' })
+  // 2) Create/assign connector token (API returns various shapes)
+  let tokRes = await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId, 'token'], { method: 'GET' }).catch(async () => {
+    return cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId, 'token'], { method: 'GET' })
   })
-  const token = String(tokRes?.result?.token || tokRes?.token)
+  let token: string | undefined
+  if (typeof tokRes?.result === 'string') token = tokRes.result
+  else if (typeof tokRes?.result?.token === 'string') token = tokRes.result.token
+  else if (typeof tokRes?.token === 'string') token = tokRes.token
+  else if (typeof tokRes?.result?.connector_token === 'string') token = tokRes.result.connector_token
+  // Some accounts require POST to mint/rotate a token
+  if (!token) {
+    tokRes = await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId, 'token'], { method: 'POST' }).catch(async () => {
+      return cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId, 'token'], { method: 'POST' })
+    })
+    if (typeof tokRes?.result === 'string') token = tokRes.result
+    else if (typeof tokRes?.result?.token === 'string') token = tokRes.result.token
+    else if (typeof tokRes?.token === 'string') token = tokRes.token
+  }
   if (!token) throw new Error('failed to mint connector token')
   // 3) DNS CNAME <label>.<base> -> <id>.cfargotunnel.com
   const label = randLabel(10)
@@ -149,15 +169,22 @@ async function cfApi(env: Env, path: string[], init: { method?: string, body?: a
   const url = new URL('https://api.cloudflare.com/client/v4/')
   url.pathname += path.map(encodeURIComponent).join('/')
   if (init?.query) Object.entries(init.query).forEach(([k, v]) => url.searchParams.set(k, v))
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    'authorization': `Bearer ${env.CF_API_TOKEN}`,
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  // Prefer API Token; fallback to Global API Key if provided
+  if (env.CF_API_TOKEN) headers['authorization'] = `Bearer ${env.CF_API_TOKEN}`
+  // @ts-ignore: allow optional binding
+  const anyEnv: any = env as any
+  if (anyEnv.CF_GLOBAL_API_KEY && anyEnv.CF_API_EMAIL) {
+    headers['x-auth-email'] = String(anyEnv.CF_API_EMAIL)
+    headers['x-auth-key'] = String(anyEnv.CF_GLOBAL_API_KEY)
   }
   const res = await fetch(url, { method: init?.method || 'GET', headers, body: init?.body ? JSON.stringify(init.body) : undefined })
   const data = await res.json<any>().catch(() => ({}))
   if (!res.ok || data?.success === false) {
     const msg = data?.errors?.[0]?.message || res.statusText || 'cf api error'
-    throw new Error(`cloudflare api: ${msg}`)
+    const code = data?.errors?.[0]?.code
+    const detail = data?.errors?.[0]?.error || undefined
+    throw new Error(`cloudflare api: ${msg}${code ? ` (code ${code})` : ''}${detail ? `: ${detail}` : ''}`)
   }
   return data
 }
