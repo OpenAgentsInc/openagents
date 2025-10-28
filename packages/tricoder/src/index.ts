@@ -276,13 +276,27 @@ async function main() {
     console.log("");
     if (!NO_QR) {
       const qrPayload = (QR_MODE === 'deeplink') ? deeplink : code;
-      try {
-        printBrailleQR(qrPayload);
-      } catch {
-        try { (qrcode as any).setErrorLevel?.('L') } catch {}
-        qrcode.generate(qrPayload, { small: true });
+      // Preferred: inline PNG in iTerm2 (or when forced via TRICODER_QR_IMAGE=1)
+      const wantImg = shouldUseInlineImage();
+      if (wantImg) {
+        QR.toBuffer(qrPayload, { type: 'png', errorCorrectionLevel: 'L', margin: 1, scale: 3 })
+          .then((buf: Buffer) => {
+            try { printItermInlineImage(buf, 'qr.png'); }
+            catch { printBrailleQR(qrPayload); }
+            console.log('');
+          })
+          .catch(() => {
+            try { printBrailleQR(qrPayload); }
+            catch {
+              try { (qrcode as any).setErrorLevel?.('L'); } catch {}
+              qrcode.generate(qrPayload, { small: true });
+            }
+            console.log('');
+          });
+      } else {
+        try { printBrailleQR(qrPayload) } catch { try { (qrcode as any).setErrorLevel?.('L') } catch {}; qrcode.generate(qrPayload, { small: true }) }
+        console.log('');
       }
-      console.log("");
     }
     console.log(lite("Deep link:"), chalk.cyan(deeplink));
     // Security notice
@@ -1172,4 +1186,22 @@ function printBrailleQR(text: string) {
     out += '\n';
   }
   console.log(out.trimEnd());
+}
+
+function shouldUseInlineImage(): boolean {
+  const force = String(process.env.TRICODER_QR_IMAGE || '').trim() === '1';
+  if (force) return true;
+  const prog = String(process.env.TERM_PROGRAM || '').toLowerCase();
+  // iTerm2 and WezTerm support iTerm inline images; kitty is not implemented here
+  if (prog.includes('iterm')) return true;
+  if (prog.includes('wezterm')) return true;
+  return false;
+}
+
+function printItermInlineImage(buf: Buffer, name: string = 'image.png') {
+  const b64Name = Buffer.from(name).toString('base64');
+  const b64 = buf.toString('base64');
+  const esc = `\u001b]1337;File=name=${b64Name};inline=1;width=auto;height=auto;preserveAspectRatio=1:${b64}\u0007`;
+  // Print on its own line
+  console.log(esc);
 }
