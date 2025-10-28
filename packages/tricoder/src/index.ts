@@ -236,8 +236,9 @@ function main() {
     console.log("");
     if (!NO_QR) {
       try {
-        // Render a compact QR of the deep link so the app opens directly
-        qrcode.generate(deeplink, { small: true });
+        // Make the QR smaller by encoding just the base64url code and using lower error correction
+        try { (qrcode as any).setErrorLevel?.('L') } catch {}
+        qrcode.generate(code, { small: true });
       } catch {}
       console.log("");
     }
