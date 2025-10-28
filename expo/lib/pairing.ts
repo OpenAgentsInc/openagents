@@ -80,3 +80,18 @@ export function parseBridgeCode(code: string): { bridgeHost?: string; convexUrl?
     return null
   }
 }
+
+// Normalize any scanned/pasted input into the base64url code for display.
+// - If input is a deep link like openagents://connect?j=<code>, return <code>.
+// - Otherwise return the trimmed input as-is.
+export function normalizeBridgeCodeInput(raw: string): string {
+  try {
+    const s = String(raw || '').trim()
+    if (!s) return ''
+    if (s.startsWith('openagents://') || s.startsWith('oa://')) {
+      try { const u = new URL(s); const j = u.searchParams.get('j') || u.searchParams.get('data') || ''; return j || s }
+      catch { return s }
+    }
+    return s
+  } catch { return String(raw || '').trim() }
+}

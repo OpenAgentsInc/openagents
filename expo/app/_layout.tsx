@@ -25,7 +25,7 @@ import { ProjectsProvider } from "@/providers/projects"
 import { SkillsProvider } from "@/providers/skills"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { useSettings } from "@/lib/settings-store"
-import { parseBridgeCode } from "@/lib/pairing"
+import { parseBridgeCode, normalizeBridgeCodeInput } from "@/lib/pairing"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
 
@@ -335,7 +335,7 @@ function LinkingBootstrap() {
       try {
         const parsed = parseBridgeCode(url)
         if (!parsed) return
-        try { setBridgeCode(url) } catch {}
+        try { setBridgeCode(normalizeBridgeCodeInput(url)) } catch {}
         try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
         try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
         try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
