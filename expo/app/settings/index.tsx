@@ -80,14 +80,7 @@ export default function SettingsScreen() {
             if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
             if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
             if (parsed?.token) setBridgeToken(parsed.token || '')
-            // Auto-connect when a valid host is present
-            try {
-              if (parsed?.bridgeHost) {
-                setInputDisabled(true)
-                setTimeout(() => setInputDisabled(false), 400)
-                connect()
-              }
-            } catch {}
+            // Do not auto-connect on input; user must press Connect
           }}
           editable={!connecting && !inputDisabled}
           autoCapitalize='none'

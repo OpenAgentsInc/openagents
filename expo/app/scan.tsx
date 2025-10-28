@@ -40,16 +40,8 @@ export default function ScanScreen() {
     try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
     // Defer connect/navigation until after current interactions to avoid UIKit churn
-    try {
-      InteractionManager.runAfterInteractions(() => {
-        try { connect() } catch {}
-        // Small delay helps when dismissing modal camera before navigation
-        setTimeout(() => { try { router.replace('/onboarding' as any) } catch {} }, 120)
-      })
-    } catch {
-      try { connect() } catch {}
-      try { router.replace('/onboarding' as any) } catch {}
-    }
+    // Do not auto-connect on scan; route to onboarding and let user press Connect
+    try { router.replace('/onboarding' as any) } catch {}
     return true
   }, [connect, router])
 
