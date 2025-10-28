@@ -1023,7 +1023,7 @@ function destructiveReset(): Promise<void> {
   console.log(chalk.yellow("\nDanger: This will delete local OpenAgents clones, the Convex local backend binary, and local Convex data."));
   if (!ASSUME_YES) {
     return promptYesNoTTY("Proceed with full reset? [y/N] ").then((ans) => {
-      if (!ans) { console.log("Aborted."); return; }
+      if (!ans) { console.log("Aborted."); try { process.stdin.pause(); } catch {}; process.exit(0); return; }
       runDelete(paths);
     });
   } else {
@@ -1036,22 +1036,24 @@ function promptYesNoTTY(question: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const rl = tryOpenTTYReadline();
     if (rl) {
+      const anyRl = rl as any;
       rl.question(question, (ans: string) => {
         try { rl.close(); } catch {}
+        try { anyRl.__ttyIn?.destroy?.(); anyRl.__ttyOut?.end?.(); anyRl.__ttyOut?.destroy?.(); } catch {}
         resolve(/^y(es)?$/i.test(String(ans || '').trim()));
       });
       return;
     }
     // Hard fallback: use stdio even if not a TTY, and keep the process alive
-    try {
-      process.stdout.write(question);
-    } catch {}
+    try { process.stdout.write(question); } catch {}
     try { process.stdin.setEncoding('utf8'); } catch {}
     try { (process.stdin as any).resume?.(); } catch {}
-    process.stdin.once('data', (buf: Buffer | string) => {
+    const onData = (buf: Buffer | string) => {
       const s = String(buf || '').trim();
+      try { process.stdin.pause(); } catch {}
       resolve(/^y(es)?$/i.test(s));
-    });
+    };
+    process.stdin.once('data', onData);
   });
 }
 
@@ -1063,11 +1065,12 @@ function tryOpenTTYReadline(): any | null {
       try {
         const ttyIn = fs.createReadStream('/dev/tty');
         const ttyOut = fs.createWriteStream('/dev/tty');
-        return readline.createInterface({ input: ttyIn, output: ttyOut });
+        const rl = readline.createInterface({ input: ttyIn, output: ttyOut });
+        (rl as any).__ttyIn = ttyIn; (rl as any).__ttyOut = ttyOut;
+        return rl;
       } catch { /* ignore */ }
     }
     if (process.stdin && process.stdout) {
-      const readline = require('node:readline');
       return readline.createInterface({ input: process.stdin, output: process.stdout });
     }
     return null;
@@ -1092,6 +1095,8 @@ function runDelete(paths: Array<{ path: string; desc: string }>) {
     }
   }
   console.log(chalk.greenBright("Done. You can re-run `npx tricoder` for a fresh setup."));
+  try { process.stdin.pause(); } catch {}
+  process.exit(0);
 }
 
 function rmrf(target: string) {
