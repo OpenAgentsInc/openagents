@@ -90,17 +90,23 @@ export default function SettingsScreen() {
         />
         {(() => {
           const hasText = String(bridgeCode || '').trim().length > 0
-          if (hasText) {
-            return (
-              <Pressable onPress={() => { try { disconnect() } catch {}; setBridgeCode(''); setBridgeHost(''); setConvexUrl(''); }} accessibilityLabel='Clear bridge code' style={styles.clearIconArea}>
+          return (
+            <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
+              <Pressable
+                onPress={() => { try { router.push('/scan' as any) } catch {} }}
+                accessibilityLabel='Scan QR code'
+                style={{ opacity: hasText ? 0 : 1, pointerEvents: hasText ? 'none' as any : 'auto' }}
+              >
+                <Ionicons name='qr-code-outline' size={16} color={Colors.secondary} />
+              </Pressable>
+              <Pressable
+                onPress={() => { try { disconnect() } catch {}; setBridgeCode(''); setBridgeHost(''); setConvexUrl(''); }}
+                accessibilityLabel='Clear bridge code'
+                style={{ position: 'absolute', right: 0, opacity: hasText ? 1 : 0, pointerEvents: hasText ? 'auto' as any : 'none' }}
+              >
                 <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
               </Pressable>
-            )
-          }
-          return (
-            <Pressable onPress={() => { try { router.push('/scan' as any) } catch {} }} accessibilityLabel='Scan QR code' style={styles.clearIconArea}>
-              <Ionicons name='qr-code-outline' size={16} color={Colors.secondary} />
-            </Pressable>
+            </View>
           )
         })()}
       </View>
