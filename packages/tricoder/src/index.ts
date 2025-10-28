@@ -298,7 +298,6 @@ async function main() {
         console.log('');
       }
     }
-    console.log(lite("Deep link:"), chalk.cyan(deeplink));
     // Security notice
     console.log(chalk.yellowBright("\nWarning: This code is your private bridge token — never share it with anyone."));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
