@@ -1021,6 +1021,10 @@ function destructiveReset(): Promise<void> {
     { path: join(home, ".openagents", "convex"), desc: "Convex local data + storage" },
   ];
   console.log(chalk.yellow("\nDanger: This will delete local OpenAgents clones, the Convex local backend binary, and local Convex data."));
+  // First, attempt to stop listeners on common ports so reruns are clean
+  try { killListeners(8787) } catch {}
+  try { killListeners(7788) } catch {}
+
   if (!ASSUME_YES) {
     return promptYesNoTTY("Proceed with full reset? [y/N] ").then((ans) => {
       if (!ans) { console.log("Aborted."); try { process.stdin.pause(); } catch {}; process.exit(0); return; }
@@ -1097,6 +1101,18 @@ function runDelete(paths: Array<{ path: string; desc: string }>) {
   console.log(chalk.greenBright("Done. You can re-run `npx tricoder` for a fresh setup."));
   try { process.stdin.pause(); } catch {}
   process.exit(0);
+}
+
+function killListeners(port: number) {
+  try {
+    if (process.platform === 'darwin' || process.platform === 'linux') {
+      const out = spawnSync('lsof', ['-i', `:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8' });
+      const pids = String(out.stdout || '').split(/\s+/).filter(Boolean);
+      for (const pid of pids) {
+        try { process.kill(Number(pid), 'SIGTERM'); if (VERBOSE) console.log(chalk.dim(`[delete] killed pid ${pid} on :${port}`)) } catch {}
+      }
+    }
+  } catch {}
 }
 
 function rmrf(target: string) {
