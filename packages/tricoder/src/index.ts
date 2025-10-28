@@ -20,9 +20,10 @@ const LOCAL_ONLY = process.argv.includes("--local-only") || process.env.TRICODER
 const NO_QR = process.argv.includes("--no-qr") || process.env.TRICODER_NO_QR === "1";
 const QR_MODE = (() => {
   // --qr=deeplink | --qr=code (env: TRICODER_QR)
+  // Default is 'code' (smaller QR), use --qr=deeplink for OS camera
   const arg = process.argv.find((a) => a.startsWith('--qr='));
   const val = (arg ? arg.split('=')[1] : (process.env.TRICODER_QR || '')).toLowerCase();
-  return val === 'code' ? 'code' : 'deeplink';
+  return val === 'deeplink' ? 'deeplink' : 'code';
 })();
 let CONVEX_DL_PCT = -1;
 
