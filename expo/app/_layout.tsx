@@ -343,15 +343,8 @@ function LinkingBootstrap() {
         try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
         try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
         try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
-        try {
-          InteractionManager.runAfterInteractions(() => {
-            try { connect() } catch {}
-            setTimeout(() => { try { router.push('/onboarding' as any) } catch {} }, 120)
-          })
-        } catch {
-          try { connect() } catch {}
-          try { router.push('/onboarding' as any) } catch {}
-        }
+        // Do not auto-connect on deep link; route to onboarding and let user press Connect
+        try { router.push('/onboarding' as any) } catch {}
       } catch {}
     }
     try { Linking.getInitialURL().then((u) => { if (u) handleUrl(u) }).catch(() => {}) } catch {}
