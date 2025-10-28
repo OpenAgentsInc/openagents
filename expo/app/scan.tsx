@@ -18,8 +18,10 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions()
   const [scanned, setScanned] = React.useState(false)
   const [cameraPaused, setCameraPaused] = React.useState(false)
+  const [usingModal, setUsingModal] = React.useState<boolean>(false)
 
   React.useEffect(() => {
+    try { setUsingModal(!!(CameraView as any).isModernBarcodeScannerAvailable) } catch { setUsingModal(false) }
     if (!permission) { requestPermission().catch(() => {}) }
   }, [])
 
@@ -36,6 +38,38 @@ export default function ScanScreen() {
     return true
   }, [connect, router])
 
+  if (usingModal) {
+    React.useEffect(() => {
+      let cancelled = false
+      let sub: any = null
+      const run = async () => {
+        try {
+          await (CameraView as any).launchScanner?.({})
+          sub = (CameraView as any).onModernBarcodeScanned?.((evt: any) => {
+            if (cancelled || scanned) return
+            setScanned(true)
+            const data = String((evt && (evt.data || evt.rawValue || evt.text)) || '')
+            const ok = handleData(data)
+            try { (CameraView as any).dismissScanner?.() } catch {}
+            if (!ok) {
+              setTimeout(async () => {
+                setScanned(false)
+                try { await (CameraView as any).launchScanner?.({}) } catch {}
+              }, 400)
+            }
+          })
+        } catch {}
+      }
+      run()
+      return () => { cancelled = true; try { (CameraView as any).dismissScanner?.() } catch {}; try { sub && sub.remove && sub.remove() } catch {} }
+    }, [])
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={Colors.foreground} />
+        <Text style={styles.hint}>Opening scanner…</Text>
+      </View>
+    )
+  }
   if (!permission) {
     return (
       <View style={styles.center}>
