@@ -22,7 +22,7 @@ Flags
     - ~/.openagents/openagents (auto‑cloned repo)
     - ~/.openagents/bin/local_backend (Convex local backend binary)
     - ~/.openagents/convex (local DB + storage)
-  - Combine with -y to skip confirmation.
+  - Use `-y` to confirm non‑interactively (required in some npx environments with no TTY).
 
 Notes
 - Codex CLI
@@ -30,4 +30,3 @@ Notes
 - Convex
   - Tricoder supervises a local Convex backend and pushes functions automatically.
   - If Bun is unavailable, it falls back to npx convex dev one‑shot.
-
