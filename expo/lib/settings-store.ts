@@ -48,18 +48,25 @@ export const useSettings = create<SettingsState>()(
       setAttachPreface: (v) => set({ attachPreface: v }),
     }),
     {
-      name: '@openagents/settings-v1',
-      version: 1,
+      name: '@openagents/settings-v2',
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
       // Migrate possible legacy payloads from providers/ws.tsx (stringified object)
-      migrate: (persisted: any, _from) => {
+      migrate: (persisted: any, from) => {
         try {
-          // If persisted is an object with keys from SettingsState, return as-is
-          if (persisted && typeof persisted === 'object' && 'bridgeHost' in persisted) {
-            return persisted
+          const obj = (persisted && typeof persisted === 'object') ? { ...persisted } : persisted
+          if (!obj || typeof obj !== 'object') return persisted
+          const host = String(obj.bridgeHost || '').trim()
+          if (/\bbore(\.pub)?\b/.test(host) || host.startsWith('ws://bore') || host.includes('bore.pub')) {
+            obj.bridgeHost = ''
+            obj.bridgeCode = ''
+            obj.bridgeToken = ''
+            obj.bridgeAutoReconnect = false
           }
-        } catch {}
-        return persisted
+          return obj
+        } catch {
+          return persisted
+        }
       },
     }
   )
