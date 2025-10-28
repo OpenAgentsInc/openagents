@@ -61,14 +61,14 @@ export default function Onboarding() {
     } catch { setHttpStatus('error') }
     return () => { cancelled = true }
   }, [convexUrl, derivedConvexUrl])
-  // Validate code on change; do not mutate host/convex or connect automatically
+  // Validate the current input only; do not mutate host/convex or connect automatically
   React.useEffect(() => {
-    const trimmed = String(bridgeCode || '').trim()
+    const trimmed = String(bridgeCodeInput || '').trim()
     if (!trimmed) { setCodeError(''); return }
     const parsed = parseBridgeCode(trimmed)
     if (!parsed || !parsed.bridgeHost) setCodeError('Invalid bridge code')
     else setCodeError('')
-  }, [bridgeCode])
+  }, [bridgeCodeInput])
   React.useEffect(() => {
     if (httpStatus) { try { console.log('[onboarding] httpStatus:', httpStatus) } catch {} }
   }, [httpStatus])
@@ -88,7 +88,7 @@ export default function Onboarding() {
     return 'Disconnected'
   })()
 
-  const trimmedCode = React.useMemo(() => String(bridgeCode || '').trim(), [bridgeCode])
+  const trimmedCode = React.useMemo(() => String(bridgeCodeInput || '').trim(), [bridgeCodeInput])
   const likelyCode = React.useMemo(() => {
     if (!trimmedCode) return false
     if (trimmedCode.startsWith('openagents://') || trimmedCode.startsWith('oa://') || trimmedCode.startsWith('{')) {
