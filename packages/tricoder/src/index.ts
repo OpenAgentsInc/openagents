@@ -10,11 +10,13 @@ import { dirname, join } from "node:path"
 import WebSocket from "ws"
 import { buildTunnelArgs } from "./args.js"
 import AdmZip from "adm-zip"
+import qrcode from "qrcode-terminal"
 
 // spawnSync already imported above
 const VERBOSE = process.argv.includes("--verbose") || process.argv.includes("-v") || process.env.TRICODER_VERBOSE === "1";
 const ASSUME_YES = process.argv.includes("--yes") || process.argv.includes("-y") || process.env.TRICODER_YES === "1";
 const LOCAL_ONLY = process.argv.includes("--local-only") || process.env.TRICODER_LOCAL_ONLY === "1";
+const NO_QR = process.argv.includes("--no-qr") || process.env.TRICODER_NO_QR === "1";
 let CONVEX_DL_PCT = -1;
 
 function lite(s: string) { return chalk.hex('#9CA3AF')(s); }
@@ -228,8 +230,18 @@ function main() {
       token: null as string | null,
     };
     const code = encodePairCode(payload);
-    console.log("\nPaste this code into the mobile app Settings → Bridge Code:\n");
+    const deeplink = `openagents://connect?j=${code}`;
+    console.log("\nPaste this code into the mobile app Settings → Bridge Code, or scan the QR below:\n");
     console.log(chalk.greenBright(code));
+    console.log("");
+    if (!NO_QR) {
+      try {
+        // Render a compact QR of the deep link so the app opens directly
+        qrcode.generate(deeplink, { small: true });
+      } catch {}
+      console.log("");
+    }
+    console.log(lite("Deep link:"), chalk.cyan(deeplink));
     // Security notice
     console.log(chalk.yellowBright("\nWarning: This code is your private bridge token — never share it with anyone."));
     console.log("\nTunnel is active. Leave this running to stay connected.\n");
@@ -408,6 +420,8 @@ async function directDownloadConvexBackend(outBin: string): Promise<boolean> {
     try { chmodSync(outBin, 0o755); } catch {}
     try { process.stdout.write("\r\x1b[K"); } catch {}
     console.log(chalk.greenBright("✔ Convex backend installed."));
+    // Opportunistically start the backend now so the spinner can turn healthy
+    try { await tryStartConvexBackendIfNeeded(outBin); } catch {}
     return true;
   } catch {
     return false;
@@ -452,6 +466,29 @@ async function downloadWithProgress(url: string, dest: string, onPct: (pct: numb
     });
     req.on('error', reject);
   });
+}
+
+async function tryStartConvexBackendIfNeeded(binPath: string): Promise<void> {
+  const healthy = await new Promise<boolean>((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port: 7788, path: '/instance_version', timeout: 1200 }, (res) => {
+      resolve(!!res.statusCode && res.statusCode >= 200 && res.statusCode < 300);
+      res.resume();
+    });
+    req.on('error', () => resolve(false));
+  });
+  if (healthy) return;
+  const db = join(os.homedir(), '.openagents', 'convex', 'data.sqlite3');
+  const storage = join(os.homedir(), '.openagents', 'convex', 'storage');
+  try { mkdirSync(join(os.homedir(), '.openagents', 'convex'), { recursive: true }); } catch {}
+  const args = [
+    db,
+    '--db', 'sqlite',
+    '--interface', '0.0.0.0',
+    '--port', '7788',
+    '--local-storage', storage,
+    '--disable-beacon',
+  ];
+  try { spawn(binPath, args, { stdio: 'ignore' }); } catch {}
 }
 
 function launchConvexTunnel(repoRoot: string, onUrl: (url: string) => void) {
