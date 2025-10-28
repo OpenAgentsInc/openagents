@@ -33,7 +33,8 @@ export const useSettings = create<SettingsState>()(
       bridgeCode: '',
       convexUrl: '',
       bridgeToken: '',
-      bridgeAutoReconnect: true,
+      // Do not auto-reconnect until the user explicitly presses Connect
+      bridgeAutoReconnect: false,
       readOnly: false,
       networkEnabled: true,
       approvals: 'never',
