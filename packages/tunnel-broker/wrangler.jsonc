@@ -7,7 +7,7 @@
 	"name": "tunnel-broker",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-10-24",
-	"vars": { "TUNNEL_BASE_HOST": "tunnel.openagents.com" },
+	"vars": { "TUNNEL_HOST_SUFFIX": "openagents.com", "TUNNEL_HOST_PREFIX": "tunnel-" },
 	"routes": [
 		{ "pattern": "tunnel.openagents.com", "custom_domain": true }
 	],

@@ -18,8 +18,10 @@ interface Env {
   CF_ACCOUNT_ID: string
   CF_ZONE_ID: string
   CF_API_TOKEN: string
-  // Base hostname for issued tunnels, e.g. "tunnel.openagents.com" (var)
-  TUNNEL_BASE_HOST?: string
+  // Base DNS suffix for issued hostnames (must be covered by Universal SSL wildcard), e.g. "openagents.com"
+  TUNNEL_HOST_SUFFIX?: string
+  // Optional prefix for hostnames to avoid collisions, e.g. "tunnel-"
+  TUNNEL_HOST_PREFIX?: string
 }
 
 type Json = Record<string, unknown> | Array<unknown> | string | number | boolean | null
@@ -92,7 +94,8 @@ function randLabel(n = 10): string {
 
 async function createTunnelAndDns(env: Env, deviceHint?: string): Promise<{ tunnelId: string, hostname: string, token: string, createdAt: string }> {
   const name = `tricoder-${deviceHint ? sanitize(deviceHint) + '-' : ''}${randLabel(6)}`.slice(0, 48)
-  const base = env.TUNNEL_BASE_HOST || 'tunnel.openagents.com'
+  const suffix = env.TUNNEL_HOST_SUFFIX || 'openagents.com'
+  const prefix = env.TUNNEL_HOST_PREFIX || 'tunnel-'
   // 1) Create tunnel
   const tRes = await cfApi(env, ['accounts', env.CF_ACCOUNT_ID, 'tunnels'], {
     method: 'POST',
@@ -123,10 +126,12 @@ async function createTunnelAndDns(env: Env, deviceHint?: string): Promise<{ tunn
   }
   if (!token) throw new Error('failed to mint connector token')
   // 3) DNS CNAME <label>.<base> -> <id>.cfargotunnel.com
-  const label = randLabel(10)
-  const hostname = `${label}.${base}`
+  const label = prefix + randLabel(10)
+  const hostname = `${label}.${suffix}`
   const content = `${tunnelId}.cfargotunnel.com`
   await ensureDnsCname(env, hostname, content)
+  // 4) Configure ingress so the hostname routes to the local bridge on 8787
+  await setTunnelIngress(env, tunnelId, hostname).catch(() => {})
   const createdAt = new Date().toISOString()
   return { tunnelId, hostname, token, createdAt }
 }
@@ -163,6 +168,25 @@ async function ensureDnsCname(env: Env, name: string, content: string): Promise<
     method: 'POST',
     body: { type: 'CNAME', name, content, ttl: 1, proxied: true },
   })
+}
+
+async function setTunnelIngress(env: Env, tunnelId: string, hostname: string): Promise<void> {
+  const ingress = [
+    { hostname, service: 'http://localhost:8787' },
+    { service: 'http_status:404' },
+  ]
+  // Try new endpoint (tunnels) then legacy (cfd_tunnel), trying PUT then PATCH then POST
+  const tryPaths: Array<[string[], string]> = [
+    [['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId, 'configurations'], 'PUT'],
+    [['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId, 'configurations'], 'PATCH'],
+    [['accounts', env.CF_ACCOUNT_ID, 'tunnels', tunnelId, 'configurations'], 'POST'],
+    [['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId, 'configurations'], 'PUT'],
+    [['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId, 'configurations'], 'PATCH'],
+    [['accounts', env.CF_ACCOUNT_ID, 'cfd_tunnel', tunnelId, 'configurations'], 'POST'],
+  ]
+  for (const [p, m] of tryPaths) {
+    try { await cfApi(env, p, { method: m, body: { ingress } }); return } catch {}
+  }
 }
 
 async function cfApi(env: Env, path: string[], init: { method?: string, body?: any, query?: Record<string, string> }) {
