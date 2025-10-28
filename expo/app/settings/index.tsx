@@ -14,6 +14,7 @@ export default function SettingsScreen() {
   useHeaderTitle('Settings')
   const router = useRouter()
   const { bridgeHost, setBridgeHost, connected, connect, disconnect, connecting } = useBridge()
+  const [inputDisabled, setInputDisabled] = React.useState(false)
   const bridgeCode = useSettings((s) => s.bridgeCode)
   const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => String(bridgeCode || ''))
   const convexUrl = useSettings((s) => s.convexUrl)
@@ -174,4 +175,3 @@ function StatusPill({ connected }: { connected: boolean }) {
     </View>
   )
 }
-  const [inputDisabled, setInputDisabled] = React.useState(false)
