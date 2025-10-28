@@ -11,6 +11,7 @@ import WebSocket from "ws"
 import { buildTunnelArgs } from "./args.js"
 import AdmZip from "adm-zip"
 import qrcode from "qrcode-terminal"
+import * as QR from "qrcode"
 import fs from "node:fs"
 
 // spawnSync already imported above
@@ -274,16 +275,13 @@ async function main() {
     console.log(chalk.greenBright(code));
     console.log("");
     if (!NO_QR) {
+      const qrPayload = (QR_MODE === 'deeplink') ? deeplink : code;
       try {
-        // Prefer deep link QR so OS camera apps can open the app directly.
-        // For smaller QR (app scanner only), pass --qr=code or TRICODER_QR=code.
+        printBrailleQR(qrPayload);
+      } catch {
         try { (qrcode as any).setErrorLevel?.('L') } catch {}
-        if (QR_MODE === 'code') {
-          qrcode.generate(code, { small: true });
-        } else {
-          qrcode.generate(deeplink, { small: true });
-        }
-      } catch {}
+        qrcode.generate(qrPayload, { small: true });
+      }
       console.log("");
     }
     console.log(lite("Deep link:"), chalk.cyan(deeplink));
@@ -1144,4 +1142,34 @@ function readBridgeToken(): string | null {
     if (typeof t === 'string' && t.length > 0) return t;
   } catch {}
   return null;
+}
+// Render a very compact QR using Unicode braille (2x4 dots per cell)
+function printBrailleQR(text: string) {
+  const qr: any = (QR as any).create(String(text || ''), { errorCorrectionLevel: 'L' });
+  const mods = qr.modules || {};
+  const size: number = mods.size || (Array.isArray(mods.data) ? (Array.isArray(mods.data[0]) ? mods.data.length : Math.sqrt(mods.data.length)) : 0);
+  if (!size) throw new Error('qr size unknown');
+  const at = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= size || y >= size) return false;
+    if (Array.isArray(mods.data?.[0])) return !!mods.data[y][x];
+    return !!mods.data[y * size + x];
+  };
+  const margin = 1;
+  let out = '';
+  for (let y = -margin; y < size + margin; y += 4) {
+    for (let x = -margin; x < size + margin; x += 2) {
+      let bits = 0;
+      if (at(x + 0, y + 0)) bits |= 1 << 0; // 1
+      if (at(x + 0, y + 1)) bits |= 1 << 1; // 2
+      if (at(x + 0, y + 2)) bits |= 1 << 2; // 3
+      if (at(x + 0, y + 3)) bits |= 1 << 6; // 7
+      if (at(x + 1, y + 0)) bits |= 1 << 3; // 4
+      if (at(x + 1, y + 1)) bits |= 1 << 4; // 5
+      if (at(x + 1, y + 2)) bits |= 1 << 5; // 6
+      if (at(x + 1, y + 3)) bits |= 1 << 7; // 8
+      out += bits ? String.fromCodePoint(0x2800 + bits) : ' ';
+    }
+    out += '\n';
+  }
+  console.log(out.trimEnd());
 }
