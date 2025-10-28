@@ -56,7 +56,7 @@ export default function ScanScreen() {
   // Modal scanner effect must not be declared conditionally; gate inside
   React.useEffect(() => {
     if (!usingModal) return
-    let cancelled = False
+    let cancelled = false
     let sub: any = null
     const run = async () => {
       try {
