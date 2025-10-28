@@ -39,6 +39,17 @@ const TUNNEL_MODE = (() => {
   if (val === 'none' || val === 'named') return val;
   return 'named';
 })();
+
+// Broker integration (multi-user). When provided, we mint per-device tunnels via the broker.
+const BROKER_URL = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--broker='));
+  const v = (arg ? arg.split('=')[1] : (process.env.TRICODER_BROKER || 'https://tunnel.openagents.com')).trim();
+  return v || 'https://tunnel.openagents.com';
+})();
+const BROKER_KEY = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--broker-key='));
+  return (arg ? arg.split('=')[1] : (process.env.TRICODER_BROKER_KEY || '')).trim();
+})();
 let CONVEX_DL_PCT = -1;
 
 function lite(s: string) { return chalk.hex('#9CA3AF')(s); }
@@ -217,14 +228,29 @@ async function main() {
   // Ensure the Rust bridge is running locally (best effort)
   ensureBridgeRunning(repoRoot);
 
-  // Named Cloudflare tunnel: compute public URLs directly and print pairing code.
-  const bridgeUrl = (TUNNEL_MODE === 'none')
-    ? 'ws://127.0.0.1:8787/ws'
-    : `wss://${TUNNEL_HOST}/ws`;
-  // Convex must run locally; no public Convex URL at this time
+  // Multi-user broker path
+  let bridgeUrl = '';
   const convexUrl = 'http://127.0.0.1:7788';
   let printedCombined = false;
-  // Print once immediately
+
+  if (BROKER_URL && BROKER_KEY && TUNNEL_MODE !== 'none') {
+    if (VERBOSE) console.log(chalk.dim(`[broker] requesting per-device tunnel from ${BROKER_URL}`));
+    const cloudOk = await ensureCloudflared();
+    if (!cloudOk) {
+      console.log(chalk.red('✘ Failed to install cloudflared automatically. Please install it and re-run.'));
+      process.exit(1);
+    }
+    const creds = await brokerCreateTunnel(BROKER_URL, BROKER_KEY).catch((e) => { console.log(chalk.red(`✘ Broker error: ${e?.message || e}`)); return null; });
+    if (!creds || !creds.hostname || !creds.token) { console.log(chalk.red('✘ Broker did not return tunnel credentials.')); process.exit(1); }
+    saveTunnelCreds(creds);
+    startCloudflared(creds.token);
+    bridgeUrl = `wss://${creds.hostname}/ws`;
+  } else {
+    // Named Cloudflare tunnel: compute from configured host (requires operator to run cloudflared separately)
+    bridgeUrl = (TUNNEL_MODE === 'none') ? 'ws://127.0.0.1:8787/ws' : `wss://${TUNNEL_HOST}/ws`;
+  }
+
+  // Print pairing once
   maybePrintPairCode(bridgeUrl, convexUrl);
   if (VERBOSE) {
     try { if (bridgeUrl) probePublicBridge(bridgeUrl); } catch { }
@@ -525,6 +551,130 @@ function encodePairCode(obj: any): string {
   const json = JSON.stringify(obj);
   const b64 = Buffer.from(json, "utf8").toString("base64");
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+type BrokerTunnel = { tunnelId: string; hostname: string; token: string; createdAt?: string }
+
+function postJson(urlStr: string, body: any, headers: Record<string, string>): Promise<any> {
+  return new Promise((resolve, reject) => {
+    try {
+      const u = new URL(urlStr);
+      const isHttps = u.protocol === 'https:';
+      const opts: any = {
+        method: 'POST',
+        hostname: u.hostname,
+        port: Number(u.port || (isHttps ? 443 : 80)),
+        path: u.pathname + (u.search || ''),
+        headers: { 'content-type': 'application/json', ...headers },
+      };
+      const req = (isHttps ? https : http).request(opts, (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          try { resolve(JSON.parse(data || '{}')); } catch { resolve({}); }
+        });
+      });
+      req.on('error', reject);
+      req.write(JSON.stringify(body || {}));
+      req.end();
+    } catch (e) { reject(e); }
+  });
+}
+
+async function brokerCreateTunnel(baseUrl: string, key: string): Promise<BrokerTunnel> {
+  const url = baseUrl.replace(/\/$/, '') + '/tunnels';
+  const headers: Record<string, string> = {};
+  if (key) headers['Authorization'] = `Bearer ${key}`;
+  const res = await postJson(url, { deviceHint: `${os.platform()}-${os.arch()}` }, headers);
+  const out = { tunnelId: String(res?.tunnelId || ''), hostname: String(res?.hostname || ''), token: String(res?.token || '') } as BrokerTunnel;
+  if (!out.tunnelId || !out.hostname || !out.token) throw new Error('invalid broker response');
+  return out;
+}
+
+function saveTunnelCreds(creds: BrokerTunnel) {
+  try {
+    const home = os.homedir();
+    const dir = join(home, '.openagents');
+    try { mkdirSync(dir, { recursive: true }); } catch {}
+    const p = join(dir, 'tunnel.json');
+    require('node:fs').writeFileSync(p, JSON.stringify({ ...creds, savedAt: new Date().toISOString() }, null, 2));
+  } catch {}
+}
+
+async function ensureCloudflared(): Promise<boolean> {
+  const bin = cloudflaredPath();
+  if (existsSync(bin)) return true;
+  const { platform, arch } = process;
+  const base = 'https://github.com/cloudflare/cloudflared/releases/latest/download';
+  const target = (() => {
+    if (platform === 'darwin') return arch === 'arm64' ? 'cloudflared-darwin-arm64.tgz' : 'cloudflared-darwin-amd64.tgz';
+    if (platform === 'linux') return arch === 'arm64' ? 'cloudflared-linux-arm64.tgz' : 'cloudflared-linux-amd64.tgz';
+    return '';
+  })();
+  if (!target) return false;
+  const url = `${base}/${target}`;
+  const tmp = join(os.tmpdir(), `cloudflared-${Date.now()}.tgz`);
+  try {
+    const ok = await downloadFile(url, tmp);
+    if (!ok) return false;
+    const outDir = join(os.homedir(), '.openagents', 'bin');
+    try { mkdirSync(outDir, { recursive: true }); } catch {}
+    // Extract and move binary
+    const tar = spawnSync('tar', ['-xzf', tmp, '-C', outDir]);
+    // Some archives unpack to ./cloudflared, others to a folder; attempt to find
+    const cand1 = join(outDir, 'cloudflared');
+    const cand2 = join(outDir, 'cloudflared.exe');
+    if (existsSync(cand1) || existsSync(cand2)) {
+      try { chmodSync(cand1, 0o755); } catch {}
+      return true;
+    }
+    // If extracted to a folder, locate the binary
+    const items = readdirSync(outDir);
+    for (const it of items) {
+      const p = join(outDir, it);
+      try {
+        const st = statSync(p);
+        if (st.isFile() && it === 'cloudflared') { chmodSync(p, 0o755); return true; }
+        if (st.isDirectory()) {
+          const inner = join(p, 'cloudflared');
+          if (existsSync(inner)) { try { copyFileSync(inner, cloudflaredPath()); chmodSync(cloudflaredPath(), 0o755); } catch {}; return true; }
+        }
+      } catch {}
+    }
+  } catch {}
+  return false;
+}
+
+function downloadFile(urlStr: string, outPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const u = new URL(urlStr);
+      const isHttps = u.protocol === 'https:';
+      const req = (isHttps ? https : http).get(urlStr, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          downloadFile(res.headers.location, outPath).then(resolve); return;
+        }
+        if (!res.statusCode || res.statusCode >= 400) { resolve(false); return; }
+        const ws = createWriteStream(outPath);
+        res.pipe(ws);
+        ws.on('finish', () => { try { ws.close(); } catch {}; resolve(true); });
+      });
+      req.on('error', () => resolve(false));
+    } catch { resolve(false); }
+  });
+}
+
+function cloudflaredPath(): string {
+  const home = os.homedir();
+  return join(home, '.openagents', 'bin', process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
+}
+
+function startCloudflared(token: string) {
+  const bin = cloudflaredPath();
+  const args = ['tunnel', 'run', '--no-autoupdate', '--token', token];
+  const child = spawn(bin, args, { stdio: VERBOSE ? 'inherit' : 'ignore' });
+  child.on('error', (e) => { try { console.log(chalk.red(`[cloudflared] error: ${e?.message || e}`)) } catch {} });
 }
 
 function ensureBridgeRunning(repoRoot: string) {
