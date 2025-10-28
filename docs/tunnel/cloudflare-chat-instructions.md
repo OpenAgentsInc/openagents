@@ -1,5 +1,12 @@
 Here’s the straight answer: **yes**—Cloudflare Tunnel can replace or supplement **bore** for Tricoder, and it plays nicely with MCP. Use it to expose your **local WS bridge** (codex-bridge) to the internet with TLS and better reliability. For MCP itself (your Worker at `/mcp`), you don’t need a tunnel because Workers are already public; but you *can* surface tunnel **status/controls** via MCP tools that hit Cloudflare’s APIs.
 
+## OpenAgents policy (named‑only; local Convex)
+
+- We use a **named Cloudflare Tunnel** only. Quick Tunnels (`*.trycloudflare.com`) are not part of the OpenAgents flow.
+- The pairing hostname is fixed, e.g., `tunnel.openagents.com` → `http://localhost:8787` with WS upgrades to WSS.
+- The Convex backend must run **locally** on `http://127.0.0.1:7788`. We do not publish Convex via a public tunnel at this time.
+- Tricoder emits `provider: "cloudflare"`, `bridge: wss://tunnel.openagents.com/ws`, `convex: http://127.0.0.1:7788`, and a required token.
+
 ## What Cloudflare Tunnel gives you (relevant to Tricoder)
 
 * **One-command Quick Tunnel** for fast demos:
@@ -1580,17 +1587,12 @@ async function ensureConvexBinaryWithProgressStrict(): Promise<void> {
 ## What changes for the user?
 
 * **Same command:** `npx tricoder`
-* **Convex is required**: if the local backend can’t be installed & started, the script exits with instructions.
-* **Cloudflare Tunnel**: if you’ve created a named tunnel and mapped:
-
-  * `tunnel.openagents.com` → `http://localhost:8787` (bridge + `/ws`)
-  * `convex.openagents.com` → `http://localhost:7788`
-
-  the script will run `cloudflared tunnel run tricoder-bridge`, compute:
+* **Convex is required locally**: if the local backend can’t be installed & started, the script exits with instructions.
+* **Named Cloudflare Tunnel**: map `tunnel.openagents.com` → `http://localhost:8787` (WS upgrades OK). Tricoder computes:
 
   * **bridge** = `wss://tunnel.openagents.com/ws`
-  * **convex**  = `https://convex.openagents.com`
+  * **convex**  = `http://127.0.0.1:7788` (local only)
 
-  then emit the **same QR/deeplink** payload (with `provider: "cloudflared"`). The Tricoder app reads those URLs and connects—no UI changes needed.
+  and emits the QR/deeplink payload with `provider: "cloudflare"`.
 
 If you want me to ship this as a PR-ready commit (or convert into an `apply_patch` for your repo), say the word and I’ll output it as a diff against your current file.
