@@ -19,11 +19,17 @@ export default function ScanScreen() {
   const [scanned, setScanned] = React.useState(false)
   const [cameraPaused, setCameraPaused] = React.useState(false)
   const [usingModal, setUsingModal] = React.useState<boolean>(false)
+  const supportsModal = React.useMemo(() => {
+    try {
+      const anyCam: any = CameraView as any
+      return !!(anyCam && anyCam.isModernBarcodeScannerAvailable && typeof anyCam.launchScanner === 'function' && typeof anyCam.onModernBarcodeScanned === 'function' && typeof anyCam.dismissScanner === 'function')
+    } catch { return false }
+  }, [])
 
   React.useEffect(() => {
-    try { setUsingModal(!!(CameraView as any).isModernBarcodeScannerAvailable) } catch { setUsingModal(false) }
+    setUsingModal(supportsModal)
     if (!permission) { requestPermission().catch(() => {}) }
-  }, [])
+  }, [supportsModal])
 
   const handleData = React.useCallback((raw: string) => {
     const display = normalizeBridgeCodeInput(String(raw || ''))
@@ -44,17 +50,18 @@ export default function ScanScreen() {
       let sub: any = null
       const run = async () => {
         try {
-          await (CameraView as any).launchScanner?.({})
-          sub = (CameraView as any).onModernBarcodeScanned?.((evt: any) => {
+          const camAny: any = CameraView as any
+          await camAny.launchScanner?.({})
+          sub = camAny.onModernBarcodeScanned?.((evt: any) => {
             if (cancelled || scanned) return
             setScanned(true)
             const data = String((evt && (evt.data || evt.rawValue || evt.text)) || '')
             const ok = handleData(data)
-            try { (CameraView as any).dismissScanner?.() } catch {}
+            try { camAny.dismissScanner?.() } catch {}
             if (!ok) {
               setTimeout(async () => {
                 setScanned(false)
-                try { await (CameraView as any).launchScanner?.({}) } catch {}
+                try { await camAny.launchScanner?.({}) } catch {}
               }, 400)
             }
           })
