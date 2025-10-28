@@ -676,7 +676,7 @@ function cloudflaredPath(): string {
 
 function startCloudflared(token: string) {
   const bin = cloudflaredPath();
-  const args = ['tunnel', 'run', '--token', token];
+  const args = ['tunnel', 'run', '--token', token, '--url', 'http://localhost:8787'];
   const env = { ...process.env } as Record<string,string>;
   // Ensure no system proxy settings interfere with network
   delete env.HTTP_PROXY; delete env.HTTPS_PROXY; delete env.ALL_PROXY;
