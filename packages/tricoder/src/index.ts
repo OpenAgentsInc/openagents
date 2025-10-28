@@ -5,6 +5,7 @@ import { spawn, spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, copyFileSync, chmodSync, readdirSync, statSync, createWriteStream } from "node:fs"
 import http from "node:http"
 import https from "node:https"
+import dns from "node:dns/promises"
 import net from "node:net"
 import { dirname, join } from "node:path"
 import WebSocket from "ws"
@@ -233,7 +234,7 @@ async function main() {
   const convexUrl = 'http://127.0.0.1:7788';
   let printedCombined = false;
 
-  if (BROKER_URL && BROKER_KEY && TUNNEL_MODE !== 'none') {
+  if (BROKER_URL && TUNNEL_MODE !== 'none') {
     if (VERBOSE) console.log(chalk.dim(`[broker] requesting per-device tunnel from ${BROKER_URL}`));
     const cloudOk = await ensureCloudflared();
     if (!cloudOk) {
@@ -243,7 +244,10 @@ async function main() {
     const creds = await brokerCreateTunnel(BROKER_URL, BROKER_KEY).catch((e) => { console.log(chalk.red(`✘ Broker error: ${e?.message || e}`)); return null; });
     if (!creds || !creds.hostname || !creds.token) { console.log(chalk.red('✘ Broker did not return tunnel credentials.')); process.exit(1); }
     saveTunnelCreds(creds);
+    if (VERBOSE) console.log(chalk.dim(`[broker] hostname=${creds.hostname} tunnelId=${creds.tunnelId}`));
     startCloudflared(creds.token);
+    // Wait for DNS to propagate so the hostname resolves before printing the QR
+    await waitForDns(creds.hostname, 45000).catch(() => {});
     bridgeUrl = `wss://${creds.hostname}/ws`;
   } else {
     // Named Cloudflare tunnel: compute from configured host (requires operator to run cloudflared separately)
@@ -672,9 +676,25 @@ function cloudflaredPath(): string {
 
 function startCloudflared(token: string) {
   const bin = cloudflaredPath();
-  const args = ['tunnel', 'run', '--no-autoupdate', '--token', token];
-  const child = spawn(bin, args, { stdio: VERBOSE ? 'inherit' : 'ignore' });
+  const args = ['tunnel', 'run', '--token', token];
+  const env = { ...process.env } as Record<string,string>;
+  // Ensure no system proxy settings interfere with network
+  delete env.HTTP_PROXY; delete env.HTTPS_PROXY; delete env.ALL_PROXY;
+  delete (env as any).http_proxy; delete (env as any).https_proxy; delete (env as any).all_proxy;
+  const child = spawn(bin, args, { stdio: VERBOSE ? 'inherit' : 'ignore', env });
   child.on('error', (e) => { try { console.log(chalk.red(`[cloudflared] error: ${e?.message || e}`)) } catch {} });
+}
+
+async function waitForDns(host: string, timeoutMs = 30000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res4 = await dns.resolve4(host).catch(() => [] as string[]);
+      const res6 = await dns.resolve6(host).catch(() => [] as string[]);
+      if ((res4 as string[]).length || (res6 as string[]).length) return;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 800));
+  }
 }
 
 function ensureBridgeRunning(repoRoot: string) {
