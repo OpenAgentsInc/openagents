@@ -223,7 +223,8 @@ function DrawerWrapper() {
   // Allow dev-only navigation to the component library when disconnected
   const { useIsDevEnv } = require('@/lib/env') as { useIsDevEnv: () => boolean };
   const isDevEnv = useIsDevEnv();
-  const convexThreads = (useQuery as any)(connected ? 'threads:list' : 'threads:list', connected ? {} : 'skip') as any[] | undefined | null
+  // Tinyvex migration: avoid Convex hooks here
+  const convexThreads: any[] | undefined | null = []
   const pathname = (require('expo-router') as any).usePathname?.() as string | undefined;
   // Connection-gated onboarding: require bridge and convex
   React.useEffect(() => {
@@ -246,11 +247,9 @@ function DrawerWrapper() {
   };
 
   const NewChatButton = () => {
-    const createThread = (require('convex/react') as any).useMutation('threads:create') as (args?: { title?: string; projectId?: string }) => Promise<string>;
     const onPress = async () => {
       try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } } catch {}
-      try { const id = await createThread({ title: 'New Thread' }); router.push(`/convex/thread/${encodeURIComponent(String(id))}`); }
-      catch { router.push('/thread?focus=1&new=1'); }
+      try { router.push('/thread?focus=1&new=1'); } catch {}
     };
     return (
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>

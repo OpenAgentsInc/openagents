@@ -5,7 +5,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
 import { SessionUpdateAgentMessageChunk, SessionUpdateUserMessageChunk, SessionUpdateAgentThoughtChunk, SessionUpdatePlan, SessionUpdateToolCall, SessionUpdateAvailableCommandsUpdate, SessionUpdateCurrentModeUpdate } from '@/components/acp'
-import { findExampleItem } from '../acp-example-data'
+import { findExampleItem } from '@/lib/acp-example-data'
 
 export default function ACPExampleItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -58,4 +58,3 @@ export default function ACPExampleItemDetail() {
     </ScrollView>
   )
 }
-
