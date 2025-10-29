@@ -14,6 +14,7 @@ type SettingsState = {
   networkEnabled: boolean
   approvals: Approvals
   attachPreface: boolean
+  agentProvider: 'codex' | 'claude_code'
   setBridgeHost: (v: string) => void
   setBridgeCode: (v: string) => void
   setConvexUrl: (v: string) => void
@@ -23,6 +24,7 @@ type SettingsState = {
   setNetworkEnabled: (v: boolean) => void
   setApprovals: (v: Approvals) => void
   setAttachPreface: (v: boolean) => void
+  setAgentProvider: (v: 'codex' | 'claude_code') => void
 }
 
 export const useSettings = create<SettingsState>()(
@@ -39,6 +41,7 @@ export const useSettings = create<SettingsState>()(
       networkEnabled: true,
       approvals: 'never',
       attachPreface: true,
+      agentProvider: 'codex',
       setBridgeHost: (v) => set({ bridgeHost: v }),
       setBridgeCode: (v) => set({ bridgeCode: v }),
       setConvexUrl: (v) => set({ convexUrl: v }),
@@ -48,6 +51,7 @@ export const useSettings = create<SettingsState>()(
       setNetworkEnabled: (v) => set({ networkEnabled: v }),
       setApprovals: (v) => set({ approvals: v }),
       setAttachPreface: (v) => set({ attachPreface: v }),
+      setAgentProvider: (v) => set({ agentProvider: v }),
     }),
     {
       name: '@openagents/settings-v3',
