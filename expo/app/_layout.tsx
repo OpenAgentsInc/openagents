@@ -308,21 +308,29 @@ function DrawerWrapper() {
           <Stack.Screen name="skills/index" />
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="project/new" />
-          <Stack.Screen name="library/index" />
-          <Stack.Screen name="library/markdown" />
-          <Stack.Screen name="library/user-message" />
-          <Stack.Screen name="library/reasoning-headline" />
-          <Stack.Screen name="library/reasoning-card" />
-          <Stack.Screen name="library/exec" />
-          <Stack.Screen name="library/file-change" />
-          <Stack.Screen name="library/command" />
-          <Stack.Screen name="library/search-mcp" />
-          <Stack.Screen name="library/todo" />
-          <Stack.Screen name="library/turn-error" />
-          <Stack.Screen name="library/acp-example-conversation" />
-          <Stack.Screen name="library/acp-example-conversation/[id]" />
-          <Stack.Screen name="library/drawer" />
-          <Stack.Screen name="library/unused" />
+          <Stack.Screen name="library/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/markdown" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/user-message" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/reasoning-headline" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/reasoning-card" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/exec" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/file-change" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/command" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/search-mcp" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/todo" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/turn-error" options={{ animation: 'slide_from_right' }} />
+          {/* ACP-specific library demos */}
+          <Stack.Screen name="library/acp-message" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/acp-thought" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/acp-tool-call" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/acp-plan" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/acp-available-commands" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/acp-current-mode" options={{ animation: 'slide_from_right' }} />
+          {/* Example conversation + details */}
+          <Stack.Screen name="library/acp-example-conversation" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/acp-example-conversation/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/drawer" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="library/unused" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="settings/index" />
           <Stack.Screen name="logs/index" />
         </Stack>
