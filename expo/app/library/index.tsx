@@ -28,6 +28,10 @@ export default function ComponentLibraryScreen() {
       <LinkRow title="Plan" path="/library/acp-plan" subtitle="SessionUpdate: plan (entries with status)" />
       <LinkRow title="Available Commands" path="/library/acp-available-commands" subtitle="SessionUpdate: available_commands_update" />
       <LinkRow title="Current Mode" path="/library/acp-current-mode" subtitle="SessionUpdate: current_mode_update" />
+
+      <View style={{ height: 18 }} />
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>Example Screens</Text>
+      <LinkRow title="ACP Example Conversation" path="/library/acp-example-conversation" subtitle="A full chat showcasing ACP components in order" />
     </ScrollView>
   )
 }
