@@ -939,8 +939,15 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 }
                                 // Emit ACP notification mirror alongside legacy JSONL
                                 if let Some(update) = translate_codex_event_to_acp_update(&v) {
+                                    // Use Codex thread.started id for ACP sessionId to match app thread.threadId
+                                    let acp_session = state_for_stdout
+                                        .last_thread_id
+                                        .lock()
+                                        .await
+                                        .clone()
+                                        .unwrap_or_default();
                                     let notif = SessionNotification {
-                                        session_id: SessionId(target_tid.clone().into()),
+                                        session_id: SessionId(acp_session.into()),
                                         update,
                                         meta: None,
                                     };
@@ -998,8 +1005,14 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     }
                                     // Emit ACP mirror for broader item.*
                                     if let Some(update) = translate_codex_event_to_acp_update(&v) {
+                                        let acp_session = state_for_stdout
+                                            .last_thread_id
+                                            .lock()
+                                            .await
+                                            .clone()
+                                            .unwrap_or_default();
                                         let notif = SessionNotification {
-                                            session_id: SessionId(target_tid.clone().into()),
+                                            session_id: SessionId(acp_session.into()),
                                             update,
                                             meta: None,
                                         };
