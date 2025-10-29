@@ -69,6 +69,18 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         }
     }
     std::fs::create_dir_all(db.parent().unwrap_or_else(|| Path::new("."))).ok();
+    // Validate binary presence and perms
+    match std::fs::metadata(&bin) {
+        Ok(meta) => {
+            if !meta.is_file() {
+                warn!(path=%bin.display(), "convex local_backend is not a regular file");
+            }
+        }
+        Err(e) => {
+            warn!(?e, path=%bin.display(), "convex local_backend metadata unavailable");
+        }
+    }
+
     let mut cmd = Command::new(&bin);
     cmd.arg(&db)
         .arg("--db")
@@ -85,14 +97,32 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
                 .map(|h| format!("{}/.openagents/convex/storage", h))
                 .unwrap_or_else(|_| "convex_local_storage".to_string()),
         )
-        .arg("--disable-beacon")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .arg("--disable-beacon");
+    let debug_backend = std::env::var("OPENAGENTS_CONVEX_DEBUG").ok().as_deref() == Some("1");
+    if debug_backend {
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
+    } else {
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+    }
     info!(bin=%bin.display(), db=%db.display(), port, site_proxy_port, interface=%interface, "convex.ensure: starting local backend");
     let mut child = cmd.spawn().context("spawn convex local_backend")?;
     let mut ok = false;
     for i in 0..40 {
+        // If the child crashed, log status and abort early
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                warn!(?status, "convex local_backend exited prematurely");
+                break;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                warn!(?e, "convex local_backend try_wait failed");
+            }
+        }
         if convex_health(&base).await.unwrap_or(false) {
             ok = true;
             break;
