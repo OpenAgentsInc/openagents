@@ -184,11 +184,15 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         try { onMessageRef.current?.(data); } catch {}
         try { subsRef.current.forEach((fn) => { try { if (fn) fn(data) } catch {} }); } catch {}
       };
-      ws.onerror = (_evt: any) => { setConnecting(false); };
+      ws.onerror = (evt: any) => {
+        try { console.log('[bridge.ws] error') } catch {}
+        setConnecting(false);
+      };
       ws.onclose = (evt: any) => {
         try {
           const code = Number((evt && evt.code) || 0) || undefined;
           const reason = String((evt && evt.reason) || '').trim() || undefined;
+          try { console.log('[bridge.ws] close', code, reason || '(no reason)') } catch {}
           setWsLastClose({ code, reason });
         } catch {}
         setConnected(false);

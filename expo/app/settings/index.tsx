@@ -12,6 +12,8 @@ export default function SettingsScreen() {
   const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, connecting, wsLastClose } = useBridge()
   const [inputDisabled, setInputDisabled] = React.useState(false)
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
+  const bridgeToken = useSettings((s) => s.bridgeToken)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
   // Convex removed
   return (
     <View style={styles.container}>
@@ -29,7 +31,19 @@ export default function SettingsScreen() {
           style={[styles.input]}
         />
       </View>
-      {/* Bridge token input removed */}
+      <Text style={styles.label}>Bridge Token</Text>
+      <View style={styles.inputWrapper}>
+        <TextInput
+          value={bridgeToken}
+          onChangeText={(v) => { try { setBridgeToken(v) } catch {} }}
+          editable={!connecting && !inputDisabled}
+          autoCapitalize='none'
+          autoCorrect={false}
+          placeholder='Paste token from ~/.openagents/bridge.json'
+          placeholderTextColor={Colors.secondary}
+          style={[styles.input]}
+        />
+      </View>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {wsUrl || '(not configured)'}</Text>
       {/* Convex removed */}
       {wsLastClose && !connected ? (
@@ -37,8 +51,8 @@ export default function SettingsScreen() {
           {(() => {
             const code = wsLastClose.code
             const reason = String(wsLastClose.reason || '')
-            if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'WS: Connection refused — is the bridge running and reachable?'
-            if (/unauthorized|401/i.test(reason)) return 'WS: Unauthorized — token required.'
+            if (/unauthorized|401/i.test(reason)) return 'WS: Unauthorized — set Bridge Token from ~/.openagents/bridge.json.'
+            if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'WS: Connection closed — ensure the bridge is running and that the Bridge Token is correct.'
             return `WS closed ${code ?? ''}${reason ? `: ${reason}` : ''}`.trim()
           })()}
         </Text>
