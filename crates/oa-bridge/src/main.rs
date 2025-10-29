@@ -40,6 +40,7 @@ mod state;
 mod util;
 mod watchers;
 mod ws;
+mod provider_claude;
 // spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
