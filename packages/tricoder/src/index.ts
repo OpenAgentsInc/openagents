@@ -56,6 +56,31 @@ function chooseSelfIPv4(status: TSStatus): string | null {
   return v4 || null;
 }
 
+// Detect private IPv4 range
+const PRIVATE_V4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/;
+function getLanIPv4Candidates(): string[] {
+  const nets = os.networkInterfaces();
+  const out: string[] = [];
+  for (const name of Object.keys(nets)) {
+    const addrs = nets[name] || [];
+    for (const a of addrs) {
+      // Node types are a bit loose across versions; use runtime checks
+      const fam = (a as any).family || (a as any).addressFamily;
+      const isV4 = fam === 4 || fam === 'IPv4';
+      const addr = String((a as any).address || '');
+      const internal = Boolean((a as any).internal);
+      if (isV4 && !internal && PRIVATE_V4.test(addr)) out.push(addr);
+    }
+  }
+  // Ensure stable selection order
+  return Array.from(new Set(out)).sort();
+}
+
+function chooseLanIPv4(): string | null {
+  const c = getLanIPv4Candidates();
+  return c[0] || null;
+}
+
 function spawnP(cmd: string, args: string[], opts: any = {}): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: 'inherit', ...opts });
@@ -92,6 +117,31 @@ function buildBridgeCode(host: string, port: number, token: string, secure = fal
   return { payload, code, deeplink, bridge } as const;
 }
 
+function openagentsHome(): string {
+  const base = process.env.OPENAGENTS_HOME || path.join(os.homedir(), '.openagents');
+  return base;
+}
+
+function readPersistedToken(): string | null {
+  try {
+    const p = path.join(openagentsHome(), 'bridge.json');
+    if (!fs.existsSync(p)) return null;
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as { token?: string };
+    const t = String(raw?.token || '').trim();
+    return t || null;
+  } catch { return null; }
+}
+
+function writePersistedToken(token: string): boolean {
+  try {
+    const base = openagentsHome();
+    fs.mkdirSync(base, { recursive: true });
+    const p = path.join(base, 'bridge.json');
+    fs.writeFileSync(p, JSON.stringify({ token }, null, 2));
+    return true;
+  } catch { return false; }
+}
+
 async function ensureRepo(targetDir?: string): Promise<string> {
   const dest = targetDir || path.join(os.homedir(), 'code', 'openagents');
   try { fs.mkdirSync(path.dirname(dest), { recursive: true }); } catch {}
@@ -121,7 +171,10 @@ async function ensureRust(): Promise<boolean> {
 function runCargoBridge(repoDir: string, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolve) => {
     const cmd = process.platform === 'win32' ? 'cargo.exe' : 'cargo';
-    const child = spawn(cmd, ['run', '-p', 'oa-bridge', '--', '--bind', '0.0.0.0:8787'], {
+    // Respect TRICODER_BRIDGE_BIND if provided; otherwise default to port/env
+    const port = Number(process.env.TRICODER_BRIDGE_PORT || 8787);
+    const bind = process.env.TRICODER_BRIDGE_BIND || `0.0.0.0:${port}`;
+    const child = spawn(cmd, ['run', '-p', 'oa-bridge', '--', '--bind', bind], {
       cwd: repoDir,
       stdio: 'inherit',
       env,
@@ -132,7 +185,8 @@ function runCargoBridge(repoDir: string, env: NodeJS.ProcessEnv): Promise<number
 
 function runBridgeBinary(binPath: string, env: NodeJS.ProcessEnv, extraArgs: string[] = []): Promise<number> {
   return new Promise((resolve) => {
-    const args = ['--bind', process.env.TRICODER_BRIDGE_BIND || '0.0.0.0:8787', ...extraArgs];
+    const port = Number(process.env.TRICODER_BRIDGE_PORT || 8787);
+    const args = ['--bind', process.env.TRICODER_BRIDGE_BIND || `0.0.0.0:${port}`, ...extraArgs];
     const child = spawn(binPath, args, { stdio: 'inherit', env });
     child.on('exit', (code) => resolve(code ?? 0));
   });
@@ -142,39 +196,53 @@ async function main() {
   const args = new Set(process.argv.slice(2));
   const autorun = args.has('--run-bridge') || args.has('-r');
   const verbose = args.has('--verbose') || process.env.DEBUG === '1';
+  const prefer = (process.env.TRICODER_PREFER || '').toLowerCase(); // 'tailscale' | 'lan'
+  const rotateToken = args.has('--rotate-token') || args.has('-R') || process.env.TRICODER_ROTATE_TOKEN === '1';
+
+  // Determine IP to advertise: prefer tailscale when available unless TRICODER_PREFER=lan
+  let hostIp: string | null = null;
+  let mode: 'tailscale' | 'lan' = 'lan';
   const tsPath = await findTailscale();
-  if (!tsPath) {
-    console.log(chalk.red('Tailscale CLI not found.'));
-    if (process.platform === 'darwin') console.log(chalk.yellow('Install: brew install tailscale'));
-    else if (process.platform === 'win32') console.log(chalk.yellow('Install: winget install Tailscale.Tailscale'));
-    else console.log(chalk.yellow('Install: curl -fsSL https://tailscale.com/install.sh | sh'));
-    process.exit(1);
+  if (prefer !== 'lan' && tsPath) {
+    const status = await getTailscaleStatus(tsPath);
+    const selfIPv4 = status ? chooseSelfIPv4(status) : null;
+    if (selfIPv4) { hostIp = selfIPv4; mode = 'tailscale'; }
   }
-  const status = await getTailscaleStatus(tsPath);
-  if (!status) {
-    console.log(chalk.red('tailscale status failed. Are you logged in?'));
-    console.log(chalk.yellow('Run: tailscale up'));
-    process.exit(1);
+  if (!hostIp) {
+    hostIp = chooseLanIPv4();
+    mode = 'lan';
   }
-  const selfIPv4 = chooseSelfIPv4(status);
-  if (!selfIPv4) {
-    console.log(chalk.red('No Tailscale 100.x IPv4 found for this device.'));
-    console.log(chalk.yellow('Ensure Tailscale is connected on this desktop and try again.'));
+  if (!hostIp) {
+    // Last resort: advise user how to proceed
+    console.log(chalk.red('Could not determine a LAN IPv4 address.'));
+    console.log(chalk.yellow('Ensure you are connected to a network and try again.'));
     process.exit(1);
   }
 
-  console.log(chalk.green(`Desktop IP (Tailscale): ${selfIPv4}`));
   const bridgePort = Number(process.env.TRICODER_BRIDGE_PORT || 8787);
-  // Bridge Code (QR + deep link) for mobile pairing
-  const token = process.env.OPENAGENTS_BRIDGE_TOKEN && process.env.OPENAGENTS_BRIDGE_TOKEN.trim().length > 0
-    ? String(process.env.OPENAGENTS_BRIDGE_TOKEN)
-    : randToken(48);
-  const { deeplink, bridge } = buildBridgeCode(selfIPv4, bridgePort, token, false);
+  // Ensure bind uses selected port if TRICODER_BRIDGE_BIND not set
+  if (!process.env.TRICODER_BRIDGE_BIND) {
+    process.env.TRICODER_BRIDGE_BIND = `0.0.0.0:${bridgePort}`;
+  }
+
+  // Durable token: reuse ~/.openagents/bridge.json when present
+  let token: string | null = null;
+  if (!rotateToken) token = readPersistedToken();
+  const generated = !token;
+  if (!token) {
+    token = randToken(48);
+    writePersistedToken(token);
+  }
+
+  const { deeplink, bridge } = buildBridgeCode(hostIp, bridgePort, token!, false);
+  console.log(mode === 'tailscale'
+    ? chalk.green(`Desktop IP (Tailscale): ${hostIp}`)
+    : chalk.green(`Desktop IP (LAN): ${hostIp}`));
   console.log(chalk.bold('Scan this QR in the OpenAgents mobile app:'));
   try { qrcode.generate(deeplink, { small: true }); } catch {}
   console.log(chalk.gray('Deep link: '), chalk.white(deeplink));
   console.log(chalk.gray('WS URL:   '), chalk.white(bridge));
-  console.log(chalk.gray('Token:    '), chalk.white(token));
+  console.log(chalk.gray('Token:    '), chalk.white(token!));
 
   if (!autorun) {
     console.log('\nTo launch the desktop bridge automatically:');
@@ -186,7 +254,10 @@ async function main() {
   const exposeLan = process.env.TRICODER_EXPOSE_LAN === '1';
   const bridgeEnv: NodeJS.ProcessEnv = {
     ...process.env,
-    OPENAGENTS_BRIDGE_TOKEN: token,
+    // Only set OPENAGENTS_BRIDGE_TOKEN when we generated a new one this run.
+    // Otherwise, let the bridge read ~/.openagents/bridge.json so the app and
+    // server stay in sync without forcing rescans.
+    ...(generated ? { OPENAGENTS_BRIDGE_TOKEN: token! } : {}),
     OPENAGENTS_CONVEX_STATE: process.env.OPENAGENTS_CONVEX_STATE || 'convex',
     OPENAGENTS_CONVEX_INTERFACE: process.env.OPENAGENTS_CONVEX_INTERFACE || (exposeLan ? '0.0.0.0' : '127.0.0.1'),
     OPENAGENTS_CONVEX_INSTANCE: process.env.OPENAGENTS_CONVEX_INSTANCE || 'openagents',
@@ -217,7 +288,8 @@ async function main() {
     console.log('\nAfter installing Rust, rerun: tricoder --run-bridge');
     process.exit(1);
   }
-  console.log(chalk.cyan('Starting bridge via cargo (bind 0.0.0.0:8787)…'));
+  const bind = process.env.TRICODER_BRIDGE_BIND || `0.0.0.0:${bridgePort}`;
+  console.log(chalk.cyan(`Starting bridge via cargo (bind ${bind})…`));
   code = await runCargoBridge(repoDir, bridgeEnv);
   process.exit(code);
 }
