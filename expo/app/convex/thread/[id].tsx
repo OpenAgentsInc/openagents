@@ -7,6 +7,7 @@ import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
 import { useBridge } from '@/providers/ws'
 import { Composer } from '@/components/composer'
+import { useSettings } from '@/lib/settings-store'
 import { useHeaderStore } from '@/lib/header-store'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
@@ -19,6 +20,8 @@ export default function ConvexThreadDetail() {
   const params = useLocalSearchParams<{ id: string; new?: string; send?: string }>()
   const id = params?.id as string
   const isNew = typeof params?.new === 'string'
+  const agentProvider = useSettings((s) => s.agentProvider)
+  const setAgentProvider = useSettings((s) => s.setAgentProvider)
 
   // Load thread (for title) — tolerate null while loading
   const thread = (useQuery as any)('threads:byId', { id }) as any
@@ -173,6 +176,18 @@ export default function ConvexThreadDetail() {
             const arr: any[] = (messages as any[]).slice(meta.count)
             return (
               <>
+                {/* Agent selector for new threads */}
+                {isNew && (
+                  <View style={{ paddingVertical: 6, flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                    <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>Agent:</Text>
+                    <Pressable onPress={() => setAgentProvider('codex')} style={{ paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: agentProvider==='codex'? Colors.foreground : Colors.border, backgroundColor: Colors.card }}>
+                      <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>Codex</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setAgentProvider('claude_code')} style={{ paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: agentProvider==='claude_code'? Colors.foreground : Colors.border, backgroundColor: Colors.card }}>
+                      <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>Claude Code</Text>
+                    </Pressable>
+                  </View>
+                )}
                 {/* ACP state (current mode) */}
                 {(() => {
                   const cm = stateDoc && stateDoc.currentModeId
@@ -308,7 +323,7 @@ export default function ConvexThreadDetail() {
               } catch {}
               // Trigger bridge workflow via WebSocket control command (no HTTP)
               try { ws.send(JSON.stringify({ control: 'echo', tag: 'composer.onSend', threadDocId: String(thread._id), previewLen: base.length })) } catch {}
-              try { ws.send(JSON.stringify({ control: 'run.submit', threadDocId: String(thread._id), text: base, projectId: thread?.projectId || undefined, resumeId: thread?.resumeId || undefined })) } catch {}
+              try { ws.send(JSON.stringify({ control: 'run.submit', threadDocId: String(thread._id), text: base, projectId: thread?.projectId || undefined, resumeId: thread?.resumeId || undefined, provider: isNew ? agentProvider : undefined })) } catch {}
             }}
             connected={true}
             isRunning={false}
@@ -316,6 +331,7 @@ export default function ConvexThreadDetail() {
             onInterrupt={() => {}}
             queuedMessages={[]}
             prefill={null}
+            placeholder={agentProvider === 'claude_code' ? 'Ask Claude Code' : 'Ask Codex'}
             onDraftChange={() => {}}
             inputRef={composerRef}
           />
