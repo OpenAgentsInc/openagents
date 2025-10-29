@@ -50,26 +50,22 @@ Shell alias conflicts
 - Some zsh configs auto-`cd` when you type a folder name. If you have a directory named `openagents` or `tricoder`, that can shadow the command.
 - Fix: remove the alias/function from `~/.zshrc` (look for `nocorrect` / `cdable_vars` / functions that `cd` on unknown command). Restart the shell.
 
-What tricoder does (dev placeholder)
+What tricoder does
 - No Node WebSockets; the real bridge is Rust.
-- Spawns `cargo run -p oa-tunnel -- --to bore.pub --local-port <port>` twice to expose:
-  - Bridge WS: local `127.0.0.1:8787` → `ws://bore.pub:<port>/ws`
-  - Convex HTTP: local `127.0.0.1:7788` → `http://bore.pub:<port>`
-- Prints a base64url "Bridge Code" the app can paste to connect.
+- Starts the local bridge via Cargo and prints LAN/VPN URLs to connect the app (e.g., `ws://<host>:8787/ws` and `http://<host>:7788`).
 - Tails the local bridge’s broadcast feed to show `[bridge.*]` and `[codex]` events for debugging.
 
 Do not run `npm run dev` in automation
-- It’s a long‑running tunnel process. See AGENTS.md: prefer `npx tricoder` or `node dist/index.js`.
+- For long‑running dev, prefer `npx tricoder` or `node dist/index.js`.
 
 Troubleshooting
 - `npx tricoder` prints nothing or errors about `codex`:
   - Codex is optional for MVP. You’ll still see the Bridge/Convex URLs. For assistant responses you need `codex` in `PATH`.
 - No assistant messages appear in the mobile app:
   - Open the tricoder logs and look for `[bridge] bridge.run_submit` after sending a message.
-  - If missing, ensure the app is connected to the shown `ws://bore.pub:<port>/ws` and that Settings shows a healthy Convex URL.
+  - Ensure the app is connected to your LAN/VPN URL (e.g., `ws://<host>:8787/ws`) and that Settings shows a healthy Convex URL.
   - If run.submit is seen but no `[codex]` events, set `RUST_LOG=debug` and re-run the bridge to inspect stdout JSONL.
 
 Release hygiene
 - Bump versions before publishing; NPX caches per version.
 - Keep `dist/index.js` executable in `prepublishOnly` (chmod +x) so direct installs work on unix.
-

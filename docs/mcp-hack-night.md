@@ -11,7 +11,7 @@ Goal: ship a compelling demo fast — your MCP server runs on Cloudflare, your a
 ## What Tricoder gives you
 - Live stream UI: Tricoder parses Codex CLI JSONL into rich rows, including MCP items.
   - JSONL `item.*` → UI rows; `mcp_tool_call` renders with server/tool/status.
-- Bridge + tunnels: `codex-bridge` Axum WebSocket server spawns `codex exec --json`, forwards stdout/stderr to all clients; Tricoder CLI can tunnel it publicly for demos.
+- Bridge: `oa-bridge` Axum WebSocket server spawns `codex exec --json`, forwards stdout/stderr to all clients. For remote access, use LAN/VPN; public tunnels are out of scope here.
 - Projects & Skills: Markdown+frontmatter records your repos and reusable procedures; validated against bundled JSON Schemas and synced to the app.
 
 ## Quick path to a demo
