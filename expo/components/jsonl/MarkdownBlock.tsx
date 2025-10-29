@@ -1,8 +1,10 @@
 import React from 'react'
+import { Pressable } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { CodeBlock } from '@/components/code-block'
+import { copyToClipboard } from '@/lib/copy'
 
 export function MarkdownBlock({ markdown }: { markdown: string }) {
   const rules: any = {
@@ -17,6 +19,7 @@ export function MarkdownBlock({ markdown }: { markdown: string }) {
     },
   }
   return (
+    <Pressable onLongPress={async () => { try { await copyToClipboard(String(markdown || ''), { haptics: true }) } catch {} }}>
     <Markdown
       style={{
         body: { color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 },
@@ -34,5 +37,6 @@ export function MarkdownBlock({ markdown }: { markdown: string }) {
     >
       {markdown}
     </Markdown>
+    </Pressable>
   )
 }
