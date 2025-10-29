@@ -30,23 +30,11 @@ export default function ThreadScreen() {
     // Only re-run if the URL param changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
-  const { sessions } = useAcp()
-  const { send, connected, addSubscriber } = useBridge()
+  const { eventsForThread } = useAcp()
+  const { send, connected } = useBridge()
   // Title for thread screen
   useHeaderTitle('New Thread')
-  const [sessionId, setSessionId] = React.useState<string>('')
-  React.useEffect(() => {
-    const unsub = addSubscriber?.((line: string) => {
-      try {
-        const obj = JSON.parse(String(line || ''))
-        if (obj?.type === 'bridge.session_started' && obj.clientThreadDocId && obj.sessionId) {
-          if (String(obj.clientThreadDocId) === threadId) setSessionId(String(obj.sessionId))
-        }
-      } catch {}
-    })
-    return () => { try { unsub && unsub() } catch {} }
-  }, [threadId, addSubscriber])
-  const acpUpdates = React.useMemo(() => sessions[sessionId] || [], [sessions, sessionId])
+  const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
   const onSend = React.useCallback((text: string) => {
     if (!threadId) return
     const payload = { control: 'run.submit', threadDocId: threadId, text, resumeId: 'new' as const }
