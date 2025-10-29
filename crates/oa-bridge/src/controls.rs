@@ -28,6 +28,7 @@ pub enum ControlCommand {
         text: String,
         project_id: Option<String>,
         resume_id: Option<String>,
+        provider: Option<String>,
     },
 }
 
@@ -77,11 +78,16 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
                 .get("resumeId")
                 .and_then(|x| x.as_str())
                 .map(|s| s.to_string());
+            let provider = v
+                .get("provider")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
             Some(ControlCommand::RunSubmit {
                 thread_doc_id,
                 text,
                 project_id,
                 resume_id,
+                provider,
             })
         }
         _ => None,
@@ -137,12 +143,7 @@ mod tests {
             "{\"control\":\"run.submit\",\"threadDocId\":\"t1\",\"text\":\"hi\",\"projectId\":\"p\",\"resumeId\":\"last\"}",
         );
         match s {
-            Some(ControlCommand::RunSubmit {
-                thread_doc_id,
-                text,
-                project_id,
-                resume_id,
-            }) => {
+            Some(ControlCommand::RunSubmit { thread_doc_id, text, project_id, resume_id, .. }) => {
                 assert_eq!(thread_doc_id, "t1");
                 assert_eq!(text, "hi");
                 assert_eq!(project_id.as_deref(), Some("p"));
