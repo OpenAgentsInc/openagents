@@ -30,10 +30,20 @@ pub fn default_convex_db() -> PathBuf {
 }
 
 /// Quick health probe against the local backend instance.
+/// If `OPENAGENTS_CONVEX_INSTANCE` is set (or defaults to "openagents"),
+/// prefer checking `/instance_name` for equality to detect early readiness.
 pub async fn convex_health(url: &str) -> Result<bool> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
         .build()?;
+    let expected = std::env::var("OPENAGENTS_CONVEX_INSTANCE").ok();
+    if let Some(inst) = expected.as_deref() {
+        if let Ok(r) = client.get(format!("{}/instance_name", url)).send().await {
+            if r.status().is_success() {
+                if let Ok(name) = r.text().await { if name.trim() == inst { return Ok(true); } }
+            }
+        }
+    }
     // Primary endpoint
     if let Ok(r) = client.get(format!("{}/instance_version", url)).send().await {
         if r.status().is_success() {
@@ -47,6 +57,46 @@ pub async fn convex_health(url: &str) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StateMode { Convex, OpenAgents, Ephemeral }
+
+fn determine_state_mode() -> StateMode {
+    match std::env::var("OPENAGENTS_CONVEX_STATE").ok().as_deref() {
+        Some("convex") => StateMode::Convex,
+        Some("ephemeral") => StateMode::Ephemeral,
+        Some("openagents") => StateMode::OpenAgents,
+        _ => StateMode::OpenAgents,
+    }
+}
+
+fn resolve_paths_for_state(mode: StateMode) -> (PathBuf, PathBuf) {
+    match mode {
+        StateMode::OpenAgents => {
+            let db = default_convex_db();
+            let storage = std::env::var("HOME")
+                .map(|h| PathBuf::from(h).join(".openagents/convex/storage"))
+                .unwrap_or_else(|_| PathBuf::from("convex_local_storage"));
+            (db, storage)
+        }
+        StateMode::Convex => {
+            let base = std::env::var("HOME")
+                .map(|h| PathBuf::from(h).join(".convex/convex-backend-state/openagents-dev"))
+                .unwrap_or_else(|_| PathBuf::from("convex_state"));
+            let db = base.join("convex_local_backend.sqlite3");
+            let storage = base.join("convex_local_storage");
+            (db, storage)
+        }
+        StateMode::Ephemeral => {
+            let base = std::env::temp_dir().join(format!("oa-convex-{}", std::process::id()));
+            // Use a stable directory per-process
+            let _ = std::fs::create_dir_all(&base);
+            let db = base.join("convex_ephemeral.sqlite3");
+            let storage = base.join("storage");
+            (db, storage)
+        }
+    }
 }
 
 async fn tcp_listen_probe(port: u16) -> bool {
@@ -68,7 +118,17 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
             warn!(?e, path=%bin.display(), "convex local_backend missing and auto-install failed");
         }
     }
-    let db = opts.convex_db.clone().unwrap_or_else(default_convex_db);
+    // Resolve state layout and paths
+    let state_mode = determine_state_mode();
+    let (db, storage_dir) = match opts.convex_db.clone() {
+        Some(p) => {
+            let storage = std::env::var("HOME")
+                .map(|h| PathBuf::from(h).join(".openagents/convex/storage"))
+                .unwrap_or_else(|_| PathBuf::from("convex_local_storage"));
+            (p, storage)
+        }
+        None => resolve_paths_for_state(state_mode),
+    };
     let port = opts.convex_port;
     let site_proxy_port = port.saturating_add(1);
     let interface = opts.convex_interface.clone();
@@ -113,12 +173,11 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .arg("--site-proxy-port")
         .arg(site_proxy_port.to_string())
         .arg("--local-storage")
-        .arg(
-            std::env::var("HOME")
-                .map(|h| format!("{}/.openagents/convex/storage", h))
-                .unwrap_or_else(|_| "convex_local_storage".to_string()),
-        )
+        .arg(storage_dir.display().to_string())
         .arg("--disable-beacon");
+    // Provide an instance name so we can use /instance_name for early readiness
+    let instance_name = std::env::var("OPENAGENTS_CONVEX_INSTANCE").unwrap_or_else(|_| "openagents".to_string());
+    cmd.arg("--instance-name").arg(&instance_name);
     let debug_backend = std::env::var("OPENAGENTS_CONVEX_DEBUG").ok().as_deref() == Some("1");
     if debug_backend {
         cmd.stdin(std::process::Stdio::null())
@@ -153,7 +212,7 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
                 warn!(?e, "convex local_backend try_wait failed");
             }
         }
-        // TCP listener first, then HTTP readiness
+        // TCP listener first, then HTTP readiness (prefer /instance_name when instance is set)
         if tcp_listen_probe(port).await {
             if convex_health(&base).await.unwrap_or(false) { ok = true; break; }
         }
