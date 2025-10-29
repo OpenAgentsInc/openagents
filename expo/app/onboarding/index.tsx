@@ -112,7 +112,7 @@ export default function Onboarding() {
     if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'Connection refused — is the bridge running and reachable?'
     if (/unauthorized|401/i.test(reason)) return 'Unauthorized — set Bridge Token in Settings.'
     return `WebSocket closed ${code ?? ''}${reason ? `: ${reason}` : ''}`.trim()
-  }, [wsLastClose, connected])
+  }, [wsLastClose, connected, bridgeCodeInput])
 
   // Show the exact WS URL we will attempt (helps debugging)
   // No attempted URL display on this screen
@@ -135,8 +135,7 @@ export default function Onboarding() {
         <TextInput
           value={bridgeCodeInput}
           onChangeText={(v) => {
-            const display = normalizeBridgeCodeInput(v)
-            setBridgeCodeInput(display)
+            setBridgeCodeInput(v)
             const trimmed = String(v || '').trim()
             if (!trimmed) {
               try { disconnect() } catch {}
@@ -145,15 +144,14 @@ export default function Onboarding() {
               setCodeError('')
               return
             }
-            const parsed = parseAnyBridgeInput(display)
+            const parsed = parseAnyBridgeInput(trimmed)
             if (!parsed || !parsed.bridgeHost) { setCodeError('Enter a valid IP address'); return }
             setCodeError('')
-            // Token is managed separately in Settings; IP-only onboarding keeps it simple.
-            // Do not auto-connect on input; host/convex will be applied on Connect
           }}
           autoCapitalize='none'
           autoCorrect={false}
-          placeholder='100.72.151.98'
+          keyboardType='numbers-and-punctuation'
+          placeholder='Enter IP (e.g., 100.72.151.98)'
           placeholderTextColor={Colors.secondary}
           style={[styles.input, { paddingRight: 44 }]}
         />
