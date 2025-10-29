@@ -93,6 +93,17 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const effectiveHost = sanitizeHost(bridgeHost);
+  const isSecureHost = React.useMemo(() => {
+    try {
+      if (!effectiveHost) return false;
+      const parts = effectiveHost.split(':');
+      const port = parts.length > 1 ? parts[1] : '';
+      if (port === '443') return true;
+      // Heuristic: public domains should use TLS
+      if (/\.(openagents|cloudflare|vercel|netlify|aws|googleapis)\./i.test(effectiveHost)) return true;
+      return false;
+    } catch { return false }
+  }, [effectiveHost]);
 
   const disconnect = useCallback(() => {
     setAutoReconnect(false);
@@ -114,8 +125,10 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         const t = String(bridgeToken || '').trim();
         return t ? `?token=${encodeURIComponent(t)}` : '';
       })();
-      const wsUrl = `ws://${effectiveHost}/ws${tokenPart}`;
-      const httpBase = `http://${effectiveHost}`;
+      const scheme = isSecureHost ? 'wss' : 'ws';
+      const httpScheme = isSecureHost ? 'https' : 'http';
+      const wsUrl = `${scheme}://${effectiveHost}/ws${tokenPart}`;
+      const httpBase = `${httpScheme}://${effectiveHost}`;
       appLog('bridge.connect', { wsUrl, httpBase });
       // Keep connection logs minimal
       try { console.log('[bridge.ws] connect', wsUrl) } catch {}
