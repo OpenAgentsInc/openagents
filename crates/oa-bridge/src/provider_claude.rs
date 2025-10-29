@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_json::json;
 use tracing::info;
 
-use crate::convex_write::mirror_acp_update_to_convex;
+use crate::tinyvex_write::mirror_acp_update_to_convex;
 use crate::state::AppState;
 
 /// Minimal in-repo Claude Code provider stub.

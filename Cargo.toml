@@ -6,5 +6,6 @@ members = [
     "crates/oa-validate",
     "crates/fake-codex",
     "crates/fake-claude",
+    "crates/tinyvex",
 ]
 resolver = "2"
