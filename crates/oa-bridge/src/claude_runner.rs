@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use anyhow::{Context, Result};
-use futures::StreamExt;
 use serde_json::Value as JsonValue;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -18,6 +17,7 @@ use std::sync::Arc;
 
 /// Wrapper for a spawned Claude child process with stdout/stderr handles.
 pub struct ClaudeChild {
+    #[allow(dead_code)]
     pub pid: u32,
     pub stdout: Option<tokio::process::ChildStdout>,
     pub stderr: Option<tokio::process::ChildStderr>,

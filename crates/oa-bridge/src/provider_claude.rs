@@ -12,6 +12,7 @@ use crate::state::AppState;
 /// For now, synthesize a few representative Claude-style events and route them
 /// through the translator, then mirror to Convex. Later, replace this with a
 /// real in-repo adapter that talks to Claude Code.
+#[allow(dead_code)]
 pub async fn run_prompt(state: Arc<AppState>, thread_doc_id: &str, _cwd: Option<std::path::PathBuf>, text: &str) -> Result<()> {
     info!(thread_doc_id, len = text.len(), "provider.claude: run_prompt");
     // Remember target Convex thread id for writes
@@ -36,4 +37,3 @@ pub async fn run_prompt(state: Arc<AppState>, thread_doc_id: &str, _cwd: Option<
     }
     Ok(())
 }
-
