@@ -1,16 +1,24 @@
 import React from "react"
-import { Pressable } from 'react-native'
+import { Pressable, View } from 'react-native'
 import Markdown from "react-native-markdown-display"
 import { Colors } from "@/constants/theme"
 import { Typography } from "@/constants/typography"
 import { copyToClipboard } from '@/lib/copy'
+import { InlineToast } from '@/components/inline-toast'
 
 export function UserMessageRow({ text }: { text: string; numberOfLines?: number }) {
+  const [copied, setCopied] = React.useState(false)
+  React.useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 1400)
+    return () => clearTimeout(t)
+  }, [copied])
   const t = String(text || '')
   // Prefix each line with "> " to render as a Markdown blockquote
   const asQuote = `> ${t.replace(/\r?\n/g, '\n> ')}`
   return (
-    <Pressable onLongPress={async () => { try { await copyToClipboard(asQuote, { haptics: true }) } catch {} }}>
+    <View style={{ position: 'relative' }}>
+    <Pressable onLongPress={async () => { try { await copyToClipboard(asQuote, { haptics: true, local: true }); setCopied(true) } catch {} }}>
     <Markdown
       style={{
         body: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 },
@@ -31,5 +39,7 @@ export function UserMessageRow({ text }: { text: string; numberOfLines?: number 
       {asQuote}
     </Markdown>
     </Pressable>
+    {copied ? <InlineToast text="Copied" position="top" align="right" /> : null}
+    </View>
   )
 }

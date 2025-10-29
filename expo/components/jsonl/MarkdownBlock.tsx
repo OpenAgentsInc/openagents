@@ -1,12 +1,19 @@
 import React from 'react'
-import { Pressable } from 'react-native'
+import { Pressable, View } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { CodeBlock } from '@/components/code-block'
+import { InlineToast } from '@/components/inline-toast'
 import { copyToClipboard } from '@/lib/copy'
 
 export function MarkdownBlock({ markdown }: { markdown: string }) {
+  const [copied, setCopied] = React.useState(false)
+  React.useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 1400)
+    return () => clearTimeout(t)
+  }, [copied])
   const rules: any = {
     fence: (node: any) => {
       const lang = typeof node?.params === 'string' ? node.params : (typeof node?.info === 'string' ? node.info : undefined)
@@ -19,7 +26,8 @@ export function MarkdownBlock({ markdown }: { markdown: string }) {
     },
   }
   return (
-    <Pressable onLongPress={async () => { try { await copyToClipboard(String(markdown || ''), { haptics: true }) } catch {} }}>
+    <View style={{ position: 'relative' }}>
+    <Pressable onLongPress={async () => { try { await copyToClipboard(String(markdown || ''), { haptics: true, local: true }); setCopied(true) } catch {} }}>
     <Markdown
       style={{
         body: { color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 },
@@ -38,5 +46,7 @@ export function MarkdownBlock({ markdown }: { markdown: string }) {
       {markdown}
     </Markdown>
     </Pressable>
+    {copied ? <InlineToast text="Copied" position="bottom" align="right" /> : null}
+    </View>
   )
 }
