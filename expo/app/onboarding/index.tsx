@@ -129,7 +129,7 @@ export default function Onboarding() {
   return (
     <View style={styles.container}>
       {/* Landing page feel: no explicit status banner */}
-      <Text style={styles.label}>Bridge IP</Text>
+      <Text style={styles.label}>Desktop IP</Text>
       {/* Intentionally omit explanatory text here */}
       <View style={styles.inputWrapper}>
         <TextInput
