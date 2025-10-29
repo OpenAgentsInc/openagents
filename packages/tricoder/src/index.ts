@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
+import { ensureBridgeBinary } from './utils/bridgeBinary.js';
 
 const execFileP = promisify(execFile);
 
@@ -100,6 +101,14 @@ function runCargoBridge(repoDir: string): Promise<number> {
   });
 }
 
+function runBridgeBinary(binPath: string, extraArgs: string[] = []): Promise<number> {
+  return new Promise((resolve) => {
+    const args = ['--bind', process.env.TRICODER_BRIDGE_BIND || '0.0.0.0:8787', ...extraArgs];
+    const child = spawn(binPath, args, { stdio: 'inherit' });
+    child.on('exit', (code) => resolve(code ?? 0));
+  });
+}
+
 async function main() {
   const args = new Set(process.argv.slice(2));
   const autorun = args.has('--run-bridge') || args.has('-r');
@@ -134,7 +143,23 @@ async function main() {
     return;
   }
 
-  // Ensure repo and Rust, then run the bridge
+  // Prefer a prebuilt oa-bridge binary (downloaded/cached) and fall back to cargo if needed
+  const preferBinary = process.env.TRICODER_PREFER_BIN !== '0';
+  let code = 0;
+  if (preferBinary) {
+    try {
+      const { binaryPath, source } = await ensureBridgeBinary();
+      console.log(chalk.cyan(`Starting bridge (${source})…`));
+      code = await runBridgeBinary(binaryPath);
+      process.exit(code);
+      return;
+    } catch (e) {
+      console.warn(chalk.yellow('Falling back to cargo: could not obtain prebuilt oa-bridge binary.'));
+      if (e instanceof Error) console.warn(chalk.dim(e.message));
+    }
+  }
+
+  // Cargo fallback path
   const repoDir = await ensureRepo(process.env.OPENAGENTS_REPO_DIR);
   const hasRust = await ensureRust();
   if (!hasRust) {
@@ -142,7 +167,7 @@ async function main() {
     process.exit(1);
   }
   console.log(chalk.cyan('Starting bridge via cargo (bind 0.0.0.0:8787)…'));
-  const code = await runCargoBridge(repoDir);
+  code = await runCargoBridge(repoDir);
   process.exit(code);
 }
 
