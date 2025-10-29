@@ -89,10 +89,11 @@ enum StateMode { Convex, OpenAgents, Ephemeral }
 
 fn determine_state_mode() -> StateMode {
     match std::env::var("OPENAGENTS_CONVEX_STATE").ok().as_deref() {
-        Some("convex") => StateMode::Convex,
-        Some("ephemeral") => StateMode::Ephemeral,
         Some("openagents") => StateMode::OpenAgents,
-        _ => StateMode::OpenAgents,
+        Some("ephemeral") => StateMode::Ephemeral,
+        Some("convex") => StateMode::Convex,
+        // Default to Convex CLI layout for faster typical cold-start parity
+        _ => StateMode::Convex,
     }
 }
 
@@ -121,6 +122,17 @@ fn resolve_paths_for_state(mode: StateMode) -> (PathBuf, PathBuf) {
             let storage = base.join("storage");
             (db, storage)
         }
+    }
+}
+
+fn backend_supports_instance_name(bin: &Path) -> bool {
+    use std::process::Command as StdCommand;
+    match StdCommand::new(bin).arg("--help").output() {
+        Ok(out) => {
+            let s = String::from_utf8_lossy(&out.stdout).to_lowercase();
+            s.contains("instance_name") || s.contains("instance-name")
+        }
+        Err(_) => false,
     }
 }
 
@@ -163,24 +175,12 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         None => resolve_paths_for_state(state_mode),
     };
     let port = opts.convex_port;
-    let site_proxy_port = port.saturating_add(1);
     let interface = opts.convex_interface.clone();
     let base = format!("http://127.0.0.1:{}", port);
     let pre_healthy = convex_health(&base).await.unwrap_or(false);
     if pre_healthy {
-        if opts.convex_interface.trim() != "127.0.0.1" {
-            info!(url=%base, desired_interface=%opts.convex_interface, "convex healthy on loopback; restarting on desired interface");
-            if let Err(e) = kill_listeners_on_port(port).await {
-                warn!(
-                    ?e,
-                    port, "failed killing existing convex on port; will try spawn anyway"
-                );
-            }
-            tokio::time::sleep(Duration::from_millis(300)).await;
-        } else {
-            info!(url=%base, "convex.ensure: already healthy");
-            return Ok(());
-        }
+        info!(url=%base, desired_interface=%opts.convex_interface, "convex.ensure: already healthy (keeping existing backend)");
+        return Ok(());
     }
     std::fs::create_dir_all(db.parent().unwrap_or_else(|| Path::new("."))).ok();
     // Validate binary presence and perms
@@ -203,14 +203,20 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .arg(&interface)
         .arg("--port")
         .arg(port.to_string())
-        .arg("--site-proxy-port")
-        .arg(site_proxy_port.to_string())
         .arg("--local-storage")
         .arg(storage_dir.display().to_string())
         .arg("--disable-beacon");
-    // Provide an instance name so we can use /instance_name for early readiness
+    if matches!(std::env::var("OPENAGENTS_CONVEX_SITE_PROXY").ok().as_deref(), Some("1"|"on"|"true")) {
+        let site_proxy_port = port.saturating_add(1);
+        cmd.arg("--site-proxy-port").arg(site_proxy_port.to_string());
+    }
+    // Provide an instance name so we can use /instance_name for early readiness, only if supported
     let instance_name = std::env::var("OPENAGENTS_CONVEX_INSTANCE").unwrap_or_else(|_| "openagents".to_string());
-    cmd.arg("--instance-name").arg(&instance_name);
+    if backend_supports_instance_name(&bin) {
+        cmd.arg("--instance-name").arg(&instance_name);
+    } else {
+        info!("msg" = "convex backend does not support --instance-name; falling back to version/health endpoints");
+    }
     let debug_backend = std::env::var("OPENAGENTS_CONVEX_DEBUG").ok().as_deref() == Some("1");
     if debug_backend {
         cmd.stdin(std::process::Stdio::null())
@@ -221,7 +227,7 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
     }
-    info!(bin=%bin.display(), db=%db.display(), port, site_proxy_port, interface=%interface, "convex.ensure: starting local backend");
+    info!(bin=%bin.display(), db=%db.display(), port, interface=%interface, "convex.ensure: starting local backend");
     let mut child = cmd.spawn().context("spawn convex local_backend")?;
     // Adaptive timeout: longer window on first-run (no marker present)
     let init_marker = std::env::var("HOME")
@@ -269,6 +275,7 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
 }
 
 #[cfg(unix)]
+#[allow(dead_code)]
 /// Best‑effort helper to terminate any listeners on `port` (Unix only).
 pub async fn kill_listeners_on_port(port: u16) -> Result<()> {
     use std::process::Command as StdCommand;
