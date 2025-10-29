@@ -108,10 +108,13 @@ function b64url(s: string): string {
   return Buffer.from(s, 'utf8').toString('base64').replace(/=+$/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
-function buildBridgeCode(host: string, port: number, token: string, secure = false) {
+function buildBridgeCode(host: string, port: number, token: string, secure = false, hosts?: string[]) {
   const scheme = secure ? 'wss' : 'ws';
   const bridge = `${scheme}://${host}:${port}/ws`;
-  const payload = { v: 1, type: 'bridge', provider: 'openagents', bridge, token };
+  const payload: any = { v: 1, type: 'bridge', provider: 'openagents', bridge, token };
+  if (Array.isArray(hosts) && hosts.length > 0) {
+    payload.hosts = hosts;
+  }
   const code = b64url(JSON.stringify(payload));
   const deeplink = `openagents://connect?j=${code}`;
   return { payload, code, deeplink, bridge } as const;
@@ -234,7 +237,16 @@ async function main() {
     writePersistedToken(token);
   }
 
-  const { deeplink, bridge } = buildBridgeCode(hostIp, bridgePort, token!, false);
+  // Compute candidate hosts for QR payload in priority order
+  const lanCandidates = getLanIPv4Candidates().map((ip) => `${ip}:${bridgePort}`);
+  const tsCandidates = (() => {
+    if (prefer === 'lan' || !tsPath) return [] as string[];
+    const status2 = await getTailscaleStatus(tsPath);
+    const ip = status2 ? chooseSelfIPv4(status2) : null;
+    return ip ? [`${ip}:${bridgePort}`] : [];
+  })();
+  const hosts = (mode === 'lan') ? [...lanCandidates, ...tsCandidates] : [...tsCandidates, ...lanCandidates];
+  const { deeplink, bridge } = buildBridgeCode(hostIp, bridgePort, token!, false, hosts);
   console.log(mode === 'tailscale'
     ? chalk.green(`Desktop IP (Tailscale): ${hostIp}`)
     : chalk.green(`Desktop IP (LAN): ${hostIp}`));
@@ -243,6 +255,9 @@ async function main() {
   console.log(chalk.gray('Deep link: '), chalk.white(deeplink));
   console.log(chalk.gray('WS URL:   '), chalk.white(bridge));
   console.log(chalk.gray('Token:    '), chalk.white(token!));
+  if (hosts.length > 1) {
+    console.log(chalk.gray('Hosts:    '), chalk.white(hosts.join(', ')));
+  }
 
   if (!autorun) {
     console.log('\nTo launch the desktop bridge automatically:');

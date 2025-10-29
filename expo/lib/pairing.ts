@@ -4,6 +4,7 @@ export type PairPayload = {
   provider?: string
   bridge: string
   token?: string | null
+  hosts?: string[]
 }
 
 // Tiny base64url decoder with no Node Buffer dependency
@@ -59,7 +60,11 @@ export function parseBridgeCode(code: string): { bridgeHost?: string; token?: st
     const obj = JSON.parse(json) as PairPayload
     if (!obj || typeof obj !== 'object') return null
     const out: { bridgeHost?: string; token?: string | null } = {}
-    if (obj.bridge && typeof obj.bridge === 'string') {
+    // Prefer hosts[] if present (first item is highest priority), else fall back to bridge URL
+    if (Array.isArray((obj as any).hosts) && (obj as any).hosts.length > 0) {
+      const h = String((obj as any).hosts[0] || '').trim()
+      if (h) out.bridgeHost = h
+    } else if (obj.bridge && typeof obj.bridge === 'string') {
       try {
         const u = new URL(obj.bridge)
         const host = u.hostname
