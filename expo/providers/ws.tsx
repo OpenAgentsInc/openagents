@@ -15,6 +15,7 @@ type BridgeContextValue = {
   connecting: boolean;
   connect: () => void;
   disconnect: () => void;
+  wsLastClose: { code?: number; reason?: string } | null;
   send: (payload: string | ArrayBuffer | Blob) => boolean;
   setOnMessage: (fn: MsgHandler) => void;
   addSubscriber: (fn: MsgHandler) => () => void;
@@ -49,6 +50,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const setBridgeHost = useSettings((s) => s.setBridgeHost)
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [wsLastClose, setWsLastClose] = useState<{ code?: number; reason?: string } | null>(null);
   const autoReconnect = useSettings((s) => s.bridgeAutoReconnect)
   const setAutoReconnect = useSettings((s) => s.setBridgeAutoReconnect)
   const wsRef = useRef<WebSocket | null>(null);
@@ -115,22 +117,27 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   const connect = useCallback(() => {
     setAutoReconnect(true);
-    if (!effectiveHost) {
-      // No host configured; do not attempt to connect
-      return;
-    }
+    // Read latest values from the settings store to avoid stale closures
+    const rawHost = useSettings.getState().bridgeHost;
+    const tokenNow = useSettings.getState().bridgeToken;
+    const host = sanitizeHost(String(rawHost || ''));
+    if (!host) return;
+    setWsLastClose(null);
+    // Compute secure scheme for this host now
+    const parts = host.split(':');
+    const port = parts.length > 1 ? parts[1] : '';
+    const secure = port === '443' || /\.(openagents|cloudflare|vercel|netlify|aws|googleapis)\./i.test(host);
     try { wsRef.current?.close(); } catch {}
     try {
       const tokenPart = (() => {
-        const t = String(bridgeToken || '').trim();
+        const t = String(tokenNow || '').trim();
         return t ? `?token=${encodeURIComponent(t)}` : '';
       })();
-      const scheme = isSecureHost ? 'wss' : 'ws';
-      const httpScheme = isSecureHost ? 'https' : 'http';
-      const wsUrl = `${scheme}://${effectiveHost}/ws${tokenPart}`;
-      const httpBase = `${httpScheme}://${effectiveHost}`;
+      const scheme = secure ? 'wss' : 'ws';
+      const httpScheme = secure ? 'https' : 'http';
+      const wsUrl = `${scheme}://${host}/ws${tokenPart}`;
+      const httpBase = `${httpScheme}://${host}`;
       appLog('bridge.connect', { wsUrl, httpBase });
-      // Keep connection logs minimal
       try { console.log('[bridge.ws] connect', wsUrl) } catch {}
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -140,37 +147,33 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         setConnecting(false);
         appLog('bridge.open');
         try { console.log('[bridge.ws] open') } catch {}
-        // Suppress noisy connection status logs in the session feed.
       };
       ws.onmessage = (evt) => {
         const data = typeof evt.data === 'string' ? evt.data : String(evt.data);
-        // Always buffer so re-attaching consumers can catch up.
         try {
           const buf = pendingBufferRef.current;
           buf.push(data);
-          // Trim buffer to last 800 chunks to avoid unbounded growth
           if (buf.length > 800) buf.splice(0, buf.length - 800);
         } catch {}
-        // Deliver to active consumer if present
         try { onMessageRef.current?.(data); } catch {}
-        // Deliver to passive subscribers
         try { subsRef.current.forEach((fn) => { try { if (fn) fn(data) } catch {} }); } catch {}
       };
-      ws.onerror = (_evt: any) => {
-        // Suppress noisy error prints; UI shows disconnected state
-        setConnecting(false);
-      };
-      ws.onclose = () => {
+      ws.onerror = (_evt: any) => { setConnecting(false); };
+      ws.onclose = (evt: any) => {
+        try {
+          const code = Number((evt && evt.code) || 0) || undefined;
+          const reason = String((evt && evt.reason) || '').trim() || undefined;
+          setWsLastClose({ code, reason });
+        } catch {}
         setConnected(false);
         setConnecting(false);
         appLog('bridge.close');
       };
     } catch (e: any) {
-      // Suppress connection error logs in the feed.
       appLog('bridge.connect.error', { error: String(e?.message ?? e) }, 'error');
       try { console.log('[bridge.ws] connect.error', String(e?.message ?? e)) } catch {}
     }
-  }, [effectiveHost]);
+  }, [sanitizeHost, setAutoReconnect]);
 
   // Helper: wait until the WebSocket is OPEN (or time out)
   const awaitConnected = useCallback(async (_timeoutMs: number = 8000) => {
@@ -334,6 +337,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       connecting,
       connect,
       disconnect,
+      wsLastClose,
       send,
       setOnMessage,
       addSubscriber,

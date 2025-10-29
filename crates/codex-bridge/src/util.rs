@@ -1,6 +1,6 @@
 //! Small utilities shared across bridge modules.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[inline]
 pub fn now_ms() -> u64 {
