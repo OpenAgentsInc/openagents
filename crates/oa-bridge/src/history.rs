@@ -40,6 +40,7 @@ pub struct ThreadItem {
 }
 
 #[derive(Debug, Serialize, Clone)]
+#[allow(dead_code)]
 pub struct ThreadResponse {
     pub title: String,
     pub items: Vec<ThreadItem>,
@@ -263,6 +264,7 @@ fn infer_title(s: &str) -> String {
     s.split_whitespace().take(6).collect::<Vec<_>>().join(" ")
 }
 
+#[allow(dead_code)]
 pub fn resolve_session_path(base: &Path, id: Option<&str>, hint: Option<&str>) -> Option<String> {
     if let Some(h) = hint {
         let ph = Path::new(h);
@@ -289,6 +291,7 @@ pub fn resolve_session_path(base: &Path, id: Option<&str>, hint: Option<&str>) -
     None
 }
 
+#[allow(dead_code)]
 pub fn parse_thread(path: &Path) -> Result<ThreadResponse> {
     let f = fs::File::open(path).context("open session file")?;
     let r = BufReader::new(f);
@@ -519,6 +522,7 @@ fn now_ts() -> u64 {
         .as_secs()
 }
 
+#[allow(dead_code)]
 pub fn derive_started_ts_from_path(path: &Path) -> Option<u64> {
     // Try from filename like rollout-YYYY-MM-DDTHH-MM-SS-....jsonl
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
