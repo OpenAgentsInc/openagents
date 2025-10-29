@@ -26,7 +26,18 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
     let out_kind = if kind == "assistant" { "message" } else if kind == "reason" { "reason" } else { kind };
     let t = now_ms();
     // Ensure a thread row exists/upserted for listings
-    let thr = tinyvex::ThreadRow { id: thread_id.to_string(), thread_id: Some(thread_id.to_string()), title: "Thread".into(), project_id: None, resume_id: Some(thread_id.to_string()), rollout_path: None, source: Some("stream".into()), created_at: t, updated_at: t };
+    let thr = tinyvex::ThreadRow {
+        id: thread_id.to_string(),
+        thread_id: Some(thread_id.to_string()),
+        title: "Thread".into(),
+        project_id: None,
+        resume_id: Some(thread_id.to_string()),
+        rollout_path: None,
+        source: Some("stream".into()),
+        created_at: t,
+        updated_at: t,
+        message_count: None,
+    };
     let _ = state.tinyvex.upsert_thread(&thr);
     // Notify clients that threads list may have changed
     let _ = state.tx.send(json!({
