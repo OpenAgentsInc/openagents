@@ -888,6 +888,26 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         }
                                     }
                                 }
+                            } else if kind == "agent_message" || kind == "reasoning" {
+                                // Treat agent final messages and reasoning as chat rows in Tinyvex
+                                let text = payload.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                                let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                let target_tid = if let Some(s) = convex_tid_opt {
+                                    s
+                                } else {
+                                    state_for_stdout
+                                        .last_thread_id
+                                        .lock()
+                                        .await
+                                        .clone()
+                                        .unwrap_or_default()
+                                };
+                                if !target_tid.is_empty() {
+                                    // Map to our Tinyvex kinds: agent_message -> assistant, reasoning -> reason
+                                    let tvx_kind = if kind == "agent_message" { "assistant" } else { "reason" };
+                                    crate::tinyvex_write::stream_upsert_or_append(&state_for_stdout, &target_tid, tvx_kind, text).await;
+                                    let _ = crate::tinyvex_write::try_finalize_stream_kind(&state_for_stdout, &target_tid, tvx_kind, text).await;
+                                }
                             }
                         }
                     }
