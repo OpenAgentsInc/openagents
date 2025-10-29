@@ -7,7 +7,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { Composer } from '@/components/composer'
 import { useBridge } from '@/providers/ws'
-import { useHeaderTitle } from '@/lib/header-store'
+import { useHeaderTitle, useHeaderStore } from '@/lib/header-store'
 import { useAcp } from '@/providers/acp'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
 import { SessionUpdateAgentThoughtChunk } from '@/components/acp/SessionUpdateAgentThoughtChunk'
@@ -41,9 +41,11 @@ export default function ThreadScreen() {
     try { send(JSON.stringify(payload)) } catch {}
   }, [threadId, send])
   const insets = useSafeAreaInsets()
+  const headerHeight = useHeaderStore((s) => s.height)
+  const keyboardOffset = Platform.OS === 'ios' ? headerHeight : 0
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: Colors.background }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
+      <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps='handled' contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}>
         {acpUpdates.length === 0 ? (
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
         ) : acpUpdates.map((n, idx) => (
