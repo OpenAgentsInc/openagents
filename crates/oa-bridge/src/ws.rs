@@ -236,6 +236,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::ConvexBackfill => {
+                                if !stdin_state.is_convex_ready() {
+                                    let _ = stdin_state.tx.send(serde_json::json!({
+                                        "type": "bridge.convex_backfill",
+                                        "status": "skipped",
+                                        "reason": "convex not ready"
+                                    }).to_string());
+                                    continue;
+                                }
                                 let base =
                                     std::env::var("CODEXD_HISTORY_DIR").ok().unwrap_or_else(|| {
                                         std::env::var("HOME")
@@ -799,19 +807,21 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         )
                         .await
                         {
-                            if !state_for_stdout.is_convex_ready() { }
-                            use convex::{ConvexClient, Value};
-                            use std::collections::BTreeMap;
-                            let url =
-                                format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                            if let Ok(mut client) = ConvexClient::new(&url).await {
-                                let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                args.insert("threadId".into(), Value::from(target_tid.clone()));
-                                args.insert("role".into(), Value::from("assistant"));
-                                args.insert("kind".into(), Value::from("message"));
-                                args.insert("text".into(), Value::from(final_text.clone()));
-                                args.insert("ts".into(), Value::from(now_ms() as f64));
-                                let _ = client.mutation("messages:create", args).await;
+                            if state_for_stdout.is_convex_ready() {
+                                use convex::{ConvexClient, Value};
+                                use std::collections::BTreeMap;
+                                let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                if let Ok(mut client) = ConvexClient::new(&url).await {
+                                    let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                    args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                    args.insert("role".into(), Value::from("assistant"));
+                                    args.insert("kind".into(), Value::from("message"));
+                                    args.insert("text".into(), Value::from(final_text.clone()));
+                                    args.insert("ts".into(), Value::from(now_ms() as f64));
+                                    let _ = client.mutation("messages:create", args).await;
+                                }
+                            } else {
+                                let _ = tx_out.send(serde_json::json!({"type":"bridge.convex_write","op":"skip","reason":"not_ready","kind":"assistant"}).to_string());
                             }
                             info!(thread=%target_tid, "assistant.finalized created snapshot");
                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string();
@@ -875,14 +885,14 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     "http://127.0.0.1:{}",
                                     state_for_stdout.opts.convex_port
                                 );
-                                if let Ok(mut client) = ConvexClient::new(&url).await {
+                                if state_for_stdout.is_convex_ready() { if let Ok(mut client) = ConvexClient::new(&url).await {
                                     let mut args: BTreeMap<String, Value> = BTreeMap::new();
                                     args.insert("threadId".into(), Value::from(target_tid.clone()));
                                     args.insert("kind".into(), Value::from("reason"));
                                     args.insert("text".into(), Value::from(text_owned));
                                     args.insert("ts".into(), Value::from(now_ms() as f64));
                                     let _ = client.mutation("messages:create", args).await;
-                                }
+                                }} else { let _ = tx_out.send(serde_json::json!({"type":"bridge.convex_write","op":"skip","reason":"not_ready","kind":"reason"}).to_string()); }
                             }
                             let dbg2 = serde_json::json!({"type":"bridge.reason_written","thread":target_tid}).to_string();
                             let _ = tx_out.send(dbg2);
@@ -996,23 +1006,20 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 };
                                 if !target_tid.is_empty() {
                                     let payload_str = payload.to_string();
-                                    if !state_for_stdout.is_convex_ready() { }
-                                    use convex::{ConvexClient, Value};
-                                    use std::collections::BTreeMap;
-                                    let url = format!(
-                                        "http://127.0.0.1:{}",
-                                        state_for_stdout.opts.convex_port
-                                    );
-                                    if let Ok(mut client) = ConvexClient::new(&url).await {
-                                        let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                                        args.insert(
-                                            "threadId".into(),
-                                            Value::from(target_tid.clone()),
-                                        );
-                                        args.insert("kind".into(), Value::from(k));
-                                        args.insert("text".into(), Value::from(payload_str));
-                                        args.insert("ts".into(), Value::from(now_ms() as f64));
-                                        let _ = client.mutation("messages:create", args).await;
+                                    if state_for_stdout.is_convex_ready() {
+                                        use convex::{ConvexClient, Value};
+                                        use std::collections::BTreeMap;
+                                        let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                                        if let Ok(mut client) = ConvexClient::new(&url).await {
+                                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                            args.insert("threadId".into(), Value::from(target_tid.clone()));
+                                            args.insert("kind".into(), Value::from(k));
+                                            args.insert("text".into(), Value::from(payload_str));
+                                            args.insert("ts".into(), Value::from(now_ms() as f64));
+                                            let _ = client.mutation("messages:create", args).await;
+                                        }
+                                    } else {
+                                        let _ = tx_out.send(serde_json::json!({"type":"bridge.convex_write","op":"skip","reason":"not_ready","kind":k}).to_string());
                                     }
                                     // Mirror ACP (tool/plan/state) into Convex and optionally emit for debugging
                                     if let Some(update) = translate_codex_event_to_acp_update(&v) {

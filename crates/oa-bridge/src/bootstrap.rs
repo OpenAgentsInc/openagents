@@ -136,7 +136,8 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .map(|h| PathBuf::from(h).join(".openagents/convex/.initialized"))
         .unwrap_or_else(|| PathBuf::from(".initialized"));
     let is_first_run = !init_marker.exists();
-    let max_iters: u32 = if is_first_run { 240 } else { 60 }; // 120s vs 30s
+    // Allow more time on subsequent runs as well; large DBs may take longer to become ready
+    let max_iters: u32 = if is_first_run { 240 } else { 120 }; // 120s vs 60s
 
     let mut ok = false;
     for i in 0..max_iters {
