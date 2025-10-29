@@ -22,10 +22,19 @@ export const upsert = mutationGeneric(async ({ db }, args: {
   title: string;
   kind: string;
   status: string;
+  // Accept either pre-parsed arrays or JSON strings from upstream
+  content?: any[];
   content_json?: string;
+  locations?: { path: string; line?: number }[];
   locations_json?: string;
 }) => {
   const now = Date.now();
+  const parseJsonArray = (s?: string): any[] | undefined => {
+    if (!s || typeof s !== 'string') return undefined as any;
+    try { const v = JSON.parse(s); return Array.isArray(v) ? v : undefined as any } catch { return undefined as any }
+  };
+  const typedContent = Array.isArray(args.content) ? args.content : parseJsonArray(args.content_json);
+  const typedLocs = Array.isArray(args.locations) ? args.locations : parseJsonArray(args.locations_json);
   let rows: any[] = [];
   try {
     // @ts-ignore composite index
@@ -45,8 +54,8 @@ export const upsert = mutationGeneric(async ({ db }, args: {
       title: args.title,
       kind: args.kind,
       status: args.status,
-      content_json: args.content_json ?? doc.content_json,
-      locations_json: args.locations_json ?? doc.locations_json,
+      content: typedContent ?? doc.content,
+      locations: typedLocs ?? doc.locations,
       updatedAt: now,
     } as any);
     return doc._id;
@@ -57,11 +66,10 @@ export const upsert = mutationGeneric(async ({ db }, args: {
     title: args.title,
     kind: args.kind,
     status: args.status,
-    content_json: args.content_json,
-    locations_json: args.locations_json,
+    content: typedContent,
+    locations: typedLocs,
     createdAt: now,
     updatedAt: now,
   } as any);
   return id;
 });
-

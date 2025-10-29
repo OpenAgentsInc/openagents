@@ -175,7 +175,7 @@ export default function ConvexThreadDetail() {
               <>
                 {/* ACP state (current mode) */}
                 {(() => {
-                  const cm = stateDoc && (stateDoc.currentModeId || (() => { try { const o = JSON.parse(String(stateDoc.currentModeId || '')); return o?.currentModeId || o?.current_mode_id } catch { return '' } })())
+                  const cm = stateDoc && stateDoc.currentModeId
                   if (!cm) return null
                   return (
                     <View style={{ paddingVertical: 2 }}>
@@ -185,7 +185,7 @@ export default function ConvexThreadDetail() {
                 })()}
                 {/* ACP state (available commands) */}
                 {(() => {
-                  const cmds = stateDoc && typeof stateDoc.available_commands_json === 'string' ? (() => { try { return JSON.parse(String(stateDoc.available_commands_json||'[]')) } catch { return [] } })() : []
+                  const cmds = stateDoc && Array.isArray(stateDoc.available_commands) ? stateDoc.available_commands : []
                   if (!Array.isArray(cmds) || cmds.length === 0) return null
                   return (
                     <View style={{ paddingVertical: 2 }}>
@@ -195,7 +195,7 @@ export default function ConvexThreadDetail() {
                 })()}
                 {/* ACP plan */}
                 {(() => {
-                  const entries = planDoc && typeof planDoc.entries_json === 'string' ? (() => { try { return JSON.parse(String(planDoc.entries_json||'[]')) } catch { return [] } })() : []
+                  const entries = planDoc && Array.isArray(planDoc.entries) ? planDoc.entries : []
                   if (!Array.isArray(entries) || entries.length === 0) return null
                   return (
                     <View style={{ paddingVertical: 2 }}>
@@ -205,7 +205,7 @@ export default function ConvexThreadDetail() {
                 })()}
                 {/* ACP tool calls */}
                 {Array.isArray(toolCalls) && toolCalls.length > 0 && toolCalls.map((tc: any) => {
-                  const obj = (() => { try { return typeof tc.content_json === 'string' ? JSON.parse(tc.content_json) : null } catch { return null } })()
+                  const obj = Array.isArray(tc.content) ? tc.content : null
                   const props = obj && Array.isArray(obj) ? { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending'), content: obj } : { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending') }
                   return (
                     <View key={`${tc.threadId}:${tc.toolCallId}`} style={{ paddingVertical: 2 }}>
