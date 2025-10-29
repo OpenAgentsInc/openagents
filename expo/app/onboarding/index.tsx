@@ -17,10 +17,9 @@ export default function Onboarding() {
   const router = useRouter()
   const { bridgeHost, setBridgeHost, connected, connecting, connect, disconnect } = useBridge()
   const { wsLastClose } = useBridge()
-  const HARDCODED_IP = '100.72.151.98'
   const bridgeCode = useSettings((s) => s.bridgeCode)
   // Use a local input state to avoid programmatic TextInput updates from store
-  const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => HARDCODED_IP)
+  const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>('')
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const bridgeToken = useSettings((s) => s.bridgeToken)
   const [codeError, setCodeError] = React.useState<string>('')
@@ -42,6 +41,17 @@ export default function Onboarding() {
       return null
     } catch { return null }
   }, [])
+
+  // Initialize Desktop IP field from current bridgeHost (set by QR/deeplink)
+  React.useEffect(() => {
+    try {
+      const cur = String(bridgeHost || '').trim()
+      if (!cur) return
+      // Extract host without port; if :<digits> suffix present, strip it
+      const hostOnly = cur.replace(/^\[/, '').replace(/\]$/, '').replace(/:(\d+)$/, '')
+      setBridgeCodeInput(hostOnly)
+    } catch {}
+  }, [bridgeHost])
 
   // Validate the current input only; do not mutate host/convex or connect automatically
   React.useEffect(() => {
