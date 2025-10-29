@@ -207,7 +207,8 @@ export default function Onboarding() {
           try {
           const parsed = parseAnyBridgeInput(normalizeBridgeCodeInput(trimmedCode))
           if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
-          if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
+          // Clear any stale Convex override so provider derives from the bridge host
+          setConvexUrl('')
           // Bridge token (if required) can be pasted in Settings
           } catch {}
           try {
