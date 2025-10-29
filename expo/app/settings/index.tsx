@@ -6,18 +6,14 @@ import { useQuery } from 'convex/react'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
-import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+// removed QR/Icons in simplified settings
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
-  const router = useRouter()
   const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, connecting, wsLastClose } = useBridge()
   const [inputDisabled, setInputDisabled] = React.useState(false)
   const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
-  const bridgeToken = useSettings((s) => s.bridgeToken)
-  const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
   const derivedConvexUrl = React.useMemo(() => {
     try {
@@ -74,19 +70,7 @@ export default function SettingsScreen() {
           style={[styles.input]}
         />
       </View>
-      <Text style={styles.label}>Bridge Token</Text>
-      <View style={styles.inputWrapper}>
-        <TextInput
-          value={bridgeToken}
-          onChangeText={(v) => { setBridgeToken(v) }}
-          editable={!connecting && !inputDisabled}
-          autoCapitalize='none'
-          autoCorrect={false}
-          placeholder='paste token (optional)'
-          placeholderTextColor={Colors.secondary}
-          style={[styles.input]}
-        />
-      </View>
+      {/* Bridge token input removed */}
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {wsUrl || '(not configured)'}</Text>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>Convex base: {derivedConvexUrl || '(derived from host)'}</Text>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>Convex status: {convexStatus}</Text>
@@ -96,7 +80,7 @@ export default function SettingsScreen() {
             const code = wsLastClose.code
             const reason = String(wsLastClose.reason || '')
             if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'WS: Connection refused — is the bridge running and reachable?'
-            if (/unauthorized|401/i.test(reason)) return 'WS: Unauthorized — set Bridge Token.'
+            if (/unauthorized|401/i.test(reason)) return 'WS: Unauthorized — token required.'
             return `WS closed ${code ?? ''}${reason ? `: ${reason}` : ''}`.trim()
           })()}
         </Text>
