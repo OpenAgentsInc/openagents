@@ -155,6 +155,26 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
           buf.push(data);
           if (buf.length > 800) buf.splice(0, buf.length - 800);
         } catch {}
+        // Debug: surface ACP and bridge events in the console for diagnostics
+        try {
+          const s = String(data || '').trim();
+          if (s.startsWith('{')) {
+            const obj = JSON.parse(s);
+            if (obj && typeof obj === 'object') {
+              const t = String(obj.type || '');
+              if (t === 'bridge.acp') {
+                const n = obj.notification || {};
+                const sid = n.sessionId || n.session_id;
+                const kind = n.update?.sessionUpdate;
+                // eslint-disable-next-line no-console
+                console.log('[ws.in][bridge.acp]', { sessionId: sid, kind });
+              } else if (t && /^bridge\./.test(t)) {
+                // eslint-disable-next-line no-console
+                console.log('[ws.in]', t);
+              }
+            }
+          }
+        } catch {}
         try { onMessageRef.current?.(data); } catch {}
         try { subsRef.current.forEach((fn) => { try { if (fn) fn(data) } catch {} }); } catch {}
       };

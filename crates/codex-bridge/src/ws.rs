@@ -951,6 +951,18 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         update,
                                         meta: None,
                                     };
+                                    // Log to server console for diagnostics
+                                    let update_kind = match &notif.update {
+                                        agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
+                                        agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => "agent_message_chunk",
+                                        agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
+                                        agent_client_protocol::SessionUpdate::ToolCall(_) => "tool_call",
+                                        agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
+                                        agent_client_protocol::SessionUpdate::Plan(_) => "plan",
+                                        agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(_) => "available_commands_update",
+                                        agent_client_protocol::SessionUpdate::CurrentModeUpdate(_) => "current_mode_update",
+                                    };
+                                    info!(session_id = %notif.session_id.0, kind = update_kind, "bridge.acp emit");
                                     if let Ok(line) = serde_json::to_string(&serde_json::json!({
                                         "type": "bridge.acp",
                                         "notification": notif,
@@ -1016,6 +1028,17 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             update,
                                             meta: None,
                                         };
+                                        let update_kind = match &notif.update {
+                                            agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
+                                            agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => "agent_message_chunk",
+                                            agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
+                                            agent_client_protocol::SessionUpdate::ToolCall(_) => "tool_call",
+                                            agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
+                                            agent_client_protocol::SessionUpdate::Plan(_) => "plan",
+                                            agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(_) => "available_commands_update",
+                                            agent_client_protocol::SessionUpdate::CurrentModeUpdate(_) => "current_mode_update",
+                                        };
+                                        info!(session_id = %notif.session_id.0, kind = update_kind, "bridge.acp emit");
                                         if let Ok(line) = serde_json::to_string(&serde_json::json!({
                                             "type": "bridge.acp",
                                             "notification": notif,
