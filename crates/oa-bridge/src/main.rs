@@ -202,10 +202,12 @@ async fn main() -> Result<()> {
     crate::ws::start_stream_forwarders(child, state.clone()).await?;
 
     // Live-reload + sync (optional toggle via OPENAGENTS_CONVEX_SYNC=0 to disable)
+    // Disable FS→Convex syncing by default to avoid any background churn before the user opts in.
+    // Enable explicitly with OPENAGENTS_CONVEX_SYNC=1
     let sync_enabled = std::env::var("OPENAGENTS_CONVEX_SYNC")
         .ok()
-        .map(|v| v != "0")
-        .unwrap_or(true);
+        .map(|v| matches!(v.as_str(), "1" | "true" | "on"))
+        .unwrap_or(false);
     if sync_enabled {
         tokio::spawn(watch_skills_and_broadcast(state.clone()));
         tokio::spawn(watch_projects_and_sync(state.clone()));
