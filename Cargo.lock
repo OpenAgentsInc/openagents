@@ -684,6 +684,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fake-codex"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde_json",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1740,6 +1748,7 @@ dependencies = [
  "clap",
  "convex",
  "futures",
+ "futures-util",
  "getrandom 0.3.4",
  "jsonschema",
  "libc",
