@@ -192,11 +192,11 @@ export default function ConvexThreadDetail() {
         scrollEventThrottle={32}
       >
 
-      {(messages === undefined && !isNew) ? (
+      {(messages === undefined && !isNew && acpRows.length === 0) ? (
         <ActivityIndicator color={Colors.secondary} />
-      ) : (messages === null) ? (
+      ) : (messages === null && acpRows.length === 0) ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No Convex deployment or query missing (messages:forThread).</Text>
-      ) : (!Array.isArray(messages) || messages.length === 0) ? (
+      ) : (!Array.isArray(messages) || (messages.length === 0 && acpRows.length === 0)) ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
       ) : (
         <View style={{ gap: 10 }}>
