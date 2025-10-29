@@ -125,12 +125,8 @@ export default function Onboarding() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.statusRow}>
-        <Text style={styles.statusText}>{statusText}</Text>
-        {(isConnecting || convexLoading) ? (<ActivityIndicator size="small" color={Colors.foreground} />) : null}
-      </View>
-      <View style={{ height: 16 }} />
-      <Text style={styles.label}>Bridge IP (temporary)</Text>
+      {/* Landing page feel: no explicit status banner */}
+      <Text style={styles.label}>Bridge IP</Text>
       {/* Intentionally omit explanatory text here */}
       <View style={styles.inputWrapper}>
         <TextInput
