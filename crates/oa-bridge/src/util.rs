@@ -38,15 +38,7 @@ pub fn list_sqlite_tables(db_path: &PathBuf) -> anyhow::Result<Vec<String>> {
 }
 
 /// Destructive helper to clear Convex data (admin function).
-pub async fn run_convex_clear_all(port: u16) -> anyhow::Result<()> {
-    use convex::{ConvexClient, Value};
-    use std::collections::BTreeMap;
-    let url = format!("http://127.0.0.1:{}", port);
-    let mut client = ConvexClient::new(&url).await?;
-    let args: BTreeMap<String, Value> = BTreeMap::new();
-    let _ = client.mutation("admin:clearAll", args).await?;
-    Ok(())
-}
+// Removed Convex admin helpers
 
 /// Detect the repository root directory so tools run from the right place.
 /// Heuristics:

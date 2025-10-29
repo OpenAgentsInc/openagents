@@ -152,6 +152,13 @@ instructions: |
 
 ## Multi‑Agent Git Etiquette
 - Do not stage everything: avoid commands like `git add -A`, `git add .`, or `git commit -a`. Explicitly add only the files you changed for the current task.
+
+## GitHub CLI comment hygiene
+
+- For multi‑line GitHub comments, always write the body to a file and pass it with `-F` to avoid shell parsing issues:
+  - Example: `gh issue comment <num> -F /tmp/body.md`
+  - Avoid `-b` for multi‑line content. Do not include unescaped CLI flags (e.g., lines starting with `--`) directly in `-b`.
+  - Keep content as plain Markdown. Do not paste terminal prompts or interleave running command output.
 - Never stash: do not run `git stash` (including variants like `git stash -u`). Stashing can hide or discard work in progress from other agents operating on the same branch.
 - Respect concurrent work: assume other agents may be active on this branch. Do not run destructive or history‑rewriting commands (e.g., `git reset --hard`, `git clean -fdx`, force pushes, or rebases) unless explicitly instructed.
 - Keep commits focused: limit diffs to the smallest set of files necessary; avoid touching unrelated files.

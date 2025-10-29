@@ -12,11 +12,12 @@ pub enum ControlCommand {
     Skills,
     BridgeStatus,
     Echo { payload: Option<String>, tag: Option<String> },
-    ConvexStatus,
-    ConvexCreateDemo,
-    ConvexCreateThreads,
-    ConvexCreateDemoThread,
-    ConvexBackfill,
+    // Convex controls removed
+    // Tinyvex controls
+    TvxSubscribe { stream: String, thread_id: Option<String> },
+    TvxQuery { name: String, args: serde_json::Value },
+    TvxMutate { name: String, args: serde_json::Value },
+    TvxBackfill,
     ProjectSave {
         project: crate::projects::Project,
     },
@@ -46,11 +47,6 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
             Some(ControlCommand::Echo { payload, tag })
         }
         "bridge.status" => Some(ControlCommand::BridgeStatus),
-        "convex.status" => Some(ControlCommand::ConvexStatus),
-        "convex.create_demo" => Some(ControlCommand::ConvexCreateDemo),
-        "convex.create_threads" => Some(ControlCommand::ConvexCreateThreads),
-        "convex.create_demo_thread" => Some(ControlCommand::ConvexCreateDemoThread),
-        "convex.backfill" => Some(ControlCommand::ConvexBackfill),
         "project.save" => {
             let proj: crate::projects::Project =
                 serde_json::from_value(v.get("project")?.clone()).ok()?;
@@ -60,6 +56,22 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
             .get("id")
             .and_then(|x| x.as_str())
             .map(|id| ControlCommand::ProjectDelete { id: id.to_string() }),
+        "tvx.subscribe" => {
+            let stream = v.get("stream").and_then(|x| x.as_str())?.to_string();
+            let thread_id = v.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
+            Some(ControlCommand::TvxSubscribe { stream, thread_id })
+        }
+        "tvx.query" => {
+            let name = v.get("name").and_then(|x| x.as_str())?.to_string();
+            let args = v.get("args").cloned().unwrap_or(serde_json::json!({}));
+            Some(ControlCommand::TvxQuery { name, args })
+        }
+        "tvx.mutate" => {
+            let name = v.get("name").and_then(|x| x.as_str())?.to_string();
+            let args = v.get("args").cloned().unwrap_or(serde_json::json!({}));
+            Some(ControlCommand::TvxMutate { name, args })
+        }
+        "tvx.backfill" => Some(ControlCommand::TvxBackfill),
         "run.submit" => {
             let thread_doc_id = v
                 .get("threadDocId")
@@ -116,10 +128,7 @@ mod tests {
             parse_control_command("{\"control\":\"bridge.status\"}"),
             Some(ControlCommand::BridgeStatus)
         ));
-        assert!(matches!(
-            parse_control_command("{\"control\":\"convex.status\"}"),
-            Some(ControlCommand::ConvexStatus)
-        ));
+        // convex.status removed
     }
 
     #[test]

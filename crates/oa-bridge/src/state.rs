@@ -40,8 +40,10 @@ pub struct AppState {
     pub current_convex_thread: Mutex<Option<String>>,
     // Streaming message trackers (per thread, per kind). Key: "<threadId>|assistant" or "<threadId>|reason".
     pub stream_track: Mutex<HashMap<String, StreamEntry>>,
-    // Whether the Convex backend is healthy and ready for clients
+    // Whether the Convex backend is healthy and ready for clients (legacy; always true in Tinyvex mode)
     pub convex_ready: AtomicBool,
+    // Tinyvex database (mandatory)
+    pub tinyvex: std::sync::Arc<tinyvex::Tinyvex>,
 }
 
 impl AppState {

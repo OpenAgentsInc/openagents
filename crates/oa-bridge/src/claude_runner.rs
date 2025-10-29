@@ -117,7 +117,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
             let s = line.trim();
             if s.is_empty() { continue; }
             if let Ok(v) = serde_json::from_str::<JsonValue>(s) {
-                if let Some(update) = acp_event_translator::translate_claude_event_to_acp_update(&v) {
+                    if let Some(update) = acp_event_translator::translate_claude_event_to_acp_update(&v) {
                     // Debug: emit a concise marker for tests
                     let kind = match &update {
                         agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
@@ -135,7 +135,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                         if let Some(ctid) = state_for.current_convex_thread.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
                     };
                     if !target_tid.is_empty() {
-                        crate::convex_write::mirror_acp_update_to_convex(&state_for, &target_tid, &update).await;
+                        crate::tinyvex_write::mirror_acp_update_to_convex(&state_for, &target_tid, &update).await;
                     }
                     if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
                         if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
