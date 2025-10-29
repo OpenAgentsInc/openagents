@@ -21,6 +21,31 @@ pub fn default_convex_bin() -> PathBuf {
     PathBuf::from("local_backend")
 }
 
+/// Try to locate the Convex CLI's cached local backend binary.
+/// macOS: ~/Library/Caches/convex/binaries/<ver>/convex-local-backend
+/// Linux: ~/.cache/convex/binaries/<ver>/convex-local-backend
+/// Windows: %LOCALAPPDATA%/convex/binaries/<ver>/convex-local-backend.exe
+fn find_official_cached_backend() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let base = std::env::var("HOME").ok().map(|h| PathBuf::from(h).join("Library/Caches/convex/binaries"));
+    #[cfg(target_os = "linux")]
+    let base = std::env::var("XDG_CACHE_HOME").ok().map(PathBuf::from).or_else(|| std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".cache"))).map(|p| p.join("convex/binaries"));
+    #[cfg(target_os = "windows")]
+    let base = std::env::var("LOCALAPPDATA").ok().map(|h| PathBuf::from(h).join("convex/binaries"));
+
+    let Some(dir) = base else { return None; };
+    let entries = std::fs::read_dir(&dir).ok()?;
+    let mut versions: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|d| d.path())).collect();
+    versions.sort();
+    versions.reverse();
+    for v in versions {
+        let exe = if cfg!(windows) { "convex-local-backend.exe" } else { "convex-local-backend" };
+        let cand = v.join(exe);
+        if cand.exists() { return Some(cand); }
+    }
+    None
+}
+
 /// Default sqlite DB location for the local backend when not provided.
 pub fn default_convex_db() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
@@ -112,7 +137,15 @@ async fn tcp_listen_probe(port: u16) -> bool {
 pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     info!(port = opts.convex_port, interface = %opts.convex_interface, "convex.ensure: begin");
     let t0 = Instant::now();
-    let bin = opts.convex_bin.clone().unwrap_or_else(default_convex_bin);
+    // Choose backend binary: explicit flag > official cache (when preferred) > default path
+    let prefer_cache = std::env::var("OPENAGENTS_CONVEX_PREFER_CACHE").ok().as_deref() == Some("1");
+    let bin = if let Some(b) = opts.convex_bin.clone() {
+        b
+    } else if prefer_cache {
+        find_official_cached_backend().unwrap_or_else(default_convex_bin)
+    } else {
+        default_convex_bin()
+    };
     if !bin.exists() {
         if let Err(e) = ensure_local_backend_present().await {
             warn!(?e, path=%bin.display(), "convex local_backend missing and auto-install failed");
