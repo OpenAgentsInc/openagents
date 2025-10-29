@@ -1,13 +1,16 @@
 import React from "react"
+import { Pressable } from 'react-native'
 import Markdown from "react-native-markdown-display"
 import { Colors } from "@/constants/theme"
 import { Typography } from "@/constants/typography"
+import { copyToClipboard } from '@/lib/copy'
 
 export function UserMessageRow({ text }: { text: string; numberOfLines?: number }) {
   const t = String(text || '')
   // Prefix each line with "> " to render as a Markdown blockquote
   const asQuote = `> ${t.replace(/\r?\n/g, '\n> ')}`
   return (
+    <Pressable onLongPress={async () => { try { await copyToClipboard(asQuote, { haptics: true }) } catch {} }}>
     <Markdown
       style={{
         body: { color: Colors.secondary, fontFamily: Typography.primary, fontSize: 13, lineHeight: 18 },
@@ -27,5 +30,6 @@ export function UserMessageRow({ text }: { text: string; numberOfLines?: number 
     >
       {asQuote}
     </Markdown>
+    </Pressable>
   )
 }

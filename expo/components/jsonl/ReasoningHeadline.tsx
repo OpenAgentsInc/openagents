@@ -1,9 +1,10 @@
 import React from 'react'
-import { View } from 'react-native'
+import { View, Pressable } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { CodeBlock } from '@/components/code-block'
+import { copyToClipboard } from '@/lib/copy'
 
 export function ReasoningHeadline({ text }: { text: string }) {
   // Extract only the first bold headline (e.g., **Title**) from the full reasoning text
@@ -27,8 +28,10 @@ export function ReasoningHeadline({ text }: { text: string }) {
     headline = sanitize(headline)
   }
 
+  const toCopy = String(headline || '')
   return (
     <View style={{ marginTop: 8 }}>
+      <Pressable onLongPress={async () => { try { await copyToClipboard(toCopy, { haptics: true }) } catch {} }}>
       <Markdown
       style={{
         body: { color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 16 },
@@ -49,6 +52,7 @@ export function ReasoningHeadline({ text }: { text: string }) {
       >
         {headline}
       </Markdown>
+      </Pressable>
     </View>
   )
 }
