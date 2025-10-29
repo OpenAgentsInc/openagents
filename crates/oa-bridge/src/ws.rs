@@ -303,6 +303,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     *stdin_state.current_convex_thread.lock().await =
                                         Some(thread_doc_id.clone());
                                 }
+                                // Record pending user message text so we can emit ACP once session id is known
+                                {
+                                    let mut pending = stdin_state.pending_user_text.lock().await;
+                                    pending.insert(thread_doc_id.clone(), text.clone());
+                                }
+                                // Emit a synthetic ACP event for user_message_chunk as a bridge.acp once session id is known (on thread.started below)
                                 // Only resume when we have an explicit id or a captured last thread
                                 let last_id = { stdin_state.last_thread_id.lock().await.clone() };
                                 let resume_arg = match resume_id.as_deref() {
@@ -463,6 +469,7 @@ mod auth_tests {
             history: Mutex::new(Vec::new()),
             current_convex_thread: Mutex::new(None),
             stream_track: Mutex::new(std::collections::HashMap::new()),
+            pending_user_text: Mutex::new(std::collections::HashMap::new()),
             convex_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: std::sync::Arc::new(tvx),
         })
@@ -602,6 +609,20 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             "clientThreadDocId": client_doc
                         }).to_string();
                         let _ = tx_out.send(map_evt);
+                        // If we have a pending user text for this client thread doc id, emit ACP and write to Tinyvex acp_events
+                        if let Some(client_doc_str) = client_doc.clone() {
+                            if let Some(user_text) = { state_for_stdout.pending_user_text.lock().await.remove(&client_doc_str) } {
+                                let ts_now = now_ms();
+                                // Emit bridge.acp
+                                let notif = serde_json::json!({
+                                    "sessionId": val,
+                                    "update": { "sessionUpdate": "user_message_chunk", "content": { "type": "text", "text": user_text } }
+                                });
+                                let _ = tx_out.send(serde_json::json!({"type":"bridge.acp","notification": notif}).to_string());
+                                // Write to Tinyvex acp_events
+                                let _ = state_for_stdout.tinyvex.insert_acp_event(Some(&val.to_string()), Some(&client_doc_str), ts_now.try_into().unwrap(), Some(0), "user_message_chunk", Some("user"), Some(&user_text), None, None, None, None, None, None);
+                            }
+                        }
                     }
                 }
                 if matches!(t.as_deref(), Some("turn.completed")) {
@@ -652,6 +673,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         info!(len=txt.len(), thread=%target_tid, "assistant.delta mapped");
                         let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.delta","len":txt.len(),"thread":target_tid}).to_string();
                         let _ = tx_out.send(dbg);
+                        // pending user text handled on thread.started once session id is known
                     }
                 }
                 if matches!(t.as_deref(), Some("reasoning.delta"))
@@ -816,7 +838,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     }
                                     _ => {}
                                 }
-                                // Mirror ACP update into Tinyvex (no-op for MVP) and optionally emit for debugging
+                                // Mirror ACP update into Tinyvex and emit ACP notification
                                 if let Some(update) = translate_codex_event_to_acp_update(&v) {
                                     let target_tid = {
                                         let ctid = state_for_stdout.current_convex_thread.lock().await.clone();
@@ -840,6 +862,31 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         };
                                         info!(session_id = %notif.session_id.0, kind = update_kind, "bridge.acp emit");
                                         if let Ok(line) = serde_json::to_string(&serde_json::json!({ "type": "bridge.acp", "notification": notif })) { let _ = tx_out.send(line); }
+                                        // Also write to Tinyvex unified acp_events table
+                                        let ts = now_ms();
+                                        let raw_json = Some(v.to_string());
+                                        let content_json = v.get("item").and_then(|it| it.get("content")).map(|c| c.to_string());
+                                        let locations_json = v.get("item").and_then(|it| it.get("locations")).map(|c| c.to_string());
+                                        let text_field = v.get("item").and_then(|it| it.get("text")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                        let kind_field = v.get("item").and_then(|it| it.get("type")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                        let status_field = v.get("item").and_then(|it| it.get("status")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                        let tool_call_id = v.get("item").and_then(|it| it.get("id")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                        let client_doc_for = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                        let _ = state_for_stdout.tinyvex.insert_acp_event(
+                                            Some(&notif.session_id.0),
+                                            client_doc_for.as_deref(),
+                                            ts.try_into().unwrap(),
+                                            Some(0),
+                                            update_kind,
+                                            None,
+                                            text_field.as_deref(),
+                                            tool_call_id.as_deref(),
+                                            status_field.as_deref(),
+                                            kind_field.as_deref(),
+                                            content_json.as_deref(),
+                                            locations_json.as_deref(),
+                                            raw_json.as_deref(),
+                                        );
                                     }
                                 }
                             }

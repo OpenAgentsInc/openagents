@@ -84,6 +84,29 @@ impl Tinyvex {
         CREATE INDEX IF NOT EXISTS idx_msgs_thread_item ON messages(threadId, itemId);
         CREATE UNIQUE INDEX IF NOT EXISTS uniq_msgs_thread_item ON messages(threadId, itemId);
 
+        -- Unified ACP event log (append-only)
+        CREATE TABLE IF NOT EXISTS acp_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          sessionId TEXT,
+          clientThreadDocId TEXT,
+          ts INTEGER NOT NULL,
+          seq INTEGER,
+          updateKind TEXT NOT NULL,
+          role TEXT,
+          text TEXT,
+          toolCallId TEXT,
+          status TEXT,
+          kind TEXT,
+          content_json TEXT,
+          locations_json TEXT,
+          raw_json TEXT,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_acp_events_thread_ts ON acp_events(clientThreadDocId, ts);
+        CREATE INDEX IF NOT EXISTS idx_acp_events_session_ts ON acp_events(sessionId, ts);
+        CREATE INDEX IF NOT EXISTS idx_acp_events_kind_thread ON acp_events(updateKind, clientThreadDocId, ts DESC);
+
         -- ACP: tool calls (store content/locations as JSON strings)
         CREATE TABLE IF NOT EXISTS acp_tool_calls (
           threadId TEXT NOT NULL,
@@ -328,6 +351,47 @@ impl Tinyvex {
             params![thread_id, current_mode_id, available_commands_json, ts],
         )?;
         Ok(())
+    }
+
+    pub fn insert_acp_event(
+        &self,
+        session_id: Option<&str>,
+        client_thread_doc_id: Option<&str>,
+        ts: i64,
+        seq: Option<i64>,
+        update_kind: &str,
+        role: Option<&str>,
+        text: Option<&str>,
+        tool_call_id: Option<&str>,
+        status: Option<&str>,
+        kind: Option<&str>,
+        content_json: Option<&str>,
+        locations_json: Option<&str>,
+        raw_json: Option<&str>,
+    ) -> Result<i64> {
+        let conn = Connection::open(&self.db_path)?;
+        conn.execute(
+            r#"
+            INSERT INTO acp_events (sessionId, clientThreadDocId, ts, seq, updateKind, role, text, toolCallId, status, kind, content_json, locations_json, raw_json, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?3, ?3)
+            "#,
+            params![
+                session_id,
+                client_thread_doc_id,
+                ts,
+                seq,
+                update_kind,
+                role,
+                text,
+                tool_call_id,
+                status,
+                kind,
+                content_json,
+                locations_json,
+                raw_json,
+            ],
+        )?;
+        Ok(conn.last_insert_rowid())
     }
 }
 
