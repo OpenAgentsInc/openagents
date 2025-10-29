@@ -191,9 +191,8 @@ instructions: |
 - iOS bundle identifier: `com.openagents.app` (see `expo/app.json`).
 - Review assets and third‑party licenses before release.
 
-## CLI (Tricoder) Tunnel Notes
-- Do not run `npm run dev` in `packages/tricoder`. It launches a long‑lived tunnel process and will block your shell/session.
+## CLI (Tricoder) Notes
+- Do not run `npm run dev` in `packages/tricoder`. It launches a long‑lived process and will block your shell/session.
 - For local testing, prefer one of:
-  - `npx tricoder` (published package) — prints the bridge URL and stays running
+  - `npx tricoder` (published package)
   - `npm run build` then run `node dist/index.js`
-  - Direct Rust: from repo root `cargo run -p oa-tunnel -- --to bore.pub`

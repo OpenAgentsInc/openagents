@@ -2,7 +2,7 @@
 members = [
     "crates/codex-bridge",
     "crates/acp-event-translator",
-    "crates/copy-sources", "crates/oa-tunnel",
+    "crates/copy-sources",
     "crates/oa-validate",
 ]
 resolver = "2"
