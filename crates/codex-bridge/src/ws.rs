@@ -941,37 +941,30 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     }
                                     _ => {}
                                 }
-                                // Emit ACP notification mirror alongside legacy JSONL
+                                // Mirror ACP update into Convex (source of truth) and optionally emit for debugging
                                 if let Some(update) = translate_codex_event_to_acp_update(&v) {
-                                    // Use Codex thread.started id for ACP sessionId to match app thread.threadId
-                                    let acp_session = state_for_stdout
-                                        .last_thread_id
-                                        .lock()
-                                        .await
-                                        .clone()
-                                        .unwrap_or_default();
-                                    let notif = SessionNotification {
-                                        session_id: SessionId(acp_session.into()),
-                                        update,
-                                        meta: None,
+                                    let target_tid = {
+                                        let ctid = state_for_stdout.current_convex_thread.lock().await.clone();
+                                        if let Some(s) = ctid { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() }
                                     };
-                                    // Log to server console for diagnostics
-                                    let update_kind = match &notif.update {
-                                        agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
-                                        agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => "agent_message_chunk",
-                                        agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
-                                        agent_client_protocol::SessionUpdate::ToolCall(_) => "tool_call",
-                                        agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
-                                        agent_client_protocol::SessionUpdate::Plan(_) => "plan",
-                                        agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(_) => "available_commands_update",
-                                        agent_client_protocol::SessionUpdate::CurrentModeUpdate(_) => "current_mode_update",
-                                    };
-                                    info!(session_id = %notif.session_id.0, kind = update_kind, "bridge.acp emit");
-                                    if let Ok(line) = serde_json::to_string(&serde_json::json!({
-                                        "type": "bridge.acp",
-                                        "notification": notif,
-                                    })) {
-                                        let _ = tx_out.send(line);
+                                    if !target_tid.is_empty() {
+                                        crate::convex_write::mirror_acp_update_to_convex(&state_for_stdout, &target_tid, &update).await;
+                                    }
+                                    if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
+                                        let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
+                                        let notif = SessionNotification { session_id: SessionId(acp_session.into()), update, meta: None };
+                                        let update_kind = match &notif.update {
+                                            agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
+                                            agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => "agent_message_chunk",
+                                            agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
+                                            agent_client_protocol::SessionUpdate::ToolCall(_) => "tool_call",
+                                            agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
+                                            agent_client_protocol::SessionUpdate::Plan(_) => "plan",
+                                            agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(_) => "available_commands_update",
+                                            agent_client_protocol::SessionUpdate::CurrentModeUpdate(_) => "current_mode_update",
+                                        };
+                                        info!(session_id = %notif.session_id.0, kind = update_kind, "bridge.acp emit");
+                                        if let Ok(line) = serde_json::to_string(&serde_json::json!({ "type": "bridge.acp", "notification": notif })) { let _ = tx_out.send(line); }
                                     }
                                 }
                             }
@@ -1020,35 +1013,30 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         args.insert("ts".into(), Value::from(now_ms() as f64));
                                         let _ = client.mutation("messages:create", args).await;
                                     }
-                                    // Emit ACP mirror for broader item.*
+                                    // Mirror ACP (tool/plan/state) into Convex and optionally emit for debugging
                                     if let Some(update) = translate_codex_event_to_acp_update(&v) {
-                                        let acp_session = state_for_stdout
-                                            .last_thread_id
-                                            .lock()
-                                            .await
-                                            .clone()
-                                            .unwrap_or_default();
-                                        let notif = SessionNotification {
-                                            session_id: SessionId(acp_session.into()),
-                                            update,
-                                            meta: None,
+                                        let target_tid = {
+                                            let ctid = state_for_stdout.current_convex_thread.lock().await.clone();
+                                            if let Some(s) = ctid { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() }
                                         };
-                                        let update_kind = match &notif.update {
-                                            agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
-                                            agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => "agent_message_chunk",
-                                            agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
-                                            agent_client_protocol::SessionUpdate::ToolCall(_) => "tool_call",
-                                            agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
-                                            agent_client_protocol::SessionUpdate::Plan(_) => "plan",
-                                            agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(_) => "available_commands_update",
-                                            agent_client_protocol::SessionUpdate::CurrentModeUpdate(_) => "current_mode_update",
-                                        };
-                                        info!(session_id = %notif.session_id.0, kind = update_kind, "bridge.acp emit");
-                                        if let Ok(line) = serde_json::to_string(&serde_json::json!({
-                                            "type": "bridge.acp",
-                                            "notification": notif,
-                                        })) {
-                                            let _ = tx_out.send(line);
+                                        if !target_tid.is_empty() {
+                                            crate::convex_write::mirror_acp_update_to_convex(&state_for_stdout, &target_tid, &update).await;
+                                        }
+                                        if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
+                                            let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
+                                            let notif = SessionNotification { session_id: SessionId(acp_session.into()), update, meta: None };
+                                            let update_kind = match &notif.update {
+                                                agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
+                                                agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => "agent_message_chunk",
+                                                agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
+                                                agent_client_protocol::SessionUpdate::ToolCall(_) => "tool_call",
+                                                agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
+                                                agent_client_protocol::SessionUpdate::Plan(_) => "plan",
+                                                agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(_) => "available_commands_update",
+                                                agent_client_protocol::SessionUpdate::CurrentModeUpdate(_) => "current_mode_update",
+                                            };
+                                            info!(session_id = %notif.session_id.0, kind = update_kind, "bridge.acp emit");
+                                            if let Ok(line) = serde_json::to_string(&serde_json::json!({ "type": "bridge.acp", "notification": notif })) { let _ = tx_out.send(line); }
                                         }
                                     }
                                 }

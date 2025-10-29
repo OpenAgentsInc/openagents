@@ -10,17 +10,8 @@ import { Composer } from '@/components/composer'
 import { useHeaderStore } from '@/lib/header-store'
 import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
-import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
 import { UserMessageRow } from '@/components/jsonl/UserMessageRow'
-import type { SessionUpdate } from '@/types/acp'
-import {
-  SessionUpdateAgentMessageChunk,
-  SessionUpdateAgentThoughtChunk,
-  SessionUpdateToolCall,
-  SessionUpdatePlan,
-  SessionUpdateAvailableCommandsUpdate,
-  SessionUpdateCurrentModeUpdate,
-} from '@/components/acp'
+import { SessionUpdatePlan, SessionUpdateAvailableCommandsUpdate, SessionUpdateCurrentModeUpdate, SessionUpdateToolCall } from '@/components/acp'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -87,9 +78,7 @@ export default function ConvexThreadDetail() {
   const [atBottom, setAtBottom] = React.useState(true)
   const prevLenRef = React.useRef(0)
   const composerRef = React.useRef<any>(null)
-  const [acpEnabled, setAcpEnabled] = React.useState(false)
-  const [acpRows, setAcpRows] = React.useState<Array<{ key: string; update: SessionUpdate }>>([])
-  const toolCallIndexRef = React.useRef<Map<string, number>>(new Map())
+  // ACP WS feed removed: Convex is the single source of truth for rendering.
   React.useEffect(() => {
     // Use 'will' events on iOS so the toggle happens in sync with
     // the keyboard animation, avoiding a choppy jump in padding.
@@ -137,43 +126,7 @@ export default function ConvexThreadDetail() {
     prevLenRef.current = len
   }, [messages, atBottom])
   
-  // Subscribe to ACP notifications for this session and build a local feed
-  React.useEffect(() => {
-    const unsub = ws.addSubscriber((line) => {
-      try {
-        const s = String(line || '').trim()
-        if (!s.startsWith('{')) return
-        const obj = JSON.parse(s)
-        if (obj?.type !== 'bridge.acp') return
-        const notif = obj?.notification
-        if (!notif || typeof notif !== 'object') return
-        const sessionId = String(notif.sessionId || notif.session_id || '')
-        const targetThreadId = String(thread?.threadId || '')
-        // If threadId not yet available, optimistically accept ACP updates (single active run UX)
-        if (targetThreadId && sessionId !== targetThreadId) return
-        const update: SessionUpdate | undefined = notif.update
-        if (!update || typeof update !== 'object') return
-        try { console.log('[acp.update]', { sessionId, kind: (update as any).sessionUpdate }) } catch {}
-        setAcpEnabled(true)
-        setAcpRows((prev) => {
-          const next = [...prev]
-          if ((update as any).sessionUpdate === 'tool_call') {
-            const toolCall = update as any
-            const id: string | undefined = toolCall.toolCallId || toolCall.tool_call_id || undefined
-            if (id) {
-              const idx = toolCallIndexRef.current.get(id)
-              if (typeof idx === 'number') next[idx] = { key: `tool:${id}`, update }
-              else { toolCallIndexRef.current.set(id, next.length); next.push({ key: `tool:${id}`, update }) }
-              return next
-            }
-          }
-          next.push({ key: `${Date.now()}:${Math.random().toString(36).slice(2)}`, update })
-          return next
-        })
-      } catch {}
-    })
-    return () => { try { unsub?.() } catch {} }
-  }, [ws, thread?.threadId])
+  // No WS ACP subscription; all content comes from Convex queries.
 
 
   return (
@@ -192,11 +145,11 @@ export default function ConvexThreadDetail() {
         scrollEventThrottle={32}
       >
 
-      {(messages === undefined && !isNew && acpRows.length === 0) ? (
+      {(messages === undefined && !isNew) ? (
         <ActivityIndicator color={Colors.secondary} />
-      ) : (messages === null && acpRows.length === 0) ? (
+      ) : (messages === null) ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No Convex deployment or query missing (messages:forThread).</Text>
-      ) : (!Array.isArray(messages) || (messages.length === 0 && acpRows.length === 0)) ? (
+      ) : (!Array.isArray(messages) || (messages.length === 0)) ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
       ) : (
         <View style={{ gap: 10 }}>
@@ -212,29 +165,89 @@ export default function ConvexThreadDetail() {
             </Pressable>
           )}
           {(() => {
-            // Force ACP: only show user-authored messages from Convex; render assistant/tooling via ACP updates
             const arr: any[] = (messages as any[]).slice(meta.count)
             return (
               <>
                 {arr.map((m: any) => {
-                  const kind = m.kind || (m.role ? 'message' : 'item')
-                  if (kind === 'message' && (m.role || '').toLowerCase() === 'user') {
+                  const key = m._id || `${m.threadId}-${m.ts}`
+                  const kind = String(m.kind || (m.role ? 'message' : '')).toLowerCase()
+                  const role = String(m.role || '').toLowerCase()
+                  if (kind === 'message') {
+                    if (role === 'user') {
+                      return (
+                        <Pressable key={key}
+                          onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
+                          accessibilityRole="button"
+                          style={{ paddingVertical: 2 }}>
+                          <UserMessageRow text={String(m.text || '')} />
+                        </Pressable>
+                      )
+                    }
                     return (
-                      <Pressable key={m._id || `${m.threadId}-${m.ts}`}
-                        onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
-                        accessibilityRole="button"
-                        style={{ paddingVertical: 2 }}>
-                        <UserMessageRow text={String(m.text || '')} />
-                      </Pressable>
+                      <View key={key} style={{ paddingVertical: 2 }}>
+                        <MarkdownBlock markdown={String(m.text || '')} />
+                      </View>
                     )
                   }
-                  return null
+                  if (kind === 'reason') {
+                    return (
+                      <View key={key} style={{ paddingVertical: 2 }}>
+                        <ReasoningHeadline text={String(m.text || '')} />
+                      </View>
+                    )
+                  }
+                  if (kind === 'plan') {
+                    const entries = (m?.data?.entries as any[]) || (() => { try { const o = JSON.parse(String(m.text||'')); return (o && o.entries) || [] } catch { return [] } })()
+                    if (Array.isArray(entries) && entries.length > 0) {
+                    return (
+                      <View key={key} style={{ paddingVertical: 2 }}>
+                        <SessionUpdatePlan entries={entries} />
+                      </View>
+                    )
+                    }
+                  }
+                  if (kind === 'available_commands_update') {
+                    const cmds = (Array.isArray(m?.data?.available_commands) ? m.data.available_commands : (() => { try { const o = JSON.parse(String(m.text||'')); return o?.available_commands || [] } catch { return [] } })()) as any[]
+                    if (cmds.length > 0) {
+                    return (
+                      <View key={key} style={{ paddingVertical: 2 }}>
+                        <SessionUpdateAvailableCommandsUpdate available_commands={cmds} />
+                      </View>
+                    )
+                    }
+                  }
+                  if (kind === 'current_mode_update') {
+                    const cm = (m?.data?.currentModeId || m?.data?.current_mode_id) || (() => { try { const o = JSON.parse(String(m.text||'')); return o?.currentModeId || o?.current_mode_id } catch { return '' } })()
+                    if (cm) {
+                    return (
+                      <View key={key} style={{ paddingVertical: 2 }}>
+                        <SessionUpdateCurrentModeUpdate currentModeId={String(cm || '')} />
+                      </View>
+                    )
+                    }
+                  }
+                  if ((kind === 'tool' || kind === 'cmd' || kind === 'file' || kind === 'search' || kind === 'mcp' || kind === 'todo')) {
+                    const tc = m.data || (() => { try { return JSON.parse(String(m.text||'')) } catch { return null } })()
+                    if (tc && (tc.title || tc.kind || tc.status)) {
+                      return (
+                        <View key={key} style={{ paddingVertical: 2 }}>
+                          <SessionUpdateToolCall {...(tc as any)} />
+                        </View>
+                      )
+                    }
+                    const body = typeof m.text === 'string' && m.text.trim().startsWith('{') ? `\n\n\`\`\`json\n${m.text}\n\`\`\`` : String(m.text || '')
+                    return (
+                      <View key={key} style={{ paddingVertical: 2 }}>
+                        <MarkdownBlock markdown={`_${kind.toUpperCase()}_ ${body}`} />
+                      </View>
+                    )
+                  }
+                  return (
+                    <View key={key} style={{ paddingVertical: 2 }}>
+                      <MarkdownBlock markdown={`_${kind.toUpperCase() || 'ITEM'}_\n\n${String(m.text || '')}`}/>
+                    </View>
+                  )
                 })}
-                {acpRows.map((row) => (
-                  <View key={row.key} style={{ paddingVertical: 2 }}>
-                    <AcpUpdateRenderer update={row.update} />
-                  </View>
-                ))}
               </>
             )
           })()}
@@ -276,23 +289,4 @@ export default function ConvexThreadDetail() {
       </KeyboardAvoidingView>
     </View>
   )
-}
-
-function AcpUpdateRenderer({ update }: { update: SessionUpdate }) {
-  switch ((update as any).sessionUpdate) {
-    case 'agent_message_chunk':
-      return <SessionUpdateAgentMessageChunk content={(update as any).content} />
-    case 'agent_thought_chunk':
-      return <SessionUpdateAgentThoughtChunk content={(update as any).content} />
-    case 'tool_call':
-      return <SessionUpdateToolCall {...(update as any)} />
-    case 'plan':
-      return <SessionUpdatePlan entries={(update as any).entries || []} />
-    case 'available_commands_update':
-      return <SessionUpdateAvailableCommandsUpdate available_commands={(update as any).available_commands || []} />
-    case 'current_mode_update':
-      return <SessionUpdateCurrentModeUpdate currentModeId={(update as any).currentModeId || (update as any).current_mode_id || ''} />
-    default:
-      return null
-  }
 }

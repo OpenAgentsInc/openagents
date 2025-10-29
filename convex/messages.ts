@@ -2,7 +2,7 @@ import { queryGeneric, mutationGeneric } from "convex/server";
 
 type ForThreadArgs = { threadId: string; limit?: number | bigint | string; since?: number | bigint | string };
 type CreateArgs = { threadId: string; role?: string; kind?: string; text?: string; data?: any; ts?: number };
-type UpsertStreamedArgs = { threadId: string; itemId: string; role?: string; kind?: string; text?: string; ts?: number; seq?: number };
+type UpsertStreamedArgs = { threadId: string; itemId: string; role?: string; kind?: string; text?: string; ts?: number; seq?: number; data?: any };
 type FinalizeStreamedArgs = { threadId: string; itemId: string; text?: string };
 
 function toNum(v: unknown, fallback: number): number {
@@ -80,6 +80,8 @@ export const upsertStreamed = mutationGeneric(async ({ db }, args: UpsertStreame
       partial: true,
       seq: typeof args.seq === 'number' ? args.seq : (doc.seq ?? 0),
       updatedAt: now,
+      // allow structured content (e.g., ACP updates) to be reflected on streamed rows
+      data: typeof args.data !== 'undefined' ? args.data : doc.data,
     } as any);
     return doc._id;
   }
@@ -89,6 +91,7 @@ export const upsertStreamed = mutationGeneric(async ({ db }, args: UpsertStreame
     role: args.role,
     kind,
     text: args.text ?? '',
+    data: typeof args.data !== 'undefined' ? args.data : undefined,
     partial: true,
     seq: typeof args.seq === 'number' ? args.seq : 0,
     ts: now,
