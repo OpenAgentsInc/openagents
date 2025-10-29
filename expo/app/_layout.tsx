@@ -13,6 +13,7 @@ import {
 import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
 import { AppHeader } from "@/components/app-header"
+import { ToastOverlay } from "@/components/toast-overlay"
 import { Colors, NavigationTheme } from "@/constants/theme"
 import {
     applyTypographyGlobals, Typography, useTypographySetup
@@ -337,6 +338,8 @@ function DrawerWrapper() {
         {open ? (
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: Colors.white, opacity: 0.04 }} />
         ) : null}
+        {/* Toasts overlay (bottom-right corner) */}
+        <ToastOverlay />
       </View>
     </Drawer>
     </ErrorBoundary>
