@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, Pressable, ActivityIndicator } from 'react-native'
+import { View, Text, Pressable, ActivityIndicator, Platform } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 
@@ -78,6 +78,10 @@ export function TailscalePeers() {
     setError('')
     setLoading(true)
     try {
+      if (Platform.OS === 'ios') {
+        // Tailscale LocalAPI is not accessible to third-party apps on iOS
+        throw new Error('ios_localapi_unavailable')
+      }
       // Best-effort LocalAPI probe per docs; may be unavailable on iOS or newer clients
       const res = await fetchWithTimeout('http://localhost:41112/localapi/v0/status', 1500)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -123,7 +127,9 @@ export function TailscalePeers() {
       <View style={{ marginTop: 8, gap: 6 }}>
         {header}
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
-          LocalAPI not accessible ({error}). On Android it may work; on iOS it is often restricted.
+          {error === 'ios_localapi_unavailable'
+            ? 'LocalAPI unavailable on iOS for third‑party apps. Use Settings to connect by IP, or set up a registry/backend for discovery.'
+            : `LocalAPI not accessible (${error}). On Android it may work; on iOS it is often restricted.`}
         </Text>
       </View>
     )
@@ -154,4 +160,3 @@ export function TailscalePeers() {
 }
 
 export default TailscalePeers
-
