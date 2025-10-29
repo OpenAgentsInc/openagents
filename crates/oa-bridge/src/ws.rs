@@ -224,10 +224,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                 }
                             }
-                            ControlCommand::TvxMutate { .. } => {
-                                let _ = stdin_state
-                                    .tx
-                                    .send(serde_json::json!({"type":"tinyvex.todo","op":"mutate"}).to_string());
+                            ControlCommand::TvxMutate { name, args } => {
+                                // Echo the requested mutation so fields are read and visible to clients
+                                let _ = stdin_state.tx.send(
+                                    serde_json::json!({
+                                        "type":"tinyvex.todo",
+                                        "op":"mutate",
+                                        "name": name,
+                                        "args": args,
+                                    }).to_string()
+                                );
                             }
                             ControlCommand::TvxBackfill => {
                                 let _ = stdin_state
@@ -840,7 +846,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         {
                             let kind = payload.get("type").and_then(|x| x.as_str()).unwrap_or("");
                             let map_kind = map_tool_kind(kind);
-                            if let Some(k) = map_kind {
+                            if map_kind.is_some() {
                                 let convex_tid_opt =
                                     { state_for_stdout.current_convex_thread.lock().await.clone() };
                                 let target_tid = if let Some(s) = convex_tid_opt {
@@ -854,7 +860,6 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         .unwrap_or_default()
                                 };
                                 if !target_tid.is_empty() {
-                                    let payload_str = payload.to_string();
                                     // Tinyvex path: tool events can be recorded later; skip heavy writes here
                                     // Mirror ACP (tool/plan/state) into Convex and optionally emit for debugging
                                     if let Some(update) = translate_codex_event_to_acp_update(&v) {
@@ -1048,6 +1053,7 @@ mod tests {
     }
 }
 
+#[allow(dead_code)]
 fn create_demo_table(db_path: &PathBuf) -> Result<()> {
     let conn = rusqlite::Connection::open(db_path)?;
     conn.execute(
@@ -1056,11 +1062,13 @@ fn create_demo_table(db_path: &PathBuf) -> Result<()> {
     )?;
     Ok(())
 }
+#[allow(dead_code)]
 fn create_threads_table(db_path: &PathBuf) -> Result<()> {
     let conn = rusqlite::Connection::open(db_path)?;
     conn.execute("CREATE TABLE IF NOT EXISTS threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, title TEXT, resume_id TEXT, project_id TEXT, source TEXT, created_at INTEGER, updated_at INTEGER)", rusqlite::params![])?;
     Ok(())
 }
+#[allow(dead_code)]
 fn insert_demo_thread(db_path: &PathBuf) -> Result<()> {
     let conn = rusqlite::Connection::open(db_path)?;
     let id = format!("demo-{}", now_ms());

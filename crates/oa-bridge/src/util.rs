@@ -25,6 +25,7 @@ pub fn expand_home(p: &str) -> PathBuf {
 }
 
 /// Return ordered list of sqlite table names for diagnostics.
+#[cfg(test)]
 pub fn list_sqlite_tables(db_path: &PathBuf) -> anyhow::Result<Vec<String>> {
     let conn = rusqlite::Connection::open(db_path)?;
     let mut stmt =
