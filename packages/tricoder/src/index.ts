@@ -56,6 +56,14 @@ function chooseSelfIPv4(status: TSStatus): string | null {
   return v4 || null;
 }
 
+function isTailscaleActive(status: TSStatus): boolean {
+  try {
+    const s = String(status?.BackendState || status?.backendState || '').toLowerCase();
+    // Only treat as active when the backend is running (connected to tailnet)
+    return s === 'running';
+  } catch { return false }
+}
+
 // Detect private IPv4 range
 const PRIVATE_V4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/;
 function getLanIPv4Candidates(): string[] {
@@ -206,9 +214,10 @@ async function main() {
   let hostIp: string | null = null;
   let mode: 'tailscale' | 'lan' = 'lan';
   const tsPath = await findTailscale();
+  let tsStatus: TSStatus | null = null;
   if (prefer !== 'lan' && tsPath) {
-    const status = await getTailscaleStatus(tsPath);
-    const selfIPv4 = status ? chooseSelfIPv4(status) : null;
+    tsStatus = await getTailscaleStatus(tsPath);
+    const selfIPv4 = tsStatus && isTailscaleActive(tsStatus) ? chooseSelfIPv4(tsStatus) : null;
     if (selfIPv4) { hostIp = selfIPv4; mode = 'tailscale'; }
   }
   if (!hostIp) {
@@ -240,9 +249,8 @@ async function main() {
   // Compute candidate hosts for QR payload in priority order
   const lanCandidates = getLanIPv4Candidates().map((ip) => `${ip}:${bridgePort}`);
   let tsCandidates: string[] = [];
-  if (prefer !== 'lan' && tsPath) {
-    const status2 = await getTailscaleStatus(tsPath);
-    const ip = status2 ? chooseSelfIPv4(status2) : null;
+  if (prefer !== 'lan' && tsPath && tsStatus && isTailscaleActive(tsStatus)) {
+    const ip = chooseSelfIPv4(tsStatus);
     tsCandidates = ip ? [`${ip}:${bridgePort}`] : [];
   }
   const hosts = (mode === 'lan') ? [...lanCandidates, ...tsCandidates] : [...tsCandidates, ...lanCandidates];
