@@ -366,6 +366,37 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 project_id,
                                 resume_id,
                             } => {
+                                if stdin_state.opts.use_codex_acp {
+                                    // Route to Codex ACP adapter instead of JSONL Codex
+                                    let desired_cd = project_id.as_ref().and_then(|pid| {
+                                        match crate::projects::list_projects() {
+                                            Ok(list) => list
+                                                .into_iter()
+                                                .find(|p| p.id == *pid)
+                                                .map(|p| p.working_dir),
+                                            Err(_) => None,
+                                        }
+                                    }).map(PathBuf::from);
+                                    // Remember target Convex thread id for writes
+                                    {
+                                        *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone());
+                                    }
+                                    // Fire and forget; errors are logged
+                                    let st_for = stdin_state.clone();
+                                    let thread_for = thread_doc_id.clone();
+                                    tokio::spawn(async move {
+                                        match crate::acp_codex::codex_acp_prompt(st_for.clone(), desired_cd, &thread_for, &text).await {
+                                            Ok(_) => {
+                                                let dbg = serde_json::json!({"type":"bridge.run_submit_acp","threadDocId": thread_for, "len": text.len()}).to_string();
+                                                let _ = st_for.tx.send(dbg);
+                                            }
+                                            Err(e) => {
+                                                error!(?e, "run.submit (acp): failed");
+                                            }
+                                        }
+                                    });
+                                    continue;
+                                }
                                 // Map to project working dir
                                 let desired_cd = project_id.as_ref().and_then(|pid| {
                                     match crate::projects::list_projects() {
@@ -534,6 +565,8 @@ mod auth_tests {
             convex_interface: "127.0.0.1".into(),
             manage_convex: false,
             ws_token: tok.map(|s| s.to_string()),
+            use_codex_acp: false,
+            codex_acp_bin: None,
         };
         Arc::new(AppState {
             tx,
