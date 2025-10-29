@@ -321,4 +321,110 @@ mod tests {
             _ => panic!("expected ToolCall"),
         }
     }
+
+    #[test]
+    fn codex_maps_agent_message_delta() {
+        let v = json!({
+            "type": "item.delta",
+            "item": {"id": "item_x", "type": "agent_message", "text": "Partial"}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::AgentMessageChunk(chunk) => match chunk.content {
+                ContentBlock::Text(t) => assert_eq!(t.text, "Partial"),
+                _ => panic!("expected text"),
+            },
+            _ => panic!("expected AgentMessageChunk"),
+        }
+    }
+
+    #[test]
+    fn codex_maps_reasoning_delta() {
+        let v = json!({
+            "type": "item.delta",
+            "item": {"id": "item_r", "type": "reasoning", "text": "Thinking..."}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::AgentThoughtChunk(chunk) => match chunk.content {
+                ContentBlock::Text(t) => assert_eq!(t.text, "Thinking..."),
+                _ => panic!("expected text"),
+            },
+            _ => panic!("expected AgentThoughtChunk"),
+        }
+    }
+
+    #[test]
+    fn codex_maps_mcp_tool_call_completed() {
+        let v = json!({
+            "type": "item.completed",
+            "item": {"id":"mcp_1","type":"mcp_tool_call","server":"fs","tool":"read","status":"completed"}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::ToolCall(call) => {
+                assert_eq!(call.kind, ToolKind::Fetch);
+                assert_eq!(call.status, ToolCallStatus::Completed);
+                assert!(call.title.contains("fs.read") || call.title.contains("MCP"));
+            }
+            _ => panic!("expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn codex_maps_web_search_completed() {
+        let v = json!({
+            "type": "item.completed",
+            "item": {"id":"search_1","type":"web_search","query":"rust unit tests"}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::ToolCall(call) => {
+                assert_eq!(call.kind, ToolKind::Search);
+                assert_eq!(call.status, ToolCallStatus::Completed);
+                assert!(call.title.contains("rust unit tests") || call.title.contains("Web search"));
+            }
+            _ => panic!("expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn codex_maps_todo_list_to_plan() {
+        let v = json!({
+            "type": "item.completed",
+            "item": {"id":"todo_1","type":"todo_list","items":[{"text":"A","completed":false},{"text":"B","completed":true}]}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::Plan(plan) => {
+                assert_eq!(plan.entries.len(), 2);
+                assert_eq!(plan.entries[0].content, "A");
+                assert_eq!(plan.entries[1].status, PlanEntryStatus::Completed);
+            }
+            _ => panic!("expected Plan"),
+        }
+    }
+
+    #[test]
+    fn codex_maps_command_execution_with_output() {
+        let v = json!({
+            "type": "item.completed",
+            "item": {"id":"exec_1","type":"command_execution","command":"echo hi","aggregated_output":"hi\n","status":"completed"}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::ToolCall(call) => {
+                assert_eq!(call.kind, ToolKind::Execute);
+                assert_eq!(call.status, ToolCallStatus::Completed);
+                assert!(!call.content.is_empty(), "expected aggregated output content");
+            }
+            _ => panic!("expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn codex_ignores_unknown_events() {
+        let v = json!({"type":"turn.started"});
+        assert!(translate_codex_event_to_acp_update(&v).is_none());
+    }
 }
