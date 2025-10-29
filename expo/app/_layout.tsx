@@ -13,6 +13,7 @@ import {
 import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
 import { AppHeader } from "@/components/app-header"
+import { DrawerThreadItem } from "@/components/drawer/ThreadListItem"
 import { ToastOverlay } from "@/components/toast-overlay"
 import { Colors, NavigationTheme } from "@/constants/theme"
 import {
@@ -91,13 +92,15 @@ function DrawerContent() {
               {/* Tinyvex snapshot loads quickly; spinner optional */}
             </View>
             {Array.isArray(threads) && (
-              (topThreads?.length ?? 0) === 0 ? (
+              (topThreads?.filter((r: any) => typeof r.messageCount === 'number' ? r.messageCount > 0 : true).length ?? 0) === 0 ? (
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
                 (topThreads || []).map((row: any) => (
-                  <Pressable key={String(row.id)} onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}` as any))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
-                    <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }} numberOfLines={1}>{row.title || 'Thread'}</Text>
-                  </Pressable>
+                  <DrawerThreadItem
+                    key={String(row.id)}
+                    row={row}
+                    onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}` as any))}
+                  />
                 ))
               )
             )}

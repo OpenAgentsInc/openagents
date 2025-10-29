@@ -18,6 +18,8 @@ pub struct ThreadRow {
     pub source: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+    #[serde(rename = "messageCount", skip_serializing_if = "Option::is_none")]
+    pub message_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -189,8 +191,13 @@ impl Tinyvex {
 
     pub fn list_threads(&self, limit: i64) -> Result<Vec<ThreadRow>> {
         let conn = Connection::open(&self.db_path)?;
-        let mut stmt = conn
-            .prepare("SELECT id, threadId, title, projectId, resumeId, rolloutPath, source, createdAt, updatedAt FROM threads ORDER BY updatedAt DESC LIMIT ?1")?;
+        let mut stmt = conn.prepare(
+            "SELECT \
+                id, threadId, title, projectId, resumeId, rolloutPath, source, createdAt, updatedAt, \
+                (SELECT COUNT(*) FROM messages m WHERE m.threadId = threads.id) AS messageCount \
+             FROM threads \
+             ORDER BY updatedAt DESC LIMIT ?1",
+        )?;
         let rows = stmt
             .query_map([limit], |r| {
                 Ok(ThreadRow {
@@ -203,6 +210,7 @@ impl Tinyvex {
                     source: r.get(6)?,
                     created_at: r.get(7)?,
                     updated_at: r.get(8)?,
+                    message_count: r.get(9).ok(),
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -419,6 +427,7 @@ mod tests {
             source: Some("test".into()),
             created_at: t0,
             updated_at: t0,
+            message_count: None,
         };
         tvx.upsert_thread(&row).unwrap();
         let out = tvx.list_threads(10).unwrap();
