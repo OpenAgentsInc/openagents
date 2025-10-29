@@ -658,20 +658,21 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         info!(thread_id=%val, msg="captured thread id for resume");
                         let convex_tid_opt =
                             { state_for_stdout.current_convex_thread.lock().await.clone() };
-                        if !state_for_stdout.is_convex_ready() { return; }
-                        use convex::{ConvexClient, Value};
-                        use std::collections::BTreeMap;
-                        let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                        if let Ok(mut client) = ConvexClient::new(&url).await {
-                            let mut args: BTreeMap<String, Value> = BTreeMap::new();
-                            if let Some(ctid) = convex_tid_opt.as_deref() {
-                                args.insert("threadId".into(), Value::from(ctid));
+                        if state_for_stdout.is_convex_ready() {
+                            use convex::{ConvexClient, Value};
+                            use std::collections::BTreeMap;
+                            let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
+                            if let Ok(mut client) = ConvexClient::new(&url).await {
+                                let mut args: BTreeMap<String, Value> = BTreeMap::new();
+                                if let Some(ctid) = convex_tid_opt.as_deref() {
+                                    args.insert("threadId".into(), Value::from(ctid));
+                                }
+                                args.insert("resumeId".into(), Value::from(val));
+                                args.insert("title".into(), Value::from("Thread"));
+                                args.insert("createdAt".into(), Value::from(now_ms() as f64));
+                                args.insert("updatedAt".into(), Value::from(now_ms() as f64));
+                                let _ = client.mutation("threads:upsertFromStream", args).await;
                             }
-                            args.insert("resumeId".into(), Value::from(val));
-                            args.insert("title".into(), Value::from("Thread"));
-                            args.insert("createdAt".into(), Value::from(now_ms() as f64));
-                            args.insert("updatedAt".into(), Value::from(now_ms() as f64));
-                            let _ = client.mutation("threads:upsertFromStream", args).await;
                         }
                         // Broadcast a debug event for visibility in tools
                         let dbg = serde_json::json!({
