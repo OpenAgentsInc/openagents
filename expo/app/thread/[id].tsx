@@ -31,12 +31,12 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
   const { sessions } = useAcp()
-  const { send, connected } = useBridge()
+  const { send, connected, addSubscriber } = useBridge()
   // Title for thread screen
   useHeaderTitle('New Thread')
   const [sessionId, setSessionId] = React.useState<string>('')
   React.useEffect(() => {
-    const unsub = (useBridge() as any).addSubscriber?.((line: string) => {
+    const unsub = addSubscriber?.((line: string) => {
       try {
         const obj = JSON.parse(String(line || ''))
         if (obj?.type === 'bridge.session_started' && obj.clientThreadDocId && obj.sessionId) {
@@ -45,7 +45,7 @@ export default function ThreadScreen() {
       } catch {}
     })
     return () => { try { unsub && unsub() } catch {} }
-  }, [threadId])
+  }, [threadId, addSubscriber])
   const acpUpdates = React.useMemo(() => sessions[sessionId] || [], [sessions, sessionId])
   const onSend = React.useCallback((text: string) => {
     if (!threadId) return
