@@ -1,6 +1,6 @@
 # Tricoder One‑Command Bootstrap (Design Notes)
 
-Goal: a single command (`npx tricoder`) that installs prerequisites as needed, launches the local bridge, and optionally exposes public tunnels so the mobile app can connect — with safe defaults, clear prompts, and predictable behavior across macOS, Linux, and Windows.
+Goal: a single command (`npx tricoder`) that installs prerequisites as needed and launches the local bridge so the mobile app can connect over LAN/VPN — with safe defaults, clear prompts, and predictable behavior across macOS, Linux, and Windows.
 
 This doc captures constraints, options, risks, and a pragmatic implementation plan.
 
@@ -18,14 +18,12 @@ This doc captures constraints, options, risks, and a pragmatic implementation pl
 ## Outcomes (Happy Path)
 
 1) Local bridge running on `ws://127.0.0.1:8787/ws`
-2) Optional public tunnels established:
-   - Bridge WS via `oa-tunnel` → `bore.pub`
-   - Convex HTTP via another `oa-tunnel` → `bore.pub`
+2) Public tunnels: removed. We no longer ship or start tunnels from this repo. Prefer LAN/VPN (e.g., Tailscale) or your own reverse proxy if needed.
 3) Printed pair code payload (bridge + convex URLs) ready to paste into the mobile app
 
 ## Inputs and Flags (proposed)
 
-- `--local-only`  Run without public tunnels (local app/dev only)
+- `--local-only`  Deprecated. All flows are local-only; public tunnels are not managed here.
 - `--no-install`  Do not install toolchains/binaries; fail with guidance
 - `--force-build` Force local Rust build even if prebuilt binaries exist
 - `--jobs <n>`    Limit parallel build jobs when compiling (default: 2 on Linux, else auto)
@@ -34,7 +32,7 @@ This doc captures constraints, options, risks, and a pragmatic implementation pl
 
 ## Platform Matrix and Strategy
 
-We need two Rust binaries: `oa-bridge` and `oa-tunnel`.
+We need one Rust binary: `oa-bridge`.
 
 Order of preference per platform:
 
@@ -58,7 +56,7 @@ Binary distribution:
 
 Cache locations:
 - `OPENAGENTS_HOME` (default: `~/.openagents`)
-- Place binaries in `~/.openagents/bin/` (e.g., `oa-bridge`, `oa-tunnel`)
+- Place binaries in `~/.openagents/bin/` (e.g., `oa-bridge`)
 - Mark executable; never install system‑wide; never require `sudo`
 
 ## Boot Flow (proposed)
@@ -71,7 +69,7 @@ Cache locations:
 2) Resolve binaries
    - If prebuilt found in cache and matching version → use
    - Else if allowed to download → fetch from GitHub Releases, verify checksum, cache
-   - Else if allowed to build → ensure `rustup` installed (install if user consents), then `cargo build -p oa-bridge -p oa-tunnel`
+   - Else if allowed to build → ensure `rustup` installed (install if user consents), then `cargo build -p oa-bridge`
      - Concurrency caps: `CARGO_BUILD_JOBS` (default 2 on Linux), and sequential builds to avoid spikes
      - Surface progress, ETA, and a cancel hint
    - If none possible → fail with clear guidance
@@ -80,10 +78,7 @@ Cache locations:
    - Start `oa-bridge` bound to `0.0.0.0:8787` (default)
    - Health probe via WS; print status
 
-4) Optional tunnels (skip with `--local-only`)
-   - Start `oa-tunnel` to `bore.pub` for the bridge (WS)
-   - Start second `oa-tunnel` to `bore.pub` for Convex (HTTP)
-   - Summarize tunnel events (rate‑limited), not the full bore logs
+4) Tunnels: not started by Tricoder. Use LAN/VPN or your own infra.
 
 5) Pair code and tips
    - Print one base64 payload with bridge + convex URLs (no secrets)
@@ -107,7 +102,7 @@ Cache locations:
 - Bridge is the only `/ws` server; `npx tricoder` must not stand up its own Node WS
 - No HTTP control to the bridge; only WS messages
 - The bridge injects permissive sandbox/approvals for development; print clear warnings about trust boundaries
-- Tunnels: `bore.pub` is third‑party; provide opt‑out via `--local-only`
+- Tunnels: not used. Prefer LAN/VPN.
 - Binaries are verified via checksums
 
 ## Networking and Proxies
@@ -120,7 +115,7 @@ Cache locations:
 
 - Probe 8787 (bridge) and 7788 (Convex) locally; if busy, pick next available in range (e.g., 8787–8799, 7788–7799)
 - Print selected ports and include them in the pair code
-- For public tunnels, pick server port assigned by `bore.pub` (as today)
+- N/A
 
 ## Compatibility with Current Repo Rules
 
@@ -137,7 +132,7 @@ Cache locations:
 
 ## Uninstall / Cleanup
 
-- `npx tricoder --uninstall` removes `~/.openagents/bin/{oa-bridge,oa-tunnel}` and cache entries after confirmation
+- `npx tricoder --uninstall` removes `~/.openagents/bin/oa-bridge` and cache entries after confirmation
 
 ## Failure Modes and Messages
 
@@ -149,7 +144,7 @@ Cache locations:
 ## Implementation Plan (phased)
 
 Phase 1: Prebuilt binary bootstrap
-- Add GitHub Actions to build and publish `oa-bridge` and `oa-tunnel` for the target matrix with checksums
+- Add GitHub Actions to build and publish `oa-bridge` for the target matrix with checksums
 - Update `packages/tricoder` to:
   - Detect repo vs non‑repo run
   - Resolve binaries (cache → download → build)
@@ -192,7 +187,7 @@ Notes related to the incident: On Linux, running multiple `cargo run` processes 
   - If Rust is present, build sequentially with capped jobs; never spawn concurrent `cargo run` builds.
 
 - Detection logic (repo vs non‑repo)
-  - Inside repo: use workspace `cargo run -p oa-bridge` and `-p oa-tunnel` for dev ergonomics.
+  - Inside repo: use workspace `cargo run -p oa-bridge` for dev ergonomics.
   - Outside repo: never require cloning; resolve to cached or downloaded binaries. Only fall back to building if the user explicitly opts in or `--force-build` is set.
 
 - Convex bootstrap
@@ -201,7 +196,7 @@ Notes related to the incident: On Linux, running multiple `cargo run` processes 
 
 - Port selection and pairing payload
   - Probe and select free local ports within small ranges. Include selected ports in the base64 pairing payload so the app can connect without guessing.
-  - When tunnels are disabled (`--local-only`), still print a local‑only pairing payload for LAN use.
+- Always print a local‑only pairing payload for LAN use.
 
 - Safety on Linux and small hosts
   - Default `--jobs 2` for local builds on Linux; consider `nice`/`ionice` when available.
