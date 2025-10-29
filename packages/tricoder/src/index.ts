@@ -152,6 +152,7 @@ async function main() {
     OPENAGENTS_CONVEX_STATE: process.env.OPENAGENTS_CONVEX_STATE || 'convex',
     OPENAGENTS_CONVEX_INTERFACE: process.env.OPENAGENTS_CONVEX_INTERFACE || (exposeLan ? '0.0.0.0' : '127.0.0.1'),
     OPENAGENTS_CONVEX_INSTANCE: process.env.OPENAGENTS_CONVEX_INSTANCE || 'openagents',
+    OPENAGENTS_CONVEX_PREFER_CACHE: process.env.OPENAGENTS_CONVEX_PREFER_CACHE || '1',
     OPENAGENTS_CONVEX_DEBUG: verbose ? '1' : (process.env.OPENAGENTS_CONVEX_DEBUG || ''),
   };
 
