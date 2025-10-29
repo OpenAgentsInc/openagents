@@ -4,24 +4,49 @@ import { useBridge } from '@/providers/ws'
 import { parseSessionNotification } from '@/lib/acp/validation'
 
 type AcpCtx = {
-  sessions: Record<string, SessionNotification[]>;
-  add: (n: SessionNotification) => void;
+  eventsForThread: (threadDocId: string) => SessionNotification[];
+  sessionToThread: Record<string, string>;
 }
 
 const Ctx = createContext<AcpCtx | undefined>(undefined)
 
 export function AcpProvider({ children }: { children: React.ReactNode }) {
   const { addSubscriber } = useBridge()
-  const [sessions, setSessions] = useState<Record<string, SessionNotification[]>>({})
+  const [eventsByThread, setEventsByThread] = useState<Record<string, SessionNotification[]>>({})
+  const [sessionToThread, setSessionToThread] = useState<Record<string, string>>({})
+  const sessionToThreadRef = useRef<Record<string, string>>({})
+  const pendingBySessionRef = useRef<Record<string, SessionNotification[]>>({})
 
-  const add = useCallback((n: SessionNotification) => {
-    setSessions((prev) => {
-      const id = String((n as any).sessionId || '')
-      const key = id
-      const arr = prev[key] ? [...prev[key]] : []
-      arr.push(n)
-      return { ...prev, [key]: arr }
-    })
+  const mapSession = useCallback((sessionId: string, threadDocId: string) => {
+    sessionToThreadRef.current[sessionId] = threadDocId
+    setSessionToThread({ ...sessionToThreadRef.current })
+    // Flush any pending ACP updates for this session into the thread bucket
+    const pend = pendingBySessionRef.current[sessionId]
+    if (Array.isArray(pend) && pend.length > 0) {
+      setEventsByThread((prev) => {
+        const arr = prev[threadDocId] ? [...prev[threadDocId]] : []
+        arr.push(...pend)
+        // Clear
+        pendingBySessionRef.current[sessionId] = []
+        return { ...prev, [threadDocId]: arr }
+      })
+    }
+  }, [])
+
+  const addEventForSession = useCallback((n: SessionNotification) => {
+    const sid = String((n as any).sessionId || '')
+    const tdoc = sessionToThreadRef.current[sid]
+    if (tdoc) {
+      setEventsByThread((prev) => {
+        const arr = prev[tdoc] ? [...prev[tdoc]] : []
+        arr.push(n)
+        return { ...prev, [tdoc]: arr }
+      })
+    } else {
+      const pend = pendingBySessionRef.current[sid] || []
+      pend.push(n)
+      pendingBySessionRef.current[sid] = pend
+    }
   }, [])
 
   useEffect(() => {
@@ -30,16 +55,21 @@ export function AcpProvider({ children }: { children: React.ReactNode }) {
       if (!s.startsWith('{')) return
       try {
         const obj = JSON.parse(s)
+        if (obj?.type === 'bridge.session_started' && obj.sessionId && obj.clientThreadDocId) {
+          mapSession(String(obj.sessionId), String(obj.clientThreadDocId))
+          return
+        }
         if (obj?.type === 'bridge.acp' && obj.notification) {
           const parsed = parseSessionNotification(obj.notification)
-          if (parsed.ok) add(parsed.value as any)
+          if (parsed.ok) addEventForSession(parsed.value as any)
         }
       } catch {}
     })
     return unsub
-  }, [addSubscriber, add])
+  }, [addSubscriber, addEventForSession, mapSession])
 
-  const value = useMemo(() => ({ sessions, add }), [sessions, add])
+  const eventsForThread = useCallback((threadDocId: string) => eventsByThread[threadDocId] || [], [eventsByThread])
+  const value = useMemo(() => ({ eventsForThread, sessionToThread }), [eventsForThread, sessionToThread])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
