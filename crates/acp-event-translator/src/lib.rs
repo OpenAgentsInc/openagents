@@ -256,8 +256,179 @@ pub fn translate_codex_event_to_acp_update(v: &JsonValue) -> Option<SessionUpdat
 }
 
 /// Stub: Translate a Claude Code streaming event to ACP SessionUpdate
-pub fn translate_claude_event_to_acp_update(_v: &JsonValue) -> Option<SessionUpdate> {
-    // TODO: implement once Claude Code event schema is finalized in this repo
+pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpdate> {
+    // Claude Code streams Anthropic-like events. We support a minimal subset:
+    // - content_block_start/content_block_delta: text, image, thinking
+    // - tool_use/server_tool_use/mcp_tool_use: create a pending ToolCall or Plan (TodoWrite)
+    // - tool_result/*: mark a ToolCallUpdate (completed/failed)
+
+    let ty = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+    // Helpers: extract chunk for content_block_* events
+    let chunk = if ty == "content_block_start" {
+        v.get("content_block")
+    } else if ty == "content_block_delta" {
+        v.get("delta")
+    } else {
+        None
+    };
+
+    if let Some(ch) = chunk {
+        let ctype = ch.get("type").and_then(|x| x.as_str()).unwrap_or("");
+        match ctype {
+            // Text or text delta → assistant message chunk
+            "text" | "text_delta" => {
+                let text = ch
+                    .get("text")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                return Some(SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent {
+                        annotations: None,
+                        text,
+                        meta: None,
+                    }),
+                    meta: None,
+                }));
+            }
+            // Image → agent message chunk image
+            "image" => {
+                // Anthropic SDK provides a source { type: "base64"|"url", data/media_type or url }
+                let (data, mime, uri) = match ch.get("source") {
+                    Some(src) => {
+                        let st = src.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                        if st == "base64" {
+                            let data = src.get("data").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                            let mime = src
+                                .get("media_type")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            (data, mime, None)
+                        } else if st == "url" {
+                            let url = src.get("url").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                            (String::new(), String::new(), Some(url))
+                        } else {
+                            (String::new(), String::new(), None)
+                        }
+                    }
+                    None => (String::new(), String::new(), None),
+                };
+                return Some(SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Image(agent_client_protocol::ImageContent {
+                        annotations: None,
+                        data,
+                        mime_type: mime,
+                        uri,
+                        meta: None,
+                    }),
+                    meta: None,
+                }));
+            }
+            // Thinking → agent thought chunk (text)
+            "thinking" | "thinking_delta" => {
+                let text = ch
+                    .get("thinking")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                return Some(SessionUpdate::AgentThoughtChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent {
+                        annotations: None,
+                        text,
+                        meta: None,
+                    }),
+                    meta: None,
+                }));
+            }
+            // Tool use(s)
+            "tool_use" | "server_tool_use" | "mcp_tool_use" => {
+                let id = ch
+                    .get("id")
+                    .and_then(|x| x.as_str())
+                    .map(|s| ToolCallId(Arc::from(s)))
+                    .unwrap_or_else(|| ToolCallId(Arc::from("tool_use")));
+                let name = ch.get("name").and_then(|x| x.as_str()).unwrap_or("");
+                // TodoWrite with todos → Plan
+                if name == "TodoWrite" {
+                    if let Some(todos) = ch.get("input").and_then(|i| i.get("todos")).and_then(|x| x.as_array()) {
+                        let mut entries = Vec::new();
+                        for t in todos {
+                            let content = t
+                                .get("content")
+                                .or_else(|| t.get("text"))
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            // Claude todos don’t include status; default pending
+                            entries.push(PlanEntry {
+                                content,
+                                priority: PlanEntryPriority::Medium,
+                                status: PlanEntryStatus::Pending,
+                                meta: None,
+                            });
+                        }
+                        return Some(SessionUpdate::Plan(Plan { entries, meta: None }));
+                    }
+                }
+                // Otherwise a generic tool call (pending)
+                let call = ToolCall {
+                    id,
+                    title: if name.is_empty() {
+                        "Tool Call".to_string()
+                    } else {
+                        format!("Tool: {}", name)
+                    },
+                    kind: match name {
+                        "bash" | "bashOutput" | "execute" => ToolKind::Execute,
+                        "webSearch" => ToolKind::Search,
+                        _ => ToolKind::Other,
+                    },
+                    status: ToolCallStatus::Pending,
+                    content: vec![],
+                    locations: vec![],
+                    raw_input: ch.get("input").cloned(),
+                    raw_output: None,
+                    meta: None,
+                };
+                return Some(SessionUpdate::ToolCall(call));
+            }
+            _ => {}
+        }
+    }
+
+    // Tool results → ToolCallUpdate
+    if ty == "tool_result"
+        || ty == "web_fetch_tool_result"
+        || ty == "web_search_tool_result"
+        || ty == "code_execution_tool_result"
+        || ty == "bash_code_execution_tool_result"
+        || ty == "text_editor_code_execution_tool_result"
+        || ty == "mcp_tool_result"
+    {
+        let tool_id = v
+            .get("tool_use_id")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        if tool_id.is_empty() {
+            return None;
+        }
+        let status = if v.get("is_error").and_then(|x| x.as_bool()).unwrap_or(false) {
+            ToolCallStatus::Failed
+        } else {
+            ToolCallStatus::Completed
+        };
+        let mut fields = agent_client_protocol::ToolCallUpdateFields::default();
+        fields.status = Some(status);
+        if let Some(ro) = v.get("result").cloned() { fields.raw_output = Some(ro); }
+        return Some(SessionUpdate::ToolCallUpdate(agent_client_protocol::ToolCallUpdate {
+            id: ToolCallId(Arc::from(tool_id)),
+            fields,
+            meta: None,
+        }));
+    }
+
     None
 }
 
@@ -494,5 +665,108 @@ mod tests {
     fn codex_ignores_unknown_events() {
         let v = json!({"type":"turn.started"});
         assert!(translate_codex_event_to_acp_update(&v).is_none());
+    }
+
+    // Claude Code mapping tests
+    #[test]
+    fn claude_maps_text_delta_to_agent_message() {
+        let v = json!({
+            "type": "content_block_delta",
+            "delta": { "type": "text_delta", "text": "Hello from Claude" }
+        });
+        let upd = translate_claude_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::AgentMessageChunk(chunk) => match chunk.content {
+                ContentBlock::Text(t) => assert_eq!(t.text, "Hello from Claude"),
+                _ => panic!("expected text"),
+            },
+            _ => panic!("expected AgentMessageChunk"),
+        }
+    }
+
+    #[test]
+    fn claude_maps_thinking_delta_to_agent_thought() {
+        let v = json!({
+            "type": "content_block_delta",
+            "delta": { "type": "thinking_delta", "thinking": "Reasoning..." }
+        });
+        let upd = translate_claude_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::AgentThoughtChunk(chunk) => match chunk.content {
+                ContentBlock::Text(t) => assert_eq!(t.text, "Reasoning..."),
+                _ => panic!("expected text"),
+            },
+            _ => panic!("expected AgentThoughtChunk"),
+        }
+    }
+
+    #[test]
+    fn claude_maps_image_block_to_image_content() {
+        let v = json!({
+            "type": "content_block_start",
+            "content_block": { "type": "image", "source": {"type":"base64","data":"AAA","media_type":"image/png"} }
+        });
+        let upd = translate_claude_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::AgentMessageChunk(chunk) => match chunk.content {
+                ContentBlock::Image(img) => {
+                    assert_eq!(img.mime_type, "image/png");
+                    assert_eq!(img.data, "AAA");
+                }
+                _ => panic!("expected image"),
+            },
+            _ => panic!("expected AgentMessageChunk"),
+        }
+    }
+
+    #[test]
+    fn claude_maps_tool_use_to_tool_call_pending() {
+        let v = json!({
+            "type": "content_block_start",
+            "content_block": { "type": "tool_use", "id": "tu_1", "name": "bash", "input": {"command":"echo hi"} }
+        });
+        let upd = translate_claude_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::ToolCall(call) => {
+                assert_eq!(call.id.0.as_ref(), "tu_1");
+                assert_eq!(call.status, ToolCallStatus::Pending);
+                assert_eq!(call.kind, ToolKind::Execute);
+            }
+            _ => panic!("expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn claude_maps_todowrite_to_plan() {
+        let v = json!({
+            "type": "content_block_start",
+            "content_block": { "type": "tool_use", "id": "todo_1", "name": "TodoWrite", "input": {"todos":[{"content":"A"},{"content":"B"}] } }
+        });
+        let upd = translate_claude_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::Plan(plan) => {
+                assert_eq!(plan.entries.len(), 2);
+                assert_eq!(plan.entries[0].content, "A");
+            }
+            _ => panic!("expected Plan"),
+        }
+    }
+
+    #[test]
+    fn claude_maps_tool_result_to_update_completed() {
+        let v = json!({
+            "type": "tool_result",
+            "tool_use_id": "tu_1",
+            "is_error": false,
+            "result": {"ok":true}
+        });
+        let upd = translate_claude_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::ToolCallUpdate(up) => {
+                assert_eq!(up.id.0.as_ref(), "tu_1");
+                assert_eq!(up.fields.status, Some(ToolCallStatus::Completed));
+            }
+            _ => panic!("expected ToolCallUpdate"),
+        }
     }
 }
