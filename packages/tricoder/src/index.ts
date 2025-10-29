@@ -90,21 +90,22 @@ async function ensureRust(): Promise<boolean> {
   return false;
 }
 
-function runCargoBridge(repoDir: string): Promise<number> {
+function runCargoBridge(repoDir: string, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolve) => {
     const cmd = process.platform === 'win32' ? 'cargo.exe' : 'cargo';
     const child = spawn(cmd, ['run', '-p', 'oa-bridge', '--', '--bind', '0.0.0.0:8787'], {
       cwd: repoDir,
       stdio: 'inherit',
+      env,
     });
     child.on('exit', (code) => resolve(code ?? 0));
   });
 }
 
-function runBridgeBinary(binPath: string, extraArgs: string[] = []): Promise<number> {
+function runBridgeBinary(binPath: string, env: NodeJS.ProcessEnv, extraArgs: string[] = []): Promise<number> {
   return new Promise((resolve) => {
     const args = ['--bind', process.env.TRICODER_BRIDGE_BIND || '0.0.0.0:8787', ...extraArgs];
-    const child = spawn(binPath, args, { stdio: 'inherit' });
+    const child = spawn(binPath, args, { stdio: 'inherit', env });
     child.on('exit', (code) => resolve(code ?? 0));
   });
 }
@@ -112,6 +113,7 @@ function runBridgeBinary(binPath: string, extraArgs: string[] = []): Promise<num
 async function main() {
   const args = new Set(process.argv.slice(2));
   const autorun = args.has('--run-bridge') || args.has('-r');
+  const verbose = args.has('--verbose') || process.env.DEBUG === '1';
   const tsPath = await findTailscale();
   if (!tsPath) {
     console.log(chalk.red('Tailscale CLI not found.'));
@@ -143,6 +145,16 @@ async function main() {
     return;
   }
 
+  // Prepare environment for the bridge process (Convex fast-start defaults)
+  const exposeLan = process.env.TRICODER_EXPOSE_LAN === '1';
+  const bridgeEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    OPENAGENTS_CONVEX_STATE: process.env.OPENAGENTS_CONVEX_STATE || 'convex',
+    OPENAGENTS_CONVEX_INTERFACE: process.env.OPENAGENTS_CONVEX_INTERFACE || (exposeLan ? '0.0.0.0' : '127.0.0.1'),
+    OPENAGENTS_CONVEX_INSTANCE: process.env.OPENAGENTS_CONVEX_INSTANCE || 'openagents',
+    OPENAGENTS_CONVEX_DEBUG: verbose ? '1' : (process.env.OPENAGENTS_CONVEX_DEBUG || ''),
+  };
+
   // Prefer a prebuilt oa-bridge binary (downloaded/cached) and fall back to cargo if needed
   const preferBinary = process.env.TRICODER_PREFER_BIN !== '0';
   let code = 0;
@@ -150,7 +162,7 @@ async function main() {
     try {
       const { binaryPath, source } = await ensureBridgeBinary();
       console.log(chalk.cyan(`Starting bridge (${source})…`));
-      code = await runBridgeBinary(binaryPath);
+      code = await runBridgeBinary(binaryPath, bridgeEnv);
       process.exit(code);
       return;
     } catch (e) {
@@ -167,7 +179,7 @@ async function main() {
     process.exit(1);
   }
   console.log(chalk.cyan('Starting bridge via cargo (bind 0.0.0.0:8787)…'));
-  code = await runCargoBridge(repoDir);
+  code = await runCargoBridge(repoDir, bridgeEnv);
   process.exit(code);
 }
 
