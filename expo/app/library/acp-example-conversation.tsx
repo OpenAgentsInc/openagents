@@ -4,7 +4,7 @@ import { Colors } from '@/constants/theme'
 import { useHeaderTitle } from '@/lib/header-store'
 import { useRouter } from 'expo-router'
 import { SessionUpdateAgentMessageChunk, SessionUpdateUserMessageChunk, SessionUpdateAgentThoughtChunk, SessionUpdatePlan, SessionUpdateToolCall, SessionUpdateAvailableCommandsUpdate, SessionUpdateCurrentModeUpdate } from '@/components/acp'
-import { exampleItems } from './acp-example-data'
+import { exampleItems } from '@/lib/acp-example-data'
 
 export default function ACPExampleConversationScreen() {
   useHeaderTitle('ACP Example Conversation')
