@@ -1,16 +1,16 @@
-import React from 'react'
-import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Image } from 'react-native'
-import { Colors } from '@/constants/theme'
-import { Typography } from '@/constants/typography'
-import { useHeaderTitle } from '@/lib/header-store'
-import { useRouter } from 'expo-router'
-import { useBridge } from '@/providers/ws'
-import { useSettings } from '@/lib/settings-store'
+import { useRouter } from "expo-router"
+import React from "react"
+import {
+    ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View
+} from "react-native"
+import { Colors } from "@/constants/theme"
+import { Typography } from "@/constants/typography"
+import { useIsDevEnv } from "@/lib/env"
+import { useHeaderTitle } from "@/lib/header-store"
+import { useSettings } from "@/lib/settings-store"
+import { useBridge } from "@/providers/ws"
 // pairing helpers not needed here; IP-only flow
-import { Ionicons } from '@expo/vector-icons'
-import { useIsDevEnv } from '@/lib/env'
-// Tailscale peers and LAN scan removed; use QR Bridge Code instead
-import { useRouter as useExpoRouter } from 'expo-router'
+import { Ionicons } from "@expo/vector-icons"
 
 export default function Onboarding() {
   useHeaderTitle('Connect')
@@ -89,8 +89,8 @@ export default function Onboarding() {
   const trimmedCode = React.useMemo(() => String(bridgeCodeInput || '').trim(), [bridgeCodeInput])
   const likelyCode = React.useMemo(() => !!parseAnyBridgeInput(trimmedCode), [trimmedCode, parseAnyBridgeInput])
 
-  // Auto-advance only when both sides are ready
-  React.useEffect(() => {
+  // Require explicit continue once connected; avoid auto-advance on flaky connects
+  const onContinue = React.useCallback(() => {
     if (!connected || !convexReady) return
     try { router.replace('/thread/new' as any) } catch {}
   }, [connected, convexReady])
@@ -208,7 +208,18 @@ export default function Onboarding() {
             : lastWsErrorText}
         </Text>
       )}
-      {/* No spacer; keep layout simple */}
+      {/* Continue CTA, enabled only when connected */}
+      <View style={{ marginTop: 16, alignItems: 'center' }}>
+        <Pressable
+          onPress={onContinue}
+          accessibilityRole='button'
+          accessibilityState={{ disabled: !connected }}
+          disabled={!connected}
+          style={[styles.connectBtn as any, !connected ? styles.connectDisabled : undefined]}
+        >
+          <Text style={styles.connectText}>{connected ? 'Start New Thread' : (isConnecting ? 'Connecting…' : 'Waiting for Bridge…')}</Text>
+        </Pressable>
+      </View>
       {/* Do not display WebSocket URL on homepage */}
     </View>
   )
@@ -234,6 +245,6 @@ const styles = StyleSheet.create({
   centerWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   pairBtn: { marginTop: 0, borderWidth: 1, borderColor: Colors.secondary, backgroundColor: Colors.card, paddingVertical: 20, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', gap: 10, flexDirection: 'row' },
   pairText: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18, letterSpacing: 0.5 },
-  logo: { width: 180, height: 180, marginBottom: 36, marginTop: -20 },
-  logoTitle: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16, letterSpacing: 6, marginBottom: 20 },
+  logo: { width: 180, height: 180, marginBottom: 3, marginTop: -20 },
+  logoTitle: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 46, letterSpacing: 6, marginBottom: 90 },
 })
