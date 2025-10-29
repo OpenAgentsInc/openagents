@@ -7,7 +7,6 @@ import { useRouter } from 'expo-router'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
 // pairing helpers not needed here; IP-only flow
-import { useQuery } from 'convex/react'
 import { Ionicons } from '@expo/vector-icons'
 import { useIsDevEnv } from '@/lib/env'
 
@@ -20,7 +19,6 @@ export default function Onboarding() {
   const bridgeCode = useSettings((s) => s.bridgeCode)
   // Use a local input state to avoid programmatic TextInput updates from store
   const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => HARDCODED_IP)
-  const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const bridgeToken = useSettings((s) => s.bridgeToken)
@@ -30,43 +28,7 @@ export default function Onboarding() {
   const isDevEnv = useIsDevEnv()
 
   // Derive Convex URL from bridge host (same logic as Settings)
-  const derivedConvexUrl = React.useMemo(() => {
-    try {
-      const val = String(bridgeHost || '').trim()
-      const stripped = val
-        .replace(/^ws:\/\//i, '')
-        .replace(/^wss:\/\//i, '')
-        .replace(/^http:\/\//i, '')
-        .replace(/^https:\/\//i, '')
-        .replace(/\/$/, '')
-        .replace(/\/ws$/i, '')
-        .replace(/\/$/, '')
-      if (!stripped) return ''
-      const hostOnly = (stripped.split(':')[0] || '')
-      if (!hostOnly) return ''
-      return `http://${hostOnly}:7788`
-    } catch {
-      return ''
-    }
-  }, [bridgeHost])
-
-  // Convex readiness probe (HTTP only; no WebSocket until connected)
-  const [httpStatus, setHttpStatus] = React.useState<string>('')
-  React.useEffect(() => {
-    let cancelled = false
-    const base = String(convexUrl || derivedConvexUrl).trim()
-    if (!base) { setHttpStatus(''); return }
-    const url = base.replace(/\/$/, '') + '/instance_version'
-    try {
-      fetch(url).then(r => r.text().then(body => {
-        if (cancelled) return
-        const msg = `${r.status} ${body.trim()}`
-        try { console.log('[onboarding] convex http status:', msg) } catch {}
-        setHttpStatus(msg)
-      })).catch(() => { if (!cancelled) { try { console.log('[onboarding] convex http status: error') } catch {}; setHttpStatus('error') } })
-    } catch { setHttpStatus('error') }
-    return () => { cancelled = true }
-  }, [convexUrl, derivedConvexUrl])
+  // Convex removed in Tinyvex build; probe not required
   // Simplified parser: accept only an IP address and hardcode the bridge port
   const BRIDGE_PORT = 8787
   const parseAnyBridgeInput = React.useCallback((raw: string): { bridgeHost?: string; convexUrl?: string; token?: string | null } | null => {
@@ -95,10 +57,9 @@ export default function Onboarding() {
 
   const hasHost = React.useMemo(() => String(bridgeHost || '').trim().length > 0, [bridgeHost])
   const isConnecting = !!connecting
-  const convexThreads = (useQuery as any)(connected ? 'threads:list' : 'threads:list', connected ? {} : 'skip') as any[] | undefined | null
-  const convexReady = React.useMemo(() => Array.isArray(convexThreads), [convexThreads])
-  const convexLoading = connected && convexThreads === undefined
-  const convexError = connected && convexThreads === null
+  const convexReady = true
+  const convexLoading = false
+  const convexError = false
   const statusText = (() => {
     if (isConnecting) return 'Connecting…'
     if (!connected) return hasHost ? 'Disconnected' : 'Enter Bridge Code'
@@ -178,8 +139,6 @@ export default function Onboarding() {
           try {
           const parsed = parseAnyBridgeInput(trimmedCode)
           if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
-          // Clear any stale Convex override so provider derives from the bridge host
-          setConvexUrl('')
           // Bridge token (if required) can be pasted in Settings
           } catch {}
           try {
