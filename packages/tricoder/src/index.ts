@@ -239,12 +239,12 @@ async function main() {
 
   // Compute candidate hosts for QR payload in priority order
   const lanCandidates = getLanIPv4Candidates().map((ip) => `${ip}:${bridgePort}`);
-  const tsCandidates = (() => {
-    if (prefer === 'lan' || !tsPath) return [] as string[];
+  let tsCandidates: string[] = [];
+  if (prefer !== 'lan' && tsPath) {
     const status2 = await getTailscaleStatus(tsPath);
     const ip = status2 ? chooseSelfIPv4(status2) : null;
-    return ip ? [`${ip}:${bridgePort}`] : [];
-  })();
+    tsCandidates = ip ? [`${ip}:${bridgePort}`] : [];
+  }
   const hosts = (mode === 'lan') ? [...lanCandidates, ...tsCandidates] : [...tsCandidates, ...lanCandidates];
   const { deeplink, bridge } = buildBridgeCode(hostIp, bridgePort, token!, false, hosts);
   console.log(mode === 'tailscale'
