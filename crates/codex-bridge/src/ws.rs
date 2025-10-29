@@ -25,6 +25,8 @@ use crate::convex_write::{
     finalize_streaming_for_thread, stream_upsert_or_append, summarize_exec_delta_for_log,
     try_finalize_stream_kind,
 };
+use acp_event_translator::translate_codex_event_to_acp_update;
+use agent_client_protocol::{SessionId, SessionNotification};
 use crate::state::AppState;
 use crate::util::{expand_home, list_sqlite_tables, now_ms};
 
@@ -935,6 +937,20 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     }
                                     _ => {}
                                 }
+                                // Emit ACP notification mirror alongside legacy JSONL
+                                if let Some(update) = translate_codex_event_to_acp_update(&v) {
+                                    let notif = SessionNotification {
+                                        session_id: SessionId(target_tid.clone().into()),
+                                        update,
+                                        meta: None,
+                                    };
+                                    if let Ok(line) = serde_json::to_string(&serde_json::json!({
+                                        "type": "bridge.acp",
+                                        "notification": notif,
+                                    })) {
+                                        let _ = tx_out.send(line);
+                                    }
+                                }
                             }
                         }
                     }
@@ -979,6 +995,20 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         args.insert("text".into(), Value::from(payload_str));
                                         args.insert("ts".into(), Value::from(now_ms() as f64));
                                         let _ = client.mutation("messages:create", args).await;
+                                    }
+                                    // Emit ACP mirror for broader item.*
+                                    if let Some(update) = translate_codex_event_to_acp_update(&v) {
+                                        let notif = SessionNotification {
+                                            session_id: SessionId(target_tid.clone().into()),
+                                            update,
+                                            meta: None,
+                                        };
+                                        if let Ok(line) = serde_json::to_string(&serde_json::json!({
+                                            "type": "bridge.acp",
+                                            "notification": notif,
+                                        })) {
+                                            let _ = tx_out.send(line);
+                                        }
                                     }
                                 }
                             }

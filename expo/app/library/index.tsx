@@ -21,19 +21,13 @@ export default function ComponentLibraryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>JSONL Components</Text>
-      <LinkRow title="MarkdownBlock" path="/library/markdown" subtitle="Fenced/inline code, lists, headers" />
-      <LinkRow title="UserMessageRow" path="/library/user-message" subtitle="User-authored content in the feed" />
-      <LinkRow title="ReasoningHeadline" path="/library/reasoning-headline" subtitle="Top-line reasoning extraction + markdown" />
-      <LinkRow title="ReasoningCard" path="/library/reasoning-card" subtitle="Card with markdown + code" />
-      <LinkRow title="ExecBeginRow" path="/library/exec" subtitle="Parsed and raw command rows" />
-      <LinkRow title="FileChangeCard" path="/library/file-change" subtitle="Summary (+/~/-) and list of changed files" />
-      <LinkRow title="CommandExecutionCard" path="/library/command" subtitle="Command output preview with collapsible body" />
-      <LinkRow title="WebSearch & MCP Call" path="/library/search-mcp" subtitle="Rows for web search queries and MCP tool calls" />
-      <LinkRow title="TodoListCard" path="/library/todo" subtitle="Agent plan checklist with completion state" />
-      <LinkRow title="Turn & Error Rows" path="/library/turn-error" subtitle="Turn lifecycle events and surfaced errors" />
-      <LinkRow title="Drawer Components" path="/library/drawer" subtitle="Thread history row with count badge" />
-      <LinkRow title="Unused Samples" path="/library/unused" subtitle="Hidden in feed; for reference" />
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>ACP Components</Text>
+      <LinkRow title="Agent Message" path="/library/acp-message" subtitle="SessionUpdate: agent_message_chunk (markdown)" />
+      <LinkRow title="Agent Thought" path="/library/acp-thought" subtitle="SessionUpdate: agent_thought_chunk (markdown, indented)" />
+      <LinkRow title="Tool Call" path="/library/acp-tool-call" subtitle="Tool kind, status, content (diff/content/terminal)" />
+      <LinkRow title="Plan" path="/library/acp-plan" subtitle="SessionUpdate: plan (entries with status)" />
+      <LinkRow title="Available Commands" path="/library/acp-available-commands" subtitle="SessionUpdate: available_commands_update" />
+      <LinkRow title="Current Mode" path="/library/acp-current-mode" subtitle="SessionUpdate: current_mode_update" />
     </ScrollView>
   )
 }
