@@ -17,8 +17,9 @@ export const forThread = queryGeneric(async ({ db }, args: { threadId: string })
   return rows[0] ?? null;
 });
 
-export const update = mutationGeneric(async ({ db }, args: { threadId: string; currentModeId?: string | null; available_commands_json?: string | null }) => {
+export const update = mutationGeneric(async ({ db }, args: { threadId: string; currentModeId?: string | null; available_commands?: { name: string; description: string }[] | null; available_commands_json?: string | null }) => {
   const now = Date.now();
+  const cmds: any[] | undefined = Array.isArray(args.available_commands) ? args.available_commands as any[] : (() => { try { const v = JSON.parse(String(args.available_commands_json||'')); return Array.isArray(v) ? v : undefined } catch { return undefined } })();
   let rows: any[] = [];
   try {
     // @ts-ignore
@@ -36,7 +37,7 @@ export const update = mutationGeneric(async ({ db }, args: { threadId: string; c
     const doc = rows[0]!;
     await db.patch(doc._id, {
       currentModeId: typeof args.currentModeId === 'string' ? args.currentModeId : doc.currentModeId,
-      available_commands_json: typeof args.available_commands_json === 'string' ? args.available_commands_json : doc.available_commands_json,
+      available_commands: Array.isArray(cmds) ? cmds : doc.available_commands,
       updatedAt: now,
     } as any);
     return doc._id;
@@ -44,10 +45,9 @@ export const update = mutationGeneric(async ({ db }, args: { threadId: string; c
   const id = await db.insert('acp_state', {
     threadId: args.threadId,
     currentModeId: typeof args.currentModeId === 'string' ? args.currentModeId : undefined,
-    available_commands_json: typeof args.available_commands_json === 'string' ? args.available_commands_json : undefined,
+    available_commands: Array.isArray(cmds) ? cmds : undefined,
     createdAt: now,
     updatedAt: now,
   } as any);
   return id;
 });
-

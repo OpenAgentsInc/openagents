@@ -17,8 +17,9 @@ export const forThread = queryGeneric(async ({ db }, args: { threadId: string })
   return rows[0] ?? null;
 });
 
-export const set = mutationGeneric(async ({ db }, args: { threadId: string; entries_json: string }) => {
+export const set = mutationGeneric(async ({ db }, args: { threadId: string; entries?: any[]; entries_json?: string }) => {
   const now = Date.now();
+  const entries: any[] = Array.isArray(args.entries) ? args.entries : (() => { try { const v = JSON.parse(String(args.entries_json||'[]')); return Array.isArray(v) ? v : [] } catch { return [] } })();
   let rows: any[] = [];
   try {
     // @ts-ignore
@@ -34,10 +35,9 @@ export const set = mutationGeneric(async ({ db }, args: { threadId: string; entr
   }
   if (rows.length > 0) {
     const doc = rows[0]!;
-    await db.patch(doc._id, { entries_json: args.entries_json, updatedAt: now } as any);
+    await db.patch(doc._id, { entries, updatedAt: now } as any);
     return doc._id;
   }
-  const id = await db.insert('acp_plan', { threadId: args.threadId, entries_json: args.entries_json, createdAt: now, updatedAt: now } as any);
+  const id = await db.insert('acp_plan', { threadId: args.threadId, entries, createdAt: now, updatedAt: now } as any);
   return id;
 });
-

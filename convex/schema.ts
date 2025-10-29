@@ -90,8 +90,9 @@ export default defineSchema({
     title: v.string(),
     kind: v.string(), // ACP ToolKind
     status: v.string(), // ACP ToolCallStatus
-    content_json: v.optional(v.string()), // JSON string of ToolCallContent[]
-    locations_json: v.optional(v.string()), // JSON string of locations
+    // Typed storage for content and locations; content is heterogeneous so allow any
+    content: v.optional(v.array(v.any())),
+    locations: v.optional(v.array(v.object({ path: v.string(), line: v.optional(v.number()) }))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -99,7 +100,7 @@ export default defineSchema({
     .index?.('by_thread_updated', ['threadId', 'updatedAt']),
   acp_plan: defineTable({
     threadId: v.string(),
-    entries_json: v.string(), // JSON string of PlanEntry[]
+    entries: v.array(v.object({ content: v.string(), priority: v.string(), status: v.string() })),
     updatedAt: v.number(),
     createdAt: v.number(),
   })
@@ -108,7 +109,7 @@ export default defineSchema({
   acp_state: defineTable({
     threadId: v.string(),
     currentModeId: v.optional(v.string()),
-    available_commands_json: v.optional(v.string()), // JSON string of {name,description}[]
+    available_commands: v.optional(v.array(v.object({ name: v.string(), description: v.string() }))),
     updatedAt: v.number(),
     createdAt: v.number(),
   })
