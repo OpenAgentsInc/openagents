@@ -221,10 +221,18 @@ async fn main() -> Result<()> {
                 }
             });
         }
-        // Watch Codex sessions for external runs and mirror to Convex (best-effort)
-        tokio::spawn(watch_sessions_and_tail(state.clone()));
-        // Background: enqueue historical threads/messages to the mirror spool on startup
-        tokio::spawn(crate::watchers::enqueue_historical_on_start(state.clone()));
+        // History mirroring (Codex sessions → Convex) — disabled by default.
+        // Enable by setting OPENAGENTS_HISTORY=1.
+        let history_enabled = std::env::var("OPENAGENTS_HISTORY")
+            .ok()
+            .map(|v| matches!(v.as_str(), "1" | "true" | "on"))
+            .unwrap_or(false);
+        if history_enabled {
+            tokio::spawn(watch_sessions_and_tail(state.clone()));
+            tokio::spawn(crate::watchers::enqueue_historical_on_start(state.clone()));
+        } else {
+            info!("msg" = "OPENAGENTS_HISTORY=0 — history watcher/backfill disabled");
+        }
     } else {
         info!("msg" = "OPENAGENTS_CONVEX_SYNC=0 — FS→Convex sync disabled");
     }
