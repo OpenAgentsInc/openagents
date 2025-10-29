@@ -4,6 +4,15 @@ import os from 'node:os';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 
+type FetchResponse = {
+  ok: boolean;
+  status: number;
+  json(): Promise<any>;
+  text(): Promise<string>;
+  headers: { get(name: string): string | null };
+  body?: any;
+};
+
 type EnsureResult = { version: string; binaryPath: string; source: 'cache' | 'download' | 'path' | 'home-bin' };
 
 const OWNER = process.env.TRICODER_BRIDGE_OWNER || 'OpenAgentsInc';
@@ -72,7 +81,7 @@ async function findLatestWithAsset(artifact: string): Promise<string> {
   let url: string | null = listUrl;
   let latestStable: string | null = null;
   while (url) {
-    const res = await fetch(url, { headers: { 'User-Agent': 'tricoder-bridge-fetcher' } });
+    const res: FetchResponse = await (globalThis as any).fetch(url, { headers: { 'User-Agent': 'tricoder-bridge-fetcher' } });
     if (!res.ok) throw new Error(`GitHub API ${res.status}`);
     const releases: any[] = await res.json();
     for (const r of releases) {
@@ -104,7 +113,7 @@ function parseLink(h: string | null): { next?: string } | null {
 
 async function downloadAndInstall(version: string, artifact: string): Promise<string> {
   const url = `https://github.com/${OWNER}/${REPO}/releases/download/${version}/${artifact}`;
-  const res = await fetch(url);
+  const res: FetchResponse = await (globalThis as any).fetch(url);
   if (res.status !== 200) throw new Error(`Asset not found: ${url}`);
   const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'oa-bridge-'));
   const zipPath = path.join(tmpRoot, 'bridge.zip');
@@ -121,7 +130,7 @@ async function downloadAndInstall(version: string, artifact: string): Promise<st
   return dest;
 }
 
-async function streamToFile(res: Response, destPath: string): Promise<void> {
+async function streamToFile(res: FetchResponse, destPath: string): Promise<void> {
   const file = fs.createWriteStream(destPath);
   const body = res.body as any;
   await new Promise<void>((resolve, reject) => {
@@ -153,11 +162,6 @@ function getOAStore(): string {
 async function which(cmd: string): Promise<string | null> {
   const bin = process.platform === 'win32' ? 'where' : 'which';
   try {
-    const { stdout } = await (await import('node:child_process')).execFileSync
-      ? await import('node:child_process')
-      : ({} as any);
-  } catch {}
-  try {
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
     const execFileP = promisify(execFile);
@@ -178,4 +182,3 @@ async function makeExecutable(p: string) {
     try { await fsp.chmod(p, 0o755); } catch {}
   }
 }
-
