@@ -164,6 +164,35 @@ instructions: |
 - Keep commits focused: limit diffs to the smallest set of files necessary; avoid touching unrelated files.
 - Review before committing: use `git status` and `git diff --staged` to confirm only intended paths are included.
 - Branching policy: do not create branches unless the user explicitly directs you to. Default to committing on `main` and opening PRs only when requested.
+
+## GitHub Issues/PRs — Formatting (MANDATORY)
+
+When creating or updating GitHub issues/comments/PR descriptions, you MUST follow these rules to ensure clean Markdown rendering:
+
+- Use Markdown headings starting with `##` (e.g., `## Summary`, `## Acceptance`) for major sections.
+- Use `-` hyphen bullets (one level only). Avoid nested lists unless absolutely necessary.
+- Wrap literal commands, JSON, control messages, and code identifiers in backticks. Examples:
+  - `tvx.subscribe` with stream `"threads"`
+  - `{"stream":"threads","op":"upsert"}`
+  - `control: "tvx.query"`, `name: "threads.list"`
+- Do NOT paste literal `\n` sequences. Use real newlines. Never rely on smart quotes; use plain ASCII quotes.
+- Keep lines short and readable. Prefer one sentence per line for bullets.
+- Avoid decorative punctuation or Unicode symbols that can break rendering.
+- Before posting, sanity‑check formatting with a preview or by posting a separate comment and editing if needed.
+
+CLI tips when using `gh`:
+- Bash treats backticks as command substitution. Do NOT wrap Markdown with backticks inside double quotes.
+- Prefer single-quoted heredocs to avoid expansion:
+  
+  ```bash
+  gh issue edit <num> -b "$(cat <<'MD'
+  ## Title
+  Backticks like `code` are safe inside this block.
+  MD
+  )"
+  ```
+
+Failure to comply often produces unreadable issues/comments. Always fix formatting immediately if misrendered.
  - Never change branches: always stay on `main` unless the user explicitly instructs you to switch or create a branch.
 
 ### Absolutely No Destructive Local Ops (must‑follow)
