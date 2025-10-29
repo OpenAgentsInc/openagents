@@ -1,4 +1,3 @@
-import { useMutation } from "convex/react"
 import * as Haptics from "expo-haptics"
 import { router, usePathname } from "expo-router"
 import React from "react"
@@ -19,16 +18,13 @@ export function AppHeader() {
   const setHeight = useHeaderStore((s) => s.setHeight)
   const { toggle } = useDrawer()
   const { connected } = useBridge()
-  const createThread = (useMutation as any)('threads:create') as (args?: { title?: string; projectId?: string }) => Promise<string>
   const pathname = usePathname()
   const showBack = React.useMemo(() => {
     const p = String(pathname || '')
     // Show back arrow on deep detail screens (message detail, library subpages, thread metadata)
-    if (p.startsWith('/message/') || p.startsWith('/convex/message/')) return true
+    if (p.startsWith('/message/')) return true
     // Library detail pages live under /library/* (but not /library itself)
     if (p.startsWith('/library/')) return true
-    // Thread metadata detail screen
-    if (p.startsWith('/convex/thread/') && p.includes('/metadata')) return true
     return false
   }, [pathname])
 
@@ -39,15 +35,9 @@ export function AppHeader() {
 
   const onNewChat = React.useCallback(async () => {
     try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {}
-    // Create a new Convex thread and open it
-    try {
-      const id = await createThread({ title: 'New Thread' })
-      router.push(`/convex/thread/${encodeURIComponent(String(id))}?new=1`)
-    } catch {
-      // Fallback: stay in thread flow with empty state
-      router.push('/thread?focus=1&new=1')
-    }
-  }, [createThread])
+    // Start a new local thread view (Convex removed)
+    try { router.push('/thread?focus=1&new=1') } catch {}
+  }, [])
 
   return (
     <View onLayout={onLayout} style={{ paddingTop: insets.top, backgroundColor: Colors.background, borderBottomColor: Colors.border, borderBottomWidth: 1 }}>

@@ -12,7 +12,6 @@ export default function ConnectRoute() {
   const router = useRouter()
   const { setBridgeHost, connect } = useBridge()
   const setBridgeCode = useSettings((s) => s.setBridgeCode)
-  const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
 
   React.useEffect(() => {
@@ -22,7 +21,6 @@ export default function ConnectRoute() {
       try { setBridgeCode(display) } catch {}
       const parsed = parseBridgeCode(display)
       if (parsed?.bridgeHost) try { setBridgeHost(parsed.bridgeHost) } catch {}
-      if (parsed?.convexUrl) try { setConvexUrl(parsed.convexUrl) } catch {}
       if (parsed?.token) try { setBridgeToken(parsed.token || '') } catch {}
       try { connect() } catch {}
       try { router.replace('/onboarding' as any) } catch {}
@@ -39,4 +37,3 @@ export default function ConnectRoute() {
     </View>
   )
 }
-

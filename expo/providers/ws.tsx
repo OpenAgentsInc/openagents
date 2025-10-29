@@ -21,12 +21,8 @@ type BridgeContextValue = {
   send: (payload: string | ArrayBuffer | Blob) => boolean;
   setOnMessage: (fn: MsgHandler) => void;
   addSubscriber: (fn: MsgHandler) => () => void;
-  // WS request helpers (deprecated in Convex-only flow)
+  // WS request helpers
   requestProjects: () => Promise<any[]>;
-  requestConvexStatus: () => Promise<{ healthy: boolean; url: string; db: string; tables: string[] }>;
-  createConvexDemo: () => Promise<{ healthy: boolean; url: string; db: string; tables: string[] }>;
-  createConvexThreads: () => Promise<{ healthy: boolean; url: string; db: string; tables: string[] }>;
-  createConvexDemoThread: () => Promise<{ healthy: boolean; url: string; db: string; tables: string[] }>;
   requestSkills: () => Promise<any[]>;
   // Log controls (Console registers a handler; Settings can trigger)
   setClearLogHandler: (fn: (() => void) | null) => void;
@@ -276,61 +272,6 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     });
   }, [addSubscriber, send, awaitConnected]);
 
-  const requestConvexStatus = useCallback(async (): Promise<any> => {
-    await awaitConnected().catch((e) => { throw e });
-    return new Promise((resolve, reject) => {
-      let done = false;
-      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 8000);
-      const unsub = addSubscriber((line) => {
-        if (done) return; const s = String(line || '').trim(); if (!s.startsWith('{')) return;
-        try { const obj = JSON.parse(s); if (obj?.type === 'bridge.convex_status') { done = true; clearTimeout(timer); unsub(); resolve(obj); } } catch {}
-      });
-      const ok = send(JSON.stringify({ control: 'convex.status' }));
-      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
-    });
-  }, [addSubscriber, send, awaitConnected]);
-
-  const createConvexDemo = useCallback(async (): Promise<any> => {
-    await awaitConnected().catch((e) => { throw e });
-    return new Promise((resolve, reject) => {
-      let done = false;
-      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 10000);
-      const unsub = addSubscriber((line) => {
-        if (done) return; const s = String(line || '').trim(); if (!s.startsWith('{')) return;
-        try { const obj = JSON.parse(s); if (obj?.type === 'bridge.convex_status') { done = true; clearTimeout(timer); unsub(); resolve(obj); } } catch {}
-      });
-      const ok = send(JSON.stringify({ control: 'convex.create_demo' }));
-      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
-    });
-  }, [addSubscriber, send, awaitConnected]);
-
-  const createConvexThreads = useCallback(async (): Promise<any> => {
-    await awaitConnected().catch((e) => { throw e });
-    return new Promise((resolve, reject) => {
-      let done = false;
-      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 10000);
-      const unsub = addSubscriber((line) => {
-        if (done) return; const s = String(line || '').trim(); if (!s.startsWith('{')) return;
-        try { const obj = JSON.parse(s); if (obj?.type === 'bridge.convex_status') { done = true; clearTimeout(timer); unsub(); resolve(obj); } } catch {}
-      });
-      const ok = send(JSON.stringify({ control: 'convex.create_threads' }));
-      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
-    });
-  }, [addSubscriber, send, awaitConnected]);
-
-  const createConvexDemoThread = useCallback(async (): Promise<any> => {
-    await awaitConnected().catch((e) => { throw e });
-    return new Promise((resolve, reject) => {
-      let done = false;
-      const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 10000);
-      const unsub = addSubscriber((line) => {
-        if (done) return; const s = String(line || '').trim(); if (!s.startsWith('{')) return;
-        try { const obj = JSON.parse(s); if (obj?.type === 'bridge.convex_status') { done = true; clearTimeout(timer); unsub(); resolve(obj); } } catch {}
-      });
-      const ok = send(JSON.stringify({ control: 'convex.create_demo_thread' }));
-      if (!ok) { clearTimeout(timer); unsub(); reject(new Error('ws not connected')); }
-    });
-  }, [addSubscriber, send, awaitConnected]);
 
   const requestSkills = useCallback(async (): Promise<any[]> => {
     await awaitConnected().catch((e) => { throw e });
@@ -375,10 +316,6 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       clearLog,
       
       requestProjects,
-      requestConvexStatus,
-      createConvexDemo,
-      createConvexThreads,
-      createConvexDemoThread,
       requestSkills,
       readOnly,
       setReadOnly,

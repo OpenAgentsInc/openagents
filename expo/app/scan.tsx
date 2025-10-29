@@ -12,7 +12,6 @@ export default function ScanScreen() {
   const router = useRouter()
   const { connect, setBridgeHost } = useBridge()
   // Avoid writing Bridge Code into the input to prevent UIKit text churn on navigation
-  const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const camRef = React.useRef<any>(null)
   const [permission, requestPermission] = useCameraPermissions()
@@ -37,7 +36,6 @@ export default function ScanScreen() {
     if (!parsed) return false
     // Intentionally do not set bridgeCode here to avoid UITextField churn
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
-    try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
     // Defer connect/navigation until after current interactions to avoid UIKit churn
     // Do not auto-connect on scan; route to onboarding and let user press Connect
