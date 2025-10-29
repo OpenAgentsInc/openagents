@@ -234,12 +234,8 @@ function DrawerWrapper() {
   const router = useRouter();
   const { connected } = useBridge();
   // Allow dev-only navigation to the component library when disconnected
-  const isDevEnv = React.useMemo(() => {
-    try {
-      const v = String(process.env.EXPO_PUBLIC_ENV || '').trim().toLowerCase();
-      return v === 'development';
-    } catch { return false }
-  }, []);
+  const { useIsDevEnv } = require('@/lib/env') as { useIsDevEnv: () => boolean };
+  const isDevEnv = useIsDevEnv();
   const convexThreads = (useQuery as any)(connected ? 'threads:list' : 'threads:list', connected ? {} : 'skip') as any[] | undefined | null
   const pathname = (require('expo-router') as any).usePathname?.() as string | undefined;
   // Connection-gated onboarding: require bridge and convex

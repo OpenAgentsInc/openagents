@@ -9,6 +9,7 @@ import { useSettings } from '@/lib/settings-store'
 // pairing helpers not needed here; IP-only flow
 import { useQuery } from 'convex/react'
 import { Ionicons } from '@expo/vector-icons'
+import { useIsDevEnv } from '@/lib/env'
 
 export default function Onboarding() {
   useHeaderTitle('Connect')
@@ -25,13 +26,8 @@ export default function Onboarding() {
   const bridgeToken = useSettings((s) => s.bridgeToken)
   const [codeError, setCodeError] = React.useState<string>('')
   const [inputDisabled, setInputDisabled] = React.useState<boolean>(false)
-  // Environment-driven dev mode flag, per Expo env variables guide
-  const isDevEnv = React.useMemo(() => {
-    try {
-      const v = String(process.env.EXPO_PUBLIC_ENV || '').trim().toLowerCase()
-      return v === 'development'
-    } catch { return false }
-  }, [])
+  // Environment-driven dev mode flag, centralized
+  const isDevEnv = useIsDevEnv()
 
   // Derive Convex URL from bridge host (same logic as Settings)
   const derivedConvexUrl = React.useMemo(() => {

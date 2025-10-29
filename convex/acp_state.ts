@@ -1,4 +1,5 @@
 import { queryGeneric, mutationGeneric } from "convex/server";
+import type { AvailableCommand } from '@agentclientprotocol/sdk'
 
 export const forThread = queryGeneric(async ({ db }, args: { threadId: string }) => {
   let rows: any[] = [];
@@ -17,16 +18,16 @@ export const forThread = queryGeneric(async ({ db }, args: { threadId: string })
   return rows[0] ?? null;
 });
 
-export const update = mutationGeneric(async ({ db }, args: { threadId: string; currentModeId?: string | null; available_commands?: { name: string; description: string }[] | null; available_commands_json?: string | null; available_command_names?: string[] | null; available_command_descriptions?: string[] | null }) => {
+export const update = mutationGeneric(async ({ db }, args: { threadId: string; currentModeId?: string | null; available_commands?: AvailableCommand[] | null; available_commands_json?: string | null; available_command_names?: string[] | null; available_command_descriptions?: string[] | null }) => {
   const now = Date.now();
-  const cmds: any[] | undefined = (() => {
-    if (Array.isArray(args.available_commands)) return args.available_commands as any[];
+  const cmds: AvailableCommand[] | undefined = (() => {
+    if (Array.isArray(args.available_commands)) return args.available_commands as AvailableCommand[];
     const names = Array.isArray(args.available_command_names) ? args.available_command_names : [];
     const descs = Array.isArray(args.available_command_descriptions) ? args.available_command_descriptions : [];
     if (names.length && names.length === descs.length) {
       return names.map((name, i) => ({ name, description: descs[i] }));
     }
-    try { const v = JSON.parse(String(args.available_commands_json||'')); return Array.isArray(v) ? v : undefined } catch { return undefined }
+    try { const v = JSON.parse(String(args.available_commands_json||'')); return Array.isArray(v) ? (v as AvailableCommand[]) : undefined } catch { return undefined }
   })();
   let rows: any[] = [];
   try {

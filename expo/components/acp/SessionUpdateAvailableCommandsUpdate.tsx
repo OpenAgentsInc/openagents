@@ -2,8 +2,7 @@ import React from 'react'
 import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
-
-export type AvailableCommand = { name: string; description: string }
+import type { AvailableCommand } from '@/types/acp'
 
 export function SessionUpdateAvailableCommandsUpdate({ available_commands }: { available_commands: ReadonlyArray<AvailableCommand> }) {
   return (
@@ -20,4 +19,3 @@ export function SessionUpdateAvailableCommandsUpdate({ available_commands }: { a
     </View>
   )
 }
-

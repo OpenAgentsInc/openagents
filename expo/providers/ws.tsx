@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react';
 import { appLog } from '@/lib/app-log';
 import { useSettings, type Approvals as StoreApprovals } from '@/lib/settings-store'
+import { isDevEnv } from '@/lib/env'
+import { parseSessionNotification } from '@/lib/acp/validation'
 
 type MsgHandler = ((text: string) => void) | null;
 
@@ -163,11 +165,16 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
             if (obj && typeof obj === 'object') {
               const t = String(obj.type || '');
               if (t === 'bridge.acp') {
-                const n = obj.notification || {};
-                const sid = n.sessionId || n.session_id;
-                const kind = n.update?.sessionUpdate;
+                const rawNotif = obj.notification || {};
+                const parsed = parseSessionNotification(rawNotif);
+                const sid = (rawNotif && (rawNotif.sessionId || rawNotif.session_id)) || undefined;
+                const kind = rawNotif?.update?.sessionUpdate;
                 // eslint-disable-next-line no-console
-                console.log('[ws.in][bridge.acp]', { sessionId: sid, kind });
+                console.log('[ws.in][bridge.acp]', { sessionId: sid, kind, valid: parsed.ok });
+                if (!parsed.ok && isDevEnv()) {
+                  // eslint-disable-next-line no-console
+                  console.log('[ws.in][bridge.acp][invalid]', { error: String((parsed as any).error), raw: rawNotif });
+                }
               } else if (t && /^bridge\./.test(t)) {
                 // eslint-disable-next-line no-console
                 console.log('[ws.in]', t);
