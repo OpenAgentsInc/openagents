@@ -6,6 +6,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ensureBridgeBinary } from './utils/bridgeBinary.js';
+import qrcode from 'qrcode-terminal';
 
 const execFileP = promisify(execFile);
 
@@ -62,6 +63,33 @@ function spawnP(cmd: string, args: string[], opts: any = {}): Promise<void> {
       if (code === 0) resolve(); else reject(new Error(`${cmd} exited with code ${code}`));
     });
   });
+}
+
+function randToken(len = 48): string {
+  try {
+    // @ts-ignore crypto is global in Node 19+ ESM
+    const bytes = crypto.getRandomValues(new Uint8Array(len));
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
+    let out = '';
+    for (let i = 0; i < bytes.length; i++) out += chars[bytes[i] % chars.length];
+    return out;
+  } catch {
+    const { randomBytes } = require('node:crypto');
+    return randomBytes(len).toString('base64url').replace(/=+$/g, '').slice(0, len);
+  }
+}
+
+function b64url(s: string): string {
+  return Buffer.from(s, 'utf8').toString('base64').replace(/=+$/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function buildBridgeCode(host: string, port: number, token: string, secure = false) {
+  const scheme = secure ? 'wss' : 'ws';
+  const bridge = `${scheme}://${host}:${port}/ws`;
+  const payload = { v: 1, type: 'bridge', provider: 'openagents', bridge, token };
+  const code = b64url(JSON.stringify(payload));
+  const deeplink = `openagents://connect?j=${code}`;
+  return { payload, code, deeplink, bridge } as const;
 }
 
 async function ensureRepo(targetDir?: string): Promise<string> {
@@ -137,7 +165,16 @@ async function main() {
 
   console.log(chalk.green(`Desktop IP (Tailscale): ${selfIPv4}`));
   const bridgePort = Number(process.env.TRICODER_BRIDGE_PORT || 8787);
-  console.log(chalk.bold(`In the mobile app, set Desktop IP to ${selfIPv4} and port ${bridgePort}.`));
+  // Bridge Code (QR + deep link) for mobile pairing
+  const token = process.env.OPENAGENTS_BRIDGE_TOKEN && process.env.OPENAGENTS_BRIDGE_TOKEN.trim().length > 0
+    ? String(process.env.OPENAGENTS_BRIDGE_TOKEN)
+    : randToken(48);
+  const { deeplink, bridge } = buildBridgeCode(selfIPv4, bridgePort, token, false);
+  console.log(chalk.bold('Scan this QR in the OpenAgents mobile app:'));
+  try { qrcode.generate(deeplink, { small: true }); } catch {}
+  console.log(chalk.gray('Deep link: '), chalk.white(deeplink));
+  console.log(chalk.gray('WS URL:   '), chalk.white(bridge));
+  console.log(chalk.gray('Token:    '), chalk.white(token));
 
   if (!autorun) {
     console.log('\nTo launch the desktop bridge automatically:');
@@ -149,6 +186,7 @@ async function main() {
   const exposeLan = process.env.TRICODER_EXPOSE_LAN === '1';
   const bridgeEnv: NodeJS.ProcessEnv = {
     ...process.env,
+    OPENAGENTS_BRIDGE_TOKEN: token,
     OPENAGENTS_CONVEX_STATE: process.env.OPENAGENTS_CONVEX_STATE || 'convex',
     OPENAGENTS_CONVEX_INTERFACE: process.env.OPENAGENTS_CONVEX_INTERFACE || (exposeLan ? '0.0.0.0' : '127.0.0.1'),
     OPENAGENTS_CONVEX_INSTANCE: process.env.OPENAGENTS_CONVEX_INSTANCE || 'openagents',
