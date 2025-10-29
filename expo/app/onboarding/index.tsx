@@ -9,6 +9,7 @@ import { useSettings } from '@/lib/settings-store'
 // pairing helpers not needed here; IP-only flow
 import { Ionicons } from '@expo/vector-icons'
 import { useIsDevEnv } from '@/lib/env'
+import { TailscalePeers } from '@/components/tailscale-peers'
 
 export default function Onboarding() {
   useHeaderTitle('Connect')
@@ -51,9 +52,7 @@ export default function Onboarding() {
     if (!parsed || !parsed.bridgeHost) setCodeError('Enter a valid IP address')
     else setCodeError('')
   }, [bridgeCodeInput, parseAnyBridgeInput])
-  React.useEffect(() => {
-    if (httpStatus) { try { console.log('[onboarding] httpStatus:', httpStatus) } catch {} }
-  }, [httpStatus])
+  // No HTTP status probe in Tinyvex build
 
   const hasHost = React.useMemo(() => String(bridgeHost || '').trim().length > 0, [bridgeHost])
   const isConnecting = !!connecting
@@ -132,6 +131,9 @@ export default function Onboarding() {
       {!!codeError && (
         <Text style={styles.errorText}>{codeError}</Text>
       )}
+      <View style={{ height: 12 }} />
+      {/* Tailscale LocalAPI peers (best-effort) */}
+      <TailscalePeers />
       <View style={{ height: 12 }} />
       <Pressable
         onPress={() => {
