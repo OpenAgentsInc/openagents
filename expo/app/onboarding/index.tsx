@@ -6,7 +6,7 @@ import { useHeaderTitle } from '@/lib/header-store'
 import { useRouter } from 'expo-router'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
-import { parseBridgeCode, normalizeBridgeCodeInput } from '@/lib/pairing'
+// pairing helpers not needed here; IP-only flow
 import { useQuery } from 'convex/react'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -173,7 +173,7 @@ export default function Onboarding() {
         onPress={() => {
           if (connecting || codeError || !likelyCode) return
           try {
-          const parsed = parseAnyBridgeInput(normalizeBridgeCodeInput(trimmedCode))
+          const parsed = parseAnyBridgeInput(trimmedCode)
           if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
           // Clear any stale Convex override so provider derives from the bridge host
           setConvexUrl('')
