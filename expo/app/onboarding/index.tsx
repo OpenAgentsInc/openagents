@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native'
+import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Image } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
@@ -190,6 +190,7 @@ export default function Onboarding() {
 
       {/* Single big Pair button (centered vertically) */}
       <View style={styles.centerWrap}>
+        <Image source={require('../../assets/images/icon.png')} style={styles.logo} resizeMode='contain' />
         <Pressable
           onPress={() => { try { router.push('/scan' as any) } catch {} }}
           accessibilityRole='button'
@@ -213,7 +214,7 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 120 },
+  container: { flex: 1, backgroundColor: Colors.black, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 0 },
   title: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 28, marginBottom: 8, textAlign: 'left' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusText: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 },
@@ -232,4 +233,5 @@ const styles = StyleSheet.create({
   centerWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   pairBtn: { marginTop: 0, borderWidth: 1, borderColor: Colors.secondary, backgroundColor: Colors.card, paddingVertical: 20, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', gap: 10, flexDirection: 'row' },
   pairText: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18, letterSpacing: 0.5 },
+  logo: { width: 200, height: 200, marginBottom: 16 },
 })
