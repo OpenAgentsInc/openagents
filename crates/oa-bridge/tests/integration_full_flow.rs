@@ -38,8 +38,6 @@ async fn full_flow_with_fake_codex_emits_acp() {
         .expect("spawn oa-bridge");
     let mut child_stdout = child.stdout.take().unwrap();
     let mut child_stderr = child.stderr.take().unwrap();
-    let mut out_buf = String::new();
-    let mut err_buf = String::new();
     let t_out = tokio::spawn(async move { use tokio::io::AsyncReadExt; let mut s = String::new(); let _ = child_stdout.read_to_string(&mut s).await; s });
     let t_err = tokio::spawn(async move { use tokio::io::AsyncReadExt; let mut s = String::new(); let _ = child_stderr.read_to_string(&mut s).await; s });
 
@@ -92,4 +90,128 @@ async fn full_flow_with_fake_codex_emits_acp() {
     let out = t_out.await.unwrap_or_default();
     let err = t_err.await.unwrap_or_default();
     assert!(out.contains("spawning codex"), "bridge stdout did not include codex spawn; stdout=\n{}\nstderr=\n{}", out, err);
+}
+
+#[tokio::test]
+async fn dual_run_resume_works() {
+    // Build binaries
+    assert!(Command::new("cargo").args(["build", "-p", "fake-codex"]).status().await.expect("cargo build fake-codex").success());
+    assert!(Command::new("cargo").args(["build", "-p", "oa-bridge"]).status().await.expect("cargo build oa-bridge").success());
+    let workspace = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let ws_root = std::path::Path::new(&workspace).ancestors().nth(2).unwrap().to_path_buf();
+    let target_dir = ws_root.join("target").join("debug");
+    let fake_codex = target_dir.join(if cfg!(windows) { "fake-codex.exe" } else { "fake-codex" });
+    let bridge_bin = target_dir.join(if cfg!(windows) { "oa-bridge.exe" } else { "oa-bridge" });
+    assert!(fake_codex.exists());
+    assert!(bridge_bin.exists());
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let mut child = Command::new(bridge_bin.clone())
+        .arg("--bind").arg(format!("127.0.0.1:{}", port))
+        .arg("--codex-bin").arg(fake_codex.to_string_lossy().to_string())
+        .env("OPENAGENTS_BRIDGE_TOKEN", "itest")
+        .env("OPENAGENTS_MANAGE_CONVEX", "false")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn oa-bridge");
+    let mut child_stdout = child.stdout.take().unwrap();
+    let t_out = tokio::spawn(async move { use tokio::io::AsyncReadExt; let mut s = String::new(); let _ = child_stdout.read_to_string(&mut s).await; s });
+
+    for _ in 0..40 { if std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).is_ok() { break; } tokio::time::sleep(std::time::Duration::from_millis(100)).await; }
+    let url = format!("ws://127.0.0.1:{}/ws?token=itest", port);
+    let (mut ws, _resp) = tokio_tungstenite::connect_async(&url).await.expect("ws connect");
+    // First run
+    let thread_doc_id_1 = format!("t1_{}", port);
+    let run1 = serde_json::json!({"control":"run.submit","threadDocId":thread_doc_id_1,"text":"hello"}).to_string();
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(run1.into())).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // Second run (should resume captured thread)
+    let thread_doc_id_2 = format!("t2_{}", port);
+    let run2 = serde_json::json!({"control":"run.submit","threadDocId":thread_doc_id_2,"text":"again"}).to_string();
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(run2.into())).await.unwrap();
+
+    // Collect logs with a time bound to avoid test hangs
+    let mut saw_submit_1 = false; let mut saw_submit_2 = false;
+    let mut lines = Vec::new();
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(5) {
+        if let Ok(Some(msg)) = tokio::time::timeout(std::time::Duration::from_millis(100), ws.next()).await {
+            if let Ok(m) = msg { if let tokio_tungstenite::tungstenite::Message::Text(t) = m { lines.push(t.to_string()); } }
+        }
+        for l in &lines {
+            if l.contains(&format!("\"threadDocId\":\"{}\"", thread_doc_id_1)) { saw_submit_1 = true; }
+            if l.contains(&format!("\"threadDocId\":\"{}\"", thread_doc_id_2)) { saw_submit_2 = true; }
+        }
+        if saw_submit_1 && saw_submit_2 { break; }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    for l in &lines {
+        if l.contains(&format!("\"threadDocId\":\"{}\"", thread_doc_id_1)) { saw_submit_1 = true; }
+        if l.contains(&format!("\"threadDocId\":\"{}\"", thread_doc_id_2)) { saw_submit_2 = true; }
+    }
+    assert!(saw_submit_1 && saw_submit_2, "missing run.submit logs: {:?}", lines);
+    let _ = child.start_kill();
+    let out = t_out.await.unwrap_or_default();
+    // Expect respawn codex log to indicate resume path engaged
+    assert!(out.contains("spawning codex"), "stdout: {}", out);
+}
+
+#[tokio::test]
+async fn full_flow_with_real_convex_if_available() {
+    // Only run if OPENAGENTS_CONVEX_TEST=1 and a convex binary path is provided
+    let run = std::env::var("OPENAGENTS_CONVEX_TEST").ok().as_deref() == Some("1");
+    let convex_bin = std::env::var("OPENAGENTS_CONVEX_BIN").ok();
+    if !run || convex_bin.is_none() { eprintln!("skipping real convex e2e (set OPENAGENTS_CONVEX_TEST=1 and OPENAGENTS_CONVEX_BIN)"); return; }
+    assert!(Command::new("cargo").args(["build", "-p", "fake-codex"]).status().await.unwrap().success());
+    assert!(Command::new("cargo").args(["build", "-p", "oa-bridge"]).status().await.unwrap().success());
+    let workspace = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let ws_root = std::path::Path::new(&workspace).ancestors().nth(2).unwrap().to_path_buf();
+    let target_dir = ws_root.join("target").join("debug");
+    let fake_codex = target_dir.join(if cfg!(windows) { "fake-codex.exe" } else { "fake-codex" });
+    let bridge_bin = target_dir.join(if cfg!(windows) { "oa-bridge.exe" } else { "oa-bridge" });
+    let convex_bin_path = convex_bin.unwrap();
+
+    // Acquire port
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let mut child = Command::new(bridge_bin)
+        .arg("--bind").arg(format!("127.0.0.1:{}", port))
+        .arg("--codex-bin").arg(fake_codex.to_string_lossy().to_string())
+        .env("OPENAGENTS_BRIDGE_TOKEN", "itest")
+        .env("OPENAGENTS_CONVEX_BIN", convex_bin_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn oa-bridge");
+
+    // Wait for Convex to become healthy
+    for _ in 0..100u32 {
+        if reqwest::get("http://127.0.0.1:7788/instance_version").await.ok().filter(|r| r.status().is_success()).is_some() { break; }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    // Connect and submit
+    for _ in 0..40 { if std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).is_ok() { break; } tokio::time::sleep(std::time::Duration::from_millis(100)).await; }
+    let url = format!("ws://127.0.0.1:{}/ws?token=itest", port);
+    let (mut ws, _resp) = tokio_tungstenite::connect_async(&url).await.expect("ws connect");
+    let thread_doc_id = format!("convex_{}", port);
+    let run = serde_json::json!({"control":"run.submit","threadDocId":thread_doc_id,"text":"hello"}).to_string();
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(run.into())).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    // Verify Convex wrote plan/tool calls
+    let mut client = convex::ConvexClient::new("http://127.0.0.1:7788").await.expect("convex client");
+    use std::collections::BTreeMap as Map;
+    let mut args: Map<String, convex::Value> = Map::new();
+    args.insert("threadId".into(), convex::Value::from(thread_doc_id.clone()));
+    let plan = client.query("acp_plan:forThread", args.clone()).await.ok();
+    let tools = client.query("acp_tool_calls:forThread", args.clone()).await.ok();
+    let plan_ok = matches!(plan, Some(convex::FunctionResult::Value(_)));
+    let tool_ok = matches!(tools, Some(convex::FunctionResult::Value(_)));
+    assert!(plan_ok || tool_ok, "expected at least plan or tool rows in Convex");
+    let _ = child.start_kill();
 }

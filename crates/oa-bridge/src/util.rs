@@ -145,7 +145,11 @@ mod tests {
         assert_eq!(got, p);
     }
 
+    // These tests mutate process-wide env vars; run them serially to avoid races.
+    use serial_test::serial;
+
     #[test]
+    #[serial]
     fn openagents_home_prefers_env() {
         let td = tempfile::tempdir().unwrap();
         let prev = std::env::var("OPENAGENTS_HOME").ok();
@@ -159,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn reads_bridge_token_when_present() {
         let td = tempfile::tempdir().unwrap();
         let prev = std::env::var("OPENAGENTS_HOME").ok();
