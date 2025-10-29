@@ -7,6 +7,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { Composer } from '@/components/composer'
 import { useBridge } from '@/providers/ws'
+import { useHeaderTitle } from '@/lib/header-store'
 
 export default function ThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -25,6 +26,8 @@ export default function ThreadScreen() {
   }, [initialId])
   const { subscribeMessages, queryMessages, messagesByThread } = useTinyvex()
   const { send, connected } = useBridge()
+  // Title for thread screen
+  useHeaderTitle('New Thread')
   React.useEffect(() => {
     if (!threadId) return
     queryMessages(threadId, 400)
