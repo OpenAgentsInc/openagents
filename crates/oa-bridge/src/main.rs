@@ -41,6 +41,7 @@ mod util;
 mod watchers;
 mod ws;
 mod provider_claude;
+mod claude_runner;
 // spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
@@ -99,7 +100,13 @@ struct Opts {
     #[arg(long, env = "OPENAGENTS_BRIDGE_TOKEN")]
     ws_token: Option<String>,
 
-    // No external ACP adapter for Codex: in-repo translator is canonical.
+    /// Path to the Claude CLI (falls back to $CLAUDE_BIN or `claude` in PATH)
+    #[arg(long, env = "CLAUDE_BIN")]
+    claude_bin: Option<PathBuf>,
+
+    /// Optional Claude CLI args (default: `code --json`)
+    #[arg(long, env = "CLAUDE_ARGS")]
+    claude_args: Option<String>,
 }
 
 use crate::state::AppState;

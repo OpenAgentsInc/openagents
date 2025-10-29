@@ -1,0 +1,136 @@
+//! Claude Code CLI process management and stream forwarder.
+//!
+//! Spawns the Claude Code CLI and forwards its JSON event stream through the
+//! in-repo translator to ACP `SessionUpdate`s, then mirrors into Convex.
+
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+
+use anyhow::{Context, Result};
+use futures::StreamExt;
+use serde_json::Value as JsonValue;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
+use tracing::{info};
+
+use crate::state::AppState;
+use std::sync::Arc;
+
+/// Wrapper for a spawned Claude child process with stdout/stderr handles.
+pub struct ClaudeChild {
+    pub pid: u32,
+    pub stdout: Option<tokio::process::ChildStdout>,
+    pub stderr: Option<tokio::process::ChildStderr>,
+}
+
+/// Spawn a short‑lived Claude child for one prompt.
+pub async fn spawn_claude_child_with_prompt(
+    opts: &crate::Opts,
+    workdir_override: Option<PathBuf>,
+    prompt: &str,
+) -> Result<ClaudeChild> {
+    let (bin, mut args) = build_bin_and_args(opts)?;
+    // Pass the prompt as a positional argument (mirrors codex approach)
+    args.push(prompt.to_string());
+    let workdir = workdir_override.unwrap_or_else(|| detect_repo_root(None));
+    info!("bin" = %bin.display(), "args" = ?args, "workdir" = %workdir.display(), "msg" = "spawn claude with positional prompt");
+    let mut command = Command::new(&bin);
+    command
+        .current_dir(&workdir)
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    unsafe {
+        command.pre_exec(|| {
+            let res = libc::setpgid(0, 0);
+            if res != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().context("failed to spawn claude")?;
+    let pid = child.id().context("claude child pid missing")?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    tokio::spawn(async move {
+        match child.wait().await {
+            Ok(status) => tracing::info!(?status, "claude exited"),
+            Err(e) => tracing::error!(?e, "claude wait failed"),
+        }
+    });
+    Ok(ClaudeChild { pid, stdout, stderr })
+}
+
+fn build_bin_and_args(opts: &crate::Opts) -> Result<(PathBuf, Vec<String>)> {
+    let bin = resolve_claude_bin(opts)?;
+    let mut args: Vec<String> = Vec::new();
+    // Default to a JSON-emitting mode; allow overrides via env/flag
+    let cli_args = opts
+        .claude_args
+        .clone()
+        .unwrap_or_else(|| "code --json".to_string());
+    args.extend(cli_args.split_whitespace().map(|s| s.to_string()));
+    Ok((bin, args))
+}
+
+fn resolve_claude_bin(opts: &crate::Opts) -> Result<PathBuf> {
+    if let Some(bin) = opts.claude_bin.clone() { return Ok(bin); }
+    if let Ok(env) = std::env::var("CLAUDE_BIN") { return Ok(PathBuf::from(env)); }
+    which::which("claude").map_err(|e| anyhow::anyhow!("claude binary not found in PATH: {e}"))
+}
+
+fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
+    fn is_repo_root(p: &Path) -> bool { p.join("expo").is_dir() && p.join("crates").is_dir() }
+    let mut cur = start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let original = cur.clone();
+    loop {
+        if is_repo_root(&cur) { return cur; }
+        if let Some(parent) = cur.parent() { cur = parent.to_path_buf(); } else { break; }
+    }
+    original
+}
+
+/// Read Claude stdout lines, translate to ACP, and mirror into Convex.
+pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState>) -> Result<()> {
+    let stdout = child.stdout.take().context("missing stdout")?;
+    let stderr = child.stderr.take().context("missing stderr")?;
+    let tx_out = state.tx.clone();
+
+    // stderr task (log noise)
+    tokio::spawn(async move {
+        let reader = BufReader::new(stderr);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            println!("{}", line);
+        }
+    });
+
+    // stdout task: JSON events
+    let state_for = state.clone();
+    tokio::spawn(async move {
+        let reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let s = line.trim();
+            if s.is_empty() { continue; }
+            if let Ok(v) = serde_json::from_str::<JsonValue>(s) {
+                if let Some(update) = acp_event_translator::translate_claude_event_to_acp_update(&v) {
+                    // Determine thread id target from current_convex_thread
+                    let target_tid = {
+                        if let Some(ctid) = state_for.current_convex_thread.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
+                    };
+                    if !target_tid.is_empty() {
+                        crate::convex_write::mirror_acp_update_to_convex(&state_for, &target_tid, &update).await;
+                    }
+                    if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
+                        if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
+                    }
+                }
+            }
+        }
+    });
+    Ok(())
+}
