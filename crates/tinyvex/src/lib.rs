@@ -83,6 +83,37 @@ impl Tinyvex {
         CREATE INDEX IF NOT EXISTS idx_msgs_thread_ts ON messages(threadId, ts);
         CREATE INDEX IF NOT EXISTS idx_msgs_thread_item ON messages(threadId, itemId);
         CREATE UNIQUE INDEX IF NOT EXISTS uniq_msgs_thread_item ON messages(threadId, itemId);
+
+        -- ACP: tool calls (store content/locations as JSON strings)
+        CREATE TABLE IF NOT EXISTS acp_tool_calls (
+          threadId TEXT NOT NULL,
+          toolCallId TEXT NOT NULL,
+          title TEXT,
+          kind TEXT,
+          status TEXT,
+          content_json TEXT,
+          locations_json TEXT,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL,
+          PRIMARY KEY (threadId, toolCallId)
+        );
+
+        -- ACP: plan (entries array as JSON)
+        CREATE TABLE IF NOT EXISTS acp_plan (
+          threadId TEXT PRIMARY KEY,
+          entries_json TEXT,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL
+        );
+
+        -- ACP: state (current mode id and available commands as JSON)
+        CREATE TABLE IF NOT EXISTS acp_state (
+          threadId TEXT PRIMARY KEY,
+          currentModeId TEXT,
+          available_commands_json TEXT,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL
+        );
         "#,
         )?;
         Ok(())
@@ -216,6 +247,70 @@ impl Tinyvex {
                 params![thread_id, item_id, text, ts],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn upsert_acp_tool_call(
+        &self,
+        thread_id: &str,
+        tool_call_id: &str,
+        title: &str,
+        kind: &str,
+        status: &str,
+        content_json: &str,
+        locations_json: &str,
+        ts: i64,
+    ) -> Result<()> {
+        let conn = Connection::open(&self.db_path)?;
+        conn.execute(
+            r#"
+            INSERT INTO acp_tool_calls (threadId, toolCallId, title, kind, status, content_json, locations_json, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+            ON CONFLICT(threadId, toolCallId) DO UPDATE SET
+              title=excluded.title,
+              kind=excluded.kind,
+              status=excluded.status,
+              content_json=excluded.content_json,
+              locations_json=excluded.locations_json,
+              updatedAt=excluded.updatedAt
+            "#,
+            params![thread_id, tool_call_id, title, kind, status, content_json, locations_json, ts],
+        )?;
+        Ok(())
+    }
+
+    pub fn upsert_acp_plan(&self, thread_id: &str, entries_json: &str, ts: i64) -> Result<()> {
+        let conn = Connection::open(&self.db_path)?;
+        conn.execute(
+            r#"
+            INSERT INTO acp_plan (threadId, entries_json, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?3)
+            ON CONFLICT(threadId) DO UPDATE SET entries_json=excluded.entries_json, updatedAt=excluded.updatedAt
+            "#,
+            params![thread_id, entries_json, ts],
+        )?;
+        Ok(())
+    }
+
+    pub fn upsert_acp_state(
+        &self,
+        thread_id: &str,
+        current_mode_id: Option<&str>,
+        available_commands_json: Option<&str>,
+        ts: i64,
+    ) -> Result<()> {
+        let conn = Connection::open(&self.db_path)?;
+        conn.execute(
+            r#"
+            INSERT INTO acp_state (threadId, currentModeId, available_commands_json, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?4, ?4)
+            ON CONFLICT(threadId) DO UPDATE SET
+              currentModeId = COALESCE(excluded.currentModeId, acp_state.currentModeId),
+              available_commands_json = COALESCE(excluded.available_commands_json, acp_state.available_commands_json),
+              updatedAt = excluded.updatedAt
+            "#,
+            params![thread_id, current_mode_id, available_commands_json, ts],
+        )?;
         Ok(())
     }
 }
