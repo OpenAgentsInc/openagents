@@ -112,23 +112,7 @@ export default function Onboarding() {
   }, [wsLastClose, connected])
 
   // Show the exact WS URL we will attempt (helps debugging)
-  const attemptUrl = React.useMemo(() => {
-    try {
-      const raw = String(bridgeHost || '').trim()
-      if (!raw) return ''
-      const host = raw
-        .replace(/^ws:\/\//i, '')
-        .replace(/^wss:\/\//i, '')
-        .replace(/^http:\/\//i, '')
-        .replace(/^https:\/\//i, '')
-        .replace(/\/$/, '')
-        .replace(/\/ws$/i, '')
-        .replace(/\/$/, '')
-      const token = String(bridgeToken || '').trim()
-      const tokenPart = token ? `?token=${encodeURIComponent(token)}` : ''
-      return host ? `ws://${host}/ws${tokenPart}` : ''
-    } catch { return '' }
-  }, [bridgeHost, bridgeToken])
+  // No attempted URL display on this screen
 
   const trimmedCode = React.useMemo(() => String(bridgeCodeInput || '').trim(), [bridgeCodeInput])
   const likelyCode = React.useMemo(() => !!parseAnyBridgeInput(trimmedCode), [trimmedCode, parseAnyBridgeInput])
@@ -147,7 +131,7 @@ export default function Onboarding() {
       </View>
       <View style={{ height: 16 }} />
       <Text style={styles.label}>Bridge IP (temporary)</Text>
-      <Text style={styles.hint}>Using {HARDCODED_IP}:{BRIDGE_PORT} — this is hardcoded for now</Text>
+      {/* Intentionally omit explanatory text here */}
       <View style={styles.inputWrapper}>
         <TextInput
           value={bridgeCodeInput}
@@ -226,15 +210,13 @@ export default function Onboarding() {
       {!!lastWsErrorText && !connected && (
         <Text style={[styles.errorText, { marginTop: 8 }]}>{lastWsErrorText}</Text>
       )}
-      {!!attemptUrl && !connected && (
-        <Text style={[styles.hint, { marginTop: 4 }]}>{attemptUrl}</Text>
-      )}
+      {/* Do not display WebSocket URL on homepage */}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 24, marginTop: 16 },
+  container: { flex: 1, backgroundColor: Colors.background, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 80 },
   title: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 28, marginBottom: 8, textAlign: 'left' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusText: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 },
