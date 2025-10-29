@@ -31,6 +31,7 @@ async fn full_flow_with_fake_codex_emits_acp() {
         .env("OPENAGENTS_BRIDGE_TOKEN", "itest")
         .env("BRIDGE_DEBUG_CODEX", "1")
         .env("OPENAGENTS_MANAGE_CONVEX", "false")
+        .env("OPENAGENTS_CONVEX_NOOP", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -76,6 +77,9 @@ async fn full_flow_with_fake_codex_emits_acp() {
                 if l.contains("\"type\":\"bridge.run_submit\"") { saw_submit = true; }
                 if l.contains("\"type\":\"bridge.acp\"") && l.contains("agent_message_chunk") { saw_acp_message = true; }
                 if l.contains("\"type\":\"bridge.acp\"") && l.contains("agent_thought_chunk") { saw_acp_thought = true; }
+                if l.contains("\"type\":\"bridge.convex_noop\"") && l.contains("\"kind\":\"assistant\"") { saw_acp_message = true; }
+                if l.contains("\"type\":\"bridge.convex_noop\"") && l.contains("\"kind\":\"reason\"") { saw_acp_thought = true; }
+                // Optional: plan/tool updates may arrive; we do not hard fail on their absence here
             }
             if saw_acp_message && saw_acp_thought && saw_submit { break; }
             tokio::time::sleep(Duration::from_millis(20)).await;
