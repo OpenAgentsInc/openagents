@@ -131,7 +131,24 @@ export default function Onboarding() {
       <TailscalePeers />
       <View style={{ height: 12 }} />
       {/* Local network scan for bridge hosts */}
-      <LocalBridgeDiscovery onPick={(hp) => { try { setBridgeHost(hp) } catch {} }} />
+      <LocalBridgeDiscovery
+        onPick={(hp) => {
+          try {
+            // Update both the input field and the actual bridge host
+            const s = String(hp || '').trim()
+            let ipOnly = s
+            if (s.startsWith('[')) {
+              const end = s.indexOf(']')
+              ipOnly = end > 1 ? s.slice(1, end) : s
+            } else {
+              ipOnly = s.split(':')[0] || s
+            }
+            setBridgeCodeInput(ipOnly)
+            setCodeError('')
+            setBridgeHost(s)
+          } catch {}
+        }}
+      />
       <View style={{ height: 12 }} />
       <Pressable
         onPress={() => {
