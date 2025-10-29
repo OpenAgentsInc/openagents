@@ -45,7 +45,12 @@ export default function ConvexThreadDetail() {
   useHeaderTitle(headerTitle)
 
   // Live messages subscription for this thread: use the thread.threadId, not the Convex doc _id
-  const messages = (useQuery as any)('messages:forThread', { threadId: thread?.threadId || (isNew ? String(id || '') : ''), limit: 400 }) as any[] | undefined | null
+  const threadIdVal = thread?.threadId || (isNew ? String(id || '') : '')
+  const messages = (useQuery as any)('messages:forThread', { threadId: threadIdVal, limit: 400 }) as any[] | undefined | null
+  // ACP-normalized state from Convex
+  const planDoc = (useQuery as any)('acp_plan:forThread', { threadId: threadIdVal || 'skip' }) as any | undefined | null
+  const stateDoc = (useQuery as any)('acp_state:forThread', { threadId: threadIdVal || 'skip' }) as any | undefined | null
+  const toolCalls = (useQuery as any)('acp_tool_calls:forThread', { threadId: threadIdVal || 'skip' }) as any[] | undefined | null
 
   const meta = React.useMemo(() => {
     const arr: any[] = Array.isArray(messages) ? messages : []
@@ -168,6 +173,46 @@ export default function ConvexThreadDetail() {
             const arr: any[] = (messages as any[]).slice(meta.count)
             return (
               <>
+                {/* ACP state (current mode) */}
+                {(() => {
+                  const cm = stateDoc && (stateDoc.currentModeId || (() => { try { const o = JSON.parse(String(stateDoc.currentModeId || '')); return o?.currentModeId || o?.current_mode_id } catch { return '' } })())
+                  if (!cm) return null
+                  return (
+                    <View style={{ paddingVertical: 2 }}>
+                      <SessionUpdateCurrentModeUpdate currentModeId={String(cm)} />
+                    </View>
+                  )
+                })()}
+                {/* ACP state (available commands) */}
+                {(() => {
+                  const cmds = stateDoc && typeof stateDoc.available_commands_json === 'string' ? (() => { try { return JSON.parse(String(stateDoc.available_commands_json||'[]')) } catch { return [] } })() : []
+                  if (!Array.isArray(cmds) || cmds.length === 0) return null
+                  return (
+                    <View style={{ paddingVertical: 2 }}>
+                      <SessionUpdateAvailableCommandsUpdate available_commands={cmds} />
+                    </View>
+                  )
+                })()}
+                {/* ACP plan */}
+                {(() => {
+                  const entries = planDoc && typeof planDoc.entries_json === 'string' ? (() => { try { return JSON.parse(String(planDoc.entries_json||'[]')) } catch { return [] } })() : []
+                  if (!Array.isArray(entries) || entries.length === 0) return null
+                  return (
+                    <View style={{ paddingVertical: 2 }}>
+                      <SessionUpdatePlan entries={entries} />
+                    </View>
+                  )
+                })()}
+                {/* ACP tool calls */}
+                {Array.isArray(toolCalls) && toolCalls.length > 0 && toolCalls.map((tc: any) => {
+                  const obj = (() => { try { return typeof tc.content_json === 'string' ? JSON.parse(tc.content_json) : null } catch { return null } })()
+                  const props = obj && Array.isArray(obj) ? { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending'), content: obj } : { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending') }
+                  return (
+                    <View key={`${tc.threadId}:${tc.toolCallId}`} style={{ paddingVertical: 2 }}>
+                      <SessionUpdateToolCall {...(props as any)} />
+                    </View>
+                  )
+                })}
                 {arr.map((m: any) => {
                   const key = m._id || `${m.threadId}-${m.ts}`
                   const kind = String(m.kind || (m.role ? 'message' : '')).toLowerCase()
