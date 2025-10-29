@@ -195,6 +195,18 @@ export default function Onboarding() {
       {!!lastWsErrorText && !connected && (
         <Text style={[styles.errorText, { marginTop: 8 }]}>{lastWsErrorText}</Text>
       )}
+      {/* Spacer to push dev tools button to bottom */}
+      {__DEV__ ? <View style={{ flex: 1 }} /> : null}
+      {/* Dev-only quick link to the component library */}
+      {__DEV__ ? (
+        <Pressable
+          onPress={() => { try { router.push('/library' as any) } catch {} }}
+          accessibilityRole='button'
+          style={styles.devToolsBtn as any}
+        >
+          <Text style={styles.devToolsText}>Open Component Library</Text>
+        </Pressable>
+      ) : null}
       {/* Do not display WebSocket URL on homepage */}
     </View>
   )
@@ -215,4 +227,6 @@ const styles = StyleSheet.create({
   connectingBtn: { opacity: 0.75, borderColor: Colors.success },
   connectDisabled: { backgroundColor: Colors.border, borderColor: Colors.border },
   connectText: { color: Colors.foreground, fontFamily: Typography.bold, letterSpacing: 0.5, textAlign: 'center' },
+  devToolsBtn: { marginTop: 16, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 12, alignItems: 'center' },
+  devToolsText: { color: Colors.secondary, fontFamily: Typography.bold },
 })
