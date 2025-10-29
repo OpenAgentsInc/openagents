@@ -1,6 +1,7 @@
 import React from 'react'
 import { useLocalSearchParams, router } from 'expo-router'
 import { ScrollView, Text, View, KeyboardAvoidingView, Platform } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTinyvex } from '@/providers/tinyvex'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
@@ -10,14 +11,17 @@ import { useBridge } from '@/providers/ws'
 export default function ThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const initialId = String(id || '')
-  const threadId = React.useMemo(() => {
+  const [threadId, setThreadId] = React.useState<string>('')
+  React.useEffect(() => {
     if (initialId === 'new' || initialId === '') {
-      // Generate a client thread id and replace the route for a stable URL
       const gen = `t-${Date.now()}`
+      setThreadId(gen)
       try { router.replace(`/thread/${encodeURIComponent(gen)}` as any) } catch {}
-      return gen
+    } else {
+      setThreadId(initialId)
     }
-    return initialId
+    // Only re-run if the URL param changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
   const { subscribeMessages, queryMessages, messagesByThread } = useTinyvex()
   const { send, connected } = useBridge()
@@ -32,6 +36,7 @@ export default function ThreadScreen() {
     const payload = { control: 'run.submit', threadDocId: threadId, text, resumeId: 'new' as const }
     try { send(JSON.stringify(payload)) } catch {}
   }, [threadId, send])
+  const insets = useSafeAreaInsets()
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: Colors.background }}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}>
@@ -44,7 +49,7 @@ export default function ThreadScreen() {
           </View>
         ))}
       </ScrollView>
-      <View style={{ padding: 10, borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.background }}>
+      <View style={{ paddingTop: 10, paddingHorizontal: 10, paddingBottom: Math.max(10, insets.bottom), borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.background }}>
         <Composer onSend={onSend} connected={connected} placeholder='Ask Codex' />
       </View>
     </KeyboardAvoidingView>
