@@ -188,115 +188,100 @@ export default function ConvexThreadDetail() {
                     </Pressable>
                   </View>
                 )}
-                {/* ACP state (current mode) */}
+                {/* Chronological timeline below */}
                 {(() => {
-                  const cm = stateDoc && stateDoc.currentModeId
-                  if (!cm) return null
-                  return (
-                    <View style={{ paddingVertical: 2 }}>
-                      <SessionUpdateCurrentModeUpdate currentModeId={String(cm)} />
-                    </View>
-                  )
-                })()}
-                {/* ACP state (available commands) */}
-                {(() => {
-                  const cmds = stateDoc && Array.isArray(stateDoc.available_commands) ? stateDoc.available_commands : []
-                  if (!Array.isArray(cmds) || cmds.length === 0) return null
-                  return (
-                    <View style={{ paddingVertical: 2 }}>
-                      <SessionUpdateAvailableCommandsUpdate available_commands={cmds} />
-                    </View>
-                  )
-                })()}
-                {/* ACP plan */}
-                {(() => {
-                  const entries = planDoc && Array.isArray(planDoc.entries) ? planDoc.entries : []
-                  if (!Array.isArray(entries) || entries.length === 0) return null
-                  return (
-                    <View style={{ paddingVertical: 2 }}>
-                      <SessionUpdatePlan entries={entries} />
-                    </View>
-                  )
-                })()}
-                {arr.map((m: any) => {
-                  const key = m._id || `${m.threadId}-${m.ts}`
-                  const kind = String(m.kind || (m.role ? 'message' : '')).toLowerCase()
-                  const role = String(m.role || '').toLowerCase()
-                  // Skip raw tool/cmd/file/search/mcp/todo message rows; we render
-                  // normalized ACP tool calls instead (deduped and status-updating)
-                  if (kind === 'tool' || kind === 'cmd' || kind === 'file' || kind === 'search' || kind === 'mcp' || kind === 'todo') {
-                    return null
+                  const toolArr: any[] = Array.isArray(toolCalls) ? toolCalls : []
+                  const items: Array<{ type: 'message' | 'toolcall'; time: number; value: any }> = []
+                  for (const m of arr) {
+                    const t = Number((m?.ts ?? m?.updatedAt ?? m?.createdAt ?? 0)) || 0
+                    items.push({ type: 'message', time: t, value: m })
                   }
-                  if (kind === 'message') {
-                    if (role === 'user') {
+                  for (const tc of toolArr) {
+                    const t = Number((tc?.updatedAt ?? tc?.createdAt ?? 0)) || 0
+                    items.push({ type: 'toolcall', time: t, value: tc })
+                  }
+                  items.sort((a, b) => a.time - b.time)
+                  return items.map((it, idx) => {
+                    if (it.type === 'toolcall') {
+                      const tc = it.value
+                      const obj = Array.isArray(tc.content) ? tc.content : null
+                      const props = obj && Array.isArray(obj)
+                        ? { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending'), content: obj }
+                        : { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending') }
                       return (
-                        <Pressable key={key}
-                          onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
-                          accessibilityRole="button"
-                          style={{ paddingVertical: 2 }}>
-                          <UserMessageRow text={String(m.text || '')} />
-                        </Pressable>
+                        <View key={`${tc.threadId}:${tc.toolCallId}:${it.time}:${idx}`} style={{ paddingVertical: 2 }}>
+                          <SessionUpdateToolCall {...(props as any)} />
+                        </View>
                       )
                     }
-                    return (
-                      <View key={key} style={{ paddingVertical: 2 }}>
-                        <MarkdownBlock markdown={String(m.text || '')} />
-                      </View>
-                    )
-                  }
-                  if (kind === 'reason') {
-                    return (
-                      <View key={key} style={{ paddingVertical: 2 }}>
-                        <ReasoningHeadline text={String(m.text || '')} />
-                      </View>
-                    )
-                  }
-                  if (kind === 'plan') {
-                    const entries = (m?.data?.entries as any[]) || (() => { try { const o = JSON.parse(String(m.text||'')); return (o && o.entries) || [] } catch { return [] } })()
-                    if (Array.isArray(entries) && entries.length > 0) {
-                    return (
-                      <View key={key} style={{ paddingVertical: 2 }}>
-                        <SessionUpdatePlan entries={entries} />
-                      </View>
-                    )
+                    const m = it.value
+                    const key = m._id || `${m.threadId}-${m.ts}`
+                    const kind = String(m.kind || (m.role ? 'message' : '')).toLowerCase()
+                    const role = String(m.role || '').toLowerCase()
+                    if (kind === 'tool' || kind === 'cmd' || kind === 'file' || kind === 'search' || kind === 'mcp' || kind === 'todo') {
+                      return null
                     }
-                  }
-                  if (kind === 'available_commands_update') {
-                    const cmds = (Array.isArray(m?.data?.available_commands) ? m.data.available_commands : (() => { try { const o = JSON.parse(String(m.text||'')); return o?.available_commands || [] } catch { return [] } })()) as any[]
-                    if (cmds.length > 0) {
+                    if (kind === 'message') {
+                      if (role === 'user') {
+                        return (
+                          <Pressable key={key}
+                            onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
+                            accessibilityRole="button"
+                            style={{ paddingVertical: 2 }}>
+                            <UserMessageRow text={String(m.text || '')} />
+                          </Pressable>
+                        )
+                      }
+                      return (
+                        <View key={key} style={{ paddingVertical: 2 }}>
+                          <MarkdownBlock markdown={String(m.text || '')} />
+                        </View>
+                      )
+                    }
+                    if (kind === 'reason') {
+                      return (
+                        <View key={key} style={{ paddingVertical: 2 }}>
+                          <ReasoningHeadline text={String(m.text || '')} />
+                        </View>
+                      )
+                    }
+                    if (kind === 'plan') {
+                      const entries = (m?.data?.entries as any[]) || (() => { try { const o = JSON.parse(String(m.text||'')); return (o && o.entries) || [] } catch { return [] } })()
+                      if (Array.isArray(entries) && entries.length > 0) {
+                      return (
+                        <View key={key} style={{ paddingVertical: 2 }}>
+                          <SessionUpdatePlan entries={entries} />
+                        </View>
+                      )
+                      }
+                    }
+                    if (kind === 'available_commands_update') {
+                      const cmds = (Array.isArray(m?.data?.available_commands) ? m.data.available_commands : (() => { try { const o = JSON.parse(String(m.text||'')); return o?.available_commands || [] } catch { return [] } })()) as any[]
+                      if (cmds.length > 0) {
+                      return (
+                        <View key={key} style={{ paddingVertical: 2 }}>
+                          <SessionUpdateAvailableCommandsUpdate available_commands={cmds} />
+                        </View>
+                      )
+                      }
+                    }
+                    if (kind === 'current_mode_update') {
+                      const cm = (m?.data?.currentModeId || m?.data?.current_mode_id) || (() => { try { const o = JSON.parse(String(m.text||'')); return o?.currentModeId || o?.current_mode_id } catch { return '' } })()
+                      if (cm) {
+                      return (
+                        <View key={key} style={{ paddingVertical: 2 }}>
+                          <SessionUpdateCurrentModeUpdate currentModeId={String(cm || '')} />
+                        </View>
+                      )
+                      }
+                    }
                     return (
                       <View key={key} style={{ paddingVertical: 2 }}>
-                        <SessionUpdateAvailableCommandsUpdate available_commands={cmds} />
+                        <MarkdownBlock markdown={`_${kind.toUpperCase() || 'ITEM'}_\n\n${String(m.text || '')}`}/>
                       </View>
                     )
-                    }
-                  }
-                  if (kind === 'current_mode_update') {
-                    const cm = (m?.data?.currentModeId || m?.data?.current_mode_id) || (() => { try { const o = JSON.parse(String(m.text||'')); return o?.currentModeId || o?.current_mode_id } catch { return '' } })()
-                    if (cm) {
-                    return (
-                      <View key={key} style={{ paddingVertical: 2 }}>
-                        <SessionUpdateCurrentModeUpdate currentModeId={String(cm || '')} />
-                      </View>
-                    )
-                    }
-                  }
-                  return (
-                    <View key={key} style={{ paddingVertical: 2 }}>
-                      <MarkdownBlock markdown={`_${kind.toUpperCase() || 'ITEM'}_\n\n${String(m.text || '')}`}/>
-                    </View>
-                  )
-                })}
-                {/* ACP tool calls (normalized, deduped). Render after messages so user input precedes first tool call. */}
-                {Array.isArray(toolCalls) && toolCalls.length > 0 && toolCalls.map((tc: any) => {
-                  const obj = Array.isArray(tc.content) ? tc.content : null
-                  const props = obj && Array.isArray(obj) ? { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending'), content: obj } : { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending') }
-                  return (
-                    <View key={`${tc.threadId}:${tc.toolCallId}`} style={{ paddingVertical: 2 }}>
-                      <SessionUpdateToolCall {...(props as any)} />
-                    </View>
-                  )
-                })}
+                  })
+                })()}
               </>
             )
           })()}
