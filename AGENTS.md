@@ -189,6 +189,9 @@ instructions: |
 - If your work would collide with those local changes or you suspect name collisions (e.g., a new folder vs. an existing tracked file), STOP and ask for guidance instead of attempting “local cleanup”.
 - Before committing, verify your staged set does not include or revert other agents’ files. Use `git status --porcelain` and `git diff --staged` to double-check.
 
+## GitHub CLI Notes
+- When posting comments via `gh issue comment -b`, avoid shell backticks and command substitution in the body. Prefer plain text or use `--body-file` to prevent the shell from interpreting backticks.
+
 ## Agent Workflow Requirements (Expo TypeScript)
 - If you touch TypeScript/TSX under `expo/`, run the type checker via `bun run typecheck`.
 - Do not finish work until the typecheck passes with no warnings.
