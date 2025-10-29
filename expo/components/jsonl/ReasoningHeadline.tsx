@@ -4,6 +4,7 @@ import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { CodeBlock } from '@/components/code-block'
+import { InlineToast } from '@/components/inline-toast'
 import { copyToClipboard } from '@/lib/copy'
 
 export function ReasoningHeadline({ text }: { text: string }) {
@@ -29,9 +30,15 @@ export function ReasoningHeadline({ text }: { text: string }) {
   }
 
   const toCopy = String(headline || '')
+  const [copied, setCopied] = React.useState(false)
+  React.useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 1400)
+    return () => clearTimeout(t)
+  }, [copied])
   return (
-    <View style={{ marginTop: 8 }}>
-      <Pressable onLongPress={async () => { try { await copyToClipboard(toCopy, { haptics: true }) } catch {} }}>
+    <View style={{ marginTop: 8, position: 'relative' }}>
+      <Pressable onLongPress={async () => { try { await copyToClipboard(toCopy, { haptics: true, local: true }); setCopied(true) } catch {} }}>
       <Markdown
       style={{
         body: { color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 12, lineHeight: 16 },
@@ -53,6 +60,7 @@ export function ReasoningHeadline({ text }: { text: string }) {
         {headline}
       </Markdown>
       </Pressable>
+      {copied ? <InlineToast text="Copied" position="bottom" align="right" /> : null}
     </View>
   )
 }
