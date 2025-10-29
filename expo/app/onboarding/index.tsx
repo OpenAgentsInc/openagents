@@ -204,18 +204,8 @@ export default function Onboarding() {
             : lastWsErrorText}
         </Text>
       )}
-      {/* Spacer to push dev tools button to bottom */}
+      {/* Spacer */}
       {isDevEnv ? <View style={{ flex: 1 }} /> : null}
-      {/* Dev-only quick link to the component library (env-gated) */}
-      {isDevEnv ? (
-        <Pressable
-          onPress={() => { try { router.push('/library' as any) } catch {} }}
-          accessibilityRole='button'
-          style={styles.devToolsBtn as any}
-        >
-          <Text style={styles.devToolsText}>Open Component Library</Text>
-        </Pressable>
-      ) : null}
       {/* Do not display WebSocket URL on homepage */}
     </View>
   )
