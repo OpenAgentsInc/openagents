@@ -394,8 +394,10 @@ async fn mirror_session_tail_to_convex(state: Arc<AppState>, path: &Path) -> any
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn picks_env_override_for_sessions_dir() {
         unsafe { std::env::set_var("CODEXD_HISTORY_DIR", "/tmp/sessions_override") };
         assert_eq!(sessions_base_dir(), "/tmp/sessions_override");
@@ -403,6 +405,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn falls_back_to_home_sessions_dir() {
         // Ensure env override not set
         unsafe { std::env::remove_var("CODEXD_HISTORY_DIR") };

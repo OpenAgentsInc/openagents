@@ -366,9 +366,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 text,
                                 project_id,
                                 resume_id,
+                                provider,
                             } => {
                                 // Decide provider (claude_code vs codex) based on project metadata.
-                                let provider = project_id.as_ref().and_then(|pid| {
+                                let provider = provider.or_else(|| project_id.as_ref().and_then(|pid| {
                                     match crate::projects::list_projects() {
                                         Ok(items) => items.into_iter().find(|p| p.id == *pid),
                                         Err(_) => None,
@@ -377,7 +378,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     // Interpret agent_file == "claude_code" (convention) as Claude provider
                                     let af = p.agent_file.unwrap_or_default().to_lowercase();
                                     if af == "claude_code" || af == "claude" || af == "claude-code" { Some("claude_code".to_string()) } else { None }
-                                });
+                                }));
                                 if let Some(kind) = provider.as_deref() {
                                     if kind == "claude_code" {
                                         let desired_cd = project_id.as_ref().and_then(|pid| {
@@ -389,6 +390,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 Err(_) => None,
                                             }
                                         }).map(PathBuf::from);
+                                        // Remember target Convex thread id for writes
+                                        {
+                                            *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone());
+                                        }
                                         let st_for = stdin_state.clone();
                                         let thread_for = thread_doc_id.clone();
                                         tokio::spawn(async move {

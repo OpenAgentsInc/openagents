@@ -118,6 +118,18 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
             if s.is_empty() { continue; }
             if let Ok(v) = serde_json::from_str::<JsonValue>(s) {
                 if let Some(update) = acp_event_translator::translate_claude_event_to_acp_update(&v) {
+                    // Debug: emit a concise marker for tests
+                    let kind = match &update {
+                        agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
+                        agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => "agent_message_chunk",
+                        agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
+                        agent_client_protocol::SessionUpdate::ToolCall(_) => "tool_call",
+                        agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
+                        agent_client_protocol::SessionUpdate::Plan(_) => "plan",
+                        agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(_) => "available_commands_update",
+                        agent_client_protocol::SessionUpdate::CurrentModeUpdate(_) => "current_mode_update",
+                    };
+                    let _ = tx_out.send(serde_json::json!({"type":"bridge.acp_seen","kind": kind}).to_string());
                     // Determine thread id target from current_convex_thread
                     let target_tid = {
                         if let Some(ctid) = state_for.current_convex_thread.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
