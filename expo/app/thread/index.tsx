@@ -10,8 +10,8 @@ export default function ThreadEntry() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, marginBottom: 10 }}>Start a new chat.</Text>
-      <Pressable onPress={() => { try { router.replace('/session' as any) } catch {} }} accessibilityRole="button" style={{ backgroundColor: Colors.foreground, paddingHorizontal: 14, paddingVertical: 8 }}>
-        <Text style={{ color: Colors.black, fontFamily: Typography.bold }}>Open Session</Text>
+      <Pressable onPress={() => { try { router.replace('/thread/new' as any) } catch {} }} accessibilityRole="button" style={{ backgroundColor: Colors.foreground, paddingHorizontal: 14, paddingVertical: 8 }}>
+        <Text style={{ color: Colors.black, fontFamily: Typography.bold }}>New Session</Text>
       </Pressable>
     </View>
   )
