@@ -40,6 +40,7 @@ mod state;
 mod util;
 mod watchers;
 mod ws;
+mod acp_codex;
 // spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
@@ -97,6 +98,16 @@ struct Opts {
     /// `~/.openagents/bridge.json` (key: `token`).
     #[arg(long, env = "OPENAGENTS_BRIDGE_TOKEN")]
     ws_token: Option<String>,
+
+    /// Use Codex ACP adapter instead of Codex JSONL for Codex integration.
+    /// When enabled, the bridge spawns `codex-acp` and communicates over ACP,
+    /// mirroring SessionUpdates into Convex.
+    #[arg(long, env = "OPENAGENTS_USE_CODEX_ACP", default_value_t = false)]
+    use_codex_acp: bool,
+
+    /// Path to the `codex-acp` executable. If unset, resolves from PATH.
+    #[arg(long, env = "OPENAGENTS_CODEX_ACP_EXECUTABLE")]
+    codex_acp_bin: Option<PathBuf>,
 }
 
 use crate::state::AppState;
