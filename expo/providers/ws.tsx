@@ -119,12 +119,13 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   const connect = useCallback(() => {
     setAutoReconnect(true);
+    // Clear any prior WS close error as a new manual attempt begins
+    try { setWsLastClose(null) } catch {}
     // Read latest values from the settings store to avoid stale closures
     const rawHost = useSettings.getState().bridgeHost;
     const tokenNow = useSettings.getState().bridgeToken;
     const host = sanitizeHost(String(rawHost || ''));
     if (!host) return;
-    setWsLastClose(null);
     // Compute secure scheme for this host now
     const parts = host.split(':');
     const port = parts.length > 1 ? parts[1] : '';
