@@ -34,11 +34,11 @@ export default function ScanScreen() {
     const display = normalizeBridgeCodeInput(String(raw || ''))
     const parsed = parseBridgeCode(display)
     if (!parsed) return false
-    // Intentionally do not set bridgeCode here to avoid UITextField churn
+    // Set host/token and connect immediately without additional UI steps
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
-    // Defer connect/navigation until after current interactions to avoid UIKit churn
-    // Do not auto-connect on scan; route to onboarding and let user press Connect
+    try { connect() } catch {}
+    // Navigate to onboarding to show connection status or errors
     try { router.replace('/onboarding' as any) } catch {}
     return true
   }, [connect, router])

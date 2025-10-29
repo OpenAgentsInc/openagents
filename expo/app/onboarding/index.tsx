@@ -75,13 +75,13 @@ export default function Onboarding() {
   })()
 
   const lastWsErrorText = React.useMemo(() => {
-    if (!wsLastClose || connected || String(bridgeCodeInput || '').trim() === '') return ''
+    if (!wsLastClose || connected) return ''
     const code = wsLastClose.code
     const reason = String(wsLastClose.reason || '')
     if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'Connection refused — is the bridge running and reachable?'
     if (/unauthorized|401/i.test(reason)) return 'Unauthorized — set Bridge Token in Settings.'
     return `WebSocket closed ${code ?? ''}${reason ? `: ${reason}` : ''}`.trim()
-  }, [wsLastClose, connected, bridgeCodeInput])
+  }, [wsLastClose, connected])
 
   // Show the exact WS URL we will attempt (helps debugging)
   // No attempted URL display on this screen
@@ -98,83 +98,104 @@ export default function Onboarding() {
   return (
     <View style={styles.container}>
       {/* Landing page feel: no explicit status banner */}
-      <Text style={styles.label}>Desktop IP</Text>
-      {/* Intentionally omit explanatory text here */}
-      <View style={styles.inputWrapper}>
-        <TextInput
-          value={bridgeCodeInput}
-          onChangeText={(v) => {
-            setBridgeCodeInput(v)
-            const trimmed = String(v || '').trim()
-            if (!trimmed) {
-              try { disconnect() } catch {}
-              setBridgeHost('')
-              setCodeError('')
-              return
-            }
-            const parsed = parseAnyBridgeInput(trimmed)
-            if (!parsed || !parsed.bridgeHost) { setCodeError('Enter a valid IP address'); return }
-            setCodeError('')
-          }}
-          autoCapitalize='none'
-          autoCorrect={false}
-          keyboardType='numbers-and-punctuation'
-          placeholder='Enter IP (e.g., 100.72.151.98)'
-          placeholderTextColor={Colors.secondary}
-          style={[styles.input, { paddingRight: 44 }]}
-        />
-        <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
-          <Pressable
-            onPress={() => { try { disconnect() } catch {}; setBridgeCodeInput(''); setBridgeHost(''); }}
-            accessibilityLabel='Clear bridge host'
-            style={{ position: 'absolute', right: 0 }}
-          >
-            <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
-          </Pressable>
-        </View>
-      </View>
-      {!!codeError && (
-        <Text style={styles.errorText}>{codeError}</Text>
+      {/**
+       * Desktop IP input (temporarily hidden) — replaced by a single Pair button.
+       * Keeping this block commented for potential future use.
+       */}
+      {false && (
+        <>
+          <Text style={styles.label}>Desktop IP</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              value={bridgeCodeInput}
+              onChangeText={(v) => {
+                setBridgeCodeInput(v)
+                const trimmed = String(v || '').trim()
+                if (!trimmed) {
+                  try { disconnect() } catch {}
+                  setBridgeHost('')
+                  setCodeError('')
+                  return
+                }
+                const parsed = parseAnyBridgeInput(trimmed)
+                if (!parsed || !parsed.bridgeHost) { setCodeError('Enter a valid IP address'); return }
+                setCodeError('')
+              }}
+              autoCapitalize='none'
+              autoCorrect={false}
+              keyboardType='numbers-and-punctuation'
+              placeholder='Enter IP (e.g., 100.72.151.98)'
+              placeholderTextColor={Colors.secondary}
+              style={[styles.input, { paddingRight: 44 }]}
+            />
+            <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
+              <Pressable
+                onPress={() => { try { disconnect() } catch {}; setBridgeCodeInput(''); setBridgeHost(''); }}
+                accessibilityLabel='Clear bridge host'
+                style={{ position: 'absolute', right: 0 }}
+              >
+                <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
+              </Pressable>
+            </View>
+          </View>
+          {!!codeError && (
+            <Text style={styles.errorText}>{codeError}</Text>
+          )}
+        </>
       )}
-      {/* Optional Bridge Token (required by desktop bridge by default) */}
-      <Text style={[styles.label, { marginTop: 6 }]}>Bridge Token</Text>
-      <View style={styles.inputWrapper}>
-        <TextInput
-          value={bridgeToken}
-          onChangeText={(v) => { try { setBridgeToken(v) } catch {} }}
-          autoCapitalize='none'
-          autoCorrect={false}
-          placeholder='Paste token from ~/.openagents/bridge.json'
-          placeholderTextColor={Colors.secondary}
-          style={[styles.input]}
-        />
-      </View>
-      <View style={{ height: 12 }} />
-      {/* QR Bridge Code flow */}
-      <Pressable onPress={() => { try { router.push('/scan' as any) } catch {} }} accessibilityRole='button' style={styles.devToolsBtn as any}>
-        <Text style={styles.devToolsText}>Scan Bridge QR Code</Text>
-      </Pressable>
-      <View style={{ height: 12 }} />
+      {/**
+       * Bridge Token input and manual Connect button are hidden for the simplified Pair flow.
+       */}
+      {false && (
+        <>
+          <Text style={[styles.label, { marginTop: 6 }]}>Bridge Token</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              value={bridgeToken}
+              onChangeText={(v) => { try { setBridgeToken(v) } catch {} }}
+              autoCapitalize='none'
+              autoCorrect={false}
+              placeholder='Paste token from ~/.openagents/bridge.json'
+              placeholderTextColor={Colors.secondary}
+              style={[styles.input]}
+            />
+          </View>
+          <View style={{ height: 12 }} />
+          <Pressable onPress={() => { try { router.push('/scan' as any) } catch {} }} accessibilityRole='button' style={styles.devToolsBtn as any}>
+            <Text style={styles.devToolsText}>Scan Bridge QR Code</Text>
+          </Pressable>
+          <View style={{ height: 12 }} />
+          <Pressable
+            onPress={() => {
+              if (connecting || codeError || !likelyCode) return
+              try {
+                const parsed = parseAnyBridgeInput(trimmedCode)
+                if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
+              } catch {}
+              try {
+                setInputDisabled(true)
+                setTimeout(() => setInputDisabled(false), 400)
+                connect()
+              } catch {}
+            }}
+            accessibilityRole='button'
+            accessibilityState={{ busy: connecting, disabled: connecting || !!codeError || !likelyCode }}
+            disabled={connecting || !!codeError || !likelyCode}
+            style={[styles.connectBtn as any, (connecting ? styles.connectingBtn : undefined) as any, ((codeError || !likelyCode) ? styles.connectDisabled : undefined) as any]}
+          >
+            <Text style={styles.connectText}>{connected ? 'Connected' : (connecting ? 'Connecting…' : (codeError ? 'Fix Code' : 'Connect'))}</Text>
+          </Pressable>
+        </>
+      )}
+
+      {/* Single big Pair button */}
       <Pressable
-        onPress={() => {
-          if (connecting || codeError || !likelyCode) return
-          try {
-          const parsed = parseAnyBridgeInput(trimmedCode)
-          if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
-          // Bridge token (if required) can be pasted in Settings
-          } catch {}
-          try {
-            setInputDisabled(true)
-            setTimeout(() => setInputDisabled(false), 400)
-            connect()
-          } catch {}
-        }}
+        onPress={() => { try { router.push('/scan' as any) } catch {} }}
         accessibilityRole='button'
-        accessibilityState={{ busy: connecting, disabled: connecting || !!codeError || !likelyCode }}
-        disabled={connecting || !!codeError || !likelyCode}
-        style={[styles.connectBtn as any, (connecting ? styles.connectingBtn : undefined) as any, ((codeError || !likelyCode) ? styles.connectDisabled : undefined) as any]}
+        style={styles.pairBtn as any}
       >
-        <Text style={styles.connectText}>{connected ? 'Connected' : (connecting ? 'Connecting…' : (codeError ? 'Fix Code' : 'Connect'))}</Text>
+        <Ionicons name='qr-code-outline' size={22} color={Colors.foreground} />
+        <Text style={styles.pairText}>Pair</Text>
       </Pressable>
       {!!lastWsErrorText && !connected && (
         <Text style={[styles.errorText, { marginTop: 8 }]}>
@@ -217,4 +238,6 @@ const styles = StyleSheet.create({
   connectText: { color: Colors.foreground, fontFamily: Typography.bold, letterSpacing: 0.5, textAlign: 'center' },
   devToolsBtn: { marginTop: 16, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 12, alignItems: 'center' },
   devToolsText: { color: Colors.secondary, fontFamily: Typography.bold },
+  pairBtn: { marginTop: 24, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 28, alignItems: 'center', gap: 8 },
+  pairText: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18, letterSpacing: 0.5 },
 })
