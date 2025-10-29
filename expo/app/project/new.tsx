@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
-import { useProjects } from '@/providers/projects';
+// Projects disabled temporarily
 import { useRouter } from 'expo-router';
 import { useHeaderTitle } from '@/lib/header-store';
 
@@ -13,43 +13,13 @@ function slugify(s: string): string {
 export default function NewProject() {
   const router = useRouter();
   useHeaderTitle('New Project');
-  const { projects, save, setActive } = useProjects();
-  const [name, setName] = useState('');
-  const [workingDir, setWorkingDir] = useState('~/code');
-  const [saving, setSaving] = useState(false);
-
-  const disabled = !name.trim();
-
-  const onCreate = async () => {
-    if (disabled || saving) return;
-    setSaving(true);
-    try {
-      let id = slugify(name);
-      const taken = new Set(projects.map((p) => p.id));
-      let i = 1;
-      while (taken.has(id)) { id = `${slugify(name)}-${i++}`; }
-      const now = Date.now();
-      await save({
-        id,
-        name: name.trim(),
-        workingDir: workingDir.trim(),
-        createdAt: now,
-        updatedAt: now,
-      } as any);
-      await setActive(id);
-      router.replace(`/project/${encodeURIComponent(id)}`);
-    } finally { setSaving(false); }
-  };
-
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16, gap: 10 }}>
-      <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18 }}>New Project</Text>
-      <Field label="Name" value={name} onChange={setName} autoFocus />
-      <Field label="Working directory" value={workingDir} onChange={setWorkingDir} placeholder="/Users/you/code/repo" />
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-        <Button title="Create" onPress={onCreate} disabled={disabled || saving} />
-        <Button title="Cancel" onPress={() => router.back()} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 16, textAlign: 'center' }}>Projects are temporarily unavailable.</Text>
+      <View style={{ height: 12 }} />
+      <Pressable onPress={() => router.back()} style={{ backgroundColor: Colors.quaternary, paddingHorizontal: 16, paddingVertical: 12 }}>
+        <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>Back</Text>
+      </Pressable>
     </View>
   );
 }
