@@ -2,7 +2,6 @@ import React from 'react'
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
-import { useQuery } from 'convex/react'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
@@ -12,48 +11,9 @@ export default function SettingsScreen() {
   useHeaderTitle('Settings')
   const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, connecting, wsLastClose } = useBridge()
   const [inputDisabled, setInputDisabled] = React.useState(false)
-  const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
-  const derivedConvexUrl = React.useMemo(() => {
-    try {
-      const val = String(bridgeHost || '').trim()
-      const stripped = val
-        .replace(/^ws:\/\//i, '')
-        .replace(/^wss:\/\//i, '')
-        .replace(/^http:\/\//i, '')
-        .replace(/^https:\/\//i, '')
-        .replace(/\/$/, '')
-        .replace(/\/ws$/i, '')
-        .replace(/\/$/, '')
-      if (!stripped) return ''
-      const hostOnly = (stripped.split(':')[0] || '')
-      if (!hostOnly) return ''
-      return `http://${hostOnly}:7788`
-    } catch {
-      return ''
-    }
-  }, [bridgeHost])
-  const convexThreads = (useQuery as any)('threads:list', {}) as any[] | undefined | null
-  const [httpStatus, setHttpStatus] = React.useState<string>('')
-  React.useEffect(() => {
-    let cancelled = false
-    const base = String(convexUrl || derivedConvexUrl).trim()
-    if (!base) { setHttpStatus(''); return }
-    const url = base.replace(/\/$/, '') + '/instance_version'
-    try {
-      fetch(url).then(r => r.text().then(body => {
-        if (cancelled) return
-        setHttpStatus(`${r.status} ${body.trim()}`)
-      })).catch(() => { if (!cancelled) setHttpStatus('error') })
-    } catch { setHttpStatus('error') }
-    return () => { cancelled = true }
-  }, [convexUrl, derivedConvexUrl])
-  const convexStatus = React.useMemo(() => {
-    if (convexThreads === undefined) return `connecting (http ${httpStatus || '...'})`
-    if (convexThreads === null) return `function missing or error (http ${httpStatus || '...'})`
-    return Array.isArray(convexThreads) ? `ok (${convexThreads.length} threads)` : 'ok'
-  }, [convexThreads, httpStatus])
+  // Convex removed in Tinyvex build
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
@@ -72,8 +32,7 @@ export default function SettingsScreen() {
       </View>
       {/* Bridge token input removed */}
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {wsUrl || '(not configured)'}</Text>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>Convex base: {derivedConvexUrl || '(derived from host)'}</Text>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>Convex status: {convexStatus}</Text>
+      {/* Convex status removed */}
       {wsLastClose && !connected ? (
         <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>
           {(() => {
