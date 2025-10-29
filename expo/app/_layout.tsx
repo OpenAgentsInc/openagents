@@ -319,6 +319,7 @@ function DrawerWrapper() {
           <Stack.Screen name="library/search-mcp" />
           <Stack.Screen name="library/todo" />
           <Stack.Screen name="library/turn-error" />
+          <Stack.Screen name="library/acp-example-conversation" />
           <Stack.Screen name="library/drawer" />
           <Stack.Screen name="library/unused" />
           <Stack.Screen name="settings/index" />
