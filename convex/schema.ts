@@ -83,4 +83,35 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  // ACP-normalized tables
+  acp_tool_calls: defineTable({
+    threadId: v.string(),
+    toolCallId: v.string(),
+    title: v.string(),
+    kind: v.string(), // ACP ToolKind
+    status: v.string(), // ACP ToolCallStatus
+    content_json: v.optional(v.string()), // JSON string of ToolCallContent[]
+    locations_json: v.optional(v.string()), // JSON string of locations
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index?.('by_thread_tool', ['threadId', 'toolCallId'])
+    .index?.('by_thread_updated', ['threadId', 'updatedAt']),
+  acp_plan: defineTable({
+    threadId: v.string(),
+    entries_json: v.string(), // JSON string of PlanEntry[]
+    updatedAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index?.('by_thread', ['threadId'])
+    .index?.('by_thread_updated', ['threadId', 'updatedAt']),
+  acp_state: defineTable({
+    threadId: v.string(),
+    currentModeId: v.optional(v.string()),
+    available_commands_json: v.optional(v.string()), // JSON string of {name,description}[]
+    updatedAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index?.('by_thread', ['threadId'])
+    .index?.('by_thread_updated', ['threadId', 'updatedAt']),
 });

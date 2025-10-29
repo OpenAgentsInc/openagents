@@ -261,42 +261,39 @@ pub async fn mirror_acp_update_to_convex(
             }).to_string());
         }
         acp::SessionUpdate::ToolCall(tc) => {
+            // Upsert into dedicated ACP tool_calls table
+            let tc_id = format!("{:?}", tc.id);
+            let content_json = serde_json::to_string(&tc.content).ok();
+            let locations_json = serde_json::to_string(&tc.locations).ok();
             let mut args: BTreeMap<String, Value> = BTreeMap::new();
             args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            let id_str = format!("{:?}", tc.id);
-            args.insert("itemId".into(), Value::from(id_str));
-            args.insert("kind".into(), Value::from("tool"));
-            // Store full structured payload as JSON string for portability
-            let json_str = serde_json::to_string(tc).unwrap_or_else(|_| String::from("{}"));
-            args.insert("text".into(), Value::from(json_str));
-            let _ = client.mutation("messages:upsertStreamed", args).await;
+            args.insert("toolCallId".into(), Value::from(tc_id));
+            args.insert("title".into(), Value::from(tc.title.clone()));
+            args.insert("kind".into(), Value::from(format!("{:?}", tc.kind)));
+            args.insert("status".into(), Value::from(format!("{:?}", tc.status)));
+            if let Some(cj) = content_json { args.insert("content_json".into(), Value::from(cj)); }
+            if let Some(lj) = locations_json { args.insert("locations_json".into(), Value::from(lj)); }
+            let _ = client.mutation("acp_tool_calls:upsert", args).await;
         }
         acp::SessionUpdate::Plan(p) => {
             let mut args: BTreeMap<String, Value> = BTreeMap::new();
             args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("itemId".into(), Value::from("state:plan"));
-            args.insert("kind".into(), Value::from("plan"));
-            let json_str = serde_json::to_string(&p).unwrap_or_else(|_| String::from("{}"));
-            args.insert("text".into(), Value::from(json_str));
-            let _ = client.mutation("messages:upsertStreamed", args).await;
+            let json_str = serde_json::to_string(&p.entries).unwrap_or_else(|_| String::from("[]"));
+            args.insert("entries_json".into(), Value::from(json_str));
+            let _ = client.mutation("acp_plan:set", args).await;
         }
         acp::SessionUpdate::AvailableCommandsUpdate(ac) => {
             let mut args: BTreeMap<String, Value> = BTreeMap::new();
             args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("itemId".into(), Value::from("state:available_commands"));
-            args.insert("kind".into(), Value::from("available_commands_update"));
-            let json_str = serde_json::to_string(&ac).unwrap_or_else(|_| String::from("{}"));
-            args.insert("text".into(), Value::from(json_str));
-            let _ = client.mutation("messages:upsertStreamed", args).await;
+            let json_str = serde_json::to_string(&ac.available_commands).unwrap_or_else(|_| String::from("[]"));
+            args.insert("available_commands_json".into(), Value::from(json_str));
+            let _ = client.mutation("acp_state:update", args).await;
         }
         acp::SessionUpdate::CurrentModeUpdate(cm) => {
             let mut args: BTreeMap<String, Value> = BTreeMap::new();
             args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("itemId".into(), Value::from("state:current_mode"));
-            args.insert("kind".into(), Value::from("current_mode_update"));
-            let json_str = serde_json::to_string(&cm).unwrap_or_else(|_| String::from("{}"));
-            args.insert("text".into(), Value::from(json_str));
-            let _ = client.mutation("messages:upsertStreamed", args).await;
+            args.insert("currentModeId".into(), Value::from(format!("{}", cm.current_mode_id)));
+            let _ = client.mutation("acp_state:update", args).await;
         }
         acp::SessionUpdate::ToolCallUpdate(_) => {
             // TODO: refine mapping if distinct from ToolCall events in our translator
