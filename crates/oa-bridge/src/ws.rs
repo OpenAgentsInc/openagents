@@ -25,6 +25,7 @@ use crate::convex_write::{
     finalize_streaming_for_thread, stream_upsert_or_append, summarize_exec_delta_for_log,
     try_finalize_stream_kind,
 };
+use crate::projects::Project;
 use acp_event_translator::translate_codex_event_to_acp_update;
 use agent_client_protocol::{SessionId, SessionNotification};
 use crate::state::AppState;
@@ -366,6 +367,41 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 project_id,
                                 resume_id,
                             } => {
+                                // Decide provider (claude_code vs codex) based on project metadata.
+                                let provider = project_id.as_ref().and_then(|pid| {
+                                    match crate::projects::list_projects() {
+                                        Ok(items) => items.into_iter().find(|p| p.id == *pid),
+                                        Err(_) => None,
+                                    }
+                                }).and_then(|p: Project| {
+                                    // Interpret agent_file == "claude_code" (convention) as Claude provider
+                                    let af = p.agent_file.unwrap_or_default().to_lowercase();
+                                    if af == "claude_code" || af == "claude" || af == "claude-code" { Some("claude_code".to_string()) } else { None }
+                                });
+                                if let Some(kind) = provider.as_deref() {
+                                    if kind == "claude_code" {
+                                        let desired_cd = project_id.as_ref().and_then(|pid| {
+                                            match crate::projects::list_projects() {
+                                                Ok(list) => list
+                                                    .into_iter()
+                                                    .find(|p| p.id == *pid)
+                                                    .map(|p| p.working_dir),
+                                                Err(_) => None,
+                                            }
+                                        }).map(PathBuf::from);
+                                        let st_for = stdin_state.clone();
+                                        let thread_for = thread_doc_id.clone();
+                                        tokio::spawn(async move {
+                                            if let Err(e) = crate::provider_claude::run_prompt(st_for.clone(), &thread_for, desired_cd, &text).await {
+            									tracing::error!(?e, "claude provider run failed");
+                                            } else {
+                                                let dbg = serde_json::json!({"type":"bridge.run_submit","provider":"claude_code","threadDocId": thread_for, "len": text.len()}).to_string();
+                                                let _ = st_for.tx.send(dbg);
+                                            }
+                                        });
+                                        continue;
+                                    }
+                                }
                                 // Map to project working dir
                                 let desired_cd = project_id.as_ref().and_then(|pid| {
                                     match crate::projects::list_projects() {
