@@ -451,7 +451,8 @@ mod tests {
                 convex_interface: "127.0.0.1".into(),
                 manage_convex: false,
                 ws_token: Some("t".into()),
-                
+                claude_bin: None,
+                claude_args: None,
             },
             last_thread_id: Mutex::new(None),
             history: Mutex::new(Vec::new()),

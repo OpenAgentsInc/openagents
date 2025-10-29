@@ -392,11 +392,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         let st_for = stdin_state.clone();
                                         let thread_for = thread_doc_id.clone();
                                         tokio::spawn(async move {
-                                            if let Err(e) = crate::provider_claude::run_prompt(st_for.clone(), &thread_for, desired_cd, &text).await {
-            									tracing::error!(?e, "claude provider run failed");
-                                            } else {
-                                                let dbg = serde_json::json!({"type":"bridge.run_submit","provider":"claude_code","threadDocId": thread_for, "len": text.len()}).to_string();
-                                                let _ = st_for.tx.send(dbg);
+                                            match crate::claude_runner::spawn_claude_child_with_prompt(&st_for.opts, desired_cd, &text).await {
+                                                Ok(child) => {
+                                                    if let Err(e) = crate::claude_runner::start_claude_forwarders(child, st_for.clone()).await { tracing::error!(?e, "claude forwarders failed"); }
+                                                    let dbg = serde_json::json!({"type":"bridge.run_submit","provider":"claude_code","threadDocId": thread_for, "len": text.len()}).to_string();
+                                                    let _ = st_for.tx.send(dbg);
+                                                }
+                                                Err(e) => tracing::error!(?e, "claude spawn failed"),
                                             }
                                         });
                                         continue;
@@ -570,7 +572,8 @@ mod auth_tests {
             convex_interface: "127.0.0.1".into(),
             manage_convex: false,
             ws_token: tok.map(|s| s.to_string()),
-            
+            claude_bin: None,
+            claude_args: None,
         };
         Arc::new(AppState {
             tx,
