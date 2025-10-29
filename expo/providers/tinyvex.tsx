@@ -34,6 +34,9 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
       if (obj.stream === 'messages' && typeof obj.threadId === 'string') {
         // For MVP, re-query the recent tail on updates to keep logic simple
         queryMessages(obj.threadId, 200)
+      } else if (obj.stream === 'threads') {
+        // Threads list changed: refresh top threads
+        try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
       }
     } else if (t === 'tinyvex.query_result') {
       if (obj.name === 'threads.list' && Array.isArray(obj.rows)) {
@@ -68,4 +71,3 @@ export function useTinyvex() {
   if (!ctx) throw new Error('useTinyvex must be used within TinyvexProvider')
   return ctx
 }
-

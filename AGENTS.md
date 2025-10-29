@@ -164,6 +164,7 @@ instructions: |
 - Keep commits focused: limit diffs to the smallest set of files necessary; avoid touching unrelated files.
 - Review before committing: use `git status` and `git diff --staged` to confirm only intended paths are included.
 - Branching policy: do not create branches unless the user explicitly directs you to. Default to committing on `main` and opening PRs only when requested.
+ - Never change branches: always stay on `main` unless the user explicitly instructs you to switch or create a branch.
 
 ### Absolutely No Destructive Local Ops (must‑follow)
 - Never delete untracked files or folders in the working tree (e.g., `rm -rf docs/convex/`) — even if they look unrelated. Untracked work may be in progress by another agent.
