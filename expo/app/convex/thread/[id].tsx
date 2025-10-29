@@ -91,8 +91,12 @@ export default function ConvexThreadDetail() {
   const [acpRows, setAcpRows] = React.useState<Array<{ key: string; update: SessionUpdate }>>([])
   const toolCallIndexRef = React.useRef<Map<string, number>>(new Map())
   React.useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true))
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false))
+    // Use 'will' events on iOS so the toggle happens in sync with
+    // the keyboard animation, avoiding a choppy jump in padding.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const show = Keyboard.addListener(showEvent as any, () => setKbVisible(true))
+    const hide = Keyboard.addListener(hideEvent as any, () => setKbVisible(false))
     return () => { try { show.remove(); hide.remove(); } catch {} }
   }, [])
   // Auto-focus input for brand-new threads
