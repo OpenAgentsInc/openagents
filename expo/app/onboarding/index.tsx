@@ -156,7 +156,6 @@ export default function Onboarding() {
           placeholder='100.72.151.98'
           placeholderTextColor={Colors.secondary}
           style={[styles.input, { paddingRight: 44 }]}
-          editable={false}
         />
         <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
           <Pressable
@@ -203,7 +202,7 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 80 },
+  container: { flex: 1, backgroundColor: Colors.background, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 120 },
   title: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 28, marginBottom: 8, textAlign: 'left' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusText: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 },
