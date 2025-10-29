@@ -14,6 +14,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "OpenAgents uses the camera to scan pairing QR codes.",
+        "NSLocalNetworkUsageDescription": "OpenAgents discovers and connects to your desktop over the local network or Tailscale.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
