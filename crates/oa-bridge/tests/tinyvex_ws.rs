@@ -19,9 +19,12 @@ async fn tinyvex_query_and_subscribe() {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
 
+    // Use a temp HOME so Tinyvex DB is isolated per test run
+    let tmp_home = tempfile::tempdir().unwrap();
     let mut child = Command::new(&bridge_bin)
         .arg("--bind").arg(format!("127.0.0.1:{}", port))
         .env("OPENAGENTS_BRIDGE_TOKEN", "itest")
+        .env("HOME", tmp_home.path())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -76,4 +79,3 @@ async fn tinyvex_query_and_subscribe() {
     let _ = t_out.await.unwrap_or_default();
     let _ = t_err.await.unwrap_or_default();
 }
-

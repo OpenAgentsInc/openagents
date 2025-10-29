@@ -93,27 +93,40 @@ impl Tinyvex {
           status TEXT,
           content_json TEXT,
           locations_json TEXT,
+          -- Canonical column names aligned with Convex schema; store JSON text
+          content TEXT,
+          locations TEXT,
           createdAt INTEGER NOT NULL,
           updatedAt INTEGER NOT NULL,
           PRIMARY KEY (threadId, toolCallId)
         );
+        CREATE INDEX IF NOT EXISTS idx_acp_tool_calls_thread_tool ON acp_tool_calls(threadId, toolCallId);
+        CREATE INDEX IF NOT EXISTS idx_acp_tool_calls_thread_updated ON acp_tool_calls(threadId, updatedAt);
 
         -- ACP: plan (entries array as JSON)
         CREATE TABLE IF NOT EXISTS acp_plan (
           threadId TEXT PRIMARY KEY,
           entries_json TEXT,
+          -- Canonical name per Convex schema; store JSON text
+          entries TEXT,
           createdAt INTEGER NOT NULL,
           updatedAt INTEGER NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS idx_acp_plan_thread ON acp_plan(threadId);
+        CREATE INDEX IF NOT EXISTS idx_acp_plan_thread_updated ON acp_plan(threadId, updatedAt);
 
         -- ACP: state (current mode id and available commands as JSON)
         CREATE TABLE IF NOT EXISTS acp_state (
           threadId TEXT PRIMARY KEY,
           currentModeId TEXT,
           available_commands_json TEXT,
+          -- Canonical name per Convex schema; store JSON text
+          available_commands TEXT,
           createdAt INTEGER NOT NULL,
           updatedAt INTEGER NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS idx_acp_state_thread ON acp_state(threadId);
+        CREATE INDEX IF NOT EXISTS idx_acp_state_thread_updated ON acp_state(threadId, updatedAt);
         "#,
         )?;
         Ok(())
@@ -264,14 +277,16 @@ impl Tinyvex {
         let conn = Connection::open(&self.db_path)?;
         conn.execute(
             r#"
-            INSERT INTO acp_tool_calls (threadId, toolCallId, title, kind, status, content_json, locations_json, createdAt, updatedAt)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+            INSERT INTO acp_tool_calls (threadId, toolCallId, title, kind, status, content_json, locations_json, content, locations, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?6, ?7, ?8, ?8)
             ON CONFLICT(threadId, toolCallId) DO UPDATE SET
               title=excluded.title,
               kind=excluded.kind,
               status=excluded.status,
               content_json=excluded.content_json,
               locations_json=excluded.locations_json,
+              content=excluded.content,
+              locations=excluded.locations,
               updatedAt=excluded.updatedAt
             "#,
             params![thread_id, tool_call_id, title, kind, status, content_json, locations_json, ts],
@@ -283,9 +298,9 @@ impl Tinyvex {
         let conn = Connection::open(&self.db_path)?;
         conn.execute(
             r#"
-            INSERT INTO acp_plan (threadId, entries_json, createdAt, updatedAt)
-            VALUES (?1, ?2, ?3, ?3)
-            ON CONFLICT(threadId) DO UPDATE SET entries_json=excluded.entries_json, updatedAt=excluded.updatedAt
+            INSERT INTO acp_plan (threadId, entries_json, entries, createdAt, updatedAt)
+            VALUES (?1, ?2, ?2, ?3, ?3)
+            ON CONFLICT(threadId) DO UPDATE SET entries_json=excluded.entries_json, entries=excluded.entries, updatedAt=excluded.updatedAt
             "#,
             params![thread_id, entries_json, ts],
         )?;
@@ -302,11 +317,12 @@ impl Tinyvex {
         let conn = Connection::open(&self.db_path)?;
         conn.execute(
             r#"
-            INSERT INTO acp_state (threadId, currentModeId, available_commands_json, createdAt, updatedAt)
-            VALUES (?1, ?2, ?3, ?4, ?4)
+            INSERT INTO acp_state (threadId, currentModeId, available_commands_json, available_commands, createdAt, updatedAt)
+            VALUES (?1, ?2, ?3, ?3, ?4, ?4)
             ON CONFLICT(threadId) DO UPDATE SET
               currentModeId = COALESCE(excluded.currentModeId, acp_state.currentModeId),
               available_commands_json = COALESCE(excluded.available_commands_json, acp_state.available_commands_json),
+              available_commands = COALESCE(excluded.available_commands, acp_state.available_commands),
               updatedAt = excluded.updatedAt
             "#,
             params![thread_id, current_mode_id, available_commands_json, ts],
