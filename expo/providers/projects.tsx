@@ -1,6 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useBridge } from '@/providers/ws';
-import { useQuery } from 'convex/react'
 import { listSkills, type Skill } from '@/lib/skills-store'
 import {
   hydrateProjects,
@@ -44,34 +43,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Live list from Convex; replace store contents when available
-  const convexProjects = (useQuery as any)('projects:list', {}) as any[] | undefined | null
-  useEffect(() => {
-    (async () => {
-      if (Array.isArray(convexProjects)) {
-        const arr = convexProjects.map((x: any) => ({
-          id: String(x.id || x.name || ''),
-          name: String(x.name || x.id || ''),
-          workingDir: String(x.workingDir || x.working_dir || ''),
-          repo: x.repo,
-          agentFile: x.agentFile || x.agent_file,
-          instructions: x.instructions || x.description,
-          runningAgents: 0,
-          attentionCount: 0,
-          todos: Array.isArray(x.todos) ? x.todos : [],
-          lastActivity: undefined,
-          createdAt: x.createdAt || Date.now(),
-          updatedAt: x.updatedAt || Date.now(),
-          approvals: x.approvals,
-          model: x.model,
-          sandbox: x.sandbox,
-        })) as Project[]
-        try { useProjectsStore.getState().setAll(arr) } catch {}
-        setProjects(listProjects())
-        setActiveState(getActiveProject())
-      }
-    })()
-  }, [convexProjects])
+  // Tinyvex MVP: keep using local store for projects until we add Tinyvex projects
 
   const refresh = useCallback(() => {
     setProjects(listProjects());
