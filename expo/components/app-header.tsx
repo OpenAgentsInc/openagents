@@ -35,8 +35,8 @@ export function AppHeader() {
 
   const onNewChat = React.useCallback(async () => {
     try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {}
-    // Start a new local thread view (Convex removed)
-    try { router.push('/thread?focus=1&new=1') } catch {}
+    // Start a new local thread view
+    try { router.push('/thread/new') } catch {}
   }, [])
 
   return (

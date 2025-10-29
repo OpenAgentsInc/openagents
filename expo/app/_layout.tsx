@@ -249,7 +249,7 @@ function DrawerWrapper() {
   const NewChatButton = () => {
     const onPress = async () => {
       try { if (process.env.EXPO_OS === 'ios') { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } } catch {}
-      try { router.push('/thread?focus=1&new=1'); } catch {}
+      try { router.push('/thread/new'); } catch {}
     };
     return (
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>

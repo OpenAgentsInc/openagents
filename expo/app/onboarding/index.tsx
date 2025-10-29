@@ -82,7 +82,7 @@ export default function Onboarding() {
   // Auto-advance only when both sides are ready
   React.useEffect(() => {
     if (!connected || !convexReady) return
-    try { router.replace('/thread?focus=1&new=1' as any) } catch {}
+    try { router.replace('/thread/new' as any) } catch {}
   }, [connected, convexReady])
 
   return (
