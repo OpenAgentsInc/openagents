@@ -334,7 +334,6 @@ function LinkingBootstrap() {
   const router = useRouter();
   const { setBridgeHost, connect } = useBridge();
   // Avoid writing Bridge Code into the input field on deep links to prevent UIKit text churn
-  const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
   React.useEffect(() => {
     let cancelled = false
@@ -345,7 +344,6 @@ function LinkingBootstrap() {
         if (!parsed) return
         // Do not set bridgeCode from deep link to avoid TextInput updates during navigation
         try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
-        try { if (parsed.convexUrl) setConvexUrl(parsed.convexUrl) } catch {}
         try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
         // Do not auto-connect on deep link; route to onboarding and let user press Connect
         try { router.push('/onboarding' as any) } catch {}

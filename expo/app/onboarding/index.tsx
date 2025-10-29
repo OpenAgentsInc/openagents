@@ -20,7 +20,6 @@ export default function Onboarding() {
   const bridgeCode = useSettings((s) => s.bridgeCode)
   // Use a local input state to avoid programmatic TextInput updates from store
   const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => HARDCODED_IP)
-  const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const bridgeToken = useSettings((s) => s.bridgeToken)
   const [codeError, setCodeError] = React.useState<string>('')
@@ -28,11 +27,10 @@ export default function Onboarding() {
   // Environment-driven dev mode flag, centralized
   const isDevEnv = useIsDevEnv()
 
-  // Derive Convex URL from bridge host (same logic as Settings)
-  // Convex removed in Tinyvex build; probe not required
+  // Convex removed; no status probe
   // Simplified parser: accept only an IP address and hardcode the bridge port
   const BRIDGE_PORT = 8787
-  const parseAnyBridgeInput = React.useCallback((raw: string): { bridgeHost?: string; convexUrl?: string; token?: string | null } | null => {
+  const parseAnyBridgeInput = React.useCallback((raw: string): { bridgeHost?: string; token?: string | null } | null => {
     try {
       const s = String(raw || '').trim()
       if (!s) return null
@@ -57,13 +55,10 @@ export default function Onboarding() {
   const hasHost = React.useMemo(() => String(bridgeHost || '').trim().length > 0, [bridgeHost])
   const isConnecting = !!connecting
   const convexReady = true
-  const convexLoading = false
-  const convexError = false
   const statusText = (() => {
     if (isConnecting) return 'Connecting…'
     if (!connected) return hasHost ? 'Disconnected' : 'Enter Bridge Code'
-    if (convexLoading) return 'Bridge connected — starting Convex…'
-    if (convexError) return 'Bridge connected — Convex unavailable'
+    // No Convex status in this build
     if (convexReady) return 'Connected'
     return 'Disconnected'
   })()
@@ -103,7 +98,6 @@ export default function Onboarding() {
             if (!trimmed) {
               try { disconnect() } catch {}
               setBridgeHost('')
-              setConvexUrl('')
               setCodeError('')
               return
             }
@@ -120,7 +114,7 @@ export default function Onboarding() {
         />
         <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
           <Pressable
-            onPress={() => { try { disconnect() } catch {}; setBridgeCodeInput(''); setBridgeHost(''); setConvexUrl(''); }}
+            onPress={() => { try { disconnect() } catch {}; setBridgeCodeInput(''); setBridgeHost(''); }}
             accessibilityLabel='Clear bridge host'
             style={{ position: 'absolute', right: 0 }}
           >

@@ -11,9 +11,8 @@ export default function SettingsScreen() {
   useHeaderTitle('Settings')
   const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, connecting, wsLastClose } = useBridge()
   const [inputDisabled, setInputDisabled] = React.useState(false)
-  const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
-  // Convex removed in Tinyvex build
+  // Convex removed
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
@@ -32,7 +31,7 @@ export default function SettingsScreen() {
       </View>
       {/* Bridge token input removed */}
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {wsUrl || '(not configured)'}</Text>
-      {/* Convex status removed */}
+      {/* Convex removed */}
       {wsLastClose && !connected ? (
         <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>
           {(() => {
@@ -46,7 +45,7 @@ export default function SettingsScreen() {
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (
-          <Button title='Connect' onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; try { setConvexUrl('') } catch {}; connect() }} />
+          <Button title='Connect' onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; connect() }} />
         ) : (
           <Button title='Disconnect' onPress={disconnect} />
         )}

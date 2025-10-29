@@ -3,7 +3,6 @@ import { Pressable, Text, View } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useRouter } from 'expo-router'
-import { useQuery } from 'convex/react'
 
 export function ThreadListItemBase({
   title,
@@ -38,10 +37,9 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   const router = useRouter()
   const threadId = String(row?.threadId || row?._id || row?.id || '')
   const updatedAt = (row?.updatedAt ?? row?.createdAt ?? 0) as number
-  const countFromRow = typeof (row as any)?.messageCount === 'number' ? (row as any).messageCount as number : undefined
-  const count = countFromRow ?? ((useQuery as any)('messages:countForThread', { threadId }) as number | undefined)
-  // Subscribe to recent messages for this thread to derive a last-message snippet for the drawer label
-  const recent = (useQuery as any)('messages:forThread', { threadId, limit: 50 }) as any[] | undefined | null
+  const count = typeof (row as any)?.messageCount === 'number' ? (row as any).messageCount as number : undefined
+  // No Convex: attempt to use provided snippet if present; otherwise fallback to title
+  const recent: any[] | undefined | null = undefined
   const lastSnippet = React.useMemo(() => {
     const arr: any[] = Array.isArray(recent) ? recent : []
     // Consider only chat messages
@@ -72,7 +70,7 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   }, [recent, row?.title])
   const open = () => {
     if (onPress) { try { onPress() } catch {} ; return }
-    try { router.push(`/convex/thread/${encodeURIComponent(String(row._id || row.id))}`) } catch {}
+    try { router.push(`/thread/${encodeURIComponent(String(row._id || row.id))}`) } catch {}
   }
   // Filter out threads that have zero primary chat messages when count is known
   if (typeof count === 'number' && count <= 0) return null

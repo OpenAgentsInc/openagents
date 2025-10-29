@@ -7,7 +7,6 @@ export type Approvals = 'never' | 'on-request' | 'on-failure'
 type SettingsState = {
   bridgeHost: string
   bridgeCode: string
-  convexUrl: string
   bridgeToken: string
   bridgeAutoReconnect: boolean
   readOnly: boolean
@@ -17,7 +16,6 @@ type SettingsState = {
   agentProvider: 'codex' | 'claude_code'
   setBridgeHost: (v: string) => void
   setBridgeCode: (v: string) => void
-  setConvexUrl: (v: string) => void
   setBridgeToken: (v: string) => void
   setBridgeAutoReconnect: (v: boolean) => void
   setReadOnly: (v: boolean) => void
@@ -33,7 +31,6 @@ export const useSettings = create<SettingsState>()(
       // No default host; user must paste a Bridge Code or set host manually
       bridgeHost: '',
       bridgeCode: '',
-      convexUrl: '',
       bridgeToken: '',
       // Do not auto-reconnect until the user explicitly presses Connect
       bridgeAutoReconnect: false,
@@ -44,7 +41,6 @@ export const useSettings = create<SettingsState>()(
       agentProvider: 'codex',
       setBridgeHost: (v) => set({ bridgeHost: v }),
       setBridgeCode: (v) => set({ bridgeCode: v }),
-      setConvexUrl: (v) => set({ convexUrl: v }),
       setBridgeToken: (v) => set({ bridgeToken: v }),
       setBridgeAutoReconnect: (v) => set({ bridgeAutoReconnect: v }),
       setReadOnly: (v) => set({ readOnly: v }),
@@ -54,8 +50,8 @@ export const useSettings = create<SettingsState>()(
       setAgentProvider: (v) => set({ agentProvider: v }),
     }),
     {
-      name: '@openagents/settings-v3',
-      version: 3,
+      name: '@openagents/settings-v4',
+      version: 4,
       storage: createJSONStorage(() => AsyncStorage),
       // Migrate and sanitize legacy values (remove any bore/localhost defaults, clear bad hosts)
       migrate: (persisted: any, from) => {
@@ -65,6 +61,8 @@ export const useSettings = create<SettingsState>()(
           const host = String(obj.bridgeHost || '').trim()
           // Always start with explicit user connect; turn off auto-reconnect on migration
           obj.bridgeAutoReconnect = false
+          // Drop legacy convexUrl and related fields
+          if ('convexUrl' in obj) delete obj.convexUrl
           if (/\bbore(\.pub)?\b/.test(host) || host.startsWith('ws://bore') || host.includes('bore.pub') || host.startsWith('localhost:') || host.startsWith('127.0.0.1:')) {
             obj.bridgeHost = ''
             obj.bridgeCode = ''
