@@ -238,13 +238,12 @@ function DrawerWrapper() {
   // Connection-gated onboarding: require bridge and convex
   React.useEffect(() => {
     const path = String(pathname || '')
-    const convexReady = Array.isArray(convexThreads)
-    if (!connected || !convexReady) {
+    if (!connected) {
       if (!path.startsWith('/onboarding')) {
         try { router.push('/onboarding' as any) } catch {}
       }
     }
-  }, [connected, convexThreads, pathname]);
+  }, [connected, pathname]);
 
   const ConnectionDot = () => {
     const { connected } = useBridge();
