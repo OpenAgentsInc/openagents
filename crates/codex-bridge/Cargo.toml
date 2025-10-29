@@ -27,6 +27,8 @@ convex = "0.10.1"
 maplit = "1.0.2"
 rand = "0.9.2"
 getrandom = "0.3.4"
+agent-client-protocol = "0.7.0"
+acp-event-translator = { path = "../acp-event-translator" }
 
 [dev-dependencies]
 tempfile = "3.10.1"

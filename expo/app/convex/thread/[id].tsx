@@ -12,6 +12,15 @@ import { MarkdownBlock } from '@/components/jsonl/MarkdownBlock'
 import { ReasoningHeadline } from '@/components/jsonl/ReasoningHeadline'
 import { ExecBeginRow } from '@/components/jsonl/ExecBeginRow'
 import { UserMessageRow } from '@/components/jsonl/UserMessageRow'
+import type { SessionUpdate } from '@/types/acp'
+import {
+  SessionUpdateAgentMessageChunk,
+  SessionUpdateAgentThoughtChunk,
+  SessionUpdateToolCall,
+  SessionUpdatePlan,
+  SessionUpdateAvailableCommandsUpdate,
+  SessionUpdateCurrentModeUpdate,
+} from '@/components/acp'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -78,6 +87,9 @@ export default function ConvexThreadDetail() {
   const [atBottom, setAtBottom] = React.useState(true)
   const prevLenRef = React.useRef(0)
   const composerRef = React.useRef<any>(null)
+  const [acpEnabled, setAcpEnabled] = React.useState(false)
+  const [acpRows, setAcpRows] = React.useState<Array<{ key: string; update: SessionUpdate }>>([])
+  const toolCallIndexRef = React.useRef<Map<string, number>>(new Map())
   React.useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true))
     const hide = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false))
@@ -121,6 +133,42 @@ export default function ConvexThreadDetail() {
     prevLenRef.current = len
   }, [messages, atBottom])
   
+  // Subscribe to ACP notifications for this session and build a local feed
+  React.useEffect(() => {
+    const unsub = ws.addSubscriber((line) => {
+      try {
+        const s = String(line || '').trim()
+        if (!s.startsWith('{')) return
+        const obj = JSON.parse(s)
+        if (obj?.type !== 'bridge.acp') return
+        const notif = obj?.notification
+        if (!notif || typeof notif !== 'object') return
+        const sessionId = String(notif.sessionId || notif.session_id || '')
+        const targetThreadId = String(thread?.threadId || '')
+        if (!targetThreadId || sessionId !== targetThreadId) return
+        const update: SessionUpdate | undefined = notif.update
+        if (!update || typeof update !== 'object') return
+        setAcpEnabled(true)
+        setAcpRows((prev) => {
+          const next = [...prev]
+          if ((update as any).sessionUpdate === 'tool_call') {
+            const toolCall = update as any
+            const id: string | undefined = toolCall.toolCallId || toolCall.tool_call_id || undefined
+            if (id) {
+              const idx = toolCallIndexRef.current.get(id)
+              if (typeof idx === 'number') next[idx] = { key: `tool:${id}`, update }
+              else { toolCallIndexRef.current.set(id, next.length); next.push({ key: `tool:${id}`, update }) }
+              return next
+            }
+          }
+          next.push({ key: `${Date.now()}:${Math.random().toString(36).slice(2)}`, update })
+          return next
+        })
+      } catch {}
+    })
+    return () => { try { unsub?.() } catch {} }
+  }, [ws, thread?.threadId])
+
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -158,64 +206,31 @@ export default function ConvexThreadDetail() {
             </Pressable>
           )}
           {(() => {
+            // Force ACP: only show user-authored messages from Convex; render assistant/tooling via ACP updates
             const arr: any[] = (messages as any[]).slice(meta.count)
-            const lastIdx = new Map<string, number>()
-            arr.forEach((m, i) => {
-              const kind = m?.kind || (m?.role ? 'message' : 'item')
-              if (kind !== 'cmd') return
-              try {
-                const d = m.data || (typeof m.text === 'string' ? JSON.parse(m.text) : {})
-                const command = String(d.command || '')
-                if (command) lastIdx.set(command, i)
-              } catch {}
-            })
-            return arr.map((m: any, idx: number) => {
-              const kind = m.kind || (m.role ? 'message' : 'item')
-              if (kind === 'message') {
-                return (
-                  <Pressable key={m._id || `${m.threadId}-${m.ts}`}
-                    onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
-                    accessibilityRole="button"
-                    style={{ paddingVertical: 2 }}>
-                    {m.role === 'assistant' ? (
-                      <MarkdownBlock markdown={String(m.text || '')} />
-                    ) : (
-                      <UserMessageRow text={String(m.text || '')} />
-                    )}
-                  </Pressable>
-                )
-              }
-              if (kind === 'reason') {
-                return (
-                  <ReasoningHeadline key={m._id || `${m.threadId}-${m.ts}`} text={String(m.text || '')} />
-                )
-              }
-              if (kind === 'cmd') {
-                try {
-                  const d = m.data || (typeof m.text === 'string' ? JSON.parse(m.text) : {})
-                  const command = String(d.command || '')
-                  const status = String(d.status || '')
-                  const isLatest = command ? lastIdx.get(command) === idx : true
-                  if (!isLatest) return null
-                  return (
-                    <Pressable
-                      key={m._id || `${m.threadId}-${m.ts}`}
-                      onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
-                      accessibilityRole="button"
-                      style={{ paddingVertical: 2 }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{'>'}</Text>
-                        <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 12 }}>
-                          {command || 'shell'}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  )
-                } catch { return null }
-              }
-              return null
-            })
+            return (
+              <>
+                {arr.map((m: any) => {
+                  const kind = m.kind || (m.role ? 'message' : 'item')
+                  if (kind === 'message' && (m.role || '').toLowerCase() === 'user') {
+                    return (
+                      <Pressable key={m._id || `${m.threadId}-${m.ts}`}
+                        onPress={() => { try { router.push(`/convex/message/${encodeURIComponent(String(m._id || ''))}`) } catch {} }}
+                        accessibilityRole="button"
+                        style={{ paddingVertical: 2 }}>
+                        <UserMessageRow text={String(m.text || '')} />
+                      </Pressable>
+                    )
+                  }
+                  return null
+                })}
+                {acpRows.map((row) => (
+                  <View key={row.key} style={{ paddingVertical: 2 }}>
+                    <AcpUpdateRenderer update={row.update} />
+                  </View>
+                ))}
+              </>
+            )
           })()}
         </View>
       )}
@@ -255,4 +270,23 @@ export default function ConvexThreadDetail() {
       </KeyboardAvoidingView>
     </View>
   )
+}
+
+function AcpUpdateRenderer({ update }: { update: SessionUpdate }) {
+  switch ((update as any).sessionUpdate) {
+    case 'agent_message_chunk':
+      return <SessionUpdateAgentMessageChunk content={(update as any).content} />
+    case 'agent_thought_chunk':
+      return <SessionUpdateAgentThoughtChunk content={(update as any).content} />
+    case 'tool_call':
+      return <SessionUpdateToolCall {...(update as any)} />
+    case 'plan':
+      return <SessionUpdatePlan entries={(update as any).entries || []} />
+    case 'available_commands_update':
+      return <SessionUpdateAvailableCommandsUpdate available_commands={(update as any).available_commands || []} />
+    case 'current_mode_update':
+      return <SessionUpdateCurrentModeUpdate currentModeId={(update as any).currentModeId || (update as any).current_mode_id || ''} />
+    default:
+      return null
+  }
 }
