@@ -219,6 +219,7 @@ pub fn registry_skills_dirs() -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     fn write_skill(dir: &Path, folder: &str, yaml_fm: &str, body: &str) -> PathBuf {
         let root = dir.join(folder);
@@ -264,5 +265,26 @@ description: Desc
         write_skill(td.path(), "NotKebab", yaml, "");
         let items = list_skills_from_dir(td.path(), "user").expect("list ok");
         assert_eq!(items.len(), 0, "invalid skill should be skipped");
+    }
+
+    #[test]
+    #[serial]
+    fn registry_dirs_precedence_env_over_repo() {
+        // Ensure cwd has a ./skills directory but prefer env override
+        let td_env = tempfile::tempdir().unwrap();
+        let prev = std::env::var("OPENAGENTS_REGISTRY_SKILLS_DIR").ok();
+        unsafe { std::env::set_var("OPENAGENTS_REGISTRY_SKILLS_DIR", td_env.path()); }
+        let cwd = std::env::current_dir().unwrap();
+        let repo_skills = cwd.join("skills");
+        let _ = std::fs::create_dir_all(&repo_skills);
+        let dirs = registry_skills_dirs();
+        // First dir should be the env override.
+        assert!(dirs.first().map(|p| p == td_env.path()).unwrap_or(false));
+        // Cleanup env
+        match prev {
+            Some(v) => unsafe { std::env::set_var("OPENAGENTS_REGISTRY_SKILLS_DIR", v); },
+            None => unsafe { std::env::remove_var("OPENAGENTS_REGISTRY_SKILLS_DIR"); },
+        }
+        // Leave repo skills folder present; no harm.
     }
 }

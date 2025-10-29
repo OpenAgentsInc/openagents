@@ -822,4 +822,16 @@ mod tests {
         assert_eq!(resp.items[1].kind, "reason");
         assert_eq!(resp.items[1].text, "Why...");
     }
+
+    #[test]
+    fn derive_started_ts_from_filename_and_dirs() {
+        // From filename rollout-YYYY-MM-DDTHH-MM-SS
+        let p1 = std::path::Path::new("/tmp/rollout-2024-12-31T23-59-58-abc.jsonl");
+        let ts1 = derive_started_ts_from_path(p1);
+        assert!(ts1.is_some());
+        // From directories /YYYY/MM/DD/
+        let p2 = std::path::Path::new("/var/log/2023/07/04/rollout.jsonl");
+        let ts2 = derive_started_ts_from_path(p2);
+        assert!(ts2.is_some());
+    }
 }

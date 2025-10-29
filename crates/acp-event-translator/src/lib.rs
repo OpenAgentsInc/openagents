@@ -423,6 +423,74 @@ mod tests {
     }
 
     #[test]
+    fn codex_maps_command_execution_failed_without_output() {
+        let v = json!({
+            "type": "item.completed",
+            "item": {"id":"exec_fail","type":"command_execution","command":"exit 1","aggregated_output":"","status":"failed"}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::ToolCall(call) => {
+                assert_eq!(call.kind, ToolKind::Execute);
+                assert_eq!(call.status, ToolCallStatus::Failed);
+                assert!(call.content.is_empty(), "no text content expected when output empty");
+            }
+            _ => panic!("expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn codex_maps_file_change_multiple_locations() {
+        let v = json!({
+            "type": "item.completed",
+            "item": {"id":"file_multi","type":"file_change","status":"completed","changes":[
+                {"path":"src/a.rs","kind":"update"},
+                {"path":"src/b.rs","kind":"create"}
+            ]}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::ToolCall(call) => {
+                assert_eq!(call.kind, ToolKind::Edit);
+                assert_eq!(call.status, ToolCallStatus::Completed);
+                assert_eq!(call.locations.len(), 2);
+            }
+            _ => panic!("expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn codex_maps_web_search_title_fallback_when_query_missing() {
+        let v = json!({
+            "type": "item.completed",
+            "item": {"id":"search_x","type":"web_search"}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::ToolCall(call) => {
+                assert_eq!(call.kind, ToolKind::Search);
+                assert!(call.title.contains("Web search"));
+            }
+            _ => panic!("expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn codex_maps_empty_todo_list_to_empty_plan() {
+        let v = json!({
+            "type": "item.completed",
+            "item": {"id":"todo_empty","type":"todo_list","items":[]}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::Plan(plan) => {
+                assert_eq!(plan.entries.len(), 0);
+            }
+            _ => panic!("expected Plan"),
+        }
+    }
+
+    #[test]
     fn codex_ignores_unknown_events() {
         let v = json!({"type":"turn.started"});
         assert!(translate_codex_event_to_acp_update(&v).is_none());

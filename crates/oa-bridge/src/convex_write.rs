@@ -270,19 +270,19 @@ pub async fn mirror_acp_update_to_convex(
     fn v_arr(items: Vec<convex::Value>) -> convex::Value { convex::Value::from(items) }
 
     match update {
-        acp::SessionUpdate::UserMessageChunk(u) => {
+        acp::SessionUpdate::UserMessageChunk(_) => {
             // Usually written by the app via runs:enqueue; skip to avoid duplicate rows.
             let _ = state.tx.send(json!({
                 "type":"bridge.convex_write","op":"skip.user_message_chunk","threadId":thread_id
             }).to_string());
         }
-        acp::SessionUpdate::AgentMessageChunk(a) => {
+        acp::SessionUpdate::AgentMessageChunk(_) => {
             // Stream assistant text (JSONL path already handles this; skip to avoid duplication)
             let _ = state.tx.send(json!({
                 "type":"bridge.convex_write","op":"skip.agent_message_chunk","threadId":thread_id
             }).to_string());
         }
-        acp::SessionUpdate::AgentThoughtChunk(t) => {
+        acp::SessionUpdate::AgentThoughtChunk(_) => {
             // Stream reasoning text (JSONL path already handles this; skip to avoid duplication)
             let _ = state.tx.send(json!({
                 "type":"bridge.convex_write","op":"skip.agent_thought_chunk","threadId":thread_id
@@ -429,5 +429,46 @@ mod tests {
         assert!(!v.is_null());
         let e = convex_result_to_json(convex::FunctionResult::ErrorMessage("bad".into()));
         assert_eq!(e.get("$error").and_then(|x| x.as_str()), Some("bad"));
+    }
+
+    #[tokio::test]
+    async fn stream_upsert_emits_debug_when_convex_not_ready() {
+        use tokio::sync::{broadcast, Mutex};
+        let (tx, mut rx) = broadcast::channel(8);
+        let state = crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts: crate::Opts {
+                bind: "127.0.0.1:0".into(),
+                codex_bin: None,
+                codex_args: None,
+                extra: vec![],
+                bootstrap: false,
+                convex_bin: None,
+                convex_port: 0,
+                convex_db: None,
+                convex_interface: "127.0.0.1".into(),
+                manage_convex: false,
+                ws_token: Some("t".into()),
+            },
+            last_thread_id: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
+            current_convex_thread: Mutex::new(None),
+            stream_track: Mutex::new(std::collections::HashMap::new()),
+            convex_ready: std::sync::atomic::AtomicBool::new(false),
+        };
+        // Call with convex_ready=false triggers a debug write and returns
+        stream_upsert_or_append(&state, "th", "assistant", "hello").await;
+        // Receive at least one line
+        let msg = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        let v: serde_json::Value = serde_json::from_str(&msg).unwrap_or_default();
+        assert_eq!(v.get("type").and_then(|x| x.as_str()), Some("bridge.convex_write"));
+        assert_eq!(v.get("op").and_then(|x| x.as_str()), Some("upsertStreamed"));
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(false));
     }
 }
