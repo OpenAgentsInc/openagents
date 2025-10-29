@@ -126,6 +126,19 @@ export default function Onboarding() {
       {!!codeError && (
         <Text style={styles.errorText}>{codeError}</Text>
       )}
+      {/* Optional Bridge Token (required by desktop bridge by default) */}
+      <Text style={[styles.label, { marginTop: 6 }]}>Bridge Token</Text>
+      <View style={styles.inputWrapper}>
+        <TextInput
+          value={bridgeToken}
+          onChangeText={(v) => { try { setBridgeToken(v) } catch {} }}
+          autoCapitalize='none'
+          autoCorrect={false}
+          placeholder='Paste token from ~/.openagents/bridge.json'
+          placeholderTextColor={Colors.secondary}
+          style={[styles.input]}
+        />
+      </View>
       <View style={{ height: 12 }} />
       {/* Tailscale LocalAPI peers (Android best-effort) */}
       <TailscalePeers />
@@ -172,7 +185,11 @@ export default function Onboarding() {
         <Text style={styles.connectText}>{connected ? 'Connected' : (connecting ? 'Connecting…' : (codeError ? 'Fix Code' : 'Connect'))}</Text>
       </Pressable>
       {!!lastWsErrorText && !connected && (
-        <Text style={[styles.errorText, { marginTop: 8 }]}>{lastWsErrorText}</Text>
+        <Text style={[styles.errorText, { marginTop: 8 }]}>
+          {lastWsErrorText.includes('WebSocket closed')
+            ? `${lastWsErrorText} — check Bridge Token in Settings.`
+            : lastWsErrorText}
+        </Text>
       )}
       {/* Spacer to push dev tools button to bottom */}
       {isDevEnv ? <View style={{ flex: 1 }} /> : null}
