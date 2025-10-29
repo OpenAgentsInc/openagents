@@ -1,4 +1,5 @@
 import { queryGeneric, mutationGeneric } from "convex/server";
+import type { ToolCallContent, ToolCallLocation, ToolKind, ToolCallStatus } from '@agentclientprotocol/sdk'
 
 export const forThread = queryGeneric(async ({ db }, args: { threadId: string }) => {
   try {
@@ -20,12 +21,12 @@ export const upsert = mutationGeneric(async ({ db }, args: {
   threadId: string;
   toolCallId: string;
   title: string;
-  kind: string;
-  status: string;
+  kind: ToolKind;
+  status: ToolCallStatus;
   // Accept either pre-parsed arrays or JSON strings from upstream
-  content?: any[];
+  content?: ToolCallContent[];
   content_json?: string;
-  locations?: { path: string; line?: number }[];
+  locations?: ToolCallLocation[];
   locations_json?: string;
   // Typed, flattened vectors as an alternative to JSON/object arrays
   content_texts?: string[];
@@ -41,33 +42,33 @@ export const upsert = mutationGeneric(async ({ db }, args: {
     if (!s || typeof s !== 'string') return undefined as any;
     try { const v = JSON.parse(s); return Array.isArray(v) ? v : undefined as any } catch { return undefined as any }
   };
-  const typedContent = (() => {
-    if (Array.isArray(args.content)) return args.content as any[];
+  const typedContent: ToolCallContent[] | undefined = (() => {
+    if (Array.isArray(args.content)) return args.content as ToolCallContent[];
     if (Array.isArray(args.content_texts) && args.content_texts.length) {
-      return (args.content_texts as string[]).map((text) => ({ type: 'content', content: { type: 'text', text } }));
+      return (args.content_texts as string[]).map((text) => ({ type: 'content', content: { type: 'text', text } })) as ToolCallContent[];
     }
     // Merge diff vectors into content entries if present
     if (Array.isArray(args.content_diff_paths) && Array.isArray(args.content_diff_new_texts) && args.content_diff_paths.length === args.content_diff_new_texts.length) {
-      const diffs = (args.content_diff_paths as string[]).map((path, i) => ({ type: 'diff', path, newText: (args.content_diff_new_texts as string[])[i], oldText: Array.isArray(args.content_diff_old_texts) ? (args.content_diff_old_texts as (string | null)[])[i] ?? undefined : undefined }));
-      const base: any[] = [];
+      const diffs = (args.content_diff_paths as string[]).map((path, i) => ({ type: 'diff', path, newText: (args.content_diff_new_texts as string[])[i], oldText: Array.isArray(args.content_diff_old_texts) ? (args.content_diff_old_texts as (string | null)[])[i] ?? undefined : undefined } as any));
+      const base: ToolCallContent[] = [] as any;
       base.push(...diffs);
       return base;
     }
     // Terminal content embedding
     if (Array.isArray(args.content_terminal_ids) && args.content_terminal_ids.length) {
-      const t = (args.content_terminal_ids as string[]).map((terminalId) => ({ type: 'terminal', terminalId }));
-      return t as any[];
+      const t = (args.content_terminal_ids as string[]).map((terminalId) => ({ type: 'terminal', terminalId } as any));
+      return t as unknown as ToolCallContent[];
     }
-    return parseJsonArray(args.content_json);
+    return parseJsonArray(args.content_json) as unknown as ToolCallContent[] | undefined;
   })();
-  const typedLocs = (() => {
-    if (Array.isArray(args.locations)) return args.locations as any[];
+  const typedLocs: ToolCallLocation[] | undefined = (() => {
+    if (Array.isArray(args.locations)) return args.locations as ToolCallLocation[];
     const paths = Array.isArray(args.locations_paths) ? args.locations_paths : [];
     const lines = Array.isArray(args.locations_lines) ? args.locations_lines : [];
     if (paths.length && (lines.length === 0 || lines.length === paths.length)) {
       return paths.map((path, i) => ({ path, line: typeof lines[i] === 'number' ? Number(lines[i]) : undefined }));
     }
-    return parseJsonArray(args.locations_json);
+    return parseJsonArray(args.locations_json) as unknown as ToolCallLocation[] | undefined;
   })();
   let rows: any[] = [];
   try {

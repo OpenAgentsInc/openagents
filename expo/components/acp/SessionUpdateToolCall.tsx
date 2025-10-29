@@ -2,7 +2,7 @@ import React from 'react'
 import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
-import type { ToolCall, ToolCallContent as ToolCallContentType, ContentBlock } from '@/types/acp'
+import type { ToolCallLike, ToolCallContent as ToolCallContentType, ContentBlock } from '@/types/acp'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { ContentText } from './ContentText'
 import { ContentImage } from './ContentImage'
@@ -12,7 +12,7 @@ import { ContentResourceLink } from './ContentResourceLink'
 import { ToolCallContentDiff } from './ToolCallContentDiff'
 import { ToolCallContentTerminal } from './ToolCallContentTerminal'
 
-export function SessionUpdateToolCall(props: ToolCall) {
+export function SessionUpdateToolCall(props: ToolCallLike) {
   const icon = iconForKind(props.kind)
   const statusColor = colorForStatus(props.status)
   return (
@@ -68,7 +68,7 @@ function InlineContent({ block }: { block: ContentBlock }) {
   }
 }
 
-function colorForStatus(status: ToolCall['status']): string {
+function colorForStatus(status: ToolCallLike['status']): string {
   switch (status) {
     case 'completed':
       return Colors.success
@@ -82,7 +82,7 @@ function colorForStatus(status: ToolCall['status']): string {
   }
 }
 
-function iconForKind(kind: ToolCall['kind']): any {
+function iconForKind(kind: ToolCallLike['kind']): any {
   switch (kind) {
     case 'execute':
       return 'console'

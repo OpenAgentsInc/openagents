@@ -1,75 +1,36 @@
-// Minimal ACP type shapes used by the UI components
+// Central ACP types module
+// Re-export the official ACP TypeScript SDK types so UI and Convex code stay
+// aligned with the spec. Add local helpers and aliases here if we need to
+// extend shapes for app concerns.
 
-export type Role = 'assistant' | 'user'
+export type {
+  // Top-level protocol and update shapes
+  SessionNotification,
+  // Content
+  ContentBlock,
+  // Tool call content and metadata
+  ToolCallContent,
+  ToolCallStatus,
+  ToolKind,
+  ToolCallLocation,
+  // Plan and commands
+  PlanEntry,
+  AvailableCommand,
+} from '@agentclientprotocol/sdk'
 
-// Content blocks
-export type TextContent = { type: 'text'; text: string }
-export type ImageContent = { type: 'image'; data: string; mimeType: string; uri?: string | null }
-export type AudioContent = { type: 'audio'; data: string; mimeType: string }
-export type ResourceLink = {
-  type: 'resource_link'
-  name: string
-  uri: string
-  mimeType?: string | null
-  description?: string | null
-  title?: string | null
-  size?: number | null
-}
-export type TextResourceContents = { text: string; uri: string; mimeType?: string | null }
-export type BlobResourceContents = { blob: string; uri: string; mimeType?: string | null }
-export type EmbeddedResource = {
-  type: 'resource'
-  resource: TextResourceContents | BlobResourceContents
-}
+// Convenient aliases for common discriminated unions
+import type { SessionNotification as _SN } from '@agentclientprotocol/sdk'
 
-export type ContentBlock = TextContent | ImageContent | AudioContent | ResourceLink | EmbeddedResource
+export type SessionUpdate = _SN['update']
+export type AgentMessageChunk = Extract<_SN['update'], { sessionUpdate: 'agent_message_chunk' }>
+export type AgentThoughtChunk = Extract<_SN['update'], { sessionUpdate: 'agent_thought_chunk' }>
+export type UserMessageChunk = Extract<_SN['update'], { sessionUpdate: 'user_message_chunk' }>
+export type ToolCallCreate = Extract<_SN['update'], { sessionUpdate: 'tool_call' }>
+export type ToolCallUpdate = Extract<_SN['update'], { sessionUpdate: 'tool_call_update' }>
+export type PlanUpdate = Extract<_SN['update'], { sessionUpdate: 'plan' }>
+export type AvailableCommandsUpdate = Extract<_SN['update'], { sessionUpdate: 'available_commands_update' }>
+export type CurrentModeUpdate = Extract<_SN['update'], { sessionUpdate: 'current_mode_update' }>
 
-// Tool call content
-export type Diff = { path: string; oldText?: string | null; newText: string }
-export type ToolCallContent =
-  | { type: 'content'; content: ContentBlock }
-  | ({ type: 'diff' } & Diff)
-  | { type: 'terminal'; terminalId: string }
-
-export type ToolKind =
-  | 'read'
-  | 'edit'
-  | 'delete'
-  | 'move'
-  | 'search'
-  | 'execute'
-  | 'think'
-  | 'fetch'
-  | 'switch_mode'
-  | 'other'
-
-export type ToolCallStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
-
-export type ToolCallLocation = { path: string; line?: number | null }
-
-export type ToolCall = {
-  toolCallId?: string
-  title: string
-  kind: ToolKind
-  status: ToolCallStatus
-  content?: ToolCallContent[]
-  locations?: ToolCallLocation[]
-}
-
-export type PlanEntry = {
-  content: string
-  priority: 'high' | 'medium' | 'low'
-  status: 'pending' | 'in_progress' | 'completed'
-}
-
-export type Plan = { entries: PlanEntry[] }
-
-// Session updates
-export type SessionUpdate =
-  | { sessionUpdate: 'user_message_chunk'; content: ContentBlock }
-  | { sessionUpdate: 'agent_message_chunk'; content: ContentBlock }
-  | { sessionUpdate: 'agent_thought_chunk'; content: ContentBlock }
-  | ({ sessionUpdate: 'tool_call' } & ToolCall)
-  | { sessionUpdate: 'plan'; entries: PlanEntry[] }
-  | { sessionUpdate: 'available_commands_update'; available_commands: { name: string; description: string }[] }
-  | { sessionUpdate: 'current_mode_update'; currentModeId: string }
+// Normalized props expected by some UI components
+// For rendering a tool call row, we only need a subset of fields.
+export type ToolCallLike = Pick<ToolCallCreate, 'title' | 'status' | 'kind' | 'content' | 'locations'>
