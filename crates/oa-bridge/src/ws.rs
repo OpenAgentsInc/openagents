@@ -309,13 +309,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     pending.insert(thread_doc_id.clone(), text.clone());
                                 }
                                 // Emit a synthetic ACP event for user_message_chunk as a bridge.acp once session id is known (on thread.started below)
-                                // Only resume when we have an explicit id or a captured last thread
-                                let last_id = { stdin_state.last_thread_id.lock().await.clone() };
+                                // Determine per-thread resume target
+                                let per_thread_last = {
+                                    let map = stdin_state.sessions_by_client_doc.lock().await;
+                                    map.get(&thread_doc_id).cloned()
+                                };
+                                let global_last = { stdin_state.last_thread_id.lock().await.clone() };
                                 let resume_arg = match resume_id.as_deref() {
                                     Some("new") | Some("none") => None,
-                                    Some("last") => last_id,
+                                    Some("last") => per_thread_last.or(global_last),
                                     Some(s) if !s.is_empty() => Some(s.to_string()),
-                                    _ => last_id,
+                                    _ => per_thread_last.or(global_last),
                                 };
                                 let use_resume = resume_arg.is_some();
                                 match spawn_codex_child_with_prompt(
@@ -470,6 +474,7 @@ mod auth_tests {
             current_convex_thread: Mutex::new(None),
             stream_track: Mutex::new(std::collections::HashMap::new()),
             pending_user_text: Mutex::new(std::collections::HashMap::new()),
+            sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
             convex_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: std::sync::Arc::new(tvx),
         })
@@ -609,6 +614,11 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             "clientThreadDocId": client_doc
                         }).to_string();
                         let _ = tx_out.send(map_evt);
+                        // Update per-thread mapping for resume on subsequent submits for this client thread
+                        if let Some(client_doc_str) = client_doc.clone() {
+                            let mut map = state_for_stdout.sessions_by_client_doc.lock().await;
+                            map.insert(client_doc_str, val.to_string());
+                        }
                         // If we have a pending user text for this client thread doc id, emit ACP and write to Tinyvex acp_events
                         if let Some(client_doc_str) = client_doc.clone() {
                             if let Some(user_text) = { state_for_stdout.pending_user_text.lock().await.remove(&client_doc_str) } {

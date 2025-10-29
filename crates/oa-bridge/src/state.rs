@@ -47,6 +47,8 @@ pub struct AppState {
     pub convex_ready: AtomicBool,
     // Tinyvex database (mandatory)
     pub tinyvex: std::sync::Arc<tinyvex::Tinyvex>,
+    // Map client thread doc id -> last known session id (for per-thread resume)
+    pub sessions_by_client_doc: Mutex<HashMap<String, String>>,
 }
 
 impl AppState {

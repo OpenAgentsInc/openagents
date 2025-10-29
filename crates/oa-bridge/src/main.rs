@@ -134,6 +134,7 @@ async fn main() -> Result<()> {
         pending_user_text: Mutex::new(std::collections::HashMap::new()),
         convex_ready: std::sync::atomic::AtomicBool::new(true),
         tinyvex,
+        sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
     });
 
 
