@@ -1,6 +1,6 @@
 import "@/utils/gestureHandler"
 import "@/utils/global-error"
-import { useQuery } from "convex/react"
+// import { useQuery } from "convex/react"
 import * as Haptics from "expo-haptics"
 import { Stack, useRouter } from "expo-router"
 import * as Linking from 'expo-linking'
@@ -21,7 +21,7 @@ import {
 import { useAutoUpdate } from "@/hooks/use-auto-update"
 import { useAppLogStore } from "@/lib/app-log"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
-import { ConvexProviderLocal } from "@/providers/convex"
+import { TinyvexProvider, useTinyvex } from "@/providers/tinyvex"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { ProjectsProvider } from "@/providers/projects"
 import { SkillsProvider } from "@/providers/skills"
@@ -35,18 +35,19 @@ import { ErrorBoundary } from "@/components/error-boundary"
 function DrawerContent() {
   const router = useRouter();
   const { setOpen } = useDrawer();
-  // Convex-only history
-  const convexThreads = (useQuery as any)('threads:listWithCounts', {}) as any[] | undefined | null
+  // Tinyvex history
+  const { threads, subscribeThreads, queryThreads } = useTinyvex()
+  React.useEffect(() => { queryThreads(50); subscribeThreads(); }, [])
   const topThreads = React.useMemo(() => {
-    if (!Array.isArray(convexThreads)) return null
-    const copy = convexThreads.slice()
+    if (!Array.isArray(threads)) return null
+    const copy = threads.slice()
     copy.sort((a: any, b: any) => {
-      const at = (a?.updatedAt ?? a?.createdAt ?? 0) as number
-      const bt = (b?.updatedAt ?? b?.createdAt ?? 0) as number
+      const at = (a?.updated_at ?? a?.updatedAt ?? a?.created_at ?? a?.createdAt ?? 0) as number
+      const bt = (b?.updated_at ?? b?.updatedAt ?? b?.created_at ?? b?.createdAt ?? 0) as number
       return bt - at
     })
     return copy.slice(0, 10)
-  }, [convexThreads])
+  }, [threads])
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
@@ -84,26 +85,16 @@ function DrawerContent() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="time-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>History</Text>
-              {convexThreads === undefined ? (
-                <ActivityIndicator size="small" color={Colors.secondary} style={{ transform: [{ scale: 0.75 }] }} />
-              ) : null}
+              {/* Tinyvex snapshot loads quickly; spinner optional */}
             </View>
-            {Array.isArray(convexThreads) && (
+            {Array.isArray(threads) && (
               (topThreads?.length ?? 0) === 0 ? (
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
                 (topThreads || []).map((row: any) => (
-                  <View key={String(row._id || row.id)} style={{ paddingVertical: 2 }}>
-                    {(() => {
-                      const Comp = require('@/components/drawer/ThreadListItem').DrawerThreadItem as any
-                      return (
-                        <Comp
-                          row={row}
-                          onPress={closeAnd(() => router.push(`/convex/thread/${encodeURIComponent(row._id || row.id)}`))}
-                        />
-                      )
-                    })()}
-                  </View>
+                  <Pressable key={String(row.id)} onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}` as any))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+                    <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }} numberOfLines={1}>{row.title || 'Thread'}</Text>
+                  </Pressable>
                 ))
               )
             )}
@@ -213,7 +204,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={NavigationTheme}>
         <BridgeProvider>
-          <ConvexProviderLocal>
+          <TinyvexProvider>
             <ProjectsProvider>
               <SkillsProvider>
                 <DrawerProvider>
@@ -222,7 +213,7 @@ export default function RootLayout() {
                 </DrawerProvider>
               </SkillsProvider>
             </ProjectsProvider>
-          </ConvexProviderLocal>
+          </TinyvexProvider>
         </BridgeProvider>
       </ThemeProvider>
     </SafeAreaProvider>
