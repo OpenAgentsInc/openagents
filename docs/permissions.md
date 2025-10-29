@@ -88,7 +88,7 @@ Append raw flags with `CODEX_ARGS`, e.g.:
 
 ```
 CODEX_ARGS='--sandbox workspace-write --ask-for-approval on-request' \
-  cargo run -p codex-bridge -- --bind 0.0.0.0:8787
+  cargo run -p oa-bridge -- --bind 0.0.0.0:8787
 ```
 
 If you pass `CODEX_ARGS`, the bridge keeps your values and only adds missing essentials.

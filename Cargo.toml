@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/codex-bridge",
+    "crates/oa-bridge",
     "crates/acp-event-translator",
     "crates/copy-sources",
     "crates/oa-validate",

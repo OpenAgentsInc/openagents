@@ -413,38 +413,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-bridge"
-version = "0.1.0"
-dependencies = [
- "acp-event-translator",
- "agent-client-protocol",
- "anyhow",
- "axum",
- "chrono",
- "clap",
- "convex",
- "futures",
- "getrandom 0.3.4",
- "jsonschema",
- "libc",
- "maplit",
- "notify",
- "rand",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "shlex",
- "tempfile",
- "tokio",
- "tokio-tungstenite 0.28.0",
- "tracing",
- "tracing-subscriber",
- "which",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1758,6 +1726,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "oa-bridge"
+version = "0.1.0"
+dependencies = [
+ "acp-event-translator",
+ "agent-client-protocol",
+ "anyhow",
+ "axum",
+ "chrono",
+ "clap",
+ "convex",
+ "futures",
+ "getrandom 0.3.4",
+ "jsonschema",
+ "libc",
+ "maplit",
+ "notify",
+ "rand",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shlex",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.28.0",
+ "tracing",
+ "tracing-subscriber",
+ "which",
 ]
 
 [[package]]

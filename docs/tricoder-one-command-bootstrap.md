@@ -12,7 +12,7 @@ This doc captures constraints, options, risks, and a pragmatic implementation pl
 - Clear, concise console output; actionable errors, no walls of logs
 - Re‑runnable: subsequent runs should be fast (reuse cached artifacts)
 - Respect repo policies:
-  - Rust bridge (`codex-bridge`) is the only `/ws` server
+  - Rust bridge (`oa-bridge`) is the only `/ws` server
   - No HTTP control; bridge control only via WebSocket messages
 
 ## Outcomes (Happy Path)
@@ -34,7 +34,7 @@ This doc captures constraints, options, risks, and a pragmatic implementation pl
 
 ## Platform Matrix and Strategy
 
-We need two Rust binaries: `codex-bridge` and `oa-tunnel`.
+We need two Rust binaries: `oa-bridge` and `oa-tunnel`.
 
 Order of preference per platform:
 
@@ -58,7 +58,7 @@ Binary distribution:
 
 Cache locations:
 - `OPENAGENTS_HOME` (default: `~/.openagents`)
-- Place binaries in `~/.openagents/bin/` (e.g., `codex-bridge`, `oa-tunnel`)
+- Place binaries in `~/.openagents/bin/` (e.g., `oa-bridge`, `oa-tunnel`)
 - Mark executable; never install system‑wide; never require `sudo`
 
 ## Boot Flow (proposed)
@@ -71,13 +71,13 @@ Cache locations:
 2) Resolve binaries
    - If prebuilt found in cache and matching version → use
    - Else if allowed to download → fetch from GitHub Releases, verify checksum, cache
-   - Else if allowed to build → ensure `rustup` installed (install if user consents), then `cargo build -p codex-bridge -p oa-tunnel`
+   - Else if allowed to build → ensure `rustup` installed (install if user consents), then `cargo build -p oa-bridge -p oa-tunnel`
      - Concurrency caps: `CARGO_BUILD_JOBS` (default 2 on Linux), and sequential builds to avoid spikes
      - Surface progress, ETA, and a cancel hint
    - If none possible → fail with clear guidance
 
 3) Start local services
-   - Start `codex-bridge` bound to `0.0.0.0:8787` (default)
+   - Start `oa-bridge` bound to `0.0.0.0:8787` (default)
    - Health probe via WS; print status
 
 4) Optional tunnels (skip with `--local-only`)
@@ -137,7 +137,7 @@ Cache locations:
 
 ## Uninstall / Cleanup
 
-- `npx tricoder --uninstall` removes `~/.openagents/bin/{codex-bridge,oa-tunnel}` and cache entries after confirmation
+- `npx tricoder --uninstall` removes `~/.openagents/bin/{oa-bridge,oa-tunnel}` and cache entries after confirmation
 
 ## Failure Modes and Messages
 
@@ -149,7 +149,7 @@ Cache locations:
 ## Implementation Plan (phased)
 
 Phase 1: Prebuilt binary bootstrap
-- Add GitHub Actions to build and publish `codex-bridge` and `oa-tunnel` for the target matrix with checksums
+- Add GitHub Actions to build and publish `oa-bridge` and `oa-tunnel` for the target matrix with checksums
 - Update `packages/tricoder` to:
   - Detect repo vs non‑repo run
   - Resolve binaries (cache → download → build)
@@ -192,7 +192,7 @@ Notes related to the incident: On Linux, running multiple `cargo run` processes 
   - If Rust is present, build sequentially with capped jobs; never spawn concurrent `cargo run` builds.
 
 - Detection logic (repo vs non‑repo)
-  - Inside repo: use workspace `cargo run -p codex-bridge` and `-p oa-tunnel` for dev ergonomics.
+  - Inside repo: use workspace `cargo run -p oa-bridge` and `-p oa-tunnel` for dev ergonomics.
   - Outside repo: never require cloning; resolve to cached or downloaded binaries. Only fall back to building if the user explicitly opts in or `--force-build` is set.
 
 - Convex bootstrap

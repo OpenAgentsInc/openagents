@@ -7,7 +7,7 @@ title: Tricoder Architecture & Performance Notes
 This repo implements the Tricoder “mobile command center” as two cooperating layers:
 
 1. **Expo app (`expo/`)** – Presents agent sessions, history, and controls. It consumes structured Codex JSONL events and renders them as streaming UI rows and cards.
-2. **Codex bridge (`crates/codex-bridge/`)** – An Axum-based WebSocket service that launches `codex exec --json`, forwards stdout/stderr to clients, and relays user prompts via stdin.
+2. **OpenAgents bridge (`crates/oa-bridge/`)** – An Axum-based WebSocket service that launches `codex exec --json`, forwards stdout/stderr to clients, and relays user prompts via stdin.
 
 Understanding how these pieces interact is critical for maintaining responsiveness and reliability, especially when updates try to squeeze more throughput out of the same architecture.
 
@@ -37,7 +37,7 @@ Understanding how these pieces interact is critical for maintaining responsivene
 
 ## Codex Bridge Overview
 
-- **Binary Launch** – `crates/codex-bridge/src/main.rs` spawns Codex with enforced flags:
+- **Binary Launch** – `crates/oa-bridge/src/main.rs` spawns Codex with enforced flags:
   - `--dangerously-bypass-approvals-and-sandbox`, `-s danger-full-access`, `-m gpt-5`, plus `-c model_reasoning_effort=high`.
   - A repo root heuristic ensures the child process starts from the project root (needed for file edits and commands).
 - **WebSocket Fanout** – Axum routes `/ws` connections into a broadcast channel so every client shares a single Codex child. New clients receive the replay buffer (`MAX_HISTORY_LINES` default 2000) before live streaming begins.
@@ -46,7 +46,7 @@ Understanding how these pieces interact is critical for maintaining responsivene
   - Interrupts (`{"control":"interrupt"}`) send a SIGINT-equivalent via a tracked PID if the child is busy.
 - **History & Metadata**:
   - History queries hit `~/.codex/sessions` using `HistoryCache`, which rate-limits scans to keep UI fetches cheap.
-  - Projects/skills controls round-trip through `~/.openagents/projects` and `~/.openagents/skills`, respecting JSON Schema validation defined in `crates/codex-bridge/schemas/`.
+  - Projects/skills controls round-trip through `~/.openagents/projects` and `~/.openagents/skills`, respecting JSON Schema validation defined in `crates/oa-bridge/schemas/`.
   - `watch_skills_and_broadcast` monitors skill directories so updates appear in-app without manual refresh.
 - **Performance Protections**:
   - `summarize_exec_delta_for_log` collapses huge `exec_command_output_delta` arrays before logging, keeping STDIN watchers and TTY output responsive.

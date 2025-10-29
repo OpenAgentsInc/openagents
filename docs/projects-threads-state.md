@@ -22,7 +22,7 @@ This document explains how the mobile app and the Rust bridge currently manage s
   - `loadHistory(wsUrl)`: `GET /history` via the bridge, caches to `AsyncStorage`, and updates `history`.
   - `loadThread(wsUrl, id, path?)`: `GET /thread?id=…` (and optional `path=`) to fetch the parsed transcript for a single thread file.
   - The store is read from the Drawer “History” list and the Thread detail view.
-- Bridge: `crates/codex-bridge/src/history.rs`
+- Bridge: `crates/oa-bridge/src/history.rs`
   - `/history` scans `~/.codex/sessions` for the latest JSONL files in the new event format and returns a compact list (id, path, mtime, title, snippet).
   - `/thread` parses one JSONL file and returns `{ title, items, instructions? }` using the new Codex shapes (`response_item`, `event_msg`) and the legacy `item.*` fallback.
 
@@ -46,7 +46,7 @@ This document explains how the mobile app and the Rust bridge currently manage s
 
 ## Working Directory Semantics (Bridge + App)
 - If an active project has `workingDir`, `sendForProject` includes `cd` in the first‑line JSON.
-- Bridge behavior (`crates/codex-bridge/src/main.rs`):
+- Bridge behavior (`crates/oa-bridge/src/main.rs`):
   - Parses the first‑line JSON for `cd` and `resume` on each incoming payload.
   - Expands `~`/`~/` (`expand_home`) and respawns the Codex CLI with that working directory.
   - If no `cd` is provided, it uses a default detection heuristic (`detect_repo_root`) that prefers the nearest ancestor containing both `expo/` and `crates/`; otherwise it falls back to the current process directory.
@@ -81,7 +81,7 @@ Observed: Pressing the “New thread” button takes you to the thread screen bu
 
 Root cause
 - UI action: The header button triggers `clearLog()` and navigates to `/thread?focus=1` (see `expo/components/app-header.tsx`). This clears the in‑memory feed only; it does not inform the bridge to start a new thread.
-- Bridge default: The bridge remembers the last `thread_id` it saw (`last_thread_id`) and on subsequent prompts will implicitly resume that thread unless the payload explicitly requests otherwise. See `crates/codex-bridge/src/main.rs`:
+- Bridge default: The bridge remembers the last `thread_id` it saw (`last_thread_id`) and on subsequent prompts will implicitly resume that thread unless the payload explicitly requests otherwise. See `crates/oa-bridge/src/main.rs`:
   - `extract_resume_from_ws_payload` reads `resume` from the first JSON line.
   - If `resume` is missing, it falls back to `last_thread_id` and respawns Codex with `exec resume <id>`.
   - If `resume` is "new" or "none", it suppresses resume and starts a fresh thread.
@@ -101,7 +101,7 @@ Relevant code pointers
 - `expo/components/app-header.tsx` (`onNewChat` uses `clearLog()` + `router.push('/thread?focus=1')`).
 - `expo/providers/ws.tsx` provides `resumeNextId` and `setResumeNextId`.
 - `expo/providers/projects.tsx` composes the first‑line JSON, including `resume` when `resumeNextId` is set.
-- `crates/codex-bridge/src/main.rs`:
+- `crates/oa-bridge/src/main.rs`:
   - `extract_resume_from_ws_payload()` parsing,
   - resume decision logic and `last_thread_id` fallback,
   - stdout handler capturing `thread.started` to update `last_thread_id`.

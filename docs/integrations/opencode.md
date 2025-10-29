@@ -1,6 +1,6 @@
 # OpenCode Integration Plan
 
-This document proposes how to support OpenCode in the OpenAgents mobile app and Rust bridge, alongside the existing OpenAI Codex CLI integration. It surveys OpenCode’s architecture, identifies the best integration points, defines an adapter strategy in the bridge, and outlines a phased rollout plan. All events emitted to the app will conform to the unified, canonical ThreadEvent schema described in docs/integrations/README.md and implemented in crates/codex-bridge/src/events.rs.
+This document proposes how to support OpenCode in the OpenAgents mobile app and Rust bridge, alongside the existing OpenAI Codex CLI integration. It surveys OpenCode’s architecture, identifies the best integration points, defines an adapter strategy in the bridge, and outlines a phased rollout plan. All events emitted to the app will conform to the unified, canonical ThreadEvent schema described in docs/integrations/README.md and implemented in crates/oa-bridge/src/events.rs.
 
 ## Goals
 
@@ -38,7 +38,7 @@ Implications:
 
 ## Current Bridge Behavior (baseline)
 
-- The Rust bridge (`crates/codex-bridge/src/main.rs:1`) spawns `codex exec --json` and fans out the child’s stdout/stderr lines to all WebSocket clients.
+- The Rust bridge (`crates/oa-bridge/src/main.rs:1`) spawns `codex exec --json` and fans out the child’s stdout/stderr lines to all WebSocket clients.
 - The app sends control messages (e.g., `{ "control": "run.submit", ... }`) over the WS; the bridge writes the prompt to the child’s stdin and closes it to signal EOF.
 - Resume semantics: the bridge will auto‑append `resume --last` when supported and respawn the child per prompt.
 
@@ -166,6 +166,6 @@ We will reuse current controls where feasible and add OpenCode‑specific ones c
 File references (for contributors):
 - OpenCode server: `~/code/opencode/packages/opencode/src/server/server.ts:1`
 - OpenCode messages: `~/code/opencode/packages/opencode/src/session/message-v2.ts:1`
-- Canonical event types: `crates/codex-bridge/src/events.rs:1`
+- Canonical event types: `crates/oa-bridge/src/events.rs:1`
 - App parser: `expo/lib/codex-events.ts:1`
 - Existing JSONL contract: `docs/exec-jsonl-schema.md:1`

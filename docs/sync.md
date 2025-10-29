@@ -34,17 +34,17 @@ Architecture At A Glance
 
 Key Codepaths (by layer)
 - Bridge
-  - WebSocket and process orchestration: `crates/codex-bridge/src/ws.rs`
-  - Projects (FS schema + IO): `crates/codex-bridge/src/projects.rs:1`
-  - Skills (FS schema + IO): `crates/codex-bridge/src/skills.rs:1`
-  - JSONL history parsing: `crates/codex-bridge/src/history.rs:1`
+  - WebSocket and process orchestration: `crates/oa-bridge/src/ws.rs`
+  - Projects (FS schema + IO): `crates/oa-bridge/src/projects.rs:1`
+  - Skills (FS schema + IO): `crates/oa-bridge/src/skills.rs:1`
+  - JSONL history parsing: `crates/oa-bridge/src/history.rs:1`
   - Convex write points (threads/messages during stream):
-    - Helpers in `crates/codex-bridge/src/convex_write.rs` (upsert/finalize, log compaction)
+    - Helpers in `crates/oa-bridge/src/convex_write.rs` (upsert/finalize, log compaction)
     - The stdout forwarder in `ws.rs` invokes those helpers when mapping assistant/reasoning and tool rows
   - FS→Convex sync (Projects/Skills):
-    - `crates/codex-bridge/src/watchers.rs` (sync + notify watchers)
+    - `crates/oa-bridge/src/watchers.rs` (sync + notify watchers)
   - Historical backfill (Codex JSONL → Convex):
-    - Startup backfill queue: `crates/codex-bridge/src/watchers.rs` (`enqueue_historical_on_start`)
+    - Startup backfill queue: `crates/oa-bridge/src/watchers.rs` (`enqueue_historical_on_start`)
     - On‑demand WS control `{"control":"convex.backfill"}`: handler in `ws.rs`
   - Run submission (Bridge spawns Codex and writes stdin): control `run.submit` handled in `ws.rs` using `codex_runner.rs`
 
@@ -82,13 +82,13 @@ Data Model Conventions
 Live Flow (Bridge‑originated runs)
 1) App enqueues a run in Convex for UI immediacy: `runs:enqueue` (writes the user message immediately so the transcript updates) — `convex/runs.ts:1`.
 2) App sends `{"control":"run.submit", ...}` over Bridge WS with the Convex thread doc id and optional project — `expo/app/convex/thread/[id].tsx:52`.
-3) Bridge spawns Codex with working dir/project context and writes a one‑line JSON config + the user text to stdin. See `crates/codex-bridge/src/main.rs:720`.
-4) As Codex streams JSONL events, the Bridge forwards lines to WS clients and mirrors agent/user/reasoning/command items into Convex messages — `crates/codex-bridge/src/main.rs:1196`.
+3) Bridge spawns Codex with working dir/project context and writes a one‑line JSON config + the user text to stdin. See `crates/oa-bridge/src/main.rs:720`.
+4) As Codex streams JSONL events, the Bridge forwards lines to WS clients and mirrors agent/user/reasoning/command items into Convex messages — `crates/oa-bridge/src/main.rs:1196`.
 5) UIs subscribe to Convex and update live; no direct REST to the Bridge is used.
 
 Historical Flow (external or prior runs)
-- On start, the Bridge scans Codex sessions (`~/.codex/sessions`) and upserts the newest threads/messages into Convex — `crates/codex-bridge/src/main.rs:1458`.
-- At any time, a WS control `{ "control": "convex.backfill" }` triggers a larger parse + upsert pass — `crates/codex-bridge/src/main.rs:594`.
+- On start, the Bridge scans Codex sessions (`~/.codex/sessions`) and upserts the newest threads/messages into Convex — `crates/oa-bridge/src/main.rs:1458`.
+- At any time, a WS control `{ "control": "convex.backfill" }` triggers a larger parse + upsert pass — `crates/oa-bridge/src/main.rs:594`.
 
 What’s Working Well
 - Low‑latency live updates: runs submitted through our Bridge appear instantly in Mobile/Desktop via Convex subscriptions.
@@ -147,9 +147,9 @@ Quick References (files)
 - Bridge provider (WS): `expo/providers/ws.tsx:1`
 - Convex provider (URL derivation): `expo/providers/convex.tsx:1`
 - Thread screen (send/subscribe): `expo/app/convex/thread/[id].tsx:1`
-- Bridge JSONL → Convex writes: `crates/codex-bridge/src/convex_write.rs` (called from `ws.rs`)
-- Projects/Skills/Sessions watchers: `crates/codex-bridge/src/watchers.rs`
-- Historical backfill entry: `crates/codex-bridge/src/watchers.rs` (`enqueue_historical_on_start`)
+- Bridge JSONL → Convex writes: `crates/oa-bridge/src/convex_write.rs` (called from `ws.rs`)
+- Projects/Skills/Sessions watchers: `crates/oa-bridge/src/watchers.rs`
+- Historical backfill entry: `crates/oa-bridge/src/watchers.rs` (`enqueue_historical_on_start`)
 
 FAQ
 - Q: Why do some threads use a Convex doc `_id` as `threadId` and others a UUID from Codex?
@@ -163,14 +163,14 @@ Structure Recommendations (reduce file bloat)
 - Goal: improve maintainability and avoid oversized single files by splitting domains and responsibilities. The structure below keeps syncing logic cohesive and testable.
 
 - Bridge (Rust)
-  - Split `crates/codex-bridge/src/main.rs` into modules:
+- Split `crates/oa-bridge/src/main.rs` into modules:
     - `ws.rs` — Axum WebSocket server + control routing
     - `codex_runner.rs` — spawn/respawn, stdin/stdout forwarding, config preface
     - `convex_write.rs` — helpers to map JSONL → Convex mutations (threads/messages)
     - `fs_watch.rs` — Projects/Skills watchers (reuse notify wiring for sessions watcher)
     - `history_scan.rs` — Codex sessions scan/parse utilities (from `history.rs`)
     - `sessions_watch.rs` — new: incremental watcher for `~/.codex/sessions` (track offsets; idempotent upserts)
-  - Move `projects.rs` and `skills.rs` under `crates/codex-bridge/src/fs_sync/` to group FS‑backed models.
+- Move `projects.rs` and `skills.rs` under `crates/oa-bridge/src/fs_sync/` to group FS‑backed models.
   - Optional shared crate: `crates/openagents-sync/` with JSONL parsing + Convex write helpers used by both Bridge and (future) side tools.
 
 - Convex (functions)

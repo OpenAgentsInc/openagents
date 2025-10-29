@@ -1,4 +1,4 @@
-//! codex-bridge binary entrypoint.
+//! OpenAgents bridge binary entrypoint.
 //!
 //! What this process does now:
 //! - Optionally manages a self‑hosted Convex backend (SQLite) for persistence
@@ -44,8 +44,8 @@ mod ws;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
-    name = "codex-bridge",
-    about = "WebSocket bridge to Codex CLI",
+    name = "oa-bridge",
+    about = "OpenAgents WebSocket bridge (spawns agent CLIs, persists to Convex)",
     version
 )]
 struct Opts {
@@ -236,7 +236,7 @@ async fn main() -> Result<()> {
 
     let bind_addr = opts.bind.clone();
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
-    info!("binding" = %bind_addr, "msg" = "codex-bridge listening (route: /ws)");
+    info!("binding" = %bind_addr, "msg" = "oa-bridge listening (route: /ws)");
     axum::serve(listener, app).await?;
     Ok(())
 }

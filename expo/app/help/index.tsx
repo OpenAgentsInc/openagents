@@ -70,7 +70,7 @@ function FAQ() {
         q="How do I connect over Tailscale?"
         a={
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>
-            Ensure the bridge binds to 0.0.0.0 (e.g., cargo run -p codex-bridge -- --bind 0.0.0.0:8787). In Settings, set Bridge Host to your Tailscale IP + port (e.g., 100.x.x.x:8787). The app will normalize the URL and connect.
+            Ensure the bridge binds to 0.0.0.0 (e.g., cargo run -p oa-bridge -- --bind 0.0.0.0:8787). In Settings, set Bridge Host to your Tailscale IP + port (e.g., 100.x.x.x:8787). The app will normalize the URL and connect.
           </Text>
         }
       />

@@ -30,8 +30,8 @@ High‑Level Data Flow
 
 Components & Responsibilities
 
-Bridge (Rust, crates/codex-bridge)
-- Entry: `crates/codex-bridge/src/main.rs` (thin). Most logic is in modules:
+Bridge (Rust, crates/oa-bridge)
+- Entry: `crates/oa-bridge/src/main.rs` (thin). Most logic is in modules:
   - `ws.rs`: Axum WebSocket route (`/ws`), socket loop, control dispatch, and the stdout/stderr forwarder mapping JSONL into Convex writes.
   - `codex_runner.rs`: spawn/respawn of the Codex CLI with full‑access defaults and JSON output mode; wrapper for stdin/stdout/stderr handles.
   - `convex_write.rs`: streaming write helpers (upsert/finalize) and log compaction for large deltas.
@@ -110,6 +110,6 @@ Related Documentation
 - Test coverage audit: docs/test-coverage.md
 
 Development Quickstart
-- Bridge: from repo root `cargo run -p codex-bridge -- --bind 0.0.0.0:8787` (or `cargo bridge` alias if configured).
+- Bridge: from repo root `cargo run -p oa-bridge -- --bind 0.0.0.0:8787` (or `cargo bridge` alias if configured).
 - Desktop: `cd tauri && cargo tauri dev` (starts Convex sidecar and the bridge in dev; webview connects automatically after `bridge:ready`).
 - Mobile: `cd expo && bun install && bun run start` (then `bun run ios|android|web`).

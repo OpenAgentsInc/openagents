@@ -85,7 +85,7 @@ async function main() {
       const argPortIdx = process.argv.findIndex((a) => a === "--port");
       if (argPortIdx !== -1 && process.argv[argPortIdx + 1]) return Number(process.argv[argPortIdx + 1]);
       if (process.env.TRICODER_BRIDGE_PORT) return Number(process.env.TRICODER_BRIDGE_PORT);
-      return 8787; // default codex-bridge bind
+      return 8787; // default oa-bridge bind
     })();
     const bracket = (ip?: string) => (ip && ip.includes(":") ? `[${ip}]` : ip || "");
     if (selfIPs.length > 0 || self) {

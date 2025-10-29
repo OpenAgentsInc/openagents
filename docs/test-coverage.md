@@ -6,7 +6,7 @@ Referenced refactor context: Issue #1320 “Real-time Codex chat streaming in De
 
 ## Current Test Inventory
 
-- crates/codex-bridge
+- crates/oa-bridge
   - projects.rs
     - Round‑trip test for projects directory using a temp `OPENAGENTS_HOME`: creates, lists, and deletes a project; validates schema gate on save via frontmatter extraction. Covers legacy `.project.md` resolution as well as folder layout via `PROJECT.md`.
   - history.rs
@@ -47,7 +47,7 @@ Referenced refactor context: Issue #1320 “Real-time Codex chat streaming in De
   - Project metadata round‑trip: Ensures the new folder convention and legacy single‑file convention both work, including schema enforcement on save and ID derivation.
 
 - Missing or weak coverage
-  - codex-bridge
+  - oa-bridge
     - skills.rs: expand tests for optional fields, env override, and explicit user-over-registry precedence.
     - events.rs: add remaining variants if desired (e.g., TodoList, McpToolCall, WebSearch), though core coverage is in place.
     - main.rs: spawning logic, WS routing, Convex write paths, file watchers (sessions/projects/skills) are untested. These are the hardest to test pre‑refactor.
@@ -60,10 +60,10 @@ Referenced refactor context: Issue #1320 “Real-time Codex chat streaming in De
 - Tauri convex helpers
   - Already wired and tested. Consider adding tests for `map_message_row` with edge JSONs and small fake subscription adapter tests (see refactor plan below).
 
-- Expand unit tests for `crates/codex-bridge/skills.rs`
+- Expand unit tests for `crates/oa-bridge/skills.rs`
   - Additional cases: empty/missing optional fields tolerated; `registry_skills_dirs` env override; user vs. registry precedence (dedup by id, prefer user) — may expose current preference behavior.
 
-- Add serde contract tests for `crates/codex-bridge/events.rs`
+- Add serde contract tests for `crates/oa-bridge/events.rs`
   - Round‑trip JSON for each enum variant to ensure tags/rename rules stay stable. This guards the app’s generated TS bindings and JSONL renderers.
 
 - Add focused tests to `crates/oa-validate`
@@ -91,7 +91,7 @@ Planned (next commits):
 
 Refactor pieces to unlock proper unit tests and narrow integration tests:
 
-- codex-bridge module split
+- oa-bridge module split
   - `ws.rs`: WS route wiring with pure message framing helpers. Test message framing and control routing without sockets by feeding json payloads through handlers.
   - `codex_runner.rs`: command builder that injects flags (`--dangerously-bypass-approvals-and-sandbox`, sandbox config, model overrides). Unit test builder yields expected argv/env given input options.
   - `convex_write.rs`: pure mappers for JSONL item snapshots → Convex upsert/finalize args. Unit test with golden JSONL snippets for assistant/reason, command, file changes.
@@ -106,13 +106,13 @@ Refactor pieces to unlock proper unit tests and narrow integration tests:
 
 ## Suggested New Test Cases (Examples)
 
-- codex-bridge/history + convex_write
+- oa-bridge/history + convex_write
   - Old vs. new JSONL formats: ensure `file_is_new_format` rejects early for old sessions with legacy shapes or non‑JSON lines. (unit)
   - Long outputs: summarize/compact large `exec_command_output_delta` for logs; no panic on >24KB bodies. (unit)
   - Title inference: bold‑delimited title vs. fallback to first 6 words. (unit)
   - Streaming: `upsertStreamed`/`finalizeStreamed` argument building for assistant vs. reason (with itemId, partial, seq). (unit)
 
-- codex-bridge/skills (added)
+- oa-bridge/skills (added)
   - Allowed tools normalization: handle non‑string entries ignored; empty list vs. missing; preserves order.
   - Metadata pass‑through: nested structures retained via serde conversion.
   - Registry + user merge: two skills with same folder name id, user wins; stable sort by lowercase name.
@@ -142,7 +142,7 @@ CI Note: Once tests are in place for bridge modules, enable coverage in CI via `
 
 ## Risk Areas Not Yet Tested
 
-- WS server lifecycle and multi‑client broadcasting in codex-bridge.
+- WS server lifecycle and multi‑client broadcasting in oa-bridge.
 - Child process spawn/respawn semantics for Codex runs and stdin EOF handling.
 - Sessions tailer debouncing/backpressure and Convex function timeouts.
 - Tauri bootstrap flows (auto‑deploy Convex, ensure bridge running) and port detection.
