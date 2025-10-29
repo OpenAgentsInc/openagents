@@ -25,6 +25,13 @@ export default function Onboarding() {
   const bridgeToken = useSettings((s) => s.bridgeToken)
   const [codeError, setCodeError] = React.useState<string>('')
   const [inputDisabled, setInputDisabled] = React.useState<boolean>(false)
+  // Environment-driven dev mode flag, per Expo env variables guide
+  const isDevEnv = React.useMemo(() => {
+    try {
+      const v = String(process.env.EXPO_PUBLIC_ENV || '').trim().toLowerCase()
+      return v === 'development'
+    } catch { return false }
+  }, [])
 
   // Derive Convex URL from bridge host (same logic as Settings)
   const derivedConvexUrl = React.useMemo(() => {
@@ -196,9 +203,9 @@ export default function Onboarding() {
         <Text style={[styles.errorText, { marginTop: 8 }]}>{lastWsErrorText}</Text>
       )}
       {/* Spacer to push dev tools button to bottom */}
-      {__DEV__ ? <View style={{ flex: 1 }} /> : null}
-      {/* Dev-only quick link to the component library */}
-      {__DEV__ ? (
+      {isDevEnv ? <View style={{ flex: 1 }} /> : null}
+      {/* Dev-only quick link to the component library (env-gated) */}
+      {isDevEnv ? (
         <Pressable
           onPress={() => { try { router.push('/library' as any) } catch {} }}
           accessibilityRole='button'
