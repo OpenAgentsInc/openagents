@@ -22,6 +22,7 @@ import { useAutoUpdate } from "@/hooks/use-auto-update"
 import { useAppLogStore } from "@/lib/app-log"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
 import { TinyvexProvider, useTinyvex } from "@/providers/tinyvex"
+import { AcpProvider } from "@/providers/acp"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 // Projects/Skills providers temporarily disabled
 import { BridgeProvider, useBridge } from "@/providers/ws"
@@ -206,12 +207,14 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={NavigationTheme}>
         <BridgeProvider>
+          <AcpProvider>
           <TinyvexProvider>
             <DrawerProvider>
               <LinkingBootstrap />
               <DrawerWrapper />
             </DrawerProvider>
           </TinyvexProvider>
+          </AcpProvider>
         </BridgeProvider>
       </ThemeProvider>
     </SafeAreaProvider>

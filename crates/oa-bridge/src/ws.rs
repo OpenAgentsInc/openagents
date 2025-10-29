@@ -587,12 +587,21 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         info!(thread_id=%val, msg="captured thread id for resume");
                         // Tinyvex path does not need an explicit upsert here; handled on message writes
                         // Broadcast a debug event for visibility in tools
+                        let client_doc = { state_for_stdout.current_convex_thread.lock().await.clone() };
                         let dbg = serde_json::json!({
                                 "type": "bridge.codex_event",
                                 "event_type": "thread.started",
-                                "thread_id": v.get("thread_id").and_then(|x| x.as_str()).or_else(|| v.get("msg").and_then(|m| m.get("thread_id")).and_then(|x| x.as_str())).unwrap_or("")
+                                "thread_id": v.get("thread_id").and_then(|x| x.as_str()).or_else(|| v.get("msg").and_then(|m| m.get("thread_id")).and_then(|x| x.as_str())).unwrap_or(""),
+                                "clientThreadDocId": client_doc
                             }).to_string();
                         let _ = tx_out.send(dbg);
+                        // Also emit a dedicated session mapping event for mobile
+                        let map_evt = serde_json::json!({
+                            "type": "bridge.session_started",
+                            "sessionId": val,
+                            "clientThreadDocId": client_doc
+                        }).to_string();
+                        let _ = tx_out.send(map_evt);
                     }
                 }
                 if matches!(t.as_deref(), Some("turn.completed")) {
@@ -816,7 +825,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     if !target_tid.is_empty() {
                                         crate::tinyvex_write::mirror_acp_update_to_convex(&state_for_stdout, &target_tid, &update).await;
                                     }
-                                    if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
+                                    {
                                         let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
                                         let notif = SessionNotification { session_id: SessionId(acp_session.into()), update, meta: None };
                                         let update_kind = match &notif.update {
@@ -870,7 +879,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         if !target_tid.is_empty() {
                                             crate::tinyvex_write::mirror_acp_update_to_convex(&state_for_stdout, &target_tid, &update).await;
                                         }
-                                        if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
+                                        {
                                             let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
                                             let notif = SessionNotification { session_id: SessionId(acp_session.into()), update, meta: None };
                                             let update_kind = match &notif.update {
