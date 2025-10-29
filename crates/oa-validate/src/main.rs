@@ -29,10 +29,10 @@ fn main() -> Result<()> {
     let opts = Opts::parse();
     // Compile schemas once
     let project_schema = compile_schema(include_str!(
-        "../../codex-bridge/schemas/project.schema.json"
+        "../../oa-bridge/schemas/project.schema.json"
     ))
     .context("compile project schema")?;
-    let skill_schema = compile_schema(include_str!("../../codex-bridge/schemas/skill.schema.json"))
+    let skill_schema = compile_schema(include_str!("../../oa-bridge/schemas/skill.schema.json"))
         .context("compile skill schema")?;
 
     let mut targets: Vec<PathBuf> = Vec::new();

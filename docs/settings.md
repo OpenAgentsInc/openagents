@@ -9,7 +9,7 @@ This document explains every option on the Settings screen, how it’s persisted
   - Settings store (persist): `expo/lib/settings-store.ts:1`
   - WS provider (connection + request wrappers): `expo/providers/ws.tsx:1`
   - Project-aware send: `expo/providers/projects.tsx:1`
-  - Bridge (Rust): `crates/codex-bridge/src/main.rs:1`, history helpers `crates/codex-bridge/src/history.rs:1`
+- Bridge (Rust): `crates/oa-bridge/src/main.rs:1`, history helpers `crates/oa-bridge/src/history.rs:1`
 
 - Persistence
   - Settings are saved with Zustand persist to AsyncStorage under `@openagents/settings-v1` (see `expo/lib/settings-store.ts:1`).
@@ -44,7 +44,7 @@ The app composes a one‑line JSON “preface” sent as the first line of each 
   - App effect: Sets `preface.sandbox` and alters the human preface text (see `expo/providers/projects.tsx:58`, `buildHumanPreface`).
   - Bridge/CLI reality: The bridge always spawns Codex with full access:
     - `-s danger-full-access` and `-c sandbox_mode="danger-full-access"`
-    - See `crates/codex-bridge/src/main.rs:418` (in `build_bin_and_args`).
+    - See `crates/oa-bridge/src/main.rs:418` (in `build_bin_and_args`).
   - Net: Informational only for now; the CLI process still runs with full access regardless of toggle.
 
 - Network (Restricted | Enabled)
@@ -55,7 +55,7 @@ The app composes a one‑line JSON “preface” sent as the first line of each 
 - Approvals (never | on‑request | on‑failure)
   - UI key: `approvals` (persisted)
   - App effect: Sets `preface.approval` and updates the human preface text.
-  - Bridge/CLI reality: Overridden to “never” at process level via `-c approval_policy="never"` (see `crates/codex-bridge/src/main.rs:452`).
+  - Bridge/CLI reality: Overridden to “never” at process level via `-c approval_policy="never"` (see `crates/oa-bridge/src/main.rs:452`).
   - Net: Informational only; the effective policy at the CLI is “never”.
 
 - Attach preface to prompts (On | Off)
@@ -67,11 +67,11 @@ The app composes a one‑line JSON “preface” sent as the first line of each 
 
 - Active Project (from Projects drawer)
   - When sending, includes `preface.project` and `preface.cd` (working directory) if set (see `expo/providers/projects.tsx:71`).
-  - The bridge expands `~/` and uses the path for the Codex child process working directory on the next spawn (see `crates/codex-bridge/src/main.rs:165`, `expand_home`).
+  - The bridge expands `~/` and uses the path for the Codex child process working directory on the next spawn (see `crates/oa-bridge/src/main.rs:165`, `expand_home`).
 
 - Resume semantics
   - The app sets `preface.resume` to `'new'`, `'last'`, or a specific id from a historical thread.
-  - The bridge resolves this into `exec resume ...` at spawn time when the Codex binary supports it (see `crates/codex-bridge/src/main.rs:393`, `cli_supports_resume`).
+  - The bridge resolves this into `exec resume ...` at spawn time when the Codex binary supports it (see `crates/oa-bridge/src/main.rs:393`, `cli_supports_resume`).
 
 ## What the bridge always forces
 
@@ -97,4 +97,3 @@ See `crates/codex-bridge/src/main.rs:418` for the full injection logic. These ov
 - Honor “Read‑only” by swapping bridge flags to a read‑only preset when selected.
 - Make “Network Restricted” meaningful (e.g., block shell network commands or pass a config the CLI honors).
 - Allow per‑project overrides (model, flags) with safe defaults and explicit UI cues when overridden by the bridge.
-

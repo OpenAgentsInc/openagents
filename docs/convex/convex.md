@@ -12,8 +12,8 @@ We continue to keep Codex JSONL rollouts as the source of truth for resuming thr
 ## How it runs
 
 - Bridge supervision
-  - `codex-bridge` starts a local Convex backend automatically.
-  - Use: `cargo bridge` (alias) or `cargo run -p codex-bridge --` (default port `7788`).
+  - `oa-bridge` starts a local Convex backend automatically.
+  - Use: `cargo bridge` (alias) or `cargo run -p oa-bridge --` (default port `7788`).
   - Bridge health‑checks `GET /instance_version` and logs “convex healthy …”.
   - SQLite DB: `~/.openagents/convex/data.sqlite3`
   - File storage: `~/.openagents/convex/storage`

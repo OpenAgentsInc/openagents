@@ -96,5 +96,5 @@ codex exec --json resume 5973b6c0-94b8-487b-a530-2aeb6098ae0e -
 
 Tip: To target a known‑good binary during development, point the bridge at a locally built Codex:
 ```
-cargo run -p codex-bridge -- --codex-bin ~/code/codex-openai/codex-rs/target/release/codex
+cargo run -p oa-bridge -- --codex-bin ~/code/codex-openai/codex-rs/target/release/codex
 ```

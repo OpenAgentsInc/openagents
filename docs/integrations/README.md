@@ -38,10 +38,10 @@ Items (union):
 
 ### Rust types (source of truth)
 
-We propose defining canonical types in Rust in `crates/codex-bridge/src/events.rs` using `serde`, `schemars`, and `ts_rs` so we can derive JSON Schema and generate TypeScript automatically.
+We propose defining canonical types in Rust in `crates/oa-bridge/src/events.rs` using `serde`, `schemars`, and `ts_rs` so we can derive JSON Schema and generate TypeScript automatically.
 
 ```rust
-// crates/codex-bridge/src/events.rs
+// crates/oa-bridge/src/events.rs
 use serde::{Serialize, Deserialize};
 use ts_rs::TS;
 use schemars::JsonSchema;
@@ -155,9 +155,9 @@ Mapping is straightforward:
 
 ## Source of Truth Location
 
-- Rust canonical types live in `crates/codex-bridge/src/events.rs` (or `crates/shared-events/` if we split later).
+- Rust canonical types live in `crates/oa-bridge/src/events.rs` (or `crates/shared-events/` if we split later).
 - TS types are generated into `expo/lib/generated/` for app and Convex to import.
-- Optionally emit JSON Schema to `crates/codex-bridge/schemas/bridge-events.schema.json` for validation.
+- Optionally emit JSON Schema to `crates/oa-bridge/schemas/bridge-events.schema.json` for validation.
 
 ## Next Steps
 

@@ -1,7 +1,7 @@
 # Convex Bootstrap & Reliability Audit
 
 Date: 2025-10-29
-Owner: OpenAgents (codex-bridge + Expo app)
+Owner: OpenAgents (oa-bridge + Expo app)
 
 ## Summary
 
@@ -15,7 +15,7 @@ This document diagnoses the issues and proposes a hardening plan to make the Con
 
 ## Current Flow (as‑implemented)
 
-- Bridge (codex-bridge) spawns the Convex local backend binary at `~/.openagents/bin/local_backend` with:
+- Bridge (oa-bridge) spawns the Convex local backend binary at `~/.openagents/bin/local_backend` with:
   - DB path: `~/.openagents/convex/data.sqlite3`
   - Flags: `--db sqlite --interface 0.0.0.0 --port 7788 --site-proxy-port 7789 --local-storage ~/.openagents/convex/storage --disable-beacon`
 - Health probe: GET `http://127.0.0.1:7788/instance_version` every 500ms, max ~20s.
@@ -144,4 +144,3 @@ F. Developer ergonomics
 - Some local backend builds respond with `unknown` (200 OK). Others may serve liveness at `/health_check`.
 - First‑run index bootstrapping can take >30s on large/slow disks; during that window, the HTTP listener may not be ready.
 - Using TCP probe + longer adaptive timeout makes this robust without hiding real startup failures.
-

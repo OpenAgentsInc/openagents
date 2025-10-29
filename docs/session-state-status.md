@@ -5,7 +5,7 @@
 - **Live feed** – `SessionScreen` appends every parsed Codex JSONL line to an in-memory log and mirrors the entries to `AsyncStorage` via `log-store.ts`.
 - **History tab** – Reads from the shared store using `React.useSyncExternalStore`, so the persisted timeline is consistent across screens.
 - **Queued follow‑ups** – While a turn is running, outbound prompts are staged locally and replayed as soon as the agent publishes a `turn.completed` or `turn.failed` event.
-- **Bridge replay buffer** – `codex-bridge` now keeps the most recent 2,000 JSONL lines and replays them to any client that (re)connects, so foregrounding the app immediately restores missed output.
+- **Bridge replay buffer** – `oa-bridge` now keeps the most recent 2,000 JSONL lines and replays them to any client that (re)connects, so foregrounding the app immediately restores missed output.
 
 ## Known Gaps
 

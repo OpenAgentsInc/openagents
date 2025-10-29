@@ -1,6 +1,6 @@
 # Claude Code Integration Plan (Headless CLI)
 
-This document outlines how to integrate Claude Code’s Headless CLI mode into the OpenAgents mobile app and Rust WebSocket bridge, similar to our Codex and OpenCode adapters. It analyzes the stream‑JSON output format and proposes an adapter that preserves the app’s existing WS contract and UI components. All bridge output will conform to our unified, canonical ThreadEvent envelope (see docs/integrations/README.md and crates/codex-bridge/src/events.rs).
+This document outlines how to integrate Claude Code’s Headless CLI mode into the OpenAgents mobile app and Rust WebSocket bridge, similar to our Codex and OpenCode adapters. It analyzes the stream‑JSON output format and proposes an adapter that preserves the app’s existing WS contract and UI components. All bridge output will conform to our unified, canonical ThreadEvent envelope (see docs/integrations/README.md and crates/oa-bridge/src/events.rs).
 
 ## Goals
 
@@ -146,7 +146,7 @@ When `assistant.message.usage` appears, also emit `{"type":"turn.completed","usa
 
 ## File References
 
-- Canonical event types: `crates/codex-bridge/src/events.rs:1`
+- Canonical event types: `crates/oa-bridge/src/events.rs:1`
 - App parser: `expo/lib/codex-events.ts:1`
 - Codex JSONL schema (historical reference): `docs/exec-jsonl-schema.md:1`
 - Example Claude headless stream (user provided): `claude --output-format stream-json`

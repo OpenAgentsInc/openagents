@@ -10,7 +10,7 @@ The Tauri app bundles a Rust/WASM UI (built with Trunk) and launches local sidec
 - Tauri bundle config: `tauri/src-tauri/tauri.conf.json` (icons, product name, version, resources).
 - Sidecars:
   - Convex local backend binary is bundled as a resource at `tauri/src-tauri/bin/local_backend`.
-  - The Codex bridge is currently spawned via `cargo run -p codex-bridge` (dev-centric). For a packaged build, run the bridge yourself before launching the app (see Caveats below).
+  - The OpenAgents bridge is currently spawned via `cargo run -p oa-bridge` (dev-centric). For a packaged build, run the bridge yourself before launching the app (see Caveats below).
 
 ## Prerequisites
 
@@ -95,9 +95,9 @@ Notes:
 
 ## Caveats (Current State)
 
-- Bridge sidecar: the app’s backend bootstrap currently uses `cargo run -p codex-bridge` during startup (good for dev). A packaged app does not ship Cargo, so production builds won’t successfully auto‑spawn the bridge yet. Until we ship the bridge as a sidecar:
+- Bridge sidecar: the app’s backend bootstrap currently uses `cargo run -p oa-bridge` during startup (good for dev). A packaged app does not ship Cargo, so production builds won’t successfully auto‑spawn the bridge yet. Until we ship the bridge as a sidecar:
   - Start the bridge manually before launching OpenAgents:
-    - `cargo run -p codex-bridge -- --bind 0.0.0.0:8787`
+    - `cargo run -p oa-bridge -- --bind 0.0.0.0:8787`
   - Or run an external bridge process and ensure the app connects to it.
 - Convex sidecar: if `tauri/src-tauri/bin/local_backend` is missing, the app will skip embedded Convex and try to use any configured `CONVEX_URL` instead.
 
@@ -199,7 +199,7 @@ Notes
 - WASM target missing: `rustup target add wasm32-unknown-unknown`.
 - Bun not found: install from https://bun.sh.
 - Missing Convex backend: run `bun run convex:fetch-backend` or set `CONVEX_URL` to an existing backend.
-- Bridge not connecting: start the bridge separately (`cargo run -p codex-bridge -- --bind 0.0.0.0:8787`) until a sidecar is added.
+- Bridge not connecting: start the bridge separately (`cargo run -p oa-bridge -- --bind 0.0.0.0:8787`) until a sidecar is added.
 
 For deep details, see:
 - `tauri/src-tauri/tauri.conf.json` (bundle config)

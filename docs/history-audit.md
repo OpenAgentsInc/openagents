@@ -54,7 +54,7 @@ This section documents how earlier apps loaded Codex history and what changes ar
 
 - No server-side history. The app only persists the current live feed to `AsyncStorage` via `expo/lib/log-store.ts`.
 - “History” and the Drawer show entries from that local store; there are no session boundaries and no access to Codex’s on-disk rollouts.
-- The Rust bridge (`crates/codex-bridge`) only serves a WebSocket at `/ws`; it has no `/history` or `/session` routes.
+- The Rust bridge (`crates/oa-bridge`) only serves a WebSocket at `/ws`; it has no `/history` or `/session` routes.
 
 ### Gap Analysis
 
@@ -70,7 +70,7 @@ There are two viable approaches; both converge on the same client API.
 
 ### Option A — Extend the existing bridge
 
-Add endpoints to `crates/codex-bridge` (already Axum-based):
+Add endpoints to `crates/oa-bridge` (already Axum-based):
 
 - `GET /history?limit=&since=`
   - Scan a base dir (default `$HOME/.codex/sessions`; override with `CODEXD_HISTORY_DIR`).
@@ -91,7 +91,7 @@ Server impl notes:
 
 ### Option B — Ship a separate `codexd` next to the bridge
 
-- Keep `codex-bridge` focused on streaming; run a second process for history endpoints.
+- Keep `oa-bridge` focused on streaming; run a second process for history endpoints.
 - Pros: code reuse is simplest. Cons: two ports to manage in the app.
 
 Recommendation: Option A for a single-port developer experience.
@@ -110,7 +110,7 @@ Recommendation: Option A for a single-port developer experience.
 
 ## Minimal Implementation Plan
 
-1. Bridge: add `/history` and `/session` routes to `crates/codex-bridge` (port from v7 `codexd`).
+1. Bridge: add `/history` and `/session` routes to `crates/oa-bridge` (port from v7 `codexd`).
 2. App: create `sessions-store.ts`; wire the History tab and a new `session/[id].tsx` to those endpoints.
 3. Resume: plumb a “Continue chat” path (preface or explicit action) that the bridge already understands.
 4. Test with large rollouts and ensure we ignore `exec_command_output_delta` lines.

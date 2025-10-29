@@ -92,7 +92,7 @@ async function ensureRust(): Promise<boolean> {
 function runCargoBridge(repoDir: string): Promise<number> {
   return new Promise((resolve) => {
     const cmd = process.platform === 'win32' ? 'cargo.exe' : 'cargo';
-    const child = spawn(cmd, ['run', '-p', 'codex-bridge', '--', '--bind', '0.0.0.0:8787'], {
+    const child = spawn(cmd, ['run', '-p', 'oa-bridge', '--', '--bind', '0.0.0.0:8787'], {
       cwd: repoDir,
       stdio: 'inherit',
     });
