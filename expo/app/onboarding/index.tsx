@@ -188,15 +188,17 @@ export default function Onboarding() {
         </>
       )}
 
-      {/* Single big Pair button */}
-      <Pressable
-        onPress={() => { try { router.push('/scan' as any) } catch {} }}
-        accessibilityRole='button'
-        style={styles.pairBtn as any}
-      >
-        <Ionicons name='qr-code-outline' size={22} color={Colors.foreground} />
-        <Text style={styles.pairText}>Pair with Desktop</Text>
-      </Pressable>
+      {/* Single big Pair button (centered vertically) */}
+      <View style={styles.centerWrap}>
+        <Pressable
+          onPress={() => { try { router.push('/scan' as any) } catch {} }}
+          accessibilityRole='button'
+          style={styles.pairBtn as any}
+        >
+          <Ionicons name='qr-code-outline' size={22} color={Colors.foreground} />
+          <Text style={styles.pairText}>Pair with Desktop</Text>
+        </Pressable>
+      </View>
       {!!lastWsErrorText && !connected && (
         <Text style={[styles.errorText, { marginTop: 8 }]}>
           {lastWsErrorText.includes('WebSocket closed')
@@ -204,8 +206,7 @@ export default function Onboarding() {
             : lastWsErrorText}
         </Text>
       )}
-      {/* Spacer */}
-      {isDevEnv ? <View style={{ flex: 1 }} /> : null}
+      {/* No spacer; keep layout simple */}
       {/* Do not display WebSocket URL on homepage */}
     </View>
   )
@@ -228,6 +229,7 @@ const styles = StyleSheet.create({
   connectText: { color: Colors.foreground, fontFamily: Typography.bold, letterSpacing: 0.5, textAlign: 'center' },
   devToolsBtn: { marginTop: 16, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 12, alignItems: 'center' },
   devToolsText: { color: Colors.secondary, fontFamily: Typography.bold },
-  pairBtn: { marginTop: 80, borderWidth: 1, borderColor: Colors.secondary, backgroundColor: Colors.card, paddingVertical: 20, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', gap: 10, flexDirection: 'row' },
+  centerWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  pairBtn: { marginTop: 0, borderWidth: 1, borderColor: Colors.secondary, backgroundColor: Colors.card, paddingVertical: 20, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', gap: 10, flexDirection: 'row' },
   pairText: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18, letterSpacing: 0.5 },
 })
