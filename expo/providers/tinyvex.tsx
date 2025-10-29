@@ -17,6 +17,7 @@ const TinyvexContext = createContext<TinyvexContextValue | undefined>(undefined)
 
 export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const bridge = useBridge();
+  const connected = bridge.connected;
   const [threads, setThreads] = useState<ThreadsRow[]>([])
   const [messagesByThread, setMessagesByThread] = useState<Record<string, MessageRow[]>>({})
 
@@ -48,6 +49,13 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => bridge.addSubscriber(onMessage), [bridge, onMessage])
+
+  // Auto-subscribe and fetch when the bridge connects
+  useEffect(() => {
+    if (!connected) return;
+    try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' })) } catch {}
+    try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
+  }, [connected])
 
   const subscribeThreads = useCallback(() => {
     bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' }))
