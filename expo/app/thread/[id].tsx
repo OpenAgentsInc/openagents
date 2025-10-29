@@ -37,7 +37,7 @@ export default function ThreadScreen() {
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
   const onSend = React.useCallback((text: string) => {
     if (!threadId) return
-    const payload = { control: 'run.submit', threadDocId: threadId, text, resumeId: 'new' as const }
+    const payload = { control: 'run.submit', threadDocId: threadId, text, resumeId: 'last' as const }
     try { send(JSON.stringify(payload)) } catch {}
   }, [threadId, send])
   const insets = useSafeAreaInsets()
