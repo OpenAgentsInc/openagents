@@ -149,9 +149,11 @@ export default function ConvexThreadDetail() {
         if (!notif || typeof notif !== 'object') return
         const sessionId = String(notif.sessionId || notif.session_id || '')
         const targetThreadId = String(thread?.threadId || '')
-        if (!targetThreadId || sessionId !== targetThreadId) return
+        // If threadId not yet available, optimistically accept ACP updates (single active run UX)
+        if (targetThreadId && sessionId !== targetThreadId) return
         const update: SessionUpdate | undefined = notif.update
         if (!update || typeof update !== 'object') return
+        try { console.log('[acp.update]', { sessionId, kind: (update as any).sessionUpdate }) } catch {}
         setAcpEnabled(true)
         setAcpRows((prev) => {
           const next = [...prev]
