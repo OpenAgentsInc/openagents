@@ -66,14 +66,17 @@ export default function Onboarding() {
   }, [convexUrl, derivedConvexUrl])
   // Simplified parser: accept only an IP address and hardcode the bridge port
   const BRIDGE_PORT = 8787
-  const parseAnyBridgeInput = React.useCallback((_raw: string): { bridgeHost?: string; convexUrl?: string; token?: string | null } | null => {
+  const parseAnyBridgeInput = React.useCallback((raw: string): { bridgeHost?: string; convexUrl?: string; token?: string | null } | null => {
     try {
-      // Temporarily hardcode the IP used for connection
-      const ip = HARDCODED_IP
-      if (!ip) return null
-      return { bridgeHost: `${ip}:${BRIDGE_PORT}` }
+      const s = String(raw || '').trim()
+      if (!s) return null
+      const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(s)
+      const ipv6 = /^\[?[A-Fa-f0-9:]+\]?$/.test(s) && s.includes(':')
+      if (ipv4) return { bridgeHost: `${s}:${BRIDGE_PORT}` }
+      if (ipv6) { const unb = s.replace(/^\[/, '').replace(/\]$/, ''); return { bridgeHost: `[${unb}]:${BRIDGE_PORT}` } }
+      return null
     } catch { return null }
-  }, [HARDCODED_IP])
+  }, [])
 
   // Validate the current input only; do not mutate host/convex or connect automatically
   React.useEffect(() => {
@@ -103,7 +106,7 @@ export default function Onboarding() {
   })()
 
   const lastWsErrorText = React.useMemo(() => {
-    if (!wsLastClose || connected) return ''
+    if (!wsLastClose || connected || String(bridgeCodeInput || '').trim() === '') return ''
     const code = wsLastClose.code
     const reason = String(wsLastClose.reason || '')
     if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'Connection refused — is the bridge running and reachable?'
@@ -155,27 +158,15 @@ export default function Onboarding() {
           style={[styles.input, { paddingRight: 44 }]}
           editable={false}
         />
-        {(() => {
-          const hasText = String(bridgeCodeInput || '').trim().length > 0
-          return (
-            <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
-              <Pressable
-                onPress={() => { try { router.push('/scan' as any) } catch {} }}
-                accessibilityLabel='Scan QR code'
-                style={{ opacity: hasText ? 0 : 1, pointerEvents: hasText ? 'none' as any : 'auto' }}
-              >
-                <Ionicons name='qr-code-outline' size={16} color={Colors.secondary} />
-              </Pressable>
-              <Pressable
-                onPress={() => { try { disconnect() } catch {}; setBridgeCodeInput(''); setBridgeHost(''); setConvexUrl(''); }}
-                accessibilityLabel='Clear bridge code'
-                style={{ position: 'absolute', right: 0, opacity: hasText ? 1 : 0, pointerEvents: hasText ? 'auto' as any : 'none' }}
-              >
-                <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
-              </Pressable>
-            </View>
-          )
-        })()}
+        <View style={[styles.clearIconArea, { flexDirection: 'row' }]}>
+          <Pressable
+            onPress={() => { try { disconnect() } catch {}; setBridgeCodeInput(''); setBridgeHost(''); setConvexUrl(''); }}
+            accessibilityLabel='Clear bridge host'
+            style={{ position: 'absolute', right: 0 }}
+          >
+            <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
+          </Pressable>
+        </View>
       </View>
       {!!codeError && (
         <Text style={styles.errorText}>{codeError}</Text>
