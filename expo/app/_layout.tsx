@@ -281,7 +281,11 @@ function DrawerWrapper() {
     >
       <StatusBar style="light" />
       <View style={{ flex: 1 }}>
-        <AppHeader />
+        {(() => {
+          const path = String(pathname || '')
+          const hideHeader = path.startsWith('/onboarding')
+          return hideHeader ? null : <AppHeader />
+        })()}
         <Stack
           screenOptions={{
             contentStyle: { backgroundColor: Colors.background },

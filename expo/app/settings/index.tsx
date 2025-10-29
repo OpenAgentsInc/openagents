@@ -3,7 +3,6 @@ import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
 import { useQuery } from 'convex/react'
-import { parseBridgeCode, normalizeBridgeCodeInput } from '@/lib/pairing'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
@@ -13,13 +12,13 @@ import { useRouter } from 'expo-router'
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
   const router = useRouter()
-  const { bridgeHost, setBridgeHost, connected, connect, disconnect, connecting } = useBridge()
+  const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, connecting, wsLastClose } = useBridge()
   const [inputDisabled, setInputDisabled] = React.useState(false)
-  const bridgeCode = useSettings((s) => s.bridgeCode)
-  const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => String(bridgeCode || ''))
   const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
+  const bridgeToken = useSettings((s) => s.bridgeToken)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
+  const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
   const derivedConvexUrl = React.useMemo(() => {
     try {
       const val = String(bridgeHost || '').trim()
@@ -62,70 +61,55 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
-      <Text style={styles.label}>Bridge Code</Text>
+      <Text style={styles.label}>Bridge Host</Text>
       <View style={styles.inputWrapper}>
         <TextInput
-          value={bridgeCodeInput}
-          onChangeText={(v) => {
-            const display = normalizeBridgeCodeInput(v)
-            setBridgeCodeInput(display)
-            const trimmed = String(v || '').trim()
-            if (!trimmed) {
-              try { disconnect() } catch {}
-              setBridgeHost('')
-              setConvexUrl('')
-              return
-            }
-            const parsed = parseBridgeCode(display)
-            if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
-            if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
-            if (parsed?.token) setBridgeToken(parsed.token || '')
-            // Do not auto-connect on input; user must press Connect
-          }}
+          value={hostInput}
+          onChangeText={(v) => { setHostInput(v) }}
           editable={!connecting && !inputDisabled}
           autoCapitalize='none'
           autoCorrect={false}
-          placeholder='paste code here'
+          placeholder='100.72.151.98:8787'
           placeholderTextColor={Colors.secondary}
-          style={[styles.input, { paddingRight: 44 }]}
+          style={[styles.input]}
         />
-        {(() => {
-          const hasText = String(bridgeCodeInput || '').trim().length > 0
-          return (
-            <View style={[styles.clearIconArea, { flexDirection: 'row' }]}> 
-              <Pressable
-                onPress={() => { try { router.push('/scan' as any) } catch {} }}
-                accessibilityLabel='Scan QR code'
-                style={{ opacity: hasText ? 0 : 1, pointerEvents: hasText ? 'none' as any : 'auto' }}
-              >
-                <Ionicons name='qr-code-outline' size={16} color={Colors.secondary} />
-              </Pressable>
-              <Pressable
-                onPress={() => { try { disconnect() } catch {}; setBridgeCodeInput(''); setBridgeHost(''); setConvexUrl(''); }}
-                accessibilityLabel='Clear bridge code'
-                style={{ position: 'absolute', right: 0, opacity: hasText ? 1 : 0, pointerEvents: hasText ? 'auto' as any : 'none' }}
-              >
-                <Ionicons name='trash-outline' size={16} color={Colors.secondary} />
-              </Pressable>
-            </View>
-          )
-        })()}
       </View>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {bridgeHost ? `ws://${bridgeHost}/ws` : '(not configured)'}</Text>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>Convex base: {convexUrl || derivedConvexUrl || '(not configured)'}</Text>
+      <Text style={styles.label}>Bridge Token</Text>
+      <View style={styles.inputWrapper}>
+        <TextInput
+          value={bridgeToken}
+          onChangeText={(v) => { setBridgeToken(v) }}
+          editable={!connecting && !inputDisabled}
+          autoCapitalize='none'
+          autoCorrect={false}
+          placeholder='paste token (optional)'
+          placeholderTextColor={Colors.secondary}
+          style={[styles.input]}
+        />
+      </View>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {wsUrl || '(not configured)'}</Text>
+      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>Convex base: {derivedConvexUrl || '(derived from host)'}</Text>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 8 }}>Convex status: {convexStatus}</Text>
+      {wsLastClose && !connected ? (
+        <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>
+          {(() => {
+            const code = wsLastClose.code
+            const reason = String(wsLastClose.reason || '')
+            if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'WS: Connection refused — is the bridge running and reachable?'
+            if (/unauthorized|401/i.test(reason)) return 'WS: Unauthorized — set Bridge Token.'
+            return `WS closed ${code ?? ''}${reason ? `: ${reason}` : ''}`.trim()
+          })()}
+        </Text>
+      ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        {!connected ? (<Button title='Connect' onPress={connect} />) : (<Button title='Disconnect' onPress={disconnect} />)}
+        {!connected ? (
+          <Button title='Connect' onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; try { setConvexUrl('') } catch {}; connect() }} />
+        ) : (
+          <Button title='Disconnect' onPress={disconnect} />
+        )}
         <StatusPill connected={connected} />
       </View>
-      {/** Preferences hidden: Attach preface defaults to ON and is not user-configurable in this version
-      <Text style={styles.title}>Preferences</Text>
-      <Text style={styles.label}>Attach preface to prompts</Text>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Segmented title='Off' active={!attachPreface} onPress={() => setAttachPreface(false)} />
-        <Segmented title='On' active={attachPreface} onPress={() => setAttachPreface(true)} />
-      </View>
-      */}
+      {/* Preferences and QR code features removed for now */}
     </View>
   )
 }
