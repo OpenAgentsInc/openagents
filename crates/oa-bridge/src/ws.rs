@@ -169,15 +169,60 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 }).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
-                            ControlCommand::TvxSubscribe { .. } => {
-                                let _ = stdin_state
-                                    .tx
-                                    .send(serde_json::json!({"type":"tinyvex.todo","op":"subscribe"}).to_string());
+                            ControlCommand::TvxSubscribe { stream, thread_id } => {
+                                let limit = 100i64;
+                                if stream == "threads" {
+                                    match stdin_state.tinyvex.list_threads(limit) {
+                                        Ok(rows) => {
+                                            let line = serde_json::json!({
+                                                "type":"tinyvex.snapshot",
+                                                "stream":"threads",
+                                                "rows": rows,
+                                                "rev": 0
+                                            }).to_string();
+                                            let _ = stdin_state.tx.send(line);
+                                        }
+                                        Err(e) => { error!(?e, "tinyvex threads snapshot failed"); }
+                                    }
+                                } else if stream == "messages" {
+                                    if let Some(tid) = thread_id.as_deref() {
+                                        match stdin_state.tinyvex.list_messages(tid, limit) {
+                                            Ok(rows) => {
+                                                let line = serde_json::json!({
+                                                    "type":"tinyvex.snapshot",
+                                                    "stream":"messages",
+                                                    "threadId": tid,
+                                                    "rows": rows,
+                                                    "rev": 0
+                                                }).to_string();
+                                                let _ = stdin_state.tx.send(line);
+                                            }
+                                            Err(e) => { error!(?e, "tinyvex messages snapshot failed"); }
+                                        }
+                                    }
+                                }
                             }
-                            ControlCommand::TvxQuery { .. } => {
-                                let _ = stdin_state
-                                    .tx
-                                    .send(serde_json::json!({"type":"tinyvex.todo","op":"query"}).to_string());
+                            ControlCommand::TvxQuery { name, args } => {
+                                let limit = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(50);
+                                if name == "threads.list" {
+                                    match stdin_state.tinyvex.list_threads(limit) {
+                                        Ok(rows) => {
+                                            let line = serde_json::json!({"type":"tinyvex.query_result","name":"threads.list","rows": rows}).to_string();
+                                            let _ = stdin_state.tx.send(line);
+                                        }
+                                        Err(e) => { error!(?e, "tinyvex threads.list failed"); }
+                                    }
+                                } else if name == "messages.list" {
+                                    if let Some(tid) = args.get("threadId").and_then(|x| x.as_str()) {
+                                        match stdin_state.tinyvex.list_messages(tid, limit) {
+                                            Ok(rows) => {
+                                                let line = serde_json::json!({"type":"tinyvex.query_result","name":"messages.list","threadId": tid, "rows": rows}).to_string();
+                                                let _ = stdin_state.tx.send(line);
+                                            }
+                                            Err(e) => { error!(?e, "tinyvex messages.list failed"); }
+                                        }
+                                    }
+                                }
                             }
                             ControlCommand::TvxMutate { .. } => {
                                 let _ = stdin_state
@@ -398,16 +443,11 @@ mod auth_tests {
             codex_bin: None,
             codex_args: None,
             extra: vec![],
-            bootstrap: false,
-            convex_bin: None,
-            convex_port: 0,
-            convex_db: None,
-            convex_interface: "127.0.0.1".into(),
-            manage_convex: false,
             ws_token: tok.map(|s| s.to_string()),
             claude_bin: None,
             claude_args: None,
         };
+        let tvx = tinyvex::Tinyvex::open(tempfile::NamedTempFile::new().unwrap().path()).unwrap();
         Arc::new(AppState {
             tx,
             child_stdin: Mutex::new(None),
@@ -417,7 +457,8 @@ mod auth_tests {
             history: Mutex::new(Vec::new()),
             current_convex_thread: Mutex::new(None),
             stream_track: Mutex::new(std::collections::HashMap::new()),
-            convex_ready: std::sync::atomic::AtomicBool::new(false),
+            convex_ready: std::sync::atomic::AtomicBool::new(true),
+            tinyvex: std::sync::Arc::new(tvx),
         })
     }
 

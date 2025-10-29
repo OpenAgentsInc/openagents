@@ -26,6 +26,9 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
     let role = if kind == "assistant" { Some("assistant") } else { None };
     let out_kind = if kind == "assistant" { "message" } else if kind == "reason" { "reason" } else { kind };
     let t = now_ms();
+    // Ensure a thread row exists/upserted for listings
+    let thr = tinyvex::ThreadRow { id: thread_id.to_string(), thread_id: Some(thread_id.to_string()), title: "Thread".into(), project_id: None, resume_id: Some(thread_id.to_string()), rollout_path: None, source: Some("stream".into()), created_at: t, updated_at: t };
+    let _ = state.tinyvex.upsert_thread(&thr);
     if let Err(e) = state.tinyvex.upsert_streamed_message(thread_id, out_kind, role, full_text, &item_id, seq_now as i64, t) {
         warn!(?e, "tinyvex upsert_streamed_message failed");
     }
@@ -37,6 +40,16 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
         "itemId": item_id,
         "len": full_text.len(),
         "ok": true
+    }).to_string());
+    // Send a generic tinyvex.update for subscribers
+    let _ = state.tx.send(json!({
+        "type": "tinyvex.update",
+        "stream": "messages",
+        "op": "upsertStreamed",
+        "threadId": thread_id,
+        "kind": out_kind,
+        "itemId": item_id,
+        "seq": seq_now
     }).to_string());
 }
 
@@ -60,6 +73,14 @@ pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &
         "itemId": stable_item_id,
         "len": final_text.len(),
         "ok": true
+    }).to_string());
+    let _ = state.tx.send(json!({
+        "type": "tinyvex.update",
+        "stream": "messages",
+        "op": "finalizeStreamed",
+        "threadId": thread_id,
+        "kind": kind,
+        "itemId": stable_item_id
     }).to_string());
     true
 }
@@ -110,12 +131,6 @@ mod tests {
                 codex_bin: None,
                 codex_args: None,
                 extra: vec![],
-                bootstrap: false,
-                convex_bin: None,
-                convex_port: 0,
-                convex_db: None,
-                convex_interface: "127.0.0.1".into(),
-                manage_convex: false,
                 ws_token: Some("t".into()),
                 claude_bin: None,
                 claude_args: None,
@@ -134,4 +149,3 @@ mod tests {
         assert_eq!(v.get("op").and_then(|x| x.as_str()), Some("upsertStreamed"));
     }
 }
-

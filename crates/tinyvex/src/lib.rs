@@ -20,6 +20,21 @@ pub struct ThreadRow {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MessageRow {
+    pub id: i64,
+    pub thread_id: String,
+    pub role: Option<String>,
+    pub kind: String,
+    pub text: Option<String>,
+    pub item_id: Option<String>,
+    pub partial: Option<i64>,
+    pub seq: Option<i64>,
+    pub ts: i64,
+    pub created_at: i64,
+    pub updated_at: Option<i64>,
+}
+
 impl Tinyvex {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let db_path = path.as_ref().to_path_buf();
@@ -121,6 +136,32 @@ impl Tinyvex {
                     source: r.get(6)?,
                     created_at: r.get(7)?,
                     updated_at: r.get(8)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn list_messages(&self, thread_id: &str, limit: i64) -> Result<Vec<MessageRow>> {
+        let conn = Connection::open(&self.db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, threadId, role, kind, text, itemId, partial, seq, ts, createdAt, updatedAt \
+             FROM messages WHERE threadId=?1 ORDER BY ts ASC LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![thread_id, limit], |r| {
+                Ok(MessageRow {
+                    id: r.get(0)?,
+                    thread_id: r.get(1)?,
+                    role: r.get(2)?,
+                    kind: r.get(3)?,
+                    text: r.get(4)?,
+                    item_id: r.get(5)?,
+                    partial: r.get(6)?,
+                    seq: r.get(7)?,
+                    ts: r.get(8)?,
+                    created_at: r.get(9)?,
+                    updated_at: r.get(10)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
