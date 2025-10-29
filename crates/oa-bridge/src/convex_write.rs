@@ -243,6 +243,11 @@ pub async fn mirror_acp_update_to_convex(
     let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
     let Ok(mut client) = ConvexClient::new(&url).await else { return };
 
+    // Helpers to build Convex Value objects/arrays
+    fn v_str<S: Into<String>>(s: S) -> convex::Value { convex::Value::from(s.into()) }
+    fn v_num(n: i64) -> convex::Value { convex::Value::from(n) }
+    fn v_arr(items: Vec<convex::Value>) -> convex::Value { convex::Value::from(items) }
+
     match update {
         acp::SessionUpdate::UserMessageChunk(u) => {
             // Usually written by the app via runs:enqueue; skip to avoid duplicate rows.
@@ -263,38 +268,92 @@ pub async fn mirror_acp_update_to_convex(
             }).to_string());
         }
         acp::SessionUpdate::ToolCall(tc) => {
-            // Upsert into dedicated ACP tool_calls table
+            // Upsert into dedicated ACP tool_calls table with typed arrays
             let tc_id = format!("{:?}", tc.id);
-            let content_json = serde_json::to_string(&tc.content).ok();
-            let locations_json = serde_json::to_string(&tc.locations).ok();
             let mut args: BTreeMap<String, Value> = BTreeMap::new();
-            args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("toolCallId".into(), Value::from(tc_id));
-            args.insert("title".into(), Value::from(tc.title.clone()));
-            args.insert("kind".into(), Value::from(format!("{:?}", tc.kind)));
-            args.insert("status".into(), Value::from(format!("{:?}", tc.status)));
-            if let Some(cj) = content_json { args.insert("content_json".into(), Value::from(cj)); }
-            if let Some(lj) = locations_json { args.insert("locations_json".into(), Value::from(lj)); }
+            args.insert("threadId".into(), v_str(thread_id));
+            args.insert("toolCallId".into(), v_str(tc_id));
+            args.insert("title".into(), v_str(tc.title.clone()));
+            args.insert("kind".into(), v_str(format!("{:?}", tc.kind)));
+            args.insert("status".into(), v_str(format!("{:?}", tc.status)));
+            // Prefer typed flattened vectors over JSON strings to fit convex::Value limitations
+            let text_chunks: Vec<String> = tc
+                .content
+                .iter()
+                .filter_map(|c| match c {
+                    acp::ToolCallContent::Content { content } => match content {
+                        acp::ContentBlock::Text(t) => Some(t.text.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            if !text_chunks.is_empty() {
+                args.insert("content_texts".into(), v_arr(text_chunks.into_iter().map(v_str).collect()));
+            }
+            if !tc.locations.is_empty() {
+                let paths: Vec<String> = tc
+                    .locations
+                    .iter()
+                    .map(|l| format!("{}", l.path.display()))
+                    .collect();
+                let lines: Vec<convex::Value> = tc
+                    .locations
+                    .iter()
+                    .map(|l| match l.line { Some(n) => v_num(n as i64), None => convex::Value::from(Option::<i64>::None) })
+                    .collect();
+                args.insert("locations_paths".into(), v_arr(paths.into_iter().map(v_str).collect()));
+                args.insert("locations_lines".into(), v_arr(lines));
+            }
             let _ = client.mutation("acp_tool_calls:upsert", args).await;
         }
         acp::SessionUpdate::Plan(p) => {
             let mut args: BTreeMap<String, Value> = BTreeMap::new();
-            args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            let json_str = serde_json::to_string(&p.entries).unwrap_or_else(|_| String::from("[]"));
-            args.insert("entries_json".into(), Value::from(json_str));
+            args.insert("threadId".into(), v_str(thread_id));
+            if !p.entries.is_empty() {
+                let ec: Vec<convex::Value> = p.entries.iter().map(|e| v_str(e.content.clone())).collect();
+                let ep: Vec<convex::Value> = p
+                    .entries
+                    .iter()
+                    .map(|e| v_str(format!("{:?}", e.priority).to_lowercase()))
+                    .collect();
+                let es: Vec<convex::Value> = p
+                    .entries
+                    .iter()
+                    .map(|e| {
+                        let s: &str = match e.status {
+                            acp::PlanEntryStatus::Pending => "pending",
+                            acp::PlanEntryStatus::InProgress => "in_progress",
+                            acp::PlanEntryStatus::Completed => "completed",
+                        };
+                        v_str(s)
+                    })
+                    .collect();
+                args.insert("entries_content".into(), v_arr(ec));
+                args.insert("entries_priority".into(), v_arr(ep));
+                args.insert("entries_status".into(), v_arr(es));
+            }
             let _ = client.mutation("acp_plan:set", args).await;
         }
         acp::SessionUpdate::AvailableCommandsUpdate(ac) => {
             let mut args: BTreeMap<String, Value> = BTreeMap::new();
-            args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            let json_str = serde_json::to_string(&ac.available_commands).unwrap_or_else(|_| String::from("[]"));
-            args.insert("available_commands_json".into(), Value::from(json_str));
+            args.insert("threadId".into(), v_str(thread_id));
+            if !ac.available_commands.is_empty() {
+                let names: Vec<convex::Value> = ac.available_commands.iter().map(|c| v_str(c.name.clone())).collect();
+                let descs: Vec<convex::Value> = ac
+                    .available_commands
+                    .iter()
+                    .map(|c| v_str(c.description.clone()))
+                    .collect();
+                args.insert("available_command_names".into(), v_arr(names));
+                args.insert("available_command_descriptions".into(), v_arr(descs));
+            }
             let _ = client.mutation("acp_state:update", args).await;
         }
         acp::SessionUpdate::CurrentModeUpdate(cm) => {
             let mut args: BTreeMap<String, Value> = BTreeMap::new();
-            args.insert("threadId".into(), Value::from(thread_id.to_string()));
-            args.insert("currentModeId".into(), Value::from(format!("{}", cm.current_mode_id)));
+            args.insert("threadId".into(), v_str(thread_id));
+            args.insert("currentModeId".into(), v_str(format!("{}", cm.current_mode_id)));
             let _ = client.mutation("acp_state:update", args).await;
         }
         acp::SessionUpdate::ToolCallUpdate(_) => {

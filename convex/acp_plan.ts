@@ -17,9 +17,18 @@ export const forThread = queryGeneric(async ({ db }, args: { threadId: string })
   return rows[0] ?? null;
 });
 
-export const set = mutationGeneric(async ({ db }, args: { threadId: string; entries?: any[]; entries_json?: string }) => {
+export const set = mutationGeneric(async ({ db }, args: { threadId: string; entries?: any[]; entries_json?: string; entries_content?: string[]; entries_priority?: string[]; entries_status?: string[] }) => {
   const now = Date.now();
-  const entries: any[] = Array.isArray(args.entries) ? args.entries : (() => { try { const v = JSON.parse(String(args.entries_json||'[]')); return Array.isArray(v) ? v : [] } catch { return [] } })();
+  const entries: any[] = (() => {
+    if (Array.isArray(args.entries)) return args.entries as any[];
+    const c = Array.isArray(args.entries_content) ? args.entries_content : [];
+    const p = Array.isArray(args.entries_priority) ? args.entries_priority : [];
+    const s = Array.isArray(args.entries_status) ? args.entries_status : [];
+    if (c.length && c.length === p.length && c.length === s.length) {
+      return c.map((content, i) => ({ content, priority: p[i], status: s[i] }));
+    }
+    try { const v = JSON.parse(String(args.entries_json||'[]')); return Array.isArray(v) ? v : [] } catch { return [] }
+  })();
   let rows: any[] = [];
   try {
     // @ts-ignore

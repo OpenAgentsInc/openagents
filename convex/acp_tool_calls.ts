@@ -27,14 +27,32 @@ export const upsert = mutationGeneric(async ({ db }, args: {
   content_json?: string;
   locations?: { path: string; line?: number }[];
   locations_json?: string;
+  // Typed, flattened vectors as an alternative to JSON/object arrays
+  content_texts?: string[];
+  locations_paths?: string[];
+  locations_lines?: (number | null)[];
 }) => {
   const now = Date.now();
   const parseJsonArray = (s?: string): any[] | undefined => {
     if (!s || typeof s !== 'string') return undefined as any;
     try { const v = JSON.parse(s); return Array.isArray(v) ? v : undefined as any } catch { return undefined as any }
   };
-  const typedContent = Array.isArray(args.content) ? args.content : parseJsonArray(args.content_json);
-  const typedLocs = Array.isArray(args.locations) ? args.locations : parseJsonArray(args.locations_json);
+  const typedContent = (() => {
+    if (Array.isArray(args.content)) return args.content as any[];
+    if (Array.isArray(args.content_texts) && args.content_texts.length) {
+      return (args.content_texts as string[]).map((text) => ({ type: 'content', content: { type: 'text', text } }));
+    }
+    return parseJsonArray(args.content_json);
+  })();
+  const typedLocs = (() => {
+    if (Array.isArray(args.locations)) return args.locations as any[];
+    const paths = Array.isArray(args.locations_paths) ? args.locations_paths : [];
+    const lines = Array.isArray(args.locations_lines) ? args.locations_lines : [];
+    if (paths.length && (lines.length === 0 || lines.length === paths.length)) {
+      return paths.map((path, i) => ({ path, line: typeof lines[i] === 'number' ? Number(lines[i]) : undefined }));
+    }
+    return parseJsonArray(args.locations_json);
+  })();
   let rows: any[] = [];
   try {
     // @ts-ignore composite index
