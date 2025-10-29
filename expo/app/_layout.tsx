@@ -233,13 +233,21 @@ function DrawerWrapper() {
   const isRTL = I18nManager.isRTL;
   const router = useRouter();
   const { connected } = useBridge();
+  // Allow dev-only navigation to the component library when disconnected
+  const isDevEnv = React.useMemo(() => {
+    try {
+      const v = String(process.env.EXPO_PUBLIC_ENV || '').trim().toLowerCase();
+      return v === 'development';
+    } catch { return false }
+  }, []);
   const convexThreads = (useQuery as any)(connected ? 'threads:list' : 'threads:list', connected ? {} : 'skip') as any[] | undefined | null
   const pathname = (require('expo-router') as any).usePathname?.() as string | undefined;
   // Connection-gated onboarding: require bridge and convex
   React.useEffect(() => {
     const path = String(pathname || '')
     if (!connected) {
-      if (!path.startsWith('/onboarding')) {
+      const allowWhileDisconnected = path.startsWith('/onboarding') || (isDevEnv && path.startsWith('/library'))
+      if (!allowWhileDisconnected) {
         try { router.push('/onboarding' as any) } catch {}
       }
     }
