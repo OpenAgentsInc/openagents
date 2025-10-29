@@ -1,0 +1,13 @@
+{
+  // Use rustup-managed rust-analyzer matching your active toolchain
+  "rust-analyzer.server.path": "/Users/christopherdavid/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rust-analyzer",
+
+  // Enable proc-macro expansion (now compatible with server v6)
+  "rust-analyzer.procMacro.enable": true,
+
+  // Keep extension from pulling a mismatched bundled binary
+  "rust-analyzer.updates.channel": "stable",
+
+  // Hide the "X implementations" code lens
+  "rust-analyzer.lens.implementations.enable": false
+}
