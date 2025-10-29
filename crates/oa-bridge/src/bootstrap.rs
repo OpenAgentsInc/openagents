@@ -5,7 +5,7 @@
 //! function deploy. It is used both by the CLI bridge and by the Tauri sidecar.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use tokio::process::Command;
@@ -61,6 +61,7 @@ async fn tcp_listen_probe(port: u16) -> bool {
 /// Start (or restart) the local backend as needed and wait until healthy.
 pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     info!(port = opts.convex_port, interface = %opts.convex_interface, "convex.ensure: begin");
+    let t0 = Instant::now();
     let bin = opts.convex_bin.clone().unwrap_or_else(default_convex_bin);
     if !bin.exists() {
         if let Err(e) = ensure_local_backend_present().await {
@@ -162,7 +163,8 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     if ok {
-        info!(url=%base, pid=?child.id(), "convex.ensure: healthy after start");
+        let ready_ms = t0.elapsed().as_millis() as u128;
+        info!(url=%base, pid=?child.id(), ready_ms, "convex.ensure: healthy after start");
         // Persist initialized marker
         if let Some(parent) = init_marker.parent() { let _ = std::fs::create_dir_all(parent); }
         let _ = std::fs::write(&init_marker, b"ok");
