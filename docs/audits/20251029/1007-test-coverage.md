@@ -22,3 +22,63 @@ What is not currently covered is also informative. We do not have unit tests aro
 
 In short, the suite proves that the bridge is opinionated about what JSONL it accepts and how it maps that into a stable, typed surface for clients, while guarding the edges where malformed input or configuration could lead to undefined behavior. The translator enforces a contract between Codex and ACP, the server enforces authentication and shape, and the integration paths demonstrate that end‑to‑end, a user pressing “Run” results in coherent stream updates and persisted artifacts ready for display or history. This is why each of these tests exists: to ensure the bridge remains dependable as schemas evolve, CLIs change, and clients assume a consistent contract.
 
+
+## Addendum: Recommended Tests (Gaps and Rationale)
+
+After another pass through the codebase, below are high‑leverage tests to add. Each item states what to test and why it matters.
+
+- Translator edge cases (acp‑event‑translator)
+  - Command failure and in‑progress statuses: map `item.{started,completed}` with `status:"failed"|"in_progress"` for `command_execution` to `ToolCallStatus::{Failed,InProgress}`. Ensures UI status chips and retries render correctly.
+  - Empty `aggregated_output`: when present but empty, do not create a text content chunk. Guards against blank tool output rows.
+  - File change with multiple paths: include all locations in `ToolCall.locations`. Confirms jump‑to‑file affordances list all edits.
+  - Web search without query: title fallback is `"Web search"`. Avoids odd “Web search: ” labels.
+  - Todo list with missing/empty items: verify translator returns `None` (no Plan) or an empty plan consistently. Prevents empty plan panes.
+
+- WebSocket forwarder streaming logic (ws::start_stream_forwarders)
+  - Assistant finalization without prior deltas: feed only a final `agent_message` and assert the snapshot path runs (debug `bridge.assistant_written`). Proves the fallback snapshot code path works.
+  - Assistant finalize after deltas: feed `agent_message.delta` then final `agent_message` and assert we attempt to finalize the streamed item (debug `assistant.final`). Prevents duplicate snapshots.
+  - Reasoning summary fallback: feed a `reasoning` item with empty `text` but a `summary` array; assert the combined summary text is used. Matches current JSONL emitter behavior.
+  - Large delta summarization: inject a line >24KB and assert the console log uses `summarize_exec_delta_for_log` while still broadcasting the original line. Keeps logs readable without losing data.
+
+- Convex writer behavior without backend (convex_write)
+  - stream_upsert_or_append when `convex_ready=false`: assert a `bridge.convex_write` debug event with `ok:false` is broadcast. Documents the degraded‑mode semantics.
+  - try_finalize_stream_kind with and without prior stream: verify it returns `false` when no entry exists, and `true` after an upsert (state‑only path, no backend). Ensures stable `itemId` handling (`stream:assistant|reason`).
+  - finalize_streaming_for_thread drains all kinds for a given thread. Verifies multi‑kind cleanup.
+
+- Bootstrap/health (bootstrap)
+  - convex_health(true/false): spin a tiny HTTP server that 200s `/instance_version` and assert true; assert false for a closed port. Prevents regressions in the health probe.
+  - create_threads_table and insert_demo_thread: exercise against a temp sqlite DB, then assert presence via `util::list_sqlite_tables`. Validates demo controls (`convex.create_threads`/`convex.create_demo_thread`).
+
+- Projects model (projects)
+  - Legacy single‑file support: write `{id}.project.md`, list, and confirm id derivation and fields. Confirms backward compatibility.
+  - Schema reject path: `save_project` should error on invalid frontmatter (e.g., missing `name`/`workingDir`). Prevents invalid saves slipping through.
+  - Repo field round‑trip: include provider/remote/url/branch, save+list, and assert all optional fields map correctly.
+
+- Skills model (skills)
+  - registry_skills_dirs precedence: env override vs repo `./skills` directory. Ensures deterministic source discovery.
+  - Invalid YAML parsing: malformed YAML frontmatter is skipped without panics. Hardens file ingestion.
+
+- History utilities (history)
+  - derive_started_ts_from_path: test both filename pattern (`rollout-YYYY-MM-DDTHH-MM-SS…`) and directory fallback (`/.../YYYY/MM/DD/...`). Ensures stable timeline ordering.
+  - item.started command normalization: ensure `item.started` for `command_execution` produces a `cmd` entry with `status:"in_progress"` and empty sample. Matches UI “running” indicator.
+  - extract_title_and_snippet_ext preference: assert that assistant text beats reasoning and user text for title inference. Keeps titles consistent.
+
+- WS controls parsing (controls)
+  - Echo synonyms: `echo`, `debug.echo`, and `debug.ping` produce the same `Echo` variant. Avoids drift in client code using old names.
+  - Strict `run.submit` types: verify non‑string `threadDocId`/`text` are rejected. Strengthens validation.
+
+- WS token precedence (ws)
+  - extract_token precedence: header should win over query when both are present. Locks the security model. (Place test in‑file to access the private helper.)
+
+- Codex runner args and detection (codex_runner)
+  - build_bin_and_args default injection: ensure defaults (`--dangerously-bypass-...`, sandbox, model, config) are added when missing but not duplicated when present. Prevents flag bloat/regressions.
+  - Resume flag ordering with positional prompt: verify `spawn_codex_child_with_prompt` orders `exec --json [resume …] <prompt>` correctly and never appends `-`. Prevents ambiguous CLI parsing with older codex builds. (Assertion can be done by exposing an args‑builder behind `#[cfg(test)]` or by instrumenting a tiny fake binary that prints argv.)
+
+- Backfill and demo controls (ws)
+  - `convex.backfill`: with `CODEXD_HISTORY_DIR` pointed at a temp tree containing valid JSONL, assert we broadcast a `bridge.convex_backfill` status and attempt thread/message upserts (in NOOP mode). Confirms operator controls are tested.
+  - `convex.create_demo`/`convex.create_threads`/`convex.create_demo_thread`: send controls and assert `bridge.convex_status` shows created tables. Validates admin flows without requiring a running backend.
+
+- SQLite helpers (util)
+  - list_sqlite_tables: create a temp DB and tables, then assert the ordered names are returned. Ensures diagnostics remain reliable across platforms.
+
+These additions focus on edge‑case handling, degraded/no‑backend behavior, and admin/ops controls. Together they would round out confidence in the pieces that currently rely mostly on integration coverage or are only exercised implicitly during full‑flow tests.

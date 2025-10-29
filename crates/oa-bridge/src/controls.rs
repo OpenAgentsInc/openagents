@@ -175,4 +175,14 @@ mod tests {
                 .is_none()
         );
     }
+
+    #[test]
+    fn parses_echo_synonyms() {
+        let a = parse_control_command("{\"control\":\"echo\",\"payload\":\"x\",\"tag\":\"t\"}");
+        let b = parse_control_command("{\"control\":\"debug.echo\"}");
+        let c = parse_control_command("{\"control\":\"debug.ping\"}");
+        match a { Some(ControlCommand::Echo{ payload, tag }) => { assert_eq!(payload.as_deref(), Some("x")); assert_eq!(tag.as_deref(), Some("t")); }, _ => panic!("bad echo parse") }
+        assert!(matches!(b, Some(ControlCommand::Echo{..})));
+        assert!(matches!(c, Some(ControlCommand::Echo{..})));
+    }
 }

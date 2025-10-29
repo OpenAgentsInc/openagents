@@ -123,6 +123,7 @@ pub fn write_bridge_token_to_home(token: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::Connection;
 
     #[test]
     fn expands_home_prefix() {
@@ -184,5 +185,23 @@ mod tests {
         let t = generate_bridge_token();
         assert_eq!(t.len(), 64);
         assert!(t.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')));
+    }
+
+    #[test]
+    fn lists_sqlite_tables_in_order() {
+        let td = tempfile::tempdir().unwrap();
+        let db = td.path().join("test.sqlite3");
+        {
+            let conn = Connection::open(&db).unwrap();
+            conn.execute("CREATE TABLE b (id INTEGER)", ()).unwrap();
+            conn.execute("CREATE TABLE a (id INTEGER)", ()).unwrap();
+        }
+        let names = list_sqlite_tables(&db).expect("tables");
+        // Should include at least our two tables (order by name ascending)
+        let filtered: Vec<String> = names
+            .into_iter()
+            .filter(|n| n == "a" || n == "b")
+            .collect();
+        assert_eq!(filtered, vec!["a".to_string(), "b".to_string()]);
     }
 }
