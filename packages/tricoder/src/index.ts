@@ -205,7 +205,8 @@ function runBridgeBinary(binPath: string, env: NodeJS.ProcessEnv, extraArgs: str
 
 async function main() {
   const args = new Set(process.argv.slice(2));
-  const autorun = args.has('--run-bridge') || args.has('-r');
+  // Default: run the bridge. Allow opting out with --no-run
+  const autorun = !args.has('--no-run');
   const verbose = args.has('--verbose') || process.env.DEBUG === '1';
   const prefer = (process.env.TRICODER_PREFER || '').toLowerCase(); // 'tailscale' | 'lan'
   const rotateToken = args.has('--rotate-token') || args.has('-R') || process.env.TRICODER_ROTATE_TOKEN === '1';
@@ -267,11 +268,8 @@ async function main() {
     console.log(chalk.gray('Hosts:    '), chalk.white(hosts.join(', ')));
   }
 
-  if (!autorun) {
-    console.log('\nTo launch the desktop bridge automatically:');
-    console.log(chalk.cyan('  tricoder --run-bridge'));
-    return;
-  }
+  // If not autorun, we still show the QR/deeplink and exit
+  if (!autorun) { return; }
 
   // Prepare environment for the bridge process (Convex fast-start defaults)
   const exposeLan = process.env.TRICODER_EXPOSE_LAN === '1';
@@ -308,7 +306,7 @@ async function main() {
   const repoDir = await ensureRepo(process.env.OPENAGENTS_REPO_DIR);
   const hasRust = await ensureRust();
   if (!hasRust) {
-    console.log('\nAfter installing Rust, rerun: tricoder --run-bridge');
+    console.log('\nAfter installing Rust, rerun: tricoder');
     process.exit(1);
   }
   const bind = process.env.TRICODER_BRIDGE_BIND || `0.0.0.0:${bridgePort}`;
