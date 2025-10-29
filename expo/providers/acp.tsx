@@ -32,7 +32,7 @@ export function AcpProvider({ children }: { children: React.ReactNode }) {
         const obj = JSON.parse(s)
         if (obj?.type === 'bridge.acp' && obj.notification) {
           const parsed = parseSessionNotification(obj.notification)
-          if ((parsed as any).ok) add((parsed as any).n)
+          if (parsed.ok) add(parsed.value as any)
         }
       } catch {}
     })
