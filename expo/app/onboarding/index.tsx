@@ -15,9 +15,10 @@ export default function Onboarding() {
   const router = useRouter()
   const { bridgeHost, setBridgeHost, connected, connecting, connect, disconnect } = useBridge()
   const { wsLastClose } = useBridge()
+  const HARDCODED_IP = '100.72.151.98'
   const bridgeCode = useSettings((s) => s.bridgeCode)
   // Use a local input state to avoid programmatic TextInput updates from store
-  const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => String(bridgeCode || ''))
+  const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => HARDCODED_IP)
   const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
@@ -65,22 +66,14 @@ export default function Onboarding() {
   }, [convexUrl, derivedConvexUrl])
   // Simplified parser: accept only an IP address and hardcode the bridge port
   const BRIDGE_PORT = 8787
-  const parseAnyBridgeInput = React.useCallback((raw: string): { bridgeHost?: string; convexUrl?: string; token?: string | null } | null => {
+  const parseAnyBridgeInput = React.useCallback((_raw: string): { bridgeHost?: string; convexUrl?: string; token?: string | null } | null => {
     try {
-      const s = String(raw || '').trim()
-      if (!s) return null
-      // IPv4
-      const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(s)
-      // IPv6 (very permissive; users can paste bracketed form too)
-      const ipv6 = /^\[?[A-Fa-f0-9:]+\]?$/.test(s) && s.includes(':')
-      if (ipv4) return { bridgeHost: `${s}:${BRIDGE_PORT}` }
-      if (ipv6) {
-        const unbracket = s.replace(/^\[/, '').replace(/\]$/, '')
-        return { bridgeHost: `[${unbracket}]:${BRIDGE_PORT}` }
-      }
-      return null
+      // Temporarily hardcode the IP used for connection
+      const ip = HARDCODED_IP
+      if (!ip) return null
+      return { bridgeHost: `${ip}:${BRIDGE_PORT}` }
     } catch { return null }
-  }, [])
+  }, [HARDCODED_IP])
 
   // Validate the current input only; do not mutate host/convex or connect automatically
   React.useEffect(() => {
@@ -153,8 +146,8 @@ export default function Onboarding() {
         {(isConnecting || convexLoading) ? (<ActivityIndicator size="small" color={Colors.foreground} />) : null}
       </View>
       <View style={{ height: 16 }} />
-      <Text style={styles.label}>Bridge IP</Text>
-      <Text style={styles.hint}>Enter your desktop's Tailscale IP (100.x.x.x)</Text>
+      <Text style={styles.label}>Bridge IP (temporary)</Text>
+      <Text style={styles.hint}>Using {HARDCODED_IP}:{BRIDGE_PORT} — this is hardcoded for now</Text>
       <View style={styles.inputWrapper}>
         <TextInput
           value={bridgeCodeInput}
@@ -175,12 +168,12 @@ export default function Onboarding() {
             // Token is managed separately in Settings; IP-only onboarding keeps it simple.
             // Do not auto-connect on input; host/convex will be applied on Connect
           }}
-          editable={!connecting && !inputDisabled}
           autoCapitalize='none'
           autoCorrect={false}
-          placeholder='paste host or code here'
+          placeholder='100.72.151.98'
           placeholderTextColor={Colors.secondary}
           style={[styles.input, { paddingRight: 44 }]}
+          editable={false}
         />
         {(() => {
           const hasText = String(bridgeCodeInput || '').trim().length > 0
