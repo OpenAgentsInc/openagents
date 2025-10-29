@@ -245,6 +245,12 @@ async function main() {
     if (!creds || !creds.hostname || !creds.token) { console.log(chalk.red('✘ Broker did not return tunnel credentials.')); process.exit(1); }
     saveTunnelCreds(creds);
     if (VERBOSE) console.log(chalk.dim(`[broker] hostname=${creds.hostname} tunnelId=${creds.tunnelId}`));
+    // Ensure local bridge is accepting connections before launching cloudflared
+    const ready = await waitForBridgeReady(20000);
+    if (!ready) {
+      console.log(chalk.yellow('[bridge-local] 127.0.0.1:8787 not ready yet — delaying cloudflared launch'));
+      await new Promise((r) => setTimeout(r, 1500));
+    }
     startCloudflared(creds.token);
     // Wait for DNS to propagate so the hostname resolves before printing the QR
     await waitForDns(creds.hostname, 45000).catch(() => {});
@@ -674,17 +680,66 @@ function cloudflaredPath(): string {
   return join(home, '.openagents', 'bin', process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
 }
 
+function ensureStateDir(): string {
+  const dir = join(os.homedir(), '.openagents', 'state');
+  try { mkdirSync(dir, { recursive: true }); } catch {}
+  return dir;
+}
+
+function stopCloudflaredIfRunning() {
+  try {
+    const pidFile = join(ensureStateDir(), 'cloudflared.pid');
+    if (!existsSync(pidFile)) return;
+    const txt = fs.readFileSync(pidFile, 'utf8').trim();
+    if (!txt) return;
+    const pid = Number(txt);
+    if (!Number.isFinite(pid) || pid <= 0) return;
+    try {
+      process.kill(pid, 0);
+      try { process.kill(pid, 'SIGTERM' as any); } catch {}
+      const start = Date.now();
+      while (Date.now() - start < 1000) {
+        try { process.kill(pid, 0); } catch { break; }
+      }
+    } catch {}
+  } catch {}
+}
+
 function startCloudflared(token: string) {
   const bin = cloudflaredPath();
   // Force IPv4 localhost to avoid ::1 resolution (origin listens on IPv4)
   // Force HTTP/2 transport to avoid QUIC/UDP blocks on some networks
-  const args = ['tunnel', 'run', '--protocol', 'http2', '--token', token, '--url', 'http://127.0.0.1:8787'];
+  // Keep a single origin keepalive connection to avoid port exhaustion
+  const args = [
+    'tunnel', 'run',
+    '--protocol', 'http2',
+    '--proxy-keepalive-connections', '1',
+    '--token', token,
+    '--url', 'http://127.0.0.1:8787',
+  ];
   const env = { ...process.env } as Record<string,string>;
-  // Ensure no system proxy settings interfere with network
   delete env.HTTP_PROXY; delete env.HTTPS_PROXY; delete env.ALL_PROXY;
   delete (env as any).http_proxy; delete (env as any).https_proxy; delete (env as any).all_proxy;
+  stopCloudflaredIfRunning();
   const child = spawn(bin, args, { stdio: VERBOSE ? 'inherit' : 'ignore', env });
+  try { fs.writeFileSync(join(ensureStateDir(), 'cloudflared.pid'), String(child.pid || '')); } catch {}
   child.on('error', (e) => { try { console.log(chalk.red(`[cloudflared] error: ${e?.message || e}`)) } catch {} });
+}
+
+async function waitForBridgeReady(timeoutMs = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const ok = await new Promise<boolean>((resolve) => {
+      const s = net.createConnection({ host: '127.0.0.1', port: 8787 });
+      let done = false;
+      s.once('connect', () => { done = true; try { s.end(); } catch {}; resolve(true); });
+      s.once('error', () => { if (!done) resolve(false); });
+      setTimeout(() => { try { s.destroy(); } catch {}; if (!done) resolve(false); }, 600);
+    });
+    if (ok) return true;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return false;
 }
 
 async function waitForDns(host: string, timeoutMs = 30000) {
