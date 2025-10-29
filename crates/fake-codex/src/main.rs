@@ -36,7 +36,20 @@ fn main() {
         "type": "item.completed",
         "item": {"id":"item_1","type":"agent_message","text":"Hello from fake codex"}
     })).unwrap();
+    // Emit a command_execution and a file_change to exercise tool mapping
+    writeln!(out, "{}", serde_json::json!({
+        "type": "item.started",
+        "item": {"id":"exec_1","type":"command_execution","command":"echo hi","aggregated_output":"","status":"in_progress"}
+    })).unwrap();
+    writeln!(out, "{}", serde_json::json!({
+        "type": "item.completed",
+        "item": {"id":"file_1","type":"file_change","status":"completed","changes":[{"path":"src/main.rs","kind":"update"}]}
+    })).unwrap();
+    // Emit a todo_list to map to plan
+    writeln!(out, "{}", serde_json::json!({
+        "type": "item.completed",
+        "item": {"id":"todo_1","type":"todo_list","items":[{"text":"A","completed":false},{"text":"B","completed":true}]}
+    })).unwrap();
     writeln!(out, "{}", serde_json::json!({"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":5}})).unwrap();
     out.flush().ok();
 }
-

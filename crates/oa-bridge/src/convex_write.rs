@@ -231,10 +231,31 @@ pub async fn mirror_acp_update_to_convex(
     thread_id: &str,
     update: &acp::SessionUpdate,
 ) {
-    if !state.convex_ready.load(Ordering::Relaxed) {
+    let noop = std::env::var("OPENAGENTS_CONVEX_NOOP").ok().as_deref() == Some("1");
+    if !state.convex_ready.load(Ordering::Relaxed) && !noop {
         let _ = state.tx.send(json!({
             "type":"bridge.convex_write","op":"acp.mirror","ok":false,
             "threadId":thread_id, "reason":"convex not ready"
+        }).to_string());
+        return;
+    }
+    if noop {
+        // Emit a concise debug note indicating what would have been written.
+        let (target, kind) = match update {
+            acp::SessionUpdate::UserMessageChunk(_) => ("messages", "user"),
+            acp::SessionUpdate::AgentMessageChunk(_) => ("messages", "assistant"),
+            acp::SessionUpdate::AgentThoughtChunk(_) => ("messages", "reason"),
+            acp::SessionUpdate::ToolCall(_) => ("acp_tool_calls", "tool"),
+            acp::SessionUpdate::Plan(_) => ("acp_plan", "plan"),
+            acp::SessionUpdate::AvailableCommandsUpdate(_) => ("acp_state", "available_commands"),
+            acp::SessionUpdate::CurrentModeUpdate(_) => ("acp_state", "current_mode"),
+            acp::SessionUpdate::ToolCallUpdate(_) => ("acp_tool_calls", "tool_update"),
+        };
+        let _ = state.tx.send(json!({
+            "type": "bridge.convex_noop",
+            "threadId": thread_id,
+            "target": target,
+            "kind": kind
         }).to_string());
         return;
     }
