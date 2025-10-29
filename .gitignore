@@ -11,3 +11,4 @@ dist
 *.tgz
 src-tauri/
 packages/tricoder/tmp.ts
+docs/logs/claude
