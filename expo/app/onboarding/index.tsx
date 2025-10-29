@@ -195,7 +195,7 @@ export default function Onboarding() {
         style={styles.pairBtn as any}
       >
         <Ionicons name='qr-code-outline' size={22} color={Colors.foreground} />
-        <Text style={styles.pairText}>Pair</Text>
+        <Text style={styles.pairText}>Pair with Desktop</Text>
       </Pressable>
       {!!lastWsErrorText && !connected && (
         <Text style={[styles.errorText, { marginTop: 8 }]}>
@@ -228,6 +228,6 @@ const styles = StyleSheet.create({
   connectText: { color: Colors.foreground, fontFamily: Typography.bold, letterSpacing: 0.5, textAlign: 'center' },
   devToolsBtn: { marginTop: 16, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 12, alignItems: 'center' },
   devToolsText: { color: Colors.secondary, fontFamily: Typography.bold },
-  pairBtn: { marginTop: 24, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, paddingVertical: 28, alignItems: 'center', gap: 8 },
+  pairBtn: { marginTop: 24, borderWidth: 2, borderColor: Colors.foreground, backgroundColor: Colors.card, paddingVertical: 20, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', gap: 10, flexDirection: 'row' },
   pairText: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18, letterSpacing: 0.5 },
 })
