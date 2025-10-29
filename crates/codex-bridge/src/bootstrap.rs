@@ -49,6 +49,7 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     }
     let db = opts.convex_db.clone().unwrap_or_else(default_convex_db);
     let port = opts.convex_port;
+    let site_proxy_port = port.saturating_add(1);
     let interface = opts.convex_interface.clone();
     let base = format!("http://127.0.0.1:{}", port);
     let pre_healthy = convex_health(&base).await.unwrap_or(false);
@@ -76,6 +77,8 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .arg(&interface)
         .arg("--port")
         .arg(port.to_string())
+        .arg("--site-proxy-port")
+        .arg(site_proxy_port.to_string())
         .arg("--local-storage")
         .arg(
             std::env::var("HOME")
@@ -86,7 +89,7 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    info!(bin=%bin.display(), db=%db.display(), port, interface=%interface, "convex.ensure: starting local backend");
+    info!(bin=%bin.display(), db=%db.display(), port, site_proxy_port, interface=%interface, "convex.ensure: starting local backend");
     let mut child = cmd.spawn().context("spawn convex local_backend")?;
     let mut ok = false;
     for i in 0..40 {

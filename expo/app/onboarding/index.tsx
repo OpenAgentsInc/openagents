@@ -14,12 +14,14 @@ export default function Onboarding() {
   useHeaderTitle('Connect')
   const router = useRouter()
   const { bridgeHost, setBridgeHost, connected, connecting, connect, disconnect } = useBridge()
+  const { wsLastClose } = useBridge()
   const bridgeCode = useSettings((s) => s.bridgeCode)
   // Use a local input state to avoid programmatic TextInput updates from store
   const [bridgeCodeInput, setBridgeCodeInput] = React.useState<string>(() => String(bridgeCode || ''))
   const convexUrl = useSettings((s) => s.convexUrl)
   const setConvexUrl = useSettings((s) => s.setConvexUrl)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
+  const bridgeToken = useSettings((s) => s.bridgeToken)
   const [codeError, setCodeError] = React.useState<string>('')
   const [inputDisabled, setInputDisabled] = React.useState<boolean>(false)
 
@@ -61,14 +63,33 @@ export default function Onboarding() {
     } catch { setHttpStatus('error') }
     return () => { cancelled = true }
   }, [convexUrl, derivedConvexUrl])
+  // Simplified parser: accept only an IP address and hardcode the bridge port
+  const BRIDGE_PORT = 8787
+  const parseAnyBridgeInput = React.useCallback((raw: string): { bridgeHost?: string; convexUrl?: string; token?: string | null } | null => {
+    try {
+      const s = String(raw || '').trim()
+      if (!s) return null
+      // IPv4
+      const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(s)
+      // IPv6 (very permissive; users can paste bracketed form too)
+      const ipv6 = /^\[?[A-Fa-f0-9:]+\]?$/.test(s) && s.includes(':')
+      if (ipv4) return { bridgeHost: `${s}:${BRIDGE_PORT}` }
+      if (ipv6) {
+        const unbracket = s.replace(/^\[/, '').replace(/\]$/, '')
+        return { bridgeHost: `[${unbracket}]:${BRIDGE_PORT}` }
+      }
+      return null
+    } catch { return null }
+  }, [])
+
   // Validate the current input only; do not mutate host/convex or connect automatically
   React.useEffect(() => {
     const trimmed = String(bridgeCodeInput || '').trim()
     if (!trimmed) { setCodeError(''); return }
-    const parsed = parseBridgeCode(trimmed)
-    if (!parsed || !parsed.bridgeHost) setCodeError('Invalid bridge code')
+    const parsed = parseAnyBridgeInput(trimmed)
+    if (!parsed || !parsed.bridgeHost) setCodeError('Enter a valid IP address')
     else setCodeError('')
-  }, [bridgeCodeInput])
+  }, [bridgeCodeInput, parseAnyBridgeInput])
   React.useEffect(() => {
     if (httpStatus) { try { console.log('[onboarding] httpStatus:', httpStatus) } catch {} }
   }, [httpStatus])
@@ -88,16 +109,36 @@ export default function Onboarding() {
     return 'Disconnected'
   })()
 
+  const lastWsErrorText = React.useMemo(() => {
+    if (!wsLastClose || connected) return ''
+    const code = wsLastClose.code
+    const reason = String(wsLastClose.reason || '')
+    if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'Connection refused — is the bridge running and reachable?'
+    if (/unauthorized|401/i.test(reason)) return 'Unauthorized — set Bridge Token in Settings.'
+    return `WebSocket closed ${code ?? ''}${reason ? `: ${reason}` : ''}`.trim()
+  }, [wsLastClose, connected])
+
+  // Show the exact WS URL we will attempt (helps debugging)
+  const attemptUrl = React.useMemo(() => {
+    try {
+      const raw = String(bridgeHost || '').trim()
+      if (!raw) return ''
+      const host = raw
+        .replace(/^ws:\/\//i, '')
+        .replace(/^wss:\/\//i, '')
+        .replace(/^http:\/\//i, '')
+        .replace(/^https:\/\//i, '')
+        .replace(/\/$/, '')
+        .replace(/\/ws$/i, '')
+        .replace(/\/$/, '')
+      const token = String(bridgeToken || '').trim()
+      const tokenPart = token ? `?token=${encodeURIComponent(token)}` : ''
+      return host ? `ws://${host}/ws${tokenPart}` : ''
+    } catch { return '' }
+  }, [bridgeHost, bridgeToken])
+
   const trimmedCode = React.useMemo(() => String(bridgeCodeInput || '').trim(), [bridgeCodeInput])
-  const likelyCode = React.useMemo(() => {
-    if (!trimmedCode) return false
-    if (trimmedCode.startsWith('openagents://') || trimmedCode.startsWith('oa://') || trimmedCode.startsWith('{')) {
-      try { return !!parseBridgeCode(trimmedCode) } catch { return false }
-    }
-    // Heuristic: base64url for a JSON object often begins with 'ey'
-    if (/^ey[A-Za-z0-9_-]{10,}$/.test(trimmedCode)) return true
-    try { return !!parseBridgeCode(trimmedCode) } catch { return false }
-  }, [trimmedCode])
+  const likelyCode = React.useMemo(() => !!parseAnyBridgeInput(trimmedCode), [trimmedCode, parseAnyBridgeInput])
 
   // Auto-advance only when both sides are ready
   React.useEffect(() => {
@@ -112,8 +153,8 @@ export default function Onboarding() {
         {(isConnecting || convexLoading) ? (<ActivityIndicator size="small" color={Colors.foreground} />) : null}
       </View>
       <View style={{ height: 16 }} />
-      <Text style={styles.label}>Bridge Code</Text>
-      <Text style={styles.hint}>Run `npx tricoder@0.2.0` from your desktop</Text>
+      <Text style={styles.label}>Bridge IP</Text>
+      <Text style={styles.hint}>Enter your desktop's Tailscale IP (100.x.x.x)</Text>
       <View style={styles.inputWrapper}>
         <TextInput
           value={bridgeCodeInput}
@@ -128,19 +169,16 @@ export default function Onboarding() {
               setCodeError('')
               return
             }
-            const parsed = parseBridgeCode(display)
-            if (!parsed || !parsed.bridgeHost) {
-              setCodeError('Invalid bridge code')
-              return
-            }
+            const parsed = parseAnyBridgeInput(display)
+            if (!parsed || !parsed.bridgeHost) { setCodeError('Enter a valid IP address'); return }
             setCodeError('')
-            try { if (parsed?.token) setBridgeToken(parsed.token || '') } catch {}
+            // Token is managed separately in Settings; IP-only onboarding keeps it simple.
             // Do not auto-connect on input; host/convex will be applied on Connect
           }}
           editable={!connecting && !inputDisabled}
           autoCapitalize='none'
           autoCorrect={false}
-          placeholder='paste code here'
+          placeholder='paste host or code here'
           placeholderTextColor={Colors.secondary}
           style={[styles.input, { paddingRight: 44 }]}
         />
@@ -174,10 +212,10 @@ export default function Onboarding() {
         onPress={() => {
           if (connecting || codeError || !likelyCode) return
           try {
-          const parsed = parseBridgeCode(normalizeBridgeCodeInput(trimmedCode))
+          const parsed = parseAnyBridgeInput(normalizeBridgeCodeInput(trimmedCode))
           if (parsed?.bridgeHost) setBridgeHost(parsed.bridgeHost)
           if (parsed?.convexUrl) setConvexUrl(parsed.convexUrl)
-          if (parsed?.token) setBridgeToken(parsed.token || '')
+          // Bridge token (if required) can be pasted in Settings
           } catch {}
           try {
             setInputDisabled(true)
@@ -191,12 +229,18 @@ export default function Onboarding() {
       >
         <Text style={styles.connectText}>{connected ? 'Connected' : (connecting ? 'Connecting…' : (codeError ? 'Fix Code' : 'Connect'))}</Text>
       </Pressable>
+      {!!lastWsErrorText && !connected && (
+        <Text style={[styles.errorText, { marginTop: 8 }]}>{lastWsErrorText}</Text>
+      )}
+      {!!attemptUrl && !connected && (
+        <Text style={[styles.hint, { marginTop: 4 }]}>{attemptUrl}</Text>
+      )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 24 },
+  container: { flex: 1, backgroundColor: Colors.background, padding: 24, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 24, marginTop: 16 },
   title: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 28, marginBottom: 8, textAlign: 'left' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusText: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 },
