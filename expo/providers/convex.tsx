@@ -44,23 +44,24 @@ export function ConvexProviderLocal({ children }: { children: React.ReactNode })
     return `http://${hostOnly}:7788`
   }, [bridgeHost, convexOverride])
 
-  // Only maintain a live Convex client when the bridge is connected
-  const [client, setClient] = React.useState<ConvexReactClient>(() => new ConvexReactClient('http://127.0.0.1:1', { verbose: false }))
+  // Maintain a stable inert client and swap in a live client when available.
+  // Do not proactively close clients to avoid "ConvexReactClient has already been closed" during re-renders.
+  const inertRef = React.useRef<ConvexReactClient | null>(null)
+  if (!inertRef.current) {
+    inertRef.current = new ConvexReactClient('http://127.0.0.1:1', { verbose: false })
+  }
+  const [client, setClient] = React.useState<ConvexReactClient>(() => inertRef.current!)
 
   React.useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try { await client.close?.() } catch {}
-      if (!connected || !convexUrl) {
-        // Provide an inert client that won't be used; avoids connecting/logging
-        try { if (!cancelled) setClient(new ConvexReactClient('http://127.0.0.1:1', { verbose: false })) } catch {}
-        return
-      }
-      try { console.log('[convex] client url =', convexUrl) } catch {}
-      const live = new ConvexReactClient(convexUrl, { verbose: false })
-      if (!cancelled) setClient(live)
-    })()
-    return () => { cancelled = true }
+    if (!connected || !convexUrl) {
+      // Revert to inert without closing the prior client to prevent hook errors
+      setClient(inertRef.current!)
+      return
+    }
+    try { console.log('[convex] client url =', convexUrl) } catch {}
+    const live = new ConvexReactClient(convexUrl, { verbose: false })
+    setClient(live)
+    // Intentionally skip closing the previous client here to avoid races with consumers.
   }, [connected, convexUrl])
 
   return <ConvexProvider client={client}>{children}</ConvexProvider>
