@@ -312,6 +312,34 @@ pub async fn mirror_acp_update_to_convex(
             if !text_chunks.is_empty() {
                 args.insert("content_texts".into(), v_arr(text_chunks.into_iter().map(v_str).collect()));
             }
+            // Flatten diffs if present
+            let mut diff_paths: Vec<convex::Value> = Vec::new();
+            let mut diff_new: Vec<convex::Value> = Vec::new();
+            let mut diff_old: Vec<convex::Value> = Vec::new();
+            for c in &tc.content {
+                if let acp::ToolCallContent::Diff { diff } = c {
+                    diff_paths.push(v_str(diff.path.to_string_lossy().to_string()));
+                    diff_new.push(v_str(diff.new_text.clone()));
+                    match &diff.old_text {
+                        Some(s) => diff_old.push(v_str(s.clone())),
+                        None => diff_old.push(convex::Value::from(Option::<String>::None)),
+                    }
+                }
+            }
+            if !diff_paths.is_empty() {
+                args.insert("content_diff_paths".into(), v_arr(diff_paths));
+                args.insert("content_diff_new_texts".into(), v_arr(diff_new));
+                args.insert("content_diff_old_texts".into(), v_arr(diff_old));
+            }
+            // Flatten terminal ids
+            let term_ids: Vec<convex::Value> = tc
+                .content
+                .iter()
+                .filter_map(|c| match c { acp::ToolCallContent::Terminal { terminal_id } => Some(v_str(terminal_id.to_string())), _ => None })
+                .collect();
+            if !term_ids.is_empty() {
+                args.insert("content_terminal_ids".into(), v_arr(term_ids));
+            }
             if !tc.locations.is_empty() {
                 let paths: Vec<String> = tc
                     .locations

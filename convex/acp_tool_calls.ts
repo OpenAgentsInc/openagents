@@ -29,6 +29,10 @@ export const upsert = mutationGeneric(async ({ db }, args: {
   locations_json?: string;
   // Typed, flattened vectors as an alternative to JSON/object arrays
   content_texts?: string[];
+  content_diff_paths?: string[];
+  content_diff_new_texts?: string[];
+  content_diff_old_texts?: (string | null)[];
+  content_terminal_ids?: string[];
   locations_paths?: string[];
   locations_lines?: (number | null)[];
 }) => {
@@ -41,6 +45,18 @@ export const upsert = mutationGeneric(async ({ db }, args: {
     if (Array.isArray(args.content)) return args.content as any[];
     if (Array.isArray(args.content_texts) && args.content_texts.length) {
       return (args.content_texts as string[]).map((text) => ({ type: 'content', content: { type: 'text', text } }));
+    }
+    // Merge diff vectors into content entries if present
+    if (Array.isArray(args.content_diff_paths) && Array.isArray(args.content_diff_new_texts) && args.content_diff_paths.length === args.content_diff_new_texts.length) {
+      const diffs = (args.content_diff_paths as string[]).map((path, i) => ({ type: 'diff', path, newText: (args.content_diff_new_texts as string[])[i], oldText: Array.isArray(args.content_diff_old_texts) ? (args.content_diff_old_texts as (string | null)[])[i] ?? undefined : undefined }));
+      const base: any[] = [];
+      base.push(...diffs);
+      return base;
+    }
+    // Terminal content embedding
+    if (Array.isArray(args.content_terminal_ids) && args.content_terminal_ids.length) {
+      const t = (args.content_terminal_ids as string[]).map((terminalId) => ({ type: 'terminal', terminalId }));
+      return t as any[];
     }
     return parseJsonArray(args.content_json);
   })();
