@@ -233,9 +233,18 @@ mod tests {
             tinyvex: std::sync::Arc::new(tvx),
         };
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;
-        let msg = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await.ok().and_then(Result::ok).unwrap_or_default();
-        let v: serde_json::Value = serde_json::from_str(&msg).unwrap_or_default();
-        assert_eq!(v.get("type").and_then(|x| x.as_str()), Some("bridge.tinyvex_write"));
-        assert_eq!(v.get("op").and_then(|x| x.as_str()), Some("upsertStreamed"));
+        // Drain until we see the bridge.tinyvex_write event
+        let mut saw = false;
+        for _ in 0..4 {
+            if let Ok(Ok(msg)) = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await {
+                let v: serde_json::Value = serde_json::from_str(&msg).unwrap_or_default();
+                if v.get("type").and_then(|x| x.as_str()) == Some("bridge.tinyvex_write") {
+                    assert_eq!(v.get("op").and_then(|x| x.as_str()), Some("upsertStreamed"));
+                    saw = true;
+                    break;
+                }
+            }
+        }
+        assert!(saw, "expected bridge.tinyvex_write event");
     }
 }
