@@ -1,6 +1,5 @@
 use crate::state::AppState;
 use serde_json::json;
-use std::sync::atomic::Ordering;
 use tracing::warn;
 
 fn now_ms() -> i64 {
@@ -108,9 +107,79 @@ pub fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
 }
 
 pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, update: &agent_client_protocol::SessionUpdate) {
-    // MVP: rely on JSONL path for streaming text and skip ACP mirror to DB.
-    let _ = state.tx.send(json!({ "type": "bridge.tinyvex_noop", "op": "acp.mirror", "threadId": thread_id }).to_string());
-    let _ = update; // suppress unused
+    // Mirror ACP session updates into Tinyvex tables for tools/plan/state
+    let t = now_ms();
+    match update {
+        agent_client_protocol::SessionUpdate::ToolCall(tc) => {
+            let id = format!("{:?}", tc.id);
+            let title = tc.title.as_str();
+            let kind = format!("{:?}", tc.kind);
+            let status = format!("{:?}", tc.status);
+            let content_json = serde_json::to_string(&tc.content).unwrap_or("[]".into());
+            let locations_json = serde_json::to_string(&tc.locations).unwrap_or("[]".into());
+            let _ = state.tinyvex.upsert_acp_tool_call(thread_id, &id, title, &kind, &status, &content_json, &locations_json, t);
+        }
+        agent_client_protocol::SessionUpdate::ToolCallUpdate(tc) => {
+            let id = format!("{:?}", tc.id);
+            // Fields on ToolCallUpdate live under `fields`
+            let title: &str = tc
+                .fields
+                .title
+                .as_deref()
+                .unwrap_or("");
+            let kind: String = tc
+                .fields
+                .kind
+                .as_ref()
+                .map(|k| format!("{:?}", k))
+                .unwrap_or_else(|| "".to_string());
+            let status: String = tc
+                .fields
+                .status
+                .as_ref()
+                .map(|s| format!("{:?}", s))
+                .unwrap_or_else(|| "".to_string());
+            let content_json: String = tc
+                .fields
+                .content
+                .as_ref()
+                .map(|c| serde_json::to_string(c).unwrap_or("[]".into()))
+                .unwrap_or_else(|| "[]".into());
+            let locations_json: String = tc
+                .fields
+                .locations
+                .as_ref()
+                .map(|l| serde_json::to_string(l).unwrap_or("[]".into()))
+                .unwrap_or_else(|| "[]".into());
+            let _ = state
+                .tinyvex
+                .upsert_acp_tool_call(
+                    thread_id,
+                    &id,
+                    title,
+                    &kind,
+                    &status,
+                    &content_json,
+                    &locations_json,
+                    t,
+                );
+        }
+        agent_client_protocol::SessionUpdate::Plan(p) => {
+            let entries_json = serde_json::to_string(&p.entries).unwrap_or("[]".into());
+            let _ = state.tinyvex.upsert_acp_plan(thread_id, &entries_json, t);
+        }
+        agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(ac) => {
+            let cmds_json = serde_json::to_string(&ac.available_commands).unwrap_or("[]".into());
+            let _ = state.tinyvex.upsert_acp_state(thread_id, None, Some(&cmds_json), t);
+        }
+        agent_client_protocol::SessionUpdate::CurrentModeUpdate(_cm) => {
+            // CurrentModeUpdate carries a SessionModeId wrapper; store later when adapter needs it
+            let _ = state.tinyvex.upsert_acp_state(thread_id, None, None, t);
+        }
+        agent_client_protocol::SessionUpdate::UserMessageChunk(_) => {}
+        agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => {}
+        agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => {}
+    }
 }
 
 #[cfg(test)]
