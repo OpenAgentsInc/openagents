@@ -23,8 +23,7 @@ import { useAppLogStore } from "@/lib/app-log"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
 import { TinyvexProvider, useTinyvex } from "@/providers/tinyvex"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
-import { ProjectsProvider } from "@/providers/projects"
-import { SkillsProvider } from "@/providers/skills"
+// Projects/Skills providers temporarily disabled
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { useSettings } from "@/lib/settings-store"
 import { parseBridgeCode, normalizeBridgeCodeInput } from "@/lib/pairing"
@@ -205,14 +204,10 @@ export default function RootLayout() {
       <ThemeProvider value={NavigationTheme}>
         <BridgeProvider>
           <TinyvexProvider>
-            <ProjectsProvider>
-              <SkillsProvider>
-                <DrawerProvider>
-                  <LinkingBootstrap />
-                  <DrawerWrapper />
-                </DrawerProvider>
-              </SkillsProvider>
-            </ProjectsProvider>
+            <DrawerProvider>
+              <LinkingBootstrap />
+              <DrawerWrapper />
+            </DrawerProvider>
           </TinyvexProvider>
         </BridgeProvider>
       </ThemeProvider>
