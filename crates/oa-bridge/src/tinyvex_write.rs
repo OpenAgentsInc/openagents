@@ -208,6 +208,7 @@ mod tests {
             history: Mutex::new(Vec::new()),
             current_convex_thread: Mutex::new(None),
             stream_track: Mutex::new(std::collections::HashMap::new()),
+            pending_user_text: Mutex::new(std::collections::HashMap::new()),
             convex_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: std::sync::Arc::new(tvx),
         };

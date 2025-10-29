@@ -40,6 +40,8 @@ pub struct AppState {
     pub current_convex_thread: Mutex<Option<String>>,
     // Streaming message trackers (per thread, per kind). Key: "<threadId>|assistant" or "<threadId>|reason".
     pub stream_track: Mutex<HashMap<String, StreamEntry>>,
+    // Pending user message text keyed by client thread doc id (to emit ACP once session id is known)
+    pub pending_user_text: Mutex<HashMap<String, String>>,
     // Whether the Convex backend is healthy and ready for clients (legacy; always true in Tinyvex mode)
     #[allow(dead_code)]
     pub convex_ready: AtomicBool,
