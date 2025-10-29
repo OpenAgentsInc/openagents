@@ -676,7 +676,8 @@ function cloudflaredPath(): string {
 
 function startCloudflared(token: string) {
   const bin = cloudflaredPath();
-  const args = ['tunnel', 'run', '--token', token, '--url', 'http://localhost:8787'];
+  // Force IPv4 localhost to avoid ::1 resolution (origin listens on IPv4)
+  const args = ['tunnel', 'run', '--token', token, '--url', 'http://127.0.0.1:8787'];
   const env = { ...process.env } as Record<string,string>;
   // Ensure no system proxy settings interfere with network
   delete env.HTTP_PROXY; delete env.HTTPS_PROXY; delete env.ALL_PROXY;
