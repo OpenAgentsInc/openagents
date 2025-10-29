@@ -203,20 +203,15 @@ export default function ConvexThreadDetail() {
                     </View>
                   )
                 })()}
-                {/* ACP tool calls */}
-                {Array.isArray(toolCalls) && toolCalls.length > 0 && toolCalls.map((tc: any) => {
-                  const obj = Array.isArray(tc.content) ? tc.content : null
-                  const props = obj && Array.isArray(obj) ? { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending'), content: obj } : { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending') }
-                  return (
-                    <View key={`${tc.threadId}:${tc.toolCallId}`} style={{ paddingVertical: 2 }}>
-                      <SessionUpdateToolCall {...(props as any)} />
-                    </View>
-                  )
-                })}
                 {arr.map((m: any) => {
                   const key = m._id || `${m.threadId}-${m.ts}`
                   const kind = String(m.kind || (m.role ? 'message' : '')).toLowerCase()
                   const role = String(m.role || '').toLowerCase()
+                  // Skip raw tool/cmd/file/search/mcp/todo message rows; we render
+                  // normalized ACP tool calls instead (deduped and status-updating)
+                  if (kind === 'tool' || kind === 'cmd' || kind === 'file' || kind === 'search' || kind === 'mcp' || kind === 'todo') {
+                    return null
+                  }
                   if (kind === 'message') {
                     if (role === 'user') {
                       return (
@@ -271,25 +266,19 @@ export default function ConvexThreadDetail() {
                     )
                     }
                   }
-                  if ((kind === 'tool' || kind === 'cmd' || kind === 'file' || kind === 'search' || kind === 'mcp' || kind === 'todo')) {
-                    const tc = m.data || (() => { try { return JSON.parse(String(m.text||'')) } catch { return null } })()
-                    if (tc && (tc.title || tc.kind || tc.status)) {
-                      return (
-                        <View key={key} style={{ paddingVertical: 2 }}>
-                          <SessionUpdateToolCall {...(tc as any)} />
-                        </View>
-                      )
-                    }
-                    const body = typeof m.text === 'string' && m.text.trim().startsWith('{') ? `\n\n\`\`\`json\n${m.text}\n\`\`\`` : String(m.text || '')
-                    return (
-                      <View key={key} style={{ paddingVertical: 2 }}>
-                        <MarkdownBlock markdown={`_${kind.toUpperCase()}_ ${body}`} />
-                      </View>
-                    )
-                  }
                   return (
                     <View key={key} style={{ paddingVertical: 2 }}>
                       <MarkdownBlock markdown={`_${kind.toUpperCase() || 'ITEM'}_\n\n${String(m.text || '')}`}/>
+                    </View>
+                  )
+                })}
+                {/* ACP tool calls (normalized, deduped). Render after messages so user input precedes first tool call. */}
+                {Array.isArray(toolCalls) && toolCalls.length > 0 && toolCalls.map((tc: any) => {
+                  const obj = Array.isArray(tc.content) ? tc.content : null
+                  const props = obj && Array.isArray(obj) ? { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending'), content: obj } : { title: tc.title, kind: String(tc.kind||'other'), status: String(tc.status||'pending') }
+                  return (
+                    <View key={`${tc.threadId}:${tc.toolCallId}`} style={{ paddingVertical: 2 }}>
+                      <SessionUpdateToolCall {...(props as any)} />
                     </View>
                   )
                 })}
