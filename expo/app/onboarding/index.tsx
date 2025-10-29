@@ -10,6 +10,7 @@ import { useSettings } from '@/lib/settings-store'
 import { Ionicons } from '@expo/vector-icons'
 import { useIsDevEnv } from '@/lib/env'
 import { TailscalePeers } from '@/components/tailscale-peers'
+import { LocalBridgeDiscovery } from '@/components/local-bridge-discovery'
 
 export default function Onboarding() {
   useHeaderTitle('Connect')
@@ -126,8 +127,11 @@ export default function Onboarding() {
         <Text style={styles.errorText}>{codeError}</Text>
       )}
       <View style={{ height: 12 }} />
-      {/* Tailscale LocalAPI peers (best-effort) */}
+      {/* Tailscale LocalAPI peers (Android best-effort) */}
       <TailscalePeers />
+      <View style={{ height: 12 }} />
+      {/* Local network scan for bridge hosts */}
+      <LocalBridgeDiscovery onPick={(hp) => { try { setBridgeHost(hp) } catch {} }} />
       <View style={{ height: 12 }} />
       <Pressable
         onPress={() => {
