@@ -186,7 +186,8 @@ export default function Onboarding() {
           } catch {}
         }}
         accessibilityRole='button'
-        accessibilityState={{ busy: connecting }}
+        accessibilityState={{ busy: connecting, disabled: connecting || !!codeError || !likelyCode }}
+        disabled={connecting || !!codeError || !likelyCode}
         style={[styles.connectBtn as any, (connecting ? styles.connectingBtn : undefined) as any, ((codeError || !likelyCode) ? styles.connectDisabled : undefined) as any]}
       >
         <Text style={styles.connectText}>{connected ? 'Connected' : (connecting ? 'Connecting…' : (codeError ? 'Fix Code' : 'Connect'))}</Text>
@@ -211,7 +212,7 @@ const styles = StyleSheet.create({
   clearIconArea: { position: 'absolute', right: 8, top: 0, bottom: 8, width: 28, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: Colors.danger, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 },
   connectBtn: { backgroundColor: Colors.success, paddingHorizontal: 18, paddingVertical: 12, alignSelf: 'center', borderWidth: 1, borderColor: Colors.success, width: 240, alignItems: 'center', justifyContent: 'center' },
-  connectingBtn: { opacity: 0.95, borderColor: Colors.success },
+  connectingBtn: { opacity: 0.75, borderColor: Colors.success },
   connectDisabled: { backgroundColor: Colors.border, borderColor: Colors.border },
   connectText: { color: Colors.foreground, fontFamily: Typography.bold, letterSpacing: 0.5, textAlign: 'center' },
 })
