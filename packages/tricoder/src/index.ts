@@ -8,6 +8,7 @@ import path from 'node:path';
 import { ensureBridgeBinary } from './utils/bridgeBinary.js';
 import { webcrypto as nodeCrypto, randomBytes } from 'node:crypto';
 import qrcode from 'qrcode-terminal';
+import { findAvailablePort } from './ports.js';
 
 const execFileP = promisify(execFile);
 
@@ -232,11 +233,12 @@ async function main() {
     process.exit(1);
   }
 
-  const bridgePort = Number(process.env.TRICODER_BRIDGE_PORT || 8787);
-  // Ensure bind uses selected port if TRICODER_BRIDGE_BIND not set
-  if (!process.env.TRICODER_BRIDGE_BIND) {
-    process.env.TRICODER_BRIDGE_BIND = `0.0.0.0:${bridgePort}`;
-  }
+  // Choose an available port, falling back to the next free if preferred port is busy
+  const preferPort = Number(process.env.TRICODER_BRIDGE_PORT || 8787);
+  const bridgePort = await findAvailablePort(preferPort, 50, '0.0.0.0');
+  // Persist chosen port/bind for downstream processes
+  process.env.TRICODER_BRIDGE_PORT = String(bridgePort);
+  process.env.TRICODER_BRIDGE_BIND = process.env.TRICODER_BRIDGE_BIND || `0.0.0.0:${bridgePort}`;
 
   // Durable token: reuse ~/.openagents/bridge.json when present
   let token: string | null = null;

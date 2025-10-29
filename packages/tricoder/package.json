@@ -1,6 +1,6 @@
 {
   "name": "tricoder",
-  "version": "0.2.0-rc.26",
+  "version": "0.2.0-rc.27",
   "type": "module",
   "author": "OpenAgents, Inc.",
   "license": "Apache-2.0",
@@ -22,7 +22,7 @@
     "build": "tsc -p tsconfig.json",
     "prepublishOnly": "npx -y -p typescript tsc -p tsconfig.json && chmod +x dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "node --loader tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "engines": {
     "node": ">=18"
