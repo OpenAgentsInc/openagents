@@ -7,9 +7,9 @@ export * from './ToolCallContentDiff'
 export * from './ToolCallContentTerminal'
 
 export * from './SessionUpdateAgentMessageChunk'
+export * from './SessionUpdateUserMessageChunk'
 export * from './SessionUpdateAgentThoughtChunk'
 export * from './SessionUpdatePlan'
 export * from './SessionUpdateToolCall'
 export * from './SessionUpdateAvailableCommandsUpdate'
 export * from './SessionUpdateCurrentModeUpdate'
-

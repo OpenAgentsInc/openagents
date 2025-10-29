@@ -9,6 +9,8 @@ use tracing::{info, warn};
 
 use crate::state::AppState;
 use std::sync::atomic::Ordering;
+use serde_json::json;
+use agent_client_protocol as acp;
 
 /// Convert Convex FunctionResult to JSON for logging or test inspection.
 #[allow(dead_code)]
@@ -217,6 +219,88 @@ pub fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
         Some(format!("[jsonl delta ~{} bytes]", line.len()))
     } else {
         None
+    }
+}
+
+/// Mirror ACP SessionUpdate into Convex rows. This complements the legacy JSONL→Convex
+/// mapping so the app can subscribe to Convex as the single source of truth.
+pub async fn mirror_acp_update_to_convex(
+    state: &AppState,
+    thread_id: &str,
+    update: &acp::SessionUpdate,
+) {
+    if !state.convex_ready.load(Ordering::Relaxed) {
+        let _ = state.tx.send(json!({
+            "type":"bridge.convex_write","op":"acp.mirror","ok":false,
+            "threadId":thread_id, "reason":"convex not ready"
+        }).to_string());
+        return;
+    }
+    use convex::{ConvexClient, Value};
+    use std::collections::BTreeMap;
+    let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
+    let Ok(mut client) = ConvexClient::new(&url).await else { return };
+
+    match update {
+        acp::SessionUpdate::UserMessageChunk(u) => {
+            // Usually written by the app via runs:enqueue; skip to avoid duplicate rows.
+            let _ = state.tx.send(json!({
+                "type":"bridge.convex_write","op":"skip.user_message_chunk","threadId":thread_id
+            }).to_string());
+        }
+        acp::SessionUpdate::AgentMessageChunk(a) => {
+            // Stream assistant text (JSONL path already handles this; skip to avoid duplication)
+            let _ = state.tx.send(json!({
+                "type":"bridge.convex_write","op":"skip.agent_message_chunk","threadId":thread_id
+            }).to_string());
+        }
+        acp::SessionUpdate::AgentThoughtChunk(t) => {
+            // Stream reasoning text (JSONL path already handles this; skip to avoid duplication)
+            let _ = state.tx.send(json!({
+                "type":"bridge.convex_write","op":"skip.agent_thought_chunk","threadId":thread_id
+            }).to_string());
+        }
+        acp::SessionUpdate::ToolCall(tc) => {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("threadId".into(), Value::from(thread_id.to_string()));
+            let id_str = format!("{:?}", tc.id);
+            args.insert("itemId".into(), Value::from(id_str));
+            args.insert("kind".into(), Value::from("tool"));
+            // Store full structured payload as JSON string for portability
+            let json_str = serde_json::to_string(tc).unwrap_or_else(|_| String::from("{}"));
+            args.insert("text".into(), Value::from(json_str));
+            let _ = client.mutation("messages:upsertStreamed", args).await;
+        }
+        acp::SessionUpdate::Plan(p) => {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("threadId".into(), Value::from(thread_id.to_string()));
+            args.insert("itemId".into(), Value::from("state:plan"));
+            args.insert("kind".into(), Value::from("plan"));
+            let json_str = serde_json::to_string(&p).unwrap_or_else(|_| String::from("{}"));
+            args.insert("text".into(), Value::from(json_str));
+            let _ = client.mutation("messages:upsertStreamed", args).await;
+        }
+        acp::SessionUpdate::AvailableCommandsUpdate(ac) => {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("threadId".into(), Value::from(thread_id.to_string()));
+            args.insert("itemId".into(), Value::from("state:available_commands"));
+            args.insert("kind".into(), Value::from("available_commands_update"));
+            let json_str = serde_json::to_string(&ac).unwrap_or_else(|_| String::from("{}"));
+            args.insert("text".into(), Value::from(json_str));
+            let _ = client.mutation("messages:upsertStreamed", args).await;
+        }
+        acp::SessionUpdate::CurrentModeUpdate(cm) => {
+            let mut args: BTreeMap<String, Value> = BTreeMap::new();
+            args.insert("threadId".into(), Value::from(thread_id.to_string()));
+            args.insert("itemId".into(), Value::from("state:current_mode"));
+            args.insert("kind".into(), Value::from("current_mode_update"));
+            let json_str = serde_json::to_string(&cm).unwrap_or_else(|_| String::from("{}"));
+            args.insert("text".into(), Value::from(json_str));
+            let _ = client.mutation("messages:upsertStreamed", args).await;
+        }
+        acp::SessionUpdate::ToolCallUpdate(_) => {
+            // TODO: refine mapping if distinct from ToolCall events in our translator
+        }
     }
 }
 
