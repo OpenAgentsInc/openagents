@@ -23,7 +23,7 @@ A good agent frees you from your computer, doesn't tie you to it.
 - React Native Expo
 - TypeScript
 - Rust
-- Convex (self‑hosted local backend; auto‑bootstrapped)
+- Tinyvex (in‑process SQLite + WS changefeed)
 - OpenAI Codex CLI
 - Tailscale
 
@@ -40,7 +40,7 @@ You can submit PRs but they'd better be good.
 - v0.1.0 and v0.1.1 (mobile only): require the legacy bridge flow below. You must check out the old commit to match that app build: `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`.
 - v0.2.0+ (desktop/tauri and forward): use the Desktop (Tauri) flow. The bridge is auto‑spawned, Convex runs as an embedded sidecar on 3210, and functions deploy automatically during `cargo tauri dev`.
 
-## Desktop (Tauri) — v0.2+
+## Desktop (Tauri) — v0.2+ (historical)
 
 Single command, offline‑first dev.
 
@@ -48,17 +48,14 @@ Single command, offline‑first dev.
    - `git clone https://github.com/OpenAgentsInc/openagents && cd openagents`
    - `bun run desktop:dev`
    - This script will:
-     - Fetch/install the Convex local backend binary into `tauri/src-tauri/bin/local_backend` if missing
-     - Start the Convex backend on `127.0.0.1:3210` (SQLite in `~/.openagents/convex`)
-     - Auto‑deploy Convex functions (same terminal)
+     - Historical flow; current bridge uses Tinyvex for local sync. See docs/tinyvex/tinyvex.md.
      - Launch `cargo tauri dev` (bridge auto‑spawns, UI connects to `ws://127.0.0.1:8787/ws`)
 3) Use it
    - Left sidebar shows Bridge WS, Convex (http://127.0.0.1:3210), and Codex PID
    - Recent threads load; click a thread to view messages (preface/instructions are hidden)
 
 Options
-- Disable embedded Convex: `OPENAGENTS_SKIP_EMBEDDED_CONVEX=1 cargo tauri dev`
-- Override URL: set `CONVEX_URL` (defaults to `http://127.0.0.1:3210` for desktop)
+- Historical Convex options no longer apply to Tinyvex.
 
 ## Legacy Bridge (Mobile) — v0.1.0 / v0.1.1
 
@@ -111,14 +108,12 @@ Notes:
 - Bind interface for Convex: set `OPENAGENTS_CONVEX_INTERFACE=127.0.0.1` to restrict to loopback (default is `0.0.0.0`).
 - Skip bootstrap (if you manage Bun/Convex manually): set `OPENAGENTS_BOOTSTRAP=0`.
 
-## Local Convex Persistence
+## Local Persistence
 
-All builds use a self‑hosted Convex backend (SQLite) for threads and messages.
+All builds now use Tinyvex (in‑process SQLite) for threads and messages.
 
-- Desktop (v0.2+): the Convex backend is an embedded sidecar listening on `127.0.0.1:3210`. Functions are auto‑deployed on `cargo tauri dev`.
-- Mobile (v0.1.x): the bridge starts Convex on `0.0.0.0:7788` and deploys functions on first run.
-
-More details: docs/convex-sidecar.md (desktop), docs/convex.md (general)
+- No external database process; the bridge serves WS snapshots and updates via `/ws`.
+- For the historical Convex integration, see docs/convex/.
 
 ## Addendum (2025-10-26)
 
