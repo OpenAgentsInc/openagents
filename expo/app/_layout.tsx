@@ -34,6 +34,9 @@ import { ErrorBoundary } from "@/components/error-boundary"
 function DrawerContent() {
   const router = useRouter();
   const { setOpen } = useDrawer();
+  // Dev environment flag from env.ts
+  const { useIsDevEnv } = require('@/lib/env') as { useIsDevEnv: () => boolean };
+  const isDevEnv = useIsDevEnv();
   // Tinyvex history
   const { threads, subscribeThreads, queryThreads } = useTinyvex()
   React.useEffect(() => { queryThreads(50); subscribeThreads(); }, [])
@@ -138,17 +141,17 @@ function DrawerContent() {
             <Ionicons name="help-circle-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Help</Text>
           </Pressable>
-          {/** Component Library link disabled in drawer for v1
-          <Pressable
-            onPress={closeAnd(() => router.push('/library'))}
-            accessibilityRole="button"
-            accessibilityLabel="Open component library"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
-          >
-            <Ionicons name="book-outline" size={18} color={Colors.foreground} />
-            <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
-          </Pressable>
-          */}
+          {isDevEnv ? (
+            <Pressable
+              onPress={closeAnd(() => router.push('/library'))}
+              accessibilityRole="button"
+              accessibilityLabel="Open component library"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
+            >
+              <Ionicons name="book-outline" size={18} color={Colors.foreground} />
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
+            </Pressable>
+          ) : null}
           {/** Logs link disabled in drawer
           <Pressable
             onPress={closeAnd(() => router.push('/logs'))}
