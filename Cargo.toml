@@ -4,5 +4,6 @@ members = [
     "crates/acp-event-translator",
     "crates/copy-sources",
     "crates/oa-validate",
+    "crates/fake-codex",
 ]
 resolver = "2"
