@@ -222,6 +222,8 @@ pub fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
     }
 }
 
+// tests live at bottom of file below mirror_acp_update_to_convex
+
 /// Mirror ACP SessionUpdate into Convex rows. This complements the legacy JSONL→Convex
 /// mapping so the app can subscribe to Convex as the single source of truth.
 pub async fn mirror_acp_update_to_convex(

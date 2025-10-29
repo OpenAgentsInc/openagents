@@ -536,6 +536,7 @@ mod auth_tests {
             history: Mutex::new(Vec::new()),
             current_convex_thread: Mutex::new(None),
             stream_track: Mutex::new(std::collections::HashMap::new()),
+            convex_ready: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
