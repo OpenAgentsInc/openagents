@@ -145,6 +145,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       wsRef.current = ws;
       setConnecting(true);
       ws.onopen = () => {
+        // Clear any previous connection error on successful open
+        try { setWsLastClose(null) } catch {}
         setConnected(true);
         setConnecting(false);
         appLog('bridge.open');
