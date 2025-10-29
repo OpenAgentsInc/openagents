@@ -233,5 +233,5 @@ const styles = StyleSheet.create({
   centerWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   pairBtn: { marginTop: 0, borderWidth: 1, borderColor: Colors.secondary, backgroundColor: Colors.card, paddingVertical: 20, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', gap: 10, flexDirection: 'row' },
   pairText: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18, letterSpacing: 0.5 },
-  logo: { width: 180, height: 180, marginBottom: 36 },
+  logo: { width: 180, height: 180, marginBottom: 36, marginTop: -20 },
 })
