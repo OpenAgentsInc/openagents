@@ -6,6 +6,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ensureBridgeBinary } from './utils/bridgeBinary.js';
+import { webcrypto as nodeCrypto, randomBytes } from 'node:crypto';
 import qrcode from 'qrcode-terminal';
 
 const execFileP = promisify(execFile);
@@ -67,14 +68,13 @@ function spawnP(cmd: string, args: string[], opts: any = {}): Promise<void> {
 
 function randToken(len = 48): string {
   try {
-    // @ts-ignore crypto is global in Node 19+ ESM
-    const bytes = crypto.getRandomValues(new Uint8Array(len));
+    const bytes = new Uint8Array(len);
+    nodeCrypto.getRandomValues(bytes);
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
     let out = '';
     for (let i = 0; i < bytes.length; i++) out += chars[bytes[i] % chars.length];
     return out;
   } catch {
-    const { randomBytes } = require('node:crypto');
     return randomBytes(len).toString('base64url').replace(/=+$/g, '').slice(0, len);
   }
 }
