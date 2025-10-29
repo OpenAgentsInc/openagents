@@ -139,22 +139,10 @@ async fn main() -> Result<()> {
         tokio::spawn(async move {
             match bootstrap::ensure_convex_running(&opts_clone).await {
                 Ok(()) => {
-                    // Only attempt bootstrap when the backend is healthy
-                    if opts_clone.bootstrap {
-                        if let Err(e) = bootstrap::bootstrap_convex(&opts_clone).await {
-                            error!(?e, "convex bootstrap failed");
-                        }
-                    } else {
-                        info!(
-                            "msg" = "OPENAGENTS_BOOTSTRAP disabled — skipping convex function push"
-                        );
-                    }
+                    info!("msg" = "convex.ensure: healthy (initial)\n");
                 }
                 Err(e) => {
-                    error!(
-                        ?e,
-                        "failed to ensure local Convex is running; skipping bootstrap"
-                    );
+                    error!(?e, "failed to ensure local Convex is running; proceeding in degraded mode");
                 }
             }
         });
@@ -182,7 +170,33 @@ async fn main() -> Result<()> {
         history: Mutex::new(Vec::new()),
         current_convex_thread: Mutex::new(None),
         stream_track: Mutex::new(std::collections::HashMap::new()),
+        convex_ready: std::sync::atomic::AtomicBool::new(false),
     });
+
+    // Background health watcher: mark convex_ready when healthy and run bootstrap once
+    if opts.manage_convex {
+        let st = state.clone();
+        let opts_for_bootstrap = opts.clone();
+        tokio::spawn(async move {
+            let url = format!("http://127.0.0.1:{}", st.opts.convex_port);
+            let mut tries: u32 = 0;
+            loop {
+                tries = tries.saturating_add(1);
+                if crate::bootstrap::convex_health(&url).await.unwrap_or(false) {
+                    st.convex_ready.store(true, std::sync::atomic::Ordering::Relaxed);
+                    info!(url=%url, "convex health watcher: ready");
+                    if opts_for_bootstrap.bootstrap {
+                        if let Err(e) = crate::bootstrap::bootstrap_convex(&opts_for_bootstrap).await {
+                            error!(?e, "convex bootstrap failed");
+                        }
+                    }
+                    break;
+                }
+                if tries % 10 == 0 { info!(attempt=tries, url=%url, "convex health watcher: waiting"); }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        });
+    }
 
     // Start readers for stdout/stderr → broadcast + console
     crate::ws::start_stream_forwarders(child, state.clone()).await?;

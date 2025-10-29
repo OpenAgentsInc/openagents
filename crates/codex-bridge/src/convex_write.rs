@@ -8,6 +8,7 @@
 use tracing::{info, warn};
 
 use crate::state::AppState;
+use std::sync::atomic::Ordering;
 
 /// Convert Convex FunctionResult to JSON for logging or test inspection.
 #[allow(dead_code)]
@@ -31,6 +32,13 @@ pub async fn stream_upsert_or_append(
     kind: &str,
     full_text: &str,
 ) {
+    if !state.convex_ready.load(Ordering::Relaxed) {
+        let _ = state.tx.send(serde_json::json!({
+            "type":"bridge.convex_write","op":"upsertStreamed","threadId":thread_id,
+            "kind":kind,"ok":false,"error":"convex not ready"
+        }).to_string());
+        return;
+    }
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
     let mut guard = state.stream_track.lock().await;
@@ -116,6 +124,13 @@ pub async fn try_finalize_stream_kind(
     kind: &str,
     final_text: &str,
 ) -> bool {
+    if !state.convex_ready.load(Ordering::Relaxed) {
+        let _ = state.tx.send(serde_json::json!({
+            "type":"bridge.convex_write","op":"finalizeStreamed","threadId":thread_id,
+            "kind":kind,"ok":false,"error":"convex not ready"
+        }).to_string());
+        return false;
+    }
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
     let mut guard = state.stream_track.lock().await;

@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 
 use tokio::sync::{Mutex, broadcast};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::Opts;
 
@@ -39,4 +40,12 @@ pub struct AppState {
     pub current_convex_thread: Mutex<Option<String>>,
     // Streaming message trackers (per thread, per kind). Key: "<threadId>|assistant" or "<threadId>|reason".
     pub stream_track: Mutex<HashMap<String, StreamEntry>>,
+    // Whether the Convex backend is healthy and ready for clients
+    pub convex_ready: AtomicBool,
+}
+
+impl AppState {
+    pub fn is_convex_ready(&self) -> bool {
+        self.convex_ready.load(Ordering::Relaxed)
+    }
 }
