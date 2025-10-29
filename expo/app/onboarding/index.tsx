@@ -9,8 +9,8 @@ import { useSettings } from '@/lib/settings-store'
 // pairing helpers not needed here; IP-only flow
 import { Ionicons } from '@expo/vector-icons'
 import { useIsDevEnv } from '@/lib/env'
-import { TailscalePeers } from '@/components/tailscale-peers'
-import { LocalBridgeDiscovery } from '@/components/local-bridge-discovery'
+// Tailscale peers and LAN scan removed; use QR Bridge Code instead
+import { useRouter as useExpoRouter } from 'expo-router'
 
 export default function Onboarding() {
   useHeaderTitle('Connect')
@@ -140,28 +140,10 @@ export default function Onboarding() {
         />
       </View>
       <View style={{ height: 12 }} />
-      {/* Tailscale LocalAPI peers (Android best-effort) */}
-      <TailscalePeers />
-      <View style={{ height: 12 }} />
-      {/* Local network scan for bridge hosts */}
-      <LocalBridgeDiscovery
-        onPick={(hp) => {
-          try {
-            // Update both the input field and the actual bridge host
-            const s = String(hp || '').trim()
-            let ipOnly = s
-            if (s.startsWith('[')) {
-              const end = s.indexOf(']')
-              ipOnly = end > 1 ? s.slice(1, end) : s
-            } else {
-              ipOnly = s.split(':')[0] || s
-            }
-            setBridgeCodeInput(ipOnly)
-            setCodeError('')
-            setBridgeHost(s)
-          } catch {}
-        }}
-      />
+      {/* QR Bridge Code flow */}
+      <Pressable onPress={() => { try { router.push('/scan' as any) } catch {} }} accessibilityRole='button' style={styles.devToolsBtn as any}>
+        <Text style={styles.devToolsText}>Scan Bridge QR Code</Text>
+      </Pressable>
       <View style={{ height: 12 }} />
       <Pressable
         onPress={() => {
