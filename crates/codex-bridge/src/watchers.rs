@@ -19,6 +19,7 @@ use crate::util::now_ms;
 /// - Validates frontmatter, maps fields, and upserts rows via `projects:upsertFromFs`.
 /// - Returns the number of successful upserts.
 pub async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
+    if !state.is_convex_ready() { return Ok(0); }
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
     let url = format!("http://127.0.0.1:{}", state.opts.convex_port);
@@ -69,6 +70,7 @@ pub async fn sync_projects_to_convex(state: Arc<AppState>) -> anyhow::Result<usi
 /// - User skills under `~/.openagents/skills/**/SKILL.md`
 /// - Registry skills under `<repo>/skills/**/SKILL.md`
 pub async fn sync_skills_to_convex(state: Arc<AppState>) -> anyhow::Result<usize> {
+    if !state.is_convex_ready() { return Ok(0); }
     use convex::{ConvexClient, Value};
     use std::collections::BTreeMap;
     let url = format!("http://127.0.0.1:{}", state.opts.convex_port);

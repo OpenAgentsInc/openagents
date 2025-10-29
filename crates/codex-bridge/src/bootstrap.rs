@@ -34,8 +34,28 @@ pub async fn convex_health(url: &str) -> Result<bool> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
         .build()?;
-    let resp = client.get(format!("{}/instance_version", url)).send().await;
-    Ok(matches!(resp, Ok(r) if r.status().is_success()))
+    // Primary endpoint
+    if let Ok(r) = client.get(format!("{}/instance_version", url)).send().await {
+        if r.status().is_success() {
+            return Ok(true);
+        }
+    }
+    // Fallback endpoint used by some builds
+    if let Ok(r) = client.get(format!("{}/health_check", url)).send().await {
+        if r.status().is_success() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+async fn tcp_listen_probe(port: u16) -> bool {
+    use tokio::time::{timeout, Duration as TokioDuration};
+    let addr = format!("127.0.0.1:{}", port);
+    match timeout(TokioDuration::from_millis(300), tokio::net::TcpStream::connect(&addr)).await {
+        Ok(Ok(_)) => true,
+        _ => false,
+    }
 }
 
 /// Start (or restart) the local backend as needed and wait until healthy.
@@ -110,8 +130,16 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
     }
     info!(bin=%bin.display(), db=%db.display(), port, site_proxy_port, interface=%interface, "convex.ensure: starting local backend");
     let mut child = cmd.spawn().context("spawn convex local_backend")?;
+    // Adaptive timeout: longer window on first-run (no marker present)
+    let init_marker = std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".openagents/convex/.initialized"))
+        .unwrap_or_else(|| PathBuf::from(".initialized"));
+    let is_first_run = !init_marker.exists();
+    let max_iters: u32 = if is_first_run { 240 } else { 60 }; // 120s vs 30s
+
     let mut ok = false;
-    for i in 0..40 {
+    for i in 0..max_iters {
         // If the child crashed, log status and abort early
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -123,17 +151,20 @@ pub async fn ensure_convex_running(opts: &Opts) -> Result<()> {
                 warn!(?e, "convex local_backend try_wait failed");
             }
         }
-        if convex_health(&base).await.unwrap_or(false) {
-            ok = true;
-            break;
+        // TCP listener first, then HTTP readiness
+        if tcp_listen_probe(port).await {
+            if convex_health(&base).await.unwrap_or(false) { ok = true; break; }
         }
-        if i % 2 == 0 {
-            info!(attempt=i+1, url=%base, "convex.ensure: waiting for health");
+        if i % 10 == 0 {
+            info!(attempt=i+1, url=%base, first_run=is_first_run, "convex.ensure: waiting for health");
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     if ok {
         info!(url=%base, pid=?child.id(), "convex.ensure: healthy after start");
+        // Persist initialized marker
+        if let Some(parent) = init_marker.parent() { let _ = std::fs::create_dir_all(parent); }
+        let _ = std::fs::write(&init_marker, b"ok");
         Ok(())
     } else {
         let _ = child.kill().await;

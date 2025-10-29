@@ -658,6 +658,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         info!(thread_id=%val, msg="captured thread id for resume");
                         let convex_tid_opt =
                             { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        if !state_for_stdout.is_convex_ready() { return; }
                         use convex::{ConvexClient, Value};
                         use std::collections::BTreeMap;
                         let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
@@ -796,6 +797,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         )
                         .await
                         {
+                            if !state_for_stdout.is_convex_ready() { }
                             use convex::{ConvexClient, Value};
                             use std::collections::BTreeMap;
                             let url =
@@ -864,6 +866,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             )
                             .await
                             {
+                                if !state_for_stdout.is_convex_ready() { }
                                 use convex::{ConvexClient, Value};
                                 use std::collections::BTreeMap;
                                 let url = format!(
@@ -902,7 +905,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "assistant", txt).await {
                                                 use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
                                                 let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                                                if let Ok(mut client) = ConvexClient::new(&url).await {
+                                                if state_for_stdout.is_convex_ready() { if let Ok(mut client) = ConvexClient::new(&url).await {
                                                     let mut args: BTreeMap<String, Value> = BTreeMap::new();
                                                     args.insert("threadId".into(), Value::from(target_tid.clone()));
                                                     args.insert("role".into(), Value::from("assistant"));
@@ -910,7 +913,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                                     args.insert("text".into(), Value::from(txt));
                                                     args.insert("ts".into(), Value::from(now_ms() as f64));
                                                     let _ = client.mutation("messages:create", args).await;
-                                                }
+                                                }}
                                             }
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         }
@@ -923,14 +926,14 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "reason", txt).await {
                                                 use convex::{ConvexClient, Value}; use std::collections::BTreeMap;
                                                 let url = format!("http://127.0.0.1:{}", state_for_stdout.opts.convex_port);
-                                                if let Ok(mut client) = ConvexClient::new(&url).await {
+                                                if state_for_stdout.is_convex_ready() { if let Ok(mut client) = ConvexClient::new(&url).await {
                                                     let mut args: BTreeMap<String, Value> = BTreeMap::new();
                                                     args.insert("threadId".into(), Value::from(target_tid.clone()));
                                                     args.insert("kind".into(), Value::from("reason"));
                                                     args.insert("text".into(), Value::from(txt));
                                                     args.insert("ts".into(), Value::from(now_ms() as f64));
                                                     let _ = client.mutation("messages:create", args).await;
-                                                }
+                                                }}
                                             }
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         }
@@ -998,6 +1001,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 };
                                 if !target_tid.is_empty() {
                                     let payload_str = payload.to_string();
+                                    if !state_for_stdout.is_convex_ready() { }
                                     use convex::{ConvexClient, Value};
                                     use std::collections::BTreeMap;
                                     let url = format!(
