@@ -129,11 +129,17 @@ pub async fn watch_projects_and_sync(state: Arc<AppState>) {
         return;
     }
     info!(dir=%proj_dir.display(), msg="projects watcher started");
+    // Debounce bursts: coalesce events into a single sync every ~1s
+    let mut last_sync = std::time::Instant::now() - std::time::Duration::from_secs(10);
     loop {
         match rcev.recv() {
             Ok(_evt) => {
+                // Drain a few and schedule a single sync shortly
                 let _ = rcev.try_recv();
                 let _ = rcev.try_recv();
+                let now = std::time::Instant::now();
+                if now.duration_since(last_sync) < std::time::Duration::from_millis(1000) { continue; }
+                last_sync = now;
                 if let Err(e) = sync_projects_to_convex(state.clone()).await {
                     warn!(?e, "projects convex sync failed on change");
                 }
@@ -181,23 +187,25 @@ pub async fn watch_skills_and_broadcast(state: Arc<AppState>) {
             info!(dir=%d.display(), msg="skills watcher started");
         }
     }
+    // Debounce updates: batch into a single sync every ~1s
+    let mut last_sync = std::time::Instant::now() - std::time::Duration::from_secs(10);
     loop {
         match rcev.recv() {
             Ok(_evt) => {
                 let _ = rcev.try_recv();
                 let _ = rcev.try_recv();
+                let now = std::time::Instant::now();
+                if now.duration_since(last_sync) < std::time::Duration::from_millis(1000) { continue; }
+                last_sync = now;
                 match crate::skills::list_skills() {
                     Ok(items) => {
-                        let line =
-                            serde_json::json!({"type":"bridge.skills","items": items}).to_string();
+                        let line = serde_json::json!({"type":"bridge.skills","items": items}).to_string();
                         let _ = state.tx.send(line);
                         if let Err(e) = sync_skills_to_convex(state.clone()).await {
                             warn!(?e, "skills convex sync failed on change");
                         }
                     }
-                    Err(e) => {
-                        error!(?e, "skills list failed on change");
-                    }
+                    Err(e) => error!(?e, "skills list failed on change"),
                 }
             }
             Err(_disconnected) => break,
