@@ -37,4 +37,6 @@ jobs:
             exit 1
           fi
       - name: Cargo build (debug)
-        run: cargo build -p oa-bridge
+        run: |
+          cargo clean
+          cargo build -p oa-bridge
