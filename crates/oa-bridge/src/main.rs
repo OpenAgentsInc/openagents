@@ -129,10 +129,10 @@ async fn main() -> Result<()> {
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
         history: Mutex::new(Vec::new()),
-        current_convex_thread: Mutex::new(None),
+        current_thread_doc: Mutex::new(None),
         stream_track: Mutex::new(std::collections::HashMap::new()),
         pending_user_text: Mutex::new(std::collections::HashMap::new()),
-        convex_ready: std::sync::atomic::AtomicBool::new(true),
+        bridge_ready: std::sync::atomic::AtomicBool::new(true),
         tinyvex,
         sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
     });
@@ -158,7 +158,7 @@ async fn main() -> Result<()> {
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt};
     // Default to info but quiet down noisy dependencies unless overridden by RUST_LOG
-    let default_filter = "info,convex=warn,convex::base_client=warn,tungstenite=warn";
+    let default_filter = "info,tungstenite=warn";
     let _ = tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| default_filter.into()))
         .with(fmt::layer())
