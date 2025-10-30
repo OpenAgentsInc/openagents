@@ -43,9 +43,18 @@ export function AcpProvider({ children }: { children: React.ReactNode }) {
         return { ...prev, [tdoc]: arr }
       })
     } else {
-      const pend = pendingBySessionRef.current[sid] || []
-      pend.push(n)
-      pendingBySessionRef.current[sid] = pend
+      // If the sessionId looks like a threadDocId (e.g., t-...), push directly so UI can render
+      if (/^t-/.test(sid)) {
+        setEventsByThread((prev) => {
+          const arr = prev[sid] ? [...prev[sid]] : []
+          arr.push(n)
+          return { ...prev, [sid]: arr }
+        })
+      } else {
+        const pend = pendingBySessionRef.current[sid] || []
+        pend.push(n)
+        pendingBySessionRef.current[sid] = pend
+      }
     }
   }, [])
 
