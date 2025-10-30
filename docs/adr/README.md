@@ -1,20 +1,16 @@
 # Architecture Decision Records (ADRs)
 
-This directory contains Architecture Decision Records (ADRs) for the OpenAgents project. An ADR is a short, focused document that captures a significant architectural decision. The goal is to have a clear record of why a particular decision was made, the context surrounding it, and the consequences.
+This directory contains Architecture Decision Records (ADRs). An ADR is a short, focused document that captures a significant architectural decision. The goal is to have a clear record of why a particular decision was made, the context surrounding it, and the consequences.
 
-## Why ADRs for OpenAgents?
+## Why ADRs?
 
-OpenAgents is a mobile-first architecture with multiple layers:
-- **Expo App** (`expo/`): Mobile frontend with React Native
-- **Bridge Service** (`crates/oa-bridge/`): Rust WebSocket bridge
-- **Agent Integration**: Connection to AI coding agents
-
-Given this complexity and the constraints of mobile development, ADRs help us:
-- Document architectural decisions across mobile and backend components
-- Track the evolution of our mobile-first architecture
-- Understand the rationale behind platform-specific choices
-- Maintain consistency in our WebSocket-based communication patterns
-- Record decisions related to agent interaction patterns
+Architecture Decision Records help teams:
+- Document architectural decisions and their rationale
+- Track the evolution of system architecture over time
+- Understand the reasoning behind design choices
+- Maintain consistency in architectural patterns
+- Record decisions for future reference and team onboarding
+- Facilitate better decision-making through structured evaluation
 
 ## The ADR Lifecycle
 
@@ -49,8 +45,8 @@ The easiest way to create a new ADR is to use the provided script:
 **Example usage:**
 ```bash
 cd docs/adr
-./new.sh "WebSocket Connection Resilience Pattern"
-# Creates: 0002-websocket-connection-resilience-pattern.md
+./new.sh "Database Connection Pooling Strategy"
+# Creates: 0002-database-connection-pooling-strategy.md
 ```
 
 **Why use the script?**
@@ -77,7 +73,7 @@ If you prefer to create ADRs manually:
 - Use four-digit padding: `0001`, `0002`, `0003`, etc.
 - Use kebab-case for the title in the filename
 - Keep titles descriptive but concise
-- Example: `0005-websocket-connection-resilience-pattern.md`
+- Example: `0005-database-connection-pooling-strategy.md`
 
 ## Review Process
 
@@ -98,17 +94,17 @@ Each ADR should follow these principles:
 - **Document Consequences**: Both positive and negative impacts
 - **Reference Context**: Link to related ADRs, issues, or documentation
 
-## OpenAgents-Specific Considerations
+## Project-Specific Considerations
 
-When writing ADRs for OpenAgents, consider:
+When writing ADRs, consider aspects relevant to your project:
 
-- **Mobile Constraints**: Platform limitations, performance requirements, app store guidelines
-- **WebSocket Architecture**: Real-time communication patterns, connection management
-- **Bridge Service**: Rust service design, error handling, scalability
-- **Agent Integration**: How decisions affect agent interactions and capabilities
-- **Offline Support**: Mobile network reliability considerations
-- **Security**: Mobile app security, authentication, data protection
-- **Performance**: Mobile device limitations, battery usage, memory constraints
+- **Technology Stack**: Framework constraints, platform requirements, compatibility
+- **Performance Requirements**: Latency, throughput, resource utilization
+- **Security**: Authentication, authorization, data protection, compliance
+- **Scalability**: Load handling, growth projections, capacity planning
+- **Maintainability**: Code organization, testing, documentation standards
+- **Team Considerations**: Skill sets, development workflow, deployment processes
+- **Business Constraints**: Budget, timeline, stakeholder requirements
 
 ## Index of ADRs
 
@@ -120,11 +116,9 @@ When writing ADRs for OpenAgents, consider:
 
 ## Template
 
-See `docs/adr/template.md` for the ADR template with OpenAgents-specific guidance.
+See `docs/adr/template.md` for the ADR template with guidance for creating effective ADRs.
 
 ## Related Documentation
 
-- [Architecture Overview](../ARCHITECTURE.md)
-- [JSONL Schema](../exec-jsonl-schema.md)
-- [Permissions Model](../permissions.md)
-- [Projects and Skills Schema](../projects-and-skills-schema.md)
+- [Architecture Decision Records](https://adr.github.io/) - ADR specification and examples
+- [MADR - Markdown Architectural Decision Records](https://github.com/joelparkerhenderson/architecture_decision_record) - Template and process guidance

@@ -41,9 +41,8 @@ find_last_adr_number() {
 # Function to create a slug from the title
 create_slug() {
 	echo "${1}" |
-		iconv -t ascii//TRANSLIT |
-		sed -r 's/[^a-zA-Z0-9]+/-/g' |
-		sed -r 's/^-+|-+$//g' |
+		sed -E 's/[^a-zA-Z0-9]+/-/g' |
+		sed -E 's/^-+|-+$//g' |
 		tr '[:upper:]' '[:lower:]'
 }
 
@@ -61,7 +60,7 @@ else
 	NEXT_ADR_NUM=$((LAST_ADR_NUM + 1))
 fi
 
-# Format with leading zeros (4-digit for OpenAgents)
+# Format with leading zeros (4-digit)
 FORMATTED_ADR_NUM=$(printf "%04d" "${NEXT_ADR_NUM}")
 
 ADR_TITLE="$1"
