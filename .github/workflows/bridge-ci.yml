@@ -1,0 +1,27 @@
+name: CI oa-bridge build
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'crates/oa-bridge/**'
+      - 'crates/tinyvex/**'
+      - 'crates/acp-event-translator/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'crates/oa-bridge/**'
+      - 'crates/tinyvex/**'
+      - 'crates/acp-event-translator/**'
+
+jobs:
+  build-matrix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo build (debug)
+        run: cargo build -p oa-bridge
