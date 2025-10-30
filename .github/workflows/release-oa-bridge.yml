@@ -18,8 +18,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Sanity check sources
+        run: |
+          set -euxo pipefail
+          if rg -n "stable_item_id" crates/oa-bridge >/dev/null; then
+            echo "Found stale symbol stable_item_id in bridge sources" >&2
+            rg -n "stable_item_id" crates/oa-bridge || true
+            exit 1
+          fi
+          if rg -n "try_finalize_stream_kind\([^,]+,[^,]+,[^,]+,[^)]*\)" crates/oa-bridge >/dev/null; then
+            echo "Found old 4-arg try_finalize_stream_kind calls" >&2
+            rg -n "try_finalize_stream_kind\([^,]+,[^,]+,[^,]+,[^)]*\)" crates/oa-bridge || true
+            exit 1
+          fi
       - name: Build (release)
-        run: cargo build --release -p oa-bridge
+        run: |
+          cargo clean
+          cargo build --release -p oa-bridge
       - name: Package artifact
         run: |
           set -euxo pipefail
@@ -92,8 +107,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Sanity check sources
+        run: |
+          set -euxo pipefail
+          if rg -n "stable_item_id" crates/oa-bridge >/dev/null; then
+            echo "Found stale symbol stable_item_id in bridge sources" >&2
+            rg -n "stable_item_id" crates/oa-bridge || true
+            exit 1
+          fi
+          if rg -n "try_finalize_stream_kind\([^,]+,[^,]+,[^,]+,[^)]*\)" crates/oa-bridge >/dev/null; then
+            echo "Found old 4-arg try_finalize_stream_kind calls" >&2
+            rg -n "try_finalize_stream_kind\([^,]+,[^,]+,[^,]+,[^)]*\)" crates/oa-bridge || true
+            exit 1
+          fi
       - name: Build (release)
-        run: cargo build --release -p oa-bridge
+        run: |
+          cargo clean
+          cargo build --release -p oa-bridge
       - name: Package artifact
         shell: pwsh
         run: |
