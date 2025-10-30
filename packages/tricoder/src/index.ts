@@ -293,11 +293,19 @@ async function main() {
   let code = 0;
   if (preferBinary) {
     try {
-      const { binaryPath, source } = await ensureBridgeBinary();
-      console.log(chalk.cyan(`Starting bridge (${source})…`));
-      code = await runBridgeBinary(binaryPath, bridgeEnv);
-      process.exit(code);
-      return;
+      const { binaryPath, source, version } = await ensureBridgeBinary() as any;
+      // Minimum bridge version that includes recent fixes
+      const MIN_BRIDGE = process.env.TRICODER_MIN_BRIDGE || 'v0.2.1';
+      const isTag = typeof version === 'string' && /^v?\d+\.\d+\.\d+/.test(version);
+      const olderThanMin = isTag && compareSemver(version, MIN_BRIDGE) < 0;
+      if (olderThanMin) {
+        console.warn(chalk.yellow(`Prebuilt bridge ${version} is older than required ${MIN_BRIDGE}; falling back to cargo build of latest.`));
+      } else {
+        console.log(chalk.cyan(`Starting bridge (${source}${isTag ? ` ${version}` : ''})…`));
+        code = await runBridgeBinary(binaryPath, bridgeEnv);
+        process.exit(code);
+        return;
+      }
     } catch (e) {
       console.warn(chalk.yellow('Falling back to cargo: could not obtain prebuilt oa-bridge binary.'));
       if (e instanceof Error) console.warn(chalk.dim(e.message));
@@ -315,6 +323,15 @@ async function main() {
   console.log(chalk.cyan(`Starting bridge via cargo (bind ${bind})…`));
   code = await runCargoBridge(repoDir, bridgeEnv);
   process.exit(code);
+}
+
+function compareSemver(a: string, b: string): number {
+  const parse = (s: string) => (s.replace(/^v/i, '').split('.') as string[]).map((x) => parseInt(x, 10) || 0);
+  const [a1, a2, a3] = parse(a);
+  const [b1, b2, b3] = parse(b);
+  if (a1 !== b1) return a1 - b1;
+  if (a2 !== b2) return a2 - b2;
+  return a3 - b3;
 }
 
 main().catch((e) => {
