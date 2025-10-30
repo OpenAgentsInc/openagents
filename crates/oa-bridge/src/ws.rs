@@ -748,22 +748,11 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                     };
                     if !target_tid.is_empty() {
                         let final_text = text_owned.clone();
-                        if !try_finalize_stream_kind(
-                            &state_for_stdout,
-                            &target_tid,
-                            "assistant",
-                        )
-                        .await
-                        {
-                            // Tinyvex: snapshot handled by finalize path
-                            info!(thread=%target_tid, "assistant.finalized created snapshot");
-                            let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string();
-                            let _ = tx_out.send(dbg);
-                            let dbg2 = serde_json::json!({"type":"bridge.assistant_written","thread":target_tid, "len": final_text.len()}).to_string();
-                            let _ = tx_out.send(dbg2);
-                        } else {
-                            info!(thread=%target_tid, "assistant.finalized finalized streamed item");
-                        }
+                        crate::tinyvex_write::finalize_or_snapshot(&state_for_stdout, &target_tid, "assistant", &final_text).await;
+                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string();
+                        let _ = tx_out.send(dbg);
+                        let dbg2 = serde_json::json!({"type":"bridge.assistant_written","thread":target_tid, "len": final_text.len()}).to_string();
+                        let _ = tx_out.send(dbg2);
                     }
                 }
                 if matches!(t.as_deref(), Some("reasoning")) {
@@ -803,15 +792,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 .unwrap_or_default()
                         };
                         if !target_tid.is_empty() {
-                            if !try_finalize_stream_kind(
-                                &state_for_stdout,
-                                &target_tid,
-                                "reason",
-                            )
-                            .await
-                            {
-                                // Tinyvex: snapshot handled by finalize path if needed
-                            }
+                            crate::tinyvex_write::finalize_or_snapshot(&state_for_stdout, &target_tid, "reason", &text_owned).await;
                             let dbg2 = serde_json::json!({"type":"bridge.reason_written","thread":target_tid}).to_string();
                             let _ = tx_out.send(dbg2);
                         }
@@ -851,55 +832,22 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     }
                                     _ => {}
                                 }
-                                // Mirror ACP update into Tinyvex and emit ACP notification
+                                // Mirror ACP update for tools/plan/state only (avoid duplicating chat rows)
                                 if let Some(update) = translate_codex_event_to_acp_update(&v) {
-                                    let target_tid = {
-                                        let ctid = state_for_stdout.current_thread_doc.lock().await.clone();
-                                        if let Some(s) = ctid { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() }
-                                    };
-                                    if !target_tid.is_empty() {
-                                        crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, &target_tid, &update).await;
-                                    }
-                                    {
-                                        let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
-                                        let notif = SessionNotification { session_id: SessionId(acp_session.into()), update, meta: None };
-                                        let update_kind = match &notif.update {
-                                            agent_client_protocol::SessionUpdate::UserMessageChunk(_) => "user_message_chunk",
-                                            agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => "agent_message_chunk",
-                                            agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
-                                            agent_client_protocol::SessionUpdate::ToolCall(_) => "tool_call",
-                                            agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => "tool_call_update",
-                                            agent_client_protocol::SessionUpdate::Plan(_) => "plan",
-                                            agent_client_protocol::SessionUpdate::AvailableCommandsUpdate(_) => "available_commands_update",
-                                            agent_client_protocol::SessionUpdate::CurrentModeUpdate(_) => "current_mode_update",
+                                    let is_chat = matches!(
+                                        &update,
+                                        agent_client_protocol::SessionUpdate::UserMessageChunk(_)
+                                            | agent_client_protocol::SessionUpdate::AgentMessageChunk(_)
+                                            | agent_client_protocol::SessionUpdate::AgentThoughtChunk(_)
+                                    );
+                                    if !is_chat {
+                                        let target_tid = {
+                                            let ctid = state_for_stdout.current_thread_doc.lock().await.clone();
+                                            if let Some(s) = ctid { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() }
                                         };
-                                        info!(session_id = %notif.session_id.0, kind = update_kind, "bridge.acp emit");
-                                        if let Ok(line) = serde_json::to_string(&serde_json::json!({ "type": "bridge.acp", "notification": notif })) { let _ = tx_out.send(line); }
-                                        // Also write to Tinyvex unified acp_events table
-                                        let ts = now_ms();
-                                        let raw_json = Some(v.to_string());
-                                        let content_json = v.get("item").and_then(|it| it.get("content")).map(|c| c.to_string());
-                                        let locations_json = v.get("item").and_then(|it| it.get("locations")).map(|c| c.to_string());
-                                        let text_field = v.get("item").and_then(|it| it.get("text")).and_then(|x| x.as_str()).map(|s| s.to_string());
-                                        let kind_field = v.get("item").and_then(|it| it.get("type")).and_then(|x| x.as_str()).map(|s| s.to_string());
-                                        let status_field = v.get("item").and_then(|it| it.get("status")).and_then(|x| x.as_str()).map(|s| s.to_string());
-                                        let tool_call_id = v.get("item").and_then(|it| it.get("id")).and_then(|x| x.as_str()).map(|s| s.to_string());
-                                        let client_doc_for = { state_for_stdout.current_thread_doc.lock().await.clone() };
-                                        let _ = state_for_stdout.tinyvex.insert_acp_event(
-                                            Some(&notif.session_id.0),
-                                            client_doc_for.as_deref(),
-                                            ts.try_into().unwrap(),
-                                            Some(0),
-                                            update_kind,
-                                            None,
-                                            text_field.as_deref(),
-                                            tool_call_id.as_deref(),
-                                            status_field.as_deref(),
-                                            kind_field.as_deref(),
-                                            content_json.as_deref(),
-                                            locations_json.as_deref(),
-                                            raw_json.as_deref(),
-                                        );
+                                        if !target_tid.is_empty() {
+                                            crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, &target_tid, &update).await;
+                                        }
                                     }
                                 }
                             }
@@ -957,26 +905,8 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         }
                                     }
                                 }
-                            } else if kind == "agent_message" || kind == "reasoning" {
-                                // Treat agent final messages and reasoning as chat rows in Tinyvex
-                                let text = payload.get("text").and_then(|x| x.as_str()).unwrap_or("");
-                                let convex_tid_opt = { state_for_stdout.current_thread_doc.lock().await.clone() };
-                                let target_tid = if let Some(s) = convex_tid_opt {
-                                    s
-                                } else {
-                                    state_for_stdout
-                                        .last_thread_id
-                                        .lock()
-                                        .await
-                                        .clone()
-                                        .unwrap_or_default()
-                                };
-                                if !target_tid.is_empty() {
-                                    // Map to our Tinyvex kinds: agent_message -> assistant, reasoning -> reason
-                                    let tvx_kind = if kind == "agent_message" { "assistant" } else { "reason" };
-                                    crate::tinyvex_write::stream_upsert_or_append(&state_for_stdout, &target_tid, tvx_kind, text).await;
-                                    let _ = crate::tinyvex_write::try_finalize_stream_kind(&state_for_stdout, &target_tid, tvx_kind).await;
-                                }
+                            } else {
+                                // Ignore non-tool item.* rows here; chat is handled by the dedicated paths above.
                             }
                         }
                     }

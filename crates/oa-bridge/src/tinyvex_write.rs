@@ -111,6 +111,16 @@ pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &
     true
 }
 
+/// Finalize a streamed item if present; if no stream exists, create a
+/// one-shot snapshot with the provided `final_text` and finalize it.
+pub async fn finalize_or_snapshot(state: &AppState, thread_id: &str, kind: &str, final_text: &str) {
+    if !try_finalize_stream_kind(state, thread_id, kind).await {
+        // No prior streaming entry — create a snapshot row and finalize it.
+        stream_upsert_or_append(state, thread_id, kind, final_text).await;
+        let _ = try_finalize_stream_kind(state, thread_id, kind).await;
+    }
+}
+
 pub async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
     let kinds: Vec<String> = {
         let guard = state.stream_track.lock().await;
@@ -324,5 +334,76 @@ mod tests {
             }
         }
         assert!(saw, "expected bridge.tinyvex_write event");
+    }
+
+    #[tokio::test]
+    async fn finalize_or_snapshot_creates_single_row_without_stream() {
+        let (tx, _rx) = broadcast::channel(4);
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("tvx.sqlite3");
+        let tvx = tinyvex::Tinyvex::open(&db_path).unwrap();
+        let state = crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts: crate::Opts {
+                bind: "127.0.0.1:0".into(),
+                codex_bin: None,
+                codex_args: None,
+                extra: vec![],
+                ws_token: Some("t".into()),
+                claude_bin: None,
+                claude_args: None,
+            },
+            last_thread_id: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
+            current_thread_doc: Mutex::new(None),
+            stream_track: Mutex::new(std::collections::HashMap::new()),
+            pending_user_text: Mutex::new(std::collections::HashMap::new()),
+            sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
+            bridge_ready: std::sync::atomic::AtomicBool::new(true),
+            tinyvex: std::sync::Arc::new(tvx),
+        };
+        finalize_or_snapshot(&state, "th", "assistant", "hello world").await;
+        let rows = state.tinyvex.list_messages("th", 50).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].text.as_deref(), Some("hello world"));
+        assert_eq!(rows[0].partial, Some(0));
+    }
+
+    #[tokio::test]
+    async fn upsert_then_finalize_does_not_duplicate() {
+        let (tx, _rx) = broadcast::channel(4);
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("tvx.sqlite3");
+        let tvx = tinyvex::Tinyvex::open(&db_path).unwrap();
+        let state = crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts: crate::Opts {
+                bind: "127.0.0.1:0".into(),
+                codex_bin: None,
+                codex_args: None,
+                extra: vec![],
+                ws_token: Some("t".into()),
+                claude_bin: None,
+                claude_args: None,
+            },
+            last_thread_id: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
+            current_thread_doc: Mutex::new(None),
+            stream_track: Mutex::new(std::collections::HashMap::new()),
+            pending_user_text: Mutex::new(std::collections::HashMap::new()),
+            sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
+            bridge_ready: std::sync::atomic::AtomicBool::new(true),
+            tinyvex: std::sync::Arc::new(tvx),
+        };
+        // Simulate deltas then final.
+        stream_upsert_or_append(&state, "th", "assistant", "hello").await;
+        finalize_or_snapshot(&state, "th", "assistant", "hello").await;
+        let rows = state.tinyvex.list_messages("th", 50).unwrap();
+        assert_eq!(rows.len(), 1, "expected exactly one finalized row");
+        assert_eq!(rows[0].partial, Some(0));
     }
 }
