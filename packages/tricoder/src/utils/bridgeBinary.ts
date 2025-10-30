@@ -157,13 +157,39 @@ async function downloadAndInstall(version: string, artifact: string): Promise<st
 }
 
 async function streamToFile(res: FetchResponse, destPath: string): Promise<void> {
-  const file = fs.createWriteStream(destPath);
-  const body = res.body as any;
+  try {
+    // Prefer arrayBuffer to avoid Node/Bun stream incompatibilities
+    if (typeof (res as any).arrayBuffer === 'function') {
+      const ab = await (res as any).arrayBuffer();
+      const buf = Buffer.from(ab);
+      await fsp.writeFile(destPath, buf);
+      return;
+    }
+  } catch {}
+  // Fallback: try piping if body is a Node stream
+  const body: any = (res as any).body;
+  if (!body) throw new Error('Empty response body');
   await new Promise<void>((resolve, reject) => {
-    body.pipe(file);
-    body.on('error', reject);
-    file.on('finish', resolve);
-    file.on('error', reject);
+    const file = fs.createWriteStream(destPath);
+    try {
+      if (typeof body.pipe === 'function') {
+        body.pipe(file);
+        body.on('error', reject);
+        file.on('finish', resolve);
+        file.on('error', reject);
+      } else {
+        // Last resort: read all chunks
+        const chunks: Buffer[] = [];
+        body.on('data', (c: any) => { try { chunks.push(Buffer.from(c)); } catch {} });
+        body.on('error', reject);
+        body.on('end', async () => {
+          try { await fsp.writeFile(destPath, Buffer.concat(chunks)); resolve(); } catch (e) { reject(e); }
+        });
+      }
+    } catch (e) {
+      try { file.close(); } catch {}
+      reject(e);
+    }
   });
 }
 
