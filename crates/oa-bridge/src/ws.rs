@@ -813,9 +813,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", txt).await;
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         } else {
-                                            if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "assistant").await {
-                                                // Tinyvex: snapshot handled by finalize path if needed
-                                            }
+                                            crate::tinyvex_write::finalize_or_snapshot(&state_for_stdout, &target_tid, "assistant", txt).await;
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         }
                                     }
@@ -824,9 +822,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", txt).await;
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         } else {
-                                            if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "reason").await {
-                                                // Tinyvex: snapshot handled by finalize path if needed
-                                            }
+                                            crate::tinyvex_write::finalize_or_snapshot(&state_for_stdout, &target_tid, "reason", txt).await;
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         }
                                     }
