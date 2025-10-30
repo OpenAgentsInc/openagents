@@ -141,10 +141,10 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                 meta: None,
             });
             let target_tid = {
-                if let Some(ctid) = state_err.current_convex_thread.lock().await.clone() { ctid } else { state_err.last_thread_id.lock().await.clone().unwrap_or_default() }
+                if let Some(ctid) = state_err.current_thread_doc.lock().await.clone() { ctid } else { state_err.last_thread_id.lock().await.clone().unwrap_or_default() }
             };
             if !target_tid.is_empty() {
-                crate::tinyvex_write::mirror_acp_update_to_convex(&state_err, &target_tid, &update).await;
+                crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_err, &target_tid, &update).await;
             }
             if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) {
                 let _ = tx_err.send(line);
@@ -167,7 +167,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                     if ety == "system" && sub == "init" {
                         if let Some(sess) = v.get("session_id").and_then(|x| x.as_str()) {
                             let tdoc = {
-                                if let Some(ctid) = state_for.current_convex_thread.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
+                                if let Some(ctid) = state_for.current_thread_doc.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
                             };
                             if !tdoc.is_empty() {
                                 let map_line = serde_json::json!({
@@ -185,12 +185,20 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                                 // Flush pending user text into ACP + Tinyvex
                                 if let Some(user_text) = { state_for.pending_user_text.lock().await.remove(&tdoc) } {
                                     let ts_now = now_ms();
+                                    // Emit ACP to clients
                                     let notif = serde_json::json!({
                                         "sessionId": sess,
                                         "update": { "sessionUpdate": "user_message_chunk", "content": { "type": "text", "text": user_text } }
                                     });
                                     let _ = tx_out.send(serde_json::json!({"type":"bridge.acp","notification": notif}).to_string());
+                                    // Persist to Tinyvex acp_events for auditing
                                     let _ = state_for.tinyvex.insert_acp_event(Some(&sess.to_string()), Some(&tdoc), ts_now.try_into().unwrap(), Some(0), "user_message_chunk", Some("user"), Some(&user_text), None, None, None, None, None, None);
+                                    // Also mirror to Tinyvex messages so it appears in History
+                                    let update = SessionUpdate::UserMessageChunk(ContentChunk {
+                                        content: ContentBlock::Text(TextContent { annotations: None, text: user_text.clone(), meta: None }),
+                                        meta: None,
+                                    });
+                                    crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, &tdoc, &update).await;
                                 }
                             }
                         }
@@ -210,10 +218,10 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                     let _ = tx_out.send(serde_json::json!({"type":"bridge.acp_seen","kind": kind}).to_string());
                     // Determine thread id target from current_convex_thread
                     let target_tid = {
-                        if let Some(ctid) = state_for.current_convex_thread.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
+                        if let Some(ctid) = state_for.current_thread_doc.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
                     };
                     if !target_tid.is_empty() {
-                        crate::tinyvex_write::mirror_acp_update_to_convex(&state_for, &target_tid, &update).await;
+                        crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, &target_tid, &update).await;
                     }
                     if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
                 }
@@ -234,10 +242,10 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                     meta: None,
                 });
                 let target_tid = {
-                    if let Some(ctid) = state_for.current_convex_thread.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
+                    if let Some(ctid) = state_for.current_thread_doc.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
                 };
                 if !target_tid.is_empty() {
-                    crate::tinyvex_write::mirror_acp_update_to_convex(&state_for, &target_tid, &update).await;
+                    crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, &target_tid, &update).await;
                 }
                 if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
             }

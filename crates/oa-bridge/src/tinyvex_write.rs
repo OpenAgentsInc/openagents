@@ -96,7 +96,7 @@ pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &
         "op": "finalizeStreamed",
         "threadId": thread_id,
         "kind": kind,
-        "itemId": stable_item_id,
+        "itemId": item_id,
         "len": final_text.len(),
         "ok": true
     }).to_string());
@@ -106,7 +106,7 @@ pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &
         "op": "finalizeStreamed",
         "threadId": thread_id,
         "kind": kind,
-        "itemId": stable_item_id
+        "itemId": item_id
     }).to_string());
     true
 }
@@ -128,7 +128,8 @@ pub fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
     if line.len() > 24 * 1024 { Some(format!("[jsonl delta ~{} bytes]", line.len())) } else { None }
 }
 
-pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, update: &agent_client_protocol::SessionUpdate) {
+/// Mirror ACP session updates into Tinyvex tables (no Convex).
+pub async fn mirror_acp_update_to_tinyvex(state: &AppState, thread_id: &str, update: &agent_client_protocol::SessionUpdate) {
     // Mirror ACP session updates into Tinyvex tables for tools/plan/state
     let t = now_ms();
     match update {
@@ -302,11 +303,11 @@ mod tests {
             },
             last_thread_id: Mutex::new(None),
             history: Mutex::new(Vec::new()),
-            current_convex_thread: Mutex::new(None),
+            current_thread_doc: Mutex::new(None),
             stream_track: Mutex::new(std::collections::HashMap::new()),
             pending_user_text: Mutex::new(std::collections::HashMap::new()),
             sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
-            convex_ready: std::sync::atomic::AtomicBool::new(true),
+            bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: std::sync::Arc::new(tvx),
         };
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;

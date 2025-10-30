@@ -22,6 +22,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
       - name: Sanity check sources
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           set -euxo pipefail
           if rg -n "stable_item_id" crates/oa-bridge >/dev/null; then

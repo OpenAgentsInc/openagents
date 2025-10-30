@@ -271,7 +271,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         }).map(PathBuf::from);
                                         // Remember target Convex thread id for writes
                                         {
-                                            *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone());
+                                            *stdin_state.current_thread_doc.lock().await = Some(thread_doc_id.clone());
                                         }
                                         // Record pending user message text so we can emit ACP once session id is known (on Claude init mapping)
                                         {
@@ -305,7 +305,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 });
                                 // Remember target Convex thread id for writes
                                 {
-                                    *stdin_state.current_convex_thread.lock().await =
+                                    *stdin_state.current_thread_doc.lock().await =
                                         Some(thread_doc_id.clone());
                                 }
                                 // Record pending user message text so we can emit ACP once session id is known
@@ -604,7 +604,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         info!(thread_id=%val, msg="captured thread id for resume");
                         // Tinyvex path does not need an explicit upsert here; handled on message writes
                         // Broadcast a debug event for visibility in tools
-                        let client_doc = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        let client_doc = { state_for_stdout.current_thread_doc.lock().await.clone() };
                         let dbg = serde_json::json!({
                                 "type": "bridge.codex_event",
                                 "event_type": "thread.started",
@@ -642,7 +642,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                 }
                 if matches!(t.as_deref(), Some("turn.completed")) {
                     let convex_tid_opt =
-                        { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        { state_for_stdout.current_thread_doc.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt {
                         s
                     } else {
@@ -671,7 +671,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         .unwrap_or("")
                         .to_string();
                     let convex_tid_opt =
-                        { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        { state_for_stdout.current_thread_doc.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt {
                         s
                     } else {
@@ -703,7 +703,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         .unwrap_or("")
                         .to_string();
                     let convex_tid_opt =
-                        { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        { state_for_stdout.current_thread_doc.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt {
                         s
                     } else {
@@ -735,7 +735,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         .unwrap_or("")
                         .to_string();
                     let convex_tid_opt =
-                        { state_for_stdout.current_convex_thread.lock().await.clone() };
+                        { state_for_stdout.current_thread_doc.lock().await.clone() };
                     let target_tid = if let Some(s) = convex_tid_opt {
                         s
                     } else {
@@ -752,7 +752,6 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             &state_for_stdout,
                             &target_tid,
                             "assistant",
-                            &final_text,
                         )
                         .await
                         {
@@ -792,7 +791,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                     }
                     if !text_owned.trim().is_empty() {
                         let convex_tid_opt =
-                            { state_for_stdout.current_convex_thread.lock().await.clone() };
+                            { state_for_stdout.current_thread_doc.lock().await.clone() };
                         let target_tid = if let Some(s) = convex_tid_opt {
                             s
                         } else {
@@ -808,7 +807,6 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 &state_for_stdout,
                                 &target_tid,
                                 "reason",
-                                &text_owned,
                             )
                             .await
                             {
@@ -825,7 +823,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         if let Some(item) = v.get("item").or_else(|| v.get("payload").and_then(|p| p.get("item"))) {
                             let kind = item.get("type").and_then(|x| x.as_str()).unwrap_or("");
                             let txt = item.get("text").and_then(|x| x.as_str()).unwrap_or("");
-                            let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                            let convex_tid_opt = { state_for_stdout.current_thread_doc.lock().await.clone() };
                             let target_tid = if let Some(s) = convex_tid_opt { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() };
                             if !target_tid.is_empty() {
                                 match kind {
@@ -834,7 +832,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             stream_upsert_or_append(&state_for_stdout, &target_tid, "assistant", txt).await;
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         } else {
-                                            if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "assistant", txt).await {
+                                            if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "assistant").await {
                                                 // Tinyvex: snapshot handled by finalize path if needed
                                             }
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
@@ -845,7 +843,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", txt).await;
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.delta","len":txt.len(),"thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         } else {
-                                            if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "reason", txt).await {
+                                            if !try_finalize_stream_kind(&state_for_stdout, &target_tid, "reason").await {
                                                 // Tinyvex: snapshot handled by finalize path if needed
                                             }
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
@@ -856,11 +854,11 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 // Mirror ACP update into Tinyvex and emit ACP notification
                                 if let Some(update) = translate_codex_event_to_acp_update(&v) {
                                     let target_tid = {
-                                        let ctid = state_for_stdout.current_convex_thread.lock().await.clone();
+                                        let ctid = state_for_stdout.current_thread_doc.lock().await.clone();
                                         if let Some(s) = ctid { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() }
                                     };
                                     if !target_tid.is_empty() {
-                                        crate::tinyvex_write::mirror_acp_update_to_convex(&state_for_stdout, &target_tid, &update).await;
+                                        crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, &target_tid, &update).await;
                                     }
                                     {
                                         let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
@@ -886,7 +884,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         let kind_field = v.get("item").and_then(|it| it.get("type")).and_then(|x| x.as_str()).map(|s| s.to_string());
                                         let status_field = v.get("item").and_then(|it| it.get("status")).and_then(|x| x.as_str()).map(|s| s.to_string());
                                         let tool_call_id = v.get("item").and_then(|it| it.get("id")).and_then(|x| x.as_str()).map(|s| s.to_string());
-                                        let client_doc_for = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                        let client_doc_for = { state_for_stdout.current_thread_doc.lock().await.clone() };
                                         let _ = state_for_stdout.tinyvex.insert_acp_event(
                                             Some(&notif.session_id.0),
                                             client_doc_for.as_deref(),
@@ -919,7 +917,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             let map_kind = map_tool_kind(kind);
                             if map_kind.is_some() {
                                 let convex_tid_opt =
-                                    { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                    { state_for_stdout.current_thread_doc.lock().await.clone() };
                                 let target_tid = if let Some(s) = convex_tid_opt {
                                     s
                                 } else {
@@ -935,11 +933,11 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     // Mirror ACP (tool/plan/state) into Convex and optionally emit for debugging
                                     if let Some(update) = translate_codex_event_to_acp_update(&v) {
                                         let target_tid = {
-                                            let ctid = state_for_stdout.current_convex_thread.lock().await.clone();
+                                            let ctid = state_for_stdout.current_thread_doc.lock().await.clone();
                                             if let Some(s) = ctid { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() }
                                         };
                                         if !target_tid.is_empty() {
-                                            crate::tinyvex_write::mirror_acp_update_to_convex(&state_for_stdout, &target_tid, &update).await;
+                                            crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, &target_tid, &update).await;
                                         }
                                         {
                                             let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
@@ -962,7 +960,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             } else if kind == "agent_message" || kind == "reasoning" {
                                 // Treat agent final messages and reasoning as chat rows in Tinyvex
                                 let text = payload.get("text").and_then(|x| x.as_str()).unwrap_or("");
-                                let convex_tid_opt = { state_for_stdout.current_convex_thread.lock().await.clone() };
+                                let convex_tid_opt = { state_for_stdout.current_thread_doc.lock().await.clone() };
                                 let target_tid = if let Some(s) = convex_tid_opt {
                                     s
                                 } else {
@@ -977,7 +975,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     // Map to our Tinyvex kinds: agent_message -> assistant, reasoning -> reason
                                     let tvx_kind = if kind == "agent_message" { "assistant" } else { "reason" };
                                     crate::tinyvex_write::stream_upsert_or_append(&state_for_stdout, &target_tid, tvx_kind, text).await;
-                                    let _ = crate::tinyvex_write::try_finalize_stream_kind(&state_for_stdout, &target_tid, tvx_kind, text).await;
+                                    let _ = crate::tinyvex_write::try_finalize_stream_kind(&state_for_stdout, &target_tid, tvx_kind).await;
                                 }
                             }
                         }

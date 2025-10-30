@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_json::json;
 use tracing::info;
 
-use crate::tinyvex_write::mirror_acp_update_to_convex;
+use crate::tinyvex_write::mirror_acp_update_to_tinyvex;
 use crate::state::AppState;
 
 /// Minimal in-repo Claude Code provider stub.
@@ -15,9 +15,9 @@ use crate::state::AppState;
 #[allow(dead_code)]
 pub async fn run_prompt(state: Arc<AppState>, thread_doc_id: &str, _cwd: Option<std::path::PathBuf>, text: &str) -> Result<()> {
     info!(thread_doc_id, len = text.len(), "provider.claude: run_prompt");
-    // Remember target Convex thread id for writes
+    // Remember target thread id for writes
     {
-        *state.current_convex_thread.lock().await = Some(thread_doc_id.to_string());
+        *state.current_thread_doc.lock().await = Some(thread_doc_id.to_string());
     }
     // Synthetic minimal stream of Claude-like events
     let events = vec![
@@ -28,7 +28,7 @@ pub async fn run_prompt(state: Arc<AppState>, thread_doc_id: &str, _cwd: Option<
     ];
     for ev in events {
         if let Some(update) = acp_event_translator::translate_claude_event_to_acp_update(&ev) {
-            mirror_acp_update_to_convex(&state, thread_doc_id, &update).await;
+            mirror_acp_update_to_tinyvex(&state, thread_doc_id, &update).await;
             if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
                 let line = serde_json::to_string(&json!({"type":"bridge.acp","notification":{"sessionId": thread_doc_id, "update": update}})).unwrap_or_default();
                 let _ = state.tx.send(line);
