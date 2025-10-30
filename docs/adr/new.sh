@@ -70,7 +70,9 @@ SLUG=$(
 )
 FILE_NAME="${ADR_DIR}/${FORMATTED_ADR_NUM}-${SLUG}.md"
 
-AUTHOR_NAME=$(git config user.name || echo "Unknown")
+# Try gh cli first, then git config as fallback
+AUTHOR_NAME=$(gh api user --jq '.login' 2>/dev/null || git config user.name 2>/dev/null || echo "Unknown")
+AUTHOR_NAME="@${AUTHOR_NAME#@}"
 CURRENT_DATE=$(date +%Y-%m-%d || echo "Unknown")
 
 if [[ -f ${FILE_NAME} ]]; then
