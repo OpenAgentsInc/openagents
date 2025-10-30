@@ -3,16 +3,9 @@ name: CI oa-bridge build
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'crates/oa-bridge/**'
-      - 'crates/tinyvex/**'
-      - 'crates/acp-event-translator/**'
   pull_request:
     branches: [ main ]
-    paths:
-      - 'crates/oa-bridge/**'
-      - 'crates/tinyvex/**'
-      - 'crates/acp-event-translator/**'
+  workflow_dispatch:
 
 jobs:
   build-matrix:
