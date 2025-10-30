@@ -71,7 +71,8 @@ fn build_bin_and_args(opts: &crate::Opts) -> Result<(PathBuf, Vec<String>)> {
     let cli_args = opts
         .claude_args
         .clone()
-        .unwrap_or_else(|| "code --json".to_string());
+        // Default to `code` subcommand; some builds don't support `--json`
+        .unwrap_or_else(|| "code".to_string());
     args.extend(cli_args.split_whitespace().map(|s| s.to_string()));
     Ok((bin, args))
 }
