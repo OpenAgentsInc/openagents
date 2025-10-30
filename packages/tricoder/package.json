@@ -7,7 +7,7 @@
   "description": "OpenAgents Tricoder bridge",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OpenAgentsInc/openagents.git",
+    "url": "git+https://github.com/OpenAgentsInc/openagents.git",
     "directory": "packages/tricoder"
   },
   "main": "dist/index.js",
