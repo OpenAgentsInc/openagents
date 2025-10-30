@@ -634,7 +634,13 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     "update": { "sessionUpdate": "user_message_chunk", "content": { "type": "text", "text": user_text } }
                                 });
                                 let _ = tx_out.send(serde_json::json!({"type":"bridge.acp","notification": notif}).to_string());
-                                // Write to Tinyvex acp_events
+                                // Persist via Tinyvex mirror so UI history shows user message
+                                let update = agent_client_protocol::SessionUpdate::UserMessageChunk(agent_client_protocol::ContentChunk {
+                                    content: agent_client_protocol::ContentBlock::Text(agent_client_protocol::TextContent { annotations: None, text: user_text.clone(), meta: None }),
+                                    meta: None,
+                                });
+                                crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, "codex", &client_doc_str, &update).await;
+                                // Also write to unified acp_events log
                                 let _ = state_for_stdout.tinyvex.insert_acp_event(Some(&val.to_string()), Some(&client_doc_str), ts_now.try_into().unwrap(), Some(0), "user_message_chunk", Some("user"), Some(&user_text), None, None, None, None, None, None);
                             }
                         }
@@ -691,112 +697,14 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         // pending user text handled on thread.started once session id is known
                     }
                 }
-                if matches!(t.as_deref(), Some("reasoning.delta"))
-                    || matches!(t.as_deref(), Some("reason.delta"))
-                {
-                    let payload = v
-                        .get("payload")
-                        .or_else(|| v.get("msg").and_then(|m| m.get("payload")));
-                    let txt = payload
-                        .and_then(|p| p.get("text"))
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let convex_tid_opt =
-                        { state_for_stdout.current_thread_doc.lock().await.clone() };
-                    let target_tid = if let Some(s) = convex_tid_opt {
-                        s
-                    } else {
-                        state_for_stdout
-                            .last_thread_id
-                            .lock()
-                            .await
-                            .clone()
-                            .unwrap_or_default()
-                    };
-                    if !target_tid.is_empty() {
-                        stream_upsert_or_append(&state_for_stdout, &target_tid, "reason", &txt)
-                            .await;
-                        info!(len=txt.len(), thread=%target_tid, "reason.delta mapped");
-                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.delta","len":txt.len(),"thread":target_tid}).to_string();
-                        let _ = tx_out.send(dbg);
-                    }
+                if matches!(t.as_deref(), Some("reasoning.delta")) || matches!(t.as_deref(), Some("reason.delta")) {
+                    // Ignore legacy reasoning streaming; chat handled via item.* below to avoid duplicates
                 }
-                if matches!(t.as_deref(), Some("agent_message"))
-                    || matches!(t.as_deref(), Some("assistant"))
-                    || matches!(t.as_deref(), Some("message"))
-                {
-                    let payload = v
-                        .get("payload")
-                        .or_else(|| v.get("msg").and_then(|m| m.get("payload")));
-                    let text_owned = payload
-                        .and_then(|p| p.get("text"))
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let convex_tid_opt =
-                        { state_for_stdout.current_thread_doc.lock().await.clone() };
-                    let target_tid = if let Some(s) = convex_tid_opt {
-                        s
-                    } else {
-                        state_for_stdout
-                            .last_thread_id
-                            .lock()
-                            .await
-                            .clone()
-                            .unwrap_or_default()
-                    };
-                    if !target_tid.is_empty() {
-                        let final_text = text_owned.clone();
-                        crate::tinyvex_write::finalize_or_snapshot(&state_for_stdout, &target_tid, "assistant", &final_text).await;
-                        let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string();
-                        let _ = tx_out.send(dbg);
-                        let dbg2 = serde_json::json!({"type":"bridge.assistant_written","thread":target_tid, "len": final_text.len()}).to_string();
-                        let _ = tx_out.send(dbg2);
-                    }
+                if matches!(t.as_deref(), Some("agent_message")) || matches!(t.as_deref(), Some("assistant")) || matches!(t.as_deref(), Some("message")) {
+                    // Ignore legacy assistant final; chat handled via item.* below to avoid duplicates
                 }
                 if matches!(t.as_deref(), Some("reasoning")) {
-                    let mut text_owned = v
-                        .get("payload")
-                        .and_then(|p| p.get("text"))
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    if text_owned.trim().is_empty() {
-                        if let Some(arr) = v
-                            .get("payload")
-                            .and_then(|p| p.get("summary"))
-                            .and_then(|x| x.as_array())
-                        {
-                            for part in arr {
-                                if let Some(t) = part.get("text").and_then(|x| x.as_str()) {
-                                    if !text_owned.is_empty() {
-                                        text_owned.push('\n');
-                                    }
-                                    text_owned.push_str(t);
-                                }
-                            }
-                        }
-                    }
-                    if !text_owned.trim().is_empty() {
-                        let convex_tid_opt =
-                            { state_for_stdout.current_thread_doc.lock().await.clone() };
-                        let target_tid = if let Some(s) = convex_tid_opt {
-                            s
-                        } else {
-                            state_for_stdout
-                                .last_thread_id
-                                .lock()
-                                .await
-                                .clone()
-                                .unwrap_or_default()
-                        };
-                        if !target_tid.is_empty() {
-                            crate::tinyvex_write::finalize_or_snapshot(&state_for_stdout, &target_tid, "reason", &text_owned).await;
-                            let dbg2 = serde_json::json!({"type":"bridge.reason_written","thread":target_tid}).to_string();
-                            let _ = tx_out.send(dbg2);
-                        }
-                    }
+                    // Ignore legacy reasoning final; chat handled via item.* below to avoid duplicates
                 }
                 // Newer shapes: item.delta / item.completed with item.type = agent_message | reasoning
                 if let Some(ty) = t.as_deref() {
@@ -821,7 +729,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
                                             let notif = SessionNotification { session_id: SessionId(acp_session.clone().into()), update: update.clone(), meta: None };
                                             if let Ok(line) = serde_json::to_string(&serde_json::json!({ "type": "bridge.acp", "notification": notif })) { let _ = tx_out.send(line); }
-                                            // Also write to unified acp_events log (does not affect UI duplication)
+                                            // Also write to unified acp_events log (audit only)
                                             let ts = now_ms();
                                             let raw_json = Some(v.to_string());
                                             let content_json = v.get("item").and_then(|it| it.get("content")).map(|c| c.to_string());
@@ -889,7 +797,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     }
                                     _ => {}
                                 }
-                                // Mirror ACP update for tools/plan/state only (avoid duplicating chat rows)
+                                // Mirror ACP update for tools/plan/state only (avoid duplicating chat streaming)
                                 if let Some(update) = translate_codex_event_to_acp_update(&v) {
                                     let is_chat = matches!(
                                         &update,
@@ -903,7 +811,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             if let Some(s) = ctid { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() }
                                         };
                                         if !target_tid.is_empty() {
-                                            crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, &target_tid, &update).await;
+                                            crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, "codex", &target_tid, &update).await;
                                         }
                                     }
                                 }
@@ -942,7 +850,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             if let Some(s) = ctid { s } else { state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default() }
                                         };
                                         if !target_tid.is_empty() {
-                                            crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, &target_tid, &update).await;
+                                            crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, "codex", &target_tid, &update).await;
                                         }
                                         {
                                             let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();

@@ -139,7 +139,7 @@ pub fn summarize_exec_delta_for_log(line: &str) -> Option<String> {
 }
 
 /// Mirror ACP session updates into Tinyvex tables (no Convex).
-pub async fn mirror_acp_update_to_tinyvex(state: &AppState, thread_id: &str, update: &agent_client_protocol::SessionUpdate) {
+pub async fn mirror_acp_update_to_tinyvex(state: &AppState, provider: &str, thread_id: &str, update: &agent_client_protocol::SessionUpdate) {
     // Mirror ACP session updates into Tinyvex tables for tools/plan/state
     let t = now_ms();
     match update {
@@ -220,7 +220,7 @@ pub async fn mirror_acp_update_to_tinyvex(state: &AppState, thread_id: &str, upd
                     project_id: None,
                     resume_id: Some(thread_id.to_string()),
                     rollout_path: None,
-                    source: Some("claude_code".into()),
+                    source: Some(provider.to_string()),
                     created_at: t,
                     updated_at: t,
                     message_count: None,
@@ -243,7 +243,7 @@ pub async fn mirror_acp_update_to_tinyvex(state: &AppState, thread_id: &str, upd
                     project_id: None,
                     resume_id: Some(thread_id.to_string()),
                     rollout_path: None,
-                    source: Some("claude_code".into()),
+                    source: Some(provider.to_string()),
                     created_at: t,
                     updated_at: t,
                     message_count: None,
@@ -266,7 +266,7 @@ pub async fn mirror_acp_update_to_tinyvex(state: &AppState, thread_id: &str, upd
                     project_id: None,
                     resume_id: Some(thread_id.to_string()),
                     rollout_path: None,
-                    source: Some("claude_code".into()),
+                    source: Some(provider.to_string()),
                     created_at: t,
                     updated_at: t,
                     message_count: None,

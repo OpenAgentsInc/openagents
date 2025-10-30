@@ -144,7 +144,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                 if let Some(ctid) = state_err.current_thread_doc.lock().await.clone() { ctid } else { state_err.last_thread_id.lock().await.clone().unwrap_or_default() }
             };
             if !target_tid.is_empty() {
-                crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_err, &target_tid, &update).await;
+                crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_err, "claude_code", &target_tid, &update).await;
             }
             if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) {
                 let _ = tx_err.send(line);
@@ -198,7 +198,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                                         content: ContentBlock::Text(TextContent { annotations: None, text: user_text.clone(), meta: None }),
                                         meta: None,
                                     });
-                                    crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, &tdoc, &update).await;
+                                    crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, "claude_code", &tdoc, &update).await;
                                 }
                             }
                         }
@@ -221,7 +221,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                         if let Some(ctid) = state_for.current_thread_doc.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
                     };
                     if !target_tid.is_empty() {
-                        crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, &target_tid, &update).await;
+                        crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, "claude_code", &target_tid, &update).await;
                     }
                     if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
                 }
@@ -245,7 +245,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                     if let Some(ctid) = state_for.current_thread_doc.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
                 };
                 if !target_tid.is_empty() {
-                    crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, &target_tid, &update).await;
+                    crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, "claude_code", &target_tid, &update).await;
                 }
                 if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
             }

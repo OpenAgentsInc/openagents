@@ -28,7 +28,7 @@ pub async fn run_prompt(state: Arc<AppState>, thread_doc_id: &str, _cwd: Option<
     ];
     for ev in events {
         if let Some(update) = acp_event_translator::translate_claude_event_to_acp_update(&ev) {
-            mirror_acp_update_to_tinyvex(&state, thread_doc_id, &update).await;
+            mirror_acp_update_to_tinyvex(&state, "claude_code", thread_doc_id, &update).await;
             if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
                 let line = serde_json::to_string(&json!({"type":"bridge.acp","notification":{"sessionId": thread_doc_id, "update": update}})).unwrap_or_default();
                 let _ = state.tx.send(line);
