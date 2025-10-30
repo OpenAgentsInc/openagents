@@ -228,7 +228,7 @@ function DrawerWrapper() {
   const { open, setOpen } = useDrawer();
   const isRTL = I18nManager.isRTL;
   const router = useRouter();
-  const { connected } = useBridge();
+  const { connected, connecting } = useBridge();
   // Allow dev-only navigation to the component library when disconnected
   const { useIsDevEnv } = require('@/lib/env') as { useIsDevEnv: () => boolean };
   const isDevEnv = useIsDevEnv();
@@ -239,12 +239,12 @@ function DrawerWrapper() {
   React.useEffect(() => {
     const path = String(pathname || '')
     if (!connected) {
-      const allowWhileDisconnected = path.startsWith('/onboarding') || (isDevEnv && path.startsWith('/library'))
+      const allowWhileDisconnected = path.startsWith('/onboarding') || (isDevEnv && path.startsWith('/library')) || (connecting && path.startsWith('/thread'))
       if (!allowWhileDisconnected) {
         try { router.push('/onboarding' as any) } catch {}
       }
     }
-  }, [connected, pathname]);
+  }, [connected, connecting, pathname]);
 
   const ConnectionDot = () => {
     const { connected } = useBridge();
