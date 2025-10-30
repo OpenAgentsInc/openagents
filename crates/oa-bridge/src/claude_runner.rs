@@ -108,12 +108,23 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
     let stderr = child.stderr.take().context("missing stderr")?;
     let tx_out = state.tx.clone();
 
-    // stderr task (log noise)
+    // stderr task (surface errors to clients as structured events)
+    let tx_err = state.tx.clone();
     tokio::spawn(async move {
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            println!("{}", line);
+            let s = line.trim();
+            if s.is_empty() { continue; }
+            // Emit a generic error envelope so clients can render it
+            let _ = tx_err.send(
+                serde_json::json!({
+                    "type": "error",
+                    "provider": "claude_code",
+                    "message": s,
+                })
+                .to_string(),
+            );
         }
     });
 

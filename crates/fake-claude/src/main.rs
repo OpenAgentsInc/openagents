@@ -17,6 +17,11 @@ struct Opts {
 
 fn main() {
     let _opts = Opts::parse();
+    // Optional failure mode: emit an update-required error to stderr and exit non-zero
+    if std::env::var("FAKE_CLAUDE_ERROR").ok().as_deref() == Some("1") {
+        eprintln!("It looks like your version of Claude Code needs an update.\nPlease run: claude update");
+        std::process::exit(1);
+    }
     // output a simple sequence of Claude-like JSON events
     let mut out = io::BufWriter::new(io::stdout());
     // thinking
