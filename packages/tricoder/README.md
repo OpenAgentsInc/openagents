@@ -49,7 +49,7 @@ Environment
 - TRICODER_USE_PATH_BRIDGE
   - Set to `1` to prefer a bridge on your PATH over prebuilt/cargo.
 - TRICODER_MIN_BRIDGE
-  - Minimum prebuilt tag tricoder will accept (default `v0.2.4`). If an older cached binary is found, tricoder falls back to cargo to build latest from your local clone.
+  - Minimum prebuilt tag tricoder will accept (default `v0.2.5`). If an older cached binary is found, tricoder falls back to cargo to build latest from your local clone.
 
 Output
 - Desktop IP (LAN or Tailscale), deep link, ws URL, token, and optional hosts list.
@@ -79,6 +79,9 @@ Claude Code (headless)
   - Error text from Claude (stderr or non‑JSON stdout) as error events and ACP agent messages — visible in UI and terminal logs.
 
 Changelog
+- 0.2.5
+  - Codex working directory: always use the current working directory (or explicit override) instead of trying to detect the OpenAgents repo. Fixes macOS runs where Codex exited immediately (status 256) when launched from non‑OpenAgents folders.
+  - Codex/Claude parity: unified ACP ingestion and removed legacy Codex chat handlers to avoid duplicate messages while still streaming live ACP updates.
 - 0.2.1
   - Claude Code: headless args aligned; session mapping + user_message emission; error surfacing.
   - Pairing: prevent scanner modal from re-opening; QR payload includes prioritized hosts[].
