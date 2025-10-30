@@ -15,12 +15,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - name: Install build deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
+      - name: Show commit and grep for old fields
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git rev-parse HEAD
+          rg -n "current_convex_thread|convex_ready|stable_item_id" || true
       - name: Sanity check sources
         if: runner.os != 'Windows'
         shell: bash
