@@ -12,9 +12,7 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": {
-    "tricoder": "dist/index.js"
-  },
+  "bin": "dist/index.js",
   "files": [
     "dist"
   ],
