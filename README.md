@@ -35,6 +35,9 @@ Like a tricorder but for coding
 
 You can submit PRs but they'd better be good.
 
+Releases
+- See `docs/bridge-release.md` for the oa-bridge release and tricoder publishing process.
+
 ## Version Compatibility
 
 - v0.1.0 and v0.1.1 (mobile only): require the legacy bridge flow below. You must check out the old commit to match that app build: `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`.

@@ -12,7 +12,8 @@
   - State & storage: lightweight log store in `expo/lib/log-store.ts` (AsyncStorage backed) powers History and Message detail views.
 - Connection/permissions: `expo/providers/ws.tsx` manages the WebSocket connection, exposes `readOnly`, `networkEnabled`, `approvals`, and `attachPreface` toggles (persisted). The header shows a green/red dot for connection.
 - Rule: No HTTP calls to the bridge. All bridge control is via WebSocket control messages (e.g., `{ "control": "run.submit", ... }`) or via Convex queries/mutations. Do not add REST endpoints.
- - For the `packages/tricoder` CLI: do not implement your own Node WebSocket server. The Rust bridge (`crates/oa-bridge`) is the single source of truth for `/ws`.
+- For the `packages/tricoder` CLI: do not implement your own Node WebSocket server. The Rust bridge (`crates/oa-bridge`) is the single source of truth for `/ws`.
+ - Bridge releases: see `docs/bridge-release.md` for how tags trigger prebuilt binaries and how to update/publish tricoder to point at the new bridge.
   - Theming/typography: Dark theme in `expo/constants/theme.ts`; global mono font + defaults via `expo/constants/typography.ts` (Berkeley Mono; splash hidden after fonts load).
   - OTA: `expo/hooks/use-auto-update.ts` checks for `expo-updates` when not in dev; EAS configured for channel `v0.2.0` with runtimeVersion `appVersion` in `expo/app.json` and `expo/eas.json`.
 - Bridge Details:
