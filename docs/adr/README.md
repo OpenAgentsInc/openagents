@@ -1,6 +1,15 @@
 # Architecture Decision Records (ADRs)
 
-This directory contains Architecture Decision Records (ADRs). An ADR is a short, focused document that captures a significant architectural decision. The goal is to have a clear record of why a particular decision was made, the context surrounding it, and the consequences.
+This directory contains Architecture Decision Records (ADRs). An ADR is a short, focused document that captures a significant architectural decision.
+
+**The goal is to have a clear record of:**
+- **Why** a particular decision was made (the rationale and context)
+- **What alternatives were considered** and why they were rejected
+- **The consequences** of the decision (both positive and negative)
+
+ADRs capture the thinking behind architectural choices, not just the choices themselves.
+
+**🤖 For AI Agents:** If you're an AI agent working on this project, please read [AGENT.md](AGENT.md) for guidance on tone, voice, and content principles before creating or modifying ADRs.
 
 ## Why ADRs?
 
