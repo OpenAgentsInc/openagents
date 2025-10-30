@@ -36,7 +36,8 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
         project_id: None,
         resume_id: Some(thread_id.to_string()),
         rollout_path: None,
-        source: Some("stream".into()),
+        // Mark provider for UI mapping
+        source: Some("codex".into()),
         created_at: t,
         updated_at: t,
         message_count: None,
@@ -208,7 +209,7 @@ pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, upda
                     project_id: None,
                     resume_id: Some(thread_id.to_string()),
                     rollout_path: None,
-                    source: Some("acp".into()),
+                    source: Some("claude_code".into()),
                     created_at: t,
                     updated_at: t,
                     message_count: None,
@@ -216,6 +217,7 @@ pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, upda
                 let _ = state.tinyvex.upsert_thread(&thr);
                 let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"threads","op":"upsert","threadId": thread_id, "updatedAt": t}).to_string());
                 let item_id = format!("acp:user:{}", t);
+                let _ = state.tinyvex.upsert_streamed_message(thread_id, "message", Some("user"), &txt, &item_id, 0, t);
                 let _ = state.tinyvex.finalize_streamed_message(thread_id, &item_id, &txt, t);
                 let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"messages","op":"insert","threadId": thread_id, "itemId": item_id}).to_string());
             }
@@ -230,7 +232,7 @@ pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, upda
                     project_id: None,
                     resume_id: Some(thread_id.to_string()),
                     rollout_path: None,
-                    source: Some("acp".into()),
+                    source: Some("claude_code".into()),
                     created_at: t,
                     updated_at: t,
                     message_count: None,
@@ -238,6 +240,7 @@ pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, upda
                 let _ = state.tinyvex.upsert_thread(&thr);
                 let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"threads","op":"upsert","threadId": thread_id, "updatedAt": t}).to_string());
                 let item_id = format!("acp:assistant:{}", t);
+                let _ = state.tinyvex.upsert_streamed_message(thread_id, "message", Some("assistant"), &txt, &item_id, 0, t);
                 let _ = state.tinyvex.finalize_streamed_message(thread_id, &item_id, &txt, t);
                 let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"messages","op":"insert","threadId": thread_id, "itemId": item_id}).to_string());
             }
@@ -252,7 +255,7 @@ pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, upda
                     project_id: None,
                     resume_id: Some(thread_id.to_string()),
                     rollout_path: None,
-                    source: Some("acp".into()),
+                    source: Some("claude_code".into()),
                     created_at: t,
                     updated_at: t,
                     message_count: None,
@@ -260,6 +263,7 @@ pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, upda
                 let _ = state.tinyvex.upsert_thread(&thr);
                 let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"threads","op":"upsert","threadId": thread_id, "updatedAt": t}).to_string());
                 let item_id = format!("acp:reason:{}", t);
+                let _ = state.tinyvex.upsert_streamed_message(thread_id, "reason", None, &txt, &item_id, 0, t);
                 let _ = state.tinyvex.finalize_streamed_message(thread_id, &item_id, &txt, t);
                 let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"messages","op":"insert","threadId": thread_id, "itemId": item_id}).to_string());
             }
