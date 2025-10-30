@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useRouter } from 'expo-router'
+import { useTinyvex } from '@/providers/tinyvex'
 
 export function ThreadListItemBase({
   title,
@@ -36,38 +37,39 @@ export function ThreadListItemBase({
 export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => void }) {
   const router = useRouter()
   const threadId = String(row?.threadId || row?.thread_id || row?._id || row?.id || '')
+  const { messagesByThread } = useTinyvex()
+  const msgs = Array.isArray(messagesByThread[threadId]) ? messagesByThread[threadId] : []
   const updatedAt = (row?.updatedAt ?? row?.createdAt ?? 0) as number
-  const count = typeof (row as any)?.messageCount === 'number' ? (row as any).messageCount as number : undefined
-  // No Convex: attempt to use provided snippet if present; otherwise fallback to title
-  const recent: any[] | undefined | null = undefined
+  const count = React.useMemo(() => {
+    const mc: any = (row as any)?.messageCount
+    if (typeof mc === 'number') return mc
+    return msgs.length > 0 ? msgs.length : undefined
+  }, [row, msgs.length])
+  // Use the last message text (assistant or user) as the snippet; fall back to row.title or "Thread"
   const lastSnippet = React.useMemo(() => {
-    const arr: any[] = Array.isArray(recent) ? recent : []
-    // Consider only chat messages
-    const msgs = arr.filter((m) => (m?.kind || (m?.role ? 'message' : '')) === 'message')
-    if (msgs.length === 0) return row?.title ? String(row.title) : 'New Thread'
-    // Pick the one with the largest timestamp if available
-    let last = msgs[msgs.length - 1]
+    const arr = msgs && msgs.length > 0 ? msgs : []
+    let last = arr[arr.length - 1]
     try {
-      if (msgs.length > 1) {
-        const byTs = [...msgs]
-        byTs.sort((a, b) => (Number(a?.ts || 0) - Number(b?.ts || 0)))
+      if (arr.length > 1) {
+        const byTs = [...arr]
+        byTs.sort((a: any, b: any) => (Number(a?.ts || 0) - Number(b?.ts || 0)))
         last = byTs[byTs.length - 1]
       }
     } catch {}
-    const raw = String(last?.text || '')
-    // Basic markdown cleanup and truncation to keep it concise in the drawer
+    const raw = String((last && (last.text || '')) || '')
     const cleaned = raw
-      .replace(/```[\s\S]*?```/g, '') // remove fenced code blocks
-      .replace(/`([^`]*)`/g, '$1') // inline code
-      .replace(/^#+\s*/gm, '') // headings
-      .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
-      .replace(/\*([^*]+)\*/g, '$1') // emphasis
-      .replace(/\[(.*?)\]\([^)]*\)/g, '$1') // links [text](url)
-      .replace(/\s+/g, ' ') // collapse whitespace
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`([^`]*)`/g, '$1')
+      .replace(/^#+\s*/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/\[(.*?)\]\([^)]*\)/g, '$1')
+      .replace(/\s+/g, ' ')
       .trim()
+    const base = cleaned || (row?.title ? String(row.title) : '') || 'Thread'
     const maxLen = 48
-    return cleaned.length > maxLen ? `${cleaned.slice(0, maxLen - 1)}…` : (cleaned || 'New Thread')
-  }, [recent, row?.title])
+    return base.length > maxLen ? `${base.slice(0, maxLen - 1)}…` : base
+  }, [msgs, row?.title])
   const open = () => {
     if (onPress) { try { onPress() } catch {} ; return }
     if (!threadId) return
