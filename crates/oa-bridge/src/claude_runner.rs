@@ -81,8 +81,14 @@ fn build_bin_and_args(opts: &crate::Opts) -> Result<(PathBuf, Vec<String>)> {
         return Ok((bin, args));
     }
     // Default headless per docs: non-interactive print with streaming JSON output.
+    // Claude CLI requires --verbose when using --output-format=stream-json.
     // We'll parse each stdout line as JSON.
-    let args = vec!["-p".to_string(), "--output-format".to_string(), "stream-json".to_string()];
+    let args = vec![
+        "-p".to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--verbose".to_string(),
+    ];
     Ok((bin, args))
 }
 
