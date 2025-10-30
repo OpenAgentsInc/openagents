@@ -4,8 +4,15 @@ use std::io::{self, Write};
 #[derive(Parser, Debug)]
 #[command(name = "fake-claude", version, about = "Minimal Claude Code CLI simulator for tests")]
 struct Opts {
-    #[arg(last = true)]
-    rest: Vec<String>,
+    /// Non-interactive print mode (ignored by fake)
+    #[arg(short = 'p', long = "print")]
+    _print: bool,
+    /// Output format (text|json|stream-json) — fake emits streaming JSON regardless
+    #[arg(long = "output-format", default_value = "stream-json")]
+    _output_format: String,
+    /// Accept any additional args (prompt, etc.)
+    #[arg(trailing_var_arg = true)]
+    _rest: Vec<String>,
 }
 
 fn main() {
@@ -36,4 +43,3 @@ fn main() {
     })).unwrap();
     out.flush().ok();
 }
-

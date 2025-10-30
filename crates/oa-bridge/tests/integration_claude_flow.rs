@@ -65,20 +65,22 @@ async fn full_flow_with_fake_claude_emits_acp() {
 
     // Collect a few lines and assert ACP notifications arrive
     let mut saw_submit = false;
+    let mut saw_acp = false;
     let mut lines = Vec::new();
     let fut = async {
         for _ in 0..200u32 {
             if let Some(msg) = ws.next().await { if let Ok(m) = msg { if let tokio_tungstenite::tungstenite::Message::Text(t) = m { lines.push(t.to_string()); } } }
             for l in &lines {
                 if l.contains("\"type\":\"bridge.run_submit\"") && l.contains("\"provider\":\"claude_code\"") { saw_submit = true; }
-                // Optional ACP rows may arrive; provider path confirmed by run_submit log
+                if l.contains("\"type\":\"bridge.acp_seen\"") { saw_acp = true; }
             }
-            if saw_submit { break; }
+            if saw_submit && saw_acp { break; }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     };
     let _ = timeout(Duration::from_secs(8), fut).await;
     assert!(saw_submit, "missing expected run.submit logs: {:?}", lines);
+    assert!(saw_acp, "missing expected Claude ACP events: {:?}", lines);
     let _ = child.start_kill();
     let _ = t_out.await.unwrap_or_default();
     let _ = t_err.await.unwrap_or_default();
