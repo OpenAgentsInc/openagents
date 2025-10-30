@@ -19,6 +19,10 @@ const OWNER = process.env.TRICODER_BRIDGE_OWNER || 'OpenAgentsInc';
 const REPO = process.env.TRICODER_BRIDGE_REPO || 'openagents';
 
 export async function ensureBridgeBinary(): Promise<EnsureResult> {
+  const artifact = artifactNameForThisPlatform();
+  const desiredVersion = process.env.TRICODER_BRIDGE_VERSION || null;
+  const forceUpdate = process.env.TRICODER_BRIDGE_FORCE_UPDATE === '1';
+
   // 1) PATH or home bin override
   const preferPath = process.env.TRICODER_USE_PATH_BRIDGE === '1';
   const exe = process.platform === 'win32' ? 'oa-bridge.exe' : 'oa-bridge';
@@ -29,17 +33,39 @@ export async function ensureBridgeBinary(): Promise<EnsureResult> {
   const homeBin = path.join(os.homedir(), '.openagents', 'bin', exe);
   if (await exists(homeBin)) return { version: 'home', binaryPath: homeBin, source: 'home-bin' };
 
-  // 2) Official cache (~/.cache/openagents or platform equiv)
-  const cached = await findLatestCachedBinary();
-  if (cached) return { version: cached.version, binaryPath: cached.path, source: 'cache' };
+  // 2) If a specific version is requested, prefer it over cache unless it matches
+  if (desiredVersion && !forceUpdate) {
+    const cached = await findLatestCachedBinary();
+    if (cached && cached.version === desiredVersion) {
+      await makeExecutable(cached.path);
+      return { version: cached.version, binaryPath: cached.path, source: 'cache' };
+    }
+    const downloaded = await downloadAndInstall(desiredVersion, artifact);
+    await makeExecutable(downloaded);
+    return { version: desiredVersion, binaryPath: downloaded, source: 'download' };
+  }
 
-  // 3) Download from GitHub Releases
-  const artifact = artifactNameForThisPlatform();
-  const desiredVersion = process.env.TRICODER_BRIDGE_VERSION || null;
-  const version = desiredVersion || (await findLatestWithAsset(artifact));
-  const downloaded = await downloadAndInstall(version, artifact);
-  await makeExecutable(downloaded);
-  return { version, binaryPath: downloaded, source: 'download' };
+  // 3) No explicit version: decide based on cache vs latest remote
+  const cached = await findLatestCachedBinary();
+  if (!cached || forceUpdate) {
+    const latest = await findLatestWithAsset(artifact);
+    const downloaded = await downloadAndInstall(latest, artifact);
+    await makeExecutable(downloaded);
+    return { version: latest, binaryPath: downloaded, source: 'download' };
+  }
+  // Compare with remote and update if newer tag has the asset
+  try {
+    const latest = await findLatestWithAsset(artifact);
+    if (latest && latest !== cached.version) {
+      const downloaded = await downloadAndInstall(latest, artifact);
+      await makeExecutable(downloaded);
+      return { version: latest, binaryPath: downloaded, source: 'download' };
+    }
+  } catch {
+    // Ignore network errors; fall back to cache
+  }
+  await makeExecutable(cached.path);
+  return { version: cached.version, binaryPath: cached.path, source: 'cache' };
 }
 
 function artifactNameForThisPlatform(): string {

@@ -41,6 +41,12 @@ Environment
   - Set to `0` to force cargo fallback instead of using a prebuilt bridge binary.
 - OPENAGENTS_REPO_DIR
   - Custom path for the auto‑cloned OpenAgents repo when falling back to cargo.
+- TRICODER_BRIDGE_VERSION
+  - Pin to a specific GitHub Release tag for `oa-bridge` (e.g., `v0.2.3`). If the cached version differs, tricoder downloads the requested version.
+- TRICODER_BRIDGE_FORCE_UPDATE
+  - Set to `1` to bypass cache and fetch the latest release with matching assets.
+- TRICODER_USE_PATH_BRIDGE
+  - Set to `1` to prefer a bridge on your PATH over prebuilt/cargo.
 
 Output
 - Desktop IP (LAN or Tailscale), deep link, ws URL, token, and optional hosts list.
