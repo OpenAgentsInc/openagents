@@ -81,22 +81,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install aarch64 toolchain and linker
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: Build (aarch64-unknown-linux-gnu via cross)
         run: |
           set -euxo pipefail
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
-          rustup target add aarch64-unknown-linux-gnu
-          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-      - name: Build (aarch64-unknown-linux-gnu)
-        env:
-          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: |
-          set -euxo pipefail
-          cargo clean
-          cargo build --release -p oa-bridge --target aarch64-unknown-linux-gnu
+          cross build --release -p oa-bridge --target aarch64-unknown-linux-gnu
       - name: Package artifact
         run: |
           set -euxo pipefail
