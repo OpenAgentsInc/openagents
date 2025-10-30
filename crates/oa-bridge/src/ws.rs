@@ -816,6 +816,37 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                             crate::tinyvex_write::finalize_or_snapshot(&state_for_stdout, &target_tid, "assistant", txt).await;
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"assistant.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
                                         }
+                                        // Emit ACP notification for UI live rendering (Tinyvex already stores chat above)
+                                        if let Some(update) = translate_codex_event_to_acp_update(&v) {
+                                            let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
+                                            let notif = SessionNotification { session_id: SessionId(acp_session.clone().into()), update: update.clone(), meta: None };
+                                            if let Ok(line) = serde_json::to_string(&serde_json::json!({ "type": "bridge.acp", "notification": notif })) { let _ = tx_out.send(line); }
+                                            // Also write to unified acp_events log (does not affect UI duplication)
+                                            let ts = now_ms();
+                                            let raw_json = Some(v.to_string());
+                                            let content_json = v.get("item").and_then(|it| it.get("content")).map(|c| c.to_string());
+                                            let locations_json = v.get("item").and_then(|it| it.get("locations")).map(|c| c.to_string());
+                                            let text_field = v.get("item").and_then(|it| it.get("text")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                            let kind_field = v.get("item").and_then(|it| it.get("type")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                            let status_field = v.get("item").and_then(|it| it.get("status")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                            let tool_call_id = v.get("item").and_then(|it| it.get("id")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                            let client_doc_for = { state_for_stdout.current_thread_doc.lock().await.clone() };
+                                            let _ = state_for_stdout.tinyvex.insert_acp_event(
+                                                Some(&acp_session),
+                                                client_doc_for.as_deref(),
+                                                ts.try_into().unwrap(),
+                                                Some(0),
+                                                "agent_message_chunk",
+                                                Some("assistant"),
+                                                text_field.as_deref(),
+                                                tool_call_id.as_deref(),
+                                                status_field.as_deref(),
+                                                kind_field.as_deref(),
+                                                content_json.as_deref(),
+                                                locations_json.as_deref(),
+                                                raw_json.as_deref(),
+                                            );
+                                        }
                                     }
                                     "reasoning" => {
                                         if ty == "item.delta" {
@@ -824,6 +855,36 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                         } else {
                                             crate::tinyvex_write::finalize_or_snapshot(&state_for_stdout, &target_tid, "reason", txt).await;
                                             let dbg = serde_json::json!({"type":"bridge.codex_event","event_type":"reason.final","thread":target_tid}).to_string(); let _ = tx_out.send(dbg);
+                                        }
+                                        // Emit ACP notification for live reasoning rendering (no Tinyvex mirror for chat duplicates)
+                                        if let Some(update) = translate_codex_event_to_acp_update(&v) {
+                                            let acp_session = state_for_stdout.last_thread_id.lock().await.clone().unwrap_or_default();
+                                            let notif = SessionNotification { session_id: SessionId(acp_session.clone().into()), update: update.clone(), meta: None };
+                                            if let Ok(line) = serde_json::to_string(&serde_json::json!({ "type": "bridge.acp", "notification": notif })) { let _ = tx_out.send(line); }
+                                            let ts = now_ms();
+                                            let raw_json = Some(v.to_string());
+                                            let content_json = v.get("item").and_then(|it| it.get("content")).map(|c| c.to_string());
+                                            let locations_json = v.get("item").and_then(|it| it.get("locations")).map(|c| c.to_string());
+                                            let text_field = v.get("item").and_then(|it| it.get("text")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                            let kind_field = v.get("item").and_then(|it| it.get("type")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                            let status_field = v.get("item").and_then(|it| it.get("status")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                            let tool_call_id = v.get("item").and_then(|it| it.get("id")).and_then(|x| x.as_str()).map(|s| s.to_string());
+                                            let client_doc_for = { state_for_stdout.current_thread_doc.lock().await.clone() };
+                                            let _ = state_for_stdout.tinyvex.insert_acp_event(
+                                                Some(&acp_session),
+                                                client_doc_for.as_deref(),
+                                                ts.try_into().unwrap(),
+                                                Some(0),
+                                                "agent_thought_chunk",
+                                                None,
+                                                text_field.as_deref(),
+                                                tool_call_id.as_deref(),
+                                                status_field.as_deref(),
+                                                kind_field.as_deref(),
+                                                content_json.as_deref(),
+                                                locations_json.as_deref(),
+                                                raw_json.as_deref(),
+                                            );
                                         }
                                     }
                                     _ => {}
