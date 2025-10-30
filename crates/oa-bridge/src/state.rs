@@ -6,7 +6,7 @@
 //! late-joining WS clients, and per-thread streaming aggregation state.
 //!
 //! Splitting this into its own module allows the WS server, codex runner,
-//! and Convex write helpers to operate over a common type without circular
+//! and Tinyvex write helpers to operate over a common type without circular
 //! dependencies or forcing everything into a monolithic main.rs.
 
 use std::collections::HashMap;
@@ -36,15 +36,15 @@ pub struct AppState {
     pub last_thread_id: Mutex<Option<String>>,
     // Replay buffer for new websocket clients
     pub history: Mutex<Vec<String>>,
-    // Current Convex thread doc id being processed (for mapping thread.started -> Convex threadId)
-    pub current_convex_thread: Mutex<Option<String>>,
+    // Current thread doc id being processed (for mapping thread.started -> client threadId)
+    pub current_thread_doc: Mutex<Option<String>>,
     // Streaming message trackers (per thread, per kind). Key: "<threadId>|assistant" or "<threadId>|reason".
     pub stream_track: Mutex<HashMap<String, StreamEntry>>,
     // Pending user message text keyed by client thread doc id (to emit ACP once session id is known)
     pub pending_user_text: Mutex<HashMap<String, String>>,
-    // Whether the Convex backend is healthy and ready for clients (legacy; always true in Tinyvex mode)
+    // Legacy: formerly Convex readiness; always true in Tinyvex-only mode
     #[allow(dead_code)]
-    pub convex_ready: AtomicBool,
+    pub bridge_ready: AtomicBool,
     // Tinyvex database (mandatory)
     pub tinyvex: std::sync::Arc<tinyvex::Tinyvex>,
     // Map client thread doc id -> last known session id (for per-thread resume)
@@ -53,7 +53,7 @@ pub struct AppState {
 
 impl AppState {
     #[allow(dead_code)]
-    pub fn is_convex_ready(&self) -> bool {
-        self.convex_ready.load(Ordering::Relaxed)
+    pub fn is_bridge_ready(&self) -> bool {
+        self.bridge_ready.load(Ordering::Relaxed)
     }
 }
