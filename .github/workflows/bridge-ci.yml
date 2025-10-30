@@ -21,5 +21,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
+      - name: Sanity check sources
+        run: |
+          set -euxo pipefail
+          if rg -n "stable_item_id" crates/oa-bridge >/dev/null; then
+            echo "Found stale symbol stable_item_id in bridge sources" >&2
+            rg -n "stable_item_id" crates/oa-bridge || true
+            exit 1
+          fi
+          if rg -n "try_finalize_stream_kind\([^,]+,[^,]+,[^,]+,[^)]*\)" crates/oa-bridge >/dev/null; then
+            echo "Found old 4-arg try_finalize_stream_kind calls" >&2
+            rg -n "try_finalize_stream_kind\([^,]+,[^,]+,[^,]+,[^)]*\)" crates/oa-bridge || true
+            exit 1
+          fi
       - name: Cargo build (debug)
         run: cargo build -p oa-bridge
