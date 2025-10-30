@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   pairBtn: { marginTop: 0, borderWidth: 1, borderColor: Colors.secondary, backgroundColor: Colors.card, paddingVertical: 20, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', gap: 10, flexDirection: 'row' },
   pairText: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18, letterSpacing: 0.5 },
   logo: { width: 180, height: 180, marginBottom: 3, marginTop: -20 },
-  logoBrand: { color: Colors.tertiary, fontFamily: Typography.bold, fontSize: 16, letterSpacing: 4, marginBottom: 6 },
+  logoBrand: { color: Colors.tertiary, fontFamily: Typography.bold, fontSize: 46, letterSpacing: 4, marginBottom: 6 },
   logoTitle: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 46, letterSpacing: 6, marginBottom: 90 },
   errorWrap: { position: 'absolute', left: 24, right: 24, bottom: 48, alignItems: 'center' },
 })
