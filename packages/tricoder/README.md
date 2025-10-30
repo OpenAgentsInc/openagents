@@ -1,5 +1,7 @@
 OpenAgents Tricoder (CLI)
 
+Desktop bridge for the OpenAgents mobile app. Currently iOS only via TestFlight — join here: https://testflight.apple.com/join/dvQdns5B
+
 Quick Start
 - npx tricoder@latest
   - Prints your Desktop IP, a QR code, a deep link, and the ws:// URL + token.
