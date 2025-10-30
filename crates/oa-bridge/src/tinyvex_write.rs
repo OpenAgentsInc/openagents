@@ -1,6 +1,7 @@
 use crate::state::AppState;
 use serde_json::json;
 use tracing::warn;
+use agent_client_protocol as acp;
 
 fn now_ms() -> i64 {
     (std::time::SystemTime::now()
@@ -18,8 +19,10 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
     entry.seq = entry.seq.saturating_add(1);
     entry.last_text = full_text.to_string();
     let seq_now = entry.seq;
-    let stable_item_id = if kind == "assistant" { "stream:assistant" } else if kind == "reason" { "stream:reason" } else { kind };
-    if entry.item_id.is_empty() { entry.item_id = stable_item_id.to_string(); }
+    // Assign a unique per-turn item id on first write for this kind, then reuse it
+    if entry.item_id.is_empty() {
+        entry.item_id = format!("turn:{}:{}", now_ms(), kind);
+    }
     let item_id = entry.item_id.clone();
     drop(guard);
     let role = if kind == "assistant" { Some("assistant") } else { None };
@@ -71,15 +74,19 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
     }).to_string());
 }
 
-pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &str, final_text: &str) -> bool {
-    let mut guard = state.stream_track.lock().await;
-    let key = format!("{}|{}", thread_id, kind);
-    let existed = guard.remove(&key).is_some();
-    drop(guard);
-    if !existed { return false; }
-    let stable_item_id = if kind == "assistant" { "stream:assistant" } else if kind == "reason" { "stream:reason" } else { kind };
+pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &str) -> bool {
+    // Remove the tracked streaming entry, get its last item_id and text, and finalize it
+    let (item_id, final_text) = {
+        let mut guard = state.stream_track.lock().await;
+        let key = format!("{}|{}", thread_id, kind);
+        if let Some(entry) = guard.remove(&key) {
+            (entry.item_id.clone(), entry.last_text.clone())
+        } else {
+            return false;
+        }
+    };
     let t = now_ms();
-    if let Err(e) = state.tinyvex.finalize_streamed_message(thread_id, stable_item_id, final_text, t) {
+    if let Err(e) = state.tinyvex.finalize_streamed_message(thread_id, &item_id, &final_text, t) {
         warn!(?e, "tinyvex finalize_streamed_message failed");
         return false;
     }
@@ -104,20 +111,15 @@ pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &
 }
 
 pub async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
-    let keys: Vec<(String, String)> = {
+    let kinds: Vec<String> = {
         let guard = state.stream_track.lock().await;
         guard
             .keys()
-            .filter_map(|k| { let mut p = k.split('|'); let tid = p.next()?; let kind = p.next()?; if tid == thread_id { Some((tid.to_string(), kind.to_string())) } else { None } })
+            .filter_map(|k| { let mut p = k.split('|'); let tid = p.next()?; let kind = p.next()?; if tid == thread_id { Some(kind.to_string()) } else { None } })
             .collect()
     };
-    for (tid, k) in keys {
-        let text = {
-            let guard = state.stream_track.lock().await;
-            let key = format!("{}|{}", tid, k);
-            guard.get(&key).map(|e| e.last_text.clone()).unwrap_or_default()
-        };
-        let _ = try_finalize_stream_kind(state, thread_id, &k, &text).await;
+    for kind in kinds {
+        let _ = try_finalize_stream_kind(state, thread_id, &kind).await;
     }
 }
 
@@ -195,9 +197,80 @@ pub async fn mirror_acp_update_to_convex(state: &AppState, thread_id: &str, upda
             // CurrentModeUpdate carries a SessionModeId wrapper; store later when adapter needs it
             let _ = state.tinyvex.upsert_acp_state(thread_id, None, None, t);
         }
-        agent_client_protocol::SessionUpdate::UserMessageChunk(_) => {}
-        agent_client_protocol::SessionUpdate::AgentMessageChunk(_) => {}
-        agent_client_protocol::SessionUpdate::AgentThoughtChunk(_) => {}
+        agent_client_protocol::SessionUpdate::UserMessageChunk(ch) => {
+            let txt = content_to_text(&ch.content);
+            if !txt.is_empty() {
+                // Upsert thread row and insert finalized message row
+                let thr = tinyvex::ThreadRow {
+                    id: thread_id.to_string(),
+                    thread_id: Some(thread_id.to_string()),
+                    title: "Thread".into(),
+                    project_id: None,
+                    resume_id: Some(thread_id.to_string()),
+                    rollout_path: None,
+                    source: Some("acp".into()),
+                    created_at: t,
+                    updated_at: t,
+                    message_count: None,
+                };
+                let _ = state.tinyvex.upsert_thread(&thr);
+                let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"threads","op":"upsert","threadId": thread_id, "updatedAt": t}).to_string());
+                let item_id = format!("acp:user:{}", t);
+                let _ = state.tinyvex.finalize_streamed_message(thread_id, &item_id, &txt, t);
+                let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"messages","op":"insert","threadId": thread_id, "itemId": item_id}).to_string());
+            }
+        }
+        agent_client_protocol::SessionUpdate::AgentMessageChunk(ch) => {
+            let txt = content_to_text(&ch.content);
+            if !txt.is_empty() {
+                let thr = tinyvex::ThreadRow {
+                    id: thread_id.to_string(),
+                    thread_id: Some(thread_id.to_string()),
+                    title: "Thread".into(),
+                    project_id: None,
+                    resume_id: Some(thread_id.to_string()),
+                    rollout_path: None,
+                    source: Some("acp".into()),
+                    created_at: t,
+                    updated_at: t,
+                    message_count: None,
+                };
+                let _ = state.tinyvex.upsert_thread(&thr);
+                let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"threads","op":"upsert","threadId": thread_id, "updatedAt": t}).to_string());
+                let item_id = format!("acp:assistant:{}", t);
+                let _ = state.tinyvex.finalize_streamed_message(thread_id, &item_id, &txt, t);
+                let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"messages","op":"insert","threadId": thread_id, "itemId": item_id}).to_string());
+            }
+        }
+        agent_client_protocol::SessionUpdate::AgentThoughtChunk(ch) => {
+            let txt = content_to_text(&ch.content);
+            if !txt.is_empty() {
+                let thr = tinyvex::ThreadRow {
+                    id: thread_id.to_string(),
+                    thread_id: Some(thread_id.to_string()),
+                    title: "Thread".into(),
+                    project_id: None,
+                    resume_id: Some(thread_id.to_string()),
+                    rollout_path: None,
+                    source: Some("acp".into()),
+                    created_at: t,
+                    updated_at: t,
+                    message_count: None,
+                };
+                let _ = state.tinyvex.upsert_thread(&thr);
+                let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"threads","op":"upsert","threadId": thread_id, "updatedAt": t}).to_string());
+                let item_id = format!("acp:reason:{}", t);
+                let _ = state.tinyvex.finalize_streamed_message(thread_id, &item_id, &txt, t);
+                let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"messages","op":"insert","threadId": thread_id, "itemId": item_id}).to_string());
+            }
+        }
+    }
+}
+
+fn content_to_text(content: &acp::ContentBlock) -> String {
+    match content {
+        acp::ContentBlock::Text(acp::TextContent { text, .. }) => text.clone(),
+        _ => String::new(),
     }
 }
 
