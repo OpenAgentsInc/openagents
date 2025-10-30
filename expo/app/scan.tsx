@@ -38,8 +38,8 @@ export default function ScanScreen() {
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
     try { connect() } catch {}
-    // Navigate to onboarding to show connection status or errors
-    try { router.replace('/onboarding' as any) } catch {}
+    // Navigate straight to new thread; layout gating now allows this while connecting
+    try { router.replace('/thread/new' as any) } catch {}
     return true
   }, [connect, router])
 
