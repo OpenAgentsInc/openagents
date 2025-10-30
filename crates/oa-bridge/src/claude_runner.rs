@@ -30,8 +30,17 @@ pub async fn spawn_claude_child_with_prompt(
     prompt: &str,
 ) -> Result<ClaudeChild> {
     let (bin, mut args) = build_bin_and_args(opts)?;
-    // Pass the prompt as a positional argument (mirrors codex approach)
-    args.push(prompt.to_string());
+    // Insert prompt right after -p/--print when present (per headless docs),
+    // otherwise append as positional argument.
+    let mut placed = false;
+    for i in 0..args.len() {
+        if args[i] == "-p" || args[i] == "--print" {
+            args.insert(i + 1, prompt.to_string());
+            placed = true;
+            break;
+        }
+    }
+    if !placed { args.push(prompt.to_string()); }
     let workdir = workdir_override.unwrap_or_else(|| detect_repo_root(None));
     info!("bin" = %bin.display(), "args" = ?args, "workdir" = %workdir.display(), "msg" = "spawn claude with positional prompt");
     let mut command = Command::new(&bin);
@@ -66,14 +75,13 @@ pub async fn spawn_claude_child_with_prompt(
 
 fn build_bin_and_args(opts: &crate::Opts) -> Result<(PathBuf, Vec<String>)> {
     let bin = resolve_claude_bin(opts)?;
-    let mut args: Vec<String> = Vec::new();
-    // Default to a JSON-emitting mode; allow overrides via env/flag
-    let cli_args = opts
-        .claude_args
-        .clone()
-        // Default to `code` subcommand; some builds don't support `--json`
-        .unwrap_or_else(|| "code".to_string());
-    args.extend(cli_args.split_whitespace().map(|s| s.to_string()));
+    if let Some(cli_args) = opts.claude_args.clone() {
+        let args = cli_args.split_whitespace().map(|s| s.to_string()).collect();
+        return Ok((bin, args));
+    }
+    // Default headless per docs: non-interactive print with streaming JSON output.
+    // We'll parse each stdout line as JSON.
+    let args = vec!["-p".to_string(), "--output-format".to_string(), "stream-json".to_string()];
     Ok((bin, args))
 }
 
