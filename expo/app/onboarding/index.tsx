@@ -191,6 +191,7 @@ export default function Onboarding() {
       {/* Single big Pair button (centered vertically) */}
       <View style={styles.centerWrap}>
         <Image source={require('../../assets/images/icon.png')} style={styles.logo} resizeMode='contain' />
+        <Text style={styles.logoBrand}>OPENAGENTS</Text>
         <Text style={styles.logoTitle}>TRICODER</Text>
         <Pressable
           onPress={() => { try { router.push('/scan' as any) } catch {} }}
@@ -202,24 +203,27 @@ export default function Onboarding() {
         </Pressable>
       </View>
       {!!lastWsErrorText && !connected && (
-        <Text style={[styles.errorText, { marginTop: 8 }]}>
-          {lastWsErrorText.includes('WebSocket closed')
-            ? `${lastWsErrorText} — check Bridge Token in Settings.`
-            : lastWsErrorText}
-        </Text>
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorText}>
+            {lastWsErrorText.includes('WebSocket closed')
+              ? `${lastWsErrorText} — check Bridge Token in Settings.`
+              : lastWsErrorText}
+          </Text>
+        </View>
       )}
-      {/* Continue CTA, enabled only when connected */}
-      <View style={{ marginTop: 16, alignItems: 'center' }}>
-        <Pressable
-          onPress={onContinue}
-          accessibilityRole='button'
-          accessibilityState={{ disabled: !connected }}
-          disabled={!connected}
-          style={[styles.connectBtn as any, !connected ? styles.connectDisabled : undefined]}
-        >
-          <Text style={styles.connectText}>{connected ? 'Start New Thread' : (isConnecting ? 'Connecting…' : 'Waiting for Bridge…')}</Text>
-        </Pressable>
-      </View>
+      {false && (
+        <View style={{ marginTop: 16, alignItems: 'center' }}>
+          <Pressable
+            onPress={onContinue}
+            accessibilityRole='button'
+            accessibilityState={{ disabled: !connected }}
+            disabled={!connected}
+            style={[styles.connectBtn as any, !connected ? styles.connectDisabled : undefined]}
+          >
+            <Text style={styles.connectText}>{connected ? 'Start New Thread' : (isConnecting ? 'Connecting…' : 'Waiting for Bridge…')}</Text>
+          </Pressable>
+        </View>
+      )}
       {/* Do not display WebSocket URL on homepage */}
     </View>
   )
@@ -246,5 +250,7 @@ const styles = StyleSheet.create({
   pairBtn: { marginTop: 0, borderWidth: 1, borderColor: Colors.secondary, backgroundColor: Colors.card, paddingVertical: 20, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', gap: 10, flexDirection: 'row' },
   pairText: { color: Colors.foreground, fontFamily: Typography.bold, fontSize: 18, letterSpacing: 0.5 },
   logo: { width: 180, height: 180, marginBottom: 3, marginTop: -20 },
+  logoBrand: { color: Colors.tertiary, fontFamily: Typography.bold, fontSize: 16, letterSpacing: 4, marginBottom: 6 },
   logoTitle: { color: Colors.secondary, fontFamily: Typography.bold, fontSize: 46, letterSpacing: 6, marginBottom: 90 },
+  errorWrap: { position: 'absolute', left: 24, right: 24, bottom: 48, alignItems: 'center' },
 })
