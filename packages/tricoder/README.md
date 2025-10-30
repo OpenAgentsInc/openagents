@@ -1,43 +1,60 @@
 OpenAgents Tricoder (CLI)
 
-Usage
-- npx tricoder@latest [flags]
+Quick Start
+- npx tricoder@latest
+  - Prints your Desktop IP, a QR code, a deep link, and the ws:// URL + token.
+  - Runs the local Rust WebSocket bridge (oa-bridge) by default.
+  - Scan the QR with the OpenAgents mobile app to connect.
+
+Behavior
+- QR + deep link
+  - Shows an ultra‑compact terminal QR and the deep link: `openagents://connect?j=...`.
+  - Payload includes the selected host, port, token, and a prioritized `hosts` list (LAN and/or Tailscale IPs).
+- Bridge auto‑run
+  - By default, tricoder starts the bridge locally. Use `--no-run` to only show the QR/deep link without launching the bridge.
+  - Prefers a prebuilt `oa-bridge` binary (downloaded and cached); falls back to `cargo run -p oa-bridge` if no binary is available.
+- Port fallback
+  - Starts at `TRICODER_BRIDGE_PORT` (default 8787) and automatically picks the next available port if the preferred port is busy.
+- Token persistence
+  - Reuses `~/.openagents/bridge.json` token across runs; `--rotate-token` generates and persists a new token.
+- Network selection
+  - If Tailscale is active, advertises your Tailscale IPv4; otherwise uses your LAN IPv4. Override with `TRICODER_PREFER=lan`.
 
 Flags
-- --yes, -y
-  - Assume consent for interactive steps (e.g., rustup install).
-- --verbose, -v
-  - Print detailed probes and tails (bridge events, Codex deltas, Convex writes).
+- --no-run
+  - Do not launch the bridge; only print QR + deep link and exit.
 - --rotate-token, -R
-  - Rotate the bridge token and persist it to ~/.openagents/bridge.json (or $OPENAGENTS_HOME/bridge.json). Normally, tricoder reuses the persisted token so you don't need to rescan on every restart.
-- --local-only
-  - Skip public tunnels; run bridge on localhost only.
-- --no-qr
-  - Do not render the terminal QR.
-- --qr=deeplink|code
-  - QR contents (default = deeplink):
-    - deeplink (default): openagents://connect?j=<code> — OS camera opens the app.
-    - code: base64url code only — smaller QR, intended for in‑app scanner.
-  - Rendering: Tricoder prints an ultra‑compact braille QR by default (~50% width/height). If your terminal supports inline images (iTerm2/WezTerm) or you set `TRICODER_QR_IMAGE=1`, it will render a PNG inline for perfect spacing.
-- --delete
-  - Danger: delete local OpenAgents clone and Convex artifacts to start fresh.
-  - Removes:
-    - ~/.openagents/openagents (auto‑cloned repo)
-    - ~/.openagents/bin/local_backend (Convex local backend binary)
-    - ~/.openagents/convex (local DB + storage)
-  - Use `-y` to confirm non‑interactively (required in some npx environments with no TTY).
-
-Notes
-- Codex CLI
-  - Tricoder warns when Codex CLI is older than 0.50.0.
-- Convex
-  - Tricoder supervises a local Convex backend and pushes functions automatically.
-  - If Bun is unavailable, it falls back to npx convex dev one‑shot.
+  - Rotate and persist the bridge token to `~/.openagents/bridge.json` (or `$OPENAGENTS_HOME/bridge.json`).
+- --verbose, -v
+  - Print additional diagnostics.
 
 Environment
 - TRICODER_PREFER
-  - 'tailscale' (default) or 'lan' — prefer advertising a Tailscale IP when available, otherwise fall back to LAN IPv4. Set to 'lan' to force LAN even when Tailscale is connected.
+  - `tailscale` (default) or `lan` — choose which IP to advertise.
 - TRICODER_BRIDGE_PORT
-  - Port for the oa-bridge bind and printed WS URL (default 8787). When unset, tricoder binds 0.0.0.0:8787; if set, it also sets TRICODER_BRIDGE_BIND to `0.0.0.0:<port>`.
+  - Starting port to probe (default 8787). Tricoder finds an available port automatically.
 - TRICODER_BRIDGE_BIND
-  - Full bind address (e.g., 0.0.0.0:8787). Overrides TRICODER_BRIDGE_PORT.
+  - Full bind address, e.g. `0.0.0.0:8888`. Overrides the chosen port.
+- TRICODER_PREFER_BIN
+  - Set to `0` to force cargo fallback instead of using a prebuilt bridge binary.
+- OPENAGENTS_REPO_DIR
+  - Custom path for the auto‑cloned OpenAgents repo when falling back to cargo.
+
+Output
+- Desktop IP (LAN or Tailscale), deep link, ws URL, token, and optional hosts list.
+- Example:
+  - Desktop IP (LAN): 192.168.1.10
+  - Deep link: openagents://connect?j=...
+  - WS URL:    ws://192.168.1.10:8787/ws
+  - Token:     abc...
+
+Notes
+- Requires Node 18+.
+- Rust (cargo) is required only for the cargo fallback path when no prebuilt bridge binary is available.
+
+Changelog
+- 0.2.0
+  - Bridge runs by default; `--no-run` opt‑out.
+  - Automatic port fallback.
+  - Tailscale/LAN IP selection with multiple hosts in QR payload.
+  - Removed legacy local network scanning and Convex fast‑start docs from README.
