@@ -10,6 +10,7 @@ import { useBridge } from '@/providers/ws'
 import { useHeaderTitle, useHeaderStore } from '@/lib/header-store'
 import { useAcp } from '@/providers/acp'
 import { useSettings } from '@/lib/settings-store'
+import { useThreadProviders } from '@/lib/thread-provider-store'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
 import { SessionUpdateAgentThoughtChunk } from '@/components/acp/SessionUpdateAgentThoughtChunk'
 import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
@@ -35,14 +36,28 @@ export default function ThreadScreen() {
   const { send, connected } = useBridge()
   const agentProvider = useSettings((s) => s.agentProvider)
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
+  const threadProviders = useThreadProviders()
   // Title for thread screen
   useHeaderTitle('New Thread')
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
+  // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
+  React.useEffect(() => {
+    if (!threadId) return
+    try {
+      const p = threadProviders.getProvider(threadId)
+      if (p && p !== agentProvider) {
+        setAgentProvider(p)
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId])
   const onSend = React.useCallback((text: string) => {
     if (!threadId) return
     const payload: any = { control: 'run.submit', threadDocId: threadId, text, resumeId: 'last' as const }
     if (agentProvider === 'claude_code') payload.provider = 'claude_code'
     try { send(JSON.stringify(payload)) } catch {}
+    // Remember provider for this thread so future resumes use the correct agent
+    try { threadProviders.setProvider(threadId, agentProvider) } catch {}
   }, [threadId, send, agentProvider])
   const insets = useSafeAreaInsets()
   const headerHeight = useHeaderStore((s) => s.height)
