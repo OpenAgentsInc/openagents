@@ -206,7 +206,7 @@ export default function Onboarding() {
         <View style={styles.errorWrap}>
           <Text style={styles.errorText}>
             {lastWsErrorText.includes('WebSocket closed')
-              ? `${lastWsErrorText} — check Bridge Token in Settings.`
+              ? `${lastWsErrorText}`
               : lastWsErrorText}
           </Text>
         </View>
