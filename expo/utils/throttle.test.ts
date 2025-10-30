@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 import { createPerKeyDebounce, createPerKeyThrottle } from './throttle'
 
+// These tests validate the basic scheduling guarantees:
+// - Throttle: at most one call per window per key; latest invocation wins.
+// - Debounce: only the last invocation per key runs after the quiet period.
+
 describe('createPerKeyThrottle', () => {
   it('throttles per key within the window and runs latest fn once', async () => {
     const calls: string[] = []
@@ -29,4 +33,3 @@ describe('createPerKeyDebounce', () => {
     expect(calls).toContain('y1')
   })
 })
-

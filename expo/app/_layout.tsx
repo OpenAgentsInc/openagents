@@ -40,6 +40,10 @@ function DrawerContent() {
   const { useIsDevEnv } = require('@/lib/env') as { useIsDevEnv: () => boolean };
   const isDevEnv = useIsDevEnv();
   // Tinyvex history
+  // Drawer no longer triggers Tinyvex bootstrap. The provider owns:
+  // - `threads` subscribe + initial `threads.list` query on WS connect
+  // - bounded prefetch for top threads
+  // - throttled message tail queries on live updates
   const { threads, subscribeMessages, queryMessages } = useTinyvex()
   const topThreads = React.useMemo(() => {
     if (!Array.isArray(threads)) return null
@@ -51,7 +55,8 @@ function DrawerContent() {
     })
     return copy.slice(0, 10)
   }, [threads])
-  // Drawer no longer warms messages; TinyvexProvider handles prefetch centrally
+  // Drawer deliberately does not warm per-thread messages.
+  // TinyvexProvider prefetches a small recent set to avoid connect-time bursts.
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
