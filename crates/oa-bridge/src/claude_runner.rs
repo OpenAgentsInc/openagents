@@ -11,6 +11,7 @@ use serde_json::Value as JsonValue;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::{info, warn};
+use crate::util::now_ms;
 use agent_client_protocol::{SessionUpdate, ContentChunk, ContentBlock, TextContent};
 
 use crate::state::AppState;
@@ -175,6 +176,22 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                                     "clientThreadDocId": tdoc,
                                 }).to_string();
                                 let _ = tx_out.send(map_line);
+                                info!(sessionId=%sess, thread=%tdoc, "claude.session_mapped");
+                                // Update mapping for resume on subsequent submits for this client thread
+                                {
+                                    let mut map = state_for.sessions_by_client_doc.lock().await;
+                                    map.insert(tdoc.clone(), sess.to_string());
+                                }
+                                // Flush pending user text into ACP + Tinyvex
+                                if let Some(user_text) = { state_for.pending_user_text.lock().await.remove(&tdoc) } {
+                                    let ts_now = now_ms();
+                                    let notif = serde_json::json!({
+                                        "sessionId": sess,
+                                        "update": { "sessionUpdate": "user_message_chunk", "content": { "type": "text", "text": user_text } }
+                                    });
+                                    let _ = tx_out.send(serde_json::json!({"type":"bridge.acp","notification": notif}).to_string());
+                                    let _ = state_for.tinyvex.insert_acp_event(Some(&sess.to_string()), Some(&tdoc), ts_now.try_into().unwrap(), Some(0), "user_message_chunk", Some("user"), Some(&user_text), None, None, None, None, None, None);
+                                }
                             }
                         }
                     }
