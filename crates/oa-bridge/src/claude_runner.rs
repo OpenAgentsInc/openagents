@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use serde_json::Value as JsonValue;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tracing::info;
+use tracing::{info, warn};
 use agent_client_protocol::{SessionUpdate, ContentChunk, ContentBlock, TextContent};
 
 use crate::state::AppState;
@@ -119,6 +119,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
             let s = line.trim();
             if s.is_empty() { continue; }
             // Emit a generic error envelope so clients can render it
+            warn!("claude stderr: {}", s);
             let _ = tx_err.send(
                 serde_json::json!({
                     "type": "error",
@@ -177,6 +178,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                 }
             } else {
                 // Non-JSON line on stdout: surface as an error so the UI shows it
+                warn!("claude stdout(non-json): {}", s);
                 let _ = tx_out.send(
                     serde_json::json!({
                         "type": "error",
