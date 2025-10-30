@@ -273,6 +273,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         {
                                             *stdin_state.current_convex_thread.lock().await = Some(thread_doc_id.clone());
                                         }
+                                        // Record pending user message text so we can emit ACP once session id is known (on Claude init mapping)
+                                        {
+                                            let mut pending = stdin_state.pending_user_text.lock().await;
+                                            pending.insert(thread_doc_id.clone(), text.clone());
+                                        }
                                         let st_for = stdin_state.clone();
                                         let thread_for = thread_doc_id.clone();
                                         tokio::spawn(async move {
