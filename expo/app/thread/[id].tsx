@@ -33,6 +33,7 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
   const { eventsForThread } = useAcp()
+  const { messagesByThread, subscribeMessages, queryMessages } = useTinyvex()
   const { send, connected } = useBridge()
   const agentProvider = useSettings((s) => s.agentProvider)
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
@@ -40,6 +41,14 @@ export default function ThreadScreen() {
   // Title for thread screen
   useHeaderTitle('New Thread')
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
+  const tvxMessages = React.useMemo(() => messagesByThread[threadId] || [], [messagesByThread, threadId])
+
+  // Ensure we are subscribed to Tinyvex messages for this thread and have a recent snapshot
+  React.useEffect(() => {
+    if (!threadId) return
+    try { subscribeMessages(threadId) } catch {}
+    try { queryMessages(threadId, 200) } catch {}
+  }, [threadId, subscribeMessages, queryMessages])
   // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
   React.useEffect(() => {
     if (!threadId) return
@@ -85,9 +94,23 @@ export default function ThreadScreen() {
             </Pressable>
           </View>
         )}
-        {acpUpdates.length === 0 ? (
+        {acpUpdates.length === 0 && tvxMessages.length === 0 && (
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
-        ) : acpUpdates.map((n, idx) => (
+        )}
+        {/* Render Tinyvex history first (if present) */}
+        {tvxMessages.map((m, idx) => (
+          <View key={`tvx-${idx}`} style={{ paddingVertical: 4 }}>
+            {(() => {
+              const text = String(m.text || '')
+              const content = { type: 'text', text } as any
+              if (m.kind === 'reason') return <SessionUpdateAgentThoughtChunk content={content} />
+              if ((m.role || '').toLowerCase() === 'user') return <SessionUpdateUserMessageChunk content={content} />
+              return <SessionUpdateAgentMessageChunk content={content} />
+            })()}
+          </View>
+        ))}
+        {/* Then render live ACP updates (if any) */}
+        {acpUpdates.map((n, idx) => (
           <View key={idx} style={{ paddingVertical: 4 }}>
             {(() => {
               const u: any = (n as any).update
