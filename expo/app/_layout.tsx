@@ -40,8 +40,11 @@ function DrawerContent() {
   const { useIsDevEnv } = require('@/lib/env') as { useIsDevEnv: () => boolean };
   const isDevEnv = useIsDevEnv();
   // Tinyvex history
-  const { threads, subscribeThreads, queryThreads, subscribeMessages, queryMessages } = useTinyvex()
-  React.useEffect(() => { queryThreads(50); subscribeThreads(); }, [])
+  // Drawer no longer triggers Tinyvex bootstrap. The provider owns:
+  // - `threads` subscribe + initial `threads.list` query on WS connect
+  // - bounded prefetch for top threads
+  // - throttled message tail queries on live updates
+  const { threads, subscribeMessages, queryMessages } = useTinyvex()
   const topThreads = React.useMemo(() => {
     if (!Array.isArray(threads)) return null
     const copy = threads.slice()
@@ -52,23 +55,8 @@ function DrawerContent() {
     })
     return copy.slice(0, 10)
   }, [threads])
-  // Warm the message cache for visible/top threads so details open instantly
-  const warmedRef = React.useRef<Set<string>>(new Set())
-  React.useEffect(() => {
-    try {
-      const warmed = warmedRef.current
-      const arr = Array.isArray(topThreads) ? topThreads : []
-      for (const r of arr) {
-        const tid = String((r as any)?.threadId || (r as any)?.thread_id || (r as any)?.id || '')
-        if (!tid) continue
-        if (!warmed.has(tid)) {
-          try { subscribeMessages(tid) } catch {}
-          try { queryMessages(tid, 200) } catch {}
-          warmed.add(tid)
-        }
-      }
-    } catch {}
-  }, [topThreads, subscribeMessages, queryMessages])
+  // Drawer deliberately does not warm per-thread messages.
+  // TinyvexProvider prefetches a small recent set to avoid connect-time bursts.
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>

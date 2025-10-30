@@ -10,6 +10,7 @@
     "copy:sources": "node ../scripts/copy-sources-to-clipboard.js",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "lint": "expo lint",
+    "test": "bun test",
     "build:ios:prod": "eas build --profile production --platform ios",
     "submit:ios": "eas submit -p ios",
     "update:both": "eas update --channel v0.2.0 --environment production --message",
