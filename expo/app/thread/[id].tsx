@@ -1,6 +1,6 @@
 import React from 'react'
 import { useLocalSearchParams, router } from 'expo-router'
-import { ScrollView, Text, View, KeyboardAvoidingView, Platform } from 'react-native'
+import { ScrollView, Text, View, KeyboardAvoidingView, Platform, Pressable } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTinyvex } from '@/providers/tinyvex'
 import { Colors } from '@/constants/theme'
@@ -9,6 +9,7 @@ import { Composer } from '@/components/composer'
 import { useBridge } from '@/providers/ws'
 import { useHeaderTitle, useHeaderStore } from '@/lib/header-store'
 import { useAcp } from '@/providers/acp'
+import { useSettings } from '@/lib/settings-store'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
 import { SessionUpdateAgentThoughtChunk } from '@/components/acp/SessionUpdateAgentThoughtChunk'
 import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
@@ -32,20 +33,41 @@ export default function ThreadScreen() {
   }, [initialId])
   const { eventsForThread } = useAcp()
   const { send, connected } = useBridge()
+  const agentProvider = useSettings((s) => s.agentProvider)
+  const setAgentProvider = useSettings((s) => s.setAgentProvider)
   // Title for thread screen
   useHeaderTitle('New Thread')
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
   const onSend = React.useCallback((text: string) => {
     if (!threadId) return
-    const payload = { control: 'run.submit', threadDocId: threadId, text, resumeId: 'last' as const }
+    const payload: any = { control: 'run.submit', threadDocId: threadId, text, resumeId: 'last' as const }
+    if (agentProvider === 'claude_code') payload.provider = 'claude_code'
     try { send(JSON.stringify(payload)) } catch {}
-  }, [threadId, send])
+  }, [threadId, send, agentProvider])
   const insets = useSafeAreaInsets()
   const headerHeight = useHeaderStore((s) => s.height)
   const keyboardOffset = Platform.OS === 'ios' ? headerHeight : 0
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
       <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps='handled' contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}>
+        {/* Provider selector */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, marginRight: 8 }}>Provider</Text>
+          <Pressable
+            onPress={() => { try { setAgentProvider('codex') } catch {} }}
+            accessibilityRole='button'
+            style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'codex' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
+          >
+            <Text style={{ color: agentProvider === 'codex' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Codex</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => { try { setAgentProvider('claude_code') } catch {} }}
+            accessibilityRole='button'
+            style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'claude_code' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
+          >
+            <Text style={{ color: agentProvider === 'claude_code' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Claude Code</Text>
+          </Pressable>
+        </View>
         {acpUpdates.length === 0 ? (
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
         ) : acpUpdates.map((n, idx) => (
@@ -74,7 +96,7 @@ export default function ThreadScreen() {
         ))}
       </ScrollView>
       <View style={{ paddingTop: 10, paddingHorizontal: 10, paddingBottom: Math.max(10, insets.bottom), borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.background }}>
-        <Composer onSend={onSend} connected={connected} placeholder='Ask Codex' />
+        <Composer onSend={onSend} connected={connected} placeholder={agentProvider === 'claude_code' ? 'Ask Claude Code' : 'Ask Codex'} />
       </View>
     </KeyboardAvoidingView>
   )
