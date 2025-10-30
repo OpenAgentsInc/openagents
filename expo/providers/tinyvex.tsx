@@ -65,9 +65,27 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         // Throttle per thread to avoid storms during streaming.
         try { scheduleMsgQuery(obj.threadId) } catch {}
       } else if (obj.stream === 'threads') {
-        // Thread rows are upserted on first write and when timestamps change.
-        // Debounce refreshes to avoid repeated full refreshes on bursts.
-        try { scheduleThreadsRefresh() } catch {}
+        // Prefer merging the provided row to avoid a full refresh
+        const row = obj.row
+        if (row && typeof row === 'object') {
+          setThreads((prev) => {
+            const tid = String((row?.id || row?.thread_id || row?.threadId || ''))
+            if (!tid) return prev
+            const next = Array.isArray(prev) ? [...prev] : []
+            const idx = next.findIndex((r: any) => String((r?.id || r?.thread_id || r?.threadId || '')) === tid)
+            if (idx >= 0) next[idx] = row as ThreadsRow; else next.unshift(row as ThreadsRow)
+            return next
+          })
+          try {
+            const setProvider = useThreadProviders.getState().setProvider
+            const tid = String((row?.id || row?.thread_id || row?.threadId || ''))
+            const src = String((row?.source || ''))
+            if (tid) setProvider(tid, src === 'claude_code' ? 'claude_code' : 'codex')
+          } catch {}
+        } else {
+          // Fallback: Debounce refreshes to avoid repeated full refreshes on bursts.
+          try { scheduleThreadsRefresh() } catch {}
+        }
       }
     } else if (t === 'tinyvex.query_result') {
       if (obj.name === 'threads.list' && Array.isArray(obj.rows)) {
@@ -82,6 +100,27 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       } else if (obj.name === 'messages.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
         setMessagesByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as MessageRow[] }))
+      } else if (obj.name === 'threadsAndTails.list') {
+        const threadsRows = Array.isArray(obj.threads) ? (obj.threads as ThreadsRow[]) : []
+        setThreads(threadsRows)
+        try {
+          const setProvider = useThreadProviders.getState().setProvider
+          for (const r of threadsRows) {
+            const tid = String((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')
+            const src = String((r as any)?.source || '')
+            if (tid) setProvider(tid, src === 'claude_code' ? 'claude_code' : 'codex')
+          }
+        } catch {}
+        const tails = Array.isArray(obj.tails) ? (obj.tails as any[]) : []
+        setMessagesByThread((prev) => {
+          const next = { ...prev }
+          for (const t of tails) {
+            const tid = String((t?.threadId) || '')
+            const rows = Array.isArray(t?.rows) ? (t.rows as MessageRow[]) : []
+            if (tid && rows.length) next[tid] = rows
+          }
+          return next
+        })
       }
     }
   }, [])
@@ -107,6 +146,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     if (!connected) return;
     // Single bootstrap: subscribe + list
     try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' })) } catch {}
+    try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threadsAndTails.list', args: { limit: 50, perThreadTail: 50 } })) } catch {}
     try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
   }, [connected])
 
