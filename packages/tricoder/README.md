@@ -49,7 +49,7 @@ Environment
 - TRICODER_USE_PATH_BRIDGE
   - Set to `1` to prefer a bridge on your PATH over prebuilt/cargo.
 - TRICODER_MIN_BRIDGE
-  - Minimum prebuilt tag tricoder will accept (default `v0.2.2`). If an older cached binary is found, tricoder falls back to cargo to build latest from your local clone.
+  - Minimum prebuilt tag tricoder will accept (default `v0.2.3`). If an older cached binary is found, tricoder falls back to cargo to build latest from your local clone.
 
 Output
 - Desktop IP (LAN or Tailscale), deep link, ws URL, token, and optional hosts list.
