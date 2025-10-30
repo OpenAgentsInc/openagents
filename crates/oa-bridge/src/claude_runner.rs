@@ -161,6 +161,16 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                         if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
                     }
                 }
+            } else {
+                // Non-JSON line on stdout: surface as an error so the UI shows it
+                let _ = tx_out.send(
+                    serde_json::json!({
+                        "type": "error",
+                        "provider": "claude_code",
+                        "message": s,
+                    })
+                    .to_string(),
+                );
             }
         }
     });
