@@ -161,10 +161,24 @@ function writePersistedToken(token: string): boolean {
   } catch { return false; }
 }
 
-async function ensureRepo(targetDir?: string): Promise<string> {
+async function ensureRepo(targetDir?: string, verbose: boolean = false): Promise<string> {
   const dest = targetDir || path.join(os.homedir(), 'code', 'openagents');
   try { fs.mkdirSync(path.dirname(dest), { recursive: true }); } catch {}
-  if (fs.existsSync(path.join(dest, 'Cargo.toml'))) return dest;
+  const cargoToml = path.join(dest, 'Cargo.toml');
+  if (fs.existsSync(cargoToml)) {
+    // Update an existing clone to latest main (fast‑forward only)
+    try {
+      // Verify it's a git repo
+      await spawnP('git', ['-C', dest, 'rev-parse', '--is-inside-work-tree']);
+      if (verbose) console.log(chalk.gray('Updating repo: fetch --all --tags --prune; pull --ff-only'));
+      await spawnP('git', ['-C', dest, 'fetch', '--all', '--tags', '--prune']);
+      // Default branch may be main; try to fast‑forward the current branch
+      await spawnP('git', ['-C', dest, 'pull', '--ff-only']);
+    } catch (e) {
+      if (verbose) console.warn(chalk.yellow('git pull failed or repo not clean; proceeding with existing tree.'));
+    }
+    return dest;
+  }
   console.log(chalk.cyan(`Cloning OpenAgents repo -> ${dest}`));
   try {
     await spawnP('git', ['clone', 'https://github.com/OpenAgentsInc/openagents.git', dest]);
@@ -338,7 +352,7 @@ async function main() {
   }
 
   // Cargo fallback path
-  const repoDir = await ensureRepo(process.env.OPENAGENTS_REPO_DIR);
+  const repoDir = await ensureRepo(process.env.OPENAGENTS_REPO_DIR, verbose);
   const hasRust = await ensureRust();
   if (!hasRust) {
     console.log('\nAfter installing Rust, rerun: tricoder');
