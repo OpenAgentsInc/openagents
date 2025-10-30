@@ -134,6 +134,13 @@ function openagentsHome(): string {
   return base;
 }
 
+function detectClaudeBin(): string | null {
+  // Prefer Claude Code’s canonical local install if present
+  const local = path.join(os.homedir(), '.claude', 'local', process.platform === 'win32' ? 'claude.exe' : 'claude');
+  try { if (fs.existsSync(local)) return local; } catch {}
+  return null;
+}
+
 function readPersistedToken(): string | null {
   try {
     const p = path.join(openagentsHome(), 'bridge.json');
@@ -287,6 +294,16 @@ async function main() {
     OPENAGENTS_CONVEX_PREFER_CACHE: process.env.OPENAGENTS_CONVEX_PREFER_CACHE || '1',
     OPENAGENTS_CONVEX_DEBUG: verbose ? '1' : (process.env.OPENAGENTS_CONVEX_DEBUG || ''),
   };
+  // If a local Claude binary exists, prefer it explicitly so shell aliases don't interfere
+  try {
+    if (!bridgeEnv.CLAUDE_BIN) {
+      const claudeBin = detectClaudeBin();
+      if (claudeBin) {
+        bridgeEnv.CLAUDE_BIN = claudeBin;
+        if (verbose) console.log(chalk.cyan(`Using Claude CLI: ${claudeBin}`));
+      }
+    }
+  } catch {}
 
   // Prefer a prebuilt oa-bridge binary (downloaded/cached) and fall back to cargo if needed
   const preferBinary = process.env.TRICODER_PREFER_BIN !== '0';
