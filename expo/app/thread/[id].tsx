@@ -113,11 +113,17 @@ export default function ThreadScreen() {
             })()}
           </View>
         ))}
-        {/* Then render live ACP updates (if any) */}
+        {/* Then render live ACP updates (if any). Avoid duplicating types already shown via Tinyvex. */}
         {acpUpdates.map((n, idx) => (
           <View key={idx} style={{ paddingVertical: 4 }}>
             {(() => {
               const u: any = (n as any).update
+              const suppressDup = tvxMessages.length > 0
+              if (suppressDup) {
+                if (u?.sessionUpdate === 'user_message_chunk') return null
+                if (u?.sessionUpdate === 'agent_message_chunk') return null
+                if (u?.sessionUpdate === 'agent_thought_chunk') return null
+              }
               if (u?.sessionUpdate === 'user_message_chunk') {
                 return <SessionUpdateUserMessageChunk content={u.content} />
               }
