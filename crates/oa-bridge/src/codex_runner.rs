@@ -249,20 +249,12 @@ fn cli_supports_resume(bin: &PathBuf) -> bool {
     }
 }
 
-/// Detect the repository root to set Codex working directory appropriately.
+/// Choose the working directory for Codex.
+///
+/// We no longer attempt repo-specific heuristics. Whatever directory the
+/// bridge process is running in (or the explicit override) is used as the
+/// working directory. This lets users run the bridge from any repository root
+/// and have Codex operate relative to that project.
 fn detect_repo_root(start: Option<PathBuf>) -> PathBuf {
-    fn is_repo_root(p: &Path) -> bool {
-        p.join("expo").is_dir() && p.join("crates").is_dir()
-    }
-    let mut cur =
-        start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let original = cur.clone();
-    loop {
-        if is_repo_root(&cur) {
-            return cur;
-        }
-        if !cur.pop() {
-            return original;
-        }
-    }
+    start.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
