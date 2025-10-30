@@ -42,6 +42,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install build deps (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
       - name: Build (release)
         run: cargo build --release -p oa-bridge
       - name: Package artifact
@@ -62,6 +66,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install build deps (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
       - name: Build (aarch64-unknown-linux-gnu)
