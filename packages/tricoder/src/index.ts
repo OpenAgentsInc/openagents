@@ -319,7 +319,7 @@ async function main() {
     try {
       const { binaryPath, source, version } = await ensureBridgeBinary() as any;
       // Minimum bridge version that includes recent fixes
-      const MIN_BRIDGE = process.env.TRICODER_MIN_BRIDGE || 'v0.2.2';
+      const MIN_BRIDGE = process.env.TRICODER_MIN_BRIDGE || 'v0.2.3';
       const isTag = typeof version === 'string' && /^v?\d+\.\d+\.\d+/.test(version);
       const olderThanMin = isTag && compareSemver(version, MIN_BRIDGE) < 0;
       if (olderThanMin) {
