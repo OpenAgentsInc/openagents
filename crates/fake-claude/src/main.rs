@@ -22,6 +22,10 @@ fn main() {
         eprintln!("It looks like your version of Claude Code needs an update.\nPlease run: claude update");
         std::process::exit(1);
     }
+    if std::env::var("FAKE_CLAUDE_ERROR_STDOUT").ok().as_deref() == Some("1") {
+        println!("It looks like your version of Claude Code needs an update. Please run: claude update");
+        std::process::exit(1);
+    }
     // output a simple sequence of Claude-like JSON events
     let mut out = io::BufWriter::new(io::stdout());
     // thinking
