@@ -73,6 +73,7 @@ export default function ThreadScreen() {
   const keyboardOffset = Platform.OS === 'ios' ? headerHeight : 0
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
+      <View key={`thread-${threadId}`} style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps='handled' contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}>
         {/* Provider selector: show only before the first message */}
         {acpUpdates.length === 0 && (
@@ -137,6 +138,7 @@ export default function ThreadScreen() {
       </ScrollView>
       <View style={{ paddingTop: 10, paddingHorizontal: 10, paddingBottom: Math.max(10, insets.bottom), borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.background }}>
         <Composer onSend={onSend} connected={connected} placeholder={agentProvider === 'claude_code' ? 'Ask Claude Code' : 'Ask Codex'} />
+      </View>
       </View>
     </KeyboardAvoidingView>
   )
