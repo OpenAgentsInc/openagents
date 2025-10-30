@@ -243,6 +243,10 @@ async function main() {
   // Choose an available port, falling back to the next free if preferred port is busy
   const preferPort = Number(process.env.TRICODER_BRIDGE_PORT || 8787);
   const bridgePort = await findAvailablePort(preferPort, 50, '0.0.0.0');
+  if (verbose) {
+    if (bridgePort !== preferPort) console.log(chalk.yellow(`Port ${preferPort} busy; selected ${bridgePort}`));
+    console.log(chalk.gray(`Bind: 0.0.0.0:${bridgePort}`));
+  }
   // Persist chosen port/bind for downstream processes
   process.env.TRICODER_BRIDGE_PORT = String(bridgePort);
   process.env.TRICODER_BRIDGE_BIND = process.env.TRICODER_BRIDGE_BIND || `0.0.0.0:${bridgePort}`;
@@ -254,6 +258,9 @@ async function main() {
   if (!token) {
     token = randToken(48);
     writePersistedToken(token);
+    if (verbose) console.log(chalk.gray('Token: generated and persisted to ~/.openagents/bridge.json'));
+  } else if (verbose) {
+    console.log(chalk.gray('Token: using persisted token from ~/.openagents/bridge.json'));
   }
 
   // Compute candidate hosts for QR payload in priority order
@@ -300,7 +307,7 @@ async function main() {
       const claudeBin = detectClaudeBin();
       if (claudeBin) {
         bridgeEnv.CLAUDE_BIN = claudeBin;
-        if (verbose) console.log(chalk.cyan(`Using Claude CLI: ${claudeBin}`));
+        if (verbose) console.log(chalk.cyan(`Claude CLI: ${claudeBin}`));
       }
     }
   } catch {}
@@ -318,6 +325,7 @@ async function main() {
       if (olderThanMin) {
         console.warn(chalk.yellow(`Prebuilt bridge ${version} is older than required ${MIN_BRIDGE}; falling back to cargo build of latest.`));
       } else {
+        if (verbose) console.log(chalk.gray(`Bridge binary: ${binaryPath}`));
         console.log(chalk.cyan(`Starting bridge (${source}${isTag ? ` ${version}` : ''})…`));
         code = await runBridgeBinary(binaryPath, bridgeEnv);
         process.exit(code);
@@ -337,6 +345,7 @@ async function main() {
     process.exit(1);
   }
   const bind = process.env.TRICODER_BRIDGE_BIND || `0.0.0.0:${bridgePort}`;
+  if (verbose) console.log(chalk.gray(`Repo: ${repoDir}`));
   console.log(chalk.cyan(`Starting bridge via cargo (bind ${bind})…`));
   code = await runCargoBridge(repoDir, bridgeEnv);
   process.exit(code);

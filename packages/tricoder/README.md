@@ -21,6 +21,7 @@ Behavior
   - Reuses `~/.openagents/bridge.json` token across runs; `--rotate-token` generates and persists a new token.
 - Network selection
   - If Tailscale is active, advertises your Tailscale IPv4; otherwise uses your LAN IPv4. Override with `TRICODER_PREFER=lan`.
+  - QR payload includes a prioritized `hosts[]` list (LAN and/or Tailscale). The app prefers `hosts[0]`.
 
 Flags
 - --no-run
@@ -47,6 +48,8 @@ Environment
   - Set to `1` to bypass cache and fetch the latest release with matching assets.
 - TRICODER_USE_PATH_BRIDGE
   - Set to `1` to prefer a bridge on your PATH over prebuilt/cargo.
+- TRICODER_MIN_BRIDGE
+  - Minimum prebuilt tag tricoder will accept (default `v0.2.1`). If an older cached binary is found, tricoder falls back to cargo to build latest from your local clone.
 
 Output
 - Desktop IP (LAN or Tailscale), deep link, ws URL, token, and optional hosts list.
@@ -60,7 +63,27 @@ Notes
 - Requires Node 18+.
 - Rust (cargo) is required only for the cargo fallback path when no prebuilt bridge binary is available.
 
+Verbose logging
+- Add `--verbose` to print diagnostics:
+  - Bind/port selection and fallback (e.g., `Bind: 0.0.0.0:8787`).
+  - Token origin: persisted vs generated/persisted.
+  - Claude CLI path: auto-detected from `~/.claude/local/claude` (exported via `CLAUDE_BIN`) or left to PATH.
+  - Bridge binary details when using a prebuilt (path, version, source) and repo path when using cargo fallback.
+
+Claude Code (headless)
+- Tricoder prefers `~/.claude/local/claude` automatically so shell aliases don’t interfere.
+- The bridge runs Claude in headless mode: `claude -p "<prompt>" --output-format stream-json --verbose`.
+- The bridge emits:
+  - `bridge.session_started` when Claude prints init; maps session → thread.
+  - ACP events for both the user message (first turn) and assistant messages.
+  - Error text from Claude (stderr or non‑JSON stdout) as error events and ACP agent messages — visible in UI and terminal logs.
+
 Changelog
+- 0.2.1
+  - Claude Code: headless args aligned; session mapping + user_message emission; error surfacing.
+  - Pairing: prevent scanner modal from re-opening; QR payload includes prioritized hosts[].
+  - Bridge auto-update: compare cached vs latest release; `TRICODER_BRIDGE_VERSION` pin; `TRICODER_BRIDGE_FORCE_UPDATE=1` to bypass cache; minimum-prebuilt version gate with cargo fallback.
+  - Logging: verbose prints for bind/port, token origin, CLAUDE_BIN path, bridge binary path/version, repo when using cargo.
 - 0.2.0
   - Bridge runs by default; `--no-run` opt‑out.
   - Automatic port fallback.
