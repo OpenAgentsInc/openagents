@@ -50,24 +50,26 @@ export default function ThreadScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
       <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps='handled' contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}>
-        {/* Provider selector */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, marginRight: 8 }}>Provider</Text>
-          <Pressable
-            onPress={() => { try { setAgentProvider('codex') } catch {} }}
-            accessibilityRole='button'
-            style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'codex' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
-          >
-            <Text style={{ color: agentProvider === 'codex' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Codex</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => { try { setAgentProvider('claude_code') } catch {} }}
-            accessibilityRole='button'
-            style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'claude_code' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
-          >
-            <Text style={{ color: agentProvider === 'claude_code' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Claude Code</Text>
-          </Pressable>
-        </View>
+        {/* Provider selector: show only before the first message */}
+        {acpUpdates.length === 0 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, marginRight: 8 }}>Provider</Text>
+            <Pressable
+              onPress={() => { try { setAgentProvider('codex') } catch {} }}
+              accessibilityRole='button'
+              style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'codex' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
+            >
+              <Text style={{ color: agentProvider === 'codex' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Codex</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { try { setAgentProvider('claude_code') } catch {} }}
+              accessibilityRole='button'
+              style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'claude_code' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
+            >
+              <Text style={{ color: agentProvider === 'claude_code' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Claude Code</Text>
+            </Pressable>
+          </View>
+        )}
         {acpUpdates.length === 0 ? (
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
         ) : acpUpdates.map((n, idx) => (
