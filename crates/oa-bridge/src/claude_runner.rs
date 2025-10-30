@@ -10,7 +10,8 @@ use anyhow::{Context, Result};
 use serde_json::Value as JsonValue;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tracing::{info};
+use tracing::info;
+use agent_client_protocol::{SessionUpdate, ContentChunk, ContentBlock, TextContent};
 
 use crate::state::AppState;
 use std::sync::Arc;
@@ -110,6 +111,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
 
     // stderr task (surface errors to clients as structured events)
     let tx_err = state.tx.clone();
+    let state_err = state.clone();
     tokio::spawn(async move {
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
@@ -125,6 +127,20 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                 })
                 .to_string(),
             );
+            // Also emit as an ACP agent_message so the thread UI shows it
+            let update = SessionUpdate::AgentMessageChunk(ContentChunk {
+                content: ContentBlock::Text(TextContent { annotations: None, text: s.to_string(), meta: None }),
+                meta: None,
+            });
+            let target_tid = {
+                if let Some(ctid) = state_err.current_convex_thread.lock().await.clone() { ctid } else { state_err.last_thread_id.lock().await.clone().unwrap_or_default() }
+            };
+            if !target_tid.is_empty() {
+                crate::tinyvex_write::mirror_acp_update_to_convex(&state_err, &target_tid, &update).await;
+            }
+            if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) {
+                let _ = tx_err.send(line);
+            }
         }
     });
 
@@ -157,9 +173,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                     if !target_tid.is_empty() {
                         crate::tinyvex_write::mirror_acp_update_to_convex(&state_for, &target_tid, &update).await;
                     }
-                    if std::env::var("BRIDGE_ACP_EMIT").ok().as_deref() == Some("1") {
-                        if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
-                    }
+                    if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
                 }
             } else {
                 // Non-JSON line on stdout: surface as an error so the UI shows it
@@ -171,6 +185,18 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                     })
                     .to_string(),
                 );
+                // Also emit agent message ACP
+                let update = SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { annotations: None, text: s.to_string(), meta: None }),
+                    meta: None,
+                });
+                let target_tid = {
+                    if let Some(ctid) = state_for.current_convex_thread.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
+                };
+                if !target_tid.is_empty() {
+                    crate::tinyvex_write::mirror_acp_update_to_convex(&state_for, &target_tid, &update).await;
+                }
+                if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
             }
         }
     });
