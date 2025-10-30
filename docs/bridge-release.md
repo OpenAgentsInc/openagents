@@ -16,7 +16,8 @@ Release Steps
 2) Tag the repo:
    - `git tag vX.Y.Z && git push origin vX.Y.Z`
 3) Watch GitHub Actions → “Release oa-bridge binaries”. All matrix jobs should turn green.
-4) Verify assets on the release page match the expected names above.
+4) Publish the release (not a draft): ensure the tag’s release page shows draft = false.
+5) Verify assets on the release page match the expected names above.
 
 Update tricoder (NPX launcher)
 - The launcher looks for prebuilt release assets and falls back to `cargo run -p oa-bridge` if none are found.
@@ -36,4 +37,3 @@ Troubleshooting
 - Linux arm64 apt failures (404s for arm64 package lists): avoided by using `cross`. Do not add `dpkg --add-architecture arm64` to CI.
 - OpenSSL not found: avoided by removing transitive `reqwest` via `jsonschema` and bundling SQLite; no OpenSSL needed.
 - Windows sanity step: We skip bash-only sanity checks on Windows to avoid PowerShell parsing errors; Linux/macOS checks suffice.
-
