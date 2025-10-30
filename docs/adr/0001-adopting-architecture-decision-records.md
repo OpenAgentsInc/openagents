@@ -1,10 +1,10 @@
 ---
 
-title: "ADR-001: Adopting Architecture Decision Records"
+title: "ADR-0001: Adopting Architecture Decision Records"
 date: "2025-10-30"
 status: "Proposed"
 authors:
-  - "Claude Code"
+  - "@kierr"
 reviewers: []
 
 ---
@@ -157,6 +157,6 @@ OpenAgents is a mobile-first architecture with multiple layers: an Expo React Na
 - [Architecture Decision Records](https://adr.github.io/) - ADR specification and examples
 - [MADR - Markdown Architectural Decision Records](https://github.com/joelparkerhenderson/architecture_decision_record) - Template and process guidance
 - [OpenAgents Architecture Documentation](../ARCHITECTURE.md) - Current architectural overview
-- [OpenAgents Project Guidelines](../../CLAUDE.md) - Project-specific development guidelines
+- [OpenAgents Project Guidelines](../../AGENTS.md) - Project-specific development guidelines
 - [Expo Documentation](https://docs.expo.dev/) - Mobile platform constraints and capabilities
 - [React Native Documentation](https://reactnative.dev/) - Cross-platform mobile development considerations

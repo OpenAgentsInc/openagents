@@ -28,18 +28,56 @@ Given this complexity and the constraints of mobile development, ADRs help us:
 
 ## Creating a New ADR
 
+### Using the ADR Creation Script (Recommended)
+
+The easiest way to create a new ADR is to use the provided script:
+
+```bash
+# From the docs/adr directory
+./new.sh "Your ADR Title Here"
+```
+
+**What the script does:**
+- Automatically finds the next ADR number (maintains 4-digit formatting: 0001, 0002, etc.)
+- Creates a properly formatted filename from your title
+- Copies the template and fills in placeholders automatically:
+  - `{ADR_NUMBER}` - The next available ADR number
+  - `{ADR_TITLE}` - Your ADR title
+  - `{DATE}` - Current date in YYYY-MM-DD format
+  - `{AUTHOR_NAME}` - Your git user.name (or "Unknown" if not set)
+
+**Example usage:**
+```bash
+cd docs/adr
+./new.sh "WebSocket Connection Resilience Pattern"
+# Creates: 0002-websocket-connection-resilience-pattern.md
+```
+
+**Why use the script?**
+- **Consistency**: Ensures all ADRs follow the same naming and formatting conventions
+- **No numbering conflicts**: Automatically finds the next available number
+- **Template hygiene**: Properly fills all placeholders without manual errors
+- **Efficiency**: Creates a complete ADR draft in seconds
+
 ### Manual Process
 
-1. Copy `docs/adr/template.md` to a new file with proper numbering: `docs/adr/XXX-your-title.md`
+If you prefer to create ADRs manually:
+
+1. Copy `docs/adr/template.md` to a new file with proper numbering: `docs/adr/XXXX-your-title.md`
 2. Fill in the frontmatter and content sections
-3. Use three-digit numbering starting from 001 (e.g., `001-adopting-architecture-decision-records.md`)
+3. Use four-digit numbering starting from 0001 (e.g., `0001-adopting-architecture-decision-records.md`)
+4. Replace all placeholder variables manually:
+   - `{ADR_NUMBER}` - The ADR number
+   - `{ADR_TITLE}` - Your ADR title
+   - `{DATE}` - Current date
+   - `{AUTHOR_NAME}` - Your name
 
 ### ADR Naming Convention
 
-- Use three-digit padding: `001`, `002`, `003`, etc.
+- Use four-digit padding: `0001`, `0002`, `0003`, etc.
 - Use kebab-case for the title in the filename
 - Keep titles descriptive but concise
-- Example: `005-websocket-connection-resilience-pattern.md`
+- Example: `0005-websocket-connection-resilience-pattern.md`
 
 ## Review Process
 
@@ -78,7 +116,7 @@ When writing ADRs for OpenAgents, consider:
 
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
-| 001 | Adopting Architecture Decision Records | Proposed | 2025-10-30 |
+| 0001 | Adopting Architecture Decision Records | Proposed | 2025-10-30 |
 
 ## Template
 

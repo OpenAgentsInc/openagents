@@ -1,10 +1,10 @@
 ---
 
-title: "ADR-{{ADR_NUMBER}}: {{ADR_TITLE}}"
-date: "{{DATE}}"
-status: "Proposed" # Proposed | Draft | Accepted | Rejected | Deprecated | Superseded
+title: "ADR-{ADR_NUMBER}: {ADR_TITLE}"
+date: "{DATE}"
+status: "Proposed" # Proposed | Draft | In Review | Accepted | Rejected | Deprecated | Superseded
 authors:
-  - "{{AUTHOR_NAME}}"
+  - "{AUTHOR_NAME}"
 reviewers: [] # When ready for review, add GitHub handles as strings
 
 ---
@@ -14,7 +14,7 @@ This is a template for an Architecture Decision Record (ADR).
 An ADR is a short, focused document that captures a significant architectural decision.
 
 How to use this template:
-1. Copy this template to create a new ADR with the proper numbering (e.g., `001-your-title.md`)
+1. Copy this template to create a new ADR with the proper four-digit numbering (e.g., `0001-your-title.md`)
 2. Fill in the frontmatter with the ADR details
 3. Once the ADR is ready for review, update the `status` and add `reviewers`
 4. Write the content of the ADR in the sections below
