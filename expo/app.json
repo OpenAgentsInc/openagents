@@ -65,9 +65,7 @@
       }
     },
     "owner": "openagents-org",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "0.2.0",
     "updates": {
       "url": "https://u.expo.dev/39df2bde-2c42-49ec-9cef-1567231dfe38"
     }
