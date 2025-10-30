@@ -263,6 +263,30 @@ pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpda
     // - tool_result/*: mark a ToolCallUpdate (completed/failed)
 
     let ty = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
+
+    // Assistant message with aggregated content
+    if ty == "assistant" {
+        if let Some(msg) = v.get("message") {
+            if let Some(contents) = msg.get("content").and_then(|c| c.as_array()) {
+                let mut text = String::new();
+                for c in contents {
+                    let ctype = c.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                    if ctype == "text" {
+                        if let Some(t) = c.get("text").and_then(|x| x.as_str()) {
+                            if !text.is_empty() { text.push_str("\n"); }
+                            text.push_str(t);
+                        }
+                    }
+                }
+                if !text.is_empty() {
+                    return Some(SessionUpdate::AgentMessageChunk(ContentChunk {
+                        content: ContentBlock::Text(TextContent { annotations: None, text, meta: None }),
+                        meta: None,
+                    }));
+                }
+            }
+        }
+    }
     // Helpers: extract chunk for content_block_* events
     let chunk = if ty == "content_block_start" {
         v.get("content_block")

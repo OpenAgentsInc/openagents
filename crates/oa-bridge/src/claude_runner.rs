@@ -160,6 +160,24 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
             let s = line.trim();
             if s.is_empty() { continue; }
             if let Ok(v) = serde_json::from_str::<JsonValue>(s) {
+                    // Bridge session mapping on system init
+                    let ety = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                    let sub = v.get("subtype").and_then(|x| x.as_str()).unwrap_or("");
+                    if ety == "system" && sub == "init" {
+                        if let Some(sess) = v.get("session_id").and_then(|x| x.as_str()) {
+                            let tdoc = {
+                                if let Some(ctid) = state_for.current_convex_thread.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
+                            };
+                            if !tdoc.is_empty() {
+                                let map_line = serde_json::json!({
+                                    "type": "bridge.session_started",
+                                    "sessionId": sess,
+                                    "clientThreadDocId": tdoc,
+                                }).to_string();
+                                let _ = tx_out.send(map_line);
+                            }
+                        }
+                    }
                     if let Some(update) = acp_event_translator::translate_claude_event_to_acp_update(&v) {
                     // Debug: emit a concise marker for tests
                     let kind = match &update {
