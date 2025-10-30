@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useBridge } from './ws'
+import { useThreadProviders } from '@/lib/thread-provider-store'
 
 type ThreadsRow = { id: string; thread_id?: string; title: string; project_id?: string; resume_id?: string; created_at: number; updated_at: number }
 type MessageRow = { id: number; thread_id: string; role?: string; kind: string; text?: string; item_id?: string; partial?: number; seq?: number; ts: number; created_at: number; updated_at?: number }
@@ -28,6 +29,14 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     if (t === 'tinyvex.snapshot') {
       if (obj.stream === 'threads' && Array.isArray(obj.rows)) {
         setThreads(obj.rows as ThreadsRow[])
+        try {
+          const setProvider = useThreadProviders.getState().setProvider
+          for (const r of obj.rows as ThreadsRow[]) {
+            const tid = String((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')
+            const src = String((r as any)?.source || '')
+            if (tid) setProvider(tid, src === 'claude_code' ? 'claude_code' : 'codex')
+          }
+        } catch {}
       } else if (obj.stream === 'messages' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
         setMessagesByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as MessageRow[] }))
       }
@@ -42,6 +51,14 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     } else if (t === 'tinyvex.query_result') {
       if (obj.name === 'threads.list' && Array.isArray(obj.rows)) {
         setThreads(obj.rows as ThreadsRow[])
+        try {
+          const setProvider = useThreadProviders.getState().setProvider
+          for (const r of obj.rows as ThreadsRow[]) {
+            const tid = String((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')
+            const src = String((r as any)?.source || '')
+            if (tid) setProvider(tid, src === 'claude_code' ? 'claude_code' : 'codex')
+          }
+        } catch {}
       } else if (obj.name === 'messages.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
         setMessagesByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as MessageRow[] }))
       }

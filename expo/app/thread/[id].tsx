@@ -78,8 +78,8 @@ export default function ThreadScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
       <View key={`thread-${threadId}`} style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps='handled' contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}>
-        {/* Provider selector: show only before the first message */}
-        {acpUpdates.length === 0 && (
+        {/* Provider selector: show only before any messages exist */}
+        {acpUpdates.length === 0 && tvxMessages.length === 0 && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, marginRight: 8 }}>Provider</Text>
             <Pressable
