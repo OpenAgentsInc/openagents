@@ -1,6 +1,6 @@
 {
   "name": "tricoder",
-  "version": "0.2.4-rc.2",
+  "version": "0.2.4-rc.3",
   "type": "module",
   "author": "OpenAgents, Inc.",
   "license": "Apache-2.0",
@@ -12,7 +12,9 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": "dist/index.js",
+  "bin": {
+    "tricoder": "dist/index.js"
+  },
   "files": [
     "dist"
   ],
