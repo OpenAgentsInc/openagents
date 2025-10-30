@@ -1,6 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useBridge } from './ws'
 import { useThreadProviders } from '@/lib/thread-provider-store'
+import { createPerKeyThrottle, createPerKeyDebounce } from '@/utils/throttle'
+
+// Tunables for provider behavior. Keep these conservative to avoid WS bursts.
+const MSG_QUERY_THROTTLE_MS = 350 // per-thread throttle window for messages.list
+const THREADS_REFRESH_DEBOUNCE_MS = 400 // debounce for threads.list refresh on updates
+const PREFETCH_TOP_THREADS = 10 // number of recent threads to warm on connect
 
 type ThreadsRow = { id: string; thread_id?: string; title: string; project_id?: string; resume_id?: string; created_at: number; updated_at: number }
 type MessageRow = { id: number; thread_id: string; role?: string; kind: string; text?: string; item_id?: string; partial?: number; seq?: number; ts: number; created_at: number; updated_at?: number }
@@ -16,12 +22,25 @@ type TinyvexContextValue = {
 
 const TinyvexContext = createContext<TinyvexContextValue | undefined>(undefined)
 
+/**
+ * TinyvexProvider
+ *
+ * Centralizes Tinyvex bootstrap and live update handling:
+ * - On WS connect, subscribe to `threads` and fetch an initial list.
+ * - Prefetch a bounded number of message tails for top threads.
+ * - Throttle per-thread `messages.list` re-queries when `tinyvex.update` fires
+ *   during streaming to avoid flooding the bridge.
+ * - Debounce `threads.list` refresh after `tinyvex.update(stream:"threads")`.
+ */
 export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const bridge = useBridge();
   const connected = bridge.connected;
   const [threads, setThreads] = useState<ThreadsRow[]>([])
   const [messagesByThread, setMessagesByThread] = useState<Record<string, MessageRow[]>>({})
 
+  // Handle incoming bridge events. We only parse JSON objects and ignore
+  // plaintext rows for safety/perf. This function mutates provider state and
+  // may schedule follow-up queries via throttled/debounced helpers.
   const onMessage = useCallback((raw: string) => {
     if (!raw || raw[0] !== '{') return;
     let obj: any; try { obj = JSON.parse(raw) } catch { return }
@@ -42,11 +61,13 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
       }
     } else if (t === 'tinyvex.update') {
       if (obj.stream === 'messages' && typeof obj.threadId === 'string') {
-        // For MVP, re-query the recent tail on updates to keep logic simple
-        queryMessages(obj.threadId, 200)
+        // Live message writes can emit many updates while streaming.
+        // Throttle per thread to avoid storms during streaming.
+        try { scheduleMsgQuery(obj.threadId) } catch {}
       } else if (obj.stream === 'threads') {
-        // Threads list changed: refresh top threads
-        try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
+        // Thread rows are upserted on first write and when timestamps change.
+        // Debounce refreshes to avoid repeated full refreshes on bursts.
+        try { scheduleThreadsRefresh() } catch {}
       }
     } else if (t === 'tinyvex.query_result') {
       if (obj.name === 'threads.list' && Array.isArray(obj.rows)) {
@@ -67,9 +88,24 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => bridge.addSubscriber(onMessage), [bridge, onMessage])
 
+  // Throttlers and debouncers used for follow-up queries
+  const scheduleMsgQuery = useMemo(() => {
+    const throttle = createPerKeyThrottle(MSG_QUERY_THROTTLE_MS)
+    return (threadId: string) => throttle(threadId, () => {
+      try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId, limit: 200 } })) } catch {}
+    })
+  }, [bridge])
+  const scheduleThreadsRefresh = useMemo(() => {
+    const debounce = createPerKeyDebounce(THREADS_REFRESH_DEBOUNCE_MS)
+    return () => debounce('threads', () => {
+      try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
+    })
+  }, [bridge])
+
   // Auto-subscribe and fetch when the bridge connects
   useEffect(() => {
     if (!connected) return;
+    // Single bootstrap: subscribe + list
     try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' })) } catch {}
     try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
   }, [connected])
@@ -81,17 +117,18 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     try {
       const seen = prefetchRef.current
       const arr = Array.isArray(threads) ? threads : []
-      // Prefetch up to 25 most recent threads
+      // Prefetch a bounded recent set (reduce connect burst). We keep
+      // a `seen` set to avoid re-subscribing while the provider lives.
       const copy = arr.slice().sort((a: any, b: any) => {
         const at = (a?.updated_at ?? a?.updatedAt ?? a?.created_at ?? a?.createdAt ?? 0) as number
         const bt = (b?.updated_at ?? b?.updatedAt ?? b?.created_at ?? b?.createdAt ?? 0) as number
         return bt - at
-      }).slice(0, 25)
+      }).slice(0, PREFETCH_TOP_THREADS)
       for (const r of copy) {
         const tid = String((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')
         if (!tid || seen.has(tid)) continue
         try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', threadId: tid })) } catch {}
-        try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId: tid, limit: 200 } })) } catch {}
+        try { scheduleMsgQuery(tid) } catch {}
         seen.add(tid)
       }
     } catch {}
