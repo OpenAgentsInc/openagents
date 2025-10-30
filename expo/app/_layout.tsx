@@ -40,7 +40,7 @@ function DrawerContent() {
   const { useIsDevEnv } = require('@/lib/env') as { useIsDevEnv: () => boolean };
   const isDevEnv = useIsDevEnv();
   // Tinyvex history
-  const { threads, subscribeThreads, queryThreads } = useTinyvex()
+  const { threads, subscribeThreads, queryThreads, subscribeMessages, queryMessages } = useTinyvex()
   React.useEffect(() => { queryThreads(50); subscribeThreads(); }, [])
   const topThreads = React.useMemo(() => {
     if (!Array.isArray(threads)) return null
@@ -52,6 +52,23 @@ function DrawerContent() {
     })
     return copy.slice(0, 10)
   }, [threads])
+  // Warm the message cache for visible/top threads so details open instantly
+  const warmedRef = React.useRef<Set<string>>(new Set())
+  React.useEffect(() => {
+    try {
+      const warmed = warmedRef.current
+      const arr = Array.isArray(topThreads) ? topThreads : []
+      for (const r of arr) {
+        const tid = String((r as any)?.threadId || (r as any)?.thread_id || (r as any)?.id || '')
+        if (!tid) continue
+        if (!warmed.has(tid)) {
+          try { subscribeMessages(tid) } catch {}
+          try { queryMessages(tid, 200) } catch {}
+          warmed.add(tid)
+        }
+      }
+    } catch {}
+  }, [topThreads, subscribeMessages, queryMessages])
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
