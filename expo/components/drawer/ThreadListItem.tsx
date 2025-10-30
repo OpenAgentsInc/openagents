@@ -35,7 +35,7 @@ export function ThreadListItemBase({
 
 export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => void }) {
   const router = useRouter()
-  const threadId = String(row?.threadId || row?._id || row?.id || '')
+  const threadId = String(row?.threadId || row?.thread_id || row?._id || row?.id || '')
   const updatedAt = (row?.updatedAt ?? row?.createdAt ?? 0) as number
   const count = typeof (row as any)?.messageCount === 'number' ? (row as any).messageCount as number : undefined
   // No Convex: attempt to use provided snippet if present; otherwise fallback to title
@@ -70,7 +70,8 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   }, [recent, row?.title])
   const open = () => {
     if (onPress) { try { onPress() } catch {} ; return }
-    try { router.push(`/thread/${encodeURIComponent(String(row._id || row.id))}`) } catch {}
+    if (!threadId) return
+    try { router.push(`/thread/${encodeURIComponent(threadId)}`) } catch {}
   }
   // Filter out threads that have zero primary chat messages when count is known
   if (typeof count === 'number' && count <= 0) return null
