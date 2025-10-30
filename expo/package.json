@@ -12,9 +12,9 @@
     "lint": "expo lint",
     "build:ios:prod": "eas build --profile production --platform ios",
     "submit:ios": "eas submit -p ios",
-    "update:both": "eas update --channel v0.2.0 --environment production --message",
-    "update:ios": "eas update --channel v0.2.0 --environment production --platform ios --message",
-    "update:android": "eas update --channel v0.2.0 --environment production --platform android --message"
+    "update:both": "eas update --channel v0.2.1 --environment production --message",
+    "update:ios": "eas update --channel v0.2.1 --environment production --platform ios --message",
+    "update:android": "eas update --channel v0.2.1 --environment production --platform android --message"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.5.1",
