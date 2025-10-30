@@ -54,8 +54,11 @@ export default function ThreadScreen() {
     if (!threadId) return
     try {
       const p = threadProviders.getProvider(threadId)
-      if (p && p !== agentProvider) {
-        setAgentProvider(p)
+      if (p) {
+        if (p !== agentProvider) setAgentProvider(p)
+      } else {
+        // Default to Codex for legacy threads with no mapping
+        if (agentProvider !== 'codex') setAgentProvider('codex')
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
