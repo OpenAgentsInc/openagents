@@ -59,6 +59,19 @@ pub fn render_mermaid(svg_source: &str) -> Result<MermaidView> {
     })
 }
 
+/// Build a viewer from Mermaid diagram source text.
+/// Renders via mermaid.js inside the webview, then applies the same
+/// pan/zoom behavior to the produced SVG.
+pub fn render_mermaid_code(mermaid_code: &str) -> Result<MermaidView> {
+    let html = build_html_from_mermaid(mermaid_code);
+    Ok(MermaidView {
+        html,
+        title: "Mermaid Viewer".to_string(),
+        width: 1024,
+        height: 768,
+    })
+}
+
 fn build_html(svg_source: &str) -> String {
     // Embed Berkeley Mono (Regular) from the repo for consistent typography.
     // Falls back to local fonts if loading fails.
@@ -258,5 +271,161 @@ fn build_html(svg_source: &str) -> String {
         text = text,
         stroke = stroke,
         svg = svg_source
+    )
+}
+
+fn build_html_from_mermaid(code: &str) -> String {
+    // Reuse the same font/theme constants
+    let bg = "#08090a";
+    let text = "#f7f8f8";
+    let stroke = "#6c7075"; // muted grey
+
+    const BERKELEY_MONO_REGULAR: &[u8] = include_bytes!(
+        "../../../expo/assets/fonts/BerkeleyMono-Regular.ttf"
+    );
+    let font_b64 = BASE64.encode(BERKELEY_MONO_REGULAR);
+
+    // Escape closing </script> sequences if any (extremely unlikely in Mermaid text)
+    let safe_code = code.replace("</script>", r"<\/script>");
+
+    format!(
+        r#"<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mermaid Viewer</title>
+    <style>
+      @font-face {{
+        font-family: 'Berkeley Mono Viewer';
+        src: url('data:font/ttf;base64,{font_b64}') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }}
+      :root {{ --bg: {bg}; --fg: {text}; --stroke: {stroke}; }}
+      html, body {{
+        margin: 0; padding: 0; height: 100%; width: 100%;
+        background: var(--bg); color: var(--fg);
+        font-family: 'Berkeley Mono Viewer', 'Berkeley Mono', ui-monospace, Menlo, Consolas, monospace;
+        -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+      }}
+      #toolbar {{
+        position: fixed; top: 12px; right: 12px; z-index: 10;
+        background: rgba(20,22,24,0.7);
+        border: 1px solid #2a2d31; border-radius: 6px;
+        padding: 6px 8px; display: flex; gap: 6px; align-items: center;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      }}
+      #toolbar button {{ background: #14181b; color: var(--fg); border: 1px solid #2a2d31; border-radius: 4px; padding: 4px 8px; cursor: pointer; }}
+      #toolbar button:hover {{ border-color: #3b4046; }}
+      #view {{ position: absolute; inset: 0; overflow: hidden; }}
+      .mermaid {{ height: 100%; width: 100%; display: block; background: var(--bg); }}
+      .mermaid svg {{ height: 100%; width: 100%; display: block; background: var(--bg); text-rendering: geometricPrecision; }}
+      .mermaid svg text {{ fill: var(--fg) !important; font-family: 'Berkeley Mono Viewer', 'Berkeley Mono', ui-monospace, Menlo, monospace !important; font-variant-ligatures: none; font-synthesis: none; text-rendering: geometricPrecision; }}
+      .mermaid svg rect, .mermaid svg path, .mermaid svg line, .mermaid svg circle, .mermaid svg ellipse, .mermaid svg polygon {{ stroke: var(--stroke); vector-effect: non-scaling-stroke; shape-rendering: geometricPrecision; }}
+    </style>
+  </head>
+  <body>
+    <div id="toolbar">
+      <button id="fit">Fit</button>
+      <button id="zoom_in">+</button>
+      <button id="zoom_out">-</button>
+      <span id="status" style="opacity:.8;font-size:12px;">100%</span>
+    </div>
+    <div id="view">
+      <div id="mermaid" class="mermaid">{code}</div>
+    </div>
+    <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+      (function(){{
+        const container = document.getElementById('view');
+        const mroot = document.getElementById('mermaid');
+        if (!mroot) return;
+
+        mermaid.initialize({{
+          startOnLoad: true,
+          theme: 'dark',
+          themeVariables: {{
+            background: '{bg}',
+            primaryColor: '{bg}',
+            primaryTextColor: '{text}',
+            lineColor: '{stroke}',
+            fontFamily: 'Berkeley Mono Viewer, Berkeley Mono, ui-monospace, Menlo, monospace',
+          }},
+        }});
+
+        function afterRender(){{
+          // Attach pan/zoom to the generated SVG
+          const svg = container.querySelector('svg');
+          if (!svg) return;
+
+          function ensureViewBox(){{
+            const vb = svg.viewBox.baseVal;
+            if (vb && (vb.width > 0 && vb.height > 0)) return;
+            const w = svg.getBBox().width || container.clientWidth || 1024;
+            const h = svg.getBBox().height || container.clientHeight || 768;
+            svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+          }}
+          ensureViewBox();
+
+          let vx = svg.viewBox.baseVal.x;
+          let vy = svg.viewBox.baseVal.y;
+          let vw = svg.viewBox.baseVal.width || container.clientWidth || 1024;
+          let vh = svg.viewBox.baseVal.height || container.clientHeight || 768;
+          function round(n){{ return Math.round(n*1000)/1000; }}
+          function updateStatus(){{
+            const w0 = vw; // approximate
+            const percent = (mroot.clientWidth / container.clientWidth) * 100 || (100 * (1));
+            document.getElementById('status').textContent = percent.toFixed(0) + '%';
+          }}
+          function applyViewBox(){{
+            svg.setAttribute('viewBox', round(vx) + ' ' + round(vy) + ' ' + round(vw) + ' ' + round(vh));
+            updateStatus();
+          }}
+          function getPt(evt){{
+            const rect = container.getBoundingClientRect();
+            const px = evt.clientX - rect.left; const py = evt.clientY - rect.top;
+            const sx = px / rect.width; const sy = py / rect.height;
+            const ux = vx + sx * vw; const uy = vy + sy * vh;
+            return {{ ux, uy, sx, sy, px, py, rect }};
+          }}
+          function zoomAt(factor, evt){{
+            const {{ ux, uy }} = getPt(evt);
+            const newW = vw / factor; const newH = vh / factor;
+            vx = ux - (ux - vx) * (newW / vw);
+            vy = uy - (uy - vy) * (newH / vh);
+            vw = newW; vh = newH; applyViewBox();
+          }}
+          container.addEventListener('wheel', (e) => {{ e.preventDefault(); const step = 0.00035; const factor = Math.exp(-e.deltaY * step); zoomAt(factor, e); }}, {{ passive: false }});
+          let dragging=false,startX=0,startY=0,svx=0,svy=0;
+          container.addEventListener('pointerdown', (e)=>{{ dragging=true; startX=e.clientX; startY=e.clientY; svx=vx; svy=vy; container.setPointerCapture(e.pointerId); }});
+          container.addEventListener('pointermove', (e)=>{{ if(!dragging) return; const rect=container.getBoundingClientRect(); const dx=e.clientX-startX; const dy=e.clientY-startY; vx=svx - dx*(vw/rect.width); vy=svy - dy*(vh/rect.height); applyViewBox(); }});
+          container.addEventListener('pointerup', ()=> dragging=false);
+          container.addEventListener('pointercancel', ()=> dragging=false);
+          document.getElementById('zoom_in').onclick = () => {{ const e = new MouseEvent('wheel', {{ clientX: container.clientWidth/2, clientY: container.clientHeight/2, deltaY: -1 }}); zoomAt(1.08, e); }};
+          document.getElementById('zoom_out').onclick = () => {{ const e = new MouseEvent('wheel', {{ clientX: container.clientWidth/2, clientY: container.clientHeight/2, deltaY: 1 }}); zoomAt(1/1.08, e); }};
+          document.getElementById('fit').onclick = () => {{ const vb=svg.viewBox.baseVal; vx=vb.x; vy=vb.y; vw=vb.width; vh=vb.height; applyViewBox(); }};
+          window.addEventListener('keydown',(e)=>{{ if(e.key==='f'||e.key==='F') document.getElementById('fit').click(); }});
+          applyViewBox();
+        }}
+
+        // Mermaid renders async; wait for it then attach handlers
+        if (typeof mermaid !== 'undefined' && mermaid.run) {{
+          mermaid.run({{ querySelector: '#mermaid' }}).then(afterRender).catch(afterRender);
+        }} else {{
+          // Fallback: attach after a short delay
+          setTimeout(afterRender, 200);
+        }}
+      }})();
+    </script>
+  </body>
+ </html>
+        "#,
+        font_b64 = font_b64,
+        bg = bg,
+        text = text,
+        stroke = stroke,
+        code = safe_code,
     )
 }
