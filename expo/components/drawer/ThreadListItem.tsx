@@ -90,7 +90,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPr
   if (typeof count === 'number' && count <= 0) return null
   // Provider/source indicator (Codex vs Claude Code)
   const source = String((row?.source || '') as any).toLowerCase()
-  const meta = (() => {
+  const providerBadge = (() => {
     if (source === 'claude_code') {
       return (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -109,8 +109,24 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPr
     }
     return null
   })()
+
+  const meta = (() => {
+    const tsText = updatedAt ? formatRelative(updatedAt) : ''
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        {providerBadge}
+        {!!tsText && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ color: Colors.quaternary, fontFamily: Typography.primary, fontSize: 12 }}>•</Text>
+            <Ionicons name="time-outline" size={12} color={Colors.quaternary} />
+            <Text numberOfLines={1} style={{ color: Colors.quaternary, fontFamily: Typography.primary, fontSize: 12 }}>{tsText}</Text>
+          </View>
+        )}
+      </View>
+    )
+  })()
   return (
-    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
+    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={undefined} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
   )
 }
 
