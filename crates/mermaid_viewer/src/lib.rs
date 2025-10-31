@@ -215,8 +215,9 @@ fn build_html(svg_source: &str) -> String {
             const texts = g.querySelectorAll('text');
             texts.forEach((t) => {{
               t.setAttribute('y', cy);
-              t.setAttribute('dominant-baseline', 'middle');
-              t.setAttribute('alignment-baseline', 'middle');
+              t.removeAttribute('dy');
+              t.setAttribute('dominant-baseline', 'central');
+              t.setAttribute('alignment-baseline', 'central');
             }});
           }});
         }}
@@ -470,8 +471,9 @@ fn build_html_from_mermaid(code: &str) -> String {
               const texts = g.querySelectorAll('text');
               texts.forEach((t) => {{
                 t.setAttribute('y', cy);
-                t.setAttribute('dominant-baseline', 'middle');
-                t.setAttribute('alignment-baseline', 'middle');
+                t.removeAttribute('dy');
+                t.setAttribute('dominant-baseline', 'central');
+                t.setAttribute('alignment-baseline', 'central');
               }});
             }});
           }}
