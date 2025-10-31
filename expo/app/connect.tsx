@@ -23,7 +23,7 @@ export default function ConnectRoute() {
       if (parsed?.bridgeHost) try { setBridgeHost(parsed.bridgeHost) } catch {}
       if (parsed?.token) try { setBridgeToken(parsed.token || '') } catch {}
       try { connect() } catch {}
-      try { router.replace('/onboarding' as any) } catch {}
+      try { router.replace('/thread/new' as any) } catch {}
     } else {
       // No param found — go to onboarding
       try { router.replace('/onboarding' as any) } catch {}
