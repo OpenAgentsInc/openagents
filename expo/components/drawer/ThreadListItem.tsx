@@ -12,16 +12,18 @@ export function ThreadListItemBase({
   timestamp,
   count,
   onPress,
+  onLongPress,
 }: {
   title: string
   meta?: React.ReactNode
   timestamp?: number | null
   count?: number | null
   onPress?: () => void
+  onLongPress?: () => void
 }) {
   const ts = typeof timestamp === 'number' && timestamp > 0 ? formatRelative(new Date(timestamp).getTime()) : ''
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300} accessibilityRole="button" style={{ paddingVertical: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <View style={{ flex: 1, paddingRight: 8 }}>
           <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{title || 'Thread'}</Text>
@@ -43,7 +45,7 @@ export function ThreadListItemBase({
   )
 }
 
-export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => void }) {
+export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPress?: () => void; onLongPress?: () => void }) {
   const router = useRouter()
   const threadId = String(row?.threadId || row?.thread_id || row?._id || row?.id || '')
   const { messagesByThread } = useTinyvex()
@@ -108,7 +110,7 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
     return null
   })()
   return (
-    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
+    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
   )
 }
 
