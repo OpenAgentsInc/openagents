@@ -56,6 +56,7 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
     }
 }
 
+#[allow(dead_code)]
 pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &str) -> bool {
     if let Some(notifs) = state.tinyvex_writer.try_finalize_stream_kind(thread_id, kind).await {
         for n in notifs {
@@ -298,7 +299,6 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "threadId": thread_id
                 }).to_string());
             }
-            _ => {}
         }
     }
 }

@@ -32,7 +32,7 @@ pub struct AppState {
     #[allow(dead_code)]
     pub child_stdin: Mutex<Option<tokio::process::ChildStdin>>, // drop after first write to signal EOF
     pub child_pid: Mutex<Option<u32>>,
-    pub opts: Opts,
+    pub(crate) opts: Opts,
     // Track last seen session id so we can resume on subsequent prompts
     pub last_thread_id: Mutex<Option<String>>,
     // Replay buffer for new websocket clients
