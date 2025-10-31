@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../expo/types/bridge/generated/")]
 pub struct SyncWatchedDirTs {
     pub provider: String,
     pub base: String,
@@ -11,7 +10,6 @@ pub struct SyncWatchedDirTs {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../expo/types/bridge/generated/")]
 pub struct SyncStatusTs {
     pub enabled: bool,
     pub two_way: bool,
@@ -42,7 +40,6 @@ pub struct TinyvexQueryResult<T: Serialize + Clone> {
 // Canonical transport row types (TS export lives here, not in Tinyvex)
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../expo/types/bridge/generated/")]
 pub struct ThreadRowTs {
     pub id: String,
     pub thread_id: Option<String>,
@@ -78,7 +75,6 @@ impl From<&tinyvex::ThreadRow> for ThreadRowTs {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../expo/types/bridge/generated/")]
 pub struct MessageRowTs {
     pub id: i64,
     pub thread_id: String,
@@ -112,7 +108,6 @@ impl From<&tinyvex::MessageRow> for MessageRowTs {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../expo/types/bridge/generated/")]
 pub struct ToolCallRowTs {
     pub thread_id: String,
     pub tool_call_id: String,

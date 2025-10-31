@@ -1,5 +1,14 @@
 import React from 'react'
 import { useAcp, type SessionNotificationWithTs } from '@/providers/acp'
+import type {
+  SessionUpdate,
+  AgentMessageChunk,
+  UserMessageChunk,
+  PlanUpdate,
+  ToolCallCreate,
+  ToolCallUpdate,
+  ToolCallLike,
+} from '@/types/acp'
 import { useTinyvex, type MessageRow, type ToolCallRow } from '@/providers/tinyvex'
 import type { ToolCallLike } from '@/types/acp'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
@@ -35,38 +44,36 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
   // ACP updates
   for (let i = 0; i < acpUpdates.length; i++) {
     const n = acpUpdates[i] as SessionNotificationWithTs
-    const u: any = (n as any).update
+    const u = (n as any).update as SessionUpdate | undefined
     if (!u) continue
     const ts = Number((n as any).addedAt || Date.now())
     if (u.sessionUpdate === 'user_message_chunk') {
-      items.push({ key: `acp-u-${ts}-${i}`, ts, node: <SessionUpdateUserMessageChunk content={u.content} /> })
+      const m = u as UserMessageChunk
+      items.push({ key: `acp-u-${ts}-${i}`, ts, node: <SessionUpdateUserMessageChunk content={m.content} /> })
       continue
     }
     if (u.sessionUpdate === 'agent_message_chunk') {
-      const fullText = (u.content && (u.content as any).text) || ''
-      const firstLine = String(fullText).split('\n')[0]
+      const m = u as AgentMessageChunk
+      const fullText = String((m.content as any)?.text || '')
+      const firstLine = fullText.split('\n')[0]
       const content: { type: 'text'; text: string } = { type: 'text', text: firstLine }
       items.push({ key: `acp-a-${ts}-${i}`, ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
       continue
     }
     if (u.sessionUpdate === 'plan') {
-      items.push({ key: `acp-plan-${ts}-${i}`, ts, node: <SessionUpdatePlan entries={u.entries} /> })
+      const p = u as PlanUpdate
+      items.push({ key: `acp-plan-${ts}-${i}`, ts, node: <SessionUpdatePlan entries={p.entries} /> })
       continue
     }
-    if (u.sessionUpdate === 'tool_call' || u.sessionUpdate === 'tool_call_update') {
-      const props: any = u.sessionUpdate === 'tool_call' ? {
-        title: u.title,
-        status: u.status,
-        kind: u.kind,
-        content: u.content,
-        locations: u.locations,
-      } : {
-        title: u.fields?.title,
-        status: u.fields?.status,
-        kind: u.fields?.kind,
-        content: u.fields?.content,
-        locations: u.fields?.locations,
-      }
+    if (u.sessionUpdate === 'tool_call') {
+      const t = u as ToolCallCreate
+      const props: ToolCallLike = { title: t.title, status: t.status, kind: t.kind, content: t.content, locations: t.locations }
+      items.push({ key: `acp-tool-${ts}-${i}`, ts, node: <SessionUpdateToolCall {...props} /> })
+      continue
+    }
+    if (u.sessionUpdate === 'tool_call_update') {
+      const t = u as ToolCallUpdate
+      const props: ToolCallLike = { title: t.fields?.title, status: t.fields?.status, kind: t.fields?.kind, content: t.fields?.content, locations: t.fields?.locations }
       items.push({ key: `acp-tool-${ts}-${i}`, ts, node: <SessionUpdateToolCall {...props} /> })
       continue
     }
