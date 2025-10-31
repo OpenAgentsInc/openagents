@@ -1,6 +1,6 @@
 import React from 'react'
 import { useAcp, type SessionNotificationWithTs } from '@/providers/acp'
-import { useTinyvex, type TinyvexContextValue, type MessageRow, type ToolCallRow } from '@/providers/tinyvex'
+import { useTinyvex, type MessageRow, type ToolCallRow } from '@/providers/tinyvex'
 import type { ToolCallLike } from '@/types/acp'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
 import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
@@ -11,7 +11,7 @@ export type TimelineItem = { key: string; ts: number; node: React.ReactNode }
 
 export function useThreadTimeline(threadId: string): TimelineItem[] {
   const { eventsForThread } = useAcp()
-  const { messagesByThread, toolCallsByThread } = useTinyvex() as TinyvexContextValue
+  const { messagesByThread, toolCallsByThread } = useTinyvex()
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
   const msgRows: MessageRow[] = React.useMemo(() => messagesByThread[threadId] ?? [], [messagesByThread, threadId])
   const toolRows: ToolCallRow[] = React.useMemo(() => toolCallsByThread[threadId] ?? [], [toolCallsByThread, threadId])
