@@ -12,3 +12,4 @@ tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
 tracing = "0.1"
 tempfile = "3"
 agent-client-protocol = "0.7.0"
+ts-rs = "11.1.0"
