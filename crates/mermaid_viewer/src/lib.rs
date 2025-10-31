@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use serde_json::json;
 
 /// Wrapper handle for a zoomable, pannable SVG viewer window.

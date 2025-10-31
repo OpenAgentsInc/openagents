@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::Path;
 
 fn read(dir: &str) -> Vec<(String, String)> {
     let mut out = vec![];
@@ -20,7 +19,6 @@ fn read(dir: &str) -> Vec<(String, String)> {
 fn extract_mermaid_blocks(s: &str) -> Vec<String> {
     let mut blocks = vec![];
     let mut i = 0;
-    let bytes = s.as_bytes();
     while let Some(start) = s[i..].find("```mermaid") { let a = i + start + 9; // after fence
         if let Some(end_rel) = s[a..].find("```") { let b = a + end_rel; blocks.push(s[a..b].trim().to_string()); i = b + 3; } else { break; }
     }
