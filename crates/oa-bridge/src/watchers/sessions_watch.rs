@@ -89,19 +89,16 @@ async fn process_file_append(state: &AppState, file_path: &Path, st: &mut FileSt
     file.seek(SeekFrom::Start(st.offset))?;
     let mut reader = BufReader::new(file);
     let mut line = String::new();
+    let mut lines_processed: usize = 0;
     loop {
         line.clear();
         let n = reader.read_line(&mut line)?;
         if n == 0 { break; }
-        // Update last read timestamp
-        {
-            let mut g = state.sync_last_read_ms.lock().await;
-            *g = crate::util::now_ms();
-        }
         // Update offset to current file position
         st.offset = reader.stream_position()?;
         let trimmed = line.trim_end_matches(['\n', '\r']);
         if trimmed.is_empty() { continue; }
+        lines_processed += 1;
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
             // Extract thread id from top-level or nested msg
             let tid = v.get("thread_id").and_then(|x| x.as_str())
@@ -116,6 +113,11 @@ async fn process_file_append(state: &AppState, file_path: &Path, st: &mut FileSt
                 }
             }
         }
+    }
+    // Batch the last-read timestamp update to once per file
+    if lines_processed > 0 {
+        let mut g = state.sync_last_read_ms.lock().await;
+        *g = crate::util::now_ms();
     }
     Ok(())
 }
