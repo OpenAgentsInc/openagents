@@ -10,6 +10,66 @@ use std::sync::Arc;
 pub fn translate_codex_event_to_acp_update(v: &JsonValue) -> Option<SessionUpdate> {
     let ty = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
 
+    // New-format Codex events (response_item, event_msg)
+    if ty == "response_item" {
+        if let Some(payload) = v.get("payload") {
+            let pty = payload.get("type").and_then(|x| x.as_str()).unwrap_or("");
+            if pty == "message" {
+                // Aggregate text parts from content[]
+                let mut txt = String::new();
+                if let Some(arr) = payload.get("content").and_then(|x| x.as_array()) {
+                    for part in arr {
+                        if let Some(t) = part.get("text").and_then(|x| x.as_str()) {
+                            if !txt.is_empty() { txt.push('\n'); }
+                            txt.push_str(t);
+                        }
+                    }
+                }
+                if !txt.trim().is_empty() {
+                    return Some(SessionUpdate::AgentMessageChunk(ContentChunk {
+                        content: ContentBlock::Text(TextContent { annotations: None, text: txt, meta: None }),
+                        meta: None,
+                    }));
+                }
+            } else if pty == "reasoning" {
+                // Prefer summary[] entries with type==summary_text
+                let mut txt = String::new();
+                if let Some(summary) = payload.get("summary").and_then(|x| x.as_array()) {
+                    for s in summary {
+                        if s.get("type").and_then(|x| x.as_str()) == Some("summary_text") {
+                            if let Some(t) = s.get("text").and_then(|x| x.as_str()) {
+                                if !txt.is_empty() { txt.push('\n'); }
+                                txt.push_str(t);
+                            }
+                        }
+                    }
+                }
+                if txt.trim().is_empty() {
+                    if let Some(t) = payload.get("text").and_then(|x| x.as_str()) { txt = t.to_string(); }
+                }
+                if !txt.trim().is_empty() {
+                    return Some(SessionUpdate::AgentThoughtChunk(ContentChunk {
+                        content: ContentBlock::Text(TextContent { annotations: None, text: txt, meta: None }),
+                        meta: None,
+                    }));
+                }
+            }
+        }
+    }
+
+    if ty == "event_msg" {
+        if let Some(p) = v.get("payload") {
+            if p.get("type").and_then(|x| x.as_str()) == Some("agent_reasoning") {
+                if let Some(text) = p.get("text").and_then(|x| x.as_str()) {
+                    return Some(SessionUpdate::AgentThoughtChunk(ContentChunk {
+                        content: ContentBlock::Text(TextContent { annotations: None, text: text.to_string(), meta: None }),
+                        meta: None,
+                    }));
+                }
+            }
+        }
+    }
+
     // Handle streaming text/reasoning deltas/completions explicitly
     if ty == "item.delta" || ty == "item.completed" {
         let item = v
