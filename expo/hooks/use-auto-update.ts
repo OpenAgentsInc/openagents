@@ -1,9 +1,11 @@
 import * as Updates from 'expo-updates'
 import { useEffect } from 'react'
 import { useUpdateStore } from '@/lib/update-store'
+import { useSettings } from '@/lib/settings-store'
 
 export const useAutoUpdate = () => {
   const setUpdating = useUpdateStore((s) => s.setUpdating)
+  const autoPoll = useSettings((s) => s.updatesAutoPoll)
   const handleCheckUpdate = async () => {
     if (__DEV__) return
 
@@ -32,8 +34,13 @@ export const useAutoUpdate = () => {
 
   useEffect(() => {
     if (__DEV__) return
-    // Check once shortly after startup. Excessive polling can stress expo-updates DB on iOS.
+    // Initial once-after-boot
     const t = setTimeout(() => { void handleCheckUpdate() }, 3000)
-    return () => clearTimeout(t)
-  }, [])
+    let interval: any = null
+    if (autoPoll) {
+      // Poll every 5s when user enabled repeated syncing in settings
+      interval = setInterval(() => { void handleCheckUpdate() }, 5000)
+    }
+    return () => { clearTimeout(t); if (interval) clearInterval(interval) }
+  }, [autoPoll])
 }

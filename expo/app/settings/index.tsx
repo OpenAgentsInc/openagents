@@ -14,6 +14,8 @@ export default function SettingsScreen() {
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
   const bridgeToken = useSettings((s) => s.bridgeToken)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
+  const updatesAutoPoll = useSettings((s) => s.updatesAutoPoll)
+  const setUpdatesAutoPoll = useSettings((s) => s.setUpdatesAutoPoll)
   // Convex removed
   return (
     <View style={styles.container}>
@@ -65,7 +67,12 @@ export default function SettingsScreen() {
         )}
         <StatusPill connected={connected} />
       </View>
-      {/* Preferences and QR code features removed for now */}
+      <View style={{ height: 16 }} />
+      <Text style={styles.title}>Updates</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Auto-check every 5s</Text>
+        <Segmented title={updatesAutoPoll ? 'On' : 'Off'} active={updatesAutoPoll} onPress={() => { try { setUpdatesAutoPoll(!updatesAutoPoll) } catch {} }} />
+      </View>
     </View>
   )
 }
