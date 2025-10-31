@@ -523,7 +523,7 @@ pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpda
         }
     }
 
-    // Tool results → ToolCallUpdate
+    // Tool results → ToolCallUpdate (map status and, when possible, structured content)
     if ty == "tool_result"
         || ty == "web_fetch_tool_result"
         || ty == "web_search_tool_result"
@@ -547,7 +547,39 @@ pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpda
         };
         let mut fields = agent_client_protocol::ToolCallUpdateFields::default();
         fields.status = Some(status);
-        if let Some(ro) = v.get("result").cloned() { fields.raw_output = Some(ro); }
+        if let Some(res) = v.get("result") {
+            // Surface raw output for diagnostics
+            fields.raw_output = Some(res.clone());
+            // Best-effort content mapping for common Claude outputs
+            // 1) Terminal/stdout text → inline text content
+            if let Some(stdout) = res.get("stdout").and_then(|x| x.as_str()) {
+                if !stdout.is_empty() {
+                    let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent {
+                        annotations: None,
+                        text: stdout.to_string(),
+                        meta: None,
+                    }))];
+                    fields.content = Some(content);
+                }
+            }
+            // 2) Diff-like structures (path/old/new or oldText/newText) → prefer structured diff when available
+            // Note: Field names vary across tools; handle common cases conservatively.
+            if let (Some(path), Some(old_text), Some(new_text)) = (
+                res.get("path").and_then(|x| x.as_str()),
+                res.get("oldText").or_else(|| res.get("old")).and_then(|x| x.as_str()),
+                res.get("newText").or_else(|| res.get("new")).and_then(|x| x.as_str()),
+            ) {
+                // Append alongside stdout content if both exist
+                let mut content_vec = fields.content.take().unwrap_or_default();
+                content_vec.push(ToolCallContent::Diff(agent_client_protocol::ToolCallContentDiff {
+                    path: path.to_string(),
+                    old_text: old_text.to_string(),
+                    new_text: new_text.to_string(),
+                    meta: None,
+                }));
+                fields.content = Some(content_vec);
+            }
+        }
         return Some(SessionUpdate::ToolCallUpdate(agent_client_protocol::ToolCallUpdate {
             id: ToolCallId(Arc::from(tool_id)),
             fields,
