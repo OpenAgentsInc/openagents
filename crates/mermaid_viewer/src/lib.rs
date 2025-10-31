@@ -394,9 +394,9 @@ fn build_html_from_mermaid(code: &str) -> String {
         "../../../expo/assets/fonts/BerkeleyMono-Regular.ttf"
     );
     let font_b64 = BASE64.encode(BERKELEY_MONO_REGULAR);
+    let code_b64 = BASE64.encode(code.as_bytes());
 
-    // Escape closing </script> sequences if any (extremely unlikely in Mermaid text)
-    let safe_code = code.replace("</script>", r"<\/script>");
+    // (no HTML path) we do not need to escape anything; keep code as-is
 
     // Vendor mermaid.js and embed via data URL to avoid CDN
     const MERMAID_JS: &[u8] = include_bytes!("../assets/mermaid.min.js");
@@ -450,7 +450,7 @@ fn build_html_from_mermaid(code: &str) -> String {
       <span id="status" style="opacity:.8;font-size:12px;">100%</span>
     </div>
     <div id="view">
-      <div id="mermaid" class="mermaid">{code}</div>
+      <div id="mermaid" class="mermaid"></div>
     </div>
     <script src="data:text/javascript;base64,{mermaid_js_b64}"></script>
     <script>
@@ -467,9 +467,8 @@ fn build_html_from_mermaid(code: &str) -> String {
 
         mermaid.initialize({{
           startOnLoad: true,
-          securityLevel: 'loose',
+          securityLevel: 'strict',
           theme: 'dark',
-          flowchart: {{ htmlLabels: true }},
           themeVariables: {{
             background: '{bg}',
             primaryColor: '{bg}',
@@ -584,13 +583,11 @@ fn build_html_from_mermaid(code: &str) -> String {
           applyViewBox();
         }}
 
-        // Mermaid renders async; wait for it then attach handlers
+        // Set Mermaid text from base64 (no HTML parsing)
+        try {{ document.getElementById('mermaid').textContent = atob('{code_b64}'); }} catch {{}}
         if (typeof mermaid !== 'undefined' && mermaid.run) {{
           mermaid.run({{ querySelector: '#mermaid' }}).then(afterRender).catch(afterRender);
-        }} else {{
-          // Fallback: attach after a short delay
-          setTimeout(afterRender, 200);
-        }}
+        }} else {{ setTimeout(afterRender, 200); }}
       }})();
     </script>
   </body>
@@ -603,8 +600,8 @@ fn build_html_from_mermaid(code: &str) -> String {
         tertiary = tertiary,
         quaternary = quaternary,
         sidebar_bg = sidebar_bg,
-        code = safe_code,
         mermaid_js_b64 = mermaid_js_b64,
+        code_b64 = code_b64,
     )
 }
 
@@ -751,7 +748,7 @@ fn build_html_docs_index(docs_json: &str) -> String {
               const m = re.exec(txt);
               mroot.textContent = m ? txt.slice(m.index) : txt;
             }})();
-            mermaid.initialize({{ startOnLoad:false, securityLevel:'loose', theme:'dark', flowchart: {{ htmlLabels: true }}, themeVariables: {{ background:'{bg}', primaryColor:'{bg}', primaryTextColor:'{text}', lineColor:'{tertiary}', actorTextColor:'{text}', actorBorder:'{quaternary}', actorBkg:'{bg}', noteTextColor:'{text}', noteBkgColor:'{sidebar_bg}', noteBorderColor:'{border}', activationBorderColor:'{border}', activationBkgColor:'{sidebar_bg}', sequenceNumberColor:'{tertiary}', altBackground:'{sidebar_bg}', labelBoxBkgColor:'{bg}', labelBoxBorderColor:'{quaternary}', loopTextColor:'{tertiary}', fontFamily:'Berkeley Mono Viewer, ui-monospace, Menlo, monospace' }} }});
+            mermaid.initialize({{ startOnLoad:false, securityLevel:'strict', theme:'dark', themeVariables: {{ background:'{bg}', primaryColor:'{bg}', primaryTextColor:'{text}', lineColor:'{tertiary}', actorTextColor:'{text}', actorBorder:'{quaternary}', actorBkg:'{bg}', noteTextColor:'{text}', noteBkgColor:'{sidebar_bg}', noteBorderColor:'{border}', activationBorderColor:'{border}', activationBkgColor:'{sidebar_bg}', sequenceNumberColor:'{tertiary}', altBackground:'{sidebar_bg}', labelBoxBkgColor:'{bg}', labelBoxBorderColor:'{quaternary}', loopTextColor:'{tertiary}', fontFamily:'Berkeley Mono Viewer, ui-monospace, Menlo, monospace' }} }});
             mermaid.run({{ querySelector:'#mermaid' }}).then(()=>{{ const svg = view.querySelector('svg'); if (svg) attachPanZoom(svg); }}).catch(()=>{{ const svg = view.querySelector('svg'); if (svg) attachPanZoom(svg); }});
           }}
         }}

@@ -3,7 +3,7 @@
 ```mermaid
 flowchart LR
   subgraph Device
-    App[Expo React Native App<br/>TinyvexProvider]
+    App["Expo React Native App\nTinyvexProvider"]
   end
 
   subgraph Bridge
@@ -12,7 +12,7 @@ flowchart LR
   end
 
   subgraph Storage
-    DB[(SQLite file<br/>crates/tinyvex)]
+    DB[("SQLite file\ncrates/tinyvex")]
   end
 
   App --|connect ws://host:8787/ws|--> WS

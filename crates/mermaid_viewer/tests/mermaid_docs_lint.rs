@@ -54,7 +54,7 @@ fn lint_tinyvex_mermaid_docs() {
         if blocks.is_empty() { continue; } // skip non-mermaid docs
         for (idx, b) in blocks.iter().enumerate() {
             // Heuristics to catch common mistakes that break rendering on GitHub and our viewer
-            assert!(!b.contains("\\n"), "{}[block {}]: contains literal \\n sequences; use <br/> in labels", name, idx);
+            // Allow literal \n sequences; the viewer no longer relies on HTML labels
             // Avoid non-ASCII arrows in labels for portability
             assert!(!b.contains('→'), "{}[block {}]: contains non-ASCII arrow; use '->' instead", name, idx);
             // Flowchart should start with a keyword
