@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use tokio::sync::{Mutex, broadcast};
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::mpsc;
 
 use crate::Opts;
 
@@ -49,6 +50,11 @@ pub struct AppState {
     pub tinyvex: std::sync::Arc<tinyvex::Tinyvex>,
     // Transport-agnostic writer that performs DB writes and returns typed notifications
     pub tinyvex_writer: std::sync::Arc<tinyvex::Writer>,
+    // Sync (sessions watcher) controls
+    pub sync_enabled: AtomicBool,
+    pub sync_two_way: AtomicBool,
+    pub sync_last_read_ms: Mutex<u64>,
+    pub sync_cmd_tx: Mutex<Option<mpsc::Sender<crate::watchers::SyncCommand>>>,
     // Map client thread doc id -> last known session id (for per-thread resume)
     pub sessions_by_client_doc: Mutex<HashMap<String, String>>,
 }

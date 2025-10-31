@@ -18,6 +18,11 @@ pub enum ControlCommand {
     TvxQuery { name: String, args: serde_json::Value },
     TvxMutate { name: String, args: serde_json::Value },
     TvxBackfill,
+    // Sync controls
+    SyncStatus,
+    SyncEnable { enabled: bool },
+    SyncTwoWay { enabled: bool },
+    SyncFullRescan,
     ProjectSave {
         project: crate::projects::Project,
     },
@@ -72,6 +77,16 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
             Some(ControlCommand::TvxMutate { name, args })
         }
         "tvx.backfill" => Some(ControlCommand::TvxBackfill),
+        "sync.status" => Some(ControlCommand::SyncStatus),
+        "sync.enable" => {
+            let enabled = v.get("enabled").and_then(|x| x.as_bool()).unwrap_or(true);
+            Some(ControlCommand::SyncEnable { enabled })
+        }
+        "sync.two_way" => {
+            let enabled = v.get("enabled").and_then(|x| x.as_bool()).unwrap_or(false);
+            Some(ControlCommand::SyncTwoWay { enabled })
+        }
+        "sync.full_rescan" => Some(ControlCommand::SyncFullRescan),
         "run.submit" => {
             let thread_doc_id = v
                 .get("threadDocId")
