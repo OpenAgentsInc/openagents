@@ -117,6 +117,10 @@ async fn process_file_append(state: &AppState, file_path: &Path, st: &mut FileSt
                     let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
                     let mode = if ty == "item.delta" || ty == "event_msg" { crate::tinyvex_write::StreamMode::Delta } else { crate::tinyvex_write::StreamMode::Finalize };
                     crate::tinyvex_write::mirror_acp_update_to_tinyvex_mode(state, "codex", &id, &update, mode).await;
+                    // Also mirror to client thread doc id if we have a mapping for this session
+                    if let Some(alias) = { state.client_doc_by_session.lock().await.get(&id).cloned() } {
+                        crate::tinyvex_write::mirror_acp_update_to_tinyvex_mode(state, "codex", &alias, &update, mode).await;
+                    }
                     tracing::info!(path=%file_path.display(), thread_id=%id, mode=?mode, "codex watcher: mirrored update");
                 } else {
                     tracing::warn!(path=%file_path.display(), "codex watcher: update without known thread id; skipping");

@@ -141,6 +141,7 @@ async fn main() -> Result<()> {
         sync_last_read_ms: Mutex::new(0),
         sync_cmd_tx: Mutex::new(None),
         sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
+        client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
     });
 
 

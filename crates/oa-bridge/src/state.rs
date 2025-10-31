@@ -57,6 +57,8 @@ pub struct AppState {
     pub sync_cmd_tx: Mutex<Option<mpsc::Sender<crate::watchers::SyncCommand>>>,
     // Map client thread doc id -> last known session id (for per-thread resume)
     pub sessions_by_client_doc: Mutex<HashMap<String, String>>,
+    // Map session id -> client thread doc id (alias for watcher mirroring)
+    pub client_doc_by_session: Mutex<HashMap<String, String>>,
 }
 
 impl AppState {

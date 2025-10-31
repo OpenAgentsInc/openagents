@@ -34,7 +34,7 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
   const { eventsForThread } = useAcp()
-  const { messagesByThread, subscribeMessages, queryMessages, queryToolCalls, toolCallsByThread } = useTinyvex() as any
+  const { messagesByThread, subscribeMessages, queryMessages, queryToolCalls, toolCallsByThread, threads } = useTinyvex() as any
   const { send, connected } = useBridge()
   const agentProvider = useSettings((s) => s.agentProvider)
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
@@ -49,7 +49,13 @@ export default function ThreadScreen() {
     if (!threadId) return
     try { subscribeMessages(threadId) } catch {}
     try { queryMessages(threadId, 50) } catch {}
-    try { queryToolCalls?.(threadId, 50) } catch {}
+    try {
+      // Prefer canonical session id if the threads list records it as resume_id
+      const rows: any[] = Array.isArray(threads) ? threads : []
+      const row = rows.find((r: any) => String((r?.id || r?.thread_id || r?.threadId || '')) === threadId)
+      const canon = String((row?.resume_id || row?.resumeId || threadId) || threadId)
+      queryToolCalls?.(canon, 50)
+    } catch {}
   }, [threadId, subscribeMessages, queryMessages])
   // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
   React.useEffect(() => {

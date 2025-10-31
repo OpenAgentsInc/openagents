@@ -290,17 +290,48 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     let tid = args.get("threadId").and_then(|x| x.as_str()).unwrap_or("");
                                     let lim = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(50);
                                     if !tid.is_empty() {
+                                        let send_rows = |rows: Vec<tinyvex::ToolCallRow>| {
+                                            let line = serde_json::json!({
+                                                "type":"tinyvex.query_result",
+                                                "name":"toolCalls.list",
+                                                "threadId": tid,
+                                                "rows": rows
+                                            }).to_string();
+                                            let _ = stdin_state.tx.send(line);
+                                        };
                                         match stdin_state.tinyvex.list_tool_calls(tid, lim) {
-                                            Ok(rows) => {
-                                                let line = serde_json::json!({
-                                                    "type":"tinyvex.query_result",
-                                                    "name":"toolCalls.list",
-                                                    "threadId": tid,
-                                                    "rows": rows
-                                                }).to_string();
-                                                let _ = stdin_state.tx.send(line);
+                                            Ok(rows) if !rows.is_empty() => send_rows(rows),
+                                            _ => {
+                                                // On-demand backfill: parse the Codex rollout file for this session id and mirror tool calls
+                                                let base = crate::watchers::codex_base_path();
+                                                if let Some(path) = crate::history::resolve_session_path(&base, Some(tid), None) {
+                                                    if let Ok(f) = std::fs::File::open(&path) {
+                                                        use std::io::{BufRead, BufReader};
+                                                        let r = BufReader::new(f);
+                                                        for line in r.lines().flatten() {
+                                                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                                                                if let Some(update) = acp_event_translator::translate_codex_event_to_acp_update(&v) {
+                                                                    // Only mirror tool call related updates here; others are already in Tinyvex via tails
+                                                                    match update {
+                                                                        agent_client_protocol::SessionUpdate::ToolCall(_) | agent_client_protocol::SessionUpdate::ToolCallUpdate(_) => {
+                                                                            crate::tinyvex_write::mirror_acp_update_to_tinyvex(&stdin_state, "codex", tid, &update).await;
+                                                                        }
+                                                                        _ => {}
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    // Re-query after backfill
+                                                    match stdin_state.tinyvex.list_tool_calls(tid, lim) {
+                                                        Ok(rows2) => send_rows(rows2),
+                                                        Err(e) => { error!(?e, "tinyvex toolCalls.list after backfill failed"); }
+                                                    }
+                                                } else {
+                                                    // No session file found; reply with empty
+                                                    send_rows(Vec::new());
+                                                }
                                             }
-                                            Err(e) => { error!(?e, "tinyvex toolCalls.list failed"); }
                                         }
                                     }
                                 }
@@ -614,6 +645,7 @@ mod auth_tests {
             current_thread_doc: Mutex::new(None),
             stream_track: Mutex::new(std::collections::HashMap::new()),
             pending_user_text: Mutex::new(std::collections::HashMap::new()),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
             sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: tvx.clone(),
@@ -763,6 +795,28 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                         if let Some(client_doc_str) = client_doc.clone() {
                             let mut map = state_for_stdout.sessions_by_client_doc.lock().await;
                             map.insert(client_doc_str, val.to_string());
+                        }
+                        // Also track inverse mapping: session -> client doc for watcher aliasing and hydration
+                        if let Some(client_doc_str) = client_doc.clone() {
+                            let mut inv = state_for_stdout.client_doc_by_session.lock().await;
+                            inv.insert(val.to_string(), client_doc_str.clone());
+                        }
+                        // Upsert threads row for the client doc id to record resume_id = session id
+                        if let Some(client_doc_str) = client_doc.clone() {
+                            let now: i64 = now_ms().try_into().unwrap_or(0);
+                            let row = tinyvex::ThreadRow {
+                                id: client_doc_str.clone(),
+                                thread_id: Some(client_doc_str.clone()),
+                                title: "Thread".into(),
+                                project_id: None,
+                                resume_id: Some(val.to_string()),
+                                rollout_path: None,
+                                source: Some("codex".into()),
+                                created_at: now,
+                                updated_at: now,
+                                message_count: None,
+                            };
+                            let _ = state_for_stdout.tinyvex.upsert_thread(&row);
                         }
                         // If we have a pending user text for this client thread doc id, emit ACP and write to Tinyvex acp_events
                         if let Some(client_doc_str) = client_doc.clone() {

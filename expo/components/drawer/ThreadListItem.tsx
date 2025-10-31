@@ -48,6 +48,8 @@ export function ThreadListItemBase({
 export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPress?: () => void; onLongPress?: () => void }) {
   const router = useRouter()
   const threadId = String(row?.threadId || row?.thread_id || row?._id || row?.id || '')
+  // Hide ephemeral/internal threads
+  if (/^ephemeral_/i.test(threadId)) return null
   const { messagesByThread } = useTinyvex()
   const msgs = Array.isArray(messagesByThread[threadId]) ? messagesByThread[threadId] : []
   // Prefer last message timestamp if we have a tail; fall back to row.updatedAt
