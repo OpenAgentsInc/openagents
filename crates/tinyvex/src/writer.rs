@@ -35,6 +35,7 @@ pub enum WriterNotification {
     MessagesFinalize {
         thread_id: String,
         item_id: String,
+        kind: String,
         text_len: usize,
     },
     ToolCallUpsert { thread_id: String, tool_call_id: String },
@@ -137,9 +138,11 @@ impl Writer {
         let _ = self
             .tvx
             .finalize_streamed_message(thread_id, &item_id, &final_text, t);
+        let (out_kind, _role) = Self::map_kind_role(kind);
         Some(vec![WriterNotification::MessagesFinalize {
             thread_id: thread_id.to_string(),
             item_id,
+            kind: out_kind.to_string(),
             text_len: final_text.len(),
         }])
     }
@@ -202,45 +205,48 @@ impl Writer {
                 let content_json = serde_json::to_string(&tc.content).unwrap_or("[]".into());
                 let locations_json = serde_json::to_string(&tc.locations).unwrap_or("[]".into());
                 let _ = self.tvx.upsert_acp_tool_call(
-                    thread_id, &id, title, &kind, &status, &content_json, &locations_json, t,
+                    thread_id,
+                    &id,
+                    Some(title),
+                    Some(&kind),
+                    Some(&status),
+                    Some(&content_json),
+                    Some(&locations_json),
+                    t,
                 );
                 vec![WriterNotification::ToolCallUpsert { thread_id: thread_id.to_string(), tool_call_id: id }]
             }
             SU::ToolCallUpdate(tc) => {
                 let id = format!("{:?}", tc.id);
                 let title: &str = tc.fields.title.as_deref().unwrap_or("");
-                let kind: String = tc
+                let kind_s: Option<String> = tc
                     .fields
                     .kind
                     .as_ref()
-                    .map(|k| format!("{:?}", k))
-                    .unwrap_or_else(|| "".to_string());
-                let status: String = tc
+                    .map(|k| format!("{:?}", k));
+                let status_s: Option<String> = tc
                     .fields
                     .status
                     .as_ref()
-                    .map(|s| format!("{:?}", s))
-                    .unwrap_or_else(|| "".to_string());
-                let content_json: String = tc
+                    .map(|s| format!("{:?}", s));
+                let content_json_s: Option<String> = tc
                     .fields
                     .content
                     .as_ref()
-                    .map(|c| serde_json::to_string(c).unwrap_or("[]".into()))
-                    .unwrap_or_else(|| "[]".into());
-                let locations_json: String = tc
+                    .map(|c| serde_json::to_string(c).unwrap_or("[]".into()));
+                let locations_json_s: Option<String> = tc
                     .fields
                     .locations
                     .as_ref()
-                    .map(|l| serde_json::to_string(l).unwrap_or("[]".into()))
-                    .unwrap_or_else(|| "[]".into());
+                    .map(|l| serde_json::to_string(l).unwrap_or("[]".into()));
                 let _ = self.tvx.upsert_acp_tool_call(
                     thread_id,
                     &id,
-                    title,
-                    &kind,
-                    &status,
-                    &content_json,
-                    &locations_json,
+                    tc.fields.title.as_deref(),
+                    kind_s.as_deref(),
+                    status_s.as_deref(),
+                    content_json_s.as_deref(),
+                    locations_json_s.as_deref(),
                     t,
                 );
                 vec![WriterNotification::ToolCallUpdate { thread_id: thread_id.to_string(), tool_call_id: id }]

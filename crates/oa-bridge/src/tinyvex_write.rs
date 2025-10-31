@@ -59,7 +59,7 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
 pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &str) -> bool {
     if let Some(notifs) = state.tinyvex_writer.try_finalize_stream_kind(thread_id, kind).await {
         for n in notifs {
-            if let tinyvex::WriterNotification::MessagesFinalize { thread_id, item_id, text_len } = n {
+            if let tinyvex::WriterNotification::MessagesFinalize { thread_id, item_id, kind, text_len } = n {
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
                     "op": "finalizeStreamed",
@@ -150,12 +150,12 @@ pub async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
         .finalize_streaming_for_thread(thread_id)
         .await;
     for n in notifs {
-        if let tinyvex::WriterNotification::MessagesFinalize { thread_id, item_id, text_len } = n {
+        if let tinyvex::WriterNotification::MessagesFinalize { thread_id, item_id, kind, text_len } = n {
             let _ = state.tx.send(json!({
                 "type": "bridge.tinyvex_write",
                 "op": "finalizeStreamed",
                 "threadId": thread_id,
-                "kind": "message",
+                "kind": kind,
                 "itemId": item_id,
                 "len": text_len,
                 "ok": true
@@ -165,7 +165,7 @@ pub async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
                 "stream": "messages",
                 "op": "finalizeStreamed",
                 "threadId": thread_id,
-                "kind": "message",
+                "kind": kind,
                 "itemId": item_id
             }).to_string());
         }
