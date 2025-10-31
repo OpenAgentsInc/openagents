@@ -150,6 +150,15 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
         appLog('bridge.open');
         try { console.log('[bridge.ws] open') } catch {}
+        // Reapply persisted sync preferences to the bridge so toggles survive restarts
+        try {
+          const s = useSettings.getState();
+          const prefs = { syncEnabled: !!s.syncEnabled, syncTwoWay: !!s.syncTwoWay };
+          try { ws.send(JSON.stringify({ control: 'sync.enable', enabled: prefs.syncEnabled })); } catch {}
+          try { ws.send(JSON.stringify({ control: 'sync.two_way', enabled: prefs.syncTwoWay })); } catch {}
+          // Ask for status after applying
+          try { ws.send(JSON.stringify({ control: 'sync.status' })); } catch {}
+        } catch {}
       };
       ws.onmessage = (evt) => {
         const data = typeof evt.data === 'string' ? evt.data : String(evt.data);

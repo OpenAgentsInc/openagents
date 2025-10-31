@@ -16,8 +16,13 @@ export default function SettingsScreen() {
   const updatesAutoPoll = useSettings((s) => s.updatesAutoPoll)
   const setUpdatesAutoPoll = useSettings((s) => s.setUpdatesAutoPoll)
   // Convex removed
-  const [syncEnabled, setSyncEnabled] = React.useState<boolean>(true)
-  const [twoWay, setTwoWay] = React.useState<boolean>(false)
+  const syncEnabled = useSettings((s) => s.syncEnabled)
+  const setSyncEnabled = useSettings((s) => s.setSyncEnabled)
+  const twoWay = useSettings((s) => s.syncTwoWay)
+  const setTwoWay = useSettings((s) => s.setSyncTwoWay)
+  // Remote status mirrors (do not override persisted preferences)
+  const [statusEnabled, setStatusEnabled] = React.useState<boolean | null>(null)
+  const [statusTwoWay, setStatusTwoWay] = React.useState<boolean | null>(null)
   const [syncFiles, setSyncFiles] = React.useState<number>(0)
   const [syncBase, setSyncBase] = React.useState<string>('')
   const [syncLastRead, setSyncLastRead] = React.useState<number>(0)
@@ -29,8 +34,8 @@ export default function SettingsScreen() {
       try {
         const obj = JSON.parse(raw)
         if (obj?.type === 'bridge.sync_status') {
-          setSyncEnabled(!!obj.enabled)
-          setTwoWay(!!obj.twoWay)
+          setStatusEnabled(!!obj.enabled)
+          setStatusTwoWay(!!obj.twoWay)
           const w = Array.isArray(obj.watched) && obj.watched[0] ? obj.watched[0] : null
           setSyncFiles(Number(w?.files || 0))
           setSyncBase(String(w?.base || ''))
@@ -53,18 +58,17 @@ export default function SettingsScreen() {
 
   const toggleSync = React.useCallback(() => {
     const next = !syncEnabled
-    setSyncEnabled(next)
+    try { setSyncEnabled(next) } catch {}
     try { send(JSON.stringify({ control: 'sync.enable', enabled: next })) } catch {}
-    // Re-query shortly for authoritative status
     setTimeout(refreshSyncStatus, 200)
-  }, [syncEnabled, send, refreshSyncStatus])
+  }, [syncEnabled, setSyncEnabled, send, refreshSyncStatus])
 
   const toggleTwoWay = React.useCallback(() => {
     const next = !twoWay
-    setTwoWay(next)
+    try { setTwoWay(next) } catch {}
     try { send(JSON.stringify({ control: 'sync.two_way', enabled: next })) } catch {}
     setTimeout(refreshSyncStatus, 200)
-  }, [twoWay, send, refreshSyncStatus])
+  }, [twoWay, setTwoWay, send, refreshSyncStatus])
 
   const fullRescan = React.useCallback(() => {
     try { send(JSON.stringify({ control: 'sync.full_rescan' })) } catch {}
@@ -104,6 +108,11 @@ export default function SettingsScreen() {
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
             Files: {syncFiles}  Last read: {syncLastRead ? new Date(syncLastRead).toLocaleString() : '—'}
           </Text>
+          {statusEnabled !== null || statusTwoWay !== null ? (
+            <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
+              Bridge status — Sync: {String(statusEnabled)}  Two‑way: {String(statusTwoWay)}
+            </Text>
+          ) : null}
         </View>
       ) : null}
       <View style={{ height: 16 }} />
