@@ -41,7 +41,7 @@ Releases
 ## Version Compatibility
 
 - v0.1.0 and v0.1.1 (mobile only): require the legacy bridge flow below. You must check out the old commit to match that app build: `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`.
-- v0.2.0+ (desktop/tauri and forward): use the Desktop (Tauri) flow. The bridge is auto‑spawned, Convex runs as an embedded sidecar on 3210, and functions deploy automatically during `cargo tauri dev`.
+- v0.2.0+ (desktop/tauri and forward): current builds use Tinyvex for local storage and WS changefeed. The older Tauri+Convex sidecar flow is historical and documented below.
 
 ## Desktop (Tauri) — v0.2+ (historical)
 
@@ -51,10 +51,10 @@ Single command, offline‑first dev.
    - `git clone https://github.com/OpenAgentsInc/openagents && cd openagents`
    - `bun run desktop:dev`
    - This script will:
-     - Historical flow; current bridge uses Tinyvex for local sync. See docs/tinyvex/tinyvex.md.
-     - Launch `cargo tauri dev` (bridge auto‑spawns, UI connects to `ws://127.0.0.1:8787/ws`)
+     - Launch `cargo tauri dev` (bridge auto‑spawns, UI connects to `ws://127.0.0.1:8787/ws`).
+     - Note: Historical builds used a Convex sidecar on 3210; modern builds use Tinyvex only.
 3) Use it
-   - Left sidebar shows Bridge WS, Convex (http://127.0.0.1:3210), and Codex PID
+   - Left sidebar shows Bridge WS and Codex PID (historical builds also surfaced Convex at http://127.0.0.1:3210)
    - Recent threads load; click a thread to view messages (preface/instructions are hidden)
 
 Options
@@ -88,7 +88,7 @@ Requirements (dev): Rust toolchain, `bash` + `curl` (for Bun install) and a work
 
 Notes:
 - You also need the Codex CLI installed and on your `PATH` (`codex --version`).
-- Desktop (v0.2+): no manual `.env.local` needed; Tauri sets env when deploying functions to the sidecar.
+- Desktop (v0.2+, historical sidecar): no manual `.env.local` needed; Tauri set env when deploying functions to the Convex sidecar.
 - Mobile (v0.1.x): `.env.local` is generated on the first `cargo bridge` run (port 7788).
 
 ## Troubleshooting
@@ -108,19 +108,21 @@ Notes:
 
 ## Advanced
 
-- Bind interface for Convex: set `OPENAGENTS_CONVEX_INTERFACE=127.0.0.1` to restrict to loopback (default is `0.0.0.0`).
-- Skip bootstrap (if you manage Bun/Convex manually): set `OPENAGENTS_BOOTSTRAP=0`.
+- Tinyvex DB location: `~/.openagents/tinyvex/data.sqlite3` (created on first run).
+- Historical Convex options (legacy only):
+  - Bind interface for Convex: set `OPENAGENTS_CONVEX_INTERFACE=127.0.0.1` to restrict to loopback.
+  - Skip bootstrap (if you manage Bun/Convex manually): set `OPENAGENTS_BOOTSTRAP=0`.
 
 ## Local Persistence
 
-All builds now use Tinyvex (in‑process SQLite) for threads and messages.
+All current builds use Tinyvex (in‑process SQLite) for threads and messages.
 
 - No external database process; the bridge serves WS snapshots and updates via `/ws`.
-- For the historical Convex integration, see docs/convex/.
+- For the historical Convex integration, see `docs/convex/`.
 
 ## Addendum (2025-10-26)
 
-- Bridge docs clarified: Updated the `oa-bridge` entry comment to reflect the current architecture — WS is primarily for control and legacy JSONL streaming, while all persistence goes to Convex (threads, messages, tool rows). Filesystem watchers mirror projects/skills/sessions into Convex.
+- Bridge docs clarified: WS is primarily for control and legacy JSONL streaming. All persistence now goes to Tinyvex (threads, messages, tool rows). Historical Convex references remain in `docs/convex/` for older builds only.
 - Tauri sidebar: “New” thread button remains at the top of the Recent Threads block for quick thread creation; composer autofocus on selection is wired.
 - Styling: Thread count badge keeps a fixed minimum width for better alignment and the status rows use a compact 12px type to keep the header condensed.
-- Housekeeping: Verified no references to the removed legacy `events.rs`; remaining bridge helpers live in dedicated modules (`bootstrap`, `ws`, `convex_write`, `watchers`).
+- Housekeeping: Verified no references to the removed legacy `events.rs`; remaining bridge helpers live in dedicated modules (`bootstrap`, `ws`, `tinyvex_write`).
