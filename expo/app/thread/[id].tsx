@@ -1,6 +1,6 @@
 import React from 'react'
 import { useLocalSearchParams, router } from 'expo-router'
-import { ScrollView, Text, View, KeyboardAvoidingView, Platform, Pressable } from 'react-native'
+import { FlatList, Text, View, KeyboardAvoidingView, Platform, Pressable } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTinyvex } from '@/providers/tinyvex'
 import { Colors } from '@/constants/theme'
@@ -17,6 +17,7 @@ import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUse
 import { SessionUpdatePlan } from '@/components/acp/SessionUpdatePlan'
 import { SessionUpdateToolCall } from '@/components/acp/SessionUpdateToolCall'
 import * as Haptics from 'expo-haptics'
+import { useThreadTimeline } from '@/hooks/use-thread-timeline'
 
 export default function ThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -43,6 +44,7 @@ export default function ThreadScreen() {
   useHeaderTitle('New Thread')
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
   const tvxMessages = React.useMemo(() => messagesByThread[threadId] || [], [messagesByThread, threadId])
+  const timeline = useThreadTimeline(threadId)
 
   // Ensure we are subscribed to Tinyvex messages for this thread and have a recent snapshot
   React.useEffect(() => {
@@ -85,194 +87,17 @@ export default function ThreadScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
       <View key={`thread-${threadId}`} style={{ flex: 1 }}>
-      <ScrollView ref={(r) => { try { (globalThis as any).__threadScroll = r } catch {} }} style={{ flex: 1 }} keyboardShouldPersistTaps='handled' contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}
-        onContentSizeChange={() => { try { (globalThis as any).__threadScroll?.scrollToEnd?.({ animated: false }) } catch {} }}
-      >
+      <FlatList
+        data={timeline}
+        keyExtractor={(it) => it.key}
+        renderItem={({ item }) => (<View style={{ paddingVertical: 4 }}>{item.node}</View>)}
+        contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}
+        keyboardShouldPersistTaps='handled'
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        style={{ flex: 1 }}
+      />
         {/* Provider selector: show only before any messages exist */}
-        {acpUpdates.length === 0 && tvxMessages.length === 0 && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, marginRight: 8 }}>Provider</Text>
-            <Pressable
-              onPress={async () => {
-                try {
-                  if (agentProvider !== 'codex') {
-                    if (process.env.EXPO_OS === 'ios') {
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                    } else {
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                    }
-                  }
-                } catch {}
-                try { setAgentProvider('codex') } catch {}
-              }}
-              accessibilityRole='button'
-              style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'codex' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
-            >
-              <Text style={{ color: agentProvider === 'codex' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Codex</Text>
-            </Pressable>
-            <Pressable
-              onPress={async () => {
-                try {
-                  if (agentProvider !== 'claude_code') {
-                    if (process.env.EXPO_OS === 'ios') {
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                    } else {
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                    }
-                  }
-                } catch {}
-                try { setAgentProvider('claude_code') } catch {}
-              }}
-              accessibilityRole='button'
-              style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'claude_code' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
-            >
-              <Text style={{ color: agentProvider === 'claude_code' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Claude Code</Text>
-            </Pressable>
-          </View>
-        )}
-        {acpUpdates.length === 0 && tvxMessages.length === 0 && (
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
-        )}
-        {(() => {
-          type RenderItem = { ts: number; key: string; render: () => React.ReactNode }
-          const items: RenderItem[] = []
-          const haveTinyvex = tvxMessages.length > 0
-
-          // Tinyvex messages → timeline items (hide reasoning here; show in detail)
-          for (let i = 0; i < tvxMessages.length; i++) {
-            const m = tvxMessages[i]
-            const ts = Number(m.ts || m.updated_at || m.created_at || Date.now())
-            if ((m.kind || '').toLowerCase() === 'reason') continue
-            items.push({
-              ts,
-              key: `tvx-${m.id || i}`,
-              render: () => {
-                const text = String(m.text || '')
-                const content = { type: 'text', text } as any
-                if ((m.role || '').toLowerCase() === 'user') return <SessionUpdateUserMessageChunk content={content} />
-                const firstLine = (text.split('\n')[0] || text).trim()
-                return (
-                  <Pressable onPress={() => { try { router.push(`/thread/${encodeURIComponent(threadId)}/message/${encodeURIComponent(String(m.id))}` as any) } catch {} }} accessibilityRole='button'>
-                    <SessionUpdateAgentMessageChunk content={{ type: 'text', text: firstLine } as any} />
-                  </Pressable>
-                )
-              },
-            })
-          }
-
-          // Aggregate tool calls (create + updates) by id from live ACP
-          type ToolLike = { title?: any; status?: any; kind?: any; content?: any; locations?: any }
-          const toolById = new Map<string, { firstTs: number; props: ToolLike }>()
-
-          const pushPlan = (n: SessionNotificationWithTs, u: any, index: number) => {
-            const ts = Number((n as any).addedAt || Date.now())
-            items.push({
-              ts,
-              key: `plan-${ts}-${index}`,
-              render: () => <SessionUpdatePlan entries={u.entries || []} />,
-            })
-          }
-
-          const maybeAddMessageChunk = (n: SessionNotificationWithTs, u: any, index: number) => {
-            if (haveTinyvex) return // dedupe against Tinyvex history
-            const ts = Number((n as any).addedAt || Date.now())
-            if (u?.sessionUpdate === 'user_message_chunk') {
-              items.push({ ts, key: `acp-u-${ts}-${index}`, render: () => <SessionUpdateUserMessageChunk content={u.content} /> })
-            } else if (u?.sessionUpdate === 'agent_message_chunk') {
-              const fullText = (u.content && (u.content as any).text) || ''
-              const firstLine = String(fullText).split('\n')[0] || ''
-              items.push({ ts, key: `acp-a-${ts}-${index}`, render: () => <SessionUpdateAgentMessageChunk content={{ type: 'text', text: firstLine } as any} /> })
-            } else if (u?.sessionUpdate === 'agent_thought_chunk') {
-              // Hide live thought traces in the timeline; available in detail
-            }
-          }
-
-          for (let i = 0; i < acpUpdates.length; i++) {
-            const n = acpUpdates[i] as SessionNotificationWithTs
-            const u: any = (n as any).update
-            if (!u) continue
-            if (u.sessionUpdate === 'plan') {
-              pushPlan(n, u, i)
-              continue
-            }
-            if (u.sessionUpdate === 'tool_call') {
-              const id = String((u.id && (u.id as any).value) || (u.id?.toString?.() ?? '')) || `call-${i}`
-              const firstTs = Number((n as any).addedAt || Date.now())
-              const base: ToolLike = { title: u.title, status: u.status, kind: u.kind, content: u.content, locations: u.locations }
-              const cur = toolById.get(id)
-              if (!cur) toolById.set(id, { firstTs, props: { ...base } })
-              else toolById.set(id, { firstTs: Math.min(cur.firstTs, firstTs), props: { ...cur.props, ...base } })
-              continue
-            }
-            if (u.sessionUpdate === 'tool_call_update') {
-              const id = String((u.id && (u.id as any).value) || (u.id?.toString?.() ?? '')) || `update-${i}`
-              const ts = Number((n as any).addedAt || Date.now())
-              const delta: ToolLike = {
-                title: u.fields?.title ?? undefined,
-                status: u.fields?.status ?? undefined,
-                // Merge additional fields if present
-                content: Array.isArray(u.fields?.content) ? u.fields?.content : undefined,
-                locations: Array.isArray(u.fields?.locations) ? u.fields?.locations : undefined,
-              }
-              const prev = toolById.get(id)
-              if (prev) {
-                toolById.set(id, { firstTs: prev.firstTs, props: { ...prev.props, ...delta } })
-              } else {
-                // No create seen — synthesize a minimal card so updates render
-                toolById.set(id, { firstTs: ts, props: { kind: 'other', ...delta } })
-              }
-              continue
-            }
-            // Text/Thought chunks (when no Tinyvex history to dedupe against)
-            maybeAddMessageChunk(n, u, i)
-          }
-
-          // Emit tool cards as timeline items
-          for (const [id, v] of toolById.entries()) {
-            const props = v.props as any
-            items.push({
-              ts: v.firstTs,
-              key: `tool-${id}`,
-              render: () => <SessionUpdateToolCall {...props} />,
-            })
-          }
-
-          // Hydrated tool calls from Tinyvex — add minimal cards sorted by updatedAt
-          try {
-            const trows: any[] = Array.isArray((toolCallsByThread as any)?.[threadId]) ? (toolCallsByThread as any)[threadId] : []
-            for (const r of trows) {
-              const ts = Number((r?.updated_at ?? r?.updatedAt ?? r?.created_at ?? r?.createdAt ?? Date.now()))
-              const title = String(r?.title || 'Tool')
-              const statusRaw = String(r?.status || '').toLowerCase()
-              const status = (statusRaw.includes('complete') ? 'completed' : (statusRaw.includes('fail') ? 'failed' : (statusRaw.includes('progress') ? 'in_progress' : 'pending')))
-              const kindRaw = String(r?.kind || '').toLowerCase()
-              let kind: any = 'other'
-              if (kindRaw.includes('execute')) kind = 'execute'
-              else if (kindRaw.includes('edit')) kind = 'edit'
-              else if (kindRaw.includes('search')) kind = 'search'
-              else if (kindRaw.includes('read')) kind = 'read'
-              else if (kindRaw.includes('delete')) kind = 'delete'
-              else if (kindRaw.includes('move')) kind = 'move'
-              else if (kindRaw.includes('fetch')) kind = 'fetch'
-              else if (kindRaw.includes('think')) kind = 'think'
-              else if (kindRaw.includes('switch')) kind = 'switch_mode'
-              let locations: any[] = []
-              try { const lj = r?.locations_json || r?.locations; if (lj) { const arr = typeof lj === 'string' ? JSON.parse(lj) : lj; if (Array.isArray(arr)) { locations = arr.slice(0, 8) } } } catch {}
-              const props: any = { title, status, kind, content: [], locations }
-              items.push({ ts, key: `tvx-tool-${String(r?.tool_call_id || r?.toolCallId || r?.id || ts)}`, render: () => <SessionUpdateToolCall {...props} /> })
-            }
-          } catch {}
-
-          // Final: sort by timestamp, stable
-          items.sort((a, b) => a.ts - b.ts)
-
-          return items.map((it) => (
-            <View key={it.key} style={{ paddingVertical: 4 }}>
-              {it.render()}
-            </View>
-          ))
-        })()}
-      </ScrollView>
+      
       <View style={{ paddingTop: 10, paddingHorizontal: 10, paddingBottom: Math.max(10, insets.bottom), borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.background }}>
         <Composer onSend={onSend} connected={connected} placeholder={agentProvider === 'claude_code' ? 'Ask Claude Code' : 'Ask Codex'} />
       </View>

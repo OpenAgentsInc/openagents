@@ -9,13 +9,25 @@ const THREADS_REFRESH_DEBOUNCE_MS = 400 // debounce for threads.list refresh on 
 const PREFETCH_TOP_THREADS = 10 // number of recent threads to warm on connect
 const DEFAULT_THREAD_TAIL = 50 // number of most recent messages to fetch per thread
 
-type ThreadsRow = { id: string; thread_id?: string; title: string; project_id?: string; resume_id?: string; created_at: number; updated_at: number }
-type MessageRow = { id: number; thread_id: string; role?: string; kind: string; text?: string; item_id?: string; partial?: number; seq?: number; ts: number; created_at: number; updated_at?: number }
+export type ThreadsRow = { id: string; thread_id?: string; title: string; project_id?: string; resume_id?: string; created_at: number; updated_at: number }
+export type MessageRow = { id: number; thread_id: string; role?: string; kind: string; text?: string; item_id?: string; partial?: number; seq?: number; ts: number; created_at: number; updated_at?: number }
 
-type TinyvexContextValue = {
+export type ToolCallRow = {
+  thread_id: string
+  tool_call_id: string
+  title?: string
+  kind?: string
+  status?: string
+  content_json?: string
+  locations_json?: string
+  created_at: number
+  updated_at: number
+}
+
+export type TinyvexContextValue = {
   threads: ThreadsRow[];
   messagesByThread: Record<string, MessageRow[]>;
-  toolCallsByThread: Record<string, any[]>;
+  toolCallsByThread: Record<string, ToolCallRow[]>;
   planTouched: Record<string, number>;
   stateTouched: Record<string, number>;
   subscribeThreads: () => void;
@@ -42,7 +54,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const connected = bridge.connected;
   const [threads, setThreads] = useState<ThreadsRow[]>([])
   const [messagesByThread, setMessagesByThread] = useState<Record<string, MessageRow[]>>({})
-  const [toolCallsByThread, setToolCallsByThread] = useState<Record<string, any[]>>({})
+  const [toolCallsByThread, setToolCallsByThread] = useState<Record<string, ToolCallRow[]>>({})
   const [planTouched, setPlanTouched] = useState<Record<string, number>>({})
   const [stateTouched, setStateTouched] = useState<Record<string, number>>({})
 
@@ -133,17 +145,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           try { scheduleThreadsRefresh() } catch {}
         }
       } else if (obj.stream === 'toolCalls' && typeof obj.threadId === 'string') {
-        const tid: string = obj.threadId
-        const tcid: string | undefined = typeof obj.toolCallId === 'string' ? obj.toolCallId : undefined
-        if (tcid) {
-          setToolCallsByThread((prev) => {
-            const next = { ...prev }
-            const list = Array.isArray(next[tid]) ? next[tid].slice() : []
-            if (!list.includes(tcid)) list.push(tcid)
-            next[tid] = list
-            return next
-          })
-        }
+        // Ignore incremental toolCalls stream; we hydrate via toolCalls.list when needed.
       } else if (obj.stream === 'plan' && typeof obj.threadId === 'string') {
         const tid: string = obj.threadId
         setPlanTouched((prev) => ({ ...prev, [tid]: Date.now() }))
@@ -174,7 +176,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           }
         } catch {}
       } else if (obj.name === 'toolCalls.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
-        setToolCallsByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as any[] }))
+        setToolCallsByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as ToolCallRow[] }))
       } else if (obj.name === 'threadsAndTails.list') {
         // cancel fallback to threads.list if pending
         try {
