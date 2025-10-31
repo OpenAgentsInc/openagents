@@ -190,17 +190,26 @@ export default function Onboarding() {
 
       {/* Single big Pair button (centered vertically) */}
       <View style={styles.centerWrap}>
-        <Image source={require('../../assets/images/icon.png')} style={styles.logo} resizeMode='contain' />
-        <Text style={styles.logoBrand}>OPENAGENTS</Text>
-        <Text style={styles.logoTitle}>TRICODER</Text>
-        <Pressable
-          onPress={() => { try { router.push('/scan' as any) } catch {} }}
-          accessibilityRole='button'
-          style={styles.pairBtn as any}
-        >
-          <Ionicons name='qr-code-outline' size={22} color={Colors.foreground} />
-          <Text style={styles.pairText}>Pair with Desktop</Text>
-        </Pressable>
+        {isConnecting ? (
+          <>
+            <ActivityIndicator size='large' color={Colors.foreground} />
+            <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16, marginTop: 10 }}>Pairing…</Text>
+          </>
+        ) : (
+          <>
+            <Image source={require('../../assets/images/icon.png')} style={styles.logo} resizeMode='contain' />
+            <Text style={styles.logoBrand}>OPENAGENTS</Text>
+            <Text style={styles.logoTitle}>TRICODER</Text>
+            <Pressable
+              onPress={() => { try { router.push('/scan' as any) } catch {} }}
+              accessibilityRole='button'
+              style={styles.pairBtn as any}
+            >
+              <Ionicons name='qr-code-outline' size={22} color={Colors.foreground} />
+              <Text style={styles.pairText}>Pair with Desktop</Text>
+            </Pressable>
+          </>
+        )}
       </View>
       {!!lastWsErrorText && !connected && (
         <View style={styles.errorWrap}>
