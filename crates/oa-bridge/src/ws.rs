@@ -35,7 +35,7 @@ use ts_rs::TS;
 use crate::types;
 
 #[derive(serde::Serialize, TS)]
-#[ts(export, export_to = "../../../expo/types/bridge/")] 
+#[ts(export, export_to = "../../expo/types/bridge/generated/")] 
 struct ThreadSummaryTs {
     id: String,
     thread_id: Option<String>,
@@ -255,7 +255,19 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                     }
                                                 }
                                             }
-                                            let typed: Vec<types::ThreadRowTs> = rows.iter().map(|r| types::ThreadRowTs::from(r)).collect();
+                                            let typed: Vec<ThreadSummaryTs> = rows.iter().map(|r| ThreadSummaryTs {
+                                                id: r.id.clone(),
+                                                thread_id: r.thread_id.clone(),
+                                                title: r.title.clone(),
+                                                project_id: r.project_id.clone(),
+                                                resume_id: r.resume_id.clone(),
+                                                rollout_path: r.rollout_path.clone(),
+                                                source: r.source.clone(),
+                                                created_at: r.created_at,
+                                                updated_at: r.updated_at,
+                                                message_count: r.message_count,
+                                                last_message_ts: r.last_message_ts,
+                                            }).collect();
                                             let line = serde_json::json!({"type":"tinyvex.query_result","name":"threads.list","rows": typed}).to_string();
                                             let _ = stdin_state.tx.send(line);
                                         }
@@ -424,8 +436,20 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                     }
                                                 }
                                             }
-                                            // Map threads to transport type
-                                            let threads_typed: Vec<types::ThreadRowTs> = rows.iter().map(|r| types::ThreadRowTs::from(r)).collect();
+                                            // Map threads to summary transport type
+                                            let threads_typed: Vec<ThreadSummaryTs> = rows.iter().map(|r| ThreadSummaryTs {
+                                                id: r.id.clone(),
+                                                thread_id: r.thread_id.clone(),
+                                                title: r.title.clone(),
+                                                project_id: r.project_id.clone(),
+                                                resume_id: r.resume_id.clone(),
+                                                rollout_path: r.rollout_path.clone(),
+                                                source: r.source.clone(),
+                                                created_at: r.created_at,
+                                                updated_at: r.updated_at,
+                                                message_count: r.message_count,
+                                                last_message_ts: r.last_message_ts,
+                                            }).collect();
                                             let line = serde_json::json!({
                                                 "type":"tinyvex.query_result",
                                                 "name":"threadsAndTails.list",

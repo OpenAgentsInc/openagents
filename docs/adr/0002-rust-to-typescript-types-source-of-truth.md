@@ -21,7 +21,7 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
   - ToolCallRowTs
   - Envelopes: TinyvexSnapshot<T>, TinyvexQueryResult<T>
   - SyncStatusTs
-- Derive `TS` on these structs and export per‑type `.ts` files into `expo/types/bridge/` (e.g., `ThreadRowTs.ts`, `MessageRowTs.ts`).
+- Derive `TS` on these structs and export per‑type `.ts` files into `expo/types/bridge/generated/`.
 - Import from `expo/types/bridge/*` in the Expo app and remove all app‑side `any`/mixed‑case fallbacks for these payloads.
 - Map ACP events into these canonical bridge types at the Rust boundary (thin wrappers). When ACP changes, adjust the mapping, keeping the app contract stable.
 
@@ -48,7 +48,7 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 
 - App: Remove `any` and mixed‑case probing for threads/messages/tool calls/sync/envelopes. Prefer `row.last_message_ts ?? row.updated_at`.
 - Bridge: All WS endpoints must serialize the canonical TS‑exported structs; synthesized history rows must set real timestamps (no `now()` fallbacks).
-- Tooling: Ensure `expo/types/bridge/` exists; export per‑type `.ts` files there; the Expo tsconfig already includes `expo/**`.
+- Tooling: Ensure `expo/types/bridge/generated/` exists; export per‑type `.ts` files there. We maintain readable shims under `expo/types/bridge/*` if needed.
 - Conventions: snake_case fields; use `#[ts(optional)]` for truly optional fields (avoid `T | null` where absence is intended).
 
 ## Implementation Plan
@@ -93,7 +93,7 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 
 ## Export Details
 
-- We use `#[derive(TS)]` with `#[ts(export, export_to = "../../../expo/types/bridge/")]` (from the bridge crate) on non‑generic structs to emit per‑type `.ts` files during `cargo build`.
+- We use `#[derive(TS)]` with `#[ts(export, export_to = "../../expo/types/bridge/generated/")]` (from the bridge crate) on non‑generic structs to emit per‑type `.ts` files during `cargo build`.
 - Generic envelopes are not exported initially; if we need TS coverage, we will introduce concrete variants (e.g., `TinyvexMessagesSnapshot`) or leave envelopes untyped in TS and type the `rows` contents.
 - The export directory is `expo/types/bridge/` (within the app). Ensure the directory exists before building.
 
