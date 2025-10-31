@@ -298,11 +298,11 @@ impl Tinyvex {
         &self,
         thread_id: &str,
         tool_call_id: &str,
-        title: &str,
-        kind: &str,
-        status: &str,
-        content_json: &str,
-        locations_json: &str,
+        title: Option<&str>,
+        kind: Option<&str>,
+        status: Option<&str>,
+        content_json: Option<&str>,
+        locations_json: Option<&str>,
         ts: i64,
     ) -> Result<()> {
         let conn = Connection::open(&self.db_path)?;
@@ -311,13 +311,13 @@ impl Tinyvex {
             INSERT INTO acp_tool_calls (threadId, toolCallId, title, kind, status, content_json, locations_json, content, locations, createdAt, updatedAt)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?6, ?7, ?8, ?8)
             ON CONFLICT(threadId, toolCallId) DO UPDATE SET
-              title=excluded.title,
-              kind=excluded.kind,
-              status=excluded.status,
-              content_json=excluded.content_json,
-              locations_json=excluded.locations_json,
-              content=excluded.content,
-              locations=excluded.locations,
+              title=COALESCE(excluded.title, acp_tool_calls.title),
+              kind=COALESCE(excluded.kind, acp_tool_calls.kind),
+              status=COALESCE(excluded.status, acp_tool_calls.status),
+              content_json=COALESCE(excluded.content_json, acp_tool_calls.content_json),
+              locations_json=COALESCE(excluded.locations_json, acp_tool_calls.locations_json),
+              content=COALESCE(excluded.content, acp_tool_calls.content),
+              locations=COALESCE(excluded.locations, acp_tool_calls.locations),
               updatedAt=excluded.updatedAt
             "#,
             params![thread_id, tool_call_id, title, kind, status, content_json, locations_json, ts],
@@ -436,3 +436,6 @@ mod tests {
         assert_eq!(out[0].title, "Hello");
     }
 }
+
+pub mod writer;
+pub use writer::{Writer, WriterNotification};
