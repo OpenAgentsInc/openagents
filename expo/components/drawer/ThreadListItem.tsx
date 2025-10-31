@@ -4,7 +4,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useRouter } from 'expo-router'
 import { useTinyvex } from '@/providers/tinyvex'
-import type { ThreadRowTs as ThreadRow } from '../../../crates/expo/types/bridge/ThreadRowTs'
+import type { ThreadRowTs as ThreadRow } from '../../types/bridge/ThreadRowTs'
 import { Ionicons } from '@expo/vector-icons'
 
 export function ThreadListItemBase({
