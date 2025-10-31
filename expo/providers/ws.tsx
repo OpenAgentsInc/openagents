@@ -3,6 +3,7 @@ import { appLog } from '@/lib/app-log';
 import { useSettings, type Approvals as StoreApprovals } from '@/lib/settings-store'
 import { isDevEnv } from '@/lib/env'
 import { parseSessionNotification } from '@/lib/acp/validation'
+import { usePairingStore } from '@/lib/pairing-store'
 
 type MsgHandler = ((text: string) => void) | null;
 
@@ -146,6 +147,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         try { setWsLastClose(null) } catch {}
         setConnected(true);
         setConnecting(false);
+        try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
         appLog('bridge.open');
         try { console.log('[bridge.ws] open') } catch {}
       };
@@ -222,7 +224,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         autoTriedRef.current = true;
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-          if (!connected && !connecting) { try { (require('@@/lib/pairing-store') as any).usePairingStore.getState().setDeeplinkPairing(true) } catch {}; connect(); }
+          if (!connected && !connecting) { try { usePairingStore.getState().setDeeplinkPairing(true) } catch {}; connect(); }
         }
       }
     } catch {}
