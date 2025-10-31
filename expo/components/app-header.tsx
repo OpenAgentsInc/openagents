@@ -30,7 +30,12 @@ export function AppHeader() {
 
   const onLayout = React.useCallback((e: any) => {
     const h = e?.nativeEvent?.layout?.height ?? 0
-    if (h > 0) setHeight(h)
+    try {
+      const prev = useHeaderStore.getState().height
+      if (h > 0 && h !== prev) setHeight(h)
+    } catch {
+      if (h > 0) setHeight(h)
+    }
   }, [setHeight])
 
   const onNewChat = React.useCallback(async () => {
@@ -44,12 +49,12 @@ export function AppHeader() {
       <View style={{ height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Pressable
-            onPressIn={() => { try { if (process.env.EXPO_OS === 'ios') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {} }}
-            onPress={() => { showBack ? router.back() : toggle() }}
+            onPress={() => { try { if (process.env.EXPO_OS === 'ios') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {}; showBack ? router.back() : toggle() }}
             accessibilityRole="button"
             // Expand the tappable area without changing visuals
             hitSlop={{ top: 32, bottom: 32, left: 20, right: 20 }}
-            style={{ height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', alignItems: 'center', position: 'relative', marginTop: -12 }}
+            pressRetentionOffset={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            style={{ height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', alignItems: 'center', position: 'relative' }}
           >
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
             <View
