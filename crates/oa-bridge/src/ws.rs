@@ -32,9 +32,10 @@ use crate::util::{expand_home, now_ms};
 use crate::watchers::SyncCommand;
 use crate::util::extract_uuid_like_from_filename;
 use ts_rs::TS;
+pub mod types;
 
 #[derive(serde::Serialize, TS)]
-#[ts(export, export_to = "docs/types/bridge.d.ts")] 
+#[ts(export, export_to = "../../docs/types/bridge.d.ts")] 
 struct ThreadSummaryTs {
     id: String,
     thread_id: Option<String>,
