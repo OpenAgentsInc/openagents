@@ -11,6 +11,7 @@ import { useSettings } from "@/lib/settings-store"
 import { useBridge } from "@/providers/ws"
 // pairing helpers not needed here; IP-only flow
 import { Ionicons } from "@expo/vector-icons"
+import { usePairingStore } from "@/lib/pairing-store"
 
 export default function Onboarding() {
   useHeaderTitle('Connect')
@@ -65,6 +66,7 @@ export default function Onboarding() {
 
   const hasHost = React.useMemo(() => String(bridgeHost || '').trim().length > 0, [bridgeHost])
   const isConnecting = !!connecting
+  const deeplinkPairing = usePairingStore((s) => s.deeplinkPairing)
   const convexReady = true
   const statusText = (() => {
     if (isConnecting) return 'Connecting…'
@@ -100,6 +102,7 @@ export default function Onboarding() {
   React.useEffect(() => {
     if (connected) {
       try { router.replace('/thread/new' as any) } catch {}
+      try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
     }
   }, [connected])
 
@@ -198,7 +201,7 @@ export default function Onboarding() {
 
       {/* Single big Pair button (centered vertically) */}
       <View style={styles.centerWrap}>
-        {isConnecting ? (
+        {(isConnecting || deeplinkPairing) ? (
           <>
             <ActivityIndicator size='large' color={Colors.foreground} />
             <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16, marginTop: 10 }}>Pairing…</Text>
