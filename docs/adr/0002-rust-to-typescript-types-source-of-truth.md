@@ -1,9 +1,9 @@
 # ADR 0002 — Rust → TypeScript Types as Single Source of Truth
 
-Date: 2025-10-31
-Status: Proposed (PR 1345 introduces ADR process; this is ADR #2)
-Deciders: OpenAgents maintainers
-Consulted: Mobile, Bridge, Tinyvex contributors
+- Date: 2025-10-31
+- Status: Accepted (PR 1345 introduces ADR process; this is ADR #2)
+- Deciders: OpenAgents maintainers
+- Consulted: Mobile, Bridge, Tinyvex contributors
 
 ## Context
 
@@ -21,8 +21,8 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
   - ToolCallRowTs
   - Envelopes: TinyvexSnapshot<T>, TinyvexQueryResult<T>
   - SyncStatusTs
-- Derive `TS` on these structs and export to `docs/types/bridge.d.ts`.
-- Include that `.d.ts` in the Expo TypeScript config and remove all app‑side `any`/mixed‑case fallbacks for these payloads.
+- Derive `TS` on these structs and export per‑type `.ts` files into `docs/types/` (e.g., `ThreadRow.ts`, `MessageRow.ts`).
+- Include `../docs/types/*.ts` in the Expo TypeScript config and remove all app‑side `any`/mixed‑case fallbacks for these payloads.
 - Map ACP events into these canonical bridge types at the Rust boundary (thin wrappers). When ACP changes, adjust the mapping, keeping the app contract stable.
 
 ## Rationale
@@ -48,19 +48,19 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 
 - App: Remove `any` and mixed‑case probing for threads/messages/tool calls/sync/envelopes. Prefer `row.last_message_ts ?? row.updated_at`.
 - Bridge: All WS endpoints must serialize the canonical TS‑exported structs; synthesized history rows must set real timestamps (no `now()` fallbacks).
-- Tooling: Ensure `docs/types/` exists; export to `docs/types/bridge.d.ts`; include in `expo/tsconfig.json`.
+- Tooling: Ensure `docs/types/` exists; export per‑type `.ts` files into `docs/types/`; include in `expo/tsconfig.json`.
 - Conventions: snake_case fields; use `#[ts(optional)]` for truly optional fields (avoid `T | null` where absence is intended).
 
 ## Implementation Plan
 
 1) Bridge (Rust)
    - Derive `TS` for `tinyvex::MessageRow`, `tinyvex::ToolCallRow`; keep `ThreadSummaryTs` in `ws.rs`.
-   - Add `SyncStatusTs` and typed envelopes (TinyvexSnapshot<T>, TinyvexQueryResult<T>); export all to `docs/types/bridge.d.ts`.
+   - Add `SyncStatusTs` for `sync.status`. For envelopes, prefer concrete result types or JSON shapes; avoid TS for generics initially.
    - Switch `threads.list` / `threadsAndTails.list` / `messages.list` / `toolCalls.list` / snapshots / `sync.status` to emit only canonical types; compute `last_message_ts` from data/file mtime.
 
 2) App (Expo)
-   - Add `../docs/types/*.d.ts` to `expo/tsconfig.json` include (or `typeRoots`).
-   - Replace local provider/drawer/thread timeline types with imports from `bridge.d.ts`.
+   - Add `../docs/types/*.ts` to `expo/tsconfig.json` include (or set `typeRoots` to include `../docs/types`).
+   - Replace local provider/drawer/thread timeline types with imports from the generated files.
    - Remove `any` and camelCase/snake_case fallbacks in these paths.
 
 3) Tests/Docs
@@ -73,3 +73,31 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 - ACP generator: `agent-client-protocol/rust/bin/generate.rs` (schemars → JSON Schema + MDX docs)
 - Audit: `docs/audits/20251031/20251031-191512-rs-ts-type-unification-audit.md`
 
+---
+
+## Canonical Type Locations (Rust)
+
+- Data rows (Tinyvex — source of truth for persisted rows)
+  - `crates/tinyvex/src/lib.rs`
+    - `ThreadRow` — threads table shape (+ `last_message_ts`)
+    - `MessageRow` — last‑N messages, ascending `ts`
+    - `ToolCallRow` — tool calls (content/locations as JSON strings)
+
+- Transport/status (Bridge — WS contract specifics)
+  - `crates/oa-bridge/src/ws.rs`
+    - `ThreadSummaryTs` — list rows with `last_message_ts`
+  - `crates/oa-bridge/src/types.rs`
+    - `SyncWatchedDirTs`, `SyncStatusTs` — sync.status payload
+    - Envelopes: `TinyvexSnapshot<T>`, `TinyvexQueryResult<T>` (Rust only for now; not exported to TS due to generics)
+
+## Export Details
+
+- We use `#[derive(TS)]` with `#[ts(export, export_to = "../../docs/types/")]` on non‑generic structs to emit per‑type `.ts` files during `cargo build`.
+- Generic envelopes are not exported initially; if we need TS coverage, we will introduce concrete variants (e.g., `TinyvexMessagesSnapshot`) or leave envelopes untyped in TS and type the `rows` contents.
+- The export directory is `docs/types/` (repo‑root). Ensure the directory exists before building.
+
+## Ownership Boundaries
+
+- Tinyvex owns data row types (`ThreadRow`, `MessageRow`, `ToolCallRow`).
+- The bridge owns WS‑specific types (`ThreadSummaryTs`, `SyncStatusTs` and envelopes).
+- A dedicated shared types crate is not required now; we may introduce one later if multiple crates beyond the bridge need to depend on the same transport types.
