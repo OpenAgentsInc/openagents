@@ -4,6 +4,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useRouter } from 'expo-router'
 import { useTinyvex } from '@/providers/tinyvex'
+import type { ThreadRowTs as ThreadRow } from '../../../crates/expo/types/bridge/ThreadRowTs'
 import { Ionicons } from '@expo/vector-icons'
 
 export function ThreadListItemBase({
@@ -45,9 +46,9 @@ export function ThreadListItemBase({
   )
 }
 
-export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPress?: () => void; onLongPress?: () => void }) {
+export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow; onPress?: () => void; onLongPress?: () => void }) {
   const router = useRouter()
-  const threadId = String(row?.threadId || row?.thread_id || row?._id || row?.id || '')
+  const threadId = String(row?.id || '')
   // Hide ephemeral/internal threads
   if (/^ephemeral_/i.test(threadId)) return null
   const { messagesByThread } = useTinyvex()
@@ -56,11 +57,12 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPr
   const updatedAt = React.useMemo(() => {
     const arr = msgs && msgs.length > 0 ? msgs : []
     if (arr.length > 0) {
-      const last = arr[arr.length - 1] as any
-      const ts = Number((last && (last.ts || last.updated_at)) || 0)
+      const last = arr[arr.length - 1]
+      const ts = Number(last?.ts || 0)
       if (!isNaN(ts) && ts > 0) return ts
     }
-    return normalizeTs(row)
+    const ts = typeof row.last_message_ts === 'number' ? row.last_message_ts : undefined
+    return ts ?? Number(row.updated_at || 0)
   }, [msgs, row])
   const count = React.useMemo(() => {
     const mc: any = (row as any)?.messageCount
@@ -143,18 +145,11 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPr
     )
   })()
   return (
-    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={undefined} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
+    <ThreadListItemBase title={lastSnippet || (row?.title as any) || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
   )
 }
 
-function normalizeTs(row: any): number {
-  const cands = [row?.updated_at, row?.updatedAt, row?.created_at, row?.createdAt]
-  for (const v of cands) {
-    const n = Number(v)
-    if (!isNaN(n) && n > 0) return n
-  }
-  return 0
-}
+// normalizeTs removed; rely on row.last_message_ts or row.updated_at
 
 function formatRelative(ts: number): string {
   const now = Date.now()
