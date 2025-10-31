@@ -226,7 +226,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         };
                                         // Try DB first
                                         if let Ok(rows) = stdin_state.tinyvex.list_messages(tid, limit) {
-                                            if !rows.is_empty() { send_rows(tid); }
+                                            if !rows.is_empty() && (rows.len() as i64) >= limit { send_rows(tid); }
                                             else {
                                                 // On-demand backfill: parse the rollout JSONL for this session id (or mapped id)
                                                 let base = crate::watchers::codex_base_path();
@@ -359,7 +359,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                             source: Some("codex".into()),
                                                             created_at: created,
                                                             updated_at: created,
-                                                            message_count: Some(tail_rows.len() as i64),
+                                                            message_count: if tail_rows.is_empty() { None } else { Some(tail_rows.len() as i64) },
                                                         });
                                                         seen.insert(tid);
                                                         if (rows.len() as i64) >= lim { break; }
