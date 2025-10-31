@@ -329,16 +329,7 @@ function DrawerWrapper() {
     }
   }, [pathname])
 
-  // Connection-gated onboarding: require bridge and convex
-  React.useEffect(() => {
-    const path = String(pathname || '')
-    if (!connected) {
-      const allowWhileDisconnected = path.startsWith('/onboarding') || path.startsWith('/settings') || (isDevEnv && path.startsWith('/library')) || (connecting && path.startsWith('/thread'))
-      if (!allowWhileDisconnected) {
-        try { router.push('/onboarding' as any) } catch {}
-      }
-    }
-  }, [connected, connecting, pathname]);
+  // Do not force navigation on disconnect; keep user on current screen and just update the connection dot.
 
   // When connected, if we are still on onboarding, immediately move to a new thread.
   React.useEffect(() => {
