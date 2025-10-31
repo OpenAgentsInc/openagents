@@ -25,6 +25,23 @@ fn extract_mermaid_blocks(s: &str) -> Vec<String> {
     blocks
 }
 
+fn validate_with_mmdc(block: &str) -> Result<(), String> {
+    if std::env::var("MERMAID_VALIDATE").ok().as_deref() != Some("1") {
+        return Ok(()); // opt-in only to avoid CI flakiness
+    }
+    let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let in_path = dir.path().join("block.mmd");
+    let out_path = dir.path().join("out.svg");
+    fs::write(&in_path, block).map_err(|e| e.to_string())?;
+    let status = std::process::Command::new("npx")
+        .args(["--yes", "@mermaid-js/mermaid-cli@10.9.1", "-i"]) 
+        .arg(&in_path)
+        .args(["-o"]).arg(&out_path)
+        .status().map_err(|e| e.to_string())?;
+    if !status.success() { return Err("mermaid-cli failed".into()); }
+    Ok(())
+}
+
 #[test]
 fn lint_tinyvex_mermaid_docs() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -53,6 +70,7 @@ fn lint_tinyvex_mermaid_docs() {
                 // Must contain at least one participant
                 assert!(b.contains("participant"), "{}[block {}]: sequenceDiagram missing participants", name, idx);
             }
+            if let Err(e) = validate_with_mmdc(b) { panic!("{}[block {}]: {}", name, idx, e); }
         }
     }
 }

@@ -2047,6 +2047,7 @@ dependencies = [
  "base64",
  "serde_json",
  "tao",
+ "tempfile",
  "wry",
 ]
 

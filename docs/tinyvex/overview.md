@@ -2,16 +2,19 @@
 
 ```mermaid
 flowchart LR
-  subgraph Device[Developer Device]
+  subgraph Device
+    title Developer Device
     App[Expo React Native App<br/>TinyvexProvider]
   end
 
-  subgraph Bridge[oa-bridge (Rust)]
+  subgraph Bridge
+    title oa-bridge (Rust)
     WS[WebSocket /ws]
     Writer[tinyvex_write.rs<br/>(JSONL -> ACP -> SQLite)]
   end
 
-  subgraph Storage[Local Storage]
+  subgraph Storage
+    title Local Storage
     DB[(SQLite file<br/>crates/tinyvex)]
   end
 
