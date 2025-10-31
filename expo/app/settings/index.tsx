@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
+import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
 import { Colors } from '@/constants/theme'
@@ -9,56 +9,17 @@ import { useHeaderTitle } from '@/lib/header-store'
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
-  const { bridgeHost, setBridgeHost, wsUrl, connected, connect, disconnect, connecting, wsLastClose } = useBridge()
-  const [inputDisabled, setInputDisabled] = React.useState(false)
+  const { bridgeHost, setBridgeHost, connected, connect, disconnect } = useBridge()
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
-  const bridgeToken = useSettings((s) => s.bridgeToken)
-  const setBridgeToken = useSettings((s) => s.setBridgeToken)
+  const bridgeToken = useSettings((s) => s.bridgeToken) // retained for future, not rendered
+  const setBridgeToken = useSettings((s) => s.setBridgeToken) // retained for future, not rendered
   const updatesAutoPoll = useSettings((s) => s.updatesAutoPoll)
   const setUpdatesAutoPoll = useSettings((s) => s.setUpdatesAutoPoll)
   // Convex removed
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
-      <Text style={styles.label}>Bridge Host</Text>
-      <View style={styles.inputWrapper}>
-        <TextInput
-          value={hostInput}
-          onChangeText={(v) => { setHostInput(v) }}
-          editable={!connecting && !inputDisabled}
-          autoCapitalize='none'
-          autoCorrect={false}
-          placeholder='100.72.151.98:8787'
-          placeholderTextColor={Colors.secondary}
-          style={[styles.input]}
-        />
-      </View>
-      <Text style={styles.label}>Bridge Token</Text>
-      <View style={styles.inputWrapper}>
-        <TextInput
-          value={bridgeToken}
-          onChangeText={(v) => { try { setBridgeToken(v) } catch {} }}
-          editable={!connecting && !inputDisabled}
-          autoCapitalize='none'
-          autoCorrect={false}
-          placeholder='Paste token from ~/.openagents/bridge.json'
-          placeholderTextColor={Colors.secondary}
-          style={[styles.input]}
-        />
-      </View>
-      <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12, marginBottom: 4 }}>WS endpoint: {wsUrl || '(not configured)'}</Text>
-      {/* Convex removed */}
-      {wsLastClose && !connected ? (
-        <Text style={{ color: Colors.danger, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>
-          {(() => {
-            const code = wsLastClose.code
-            const reason = String(wsLastClose.reason || '')
-            if (/unauthorized|401/i.test(reason)) return 'WS: Unauthorized — set Bridge Token from ~/.openagents/bridge.json.'
-            if (code === 1006 || /refused|ECONNREFUSED/i.test(reason)) return 'WS: Connection closed — ensure the bridge is running and that the Bridge Token is correct.'
-            return `WS closed ${code ?? ''}${reason ? `: ${reason}` : ''}`.trim()
-          })()}
-        </Text>
-      ) : null}
+      {/* Bridge Host / Token / Endpoint are intentionally hidden to simplify the Settings page UI. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (
           <Button title='Connect' onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; connect() }} />
