@@ -114,14 +114,20 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPr
     const tsText = updatedAt ? formatRelative(updatedAt) : ''
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {providerBadge}
         {!!tsText && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ color: Colors.quaternary, fontFamily: Typography.primary, fontSize: 12 }}>•</Text>
             <Ionicons name="time-outline" size={12} color={Colors.quaternary} />
             <Text numberOfLines={1} style={{ color: Colors.quaternary, fontFamily: Typography.primary, fontSize: 12 }}>{tsText}</Text>
           </View>
         )}
+        {providerBadge ? (
+          <>
+            {!!tsText && (
+              <Text style={{ color: Colors.quaternary, fontFamily: Typography.primary, fontSize: 12 }}>•</Text>
+            )}
+            {providerBadge}
+          </>
+        ) : null}
       </View>
     )
   })()
