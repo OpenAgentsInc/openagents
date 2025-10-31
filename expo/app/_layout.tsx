@@ -254,17 +254,27 @@ function DrawerWrapper() {
   const isRTL = I18nManager.isRTL;
   const router = useRouter();
   const { connected, connecting } = useBridge();
+  const setLastRoute = useSettings((s) => s.setLastRoute)
+  const lastRoute = useSettings((s) => s.lastRoute)
   // Allow dev-only navigation to the component library when disconnected
   const { useIsDevEnv } = require('@/lib/env') as { useIsDevEnv: () => boolean };
   const isDevEnv = useIsDevEnv();
   // Tinyvex migration: avoid Convex hooks here
   const convexThreads: any[] | undefined | null = []
   const pathname = (require('expo-router') as any).usePathname?.() as string | undefined;
+  // Track last visited route so we can restore after OTA reloads
+  React.useEffect(() => {
+    const path = String(pathname || '')
+    if (path) {
+      try { setLastRoute(path) } catch {}
+    }
+  }, [pathname])
+
   // Connection-gated onboarding: require bridge and convex
   React.useEffect(() => {
     const path = String(pathname || '')
     if (!connected) {
-      const allowWhileDisconnected = path.startsWith('/onboarding') || (isDevEnv && path.startsWith('/library')) || (connecting && path.startsWith('/thread'))
+      const allowWhileDisconnected = path.startsWith('/onboarding') || path.startsWith('/settings') || (isDevEnv && path.startsWith('/library')) || (connecting && path.startsWith('/thread'))
       if (!allowWhileDisconnected) {
         try { router.push('/onboarding' as any) } catch {}
       }
@@ -275,10 +285,11 @@ function DrawerWrapper() {
   React.useEffect(() => {
     const path = String(pathname || '')
     if (connected && path.startsWith('/onboarding')) {
-      try { router.replace('/thread/new' as any) } catch {}
+      // Restore last route if we have one; otherwise go to a new thread
+      try { router.replace((lastRoute && !lastRoute.startsWith('/onboarding')) ? (lastRoute as any) : ('/thread/new' as any)) } catch {}
       try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
     }
-  }, [connected, pathname])
+  }, [connected, pathname, lastRoute])
 
   const ConnectionDot = () => {
     const { connected } = useBridge();
