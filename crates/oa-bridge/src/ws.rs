@@ -30,27 +30,7 @@ use agent_client_protocol::{SessionId, SessionNotification};
 use crate::state::AppState;
 use crate::util::{expand_home, now_ms};
 use crate::watchers::SyncCommand;
-
-fn extract_uuid_like_from_name(name: &str) -> Option<String> {
-    let bytes = name.as_bytes();
-    // scan for 36-char UUID-like token with hyphens at positions 8,13,18,23
-    if bytes.len() < 36 { return None; }
-    for i in 0..=bytes.len().saturating_sub(36) {
-        let slice = &name[i..i+36];
-        let b = slice.as_bytes();
-        let hyphen_positions = [8usize,13,18,23];
-        let mut ok = true;
-        for pos in hyphen_positions { if b.get(pos) != Some(&b'-') { ok = false; break; } }
-        if !ok { continue; }
-        for (idx, ch) in b.iter().enumerate() {
-            if hyphen_positions.contains(&idx) { continue; }
-            let c = *ch as char;
-            if !c.is_ascii_hexdigit() { ok = false; break; }
-        }
-        if ok { return Some(slice.to_string()); }
-    }
-    None
-}
+use crate::util::extract_uuid_like_from_filename;
 
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
 pub async fn ws_handler(
@@ -347,9 +327,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 let base = crate::watchers::codex_base_path();
                                                 if let Ok(hist) = crate::history::scan_history(&base, lim as usize) {
                                                     for item in hist {
-                                                        let fname_owned = std::path::PathBuf::from(&item.path);
-                                                        let fname_str = fname_owned.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                                                        let tid = extract_uuid_like_from_name(fname_str).unwrap_or_else(|| fname_str.to_string());
+                                                        let p = std::path::PathBuf::from(&item.path);
+                                                        let tid = extract_uuid_like_from_filename(&p)
+                                                            .unwrap_or_else(|| p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string());
                                                         if tid.is_empty() || seen.contains(&tid) { continue; }
                                                         let created = (item.mtime as i64) * 1000;
                                                         // push synthetic tail rows from history

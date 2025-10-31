@@ -1,6 +1,7 @@
 //! Small utilities shared across bridge modules.
 
 use std::path::PathBuf;
+use std::path::Path;
 
 #[inline]
 pub fn now_ms() -> u64 {
@@ -111,6 +112,31 @@ pub fn write_bridge_token_to_home(token: &str) -> anyhow::Result<()> {
     let body = serde_json::json!({ "token": token }).to_string();
     std::fs::write(path, body)?;
     Ok(())
+}
+
+/// Attempt to extract a UUID-like 36-char id from a filename such as
+/// `rollout-2025-10-22T12-05-17-019a0ce1-d491-76d2-93ba-0d47dde32657.jsonl`.
+/// Returns `Some(id)` when found, otherwise `None`.
+pub fn extract_uuid_like_from_filename(p: &Path) -> Option<String> {
+    let name = p.file_name()?.to_str()?;
+    let bytes = name.as_bytes();
+    for i in 0..=bytes.len().saturating_sub(36) {
+        let slice = &name[i..i + 36];
+        let b = slice.as_bytes();
+        let hyphen_positions = [8usize, 13, 18, 23];
+        let mut ok = true;
+        for pos in hyphen_positions {
+            if b.get(pos) != Some(&b'-') { ok = false; break; }
+        }
+        if !ok { continue; }
+        for (idx, ch) in b.iter().enumerate() {
+            if hyphen_positions.contains(&idx) { continue; }
+            let c = *ch as char;
+            if !c.is_ascii_hexdigit() { ok = false; break; }
+        }
+        if ok { return Some(slice.to_string()); }
+    }
+    None
 }
 
 #[cfg(test)]
