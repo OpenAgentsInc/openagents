@@ -32,6 +32,7 @@ import { parseBridgeCode, normalizeBridgeCodeInput } from "@/lib/pairing"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { useUpdateStore } from "@/lib/update-store"
 
 function DrawerContent() {
   const router = useRouter();
@@ -210,6 +211,24 @@ export default function RootLayout() {
   }, []);
   if (!fontsLoaded) return null;
   applyTypographyGlobals();
+
+  // Updating overlay: replace entire UI when an OTA is being applied
+  try {
+    const updating = useUpdateStore((s) => s.updating)
+    const forceOverlay = useUpdateStore((s) => s.forceOverlay)
+    if (updating || forceOverlay) {
+      return (
+        <SafeAreaProvider>
+          <ThemeProvider value={NavigationTheme}>
+            <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator size="large" color={Colors.foreground} />
+              <Text style={{ marginTop: 10, color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 }}>Updating…</Text>
+            </View>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      )
+    }
+  } catch {}
 
   return (
     <SafeAreaProvider>
