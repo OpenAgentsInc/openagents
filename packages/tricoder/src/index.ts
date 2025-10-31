@@ -120,9 +120,10 @@ function b64url(s: string): string {
 function buildBridgeCode(host: string, port: number, token: string, secure = false, hosts?: string[]) {
   const scheme = secure ? 'wss' : 'ws';
   const bridge = `${scheme}://${host}:${port}/ws`;
-  // Compact payload to reduce QR size: only include fields the app requires.
-  // Optionally include hosts[] when explicitly requested.
-  const payload: any = { bridge, token };
+  // Compact but backward‑compatible payload: include legacy fields (v, type, provider)
+  // that older mobile builds expect, while keeping the core fields minimal.
+  // Optionally include hosts[] when explicitly requested via env.
+  const payload: any = { v: 1, type: 'bridge', provider: 'openagents', bridge, token };
   if (process.env.TRICODER_QR_INCLUDE_HOSTS === '1' && Array.isArray(hosts) && hosts.length > 0) {
     payload.hosts = hosts;
   }
