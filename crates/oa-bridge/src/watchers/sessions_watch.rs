@@ -79,6 +79,7 @@ async fn process_file_append(state: &AppState, file_path: &Path, st: &mut FileSt
     let len = meta.len();
     // If the file shrank (rotation/truncate), reset offset and cached thread id
     if st.offset > len {
+        tracing::info!(path=%file_path.display(), old_offset=st.offset, new_len=len, "codex watcher: file truncated; resetting offset");
         st.offset = 0;
         st.thread_id = None;
     }
@@ -105,17 +106,26 @@ async fn process_file_append(state: &AppState, file_path: &Path, st: &mut FileSt
                 .or_else(|| v.get("msg").and_then(|m| m.get("thread_id")).and_then(|x| x.as_str()))
                 .map(|s| s.to_string())
                 .or_else(|| st.thread_id.clone());
-            if let Some(tid_s) = tid.clone() { st.thread_id = Some(tid_s); }
+            if let Some(tid_s) = tid.clone() {
+                if st.thread_id.as_deref() != Some(&tid_s) {
+                    tracing::info!(path=%file_path.display(), thread_id=%tid_s, "codex watcher: learned thread id");
+                }
+                st.thread_id = Some(tid_s);
+            }
             if let Some(update) = acp_event_translator::translate_codex_event_to_acp_update(&v) {
                 if let Some(id) = st.thread_id.clone() {
                     // Mirror into Tinyvex
                     crate::tinyvex_write::mirror_acp_update_to_tinyvex(state, "codex", &id, &update).await;
+                    tracing::info!(path=%file_path.display(), thread_id=%id, "codex watcher: mirrored update");
+                } else {
+                    tracing::warn!(path=%file_path.display(), "codex watcher: update without known thread id; skipping");
                 }
             }
         }
     }
     // Batch the last-read timestamp update to once per file
     if lines_processed > 0 {
+        tracing::info!(path=%file_path.display(), lines=lines_processed, new_offset=st.offset, "codex watcher: processed appended lines");
         let mut g = state.sync_last_read_ms.lock().await;
         *g = crate::util::now_ms();
     }
@@ -163,17 +173,26 @@ pub fn spawn_codex_watcher(state: std::sync::Arc<AppState>) -> mpsc::Sender<Sync
         info!(base=%base.display(), "codex watcher started");
         let mut state_file = load_state();
         let mut enabled = state.sync_enabled.load(std::sync::atomic::Ordering::Relaxed);
+        let mut last_files_len: usize = 0;
         loop {
             // Handle control commands
             while let Ok(cmd) = rx.try_recv() {
                 match cmd {
-                    SyncCommand::Enable(b) => { enabled = b; state.sync_enabled.store(b, std::sync::atomic::Ordering::Relaxed); }
-                    SyncCommand::TwoWay(b) => { state.sync_two_way.store(b, std::sync::atomic::Ordering::Relaxed); }
-                    SyncCommand::FullRescan => { state_file.files.clear(); save_state(&state_file); }
+                    SyncCommand::Enable(b) => {
+                        enabled = b;
+                        state.sync_enabled.store(b, std::sync::atomic::Ordering::Relaxed);
+                        info!(enabled=b, "codex watcher: enable toggled");
+                    }
+                    SyncCommand::TwoWay(b) => { state.sync_two_way.store(b, std::sync::atomic::Ordering::Relaxed); info!(two_way=b, "codex watcher: two_way toggled"); }
+                    SyncCommand::FullRescan => { state_file.files.clear(); save_state(&state_file); info!("codex watcher: full rescan requested; offsets cleared"); }
                 }
             }
             if enabled && base.exists() {
                 let files = list_jsonl_files(&base);
+                if files.len() != last_files_len {
+                    last_files_len = files.len();
+                    info!(files=last_files_len, base=%base.display(), "codex watcher: jsonl file count");
+                }
                 for p in files {
                     let key = p.to_string_lossy().to_string();
                     let fs_ent = state_file.files.entry(key.clone()).or_insert_with(FileState::default);
