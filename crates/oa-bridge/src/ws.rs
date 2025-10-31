@@ -30,6 +30,7 @@ use acp_event_translator::translate_codex_event_to_acp_update;
 use agent_client_protocol::{SessionId, SessionNotification};
 use crate::state::AppState;
 use crate::util::{expand_home, now_ms};
+use crate::watchers::SyncCommand;
 
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
 pub async fn ws_handler(
@@ -286,6 +287,51 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         }
                                         Err(e) => { error!(?e, "tinyvex threadsAndTails.list failed"); }
                                     }
+                                }
+                            }
+                            ControlCommand::SyncStatus => {
+                                let enabled = stdin_state.sync_enabled.load(std::sync::atomic::Ordering::Relaxed);
+                                let two_way = stdin_state.sync_two_way.load(std::sync::atomic::Ordering::Relaxed);
+                                let base = crate::watchers::codex_base_path();
+                                // Count JSONL files (best-effort)
+                                let files = {
+                                    let mut count = 0usize;
+                                    let mut stack = vec![base.clone()];
+                                    while let Some(dir) = stack.pop() {
+                                        if let Ok(rd) = std::fs::read_dir(&dir) {
+                                            for ent in rd.flatten() {
+                                                let p = ent.path();
+                                                if p.is_dir() { stack.push(p); }
+                                                else if p.extension().and_then(|e| e.to_str()) == Some("jsonl") { count += 1; }
+                                            }
+                                        }
+                                    }
+                                    count
+                                } as i64;
+                                let last = { *stdin_state.sync_last_read_ms.lock().await } as i64;
+                                let line = serde_json::json!({
+                                    "type":"bridge.sync_status",
+                                    "enabled": enabled,
+                                    "twoWay": two_way,
+                                    "watched": [{"provider":"codex","base": base.display().to_string(), "files": files, "lastRead": last }]
+                                }).to_string();
+                                let _ = stdin_state.tx.send(line);
+                            }
+                            ControlCommand::SyncEnable { enabled } => {
+                                stdin_state.sync_enabled.store(enabled, std::sync::atomic::Ordering::Relaxed);
+                                if let Some(tx) = stdin_state.sync_cmd_tx.lock().await.as_ref() {
+                                    let _ = tx.send(SyncCommand::Enable(enabled)).await;
+                                }
+                            }
+                            ControlCommand::SyncTwoWay { enabled } => {
+                                stdin_state.sync_two_way.store(enabled, std::sync::atomic::Ordering::Relaxed);
+                                if let Some(tx) = stdin_state.sync_cmd_tx.lock().await.as_ref() {
+                                    let _ = tx.send(SyncCommand::TwoWay(enabled)).await;
+                                }
+                            }
+                            ControlCommand::SyncFullRescan => {
+                                if let Some(tx) = stdin_state.sync_cmd_tx.lock().await.as_ref() {
+                                    let _ = tx.send(SyncCommand::FullRescan).await;
                                 }
                             }
                             ControlCommand::TvxMutate { name, args } => {
@@ -547,6 +593,10 @@ mod auth_tests {
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: tvx.clone(),
             tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            sync_enabled: std::sync::atomic::AtomicBool::new(true),
+            sync_two_way: std::sync::atomic::AtomicBool::new(false),
+            sync_last_read_ms: Mutex::new(0),
+            sync_cmd_tx: Mutex::new(None),
         })
     }
 
