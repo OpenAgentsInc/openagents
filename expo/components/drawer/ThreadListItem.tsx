@@ -48,7 +48,7 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   const threadId = String(row?.threadId || row?.thread_id || row?._id || row?.id || '')
   const { messagesByThread } = useTinyvex()
   const msgs = Array.isArray(messagesByThread[threadId]) ? messagesByThread[threadId] : []
-  const updatedAt = (row?.updatedAt ?? row?.createdAt ?? 0) as number
+  const updatedAt = normalizeTs(row)
   const count = React.useMemo(() => {
     const mc: any = (row as any)?.messageCount
     if (typeof mc === 'number') return mc
@@ -110,6 +110,15 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   return (
     <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
   )
+}
+
+function normalizeTs(row: any): number {
+  const cands = [row?.updated_at, row?.updatedAt, row?.created_at, row?.createdAt]
+  for (const v of cands) {
+    const n = Number(v)
+    if (!isNaN(n) && n > 0) return n
+  }
+  return 0
 }
 
 function formatRelative(ts: number): string {
