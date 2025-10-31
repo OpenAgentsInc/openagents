@@ -206,9 +206,13 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
           try { console.log('[bridge.ws] close', code, reason || '(no reason)') } catch {}
           setWsLastClose({ code, reason });
         } catch {}
+        try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
         setConnected(false);
         setConnecting(false);
         appLog('bridge.close');
+      };
+      ws.onerror = (_evt: any) => {
+        try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
       };
     } catch (e: any) {
       appLog('bridge.connect.error', { error: String(e?.message ?? e) }, 'error');
@@ -233,7 +237,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         autoTriedRef.current = true;
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-          if (!connected && !connecting) { try { usePairingStore.getState().setDeeplinkPairing(true) } catch {}; connect(); }
+          // Do not mark deeplinkPairing here; this is a silent auto-reconnect path.
+          if (!connected && !connecting) { connect(); }
         }
       }
     } catch {}
