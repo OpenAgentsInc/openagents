@@ -155,6 +155,7 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
     // stdout task: JSON events
     let state_for = state.clone();
     tokio::spawn(async move {
+        let mut tool_use_cache: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
@@ -201,6 +202,37 @@ pub async fn start_claude_forwarders(mut child: ClaudeChild, state: Arc<AppState
                                     crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, "claude_code", &tdoc, &update).await;
                                 }
                             }
+                        }
+                    }
+                    // Cache tool_use for later tool_result mapping (id -> object)
+                    if ety == "content_block_start" {
+                        if let Some(cb) = v.get("content_block") {
+                            let ctype = cb.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                            if ctype == "tool_use" || ctype == "server_tool_use" || ctype == "mcp_tool_use" {
+                                if let Some(id) = cb.get("id").and_then(|x| x.as_str()) {
+                                    tool_use_cache.insert(id.to_string(), cb.clone());
+                                }
+                            }
+                        }
+                    }
+                    // Special-case tool_result to use upstream mapping (no best-effort guessing)
+                    if ety == "tool_result" {
+                        if let Some(tid) = v.get("tool_use_id").and_then(|x| x.as_str()) {
+                            use agent_client_protocol::{SessionUpdate, ToolCallId, ToolCallStatus};
+                            let mut fields = acp_event_translator::claude_tool_update_from_tool_result(&v, tool_use_cache.get(tid));
+                            let status = if v.get("is_error").and_then(|x| x.as_bool()).unwrap_or(false) { ToolCallStatus::Failed } else { ToolCallStatus::Completed };
+                            fields.status = Some(status);
+                            let update = SessionUpdate::ToolCallUpdate(agent_client_protocol::ToolCallUpdate { id: ToolCallId(std::sync::Arc::from(tid)), fields, meta: None });
+                            // Debug marker
+                            let _ = tx_out.send(serde_json::json!({"type":"bridge.acp_seen","kind": "tool_call_update"}).to_string());
+                            let target_tid = {
+                                if let Some(ctid) = state_for.current_thread_doc.lock().await.clone() { ctid } else { state_for.last_thread_id.lock().await.clone().unwrap_or_default() }
+                            };
+                            if !target_tid.is_empty() {
+                                crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for, "claude_code", &target_tid, &update).await;
+                            }
+                            if let Ok(line) = serde_json::to_string(&serde_json::json!({"type":"bridge.acp","notification":{"sessionId": target_tid, "update": update}})) { let _ = tx_out.send(line); }
+                            continue;
                         }
                     }
                     if let Some(update) = acp_event_translator::translate_claude_event_to_acp_update(&v) {
