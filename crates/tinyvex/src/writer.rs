@@ -101,6 +101,7 @@ impl Writer {
             created_at: t,
             updated_at: t,
             message_count: None,
+            last_message_ts: None,
         };
         let _ = self.tvx.upsert_thread(&thr);
         let _ = self

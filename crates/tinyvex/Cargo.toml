@@ -13,3 +13,6 @@ tracing = "0.1"
 tempfile = "3"
 agent-client-protocol = "0.7.0"
 ts-rs = "11.1.0"
+
+[build-dependencies]
+ts-rs = "11.1.0"
