@@ -79,14 +79,13 @@ erDiagram
     INTEGER updatedAt
   }
 
-  threads ||--o{ messages : "id → threadId"
-  threads ||--o{ acp_tool_calls : "id → threadId"
-  threads ||--|| acp_plan : "id → threadId"
-  threads ||--|| acp_state : "id → threadId"
-  acp_events }o--o{ threads : "clientThreadDocId"
+  threads ||--o{ messages : id to threadId
+  threads ||--o{ acp_tool_calls : id to threadId
+  threads ||--|| acp_plan : id to threadId
+  threads ||--|| acp_state : id to threadId
+  acp_events }o--o{ threads : clientThreadDocId
 ```
 
 Notes
 - Indices and uniqueness are defined in SQL (see `crates/tinyvex/src/lib.rs`).
 - Message rows for streamed items are upserted and finalized by `tinyvex_write`.
-
