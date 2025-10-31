@@ -22,6 +22,7 @@ type TinyvexContextValue = {
   subscribeMessages: (threadId: string) => void;
   queryThreads: (limit?: number) => void;
   queryMessages: (threadId: string, limit?: number) => void;
+  queryToolCalls: (threadId: string, limit?: number) => void;
 }
 
 const TinyvexContext = createContext<TinyvexContextValue | undefined>(undefined)
@@ -126,6 +127,9 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       } else if (obj.name === 'messages.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
         setMessagesByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as MessageRow[] }))
+      } else if (obj.name === 'toolCalls.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
+        const list: string[] = (obj.rows as any[]).map((r) => String((r && (r.tool_call_id || r.toolCallId || r.id)) || '')).filter(Boolean)
+        setToolCallsByThread((prev) => ({ ...prev, [obj.threadId]: list }))
       } else if (obj.name === 'threadsAndTails.list') {
         // cancel fallback to threads.list if pending
         try {
@@ -234,8 +238,11 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const queryMessages = useCallback((threadId: string, limit: number = DEFAULT_THREAD_TAIL) => {
     bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId, limit } }))
   }, [bridge])
+  const queryToolCalls = useCallback((threadId: string, limit: number = 50) => {
+    bridge.send(JSON.stringify({ control: 'tvx.query', name: 'toolCalls.list', args: { threadId, limit } }))
+  }, [bridge])
 
-  const value = useMemo(() => ({ threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages }), [threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages])
+  const value = useMemo(() => ({ threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls }), [threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls])
   const ctxValue = useMemo(() => ({
     threads,
     messagesByThread,
@@ -246,7 +253,8 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     subscribeMessages,
     queryThreads,
     queryMessages,
-  }), [threads, messagesByThread, toolCallsByThread, planTouched, stateTouched, subscribeThreads, subscribeMessages, queryThreads, queryMessages])
+    queryToolCalls,
+  }), [threads, messagesByThread, toolCallsByThread, planTouched, stateTouched, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls])
   return <TinyvexContext.Provider value={ctxValue}>{children}</TinyvexContext.Provider>
 }
 

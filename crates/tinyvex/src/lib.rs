@@ -37,6 +37,19 @@ pub struct MessageRow {
     pub updated_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ToolCallRow {
+    pub thread_id: String,
+    pub tool_call_id: String,
+    pub title: Option<String>,
+    pub kind: Option<String>,
+    pub status: Option<String>,
+    pub content_json: Option<String>,
+    pub locations_json: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 impl Tinyvex {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let db_path = path.as_ref().to_path_buf();
@@ -247,6 +260,30 @@ impl Tinyvex {
         Ok(rows)
     }
 
+    pub fn list_tool_calls(&self, thread_id: &str, limit: i64) -> Result<Vec<ToolCallRow>> {
+        let conn = Connection::open(&self.db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT threadId, toolCallId, title, kind, status, content_json, locations_json, createdAt, updatedAt \
+             FROM acp_tool_calls WHERE threadId=?1 ORDER BY updatedAt DESC LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![thread_id, limit], |r| {
+                Ok(ToolCallRow {
+                    thread_id: r.get(0)?,
+                    tool_call_id: r.get(1)?,
+                    title: r.get(2).ok(),
+                    kind: r.get(3).ok(),
+                    status: r.get(4).ok(),
+                    content_json: r.get(5).ok(),
+                    locations_json: r.get(6).ok(),
+                    created_at: r.get(7)?,
+                    updated_at: r.get(8)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn upsert_streamed_message(
         &self,
         thread_id: &str,
@@ -438,6 +475,23 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, "t1");
         assert_eq!(out[0].title, "Hello");
+    }
+
+    #[test]
+    fn list_tool_calls_returns_recent() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let tvx = Tinyvex::open(tmp.path()).unwrap();
+        let t = "t-tools";
+        // Insert 3 tool calls with increasing timestamps
+        for i in 0..3i64 {
+            let ts = now_ms() + i;
+            let id = format!("tc{}", i);
+            let content = format!("[{\"type\":\"text\",\"text\":\"#{}\"}]", i);
+            tvx.upsert_acp_tool_call(t, &id, Some("call"), Some("Execute"), Some("Completed"), Some(&content), Some("[]"), ts).unwrap();
+        }
+        let rows = tvx.list_tool_calls(t, 2).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].tool_call_id == "tc2" || rows[0].tool_call_id == "tc1");
     }
 
     #[test]

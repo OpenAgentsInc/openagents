@@ -49,6 +49,9 @@ export default function ThreadScreen() {
     if (!threadId) return
     try { subscribeMessages(threadId) } catch {}
     try { queryMessages(threadId, 50) } catch {}
+    // Also hydrate tool calls for this thread
+    try { (require('@/providers/tinyvex') as any) } catch {}
+    try { const { useTinyvex } = require('@/providers/tinyvex') as any; useTinyvex().queryToolCalls?.(threadId, 50) } catch {}
   }, [threadId, subscribeMessages, queryMessages])
   // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
   React.useEffect(() => {

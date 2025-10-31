@@ -286,6 +286,23 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         }
                                         Err(e) => { error!(?e, "tinyvex threadsAndTails.list failed"); }
                                     }
+                                } else if name == "toolCalls.list" {
+                                    let tid = args.get("threadId").and_then(|x| x.as_str()).unwrap_or("");
+                                    let lim = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(50);
+                                    if !tid.is_empty() {
+                                        match stdin_state.tinyvex.list_tool_calls(tid, lim) {
+                                            Ok(rows) => {
+                                                let line = serde_json::json!({
+                                                    "type":"tinyvex.query_result",
+                                                    "name":"toolCalls.list",
+                                                    "threadId": tid,
+                                                    "rows": rows
+                                                }).to_string();
+                                                let _ = stdin_state.tx.send(line);
+                                            }
+                                            Err(e) => { error!(?e, "tinyvex toolCalls.list failed"); }
+                                        }
+                                    }
                                 }
                             }
                             ControlCommand::SyncStatus => {
