@@ -8,6 +8,7 @@ import path from 'node:path';
 import { ensureBridgeBinary } from './utils/bridgeBinary.js';
 import { webcrypto as nodeCrypto, randomBytes } from 'node:crypto';
 import qrcode from 'qrcode-terminal';
+import QR from 'qrcode';
 import { findAvailablePort } from './ports.js';
 
 const execFileP = promisify(execFile);
@@ -120,6 +121,9 @@ function b64url(s: string): string {
 function buildBridgeCode(host: string, port: number, token: string, secure = false, hosts?: string[]) {
   const scheme = secure ? 'wss' : 'ws';
   const bridge = `${scheme}://${host}:${port}/ws`;
+  // Compact but backward‑compatible payload: include legacy fields (v, type, provider)
+  // that older mobile builds expect, while keeping the core fields minimal.
+  // Optionally include hosts[] when explicitly requested via env.
   const payload: any = { v: 1, type: 'bridge', provider: 'openagents', bridge, token };
   if (Array.isArray(hosts) && hosts.length > 0) {
     payload.hosts = hosts;
@@ -277,7 +281,7 @@ async function main() {
     console.log(chalk.gray('Token: using persisted token from ~/.openagents/bridge.json'));
   }
 
-  // Compute candidate hosts for QR payload in priority order
+  // Compute candidate hosts (may be included in payload when explicitly enabled)
   const lanCandidates = getLanIPv4Candidates().map((ip) => `${ip}:${bridgePort}`);
   let tsCandidates: string[] = [];
   if (prefer !== 'lan' && tsPath && tsStatus && isTailscaleActive(tsStatus)) {
@@ -290,7 +294,14 @@ async function main() {
     ? chalk.green(`Desktop IP (Tailscale): ${hostIp}`)
     : chalk.green(`Desktop IP (LAN): ${hostIp}`));
   console.log(chalk.bold('Scan this QR in the OpenAgents mobile app:'));
-  try { qrcode.generate(deeplink, { small: true }); } catch {}
+  // Render a smaller terminal QR. Prefer node-qrcode's "terminal" renderer with small blocks,
+  // and fall back to qrcode-terminal's small mode if unavailable.
+  try {
+    const term = await QR.toString(deeplink, { type: 'terminal', small: true, margin: 1 });
+    console.log(term);
+  } catch {
+    try { qrcode.generate(deeplink, { small: true }); } catch {}
+  }
   console.log(chalk.gray('Deep link: '), chalk.white(deeplink));
   console.log(chalk.gray('WS URL:   '), chalk.white(bridge));
   console.log(chalk.gray('Token:    '), chalk.white(token!));
