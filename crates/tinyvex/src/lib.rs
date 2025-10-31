@@ -61,6 +61,11 @@ impl Tinyvex {
 
     fn init_schema(&self) -> Result<()> {
         let conn = Connection::open(&self.db_path)?;
+        // Apply recommended SQLite pragmas for local, single-writer usage.
+        // journal_mode=WAL persists at the DB level; synchronous governs durability
+        // vs performance. busy_timeout helps avoid transient contention.
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
+        let _ = conn.busy_timeout(std::time::Duration::from_millis(5000));
         // threads
         conn.execute_batch(
             r#"
