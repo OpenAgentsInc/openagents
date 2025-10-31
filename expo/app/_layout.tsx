@@ -215,14 +215,13 @@ export default function RootLayout() {
   // Updating overlay: replace entire UI when an OTA is being applied
   try {
     const updating = useUpdateStore((s) => s.updating)
-    const forceOverlay = useUpdateStore((s) => s.forceOverlay)
-    if (updating || forceOverlay) {
+    if (updating) {
       return (
         <SafeAreaProvider>
           <ThemeProvider value={NavigationTheme}>
             <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
               <ActivityIndicator size="large" color={Colors.foreground} />
-              <Text style={{ marginTop: 10, color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 }}>Updating…</Text>
+              <Text style={{ marginTop: 10, color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 }}>Updating</Text>
             </View>
           </ThemeProvider>
         </SafeAreaProvider>
