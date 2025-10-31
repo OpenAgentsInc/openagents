@@ -467,7 +467,9 @@ fn build_html_from_mermaid(code: &str) -> String {
 
         mermaid.initialize({{
           startOnLoad: true,
+          securityLevel: 'loose',
           theme: 'dark',
+          flowchart: {{ htmlLabels: true }},
           themeVariables: {{
             background: '{bg}',
             primaryColor: '{bg}',
@@ -742,8 +744,14 @@ fn build_html_docs_index(docs_json: &str) -> String {
             const svg = view.querySelector('svg'); if (svg) attachPanZoom(svg);
           }} else {{
             const mroot = document.getElementById('mermaid');
-            mroot.textContent = d.content || '';
-            mermaid.initialize({{ startOnLoad:false, theme:'dark', themeVariables: {{ background:'{bg}', primaryColor:'{bg}', primaryTextColor:'{text}', lineColor:'{tertiary}', actorTextColor:'{text}', actorBorder:'{quaternary}', actorBkg:'{bg}', noteTextColor:'{text}', noteBkgColor:'{sidebar_bg}', noteBorderColor:'{border}', activationBorderColor:'{border}', activationBkgColor:'{sidebar_bg}', sequenceNumberColor:'{tertiary}', altBackground:'{sidebar_bg}', labelBoxBkgColor:'{bg}', labelBoxBorderColor:'{quaternary}', loopTextColor:'{tertiary}', fontFamily:'Berkeley Mono Viewer, ui-monospace, Menlo, monospace' }} }});
+            // Normalize code: trim BOM/whitespace; drop any leading noise before keyword
+            (function(){{
+              const txt = String(d.content||'').replace(/^\uFEFF/, '');
+              const re = /(flowchart|sequenceDiagram|erDiagram|classDiagram|stateDiagram|gantt|pie|journey)\b/;
+              const m = re.exec(txt);
+              mroot.textContent = m ? txt.slice(m.index) : txt;
+            }})();
+            mermaid.initialize({{ startOnLoad:false, securityLevel:'loose', theme:'dark', flowchart: {{ htmlLabels: true }}, themeVariables: {{ background:'{bg}', primaryColor:'{bg}', primaryTextColor:'{text}', lineColor:'{tertiary}', actorTextColor:'{text}', actorBorder:'{quaternary}', actorBkg:'{bg}', noteTextColor:'{text}', noteBkgColor:'{sidebar_bg}', noteBorderColor:'{border}', activationBorderColor:'{border}', activationBkgColor:'{sidebar_bg}', sequenceNumberColor:'{tertiary}', altBackground:'{sidebar_bg}', labelBoxBkgColor:'{bg}', labelBoxBorderColor:'{quaternary}', loopTextColor:'{tertiary}', fontFamily:'Berkeley Mono Viewer, ui-monospace, Menlo, monospace' }} }});
             mermaid.run({{ querySelector:'#mermaid' }}).then(()=>{{ const svg = view.querySelector('svg'); if (svg) attachPanZoom(svg); }}).catch(()=>{{ const svg = view.querySelector('svg'); if (svg) attachPanZoom(svg); }});
           }}
         }}
