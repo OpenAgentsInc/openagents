@@ -356,11 +356,13 @@ function LinkingBootstrap() {
       try {
         const parsed = parseBridgeCode(url)
         if (!parsed) return
-        // Do not set bridgeCode from deep link to avoid TextInput updates during navigation
+        // Apply host/token from deep link and auto-connect, skipping onboarding.
+        // We intentionally do not set the raw bridgeCode field to avoid TextInput churn.
         try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
         try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
-        // Do not auto-connect on deep link; route to onboarding and let user press Connect
-        try { router.push('/onboarding' as any) } catch {}
+        try { connect() } catch {}
+        // While connecting, Drawer gating allows /thread paths; land user in a new thread.
+        try { router.replace('/thread/new' as any) } catch {}
       } catch {}
     }
     try { Linking.getInitialURL().then((u) => { if (u) handleUrl(u) }).catch(() => {}) } catch {}
