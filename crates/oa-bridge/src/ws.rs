@@ -35,7 +35,8 @@ use ts_rs::TS;
 use crate::types;
 
 #[derive(serde::Serialize, TS)]
-struct ThreadSummaryTs {
+#[ts(export, export_to = "../../expo/types/bridge/")]
+pub struct ThreadSummaryTs {
     id: String,
     thread_id: Option<String>,
     title: String,
