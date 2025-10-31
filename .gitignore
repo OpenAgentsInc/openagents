@@ -17,3 +17,10 @@ docs/logs/claude
 settings.local.json
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Environment files (ignore all .env permutations)
+.env
+.env.*
+.env*.local
+*.env
+*.env.*
