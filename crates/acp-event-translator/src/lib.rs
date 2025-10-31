@@ -560,14 +560,10 @@ pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpda
                 res.get("oldText").or_else(|| res.get("old")).and_then(|x| x.as_str()),
                 res.get("newText").or_else(|| res.get("new")).and_then(|x| x.as_str()),
             ) {
-                // Append alongside stdout content if both exist
+                // Append a plain text representation of the diff to avoid relying on a Diff variant
                 let mut content_vec = fields.content.take().unwrap_or_default();
-                content_vec.push(ToolCallContent::Diff(agent_client_protocol::ToolCallContentDiff {
-                    path: path.to_string(),
-                    old_text: old_text.to_string(),
-                    new_text: new_text.to_string(),
-                    meta: None,
-                }));
+                let text = format!("diff {}\n--- OLD ---\n{}\n--- NEW ---\n{}", path, old_text, new_text);
+                content_vec.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text, meta: None })));
                 fields.content = Some(content_vec);
             }
         }
@@ -1072,7 +1068,7 @@ fn claude_tool_call_from_tool_use(ch: &JsonValue) -> Option<ToolCall> {
             if let Some(limit) = num("limit") { suffix = format!(" ({} - {} )", (num("offset").unwrap_or(0) + 1), (num("offset").unwrap_or(0) + limit)); }
             title = format!("Read {}{}", path, suffix);
         }
-        let locations = if !path.is_empty() { vec![ToolCallLocation { path: path.into(), line: num("offset").map(|x| x as i64), meta: None }] } else { vec![] };
+        let locations = if !path.is_empty() { vec![ToolCallLocation { path: path.into(), line: num("offset").map(|x| x as u32), meta: None }] } else { vec![] };
         return Some(ToolCall { title, kind: ToolKind::Read, status: ToolCallStatus::Pending, content: vec![], locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
     }
     if n == "Edit" || lower == "edit" {
@@ -1081,7 +1077,8 @@ fn claude_tool_call_from_tool_use(ch: &JsonValue) -> Option<ToolCall> {
         let new_text = input.get("new_string").and_then(|x| x.as_str()).unwrap_or("");
         let mut content = Vec::new();
         if !path.is_empty() {
-            content.push(ToolCallContent::Diff(agent_client_protocol::ToolCallContentDiff { path: path.to_string(), old_text: old_text.map(|s| s.to_string()).unwrap_or_default(), new_text: new_text.to_string(), meta: None }));
+            let text = format!("edit `{}`\n--- OLD ---\n{}\n--- NEW ---\n{}", path, old_text.unwrap_or(""), new_text);
+            content.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text, meta: None })));
         }
         let title = if !path.is_empty() { format!("Edit `{}`", path) } else { "Edit".to_string() };
         let locations = if !path.is_empty() { vec![ToolCallLocation { path: path.into(), line: None, meta: None }] } else { vec![] };
@@ -1092,7 +1089,8 @@ fn claude_tool_call_from_tool_use(ch: &JsonValue) -> Option<ToolCall> {
         let new_text = s("content");
         let mut content = Vec::new();
         if !path.is_empty() {
-            content.push(ToolCallContent::Diff(agent_client_protocol::ToolCallContentDiff { path: path.to_string(), old_text: String::new(), new_text: new_text.to_string(), meta: None }));
+            let text = format!("write `{}`\n{}", path, new_text);
+            content.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text, meta: None })));
         } else if !new_text.is_empty() {
             content.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: new_text.to_string(), meta: None })));
         }
@@ -1102,14 +1100,14 @@ fn claude_tool_call_from_tool_use(ch: &JsonValue) -> Option<ToolCall> {
     }
     if n == "LS" || lower == "ls" {
         let title = if let Some(p) = opt_s("path") { format!("List the `{}` directory's contents", p) } else { "List the current directory's contents".to_string() };
-        let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string(), line: None, meta: None }] } else { vec![] };
+        let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string().into(), line: None, meta: None }] } else { vec![] };
         return Some(ToolCall { title, kind: ToolKind::Search, status: ToolCallStatus::Pending, content: vec![], locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
     }
     if n == "Glob" || lower == "glob" {
         let mut label = "Find".to_string();
         if let Some(p) = opt_s("path") { label.push_str(&format!(" `{}`", p)); }
         if let Some(pattern) = opt_s("pattern") { label.push_str(&format!(" `{}`", pattern)); }
-        let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string(), line: None, meta: None }] } else { vec![] };
+        let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string().into(), line: None, meta: None }] } else { vec![] };
         return Some(ToolCall { title: label, kind: ToolKind::Search, status: ToolCallStatus::Pending, content: vec![], locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
     }
     if n == "Grep" || lower == "grep" {
