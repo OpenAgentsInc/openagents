@@ -315,6 +315,52 @@ pub async fn mirror_acp_update_to_tinyvex(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamMode { Delta, Finalize }
+
+/// Variant that allows callers to indicate whether a chunk is a streaming delta or a finalization.
+pub async fn mirror_acp_update_to_tinyvex_mode(
+    state: &AppState,
+    provider: &str,
+    thread_id: &str,
+    update: &agent_client_protocol::SessionUpdate,
+    mode: StreamMode,
+) {
+    use agent_client_protocol::SessionUpdate as SU;
+    match update {
+        SU::UserMessageChunk(ch) => {
+            let txt = if let agent_client_protocol::ContentBlock::Text(t) = &ch.content { t.text.clone() } else { String::new() };
+            if txt.is_empty() { return; }
+            match mode {
+                StreamMode::Delta => stream_upsert_or_append(state, thread_id, "user", &txt).await,
+                StreamMode::Finalize => { let _ = try_finalize_stream_kind(state, thread_id, "user").await; },
+            }
+            return;
+        }
+        SU::AgentMessageChunk(ch) => {
+            let txt = if let agent_client_protocol::ContentBlock::Text(t) = &ch.content { t.text.clone() } else { String::new() };
+            if txt.is_empty() { return; }
+            match mode {
+                StreamMode::Delta => stream_upsert_or_append(state, thread_id, "assistant", &txt).await,
+                StreamMode::Finalize => { let _ = try_finalize_stream_kind(state, thread_id, "assistant").await; },
+            }
+            return;
+        }
+        SU::AgentThoughtChunk(ch) => {
+            let txt = if let agent_client_protocol::ContentBlock::Text(t) = &ch.content { t.text.clone() } else { String::new() };
+            if txt.is_empty() { return; }
+            match mode {
+                StreamMode::Delta => stream_upsert_or_append(state, thread_id, "reason", &txt).await,
+                StreamMode::Finalize => { let _ = try_finalize_stream_kind(state, thread_id, "reason").await; },
+            }
+            return;
+        }
+        _ => {}
+    }
+    // Fallback for other update kinds — reuse existing behavior
+    mirror_acp_update_to_tinyvex(state, provider, thread_id, update).await;
+}
+
 fn two_way_base_dir() -> std::path::PathBuf {
     // Honor CODEXD_HISTORY_DIR via the shared helper used by the watcher,
     // then append our provider namespace to avoid collisions.
