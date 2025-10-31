@@ -273,6 +273,10 @@ mod tests {
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: tvx.clone(),
             tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            sync_enabled: std::sync::atomic::AtomicBool::new(true),
+            sync_two_way: std::sync::atomic::AtomicBool::new(false),
+            sync_last_read_ms: Mutex::new(0),
+            sync_cmd_tx: Mutex::new(None),
         };
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;
         // Drain until we see the bridge.tinyvex_write event
@@ -318,6 +322,10 @@ mod tests {
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: tvx.clone(),
             tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            sync_enabled: std::sync::atomic::AtomicBool::new(true),
+            sync_two_way: std::sync::atomic::AtomicBool::new(false),
+            sync_last_read_ms: Mutex::new(0),
+            sync_cmd_tx: Mutex::new(None),
         };
         finalize_or_snapshot(&state, "th", "assistant", "hello world").await;
         let rows = state.tinyvex.list_messages("th", 50).unwrap();
@@ -354,6 +362,10 @@ mod tests {
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: tvx.clone(),
             tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            sync_enabled: std::sync::atomic::AtomicBool::new(true),
+            sync_two_way: std::sync::atomic::AtomicBool::new(false),
+            sync_last_read_ms: Mutex::new(0),
+            sync_cmd_tx: Mutex::new(None),
         };
         // Simulate deltas then final.
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;
