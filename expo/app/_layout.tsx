@@ -269,6 +269,14 @@ function DrawerWrapper() {
     }
   }, [connected, connecting, pathname]);
 
+  // When connected, if we are still on onboarding, immediately move to a new thread.
+  React.useEffect(() => {
+    const path = String(pathname || '')
+    if (connected && path.startsWith('/onboarding')) {
+      try { router.replace('/thread/new' as any) } catch {}
+    }
+  }, [connected, pathname])
+
   const ConnectionDot = () => {
     const { connected } = useBridge();
     return (
