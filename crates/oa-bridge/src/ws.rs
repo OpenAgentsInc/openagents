@@ -35,7 +35,7 @@ use ts_rs::TS;
 use crate::types;
 
 #[derive(serde::Serialize, TS)]
-#[ts(export, export_to = "../../docs/types/")] 
+#[ts(export, export_to = "../../expo/types/bridge/")] 
 struct ThreadSummaryTs {
     id: String,
     thread_id: Option<String>,
@@ -248,7 +248,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                             created_at: created,
                                                             updated_at: created,
                                                             message_count: None,
-                                                            last_message_ts: None,
+                                                            last_message_ts: Some(created),
                                                         });
                                                         seen.insert(tid);
                                                         if (rows.len() as i64) >= limit { break; }
@@ -364,13 +364,18 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         Ok(mut rows) => {
                                             let mut tails: Vec<serde_json::Value> = Vec::new();
                                             let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-                                            for r in &rows {
-                                                let tid = r.thread_id.as_deref().unwrap_or(&r.id).to_string();
+                                            for i in 0..rows.len() {
+                                                let tid = rows[i].thread_id.as_deref().unwrap_or(&rows[i].id).to_string();
                                                 seen.insert(tid.clone());
                                                 match stdin_state.tinyvex.list_messages(&tid, per) {
                                                     Ok(m) => {
                                                         let typed: Vec<types::MessageRowTs> = m.iter().map(|r| types::MessageRowTs::from(r)).collect();
-                                                        tails.push(serde_json::json!({"threadId": tid, "rows": typed}))
+                                                        // compute last ts for fallback rows if needed
+                                                        let last_ts = typed.iter().map(|r| r.ts).max();
+                                                        tails.push(serde_json::json!({"threadId": tid, "rows": typed}));
+                                                        if rows[i].last_message_ts.is_none() {
+                                                            rows[i].last_message_ts = last_ts.or(Some(rows[i].updated_at));
+                                                        }
                                                     },
                                                     Err(_) => tails.push(serde_json::json!({"threadId": tid, "rows": []})),
                                                 }
@@ -419,10 +424,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                     }
                                                 }
                                             }
+                                            // Map threads to transport type
+                                            let threads_typed: Vec<types::ThreadRowTs> = rows.iter().map(|r| types::ThreadRowTs::from(r)).collect();
                                             let line = serde_json::json!({
                                                 "type":"tinyvex.query_result",
                                                 "name":"threadsAndTails.list",
-                                                "threads": rows,
+                                                "threads": threads_typed,
                                                 "tails": tails
                                             }).to_string();
                                             let _ = stdin_state.tx.send(line);
