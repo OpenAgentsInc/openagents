@@ -52,7 +52,7 @@ export const exampleItems: readonly ExampleItem[] = [
     title: 'Read: openagents docs',
     kind: 'read',
     status: 'completed',
-    content: [ { type: 'content', content: { type: 'resource_link', name: 'exec-jsonl-schema.md', uri: 'docs/exec-jsonl-schema.md', mimeType: 'text/markdown' } as any } ] as any,
+    content: [ { type: 'content', content: { type: 'resource_link', name: 'ADR 0002', uri: 'docs/adr/0002-rust-to-typescript-types-source-of-truth.md', mimeType: 'text/markdown' } as any } ] as any,
   } },
   { id: '10', type: 'agent_message', content: { type: 'text', text: 'Summary: One modified file and one new file. No untracked deletions. Next, I can open a PR or stage changes as needed.' } },
 ]
@@ -60,4 +60,3 @@ export const exampleItems: readonly ExampleItem[] = [
 export function findExampleItem(id: string): ExampleItem | undefined {
   return exampleItems.find((x) => String(x.id) === String(id))
 }
-

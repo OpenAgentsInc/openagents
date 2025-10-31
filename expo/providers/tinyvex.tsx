@@ -40,6 +40,11 @@ type TvxQueryThreads = { type: 'tinyvex.query_result'; name: 'threads.list'; row
 type TvxQueryMessages = { type: 'tinyvex.query_result'; name: 'messages.list'; threadId: string; rows: MessageRow[] }
 type TvxQueryToolCalls = { type: 'tinyvex.query_result'; name: 'toolCalls.list'; threadId: string; rows: ToolCallRow[] }
 type TvxQueryThreadsAndTails = { type: 'tinyvex.query_result'; name: 'threadsAndTails.list'; threads: ThreadRow[]; tails: { threadId: string; rows: MessageRow[] }[] }
+type TvxUpdateMessages = { type: 'tinyvex.update'; stream: 'messages'; threadId: string }
+type TvxUpdateThreadsRow = { type: 'tinyvex.update'; stream: 'threads'; row?: Partial<ThreadRow> & { id?: string; thread_id?: string; threadId?: string } }
+type TvxUpdateToolCalls = { type: 'tinyvex.update'; stream: 'toolCalls'; threadId: string }
+type TvxUpdatePlan = { type: 'tinyvex.update'; stream: 'plan'; threadId: string }
+type TvxUpdateState = { type: 'tinyvex.update'; stream: 'state'; threadId: string }
 
 export type TinyvexContextValue = {
   threads: ThreadRow[];
@@ -123,48 +128,50 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       }
     } else if (ot === 'tinyvex.update') {
-      if (obj.stream === 'messages' && typeof obj.threadId === 'string') {
+      const u = obj as TvxUpdateMessages | TvxUpdateThreadsRow | TvxUpdateToolCalls | TvxUpdatePlan | TvxUpdateState
+      if (u.stream === 'messages' && typeof (u as TvxUpdateMessages).threadId === 'string') {
         // Live message writes can emit many updates while streaming.
         // Throttle per thread to avoid storms during streaming.
-        try { scheduleMsgQuery(obj.threadId) } catch {}
+        try { scheduleMsgQuery((u as TvxUpdateMessages).threadId) } catch {}
         // Also schedule a query for the canonical id if this was the client doc id,
         // or vice-versa schedule for the alias if we received a canonical update.
         try {
-          const resume = getResumeForId(String(obj.threadId))
-          if (resume && resume !== obj.threadId) { scheduleMsgQuery(resume) }
-          const alias = getAliasForCanonical(String(obj.threadId))
-          if (alias && alias !== obj.threadId) { scheduleMsgQuery(alias) }
+          const tid = String((u as TvxUpdateMessages).threadId)
+          const resume = getResumeForId(tid)
+          if (resume && resume !== tid) { scheduleMsgQuery(resume) }
+          const alias = getAliasForCanonical(tid)
+          if (alias && alias !== tid) { scheduleMsgQuery(alias) }
         } catch {}
-      } else if (obj.stream === 'threads') {
+      } else if (u.stream === 'threads') {
         // Prefer merging the provided row to avoid a full refresh
-        const row = obj.row
+        const row = (u as TvxUpdateThreadsRow).row
         if (row && typeof row === 'object') {
           setThreads((prev) => {
-            const tid = String((row?.id || row?.thread_id || row?.threadId || ''))
+            const tid = String(((row as any)?.id || (row as any)?.thread_id || (row as any)?.threadId || ''))
             if (!tid) return prev
             const next = Array.isArray(prev) ? [...prev] : []
-            const idx = next.findIndex((r: any) => String((r?.id || r?.thread_id || r?.threadId || '')) === tid)
+            const idx = next.findIndex((r: any) => String(((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')) === tid)
             if (idx >= 0) next.splice(idx, 1)
-            next.unshift(row as ThreadsRow)
+            next.unshift(row as ThreadRow)
             return next
           })
           try {
             const setProvider = useThreadProviders.getState().setProvider
-            const tid = String((row?.id || row?.thread_id || row?.threadId || ''))
-            const src = String((row?.source || ''))
+            const tid = String(((row as any)?.id || (row as any)?.thread_id || (row as any)?.threadId || ''))
+            const src = String(((row as any)?.source || ''))
             if (tid) setProvider(tid, src === 'claude_code' ? 'claude_code' : 'codex')
           } catch {}
         } else {
           // Fallback: Debounce refreshes to avoid repeated full refreshes on bursts.
           try { scheduleThreadsRefresh() } catch {}
         }
-      } else if (obj.stream === 'toolCalls' && typeof obj.threadId === 'string') {
+      } else if (u.stream === 'toolCalls' && typeof (u as TvxUpdateToolCalls).threadId === 'string') {
         // Ignore incremental toolCalls stream; we hydrate via toolCalls.list when needed.
-      } else if (obj.stream === 'plan' && typeof obj.threadId === 'string') {
-        const tid: string = obj.threadId
+      } else if (u.stream === 'plan' && typeof (u as TvxUpdatePlan).threadId === 'string') {
+        const tid: string = (u as TvxUpdatePlan).threadId
         setPlanTouched((prev) => ({ ...prev, [tid]: Date.now() }))
-      } else if (obj.stream === 'state' && typeof obj.threadId === 'string') {
-        const tid: string = obj.threadId
+      } else if (u.stream === 'state' && typeof (u as TvxUpdateState).threadId === 'string') {
+        const tid: string = (u as TvxUpdateState).threadId
         setStateTouched((prev) => ({ ...prev, [tid]: Date.now() }))
       }
     } else if (ot === 'tinyvex.query_result') {

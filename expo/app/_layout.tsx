@@ -55,15 +55,15 @@ function DrawerContent() {
     if (!Array.isArray(threads)) return null
     const copy = threads
       .slice()
-      .filter((r: any) => {
-        const tid = String((r && (r.id ?? r.thread_id ?? r.threadId)) || '')
+      .filter((r) => {
+        const tid = String(r.id || '')
         return tid && !isArchived(tid)
       })
-    copy.sort((a: any, b: any) => {
-      const at = (a?.updated_at ?? a?.updatedAt ?? a?.created_at ?? a?.createdAt ?? 0) as number
-      const bt = (b?.updated_at ?? b?.updatedAt ?? b?.created_at ?? b?.createdAt ?? 0) as number
-      return bt - at
-    })
+      .sort((a, b) => {
+        const at = Number(a.updated_at ?? a.created_at ?? 0)
+        const bt = Number(b.updated_at ?? b.created_at ?? 0)
+        return bt - at
+      })
     return copy.slice(0, 10)
   }, [threads, archivedMap])
   // Drawer deliberately does not warm per-thread messages.

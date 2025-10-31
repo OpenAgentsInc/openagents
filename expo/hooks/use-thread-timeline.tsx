@@ -10,7 +10,6 @@ import type {
   ToolCallLike,
 } from '@/types/acp'
 import { useTinyvex, type MessageRow, type ToolCallRow } from '@/providers/tinyvex'
-import type { ToolCallLike } from '@/types/acp'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
 import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
 import { SessionUpdatePlan } from '@/components/acp/SessionUpdatePlan'
@@ -73,14 +72,17 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     }
     if (u.sessionUpdate === 'tool_call_update') {
       const t = u as ToolCallUpdate
-      const props: ToolCallLike = { title: t.fields?.title, status: t.fields?.status, kind: t.fields?.kind, content: t.fields?.content, locations: t.fields?.locations }
+      // Some SDKs surface updates directly on the object; others nest under `fields`.
+      const anyT: any = t as any
+      const src = anyT.fields ?? anyT
+      const props: ToolCallLike = { title: src?.title, status: src?.status, kind: src?.kind, content: src?.content, locations: src?.locations }
       items.push({ key: `acp-tool-${ts}-${i}`, ts, node: <SessionUpdateToolCall {...props} /> })
       continue
     }
   }
 
   // Helpers: normalizers for Tinyvex tool calls
-  function normalizeKind(raw?: string): 'execute'|'edit'|'search'|'fetch'|'read'|'delete'|'move'|'think'|'switch_mode'|'other' {
+  function normalizeKind(raw?: string | null): 'execute'|'edit'|'search'|'fetch'|'read'|'delete'|'move'|'think'|'switch_mode'|'other' {
     const s = (raw || '').toLowerCase()
     if (s.includes('execute')) return 'execute'
     if (s.includes('edit')) return 'edit'
@@ -93,14 +95,14 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     if (s.includes('switch')) return 'switch_mode'
     return 'other'
   }
-  function normalizeStatus(raw?: string): 'completed'|'failed'|'in_progress'|'pending' {
+  function normalizeStatus(raw?: string | null): 'completed'|'failed'|'in_progress'|'pending' {
     const s = (raw || '').toLowerCase()
     if (s.includes('complete')) return 'completed'
     if (s.includes('fail')) return 'failed'
     if (s.includes('progress')) return 'in_progress'
     return 'pending'
   }
-  function parseLocations(json?: string): { path: string; line?: number }[] {
+  function parseLocations(json?: string | null): { path: string; line?: number }[] {
     if (!json) return []
     try {
       const v = JSON.parse(json)
