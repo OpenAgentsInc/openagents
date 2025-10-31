@@ -214,10 +214,14 @@ fn build_html(svg_source: &str) -> String {
             if (!g) return;
             const texts = g.querySelectorAll('text');
             texts.forEach((t) => {{
-              t.setAttribute('y', cy);
+              const bbox = t.getBBox();
+              const currentCenter = bbox.y + bbox.height / 2;
+              const curY = parseFloat(t.getAttribute('y') || '0');
+              const newY = curY + (cy - currentCenter);
+              t.setAttribute('y', newY);
               t.removeAttribute('dy');
-              t.setAttribute('dominant-baseline', 'central');
-              t.setAttribute('alignment-baseline', 'central');
+              t.removeAttribute('dominant-baseline');
+              t.removeAttribute('alignment-baseline');
             }});
           }});
         }}
@@ -470,10 +474,14 @@ fn build_html_from_mermaid(code: &str) -> String {
               if (!g) return;
               const texts = g.querySelectorAll('text');
               texts.forEach((t) => {{
-                t.setAttribute('y', cy);
+                const bbox = t.getBBox();
+                const currentCenter = bbox.y + bbox.height / 2;
+                const curY = parseFloat(t.getAttribute('y') || '0');
+                const newY = curY + (cy - currentCenter);
+                t.setAttribute('y', newY);
                 t.removeAttribute('dy');
-                t.setAttribute('dominant-baseline', 'central');
-                t.setAttribute('alignment-baseline', 'central');
+                t.removeAttribute('dominant-baseline');
+                t.removeAttribute('alignment-baseline');
               }});
             }});
           }}
