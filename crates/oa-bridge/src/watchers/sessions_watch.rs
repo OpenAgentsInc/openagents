@@ -30,14 +30,30 @@ pub enum SyncCommand {
 
 fn default_codex_base() -> PathBuf {
     if let Ok(p) = std::env::var("CODEXD_HISTORY_DIR") { return PathBuf::from(p); }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".codex/sessions")
+    let base = match std::env::var("HOME") {
+        Ok(home) => PathBuf::from(home),
+        Err(_) => {
+            let tmp = std::env::temp_dir();
+            warn!(path=%tmp.display(), "HOME not set; using temp dir for codex sessions base");
+            tmp
+        }
+    };
+    base.join(".codex/sessions")
 }
 
 fn sync_state_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let dir = PathBuf::from(home).join(".openagents/sync");
-    let _ = std::fs::create_dir_all(&dir);
+    let base = match std::env::var("HOME") {
+        Ok(home) => PathBuf::from(home),
+        Err(_) => {
+            let tmp = std::env::temp_dir();
+            warn!(path=%tmp.display(), "HOME not set; using temp dir for sync state");
+            tmp
+        }
+    };
+    let dir = base.join(".openagents/sync");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        warn!(?e, path=%dir.display(), "failed to create sync state directory");
+    }
     dir.join("state.json")
 }
 
@@ -52,7 +68,9 @@ fn load_state() -> SyncStateFile {
 fn save_state(state: &SyncStateFile) {
     let path = sync_state_path();
     if let Ok(data) = serde_json::to_vec_pretty(state) {
-        let _ = std::fs::write(path, data);
+        if let Err(e) = std::fs::write(&path, data) {
+            warn!(?e, path=%path.display(), "failed to write sync state");
+        }
     }
 }
 

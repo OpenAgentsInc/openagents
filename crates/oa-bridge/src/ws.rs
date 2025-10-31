@@ -319,19 +319,28 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                             ControlCommand::SyncEnable { enabled } => {
                                 stdin_state.sync_enabled.store(enabled, std::sync::atomic::Ordering::Relaxed);
-                                if let Some(tx) = stdin_state.sync_cmd_tx.lock().await.as_ref() {
-                                    let _ = tx.send(SyncCommand::Enable(enabled)).await;
+                                let tx_opt = stdin_state.sync_cmd_tx.lock().await.clone();
+                                if let Some(tx) = tx_opt {
+                                    if let Err(err) = tx.send(SyncCommand::Enable(enabled)).await {
+                                        tracing::warn!(?err, "sync enable send failed");
+                                    }
                                 }
                             }
                             ControlCommand::SyncTwoWay { enabled } => {
                                 stdin_state.sync_two_way.store(enabled, std::sync::atomic::Ordering::Relaxed);
-                                if let Some(tx) = stdin_state.sync_cmd_tx.lock().await.as_ref() {
-                                    let _ = tx.send(SyncCommand::TwoWay(enabled)).await;
+                                let tx_opt = stdin_state.sync_cmd_tx.lock().await.clone();
+                                if let Some(tx) = tx_opt {
+                                    if let Err(err) = tx.send(SyncCommand::TwoWay(enabled)).await {
+                                        tracing::warn!(?err, "sync twoWay send failed");
+                                    }
                                 }
                             }
                             ControlCommand::SyncFullRescan => {
-                                if let Some(tx) = stdin_state.sync_cmd_tx.lock().await.as_ref() {
-                                    let _ = tx.send(SyncCommand::FullRescan).await;
+                                let tx_opt = stdin_state.sync_cmd_tx.lock().await.clone();
+                                if let Some(tx) = tx_opt {
+                                    if let Err(err) = tx.send(SyncCommand::FullRescan).await {
+                                        tracing::warn!(?err, "sync fullRescan send failed");
+                                    }
                                 }
                             }
                             ControlCommand::TvxMutate { name, args } => {
