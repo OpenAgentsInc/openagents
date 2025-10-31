@@ -40,18 +40,23 @@ Releases
 
 ## Getting Started
 
-Bridge (Rust)
-- `cargo bridge`
-- A WebSocket token is created on first run in `~/.openagents/bridge.json`.
+How it works
+- Download the app (TestFlight; Android coming soon).
+- On your desktop, run a single command to get a pairing QR code.
+- Scan the QR code from the app and start chatting.
 
-Mobile app (Expo)
-- `cd expo && bun install && bun run start`
-- Launch on a device/simulator (`bun run ios|android|web`).
-- In Settings, set Bridge Host (e.g., `ws://<your-ip>:8787/ws`) and paste the bridge token.
+Desktop (pairing QR)
+- `cd packages/tricoder && bun dev`
+  - Boots the bridge and prints a pairing QR code in the terminal.
+  - Scanning the QR is required; there is no Settings/manual input flow.
+
+Pairing options
+- Local network (Wi‑Fi): direct pairing on the same network; no accounts.
+- Tailscale VPN: stay connected anywhere by installing Tailscale on both devices.
 
 Requirements
-- Rust toolchain and the OpenAI Codex CLI (`codex --version` must work).
-- Bun for the Expo app (`curl -fsSL https://bun.sh/install | bash`).
+- Bun (or Node) to run the Tricoder CLI.
+- Providers on desktop as needed: OpenAI Codex CLI, Claude Code CLI (on PATH).
 
 ## Local Persistence
 
