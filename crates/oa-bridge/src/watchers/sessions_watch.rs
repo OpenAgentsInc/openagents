@@ -59,7 +59,13 @@ fn save_state(state: &SyncStateFile) {
 async fn process_file_append(state: &AppState, file_path: &Path, st: &mut FileState) -> Result<()> {
     let meta = fs::metadata(file_path)?;
     let len = meta.len();
-    if st.offset >= len { return Ok(()); }
+    // If the file shrank (rotation/truncate), reset offset and cached thread id
+    if st.offset > len {
+        st.offset = 0;
+        st.thread_id = None;
+    }
+    // Nothing new to read
+    if st.offset == len { return Ok(()); }
     // Open and seek to last processed offset
     let mut file = fs::File::open(file_path)?;
     file.seek(SeekFrom::Start(st.offset))?;
