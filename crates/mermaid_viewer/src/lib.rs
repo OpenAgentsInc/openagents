@@ -1,4 +1,6 @@
 use anyhow::{anyhow, Result};
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 
 /// Wrapper handle for a zoomable, pannable SVG viewer window.
 /// Construct via `render_mermaid(svg_source)` then call `run()`
@@ -58,6 +60,12 @@ pub fn render_mermaid(svg_source: &str) -> Result<MermaidView> {
 }
 
 fn build_html(svg_source: &str) -> String {
+    // Embed Berkeley Mono (Regular) from the repo for consistent typography.
+    // Falls back to local fonts if loading fails.
+    const BERKELEY_MONO_REGULAR: &[u8] = include_bytes!(
+        "../../../expo/assets/fonts/BerkeleyMono-Regular.ttf"
+    );
+    let font_b64 = BASE64.encode(BERKELEY_MONO_REGULAR);
     // Inline the SVG into a themed HTML page. We attach listeners to
     // implement viewBox-based zooming and panning for crisp vector scaling.
     // Theme constants
@@ -73,6 +81,13 @@ fn build_html(svg_source: &str) -> String {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mermaid Viewer</title>
     <style>
+      @font-face {{
+        font-family: 'Berkeley Mono Viewer';
+        src: url('data:font/ttf;base64,{font_b64}') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }}
       :root {{
         --bg: {bg};
         --fg: {text};
@@ -82,8 +97,10 @@ fn build_html(svg_source: &str) -> String {
         margin: 0; padding: 0; height: 100%; width: 100%;
         background: var(--bg);
         color: var(--fg);
-        font-family: 'Berkeley Mono', ui-monospace, Menlo, Consolas, monospace;
-        -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+        font-family: 'Berkeley Mono Viewer', 'Berkeley Mono', ui-monospace, Menlo, Consolas, monospace;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        -webkit-text-size-adjust: 100%;
       }}
       #toolbar {{
         position: fixed; top: 12px; right: 12px; z-index: 10;
@@ -99,10 +116,23 @@ fn build_html(svg_source: &str) -> String {
       }}
       #toolbar button:hover {{ border-color: #3b4046; }}
       #view {{ position: absolute; inset: 0; overflow: hidden; }}
-      svg {{ height: 100%; width: 100%; display: block; background: var(--bg); }}
-      svg text {{ fill: var(--fg) !important; font-family: 'Berkeley Mono', ui-monospace, Menlo, monospace !important; }}
-      svg rect, svg path, svg line, svg circle, svg ellipse, svg polygon {{ stroke: var(--stroke); }}
-      * {{ shape-rendering: geometricPrecision; }}
+      svg {{
+        height: 100%; width: 100%; display: block; background: var(--bg);
+        text-rendering: geometricPrecision;
+        -webkit-font-smoothing: antialiased;
+      }}
+      svg text {{
+        fill: var(--fg) !important;
+        font-family: 'Berkeley Mono Viewer', 'Berkeley Mono', ui-monospace, Menlo, monospace !important;
+        font-variant-ligatures: none;
+        font-synthesis: none;
+        text-rendering: geometricPrecision;
+      }}
+      svg rect, svg path, svg line, svg circle, svg ellipse, svg polygon {{
+        stroke: var(--stroke);
+        vector-effect: non-scaling-stroke;
+        shape-rendering: geometricPrecision;
+      }}
     </style>
   </head>
   <body>
@@ -137,8 +167,10 @@ fn build_html(svg_source: &str) -> String {
         let vw = svg.viewBox.baseVal.width || container.clientWidth || 1024;
         let vh = svg.viewBox.baseVal.height || container.clientHeight || 768;
 
+        function round(n){{ return Math.round(n*1000)/1000; }}
         function applyViewBox(){{
-          svg.setAttribute('viewBox', vx + ' ' + vy + ' ' + vw + ' ' + vh);
+          // Round values to avoid micro-blur from sub-pixel jitter
+          svg.setAttribute('viewBox', round(vx) + ' ' + round(vy) + ' ' + round(vw) + ' ' + round(vh));
           updateStatus();
         }}
 
