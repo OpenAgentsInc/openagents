@@ -23,7 +23,6 @@ use crate::codex_runner::{ChildWithIo, spawn_codex_child_with_prompt};
 use crate::controls::{ControlCommand, parse_control_command};
 use crate::tinyvex_write::{
     finalize_streaming_for_thread, stream_upsert_or_append, summarize_exec_delta_for_log,
-    try_finalize_stream_kind,
 };
 use crate::projects::Project;
 use acp_event_translator::translate_codex_event_to_acp_update;

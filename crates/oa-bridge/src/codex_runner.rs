@@ -4,7 +4,7 @@
 //! handles for streaming, and respawns lightweight children for subsequent
 //! prompts when the previous stdin has been closed.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Stdio;
 
 use anyhow::{Context, Result};

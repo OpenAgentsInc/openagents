@@ -218,7 +218,7 @@ impl Writer {
             }
             SU::ToolCallUpdate(tc) => {
                 let id = format!("{:?}", tc.id);
-                let title: &str = tc.fields.title.as_deref().unwrap_or("");
+                let _title: &str = tc.fields.title.as_deref().unwrap_or("");
                 let kind_s: Option<String> = tc
                     .fields
                     .kind
