@@ -47,6 +47,8 @@ pub struct AppState {
     pub bridge_ready: AtomicBool,
     // Tinyvex database (mandatory)
     pub tinyvex: std::sync::Arc<tinyvex::Tinyvex>,
+    // Transport-agnostic writer that performs DB writes and returns typed notifications
+    pub tinyvex_writer: std::sync::Arc<tinyvex::Writer>,
     // Map client thread doc id -> last known session id (for per-thread resume)
     pub sessions_by_client_doc: Mutex<HashMap<String, String>>,
 }

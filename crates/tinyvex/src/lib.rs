@@ -436,3 +436,6 @@ mod tests {
         assert_eq!(out[0].title, "Hello");
     }
 }
+
+pub mod writer;
+pub use writer::{Writer, WriterNotification};
