@@ -132,19 +132,24 @@ export default function ThreadScreen() {
           const items: RenderItem[] = []
           const haveTinyvex = tvxMessages.length > 0
 
-          // Tinyvex messages → timeline items
+          // Tinyvex messages → timeline items (hide reasoning here; show in detail)
           for (let i = 0; i < tvxMessages.length; i++) {
             const m = tvxMessages[i]
             const ts = Number(m.ts || m.updated_at || m.created_at || Date.now())
+            if ((m.kind || '').toLowerCase() === 'reason') continue
             items.push({
               ts,
               key: `tvx-${m.id || i}`,
               render: () => {
                 const text = String(m.text || '')
                 const content = { type: 'text', text } as any
-                if (m.kind === 'reason') return <SessionUpdateAgentThoughtChunk content={content} />
                 if ((m.role || '').toLowerCase() === 'user') return <SessionUpdateUserMessageChunk content={content} />
-                return <SessionUpdateAgentMessageChunk content={content} />
+                const firstLine = (text.split('\n')[0] || text).trim()
+                return (
+                  <Pressable onPress={() => { try { router.push(`/thread/${encodeURIComponent(threadId)}/message/${encodeURIComponent(String(m.id))}` as any) } catch {} }} accessibilityRole='button'>
+                    <SessionUpdateAgentMessageChunk content={{ type: 'text', text: firstLine } as any} />
+                  </Pressable>
+                )
               },
             })
           }
@@ -168,9 +173,11 @@ export default function ThreadScreen() {
             if (u?.sessionUpdate === 'user_message_chunk') {
               items.push({ ts, key: `acp-u-${ts}-${index}`, render: () => <SessionUpdateUserMessageChunk content={u.content} /> })
             } else if (u?.sessionUpdate === 'agent_message_chunk') {
-              items.push({ ts, key: `acp-a-${ts}-${index}`, render: () => <SessionUpdateAgentMessageChunk content={u.content} /> })
+              const fullText = (u.content && (u.content as any).text) || ''
+              const firstLine = String(fullText).split('\n')[0] || ''
+              items.push({ ts, key: `acp-a-${ts}-${index}`, render: () => <SessionUpdateAgentMessageChunk content={{ type: 'text', text: firstLine } as any} /> })
             } else if (u?.sessionUpdate === 'agent_thought_chunk') {
-              items.push({ ts, key: `acp-t-${ts}-${index}`, render: () => <SessionUpdateAgentThoughtChunk content={u.content} /> })
+              // Hide live thought traces in the timeline; available in detail
             }
           }
 
