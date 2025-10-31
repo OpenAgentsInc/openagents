@@ -94,6 +94,10 @@ fn build_html(svg_source: &str) -> String {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mermaid Viewer</title>
     <style>
+      /* Disable selection across the viewer */
+      *, *::before, *::after {{ -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
+      /* Disable selection across the viewer */
+      *, *::before, *::after {{ -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
       @font-face {{
         font-family: 'Berkeley Mono Viewer';
         src: url('data:font/ttf;base64,{font_b64}') format('truetype');
@@ -208,6 +212,9 @@ fn build_html(svg_source: &str) -> String {
           applyViewBox();
         }}
 
+        // Prevent context menu so right-click can be used for panning
+        container.addEventListener('contextmenu', (e) => {{ e.preventDefault(); }});
+
         // Mouse wheel zoom (low sensitivity)
         container.addEventListener('wheel', (e) => {{
           e.preventDefault();
@@ -221,8 +228,13 @@ fn build_html(svg_source: &str) -> String {
         // Drag to pan
         let dragging = false, startX = 0, startY = 0, svx = 0, svy = 0;
         container.addEventListener('pointerdown', (e) => {{
-          dragging = true; startX = e.clientX; startY = e.clientY; svx = vx; svy = vy;
-          container.setPointerCapture(e.pointerId);
+          const isMouse = e.pointerType === 'mouse';
+          const isLeft = e.button === 0;
+          const isRight = e.button === 2;
+          if (!isMouse || isLeft || isRight) {{
+            dragging = true; startX = e.clientX; startY = e.clientY; svx = vx; svy = vy;
+            container.setPointerCapture(e.pointerId);
+          }}
         }});
         container.addEventListener('pointermove', (e) => {{
           if (!dragging) return;
@@ -328,7 +340,7 @@ fn build_html_from_mermaid(code: &str) -> String {
       #toolbar button:hover {{ border-color: #3b4046; }}
       #view {{ position: absolute; inset: 0; overflow: hidden; }}
       .mermaid {{ height: 100%; width: 100%; display: block; background: var(--bg); }}
-      .mermaid svg {{ height: 100%; width: 100%; display: block; background: var(--bg); text-rendering: geometricPrecision; }}
+      .mermaid svg {{ height: 100%; width: 100%; display: block; background: var(--bg); text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; }}
       .mermaid svg text {{ fill: var(--fg) !important; font-family: 'Berkeley Mono Viewer', 'Berkeley Mono', ui-monospace, Menlo, monospace !important; font-variant-ligatures: none; font-synthesis: none; text-rendering: geometricPrecision; }}
       .mermaid svg rect, .mermaid svg path, .mermaid svg line, .mermaid svg circle, .mermaid svg ellipse, .mermaid svg polygon {{ stroke: var(--stroke); vector-effect: non-scaling-stroke; shape-rendering: geometricPrecision; }}
     </style>
@@ -349,6 +361,9 @@ fn build_html_from_mermaid(code: &str) -> String {
         const container = document.getElementById('view');
         const mroot = document.getElementById('mermaid');
         if (!mroot) return;
+
+        // Prevent context menu so right-click can be used for panning
+        container.addEventListener('contextmenu', (e) => {{ e.preventDefault(); }});
 
         mermaid.initialize({{
           startOnLoad: true,
@@ -427,7 +442,14 @@ fn build_html_from_mermaid(code: &str) -> String {
           }}
           container.addEventListener('wheel', (e) => {{ e.preventDefault(); const step = 0.00035; const factor = Math.exp(-e.deltaY * step); zoomAt(factor, e); }}, {{ passive: false }});
           let dragging=false,startX=0,startY=0,svx=0,svy=0;
-          container.addEventListener('pointerdown', (e)=>{{ dragging=true; startX=e.clientX; startY=e.clientY; svx=vx; svy=vy; container.setPointerCapture(e.pointerId); }});
+          container.addEventListener('pointerdown', (e)=>{{
+            const isMouse = e.pointerType === 'mouse';
+            const isLeft = e.button === 0;
+            const isRight = e.button === 2;
+            if (!isMouse || isLeft || isRight) {{
+              dragging=true; startX=e.clientX; startY=e.clientY; svx=vx; svy=vy; container.setPointerCapture(e.pointerId);
+            }}
+          }});
           container.addEventListener('pointermove', (e)=>{{ if(!dragging) return; const rect=container.getBoundingClientRect(); const dx=e.clientX-startX; const dy=e.clientY-startY; vx=svx - dx*(vw/rect.width); vy=svy - dy*(vh/rect.height); applyViewBox(); }});
           container.addEventListener('pointerup', ()=> dragging=false);
           container.addEventListener('pointercancel', ()=> dragging=false);
