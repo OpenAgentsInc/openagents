@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics"
 import { router, usePathname } from "expo-router"
 import React from "react"
-import { Pressable, Text, View } from "react-native"
+import { Pressable, Text, View, type LayoutChangeEvent } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Colors } from "@/constants/theme"
 import { Typography } from "@/constants/typography"
@@ -28,7 +28,7 @@ export function AppHeader() {
     return false
   }, [pathname])
 
-  const onLayout = React.useCallback((e: any) => {
+  const onLayout = React.useCallback((e: LayoutChangeEvent) => {
     const h = e?.nativeEvent?.layout?.height ?? 0
     try {
       const prev = useHeaderStore.getState().height

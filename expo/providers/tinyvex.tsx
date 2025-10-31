@@ -197,7 +197,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           if (bootstrapPendingRef.current) {
             bootstrapPendingRef.current = false
             const id = fallbackTimerRef.current
-            if (id != null) { clearTimeout(id as any); fallbackTimerRef.current = null as any }
+            if (id != null) { clearTimeout(id as unknown as number); fallbackTimerRef.current = null as unknown as number | null }
           }
         } catch {}
         const threadsRows = q.threads
@@ -235,9 +235,9 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
             source: 'codex',
             created_at: ts || Date.now(),
             updated_at: ts || Date.now(),
-            messageCount: rows.length as any, // keep existing key expected by UI
+            message_count: rows.length,
             last_message_ts: ts || Date.now(),
-          } as unknown as ThreadRow)
+          } as ThreadRow)
         }
         setThreads(nextThreads)
         try {
@@ -310,13 +310,13 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
       const arr = Array.isArray(threads) ? threads : []
       // Prefetch a bounded recent set (reduce connect burst). We keep
       // a `seen` set to avoid re-subscribing while the provider lives.
-      const copy = arr.slice().sort((a: any, b: any) => {
-        const at = (a?.updated_at ?? a?.updatedAt ?? a?.created_at ?? a?.createdAt ?? 0) as number
-        const bt = (b?.updated_at ?? b?.updatedAt ?? b?.created_at ?? b?.createdAt ?? 0) as number
+      const copy = arr.slice().sort((a, b) => {
+        const at = Number((a as ThreadRow).updated_at ?? (a as ThreadRow).created_at ?? 0)
+        const bt = Number((b as ThreadRow).updated_at ?? (b as ThreadRow).created_at ?? 0)
         return bt - at
       }).slice(0, PREFETCH_TOP_THREADS)
       for (const r of copy) {
-        const tid = String((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')
+        const tid = String((r as ThreadRow).id || '')
         if (!tid || seen.has(tid)) continue
         try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', threadId: tid })) } catch {}
         try { scheduleMsgQuery(tid) } catch {}

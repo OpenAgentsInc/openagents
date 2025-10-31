@@ -18,7 +18,7 @@ export function SessionUpdateToolCall(props: ToolCallLike) {
   return (
     <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <MaterialCommunityIcons name={icon as any} size={18} color={statusColor} />
+        <MaterialCommunityIcons name={icon as unknown as never} size={18} color={statusColor} />
         <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13 }}>{props.title}</Text>
         <View style={{ marginLeft: 'auto' }} />
         <Text style={{ color: statusColor, fontFamily: Typography.primary, fontSize: 12 }}>{props.status}</Text>
@@ -46,7 +46,7 @@ export function SessionUpdateToolCall(props: ToolCallLike) {
 
 function ToolCallContent({ content }: { content: ToolCallContentType }) {
   if (content.type === 'content') return <InlineContent block={content.content} />
-  if (content.type === 'diff') return <ToolCallContentDiff path={content.path} oldText={(content as any).oldText} newText={(content as any).newText} />
+  if (content.type === 'diff') return <ToolCallContentDiff path={content.path} oldText={(content as Extract<ToolCallContentType, { type: 'diff' }>).oldText} newText={(content as Extract<ToolCallContentType, { type: 'diff' }>).newText} />
   if (content.type === 'terminal') return <ToolCallContentTerminal terminalId={content.terminalId} />
   return null
 }
@@ -60,7 +60,7 @@ function InlineContent({ block }: { block: ContentBlock }) {
     case 'audio':
       return <ContentAudio mimeType={block.mimeType} />
     case 'resource':
-      return <ContentResource resource={block.resource as any} />
+      return <ContentResource resource={block.resource} />
     case 'resource_link':
       return <ContentResourceLink name={block.name} uri={block.uri} mimeType={block.mimeType} />
     default:
@@ -82,7 +82,7 @@ function colorForStatus(status: ToolCallLike['status']): string {
   }
 }
 
-function iconForKind(kind: ToolCallLike['kind']): any {
+function iconForKind(kind: ToolCallLike['kind']): string {
   switch (kind) {
     case 'execute':
       return 'console'

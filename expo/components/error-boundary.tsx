@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode; catchErrors?
   }
 
   render() {
-    if (!this.isEnabled() || !this.state.error) return this.props.children as any
+    if (!this.isEnabled() || !this.state.error) return this.props.children
     const message = String(this.state.error?.message || this.state.error)
     const stack = String(this.state.error?.stack || this.state.info?.componentStack || '')
     return (
@@ -68,4 +68,3 @@ const styles = StyleSheet.create({
   btnAlt: { borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 14, paddingVertical: 10 },
   btnAltText: { color: Colors.secondary, fontFamily: Typography.bold },
 })
-

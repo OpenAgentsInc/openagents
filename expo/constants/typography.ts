@@ -18,15 +18,17 @@ let appliedTypographyGlobals = false;
 
 export function applyTypographyGlobals() {
   if (appliedTypographyGlobals) return;
-  if ((Text as any).defaultProps == null) (Text as any).defaultProps = {};
-  if ((TextInput as any).defaultProps == null) (TextInput as any).defaultProps = {};
+  const TextAny = Text as unknown as { defaultProps?: { style?: unknown } };
+  const TextInputAny = TextInput as unknown as { defaultProps?: { style?: unknown } };
+  if (TextAny.defaultProps == null) TextAny.defaultProps = {};
+  if (TextInputAny.defaultProps == null) TextInputAny.defaultProps = {};
   const baseTextStyle = { fontFamily: Typography.primary, color: Colors.foreground } as const;
-  (Text as any).defaultProps.style = [
-    (Text as any).defaultProps.style,
+  TextAny.defaultProps!.style = [
+    TextAny.defaultProps!.style as any,
     baseTextStyle,
   ];
-  (TextInput as any).defaultProps.style = [
-    (TextInput as any).defaultProps.style,
+  TextInputAny.defaultProps!.style = [
+    TextInputAny.defaultProps!.style as any,
     baseTextStyle,
   ];
   appliedTypographyGlobals = true;

@@ -39,7 +39,7 @@ export const useLogStore = create<LogState>()(
       name: '@openagents/logs-v2',
       version: 2,
       storage: createJSONStorage(() => AsyncStorage),
-      migrate: (persisted: any, from) => {
+      migrate: (persisted: unknown, _from) => {
         // Migrate v1: plain array of LogDetail
         try {
           if (Array.isArray(persisted)) return { logs: persisted as LogDetail[] }

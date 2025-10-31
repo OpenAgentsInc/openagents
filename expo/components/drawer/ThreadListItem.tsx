@@ -102,7 +102,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
   // Filter out threads that have zero primary chat messages when count is known
   if (typeof count === 'number' && count <= 0) return null
   // Provider/source indicator (Codex vs Claude Code)
-  const source = String((row?.source || '') as any).toLowerCase()
+  const source = String(row?.source || '').toLowerCase()
   const providerBadge = (() => {
     if (source === 'claude_code') {
       return (
@@ -145,7 +145,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
     )
   })()
   return (
-    <ThreadListItemBase title={lastSnippet || (row?.title as any) || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
+    <ThreadListItemBase title={lastSnippet || String(row?.title || 'Thread')} meta={meta} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
   )
 }
 
