@@ -19,7 +19,7 @@ fn read(dir: &str) -> Vec<(String, String)> {
 fn extract_mermaid_blocks(s: &str) -> Vec<String> {
     let mut blocks = vec![];
     let mut i = 0;
-    while let Some(start) = s[i..].find("```mermaid") { let a = i + start + 9; // after fence
+    while let Some(start) = s[i..].find("```mermaid") { let a = i + start + "```mermaid".len(); // after fence
         if let Some(end_rel) = s[a..].find("```") { let b = a + end_rel; blocks.push(s[a..b].trim().to_string()); i = b + 3; } else { break; }
     }
     blocks
@@ -62,9 +62,9 @@ fn lint_tinyvex_mermaid_docs() {
                 // basic check for at least one node and edge
                 assert!(b.contains("--"), "{}[block {}]: flowchart has no edges", name, idx);
             }
+            // erDiagram: allow quoted relation labels; just ensure there are relationships
             if b.trim_start().starts_with("erDiagram") {
-                // relationships should not contain quotes which sometimes break parsing
-                assert!(!b.contains('\"'), "{}[block {}]: erDiagram relation labels should avoid quotes", name, idx);
+                assert!(b.contains("||") || b.contains("o{"), "{}[block {}]: erDiagram missing relationships", name, idx);
             }
             if b.trim_start().starts_with("sequenceDiagram") {
                 // Must contain at least one participant

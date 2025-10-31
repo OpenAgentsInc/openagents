@@ -79,11 +79,11 @@ erDiagram
     INTEGER updatedAt
   }
 
-  threads ||--o{ messages : id to threadId
-  threads ||--o{ acp_tool_calls : id to threadId
-  threads ||--|| acp_plan : id to threadId
-  threads ||--|| acp_state : id to threadId
-  acp_events }o--o{ threads : clientThreadDocId
+  threads ||--o{ messages : "id to threadId"
+  threads ||--o{ acp_tool_calls : "id to threadId"
+  threads ||--|| acp_plan : "id to threadId"
+  threads ||--|| acp_state : "id to threadId"
+  acp_events }o--o{ threads : "clientThreadDocId"
 ```
 
 Notes
