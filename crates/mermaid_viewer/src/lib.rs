@@ -163,10 +163,13 @@ fn build_html(svg_source: &str) -> String {
           applyViewBox();
         }}
 
-        // Mouse wheel zoom
+        // Mouse wheel zoom (low sensitivity)
         container.addEventListener('wheel', (e) => {{
           e.preventDefault();
-          const factor = (e.deltaY < 0) ? 1.1 : 1/1.1;
+          // Map deltaY to an exponential scale factor with low sensitivity.
+          // Smaller step -> less sensitive zoom; tuned for trackpads and wheels.
+          const step = 0.00035; // was effectively ~0.095 per notch; now ~0.035
+          const factor = Math.exp(-e.deltaY * step);
           zoomAt(factor, e);
         }}, {{ passive: false }});
 
@@ -190,11 +193,11 @@ fn build_html(svg_source: &str) -> String {
         // Toolbar actions
         document.getElementById('zoom_in').onclick = () => {{
           const centerEvt = new MouseEvent('wheel', {{ clientX: container.clientWidth/2, clientY: container.clientHeight/2, deltaY: -1 }});
-          zoomAt(1.2, centerEvt);
+          zoomAt(1.08, centerEvt); // gentler step
         }};
         document.getElementById('zoom_out').onclick = () => {{
           const centerEvt = new MouseEvent('wheel', {{ clientX: container.clientWidth/2, clientY: container.clientHeight/2, deltaY: 1 }});
-          zoomAt(1/1.2, centerEvt);
+          zoomAt(1/1.08, centerEvt);
         }};
         function fit(){{
           // Fit SVG content to container based on initial bounding box or viewBox.
