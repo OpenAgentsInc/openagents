@@ -8,7 +8,7 @@ import { StatusBar } from "expo-status-bar"
 import React from "react"
 import {
     ActivityIndicator, I18nManager, InteractionManager, Pressable, ScrollView,
-    Text, View
+    Text, View, ActionSheetIOS, Platform
 } from "react-native"
 import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
@@ -34,6 +34,7 @@ import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { useUpdateStore } from "@/lib/update-store"
+import { useArchiveStore } from "@/lib/archive-store"
 
 function DrawerContent() {
   const router = useRouter();
@@ -47,19 +48,52 @@ function DrawerContent() {
   // - bounded prefetch for top threads
   // - throttled message tail queries on live updates
   const { threads, subscribeMessages, queryMessages } = useTinyvex()
+  const { isArchived, archive, unarchive } = useArchiveStore()
+  const archivedMap = useArchiveStore((s) => s.archived)
+  const [menuFor, setMenuFor] = React.useState<string | null>(null)
   const topThreads = React.useMemo(() => {
     if (!Array.isArray(threads)) return null
-    const copy = threads.slice()
+    const copy = threads
+      .slice()
+      .filter((r: any) => {
+        const tid = String((r && (r.id ?? r.thread_id ?? r.threadId)) || '')
+        return tid && !isArchived(tid)
+      })
     copy.sort((a: any, b: any) => {
       const at = (a?.updated_at ?? a?.updatedAt ?? a?.created_at ?? a?.createdAt ?? 0) as number
       const bt = (b?.updated_at ?? b?.updatedAt ?? b?.created_at ?? b?.createdAt ?? 0) as number
       return bt - at
     })
     return copy.slice(0, 10)
-  }, [threads])
+  }, [threads, archivedMap])
   // Drawer deliberately does not warm per-thread messages.
   // TinyvexProvider prefetches a small recent set to avoid connect-time bursts.
   const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
+  const showActions = (threadId: string) => {
+    if (!threadId) return
+    if (Platform.OS === 'ios') {
+      try {
+        const archived = isArchived(threadId)
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: [archived ? 'Unarchive' : 'Archive', 'Cancel'],
+            cancelButtonIndex: 1,
+            userInterfaceStyle: 'dark',
+          },
+          (idx) => {
+            if (idx === 0) {
+              try { archived ? unarchive(threadId) : archive(threadId) } catch {}
+            }
+          }
+        )
+      } catch {}
+    } else {
+      setMenuFor(threadId)
+    }
+  }
+
+  const closeMenu = () => setMenuFor(null)
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
       <View style={{ flex: 1, backgroundColor: Colors.sidebarBackground }}>
@@ -69,6 +103,14 @@ function DrawerContent() {
           </View>
           <View style={{ paddingHorizontal: 16, gap: 4 }}>
             <View style={{ height: 8 }} />
+            {/* Archived link */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="archive-outline" size={14} color={Colors.secondary} />
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Archived</Text>
+            </View>
+            <Pressable onPress={closeAnd(() => router.push('/thread/archived' as any))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>View archived</Text>
+            </Pressable>
             {/** Projects section temporarily disabled for v1
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="folder-outline" size={14} color={Colors.secondary} />
@@ -107,12 +149,29 @@ function DrawerContent() {
                     key={String(row.id)}
                     row={row}
                     onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}` as any))}
+                    onLongPress={() => showActions(String(row.id))}
                   />
                 ))
               )
             )}
           </View>
         </ScrollView>
+        {/* Inline action menu for Android/Web */}
+        {menuFor ? (
+          <Pressable onPress={closeMenu} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
+            <View pointerEvents="box-none" style={{ flex: 1 }}>
+              <View style={{ position: 'absolute', right: 12, top: 84, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, paddingVertical: 6, paddingHorizontal: 8 }}>
+                <Pressable onPress={() => { try { (isArchived(menuFor) ? unarchive(menuFor) : archive(menuFor)) } catch {}; closeMenu() }} accessibilityRole="button" style={{ paddingVertical: 6 }}>
+                  <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 14 }}>{isArchived(menuFor) ? 'Unarchive' : 'Archive'}</Text>
+                </Pressable>
+                <View style={{ height: 6 }} />
+                <Pressable onPress={closeMenu} accessibilityRole="button" style={{ paddingVertical: 6 }}>
+                  <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14 }}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        ) : null}
         <View style={{ borderTopWidth: 1, borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12 }}>
           {/* <Pressable
             onPress={closeAnd(() => router.push('/dashboard' as any))}
@@ -342,6 +401,7 @@ function DrawerWrapper() {
           <Stack.Screen name="help/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
+          <Stack.Screen name="thread/archived" options={{ headerShown: false }} />
           <Stack.Screen name="projects/index" />
           {/** Convex screens removed in Tinyvex build */}
           <Stack.Screen name="skills/index" />
