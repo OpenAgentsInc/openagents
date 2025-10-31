@@ -12,7 +12,7 @@ export function SessionUpdatePlan({ entries }: { entries: ReadonlyArray<PlanEntr
       <View style={{ gap: 6 }}>
         {entries.map((e, i) => (
           <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <MaterialCommunityIcons name={iconForStatus(e.status)} size={16} color={colorForStatus(e.status)} />
+            <MaterialCommunityIcons name={iconForStatus(e.status) as unknown as never} size={16} color={colorForStatus(e.status)} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary }}>{e.content}</Text>
           </View>
         ))}
