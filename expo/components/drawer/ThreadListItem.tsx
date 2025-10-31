@@ -50,7 +50,16 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPr
   const threadId = String(row?.threadId || row?.thread_id || row?._id || row?.id || '')
   const { messagesByThread } = useTinyvex()
   const msgs = Array.isArray(messagesByThread[threadId]) ? messagesByThread[threadId] : []
-  const updatedAt = normalizeTs(row)
+  // Prefer last message timestamp if we have a tail; fall back to row.updatedAt
+  const updatedAt = React.useMemo(() => {
+    const arr = msgs && msgs.length > 0 ? msgs : []
+    if (arr.length > 0) {
+      const last = arr[arr.length - 1] as any
+      const ts = Number((last && (last.ts || last.updated_at)) || 0)
+      if (!isNaN(ts) && ts > 0) return ts
+    }
+    return normalizeTs(row)
+  }, [msgs, row])
   const count = React.useMemo(() => {
     const mc: any = (row as any)?.messageCount
     if (typeof mc === 'number') return mc
@@ -132,7 +141,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPr
     )
   })()
   return (
-    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={undefined} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
+    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
   )
 }
 
