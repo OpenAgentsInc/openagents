@@ -2,14 +2,13 @@ use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
 use tracing::info;
-use ts_rs::TS;
+ 
 
 pub struct Tinyvex {
     db_path: PathBuf,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, TS)]
-#[ts(export, export_to = "../../docs/types/")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ThreadRow {
     pub id: String,
     pub thread_id: Option<String>,
@@ -26,8 +25,7 @@ pub struct ThreadRow {
     pub last_message_ts: Option<i64>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, TS)]
-#[ts(export, export_to = "../../docs/types/")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MessageRow {
     pub id: i64,
     pub thread_id: String,
@@ -42,8 +40,7 @@ pub struct MessageRow {
     pub updated_at: Option<i64>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, TS)]
-#[ts(export, export_to = "../../docs/types/")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolCallRow {
     pub thread_id: String,
     pub tool_call_id: String,

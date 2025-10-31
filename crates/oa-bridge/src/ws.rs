@@ -255,7 +255,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                     }
                                                 }
                                             }
-                                            let line = serde_json::json!({"type":"tinyvex.query_result","name":"threads.list","rows": rows}).to_string();
+                                            let typed: Vec<types::ThreadRowTs> = rows.iter().map(|r| types::ThreadRowTs::from(r)).collect();
+                                            let line = serde_json::json!({"type":"tinyvex.query_result","name":"threads.list","rows": typed}).to_string();
                                             let _ = stdin_state.tx.send(line);
                                         }
                                         Err(e) => { error!(?e, "tinyvex threads.list failed"); }
@@ -265,7 +266,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         let send_rows = |id_for_reply: &str| {
                                             match stdin_state.tinyvex.list_messages(id_for_reply, limit) {
                                                 Ok(rows) => {
-                                                    let line = serde_json::json!({"type":"tinyvex.query_result","name":"messages.list","threadId": id_for_reply, "rows": rows}).to_string();
+                                                    let typed: Vec<types::MessageRowTs> = rows.iter().map(|r| types::MessageRowTs::from(r)).collect();
+                                                    let line = serde_json::json!({"type":"tinyvex.query_result","name":"messages.list","threadId": id_for_reply, "rows": typed}).to_string();
                                                     let _ = stdin_state.tx.send(line);
                                                 }
                                                 Err(e) => { error!(?e, "tinyvex messages.list failed"); }
@@ -366,7 +368,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 let tid = r.thread_id.as_deref().unwrap_or(&r.id).to_string();
                                                 seen.insert(tid.clone());
                                                 match stdin_state.tinyvex.list_messages(&tid, per) {
-                                                    Ok(m) => tails.push(serde_json::json!({"threadId": tid, "rows": m})),
+                                                    Ok(m) => {
+                                                        let typed: Vec<types::MessageRowTs> = m.iter().map(|r| types::MessageRowTs::from(r)).collect();
+                                                        tails.push(serde_json::json!({"threadId": tid, "rows": typed}))
+                                                    },
                                                     Err(_) => tails.push(serde_json::json!({"threadId": tid, "rows": []})),
                                                 }
                                             }
@@ -429,11 +434,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     let lim = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(50);
                                     if !tid.is_empty() {
                                         let send_rows = |rows: Vec<tinyvex::ToolCallRow>| {
+                                            let typed: Vec<types::ToolCallRowTs> = rows.iter().map(|r| types::ToolCallRowTs::from(r)).collect();
                                             let line = serde_json::json!({
                                                 "type":"tinyvex.query_result",
                                                 "name":"toolCalls.list",
                                                 "threadId": tid,
-                                                "rows": rows
+                                                "rows": typed
                                             }).to_string();
                                             let _ = stdin_state.tx.send(line);
                                         };
