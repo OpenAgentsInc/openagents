@@ -205,23 +205,22 @@ fn build_html(svg_source: &str) -> String {
 
         // Ensure note labels are vertically centered within their rectangles
         function centerNotes(){{
-          const rects = svg.querySelectorAll('rect.note, g.note rect, rect[class*="note"]');
+          const rects = svg.querySelectorAll('g[class*="note"] rect, rect.note, rect[class*="note"]');
           rects.forEach((rect) => {{
-            const y = rect.y?.baseVal?.value ?? parseFloat(rect.getAttribute('y')||'0');
-            const h = rect.height?.baseVal?.value ?? parseFloat(rect.getAttribute('height')||'0');
-            const cy = y + h / 2;
+            const rb = rect.getBBox();
+            const cy = rb.y + rb.height / 2;
             const g = rect.parentNode;
             if (!g) return;
             const texts = g.querySelectorAll('text');
             texts.forEach((t) => {{
-              const bbox = t.getBBox();
-              const currentCenter = bbox.y + bbox.height / 2;
+              const tb = t.getBBox();
+              const currentCenter = tb.y + tb.height / 2;
               const curY = parseFloat(t.getAttribute('y') || '0');
               const newY = curY + (cy - currentCenter);
               t.setAttribute('y', newY);
-              t.removeAttribute('dy');
-              t.removeAttribute('dominant-baseline');
-              t.removeAttribute('alignment-baseline');
+              t.setAttribute('dominant-baseline', 'middle');
+              t.setAttribute('alignment-baseline', 'middle');
+              t.setAttribute('dy', '0');
             }});
           }});
         }}
@@ -465,23 +464,22 @@ fn build_html_from_mermaid(code: &str) -> String {
             updateStatus();
           }}
           function centerNotes(){{
-            const rects = svg.querySelectorAll('rect.note, g.note rect, rect[class*="note"]');
+            const rects = svg.querySelectorAll('g[class*="note"] rect, rect.note, rect[class*="note"]');
             rects.forEach((rect) => {{
-              const y = rect.y?.baseVal?.value ?? parseFloat(rect.getAttribute('y')||'0');
-              const h = rect.height?.baseVal?.value ?? parseFloat(rect.getAttribute('height')||'0');
-              const cy = y + h / 2;
+              const rb = rect.getBBox();
+              const cy = rb.y + rb.height / 2;
               const g = rect.parentNode;
               if (!g) return;
               const texts = g.querySelectorAll('text');
               texts.forEach((t) => {{
-                const bbox = t.getBBox();
-                const currentCenter = bbox.y + bbox.height / 2;
+                const tb = t.getBBox();
+                const currentCenter = tb.y + tb.height / 2;
                 const curY = parseFloat(t.getAttribute('y') || '0');
                 const newY = curY + (cy - currentCenter);
                 t.setAttribute('y', newY);
-                t.removeAttribute('dy');
-                t.removeAttribute('dominant-baseline');
-                t.removeAttribute('alignment-baseline');
+                t.setAttribute('dominant-baseline', 'middle');
+                t.setAttribute('alignment-baseline', 'middle');
+                t.setAttribute('dy', '0');
               }});
             }});
           }}
