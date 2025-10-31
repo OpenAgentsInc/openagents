@@ -542,11 +542,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     count
                                 } as i64;
                                 let last = { *stdin_state.sync_last_read_ms.lock().await } as i64;
+                                // Emit snake_case fields per SyncStatusTs
                                 let line = serde_json::json!({
-                                    "type":"bridge.sync_status",
+                                    "type": "bridge.sync_status",
                                     "enabled": enabled,
-                                    "twoWay": two_way,
-                                    "watched": [{"provider":"codex","base": base.display().to_string(), "files": files, "lastRead": last }]
+                                    "two_way": two_way,
+                                    "watched": [{
+                                        "provider": "codex",
+                                        "base": base.display().to_string(),
+                                        "files": files,
+                                        "last_read": last
+                                    }]
                                 }).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
