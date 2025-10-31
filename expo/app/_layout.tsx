@@ -254,6 +254,8 @@ function DrawerContent() {
 export default function RootLayout() {
   const fontsLoaded = useTypographySetup();
   useAutoUpdate();
+  // Always call hooks unconditionally and outside try/catch to keep order stable
+  const updating = useUpdateStore((s) => s.updating)
   React.useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -270,25 +272,22 @@ export default function RootLayout() {
       if (handle && typeof handle.cancel === "function") handle.cancel();
     };
   }, []);
+  // Show updating overlay first to avoid hook-order shifts during OTA state
+  if (updating) {
+    return (
+      <SafeAreaProvider>
+        <ThemeProvider value={NavigationTheme}>
+          <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator size="large" color={Colors.foreground} />
+            <Text style={{ marginTop: 10, color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 }}>Updating</Text>
+          </View>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    )
+  }
+
   if (!fontsLoaded) return null;
   applyTypographyGlobals();
-
-  // Updating overlay: replace entire UI when an OTA is being applied
-  try {
-    const updating = useUpdateStore((s) => s.updating)
-    if (updating) {
-      return (
-        <SafeAreaProvider>
-          <ThemeProvider value={NavigationTheme}>
-            <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
-              <ActivityIndicator size="large" color={Colors.foreground} />
-              <Text style={{ marginTop: 10, color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 }}>Updating</Text>
-            </View>
-          </ThemeProvider>
-        </SafeAreaProvider>
-      )
-    }
-  } catch {}
 
   return (
     <SafeAreaProvider>
@@ -390,7 +389,6 @@ function DrawerWrapper() {
           <Stack.Screen name="onboarding/index" options={{ headerShown: false }} />
           <Stack.Screen name="dashboard/index" options={{ headerShown: false }} />
           <Stack.Screen name="help/index" options={{ headerShown: false }} />
-          <Stack.Screen name="thread/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
           <Stack.Screen name="thread/archived" options={{ headerShown: false }} />
           <Stack.Screen name="projects/index" />
