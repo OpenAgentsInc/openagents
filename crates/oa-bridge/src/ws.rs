@@ -532,7 +532,7 @@ mod auth_tests {
             claude_bin: None,
             claude_args: None,
         };
-        let tvx = tinyvex::Tinyvex::open(tempfile::NamedTempFile::new().unwrap().path()).unwrap();
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(tempfile::NamedTempFile::new().unwrap().path()).unwrap());
         Arc::new(AppState {
             tx,
             child_stdin: Mutex::new(None),
@@ -545,7 +545,8 @@ mod auth_tests {
             pending_user_text: Mutex::new(std::collections::HashMap::new()),
             sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
-            tinyvex: std::sync::Arc::new(tvx),
+            tinyvex: tvx.clone(),
+            tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
         })
     }
 

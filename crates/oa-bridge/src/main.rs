@@ -133,7 +133,8 @@ async fn main() -> Result<()> {
         stream_track: Mutex::new(std::collections::HashMap::new()),
         pending_user_text: Mutex::new(std::collections::HashMap::new()),
         bridge_ready: std::sync::atomic::AtomicBool::new(true),
-        tinyvex,
+        tinyvex: tinyvex.clone(),
+        tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tinyvex.clone())),
         sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
     });
 
