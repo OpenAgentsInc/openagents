@@ -29,6 +29,7 @@ import { DrawerProvider, useDrawer } from "@/providers/drawer"
 import { BridgeProvider, useBridge } from "@/providers/ws"
 import { useSettings } from "@/lib/settings-store"
 import { parseBridgeCode, normalizeBridgeCodeInput } from "@/lib/pairing"
+import { usePairingStore } from "@/lib/pairing-store"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
 import { ErrorBoundary } from "@/components/error-boundary"
@@ -215,13 +216,14 @@ export default function RootLayout() {
   // Updating overlay: replace entire UI when an OTA is being applied
   try {
     const updating = useUpdateStore((s) => s.updating)
-    if (updating) {
+    const deeplinkPairing = usePairingStore((s) => s.deeplinkPairing)
+    if (updating || deeplinkPairing) {
       return (
         <SafeAreaProvider>
           <ThemeProvider value={NavigationTheme}>
             <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
               <ActivityIndicator size="large" color={Colors.foreground} />
-              <Text style={{ marginTop: 10, color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 }}>Updating</Text>
+              <Text style={{ marginTop: 10, color: Colors.secondary, fontFamily: Typography.bold, fontSize: 16 }}>{updating ? 'Updating' : 'Pairing'}</Text>
             </View>
           </ThemeProvider>
         </SafeAreaProvider>
@@ -274,6 +276,7 @@ function DrawerWrapper() {
     const path = String(pathname || '')
     if (connected && path.startsWith('/onboarding')) {
       try { router.replace('/thread/new' as any) } catch {}
+      try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
     }
   }, [connected, pathname])
 
@@ -375,6 +378,7 @@ function LinkingBootstrap() {
   const { setBridgeHost, connect } = useBridge();
   // Avoid writing Bridge Code into the input field on deep links to prevent UIKit text churn
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
+  const setDeeplinkPairing = usePairingStore((s) => s.setDeeplinkPairing)
   React.useEffect(() => {
     let cancelled = false
     const handleUrl = (url: string) => {
@@ -382,6 +386,7 @@ function LinkingBootstrap() {
       try {
         const parsed = parseBridgeCode(url)
         if (!parsed) return
+        try { setDeeplinkPairing(true) } catch {}
         // Apply host/token from deep link and auto-connect, skipping onboarding.
         // We intentionally do not set the raw bridgeCode field to avoid TextInput churn.
         try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
