@@ -96,6 +96,11 @@ fn build_html(svg_source: &str) -> String {
     <style>
       /* Disable selection across the viewer */
       *, *::before, *::after {{ -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
+      #toolbar, #toolbar * {{ -webkit-user-select: none !important; user-select: none !important; pointer-events: auto; }}
+      /* Disable selection across the viewer */
+      *, *::before, *::after {{ -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
+      /* Ensure toolbar is still clickable but text not selectable */
+      #toolbar, #toolbar * {{ -webkit-user-select: none !important; user-select: none !important; pointer-events: auto; }}
       /* Disable selection across the viewer */
       *, *::before, *::after {{ -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
       @font-face {{
@@ -138,6 +143,9 @@ fn build_html(svg_source: &str) -> String {
         text-rendering: geometricPrecision;
         -webkit-font-smoothing: antialiased;
       }}
+      /* Prevent any selection/dragging on SVG and descendants, and route events to container */
+      svg, svg * {{ -webkit-user-select: none !important; user-select: none !important; -webkit-user-drag: none; }}
+      svg *, svg text {{ pointer-events: none; }}
       svg text {{
         fill: var(--fg) !important;
         font-family: 'Berkeley Mono Viewer', 'Berkeley Mono', ui-monospace, Menlo, monospace !important;
@@ -164,6 +172,9 @@ fn build_html(svg_source: &str) -> String {
     </div>
     <script>
       (function(){{
+        // Block any selection attempts globally
+        document.addEventListener('selectstart', (e) => e.preventDefault());
+        document.addEventListener('dragstart', (e) => e.preventDefault());
         const container = document.getElementById('view');
         const svg = container.querySelector('svg');
         if (!svg) return;
@@ -338,7 +349,9 @@ fn build_html_from_mermaid(code: &str) -> String {
       #toolbar button:hover {{ border-color: #3b4046; }}
       #view {{ position: absolute; inset: 0; overflow: hidden; }}
       .mermaid {{ height: 100%; width: 100%; display: block; background: var(--bg); }}
+      .mermaid, .mermaid * {{ -webkit-user-select: none !important; user-select: none !important; -webkit-user-drag: none; }}
       .mermaid svg {{ height: 100%; width: 100%; display: block; background: var(--bg); text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; }}
+      .mermaid svg *, .mermaid svg text {{ pointer-events: none; }}
       .mermaid svg text {{ fill: var(--fg) !important; font-family: 'Berkeley Mono Viewer', 'Berkeley Mono', ui-monospace, Menlo, monospace !important; font-variant-ligatures: none; font-synthesis: none; text-rendering: geometricPrecision; }}
       .mermaid svg rect, .mermaid svg path, .mermaid svg line, .mermaid svg circle, .mermaid svg ellipse, .mermaid svg polygon {{ stroke: var(--stroke); vector-effect: non-scaling-stroke; shape-rendering: geometricPrecision; }}
     </style>
@@ -356,6 +369,9 @@ fn build_html_from_mermaid(code: &str) -> String {
     <script src="data:text/javascript;base64,{mermaid_js_b64}"></script>
     <script>
       (function(){{
+        // Block any selection attempts globally
+        document.addEventListener('selectstart', (e) => e.preventDefault());
+        document.addEventListener('dragstart', (e) => e.preventDefault());
         const container = document.getElementById('view');
         const mroot = document.getElementById('mermaid');
         if (!mroot) return;
