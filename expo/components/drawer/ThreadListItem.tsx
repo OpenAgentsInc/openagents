@@ -4,14 +4,17 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useRouter } from 'expo-router'
 import { useTinyvex } from '@/providers/tinyvex'
+import { Ionicons } from '@expo/vector-icons'
 
 export function ThreadListItemBase({
   title,
+  meta,
   timestamp,
   count,
   onPress,
 }: {
   title: string
+  meta?: React.ReactNode
   timestamp?: number | null
   count?: number | null
   onPress?: () => void
@@ -22,6 +25,9 @@ export function ThreadListItemBase({
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <View style={{ flex: 1, paddingRight: 8 }}>
           <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{title || 'Thread'}</Text>
+          {meta ? (
+            <View style={{ marginTop: 2 }}>{meta}</View>
+          ) : null}
           {!!ts && (
             <Text numberOfLines={1} style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{ts}</Text>
           )}
@@ -77,7 +83,28 @@ export function DrawerThreadItem({ row, onPress }: { row: any; onPress?: () => v
   }
   // Filter out threads that have zero primary chat messages when count is known
   if (typeof count === 'number' && count <= 0) return null
+  // Provider/source indicator (Codex vs Claude Code)
+  const source = String((row?.source || '') as any).toLowerCase()
+  const meta = (() => {
+    if (source === 'claude_code') {
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name="flash-outline" size={12} color={Colors.secondary} />
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Claude Code</Text>
+        </View>
+      )
+    }
+    if (source === 'codex') {
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name="code-slash" size={12} color={Colors.secondary} />
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Codex</Text>
+        </View>
+      )
+    }
+    return null
+  })()
   return (
-    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
+    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} />
   )
 }
