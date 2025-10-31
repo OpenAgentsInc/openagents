@@ -28,7 +28,7 @@ getrandom = "0.3.4"
 agent-client-protocol = "0.7.0"
 acp-event-translator = { path = "../acp-event-translator" }
 tinyvex = { path = "../tinyvex" }
-ts-rs = "11.1.0"
+ts-rs = { version = "11.1.0", features = ["format"] }
 
 [dev-dependencies]
 tempfile = "3.10.1"
