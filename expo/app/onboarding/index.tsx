@@ -95,6 +95,14 @@ export default function Onboarding() {
     try { router.replace('/thread/new' as any) } catch {}
   }, [connected, convexReady])
 
+  // If a deep link initiated pairing and connection completes while we're on
+  // this screen, immediately move past onboarding to a new thread.
+  React.useEffect(() => {
+    if (connected) {
+      try { router.replace('/thread/new' as any) } catch {}
+    }
+  }, [connected])
+
   return (
     <View style={styles.container}>
       {/* Landing page feel: no explicit status banner */}
