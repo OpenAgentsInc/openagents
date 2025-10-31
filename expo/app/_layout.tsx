@@ -387,6 +387,7 @@ function DrawerWrapper() {
         >
           {/* Removed legacy Message detail; Convex message detail below */}
           <Stack.Screen name="onboarding/index" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding/manual-code" options={{ headerShown: false }} />
           <Stack.Screen name="dashboard/index" options={{ headerShown: false }} />
           <Stack.Screen name="help/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
