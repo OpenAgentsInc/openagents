@@ -3,8 +3,12 @@ import type { SessionNotification } from '@/types/acp'
 import { useBridge } from '@/providers/ws'
 import { parseSessionNotification } from '@/lib/acp/validation'
 
+// Attach a local arrival timestamp to each ACP notification so the UI can
+// interleave items in true chronological order with Tinyvex messages.
+export type SessionNotificationWithTs = SessionNotification & { addedAt: number }
+
 type AcpCtx = {
-  eventsForThread: (threadDocId: string) => SessionNotification[];
+  eventsForThread: (threadDocId: string) => SessionNotificationWithTs[];
   sessionToThread: Record<string, string>;
 }
 
@@ -12,10 +16,10 @@ const Ctx = createContext<AcpCtx | undefined>(undefined)
 
 export function AcpProvider({ children }: { children: React.ReactNode }) {
   const { addSubscriber } = useBridge()
-  const [eventsByThread, setEventsByThread] = useState<Record<string, SessionNotification[]>>({})
+  const [eventsByThread, setEventsByThread] = useState<Record<string, SessionNotificationWithTs[]>>({})
   const [sessionToThread, setSessionToThread] = useState<Record<string, string>>({})
   const sessionToThreadRef = useRef<Record<string, string>>({})
-  const pendingBySessionRef = useRef<Record<string, SessionNotification[]>>({})
+  const pendingBySessionRef = useRef<Record<string, SessionNotificationWithTs[]>>({})
 
   const mapSession = useCallback((sessionId: string, threadDocId: string) => {
     sessionToThreadRef.current[sessionId] = threadDocId
@@ -34,12 +38,13 @@ export function AcpProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const addEventForSession = useCallback((n: SessionNotification) => {
+    const withTs: SessionNotificationWithTs = Object.assign({}, n, { addedAt: Date.now() })
     const sid = String((n as any).sessionId || '')
     const tdoc = sessionToThreadRef.current[sid]
     if (tdoc) {
       setEventsByThread((prev) => {
         const arr = prev[tdoc] ? [...prev[tdoc]] : []
-        arr.push(n)
+        arr.push(withTs)
         return { ...prev, [tdoc]: arr }
       })
     } else {
@@ -47,12 +52,12 @@ export function AcpProvider({ children }: { children: React.ReactNode }) {
       if (/^t-/.test(sid)) {
         setEventsByThread((prev) => {
           const arr = prev[sid] ? [...prev[sid]] : []
-          arr.push(n)
+          arr.push(withTs)
           return { ...prev, [sid]: arr }
         })
       } else {
         const pend = pendingBySessionRef.current[sid] || []
-        pend.push(n)
+        pend.push(withTs)
         pendingBySessionRef.current[sid] = pend
       }
     }

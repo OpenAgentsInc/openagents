@@ -8,7 +8,7 @@ import { Typography } from '@/constants/typography'
 import { Composer } from '@/components/composer'
 import { useBridge } from '@/providers/ws'
 import { useHeaderTitle, useHeaderStore } from '@/lib/header-store'
-import { useAcp } from '@/providers/acp'
+import { useAcp, type SessionNotificationWithTs } from '@/providers/acp'
 import { useSettings } from '@/lib/settings-store'
 import { useThreadProviders } from '@/lib/thread-provider-store'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
@@ -101,49 +101,112 @@ export default function ThreadScreen() {
         {acpUpdates.length === 0 && tvxMessages.length === 0 && (
           <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>No messages yet.</Text>
         )}
-        {/* Render Tinyvex history first (if present) */}
-        {tvxMessages.map((m, idx) => (
-          <View key={`tvx-${idx}`} style={{ paddingVertical: 4 }}>
-            {(() => {
-              const text = String(m.text || '')
-              const content = { type: 'text', text } as any
-              if (m.kind === 'reason') return <SessionUpdateAgentThoughtChunk content={content} />
-              if ((m.role || '').toLowerCase() === 'user') return <SessionUpdateUserMessageChunk content={content} />
-              return <SessionUpdateAgentMessageChunk content={content} />
-            })()}
-          </View>
-        ))}
-        {/* Then render live ACP updates (if any). Avoid duplicating types already shown via Tinyvex. */}
-        {acpUpdates.map((n, idx) => (
-          <View key={idx} style={{ paddingVertical: 4 }}>
-            {(() => {
-              const u: any = (n as any).update
-              const suppressDup = tvxMessages.length > 0
-              if (suppressDup) {
-                if (u?.sessionUpdate === 'user_message_chunk') return null
-                if (u?.sessionUpdate === 'agent_message_chunk') return null
-                if (u?.sessionUpdate === 'agent_thought_chunk') return null
+        {(() => {
+          type RenderItem = { ts: number; key: string; render: () => React.ReactNode }
+          const items: RenderItem[] = []
+          const haveTinyvex = tvxMessages.length > 0
+
+          // Tinyvex messages → timeline items
+          for (let i = 0; i < tvxMessages.length; i++) {
+            const m = tvxMessages[i]
+            const ts = Number(m.ts || m.updated_at || m.created_at || Date.now())
+            items.push({
+              ts,
+              key: `tvx-${m.id || i}`,
+              render: () => {
+                const text = String(m.text || '')
+                const content = { type: 'text', text } as any
+                if (m.kind === 'reason') return <SessionUpdateAgentThoughtChunk content={content} />
+                if ((m.role || '').toLowerCase() === 'user') return <SessionUpdateUserMessageChunk content={content} />
+                return <SessionUpdateAgentMessageChunk content={content} />
+              },
+            })
+          }
+
+          // Aggregate tool calls (create + updates) by id
+          type ToolLike = { title?: any; status?: any; kind?: any; content?: any; locations?: any }
+          const toolById = new Map<string, { firstTs: number; props: ToolLike }>()
+
+          const pushPlan = (n: SessionNotificationWithTs, u: any, index: number) => {
+            const ts = Number((n as any).addedAt || Date.now())
+            items.push({
+              ts,
+              key: `plan-${ts}-${index}`,
+              render: () => <SessionUpdatePlan entries={u.entries || []} />,
+            })
+          }
+
+          const maybeAddMessageChunk = (n: SessionNotificationWithTs, u: any, index: number) => {
+            if (haveTinyvex) return // dedupe against Tinyvex history
+            const ts = Number((n as any).addedAt || Date.now())
+            if (u?.sessionUpdate === 'user_message_chunk') {
+              items.push({ ts, key: `acp-u-${ts}-${index}`, render: () => <SessionUpdateUserMessageChunk content={u.content} /> })
+            } else if (u?.sessionUpdate === 'agent_message_chunk') {
+              items.push({ ts, key: `acp-a-${ts}-${index}`, render: () => <SessionUpdateAgentMessageChunk content={u.content} /> })
+            } else if (u?.sessionUpdate === 'agent_thought_chunk') {
+              items.push({ ts, key: `acp-t-${ts}-${index}`, render: () => <SessionUpdateAgentThoughtChunk content={u.content} /> })
+            }
+          }
+
+          for (let i = 0; i < acpUpdates.length; i++) {
+            const n = acpUpdates[i] as SessionNotificationWithTs
+            const u: any = (n as any).update
+            if (!u) continue
+            if (u.sessionUpdate === 'plan') {
+              pushPlan(n, u, i)
+              continue
+            }
+            if (u.sessionUpdate === 'tool_call') {
+              const id = String((u.id && (u.id as any).value) || (u.id?.toString?.() ?? '')) || `call-${i}`
+              const firstTs = Number((n as any).addedAt || Date.now())
+              const base: ToolLike = { title: u.title, status: u.status, kind: u.kind, content: u.content, locations: u.locations }
+              const cur = toolById.get(id)
+              if (!cur) toolById.set(id, { firstTs, props: { ...base } })
+              else toolById.set(id, { firstTs: Math.min(cur.firstTs, firstTs), props: { ...cur.props, ...base } })
+              continue
+            }
+            if (u.sessionUpdate === 'tool_call_update') {
+              const id = String((u.id && (u.id as any).value) || (u.id?.toString?.() ?? '')) || `update-${i}`
+              const ts = Number((n as any).addedAt || Date.now())
+              const delta: ToolLike = {
+                title: u.fields?.title ?? undefined,
+                status: u.fields?.status ?? undefined,
+                // Merge additional fields if present
+                content: Array.isArray(u.fields?.content) ? u.fields?.content : undefined,
+                locations: Array.isArray(u.fields?.locations) ? u.fields?.locations : undefined,
               }
-              if (u?.sessionUpdate === 'user_message_chunk') {
-                return <SessionUpdateUserMessageChunk content={u.content} />
+              const prev = toolById.get(id)
+              if (prev) {
+                toolById.set(id, { firstTs: prev.firstTs, props: { ...prev.props, ...delta } })
+              } else {
+                // No create seen — synthesize a minimal card so updates render
+                toolById.set(id, { firstTs: ts, props: { kind: 'other', ...delta } })
               }
-              if (u?.sessionUpdate === 'agent_message_chunk') {
-                return <SessionUpdateAgentMessageChunk content={u.content} />
-              }
-              if (u?.sessionUpdate === 'agent_thought_chunk') {
-                return <SessionUpdateAgentThoughtChunk content={u.content} />
-              }
-              if (u?.sessionUpdate === 'plan') {
-                return <SessionUpdatePlan entries={u.entries || []} />
-              }
-              if (u?.sessionUpdate === 'tool_call') {
-                const props = { title: u.title, status: u.status, kind: u.kind, content: u.content, locations: u.locations }
-                return <SessionUpdateToolCall {...props as any} />
-              }
-              return null
-            })()}
-          </View>
-        ))}
+              continue
+            }
+            // Text/Thought chunks (when no Tinyvex history to dedupe against)
+            maybeAddMessageChunk(n, u, i)
+          }
+
+          // Emit tool cards as timeline items
+          for (const [id, v] of toolById.entries()) {
+            const props = v.props as any
+            items.push({
+              ts: v.firstTs,
+              key: `tool-${id}`,
+              render: () => <SessionUpdateToolCall {...props} />,
+            })
+          }
+
+          // Final: sort by timestamp, stable
+          items.sort((a, b) => a.ts - b.ts)
+
+          return items.map((it) => (
+            <View key={it.key} style={{ paddingVertical: 4 }}>
+              {it.render()}
+            </View>
+          ))
+        })()}
       </ScrollView>
       <View style={{ paddingTop: 10, paddingHorizontal: 10, paddingBottom: Math.max(10, insets.bottom), borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.background }}>
         <Composer onSend={onSend} connected={connected} placeholder={agentProvider === 'claude_code' ? 'Ask Claude Code' : 'Ask Codex'} />
