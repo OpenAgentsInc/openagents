@@ -222,7 +222,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         autoTriedRef.current = true;
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-          if (!connected && !connecting) connect();
+          if (!connected && !connecting) { try { (require('@@/lib/pairing-store') as any).usePairingStore.getState().setDeeplinkPairing(true) } catch {}; connect(); }
         }
       }
     } catch {}
