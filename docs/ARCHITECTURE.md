@@ -93,6 +93,7 @@ Testing & Coverage
 - See docs/test-coverage.md for current inventory and planned additions.
 
 Related Documentation
+- Architecture Decision Records (ADRs): docs/adr/ - Structured documentation of architectural decisions
 - Streaming & Sync details: docs/sync.md
 - JSONL schema notes (bridge → apps): docs/exec-jsonl-schema.md
 - Resume behavior: docs/exec-resume-json.md
