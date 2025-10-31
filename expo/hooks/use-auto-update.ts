@@ -2,10 +2,13 @@ import * as Updates from 'expo-updates'
 import { useEffect } from 'react'
 import { useUpdateStore } from '@/lib/update-store'
 import { useSettings } from '@/lib/settings-store'
+import { usePathname } from 'expo-router'
 
 export const useAutoUpdate = () => {
   const setUpdating = useUpdateStore((s) => s.setUpdating)
   const autoPoll = useSettings((s) => s.updatesAutoPoll)
+  const setLastRoute = useSettings((s) => s.setLastRoute)
+  const pathname = usePathname()
   const handleCheckUpdate = async () => {
     if (__DEV__) return
 
@@ -16,6 +19,7 @@ export const useAutoUpdate = () => {
       if (result.isAvailable) {
         // Immediately flip UI into updating screen
         try { setUpdating(true) } catch {}
+        try { if (pathname) setLastRoute(String(pathname)) } catch {}
         console.log('Update available, downloading...')
         const downloadResult = await Updates.fetchUpdateAsync()
         console.log('Update download result:', downloadResult)
