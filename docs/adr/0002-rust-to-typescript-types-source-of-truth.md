@@ -21,8 +21,8 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
   - ToolCallRowTs
   - Envelopes: TinyvexSnapshot<T>, TinyvexQueryResult<T>
   - SyncStatusTs
-- Derive `TS` on these structs and export per‑type `.ts` files into `docs/types/` (e.g., `ThreadRow.ts`, `MessageRow.ts`).
-- Include `../docs/types/*.ts` in the Expo TypeScript config and remove all app‑side `any`/mixed‑case fallbacks for these payloads.
+- Derive `TS` on these structs and export per‑type `.ts` files into `expo/types/bridge/` (e.g., `ThreadRowTs.ts`, `MessageRowTs.ts`).
+- Import from `expo/types/bridge/*` in the Expo app and remove all app‑side `any`/mixed‑case fallbacks for these payloads.
 - Map ACP events into these canonical bridge types at the Rust boundary (thin wrappers). When ACP changes, adjust the mapping, keeping the app contract stable.
 
 ## Rationale
@@ -48,18 +48,19 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 
 - App: Remove `any` and mixed‑case probing for threads/messages/tool calls/sync/envelopes. Prefer `row.last_message_ts ?? row.updated_at`.
 - Bridge: All WS endpoints must serialize the canonical TS‑exported structs; synthesized history rows must set real timestamps (no `now()` fallbacks).
-- Tooling: Ensure `docs/types/` exists; export per‑type `.ts` files into `docs/types/`; include in `expo/tsconfig.json`.
+- Tooling: Ensure `expo/types/bridge/` exists; export per‑type `.ts` files there; the Expo tsconfig already includes `expo/**`.
 - Conventions: snake_case fields; use `#[ts(optional)]` for truly optional fields (avoid `T | null` where absence is intended).
 
 ## Implementation Plan
 
 1) Bridge (Rust)
-   - Derive `TS` for `tinyvex::MessageRow`, `tinyvex::ToolCallRow`; keep `ThreadSummaryTs` in `ws.rs`.
-   - Add `SyncStatusTs` for `sync.status`. For envelopes, prefer concrete result types or JSON shapes; avoid TS for generics initially.
+   - Keep Tinyvex transport‑neutral (no `ts-rs` derives in `tinyvex`).
+   - Add transport TS types in the bridge (`ThreadRowTs`, `MessageRowTs`, `ToolCallRowTs`, `SyncStatusTs`) and map from Tinyvex rows.
+   - Keep `ThreadSummaryTs` in `ws.rs` (list rows). Export all to `expo/types/bridge/`.
    - Switch `threads.list` / `threadsAndTails.list` / `messages.list` / `toolCalls.list` / snapshots / `sync.status` to emit only canonical types; compute `last_message_ts` from data/file mtime.
 
 2) App (Expo)
-   - Add `../docs/types/*.ts` to `expo/tsconfig.json` include (or set `typeRoots` to include `../docs/types`).
+   - Import from `expo/types/bridge/*`.
    - Replace local provider/drawer/thread timeline types with imports from the generated files.
    - Remove `any` and camelCase/snake_case fallbacks in these paths.
 
@@ -92,9 +93,9 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 
 ## Export Details
 
-- We use `#[derive(TS)]` with `#[ts(export, export_to = "../../docs/types/")]` on non‑generic structs to emit per‑type `.ts` files during `cargo build`.
+- We use `#[derive(TS)]` with `#[ts(export, export_to = "../../../expo/types/bridge/")]` (from the bridge crate) on non‑generic structs to emit per‑type `.ts` files during `cargo build`.
 - Generic envelopes are not exported initially; if we need TS coverage, we will introduce concrete variants (e.g., `TinyvexMessagesSnapshot`) or leave envelopes untyped in TS and type the `rows` contents.
-- The export directory is `docs/types/` (repo‑root). Ensure the directory exists before building.
+- The export directory is `expo/types/bridge/` (within the app). Ensure the directory exists before building.
 
 ## Ownership Boundaries
 
