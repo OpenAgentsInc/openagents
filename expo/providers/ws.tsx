@@ -215,6 +215,19 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   // Disable auto-connect on mount; user must press Connect explicitly
   // (left intentionally blank)
+  // Try once on app start to reconnect using saved host/token if present.
+  React.useEffect(() => {
+    try {
+      if (!autoTriedRef.current && effectiveHost) {
+        autoTriedRef.current = true;
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          if (!connected && !connecting) connect();
+        }
+      }
+    } catch {}
+    // Only run when host/connection state changes; guard ensures single attempt per app boot
+  }, [effectiveHost, connected, connecting, connect]);
 
   // Disable periodic auto-reconnect; connections are manual
   // (left intentionally blank)
