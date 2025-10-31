@@ -8,6 +8,7 @@ import path from 'node:path';
 import { ensureBridgeBinary } from './utils/bridgeBinary.js';
 import { webcrypto as nodeCrypto, randomBytes } from 'node:crypto';
 import qrcode from 'qrcode-terminal';
+import QR from 'qrcode';
 import { findAvailablePort } from './ports.js';
 
 const execFileP = promisify(execFile);
@@ -124,7 +125,7 @@ function buildBridgeCode(host: string, port: number, token: string, secure = fal
   // that older mobile builds expect, while keeping the core fields minimal.
   // Optionally include hosts[] when explicitly requested via env.
   const payload: any = { v: 1, type: 'bridge', provider: 'openagents', bridge, token };
-  if (process.env.TRICODER_QR_INCLUDE_HOSTS === '1' && Array.isArray(hosts) && hosts.length > 0) {
+  if (Array.isArray(hosts) && hosts.length > 0) {
     payload.hosts = hosts;
   }
   const code = b64url(JSON.stringify(payload));
@@ -293,7 +294,14 @@ async function main() {
     ? chalk.green(`Desktop IP (Tailscale): ${hostIp}`)
     : chalk.green(`Desktop IP (LAN): ${hostIp}`));
   console.log(chalk.bold('Scan this QR in the OpenAgents mobile app:'));
-  try { qrcode.generate(deeplink, { small: true }); } catch {}
+  // Render a smaller terminal QR. Prefer node-qrcode's "terminal" renderer with small blocks,
+  // and fall back to qrcode-terminal's small mode if unavailable.
+  try {
+    const term = await QR.toString(deeplink, { type: 'terminal', small: true, margin: 1 });
+    console.log(term);
+  } catch {
+    try { qrcode.generate(deeplink, { small: true }); } catch {}
+  }
   console.log(chalk.gray('Deep link: '), chalk.white(deeplink));
   console.log(chalk.gray('WS URL:   '), chalk.white(bridge));
   console.log(chalk.gray('Token:    '), chalk.white(token!));
