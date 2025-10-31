@@ -31,6 +31,23 @@ use crate::state::AppState;
 use crate::util::{expand_home, now_ms};
 use crate::watchers::SyncCommand;
 use crate::util::extract_uuid_like_from_filename;
+use ts_rs::TS;
+
+#[derive(serde::Serialize, TS)]
+#[ts(export, export_to = "docs/types/bridge.d.ts")] 
+struct ThreadSummaryTs {
+    id: String,
+    thread_id: Option<String>,
+    title: String,
+    project_id: Option<String>,
+    resume_id: Option<String>,
+    rollout_path: Option<String>,
+    source: Option<String>,
+    created_at: i64,
+    updated_at: i64,
+    message_count: Option<i64>,
+    last_message_ts: Option<i64>,
+}
 
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
 pub async fn ws_handler(

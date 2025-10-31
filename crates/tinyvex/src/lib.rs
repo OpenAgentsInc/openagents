@@ -20,6 +20,8 @@ pub struct ThreadRow {
     pub updated_at: i64,
     #[serde(rename = "messageCount", skip_serializing_if = "Option::is_none")]
     pub message_count: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_message_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -212,7 +214,8 @@ impl Tinyvex {
         let mut stmt = conn.prepare(
             "SELECT \
                 id, threadId, title, projectId, resumeId, rolloutPath, source, createdAt, updatedAt, \
-                (SELECT COUNT(*) FROM messages m WHERE m.threadId = threads.id) AS messageCount \
+                (SELECT COUNT(*) FROM messages m WHERE m.threadId = threads.id) AS messageCount, \
+                (SELECT MAX(ts) FROM messages m2 WHERE m2.threadId = threads.id) AS lastTs \
              FROM threads \
              ORDER BY updatedAt DESC LIMIT ?1",
         )?;
@@ -229,6 +232,7 @@ impl Tinyvex {
                     created_at: r.get(7)?,
                     updated_at: r.get(8)?,
                     message_count: r.get(9).ok(),
+                    last_message_ts: r.get(10).ok(),
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
