@@ -9,7 +9,7 @@ pub struct Tinyvex {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, TS)]
-#[ts(export, export_to = "../../docs/types/bridge.d.ts")]
+#[ts(export, export_to = "../../docs/types/")]
 pub struct ThreadRow {
     pub id: String,
     pub thread_id: Option<String>,
@@ -27,7 +27,7 @@ pub struct ThreadRow {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, TS)]
-#[ts(export, export_to = "../../docs/types/bridge.d.ts")]
+#[ts(export, export_to = "../../docs/types/")]
 pub struct MessageRow {
     pub id: i64,
     pub thread_id: String,
@@ -43,7 +43,7 @@ pub struct MessageRow {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, TS)]
-#[ts(export, export_to = "../../docs/types/bridge.d.ts")]
+#[ts(export, export_to = "../../docs/types/")]
 pub struct ToolCallRow {
     pub thread_id: String,
     pub tool_call_id: String,
@@ -482,6 +482,7 @@ mod tests {
             created_at: t0,
             updated_at: t0,
             message_count: None,
+            last_message_ts: None,
         };
         tvx.upsert_thread(&row).unwrap();
         let out = tvx.list_threads(10).unwrap();

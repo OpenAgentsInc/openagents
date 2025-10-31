@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../docs/types/bridge.d.ts")]
+#[ts(export, export_to = "../../docs/types/")]
 pub struct SyncWatchedDirTs {
     pub provider: String,
     pub base: String,
@@ -11,16 +11,15 @@ pub struct SyncWatchedDirTs {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../docs/types/bridge.d.ts")]
+#[ts(export, export_to = "../../docs/types/")]
 pub struct SyncStatusTs {
     pub enabled: bool,
     pub two_way: bool,
     pub watched: Vec<SyncWatchedDirTs>,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../docs/types/bridge.d.ts")]
-pub struct TinyvexSnapshot<T: TS + Serialize + Clone> {
+#[derive(Debug, Clone, Serialize)]
+pub struct TinyvexSnapshot<T: Serialize + Clone> {
     #[serde(rename = "type")]
     pub type_name: &'static str,
     pub stream: String,
@@ -30,9 +29,8 @@ pub struct TinyvexSnapshot<T: TS + Serialize + Clone> {
     pub rev: i64,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../docs/types/bridge.d.ts")]
-pub struct TinyvexQueryResult<T: TS + Serialize + Clone> {
+#[derive(Debug, Clone, Serialize)]
+pub struct TinyvexQueryResult<T: Serialize + Clone> {
     #[serde(rename = "type")]
     pub type_name: &'static str,
     pub name: String,
@@ -40,4 +38,3 @@ pub struct TinyvexQueryResult<T: TS + Serialize + Clone> {
     pub thread_id: Option<String>,
     pub rows: Vec<T>,
 }
-

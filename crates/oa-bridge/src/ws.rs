@@ -32,10 +32,10 @@ use crate::util::{expand_home, now_ms};
 use crate::watchers::SyncCommand;
 use crate::util::extract_uuid_like_from_filename;
 use ts_rs::TS;
-pub mod types;
+use crate::types;
 
 #[derive(serde::Serialize, TS)]
-#[ts(export, export_to = "../../docs/types/bridge.d.ts")] 
+#[ts(export, export_to = "../../docs/types/")] 
 struct ThreadSummaryTs {
     id: String,
     thread_id: Option<String>,
@@ -248,6 +248,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                             created_at: created,
                                                             updated_at: created,
                                                             message_count: None,
+                                                            last_message_ts: None,
                                                         });
                                                         seen.insert(tid);
                                                         if (rows.len() as i64) >= limit { break; }
@@ -406,6 +407,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                             created_at: created,
                                                             updated_at: created,
                                                             message_count: if tail_rows.is_empty() { None } else { Some(tail_rows.len() as i64) },
+                                                            last_message_ts: None,
                                                         });
                                                         seen.insert(tid);
                                                         if (rows.len() as i64) >= lim { break; }
@@ -951,6 +953,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 created_at: now,
                                 updated_at: now,
                                 message_count: None,
+                                last_message_ts: None,
                             };
                             let _ = state_for_stdout.tinyvex.upsert_thread(&row);
                         }

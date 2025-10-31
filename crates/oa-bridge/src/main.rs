@@ -31,6 +31,7 @@ mod skills;
 mod state;
 mod util;
 mod ws;
+mod types;
 mod provider_claude;
 mod claude_runner;
 pub mod watchers;
