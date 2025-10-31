@@ -14,6 +14,7 @@ type SettingsState = {
   approvals: Approvals
   attachPreface: boolean
   agentProvider: 'codex' | 'claude_code'
+  updatesAutoPoll: boolean
   setBridgeHost: (v: string) => void
   setBridgeCode: (v: string) => void
   setBridgeToken: (v: string) => void
@@ -23,6 +24,7 @@ type SettingsState = {
   setApprovals: (v: Approvals) => void
   setAttachPreface: (v: boolean) => void
   setAgentProvider: (v: 'codex' | 'claude_code') => void
+  setUpdatesAutoPoll: (v: boolean) => void
 }
 
 export const useSettings = create<SettingsState>()(
@@ -39,6 +41,7 @@ export const useSettings = create<SettingsState>()(
       approvals: 'never',
       attachPreface: true,
       agentProvider: 'codex',
+      updatesAutoPoll: false,
       setBridgeHost: (v) => set({ bridgeHost: v }),
       setBridgeCode: (v) => set({ bridgeCode: v }),
       setBridgeToken: (v) => set({ bridgeToken: v }),
@@ -48,6 +51,7 @@ export const useSettings = create<SettingsState>()(
       setApprovals: (v) => set({ approvals: v }),
       setAttachPreface: (v) => set({ attachPreface: v }),
       setAgentProvider: (v) => set({ agentProvider: v }),
+      setUpdatesAutoPoll: (v) => set({ updatesAutoPoll: v }),
     }),
     {
       name: '@openagents/settings-v4',
