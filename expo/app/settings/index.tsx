@@ -9,13 +9,67 @@ import { useHeaderTitle } from '@/lib/header-store'
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
-  const { bridgeHost, setBridgeHost, connected, connect, disconnect } = useBridge()
+  const { bridgeHost, setBridgeHost, connected, connect, disconnect, addSubscriber, send } = useBridge()
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
   const bridgeToken = useSettings((s) => s.bridgeToken) // retained for future, not rendered
   const setBridgeToken = useSettings((s) => s.setBridgeToken) // retained for future, not rendered
   const updatesAutoPoll = useSettings((s) => s.updatesAutoPoll)
   const setUpdatesAutoPoll = useSettings((s) => s.setUpdatesAutoPoll)
   // Convex removed
+  const [syncEnabled, setSyncEnabled] = React.useState<boolean>(true)
+  const [twoWay, setTwoWay] = React.useState<boolean>(false)
+  const [syncFiles, setSyncFiles] = React.useState<number>(0)
+  const [syncBase, setSyncBase] = React.useState<string>('')
+  const [syncLastRead, setSyncLastRead] = React.useState<number>(0)
+
+  // Subscribe to bridge.sync_status updates while the screen is mounted
+  React.useEffect(() => {
+    const unsub = addSubscriber((raw) => {
+      if (!raw || raw[0] !== '{') return
+      try {
+        const obj = JSON.parse(raw)
+        if (obj?.type === 'bridge.sync_status') {
+          setSyncEnabled(!!obj.enabled)
+          setTwoWay(!!obj.twoWay)
+          const w = Array.isArray(obj.watched) && obj.watched[0] ? obj.watched[0] : null
+          setSyncFiles(Number(w?.files || 0))
+          setSyncBase(String(w?.base || ''))
+          setSyncLastRead(Number(w?.lastRead || 0))
+        }
+      } catch {}
+    })
+    return () => { try { unsub() } catch {} }
+  }, [addSubscriber])
+
+  const refreshSyncStatus = React.useCallback(() => {
+    try { send(JSON.stringify({ control: 'sync.status' })) } catch {}
+  }, [send])
+
+  React.useEffect(() => {
+    if (connected) {
+      refreshSyncStatus()
+    }
+  }, [connected, refreshSyncStatus])
+
+  const toggleSync = React.useCallback(() => {
+    const next = !syncEnabled
+    setSyncEnabled(next)
+    try { send(JSON.stringify({ control: 'sync.enable', enabled: next })) } catch {}
+    // Re-query shortly for authoritative status
+    setTimeout(refreshSyncStatus, 200)
+  }, [syncEnabled, send, refreshSyncStatus])
+
+  const toggleTwoWay = React.useCallback(() => {
+    const next = !twoWay
+    setTwoWay(next)
+    try { send(JSON.stringify({ control: 'sync.two_way', enabled: next })) } catch {}
+    setTimeout(refreshSyncStatus, 200)
+  }, [twoWay, send, refreshSyncStatus])
+
+  const fullRescan = React.useCallback(() => {
+    try { send(JSON.stringify({ control: 'sync.full_rescan' })) } catch {}
+    setTimeout(refreshSyncStatus, 400)
+  }, [send, refreshSyncStatus])
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
@@ -28,6 +82,30 @@ export default function SettingsScreen() {
         )}
         <StatusPill connected={connected} />
       </View>
+      <View style={{ height: 16 }} />
+      <Text style={styles.title}>Sync</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Sessions Watcher</Text>
+        <Segmented title={syncEnabled ? 'On' : 'Off'} active={syncEnabled} onPress={toggleSync} />
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Two‑way Writer</Text>
+        <Segmented title={twoWay ? 'On' : 'Off'} active={twoWay} onPress={toggleTwoWay} />
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+        <Button title='Full Rescan' onPress={fullRescan} />
+        <Button title='Refresh' onPress={refreshSyncStatus} />
+      </View>
+      {syncBase ? (
+        <View style={{ marginTop: 8 }}>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
+            Watching: {syncBase}
+          </Text>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
+            Files: {syncFiles}  Last read: {syncLastRead ? new Date(syncLastRead).toLocaleString() : '—'}
+          </Text>
+        </View>
+      ) : null}
       <View style={{ height: 16 }} />
       <Text style={styles.title}>Updates</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

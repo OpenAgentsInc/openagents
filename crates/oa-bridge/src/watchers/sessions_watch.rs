@@ -141,7 +141,12 @@ fn list_jsonl_files(base: &Path) -> Vec<PathBuf> {
         if let Ok(rd) = std::fs::read_dir(&dir) {
             for ent in rd.flatten() {
                 let p = ent.path();
-                if p.is_dir() { stack.push(p); continue; }
+                if p.is_dir() {
+                    // Skip our own two-way output directory to avoid re-ingestion loops
+                    if p.file_name().and_then(|n| n.to_str()) == Some("openagents") { continue; }
+                    stack.push(p);
+                    continue;
+                }
                 if p.extension().and_then(|e| e.to_str()) == Some("jsonl") {
                     if file_is_new_format(&p) { out.push(p); }
                 }
