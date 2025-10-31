@@ -15,7 +15,7 @@
 - For the `packages/tricoder` CLI: do not implement your own Node WebSocket server. The Rust bridge (`crates/oa-bridge`) is the single source of truth for `/ws`.
  - Bridge releases: see `docs/bridge-release.md` for how tags trigger prebuilt binaries and how to update/publish tricoder to point at the new bridge.
   - Theming/typography: Dark theme in `expo/constants/theme.ts`; global mono font + defaults via `expo/constants/typography.ts` (Berkeley Mono; splash hidden after fonts load).
-  - OTA: `expo/hooks/use-auto-update.ts` checks for `expo-updates` when not in dev; EAS configured for channel `v0.2.0` with runtimeVersion `appVersion` in `expo/app.json` and `expo/eas.json`.
+  - OTA: `expo/hooks/use-auto-update.ts` checks for `expo-updates` when not in dev; EAS configured for channel `v0.3.0` with runtimeVersion `appVersion` in `expo/app.json` and `expo/eas.json`.
 - Bridge Details:
   - Entry: `crates/oa-bridge/src/main.rs`. Dependencies: `axum` (ws), `tokio`, `clap`, `tracing`.
   - CLI flags injected (unless provided): `--dangerously-bypass-approvals-and-sandbox`, `-s danger-full-access`, and config `sandbox_permissions=["disk-full-access"]`, `sandbox_mode="danger-full-access"`, `approval_policy="never"`, plus `-m gpt-5` and `-c model_reasoning_effort="high"`.
@@ -124,9 +124,9 @@ instructions: |
 - If Expo warns about mismatches, run: `cd expo && bunx expo install` to align to expected versions.
 
 ## OTA Updates (iOS)
-- EAS Update is configured with channel `v0.2.0` (see `expo/eas.json`). Runtime version comes from remote app version.
+- EAS Update is configured with channel `v0.3.0` (see `expo/eas.json`). Runtime version comes from remote app version.
 - Scripts (see `expo/package.json`):
-  - `update:ios`: `eas update --channel v0.2.0 --environment production --platform ios --message`
+  - `update:ios`: `eas update --channel v0.3.0 --environment production --platform ios --message`
   - `update:android`: same for Android; `update:both`: both platforms.
 - To publish an iOS OTA update:
   - `cd expo && bun run update:ios -- "<short message>"`

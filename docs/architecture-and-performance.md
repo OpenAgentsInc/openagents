@@ -59,6 +59,6 @@ Understanding how these pieces interact is critical for maintaining responsivene
 - **Modifying WebSocket payloads** – Mirror changes in `ws.tsx`, the Session screen, and any provider using the message bus. Keep payloads JSON serializable; binary frames are not yet supported.
 - **Long-running commands** – Prefer summarizing at the bridge (as done for `exec_command_output_delta`) rather than filtering in the UI alone. Anything that touches stderr should consider the replay buffer size.
 - **AsyncStorage keys** – When migrating persisted data, bump the version in stores to avoid hydration errors after OTA updates.
-- **OTA builds** – The Expo layer uses EAS Update (`bun run update:ios`) with runtime version `0.2.0`. Validate type-check (`bun run typecheck`) and lint before publishing to prevent breaking remote users.
+- **OTA builds** – The Expo layer uses EAS Update (`bun run update:ios`) with runtime version `0.3.0`. Validate type-check (`bun run typecheck`) and lint before publishing to prevent breaking remote users.
 
 Keeping these details in mind ensures future agents can modify either layer without regressing stream performance or destabilizing the Codex lifecycle.
