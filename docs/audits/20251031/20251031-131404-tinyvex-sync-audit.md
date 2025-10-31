@@ -226,3 +226,19 @@ The Tinyvex foundation is solid and meets the day-to-day needs of the mobile app
 - [ ] Add Settings diagnostics for last sync error and per-provider stats.
 - [ ] Write integration tests for watcher offsets, two-way concurrency, and `sync.status` formatting.
 
+
+## Addendum — Implemented Immediately (2025-10-31)
+
+Following this audit, the following hardening and de‑spaghetti changes were implemented and shipped:
+
+- Bridge bootstrap and hydration
+  - `threadsAndTails.list` now falls back to Codex history when Tinyvex has fewer threads than requested, synthesizing recent threads and lightweight tails so the drawer shows a complete history after a cold start. (crates/oa-bridge/src/ws.rs)
+  - `messages.list` now backfills on demand from the rollout JSONL when the DB has zero rows for a thread, mirrors ACP updates to Tinyvex, then returns the hydrated last messages. (crates/oa-bridge/src/ws.rs)
+- UUID/session id extraction
+  - Consolidated the filename UUID extractor into `util` and reused it across watcher and WS code; `history::resolve_session_path` accepts UUID substring matches. (crates/oa-bridge/src/util.rs, crates/oa-bridge/src/history.rs)
+- SQLite defaults
+  - Tinyvex initialization applies `journal_mode=WAL`, `synchronous=NORMAL`, and a `busy_timeout` for better durability/perf tradeoffs and fewer transient lock errors. (crates/tinyvex/src/lib.rs)
+- App-side resiliency (already OTA’d)
+  - When rendering thread timelines, the provider subscribes/queries by both client thread id and `resume_id` and mirrors snapshots to avoid stale timelines during bridge restarts. Drawer synthesis also occurs client‑side as an additional guard. (expo/providers/tinyvex.tsx)
+
+Planned next: persist `sessionId ↔ clientThreadDocId` in Tinyvex to remove dual‑ID plumbing, DB‑side “since” queries, and a minimal `tvx.backfill` control.
