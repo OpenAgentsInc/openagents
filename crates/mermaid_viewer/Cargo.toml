@@ -1,0 +1,9 @@
+[package]
+name = "mermaid_viewer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+tao = "0.34.5"
+wry = "0.53.5"
