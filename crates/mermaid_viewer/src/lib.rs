@@ -275,10 +275,13 @@ fn build_html(svg_source: &str) -> String {
 }
 
 fn build_html_from_mermaid(code: &str) -> String {
-    // Reuse the same font/theme constants
-    let bg = "#08090a";
-    let text = "#f7f8f8";
-    let stroke = "#6c7075"; // muted grey
+    // Use only colors from expo/constants/theme.ts
+    let bg = "#08090a"; // background
+    let text = "#f7f8f8"; // foreground
+    let border = "#23252a"; // border
+    let tertiary = "#8a8f98"; // tertiary (muted grey)
+    let quaternary = "#62666d"; // quaternary
+    let sidebar_bg = "#0e0e12"; // sidebarBackground
 
     const BERKELEY_MONO_REGULAR: &[u8] = include_bytes!(
         "../../../expo/assets/fonts/BerkeleyMono-Regular.ttf"
@@ -287,6 +290,10 @@ fn build_html_from_mermaid(code: &str) -> String {
 
     // Escape closing </script> sequences if any (extremely unlikely in Mermaid text)
     let safe_code = code.replace("</script>", r"<\/script>");
+
+    // Vendor mermaid.js and embed via data URL to avoid CDN
+    const MERMAID_JS: &[u8] = include_bytes!("../assets/mermaid.min.js");
+    let mermaid_js_b64 = BASE64.encode(MERMAID_JS);
 
     format!(
         r#"<!doctype html>
@@ -303,7 +310,7 @@ fn build_html_from_mermaid(code: &str) -> String {
         font-style: normal;
         font-display: swap;
       }}
-      :root {{ --bg: {bg}; --fg: {text}; --stroke: {stroke}; }}
+      :root {{ --bg: {bg}; --fg: {text}; --stroke: {tertiary}; }}
       html, body {{
         margin: 0; padding: 0; height: 100%; width: 100%;
         background: var(--bg); color: var(--fg);
@@ -336,7 +343,7 @@ fn build_html_from_mermaid(code: &str) -> String {
     <div id="view">
       <div id="mermaid" class="mermaid">{code}</div>
     </div>
-    <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="data:text/javascript;base64,{mermaid_js_b64}"></script>
     <script>
       (function(){{
         const container = document.getElementById('view');
@@ -350,8 +357,29 @@ fn build_html_from_mermaid(code: &str) -> String {
             background: '{bg}',
             primaryColor: '{bg}',
             primaryTextColor: '{text}',
-            lineColor: '{stroke}',
             fontFamily: 'Berkeley Mono Viewer, Berkeley Mono, ui-monospace, Menlo, monospace',
+
+            lineColor: '{tertiary}',
+            signalColor: '{tertiary}',
+            sequenceMessageArrowColor: '{tertiary}',
+
+            actorTextColor: '{text}',
+            actorBorder: '{quaternary}',
+            actorBkg: '{bg}',
+
+            noteTextColor: '{text}',
+            noteBkgColor: '{sidebar_bg}',
+            noteBorderColor: '{border}',
+
+            activationBorderColor: '{border}',
+            activationBkgColor: '{sidebar_bg}',
+
+            sequenceNumberColor: '{tertiary}',
+            altBackground: '{sidebar_bg}',
+
+            labelBoxBkgColor: '{bg}',
+            labelBoxBorderColor: '{quaternary}',
+            loopTextColor: '{tertiary}',
           }},
         }});
 
@@ -425,7 +453,11 @@ fn build_html_from_mermaid(code: &str) -> String {
         font_b64 = font_b64,
         bg = bg,
         text = text,
-        stroke = stroke,
+        border = border,
+        tertiary = tertiary,
+        quaternary = quaternary,
+        sidebar_bg = sidebar_bg,
         code = safe_code,
+        mermaid_js_b64 = mermaid_js_b64,
     )
 }
