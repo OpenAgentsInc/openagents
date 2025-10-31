@@ -5,6 +5,7 @@ import { useSettings } from '@/lib/settings-store'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
+import type { SyncStatusTs } from '@/types/bridge/SyncStatusTs'
 // removed QR/Icons in simplified settings
 
 export default function SettingsScreen() {
@@ -32,14 +33,15 @@ export default function SettingsScreen() {
     const unsub = addSubscriber((raw) => {
       if (!raw || raw[0] !== '{') return
       try {
-        const obj = JSON.parse(raw)
+        const obj = JSON.parse(raw) as { type?: string } & { enabled?: boolean; twoWay?: boolean; watched?: any[] }
         if (obj?.type === 'bridge.sync_status') {
-          setStatusEnabled(!!obj.enabled)
-          setStatusTwoWay(!!obj.twoWay)
-          const w = Array.isArray(obj.watched) && obj.watched[0] ? obj.watched[0] : null
-          setSyncFiles(Number(w?.files || 0))
+          const s = obj as unknown as SyncStatusTs & { type: 'bridge.sync_status' }
+          setStatusEnabled(!!s.enabled)
+          setStatusTwoWay(!!s.two_way)
+          const w = Array.isArray(s.watched) && s.watched[0] ? s.watched[0] : null
+          setSyncFiles(Number((w?.files as any) || 0))
           setSyncBase(String(w?.base || ''))
-          setSyncLastRead(Number(w?.lastRead || 0))
+          setSyncLastRead(Number((w?.last_read as any) || 0))
         }
       } catch {}
     })
