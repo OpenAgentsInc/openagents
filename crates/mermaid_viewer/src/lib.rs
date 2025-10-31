@@ -178,11 +178,12 @@ fn build_html(svg_source: &str) -> String {
         }}
         ensureViewBox();
 
-        // Track viewBox state
+        // Track viewBox state and remember initial values for Fit
         let vx = svg.viewBox.baseVal.x;
         let vy = svg.viewBox.baseVal.y;
         let vw = svg.viewBox.baseVal.width || container.clientWidth || 1024;
         let vh = svg.viewBox.baseVal.height || container.clientHeight || 768;
+        const init = {{ x: vx, y: vy, w: vw, h: vh }};
 
         function round(n){{ return Math.round(n*1000)/1000; }}
         function applyViewBox(){{
@@ -257,9 +258,8 @@ fn build_html(svg_source: &str) -> String {
           zoomAt(1/1.08, centerEvt);
         }};
         function fit(){{
-          // Fit SVG content to container based on initial bounding box or viewBox.
-          const vb = svg.viewBox.baseVal;
-          vx = vb.x; vy = vb.y; vw = vb.width; vh = vb.height;
+          // Restore initial viewBox captured on load
+          vx = init.x; vy = init.y; vw = init.w; vh = init.h;
           applyViewBox();
         }}
         document.getElementById('fit').onclick = fit;
@@ -267,10 +267,8 @@ fn build_html(svg_source: &str) -> String {
 
         const status = document.getElementById('status');
         function updateStatus(){{
-          // Compute zoom percent relative to initial viewBox or SVG width/height
-          const vb0 = svg.viewBox.baseVal;
-          const w0 = vb0.width; // assume initial = current after first ensure
-          const percent = (w0 / vw) * 100;
+          // Compute zoom percent relative to initial width
+          const percent = (init.w / vw) * 100;
           status.textContent = percent.toFixed(0) + '%';
         }}
         applyViewBox();
@@ -416,10 +414,10 @@ fn build_html_from_mermaid(code: &str) -> String {
           let vy = svg.viewBox.baseVal.y;
           let vw = svg.viewBox.baseVal.width || container.clientWidth || 1024;
           let vh = svg.viewBox.baseVal.height || container.clientHeight || 768;
+          const init = {{ x: vx, y: vy, w: vw, h: vh }};
           function round(n){{ return Math.round(n*1000)/1000; }}
           function updateStatus(){{
-            const w0 = vw; // approximate
-            const percent = (mroot.clientWidth / container.clientWidth) * 100 || (100 * (1));
+            const percent = (init.w / vw) * 100;
             document.getElementById('status').textContent = percent.toFixed(0) + '%';
           }}
           function applyViewBox(){{
@@ -455,7 +453,7 @@ fn build_html_from_mermaid(code: &str) -> String {
           container.addEventListener('pointercancel', ()=> dragging=false);
           document.getElementById('zoom_in').onclick = () => {{ const e = new MouseEvent('wheel', {{ clientX: container.clientWidth/2, clientY: container.clientHeight/2, deltaY: -1 }}); zoomAt(1.08, e); }};
           document.getElementById('zoom_out').onclick = () => {{ const e = new MouseEvent('wheel', {{ clientX: container.clientWidth/2, clientY: container.clientHeight/2, deltaY: 1 }}); zoomAt(1/1.08, e); }};
-          document.getElementById('fit').onclick = () => {{ const vb=svg.viewBox.baseVal; vx=vb.x; vy=vb.y; vw=vb.width; vh=vb.height; applyViewBox(); }};
+          document.getElementById('fit').onclick = () => {{ vx=init.x; vy=init.y; vw=init.w; vh=init.h; applyViewBox(); }};
           window.addEventListener('keydown',(e)=>{{ if(e.key==='f'||e.key==='F') document.getElementById('fit').click(); }});
           applyViewBox();
         }}
