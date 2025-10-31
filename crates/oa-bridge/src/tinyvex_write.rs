@@ -301,6 +301,66 @@ pub async fn mirror_acp_update_to_tinyvex(
             }
         }
     }
+
+    // Optional: two-way writer — persist non-Codex provider sessions as Codex-compatible JSONL
+    // Guarded by `sync_two_way` and only for non-"codex" provider.
+    if provider != "codex" && state.sync_two_way.load(std::sync::atomic::Ordering::Relaxed) {
+        let thread = thread_id.to_string();
+        let upd = update.clone();
+        tokio::spawn(async move {
+            if let Err(e) = append_two_way_jsonl(&thread, &upd).await {
+                tracing::warn!(?e, thread_id=%thread, "two_way_writer: append failed");
+            }
+        });
+    }
+}
+
+fn two_way_base_dir() -> std::path::PathBuf {
+    // Honor CODEXD_HISTORY_DIR via the shared helper used by the watcher,
+    // then append our provider namespace to avoid collisions.
+    let p = crate::watchers::codex_base_path().join("openagents");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+async fn append_two_way_jsonl(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
+    use agent_client_protocol::SessionUpdate as SU;
+    let base = two_way_base_dir();
+    let file_path = base.join(format!("{}.jsonl", thread_id));
+    // Map ACP update → Codex-style JSONL event(s)
+    let lines: Vec<serde_json::Value> = match update {
+        SU::UserMessageChunk(ch) => {
+            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"user_message","text": text}})] }
+        }
+        SU::AgentMessageChunk(ch) => {
+            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text": text}})] }
+        }
+        SU::AgentThoughtChunk(ch) => {
+            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"reasoning","text": text}})] }
+        }
+        _ => Vec::new(),
+    };
+    if lines.is_empty() { return Ok(()); }
+    tokio::task::spawn_blocking({
+        let thread = thread_id.to_string();
+        move || -> anyhow::Result<()> {
+            use std::io::Write;
+            let first_write = !file_path.exists() || std::fs::metadata(&file_path).map(|m| m.len()==0).unwrap_or(true);
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&file_path)?;
+            if first_write {
+                let started = serde_json::json!({"type":"thread.started","thread_id": thread});
+                writeln!(f, "{}", started.to_string())?;
+            }
+            for v in lines {
+                writeln!(f, "{}", v.to_string())?;
+            }
+            Ok(())
+        }
+    }).await??;
+    Ok(())
 }
 
 #[cfg(test)]
