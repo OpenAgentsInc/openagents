@@ -141,7 +141,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: any; onPr
     )
   })()
   return (
-    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
+    <ThreadListItemBase title={lastSnippet || row?.title || 'Thread'} meta={meta as any} timestamp={undefined} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
   )
 }
 
