@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Result};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
+use std::fs;
+use std::path::{Path, PathBuf};
+use serde_json::json;
 
 /// Wrapper handle for a zoomable, pannable SVG viewer window.
 /// Construct via `render_mermaid(svg_source)` then call `run()`
@@ -57,6 +60,52 @@ pub fn render_mermaid(svg_source: &str) -> Result<MermaidView> {
         width: 1024,
         height: 768,
     })
+}
+
+/// Build a viewer with a left sidebar that lists all Mermaid/SVG docs found
+/// under the provided directory (e.g., `docs/tinyvex`). Clicking a doc loads
+/// it into the viewer without leaving the window.
+pub fn render_mermaid_docs_index(dir: impl AsRef<Path>) -> Result<MermaidView> {
+    let dir = dir.as_ref();
+    let mut docs: Vec<serde_json::Value> = Vec::new();
+    let exts = ["md", "markdown", "mmd", "svg"]; 
+    for entry in fs::read_dir(dir).map_err(|e| anyhow!("read_dir {}: {e}", dir.display()))? {
+        let entry = entry.map_err(|e| anyhow!("read_dir entry: {e}"))?;
+        let p = entry.path();
+        if !p.is_file() { continue; }
+        let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+        if !exts.contains(&ext.as_str()) { continue; }
+        let raw = fs::read_to_string(&p).map_err(|e| anyhow!("read {}: {e}", p.display()))?;
+        let (kind, content) = if ext == "svg" || raw.trim_start().starts_with("<svg") {
+            ("svg", raw)
+        } else if ext == "md" || ext == "markdown" {
+            match extract_first_mermaid_block(&raw) {
+                Some(code) => ("mermaid", code),
+                None => ("mermaid", raw),
+            }
+        } else {
+            ("mermaid", raw)
+        };
+        docs.push(json!({
+            "name": name,
+            "kind": kind,
+            "content": content,
+        }));
+    }
+    // Sort by name for stable nav
+    docs.sort_by(|a, b| a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or("")));
+    let docs_json = serde_json::to_string(&docs).unwrap_or("[]".into());
+    let html = build_html_docs_index(&docs_json);
+    Ok(MermaidView { html, title: "Mermaid Viewer".into(), width: 1280, height: 840 })
+}
+
+fn extract_first_mermaid_block(md: &str) -> Option<String> {
+    let fence = "```mermaid";
+    let i = md.find(fence)?;
+    let rest = &md[i + fence.len()..];
+    let j = rest.find("```")?;
+    Some(rest[..j].trim().to_string())
 }
 
 /// Build a viewer from Mermaid diagram source text.
@@ -539,5 +588,166 @@ fn build_html_from_mermaid(code: &str) -> String {
         sidebar_bg = sidebar_bg,
         code = safe_code,
         mermaid_js_b64 = mermaid_js_b64,
+    )
+}
+
+fn build_html_docs_index(docs_json: &str) -> String {
+    // Dark theme palette
+    let bg = "#08090a";
+    let text = "#f7f8f8";
+    let border = "#23252a";
+    let tertiary = "#8a8f98";
+    let quaternary = "#62666d";
+    let sidebar_bg = "#0e0e12";
+
+    const BERKELEY_MONO_REGULAR: &[u8] = include_bytes!(
+        "../../../expo/assets/fonts/BerkeleyMono-Regular.ttf"
+    );
+    let font_b64 = BASE64.encode(BERKELEY_MONO_REGULAR);
+    const MERMAID_JS: &[u8] = include_bytes!("../assets/mermaid.min.js");
+    let mermaid_js_b64 = BASE64.encode(MERMAID_JS);
+
+    format!(
+        r#"<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mermaid Viewer</title>
+    <style>
+      *, *::before, *::after {{ -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
+      @font-face {{ font-family: 'Berkeley Mono Viewer'; src: url('data:font/ttf;base64,{font_b64}') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }}
+      :root {{ --bg:{bg}; --fg:{text}; --border:{border}; --muted:{tertiary}; --q:{quaternary}; --sidebar:{sidebar_bg}; }}
+      html, body {{ margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:'Berkeley Mono Viewer', ui-monospace, Menlo, monospace; }}
+      #shell {{ display:grid; grid-template-columns: 280px 1fr; height:100%; width:100%; }}
+      #nav {{ background:var(--sidebar); border-right:1px solid var(--border); overflow:auto; }}
+      #nav h1 {{ font-size:14px; margin:12px; color:var(--muted); }}
+      #files {{ display:flex; flex-direction:column; gap:6px; padding:0 8px 16px 8px; }}
+      #files button {{ text-align:left; padding:8px 10px; background:#14181b; color:var(--fg); border:1px solid #2a2d31; border-radius:6px; cursor:pointer; }}
+      #files button.active {{ border-color:#3b4046; background:#181c20; }}
+      #panel {{ position:relative; overflow:hidden; }}
+      #toolbar {{ position:absolute; top:12px; right:12px; z-index:10; background:rgba(20,22,24,.7); border:1px solid #2a2d31; border-radius:6px; padding:6px 8px; display:flex; gap:6px; align-items:center; }}
+      #toolbar button {{ background:#14181b; color:var(--fg); border:1px solid #2a2d31; border-radius:4px; padding:4px 8px; cursor:pointer; }}
+      #view {{ position:absolute; inset:0; overflow:hidden; }}
+      .mermaid {{ height:100%; width:100%; display:block; background:var(--bg); }}
+      .mermaid svg {{ height:100%; width:100%; display:block; background:var(--bg); text-rendering:geometricPrecision; -webkit-font-smoothing:antialiased; }}
+      .mermaid svg *, .mermaid svg text {{ pointer-events:none; }}
+      .mermaid svg text {{ fill:var(--fg) !important; font-family:'Berkeley Mono Viewer', ui-monospace, Menlo, monospace !important; font-variant-ligatures:none; font-synthesis:none; text-rendering:geometricPrecision; }}
+      .mermaid svg rect, .mermaid svg path, .mermaid svg line, .mermaid svg circle, .mermaid svg ellipse, .mermaid svg polygon {{ stroke: {tertiary}; vector-effect: non-scaling-stroke; shape-rendering: geometricPrecision; }}
+      svg {{ height:100%; width:100%; display:block; background:var(--bg); text-rendering:geometricPrecision; -webkit-font-smoothing:antialiased; }}
+      svg, svg * {{ -webkit-user-select:none !important; user-select:none !important; -webkit-user-drag:none; }}
+      svg *, svg text {{ pointer-events:none; }}
+    </style>
+  </head>
+  <body>
+    <div id="shell">
+      <aside id="nav">
+        <h1>Tinyvex Diagrams</h1>
+        <div id="files"></div>
+      </aside>
+      <main id="panel">
+        <div id="toolbar">
+          <button id="fit">Fit</button>
+          <button id="zoom_in">+</button>
+          <button id="zoom_out">-</button>
+          <span id="status" style="opacity:.8;font-size:12px;">100%</span>
+        </div>
+        <div id="view"><div id="mermaid" class="mermaid"></div></div>
+      </main>
+    </div>
+    <script>window.__DOCS__ = {docs};</script>
+    <script src="data:text/javascript;base64,{mermaid_js_b64}"></script>
+    <script>
+      (function(){{
+        const container = document.getElementById('view');
+        const nav = document.getElementById('files');
+        const list = Array.isArray(window.__DOCS__) ? window.__DOCS__ : (window.__DOCS__?.docs || []);
+        let currentIndex = -1;
+
+        // Build nav
+        list.forEach((d, i) => {{
+          const b = document.createElement('button');
+          b.textContent = d.name || ('doc ' + (i+1));
+          b.onclick = () => loadDoc(i);
+          nav.appendChild(b);
+        }});
+
+        function setActive(i){{
+          [...nav.querySelectorAll('button')].forEach((el, idx)=>{{ el.classList.toggle('active', idx===i); }});
+        }}
+
+        function ensureViewBox(svg){{
+          const vb = svg.viewBox.baseVal; if (vb && vb.width>0 && vb.height>0) return;
+          const b = svg.getBBox(); svg.setAttribute('viewBox', '0 0 ' + (b.width||1024) + ' ' + (b.height||768));
+        }}
+
+        function centerNotes(svg){{
+          const rects = svg.querySelectorAll('g[class*="note"] rect, rect.note, rect[class*="note"]');
+          rects.forEach((rect)=>{{
+            const rb = rect.getBBox(); const cy = rb.y + rb.height/2; const g = rect.parentNode; if(!g) return;
+            const texts = g.querySelectorAll('text');
+            texts.forEach((t)=>{{ const tb = t.getBBox(); const cc = tb.y + tb.height/2; const y0 = parseFloat(t.getAttribute('y')||'0'); t.setAttribute('y', y0 + (cy-cc)); t.setAttribute('dominant-baseline','middle'); t.setAttribute('alignment-baseline','middle'); t.setAttribute('dy','0'); }});
+          }});
+        }}
+
+        function attachPanZoom(svg){{
+          ensureViewBox(svg);
+          // State
+          let vx = svg.viewBox.baseVal.x, vy = svg.viewBox.baseVal.y,
+              vw = svg.viewBox.baseVal.width || container.clientWidth || 1024,
+              vh = svg.viewBox.baseVal.height || container.clientHeight || 768;
+          const init = {{ x:vx, y:vy, w:vw, h:vh }};
+          function round(n){{ return Math.round(n*1000)/1000; }}
+          function updateStatus(){{ const percent = (init.w / vw) * 100; document.getElementById('status').textContent = percent.toFixed(0) + '%'; }}
+          function apply(){{ svg.setAttribute('viewBox', round(vx)+' '+round(vy)+' '+round(vw)+' '+round(vh)); updateStatus(); }}
+          function getPt(evt){{ const r = container.getBoundingClientRect(); const px=evt.clientX-r.left, py=evt.clientY-r.top; const sx=px/r.width, sy=py/r.height; const ux=vx+sx*vw, uy=vy+sy*vh; return {{ux,uy,sx,sy,px,py,rect:r}}; }}
+          function zoomAt(f, evt){{ const {{ux,uy}}=getPt(evt); const nw=vw/f, nh=vh/f; vx = ux - (ux - vx) * (nw / vw); vy = uy - (uy - vy) * (nh / vh); vw=nw; vh=nh; apply(); }}
+          container.addEventListener('contextmenu', (e)=>e.preventDefault());
+          container.addEventListener('wheel', (e)=>{{ e.preventDefault(); const step=0.0007; const f=Math.exp(-e.deltaY*step); zoomAt(f,e); }}, {{passive:false}});
+          let dragging=false, sx=0, sy=0, svx=0, svy=0;
+          container.addEventListener('pointerdown', (e)=>{{ const isMouse=e.pointerType==='mouse'; const left=e.button===0, right=e.button===2; if(!isMouse||left||right){{ dragging=true; sx=e.clientX; sy=e.clientY; svx=vx; svy=vy; container.setPointerCapture(e.pointerId); }} }});
+          container.addEventListener('pointermove', (e)=>{{ if(!dragging) return; const r=container.getBoundingClientRect(); const dx=e.clientX-sx, dy=e.clientY-sy; vx=svx - dx*(vw/r.width); vy=svy - dy*(vh/r.height); apply(); }});
+          container.addEventListener('pointerup', ()=> dragging=false);
+          container.addEventListener('pointercancel', ()=> dragging=false);
+          document.getElementById('zoom_in').onclick = ()=> {{ const e=new MouseEvent('wheel', {{clientX:container.clientWidth/2, clientY:container.clientHeight/2, deltaY:-1}}); zoomAt(1.08,e); }};
+          document.getElementById('zoom_out').onclick= ()=> {{ const e=new MouseEvent('wheel', {{clientX:container.clientWidth/2, clientY:container.clientHeight/2, deltaY:1}});  zoomAt(1/1.08,e); }};
+          document.getElementById('fit').onclick = ()=> {{ vx=init.x; vy=init.y; vw=init.w; vh=init.h; centerNotes(svg); apply(); }};
+          window.addEventListener('keydown', (e)=>{{ if(e.key==='f'||e.key==='F') document.getElementById('fit').click(); }});
+          centerNotes(svg);
+          apply();
+        }}
+
+        function loadDoc(i){{
+          if (i===currentIndex) return; currentIndex = i; setActive(i);
+          const d = list[i]; if (!d) return;
+          const view = document.getElementById('view');
+          view.innerHTML = '<div id="mermaid" class="mermaid"></div>';
+          if (String(d.kind||'mermaid') === 'svg' || String(d.content||'').trim().startsWith('<svg')) {{
+            view.innerHTML = d.content;
+            const svg = view.querySelector('svg'); if (svg) attachPanZoom(svg);
+          }} else {{
+            const mroot = document.getElementById('mermaid');
+            mroot.textContent = d.content || '';
+            mermaid.initialize({{ startOnLoad:false, theme:'dark', themeVariables: {{ background:'{bg}', primaryColor:'{bg}', primaryTextColor:'{text}', lineColor:'{tertiary}', actorTextColor:'{text}', actorBorder:'{quaternary}', actorBkg:'{bg}', noteTextColor:'{text}', noteBkgColor:'{sidebar_bg}', noteBorderColor:'{border}', activationBorderColor:'{border}', activationBkgColor:'{sidebar_bg}', sequenceNumberColor:'{tertiary}', altBackground:'{sidebar_bg}', labelBoxBkgColor:'{bg}', labelBoxBorderColor:'{quaternary}', loopTextColor:'{tertiary}', fontFamily:'Berkeley Mono Viewer, ui-monospace, Menlo, monospace' }} }});
+            mermaid.run({{ querySelector:'#mermaid' }}).then(()=>{{ const svg = view.querySelector('svg'); if (svg) attachPanZoom(svg); }}).catch(()=>{{ const svg = view.querySelector('svg'); if (svg) attachPanZoom(svg); }});
+          }}
+        }}
+
+        // Populate and load first doc if present
+        if (list.length) loadDoc(0);
+      }})();
+    </script>
+  </body>
+ </html>
+        "#,
+        font_b64 = font_b64,
+        bg = bg,
+        text = text,
+        border = border,
+        tertiary = tertiary,
+        quaternary = quaternary,
+        sidebar_bg = sidebar_bg,
+        mermaid_js_b64 = mermaid_js_b64,
+        docs = docs_json,
     )
 }
