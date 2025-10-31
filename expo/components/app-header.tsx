@@ -54,7 +54,7 @@ export function AppHeader() {
             // Expand the tappable area without changing visuals
             hitSlop={{ top: 32, bottom: 32, left: 20, right: 20 }}
             pressRetentionOffset={{ top: 20, bottom: 20, left: 20, right: 20 }}
-            style={{ height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', alignItems: 'center', position: 'relative' }}
+            style={{ marginTop: -10, height: '100%', paddingHorizontal: 12, paddingVertical: 0, justifyContent: 'center', alignItems: 'center', position: 'relative' }}
           >
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
             <View
