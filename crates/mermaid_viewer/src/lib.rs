@@ -265,7 +265,8 @@ fn build_html(svg_source: &str) -> String {
               const tb = t.getBBox();
               const currentCenter = tb.y + tb.height / 2;
               const curY = parseFloat(t.getAttribute('y') || '0');
-              const newY = curY + (cy - currentCenter);
+              const fudge = Math.max(0, tb.height * 0.15); // push a few px down
+              const newY = curY + (cy - currentCenter) + fudge;
               t.setAttribute('y', newY);
               t.setAttribute('dominant-baseline', 'middle');
               t.setAttribute('alignment-baseline', 'middle');
@@ -524,7 +525,8 @@ fn build_html_from_mermaid(code: &str) -> String {
                 const tb = t.getBBox();
                 const currentCenter = tb.y + tb.height / 2;
                 const curY = parseFloat(t.getAttribute('y') || '0');
-                const newY = curY + (cy - currentCenter);
+                const fudge = Math.max(0, tb.height * 0.15);
+                const newY = curY + (cy - currentCenter) + fudge;
                 t.setAttribute('y', newY);
                 t.setAttribute('dominant-baseline', 'middle');
                 t.setAttribute('alignment-baseline', 'middle');
@@ -686,7 +688,7 @@ fn build_html_docs_index(docs_json: &str) -> String {
           rects.forEach((rect)=>{{
             const rb = rect.getBBox(); const cy = rb.y + rb.height/2; const g = rect.parentNode; if(!g) return;
             const texts = g.querySelectorAll('text');
-            texts.forEach((t)=>{{ const tb = t.getBBox(); const cc = tb.y + tb.height/2; const y0 = parseFloat(t.getAttribute('y')||'0'); t.setAttribute('y', y0 + (cy-cc)); t.setAttribute('dominant-baseline','middle'); t.setAttribute('alignment-baseline','middle'); t.setAttribute('dy','0'); }});
+            texts.forEach((t)=>{{ const tb = t.getBBox(); const cc = tb.y + tb.height/2; const y0 = parseFloat(t.getAttribute('y')||'0'); const fudge = Math.max(0, tb.height*0.15); t.setAttribute('y', y0 + (cy-cc) + fudge); t.setAttribute('dominant-baseline','middle'); t.setAttribute('alignment-baseline','middle'); t.setAttribute('dy','0'); }});
           }});
         }}
 
