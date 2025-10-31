@@ -203,6 +203,24 @@ fn build_html(svg_source: &str) -> String {
           updateStatus();
         }}
 
+        // Ensure note labels are vertically centered within their rectangles
+        function centerNotes(){{
+          const rects = svg.querySelectorAll('rect.note, g.note rect, rect[class*="note"]');
+          rects.forEach((rect) => {{
+            const y = rect.y?.baseVal?.value ?? parseFloat(rect.getAttribute('y')||'0');
+            const h = rect.height?.baseVal?.value ?? parseFloat(rect.getAttribute('height')||'0');
+            const cy = y + h / 2;
+            const g = rect.parentNode;
+            if (!g) return;
+            const texts = g.querySelectorAll('text');
+            texts.forEach((t) => {{
+              t.setAttribute('y', cy);
+              t.setAttribute('dominant-baseline', 'middle');
+              t.setAttribute('alignment-baseline', 'middle');
+            }});
+          }});
+        }}
+
         function getPt(evt){{
           const rect = container.getBoundingClientRect();
           const px = evt.clientX - rect.left;
@@ -282,6 +300,7 @@ fn build_html(svg_source: &str) -> String {
           const percent = (init.w / vw) * 100;
           status.textContent = percent.toFixed(0) + '%';
         }}
+        centerNotes();
         applyViewBox();
       }})();
     </script>
@@ -440,6 +459,22 @@ fn build_html_from_mermaid(code: &str) -> String {
             svg.setAttribute('viewBox', round(vx) + ' ' + round(vy) + ' ' + round(vw) + ' ' + round(vh));
             updateStatus();
           }}
+          function centerNotes(){{
+            const rects = svg.querySelectorAll('rect.note, g.note rect, rect[class*="note"]');
+            rects.forEach((rect) => {{
+              const y = rect.y?.baseVal?.value ?? parseFloat(rect.getAttribute('y')||'0');
+              const h = rect.height?.baseVal?.value ?? parseFloat(rect.getAttribute('height')||'0');
+              const cy = y + h / 2;
+              const g = rect.parentNode;
+              if (!g) return;
+              const texts = g.querySelectorAll('text');
+              texts.forEach((t) => {{
+                t.setAttribute('y', cy);
+                t.setAttribute('dominant-baseline', 'middle');
+                t.setAttribute('alignment-baseline', 'middle');
+              }});
+            }});
+          }}
           function getPt(evt){{
             const rect = container.getBoundingClientRect();
             const px = evt.clientX - rect.left; const py = evt.clientY - rect.top;
@@ -469,8 +504,9 @@ fn build_html_from_mermaid(code: &str) -> String {
           container.addEventListener('pointercancel', ()=> dragging=false);
           document.getElementById('zoom_in').onclick = () => {{ const e = new MouseEvent('wheel', {{ clientX: container.clientWidth/2, clientY: container.clientHeight/2, deltaY: -1 }}); zoomAt(1.08, e); }};
           document.getElementById('zoom_out').onclick = () => {{ const e = new MouseEvent('wheel', {{ clientX: container.clientWidth/2, clientY: container.clientHeight/2, deltaY: 1 }}); zoomAt(1/1.08, e); }};
-          document.getElementById('fit').onclick = () => {{ vx=init.x; vy=init.y; vw=init.w; vh=init.h; applyViewBox(); }};
+          document.getElementById('fit').onclick = () => {{ vx=init.x; vy=init.y; vw=init.w; vh=init.h; centerNotes(); applyViewBox(); }};
           window.addEventListener('keydown',(e)=>{{ if(e.key==='f'||e.key==='F') document.getElementById('fit').click(); }});
+          centerNotes();
           applyViewBox();
         }}
 
