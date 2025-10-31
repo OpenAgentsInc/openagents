@@ -15,7 +15,7 @@ type MessageRow = { id: number; thread_id: string; role?: string; kind: string; 
 type TinyvexContextValue = {
   threads: ThreadsRow[];
   messagesByThread: Record<string, MessageRow[]>;
-  toolCallsByThread: Record<string, string[]>;
+  toolCallsByThread: Record<string, any[]>;
   planTouched: Record<string, number>;
   stateTouched: Record<string, number>;
   subscribeThreads: () => void;
@@ -42,7 +42,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const connected = bridge.connected;
   const [threads, setThreads] = useState<ThreadsRow[]>([])
   const [messagesByThread, setMessagesByThread] = useState<Record<string, MessageRow[]>>({})
-  const [toolCallsByThread, setToolCallsByThread] = useState<Record<string, string[]>>({})
+  const [toolCallsByThread, setToolCallsByThread] = useState<Record<string, any[]>>({})
   const [planTouched, setPlanTouched] = useState<Record<string, number>>({})
   const [stateTouched, setStateTouched] = useState<Record<string, number>>({})
 
@@ -128,8 +128,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
       } else if (obj.name === 'messages.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
         setMessagesByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as MessageRow[] }))
       } else if (obj.name === 'toolCalls.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
-        const list: string[] = (obj.rows as any[]).map((r) => String((r && (r.tool_call_id || r.toolCallId || r.id)) || '')).filter(Boolean)
-        setToolCallsByThread((prev) => ({ ...prev, [obj.threadId]: list }))
+        setToolCallsByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as any[] }))
       } else if (obj.name === 'threadsAndTails.list') {
         // cancel fallback to threads.list if pending
         try {
