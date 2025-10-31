@@ -263,3 +263,27 @@ pub fn spawn_codex_watcher(state: std::sync::Arc<AppState>) -> mpsc::Sender<Sync
 }
 
 pub fn codex_base_path() -> PathBuf { default_codex_base() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn finds_thread_id_in_session_meta() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("rollout-test.jsonl");
+        let mut f = std::fs::File::create(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"abc-123"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text":"hi"}})).unwrap();
+        let id = scan_for_thread_id(&p);
+        assert_eq!(id.as_deref(), Some("abc-123"));
+    }
+
+    #[test]
+    fn derives_uuid_from_filename() {
+        let p = PathBuf::from("rollout-2025-10-22T12-05-17-019a0ce1-d491-76d2-93ba-0d47dde32657.jsonl");
+        let id = extract_uuid_like_from_filename(&p);
+        assert_eq!(id.as_deref(), Some("019a0ce1-d491-76d2-93ba-0d47dde32657"));
+    }
+}

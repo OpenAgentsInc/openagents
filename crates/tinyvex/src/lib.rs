@@ -439,6 +439,27 @@ mod tests {
         assert_eq!(out[0].id, "t1");
         assert_eq!(out[0].title, "Hello");
     }
+
+    #[test]
+    fn list_messages_returns_last_n_in_ascending_order() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let tvx = Tinyvex::open(tmp.path()).unwrap();
+        let thread = "t-tail";
+        // Insert 100 finalized messages with increasing timestamps
+        for i in 0..100i64 {
+            let ts = now_ms() + i;
+            let item_id = format!("it{}", i);
+            tvx.finalize_streamed_message(thread, &item_id, &format!("m{}", i), ts).unwrap();
+        }
+        let rows = tvx.list_messages(thread, 50).unwrap();
+        assert_eq!(rows.len(), 50, "should return last 50 messages");
+        // Ensure ascending by ts and that they correspond to items 50..99
+        for (idx, row) in rows.iter().enumerate() {
+            let expected = 50 + idx as i64;
+            assert!(row.text.as_deref().unwrap_or("").contains(&format!("m{}", expected)), "expected m{}", expected);
+        }
+        assert!(rows.windows(2).all(|w| w[0].ts <= w[1].ts), "rows should be ascending by ts");
+    }
 }
 
 pub mod writer;
