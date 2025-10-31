@@ -134,6 +134,8 @@ fn build_html(svg_source: &str) -> String {
     let bg = "#08090a";
     let text = "#f7f8f8";
     let stroke = "#6c7075"; // muted grey
+    // Encode SVG to avoid raw injection; we will sanitize in JS before attaching
+    let svg_b64 = BASE64.encode(svg_source.as_bytes());
 
     format!(
         r#"<!doctype html>
@@ -146,12 +148,6 @@ fn build_html(svg_source: &str) -> String {
       /* Disable selection across the viewer */
       *, *::before, *::after {{ -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
       #toolbar, #toolbar * {{ -webkit-user-select: none !important; user-select: none !important; pointer-events: auto; }}
-      /* Disable selection across the viewer */
-      *, *::before, *::after {{ -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
-      /* Ensure toolbar is still clickable but text not selectable */
-      #toolbar, #toolbar * {{ -webkit-user-select: none !important; user-select: none !important; pointer-events: auto; }}
-      /* Disable selection across the viewer */
-      *, *::before, *::after {{ -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }}
       @font-face {{
         font-family: 'Berkeley Mono Viewer';
         src: url('data:font/ttf;base64,{font_b64}') format('truetype');
@@ -216,17 +212,34 @@ fn build_html(svg_source: &str) -> String {
       <button id="zoom_out">-</button>
       <span id="status" style="opacity:.8;font-size:12px;">100%</span>
     </div>
-    <div id="view">
-      {svg}
-    </div>
+    <div id="view"></div>
     <script>
       (function(){{
         // Block any selection attempts globally
         document.addEventListener('selectstart', (e) => e.preventDefault());
         document.addEventListener('dragstart', (e) => e.preventDefault());
         const container = document.getElementById('view');
-        const svg = container.querySelector('svg');
+        // Decode and sanitize SVG before attaching
+        const raw = atob('{svg_b64}');
+        const doc = new DOMParser().parseFromString(raw, 'image/svg+xml');
+        let svg = doc && doc.documentElement && doc.documentElement.tagName.toLowerCase() === 'svg' ? doc.documentElement : null;
         if (!svg) return;
+        svg.querySelectorAll('script, foreignObject').forEach(n => n.remove());
+        const walker = document.createTreeWalker(svg, NodeFilter.SHOW_ELEMENT);
+        const els = [];
+        while (walker.nextNode()) els.push(walker.currentNode);
+        els.forEach(el => {{
+          if (!el.getAttributeNames) return;
+          for (const name of el.getAttributeNames()) {{
+            if (/^on/i.test(name)) el.removeAttribute(name);
+            if ((name === 'href' || name.endsWith(':href'))) {{
+              const v = (el.getAttribute(name) || '').trim();
+              if (/^(javascript:|data:)/i.test(v)) el.removeAttribute(name);
+            }}
+          }}
+        }});
+        container.innerHTML = '';
+        container.appendChild(svg);
 
         // Ensure viewBox exists
         function ensureViewBox(){{
@@ -364,7 +377,7 @@ fn build_html(svg_source: &str) -> String {
         bg = bg,
         text = text,
         stroke = stroke,
-        svg = svg_source
+        svg_b64 = svg_b64
     )
 }
 
