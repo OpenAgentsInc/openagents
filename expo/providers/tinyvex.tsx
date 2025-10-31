@@ -176,16 +176,53 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           }
         } catch {}
         const threadsRows = Array.isArray(obj.threads) ? (obj.threads as ThreadsRow[]) : []
-        setThreads(threadsRows)
+        const tails = Array.isArray(obj.tails) ? (obj.tails as any[]) : []
+        // Build a complete list of threads from rows + tails. If Tinyvex DB is cold
+        // after a bridge restart, tails may include additional threads that are not
+        // yet in `threadsRows`. Synthesize minimal entries for them so the drawer
+        // shows full history immediately.
+        const known = new Set<string>()
+        const nextThreads: ThreadsRow[] = []
+        for (const r of threadsRows) {
+          const tid = String((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')
+          if (!tid) continue
+          known.add(tid)
+          nextThreads.push(r)
+        }
+        for (const t of tails) {
+          const tid = String((t?.threadId) || '')
+          if (!tid || known.has(tid)) continue
+          const rows = Array.isArray(t?.rows) ? t.rows as any[] : []
+          const ts = (() => {
+            try {
+              if (!rows.length) return 0
+              const last = rows[rows.length - 1]
+              return Number((last?.ts ?? last?.updated_at ?? last?.updatedAt ?? 0) as number)
+            } catch { return 0 }
+          })()
+          nextThreads.push({
+            id: tid,
+            thread_id: tid as any,
+            title: 'Thread',
+            project_id: undefined,
+            resume_id: undefined,
+            rollout_path: undefined as any,
+            source: 'codex' as any,
+            created_at: ts || Date.now(),
+            updated_at: ts || Date.now(),
+            message_count: rows.length,
+          } as any)
+        }
+        setThreads(nextThreads)
         try {
           const setProvider = useThreadProviders.getState().setProvider
-          for (const r of threadsRows) {
+          for (const r of nextThreads) {
             const tid = String((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')
             const src = String((r as any)?.source || '')
             if (tid) setProvider(tid, src === 'claude_code' ? 'claude_code' : 'codex')
           }
         } catch {}
-        const tails = Array.isArray(obj.tails) ? (obj.tails as any[]) : []
+        
         setMessagesByThread((prev) => {
           const next = { ...prev }
           for (const t of tails) {
