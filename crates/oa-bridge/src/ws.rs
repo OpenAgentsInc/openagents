@@ -222,6 +222,70 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             Err(e) => { error!(?e, "tinyvex messages.list failed"); }
                                         }
                                     }
+                                } else if name == "messages.tailMany" {
+                                    let per = args.get("perThread").and_then(|x| x.as_i64()).unwrap_or(50);
+                                    if let Some(ids) = args.get("threadIds").and_then(|x| x.as_array()) {
+                                        let mut items: Vec<serde_json::Value> = Vec::new();
+                                        for idv in ids {
+                                            if let Some(tid) = idv.as_str() {
+                                                match stdin_state.tinyvex.list_messages(tid, per) {
+                                                    Ok(rows) => items.push(serde_json::json!({"threadId": tid, "rows": rows})),
+                                                    Err(e) => { error!(?e, "tinyvex messages.tailMany failed for thread"); items.push(serde_json::json!({"threadId": tid, "rows": []})); }
+                                                }
+                                            }
+                                        }
+                                        let line = serde_json::json!({"type":"tinyvex.query_result","name":"messages.tailMany","rows": items}).to_string();
+                                        let _ = stdin_state.tx.send(line);
+                                    }
+                                } else if name == "threads.listSince" {
+                                    let updated_after = args.get("updatedAfter").and_then(|x| x.as_i64()).unwrap_or(0);
+                                    let lim = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(200);
+                                    match stdin_state.tinyvex.list_threads(lim) {
+                                        Ok(mut rows) => {
+                                            rows.retain(|r| r.updated_at > updated_after);
+                                            let line = serde_json::json!({"type":"tinyvex.query_result","name":"threads.listSince","rows": rows}).to_string();
+                                            let _ = stdin_state.tx.send(line);
+                                        }
+                                        Err(e) => { error!(?e, "tinyvex threads.listSince failed"); }
+                                    }
+                                } else if name == "messages.since" {
+                                    if let Some(tid) = args.get("threadId").and_then(|x| x.as_str()) {
+                                        let after_seq = args.get("afterSeq").and_then(|x| x.as_i64());
+                                        let after_ts = args.get("afterTs").and_then(|x| x.as_i64());
+                                        let lim = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(500);
+                                        match stdin_state.tinyvex.list_messages(tid, lim) {
+                                            Ok(mut rows) => {
+                                                if let Some(s) = after_seq { rows.retain(|r| r.seq.unwrap_or(0) > s); }
+                                                if let Some(ts) = after_ts { rows.retain(|r| r.ts > ts); }
+                                                let line = serde_json::json!({"type":"tinyvex.query_result","name":"messages.since","threadId": tid, "rows": rows}).to_string();
+                                                let _ = stdin_state.tx.send(line);
+                                            }
+                                            Err(e) => { error!(?e, "tinyvex messages.since failed"); }
+                                        }
+                                    }
+                                } else if name == "threadsAndTails.list" {
+                                    let lim = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(50);
+                                    let per = args.get("perThreadTail").and_then(|x| x.as_i64()).unwrap_or(50);
+                                    match stdin_state.tinyvex.list_threads(lim) {
+                                        Ok(rows) => {
+                                            let mut tails: Vec<serde_json::Value> = Vec::new();
+                                            for r in &rows {
+                                                let tid = r.thread_id.as_deref().unwrap_or(&r.id);
+                                                match stdin_state.tinyvex.list_messages(tid, per) {
+                                                    Ok(m) => tails.push(serde_json::json!({"threadId": tid, "rows": m})),
+                                                    Err(_) => tails.push(serde_json::json!({"threadId": tid, "rows": []})),
+                                                }
+                                            }
+                                            let line = serde_json::json!({
+                                                "type":"tinyvex.query_result",
+                                                "name":"threadsAndTails.list",
+                                                "threads": rows,
+                                                "tails": tails
+                                            }).to_string();
+                                            let _ = stdin_state.tx.send(line);
+                                        }
+                                        Err(e) => { error!(?e, "tinyvex threadsAndTails.list failed"); }
+                                    }
                                 }
                             }
                             ControlCommand::TvxMutate { name, args } => {
