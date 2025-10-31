@@ -232,7 +232,7 @@ fn build_html(svg_source: &str) -> String {
           e.preventDefault();
           // Map deltaY to an exponential scale factor with low sensitivity.
           // Smaller step -> less sensitive zoom; tuned for trackpads and wheels.
-          const step = 0.00035; // was effectively ~0.095 per notch; now ~0.035
+          const step = 0.0007; // doubled sensitivity from 0.00035
           const factor = Math.exp(-e.deltaY * step);
           zoomAt(factor, e);
         }}, {{ passive: false }});
@@ -454,7 +454,7 @@ fn build_html_from_mermaid(code: &str) -> String {
             vy = uy - (uy - vy) * (newH / vh);
             vw = newW; vh = newH; applyViewBox();
           }}
-          container.addEventListener('wheel', (e) => {{ e.preventDefault(); const step = 0.00035; const factor = Math.exp(-e.deltaY * step); zoomAt(factor, e); }}, {{ passive: false }});
+          container.addEventListener('wheel', (e) => {{ e.preventDefault(); const step = 0.0007; const factor = Math.exp(-e.deltaY * step); zoomAt(factor, e); }}, {{ passive: false }});
           let dragging=false,startX=0,startY=0,svx=0,svy=0;
           container.addEventListener('pointerdown', (e)=>{{
             const isMouse = e.pointerType === 'mouse';
