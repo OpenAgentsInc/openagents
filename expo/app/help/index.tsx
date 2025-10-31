@@ -13,7 +13,7 @@ export default function HelpScreen() {
 
   const showOnboarding = React.useCallback(() => {
     try { ob.setCompleted(false) } catch {}
-    try { router.replace('/onboarding' as any) } catch {}
+    try { router.replace('/onboarding') } catch {}
   }, [ob, router])
 
   return (

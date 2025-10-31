@@ -23,8 +23,8 @@ type BridgeContextValue = {
   setOnMessage: (fn: MsgHandler) => void;
   addSubscriber: (fn: MsgHandler) => () => void;
   // WS request helpers
-  requestProjects: () => Promise<any[]>;
-  requestSkills: () => Promise<any[]>;
+  requestProjects: () => Promise<unknown[]>;
+  requestSkills: () => Promise<unknown[]>;
   // Log controls (Console registers a handler; Settings can trigger)
   setClearLogHandler: (fn: (() => void) | null) => void;
   clearLog: () => void;
@@ -183,7 +183,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
                 console.log('[ws.in][bridge.acp]', { sessionId: sid, kind, valid: parsed.ok });
                 if (!parsed.ok && isDevEnv()) {
                   // eslint-disable-next-line no-console
-                  console.log('[ws.in][bridge.acp][invalid]', { error: String((parsed as any).error), raw: rawNotif });
+                  console.log('[ws.in][bridge.acp][invalid]', { raw: rawNotif });
                 }
               } else if (t && /^bridge\./.test(t)) {
                 // eslint-disable-next-line no-console
@@ -195,11 +195,11 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         try { onMessageRef.current?.(data); } catch {}
         try { subsRef.current.forEach((fn) => { try { if (fn) fn(data) } catch {} }); } catch {}
       };
-      ws.onerror = (evt: any) => {
+      ws.onerror = (_evt: Event) => {
         try { console.log('[bridge.ws] error') } catch {}
         setConnecting(false);
       };
-      ws.onclose = (evt: any) => {
+      ws.onclose = (evt: CloseEvent) => {
         try {
           const code = Number((evt && evt.code) || 0) || undefined;
           const reason = String((evt && evt.reason) || '').trim() || undefined;
@@ -211,7 +211,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         setConnecting(false);
         appLog('bridge.close');
       };
-      ws.onerror = (_evt: any) => {
+      ws.onerror = (_evt: Event) => {
         try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
       };
     } catch (e: any) {
@@ -254,7 +254,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     const ws = wsRef.current;
     const preview = (() => {
       try {
-        const s = typeof payload === 'string' ? payload : String(payload as any);
+        const s = typeof payload === 'string' ? payload : (payload instanceof ArrayBuffer ? `[${payload.byteLength} bytes]` : String(payload));
         return s.length > 160 ? s.slice(0, 160) + '…' : s;
       } catch { return '' }
     })();
@@ -262,7 +262,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       try { appLog('ws.send.skipped', { preview, reason: 'not_open' }); } catch {}
       return false;
     }
-    try { ws.send(payload as any); appLog('ws.send', { preview }); } catch (e: any) { appLog('ws.send.error', { error: String(e?.message ?? e) }, 'error'); return false; }
+    try { ws.send(payload); appLog('ws.send', { preview }); } catch (e: unknown) { appLog('ws.send.error', { error: String((e as Error)?.message ?? e) }, 'error'); return false; }
     return true;
   }, []);
 
@@ -288,9 +288,9 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   // Removed history/thread helpers; Convex-only UI uses subscriptions directly
 
-  const requestProjects = useCallback(async (): Promise<any[]> => {
+  const requestProjects = useCallback(async (): Promise<unknown[]> => {
     await awaitConnected().catch((e) => { throw e });
-    return new Promise<any[]>((resolve, reject) => {
+    return new Promise<unknown[]>((resolve, reject) => {
       let done = false;
       const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 15000);
       const unsub = addSubscriber((line) => {
@@ -306,9 +306,9 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   }, [addSubscriber, send, awaitConnected]);
 
 
-  const requestSkills = useCallback(async (): Promise<any[]> => {
+  const requestSkills = useCallback(async (): Promise<unknown[]> => {
     await awaitConnected().catch((e) => { throw e });
-    return new Promise<any[]>((resolve, reject) => {
+    return new Promise<unknown[]>((resolve, reject) => {
       let done = false;
       const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('timeout')); unsub(); } }, 15000);
       const unsub = addSubscriber((line) => {

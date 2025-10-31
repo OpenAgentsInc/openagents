@@ -39,7 +39,7 @@ export function AcpProvider({ children }: { children: React.ReactNode }) {
 
   const addEventForSession = useCallback((n: SessionNotification) => {
     const withTs: SessionNotificationWithTs = Object.assign({}, n, { addedAt: Date.now() })
-    const sid = String((n as any).sessionId || '')
+    const sid = String((n as SessionNotification as any).sessionId || '')
     const tdoc = sessionToThreadRef.current[sid]
     if (tdoc) {
       setEventsByThread((prev) => {
@@ -75,7 +75,7 @@ export function AcpProvider({ children }: { children: React.ReactNode }) {
         }
         if (obj?.type === 'bridge.acp' && obj.notification) {
           const parsed = parseSessionNotification(obj.notification)
-          if (parsed.ok) addEventForSession(parsed.value as any)
+          if (parsed.ok) addEventForSession(parsed.value)
         }
       } catch {}
     })

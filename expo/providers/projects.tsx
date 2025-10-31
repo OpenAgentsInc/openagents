@@ -65,13 +65,21 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
+  type RunConfig = {
+    sandbox: 'read-only' | 'danger-full-access';
+    approval: Approvals;
+    cd?: string;
+    project?: { id: string; name: string; repo?: Project['repo']; agent_file?: string };
+    resume?: string;
+  }
+
   const sendForProject = useCallback((project: Project | undefined, userText: string, resumeId?: string | null, options?: SendOptions) => {
     const base = userText.trim();
     if (!base) return false;
 
     const approvals = ws.approvals ?? 'never';
     const sandbox = ws.readOnly ? 'read-only' : 'danger-full-access';
-    const cfg: any = { sandbox, approval: approvals };
+    const cfg: RunConfig = { sandbox, approval: approvals };
 
     if (project?.workingDir) cfg.cd = project.workingDir;
     if (project) {

@@ -74,8 +74,8 @@ export const useThreads = create<ThreadsState>()(
           }
           set({ history: next, historyLoadedAt: Date.now(), historyError: null })
           appLog('history.fetch.success', { count: next.length, delta: delta?.length ?? 0 })
-      } catch (e: any) {
-      const msg = String(e?.message ?? e)
+      } catch (e: unknown) {
+      const msg = String((e as Error)?.message ?? e)
       set({ historyError: msg })
       appLog('history.fetch.error', { error: msg }, 'error')
     } finally {
@@ -117,19 +117,19 @@ export const useThreads = create<ThreadsState>()(
           useThreads.setState({ rehydrated: true })
         } catch {}
       },
-      migrate: (persisted: any) => {
+      migrate: (persisted: unknown) => {
         try {
           if (persisted && typeof persisted === 'object') {
-            const next: any = { ...persisted };
+            const next: Record<string, unknown> = { ...(persisted as Record<string, unknown>) };
             if (Array.isArray(next.items) && !Array.isArray(next.history)) {
-              next.history = next.items;
+              (next as any).history = next.items;
               delete next.items;
             }
             if (Array.isArray(next.history) && next.history.length > MAX_HISTORY_CACHE) {
-              next.history = next.history.slice(0, MAX_HISTORY_CACHE);
+              (next as any).history = next.history.slice(0, MAX_HISTORY_CACHE);
             }
-            if (next.thread && typeof next.thread === 'object') {
-              next.thread = {};
+            if ((next as any).thread && typeof (next as any).thread === 'object') {
+              (next as any).thread = {};
             }
             return next;
           }

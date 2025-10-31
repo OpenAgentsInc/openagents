@@ -21,7 +21,7 @@ export function SessionUpdatePlan({ entries }: { entries: ReadonlyArray<PlanEntr
   )
 }
 
-function iconForStatus(status: PlanEntry['status']): any {
+function iconForStatus(status: PlanEntry['status']): string {
   switch (status) {
     case 'completed':
       return 'check'
@@ -44,4 +44,3 @@ function colorForStatus(status: PlanEntry['status']): string {
       return Colors.tertiary
   }
 }
-

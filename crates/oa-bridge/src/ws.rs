@@ -50,6 +50,17 @@ pub struct ThreadSummaryTs {
     last_message_ts: Option<i64>,
 }
 
+#[cfg(test)]
+mod ts_export {
+    use super::ThreadSummaryTs;
+    use ts_rs::TS;
+    #[test]
+    fn export_thread_summary() {
+        let out = std::path::Path::new(".");
+        ThreadSummaryTs::export_all_to(out).unwrap();
+    }
+}
+
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,

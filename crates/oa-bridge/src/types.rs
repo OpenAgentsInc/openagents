@@ -140,3 +140,18 @@ impl From<&tinyvex::ToolCallRow> for ToolCallRowTs {
         }
     }
 }
+
+#[cfg(test)]
+mod ts_export {
+    use super::*;
+    use ts_rs::TS;
+    #[test]
+    fn export_bridge_transport_types() {
+        let out = std::path::Path::new(".");
+        // Export transport rows and sync status (file paths come from #[ts(export_to = ...)])
+        ThreadRowTs::export_all_to(out).unwrap();
+        MessageRowTs::export_all_to(out).unwrap();
+        ToolCallRowTs::export_all_to(out).unwrap();
+        SyncStatusTs::export_all_to(out).unwrap();
+    }
+}

@@ -150,8 +150,8 @@ function Segmented({ title, active, onPress }: { title: string; active: boolean;
   const text = { color: Colors.secondary, fontFamily: Typography.primary }
   const textActive = { color: Colors.foreground, fontFamily: Typography.bold }
   return (
-    <Pressable onPress={onPress} style={[base as any, active && activeStyle as any]}>
-      <Text style={[text as any, active && textActive as any]}>{title}</Text>
+    <Pressable onPress={onPress} style={[base, active ? activeStyle : undefined]}>
+      <Text style={[text, active ? textActive : undefined]}>{title}</Text>
     </Pressable>
   )
 }
