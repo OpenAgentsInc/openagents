@@ -103,14 +103,6 @@ function DrawerContent() {
           </View>
           <View style={{ paddingHorizontal: 16, gap: 4 }}>
             <View style={{ height: 8 }} />
-            {/* Archived link */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="archive-outline" size={14} color={Colors.secondary} />
-              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Archived</Text>
-            </View>
-            <Pressable onPress={closeAnd(() => router.push('/thread/archived' as any))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
-              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>View archived</Text>
-            </Pressable>
             {/** Projects section temporarily disabled for v1
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="folder-outline" size={14} color={Colors.secondary} />
@@ -154,6 +146,15 @@ function DrawerContent() {
                 ))
               )
             )}
+            {/* Archived link moved below History */}
+            <View style={{ height: 12 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="archive-outline" size={14} color={Colors.secondary} />
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Archived</Text>
+            </View>
+            <Pressable onPress={closeAnd(() => router.push('/thread/archived' as any))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>View archived</Text>
+            </Pressable>
           </View>
         </ScrollView>
         {/* Inline action menu for Android/Web */}
