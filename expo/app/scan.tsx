@@ -17,6 +17,7 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions()
   const [scanned, setScanned] = React.useState(false)
   const [cameraPaused, setCameraPaused] = React.useState(false)
+  const [errorMsg, setErrorMsg] = React.useState<string>('')
   const [usingModal, setUsingModal] = React.useState<boolean>(false)
   const supportsModal = React.useMemo(() => {
     try {
@@ -33,7 +34,10 @@ export default function ScanScreen() {
   const handleData = React.useCallback((raw: string) => {
     const display = normalizeBridgeCodeInput(String(raw || ''))
     const parsed = parseBridgeCode(display)
-    if (!parsed) return false
+    if (!parsed) {
+      setErrorMsg('Unrecognized code. Please scan an OpenAgents pairing QR from Tricoder.')
+      return false
+    }
     // Set host/token and connect immediately without additional UI steps
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
@@ -46,7 +50,7 @@ export default function ScanScreen() {
   // Modal scanner effect must not be declared conditionally; gate inside
   React.useEffect(() => {
     // Do not (re)open the modal scanner after a successful scan
-    if (!usingModal || scanned) return
+    if (!usingModal || scanned || errorMsg) return
     let cancelled = false
     let sub: any = null
     const run = async () => {
@@ -61,19 +65,23 @@ export default function ScanScreen() {
           try { camAny.dismissScanner?.() } catch {}
           // Give the modal a moment to fully dismiss before navigation/render churn
           await new Promise((r) => setTimeout(r, 150))
-          if (!ok) {
-            setTimeout(async () => {
-              setScanned(false)
-              try { await camAny.launchScanner?.({}) } catch {}
-            }, 400)
-          }
+          // On failure, do not auto-reopen; show error state and let user choose Try Again
         })
       } catch {}
     }
     run()
     return () => { cancelled = true; try { (CameraView as any).dismissScanner?.() } catch {}; try { sub && sub.remove && sub.remove() } catch {} }
-  }, [usingModal, scanned, handleData])
+  }, [usingModal, scanned, errorMsg, handleData])
   if (usingModal) {
+    if (errorMsg) {
+      return (
+        <View style={styles.center}>
+          <Text style={styles.error}>{errorMsg}</Text>
+          <Pressable onPress={() => { setErrorMsg(''); setScanned(false); }} style={styles.btn}><Text style={styles.btnText}>Try again</Text></Pressable>
+          <Pressable onPress={() => router.back()} style={[styles.btn, { marginTop: 8 }]}><Text style={styles.btnText}>Go back</Text></Pressable>
+        </View>
+      )
+    }
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.foreground} />
@@ -110,15 +118,26 @@ export default function ScanScreen() {
           try { await camRef.current?.pausePreview?.(); setCameraPaused(true) } catch {}
           const ok = handleData(String(data || ''))
           if (!ok) {
-            // Allow another try after brief pause
-            setTimeout(async () => { try { await camRef.current?.resumePreview?.(); } catch {}; setCameraPaused(false); setScanned(false) }, 800)
+            // Do not auto-reopen; show error overlay with retry option
           }
         }}
         style={{ flex: 1 }}
       />
       <View style={styles.overlay}>
-        <Text style={styles.overlayText}>Align the QR in the frame to connect</Text>
-        <Pressable onPress={() => router.back()} style={styles.overlayBtn}><Text style={styles.overlayBtnText}>Cancel</Text></Pressable>
+        {errorMsg ? (
+          <>
+            <Text style={styles.overlayText}>{errorMsg}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable onPress={async () => { setErrorMsg(''); setScanned(false); try { await camRef.current?.resumePreview?.(); } catch {}; setCameraPaused(false); }} style={styles.overlayBtn}><Text style={styles.overlayBtnText}>Try again</Text></Pressable>
+              <Pressable onPress={() => router.back()} style={styles.overlayBtn}><Text style={styles.overlayBtnText}>Cancel</Text></Pressable>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.overlayText}>Align the QR in the frame to connect</Text>
+            <Pressable onPress={() => router.back()} style={styles.overlayBtn}><Text style={styles.overlayBtnText}>Cancel</Text></Pressable>
+          </>
+        )}
       </View>
     </View>
   )
