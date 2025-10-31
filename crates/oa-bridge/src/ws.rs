@@ -31,6 +31,27 @@ use crate::state::AppState;
 use crate::util::{expand_home, now_ms};
 use crate::watchers::SyncCommand;
 
+fn extract_uuid_like_from_name(name: &str) -> Option<String> {
+    let bytes = name.as_bytes();
+    // scan for 36-char UUID-like token with hyphens at positions 8,13,18,23
+    if bytes.len() < 36 { return None; }
+    for i in 0..=bytes.len().saturating_sub(36) {
+        let slice = &name[i..i+36];
+        let b = slice.as_bytes();
+        let hyphen_positions = [8usize,13,18,23];
+        let mut ok = true;
+        for pos in hyphen_positions { if b.get(pos) != Some(&b'-') { ok = false; break; } }
+        if !ok { continue; }
+        for (idx, ch) in b.iter().enumerate() {
+            if hyphen_positions.contains(&idx) { continue; }
+            let c = *ch as char;
+            if !c.is_ascii_hexdigit() { ok = false; break; }
+        }
+        if ok { return Some(slice.to_string()); }
+    }
+    None
+}
+
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -214,12 +235,56 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                 } else if name == "messages.list" {
                                     if let Some(tid) = args.get("threadId").and_then(|x| x.as_str()) {
-                                        match stdin_state.tinyvex.list_messages(tid, limit) {
-                                            Ok(rows) => {
-                                                let line = serde_json::json!({"type":"tinyvex.query_result","name":"messages.list","threadId": tid, "rows": rows}).to_string();
-                                                let _ = stdin_state.tx.send(line);
+                                        let send_rows = |id_for_reply: &str| {
+                                            match stdin_state.tinyvex.list_messages(id_for_reply, limit) {
+                                                Ok(rows) => {
+                                                    let line = serde_json::json!({"type":"tinyvex.query_result","name":"messages.list","threadId": id_for_reply, "rows": rows}).to_string();
+                                                    let _ = stdin_state.tx.send(line);
+                                                }
+                                                Err(e) => { error!(?e, "tinyvex messages.list failed"); }
                                             }
-                                            Err(e) => { error!(?e, "tinyvex messages.list failed"); }
+                                        };
+                                        // Try DB first
+                                        if let Ok(rows) = stdin_state.tinyvex.list_messages(tid, limit) {
+                                            if !rows.is_empty() { send_rows(tid); }
+                                            else {
+                                                // On-demand backfill: parse the rollout JSONL for this session id (or mapped id)
+                                                let base = crate::watchers::codex_base_path();
+                                                let mut candidates: Vec<String> = vec![tid.to_string()];
+                                                if let Some(mapped) = { stdin_state.sessions_by_client_doc.lock().await.get(tid).cloned() } {
+                                                    if !candidates.iter().any(|s| s == &mapped) { candidates.push(mapped); }
+                                                }
+                                                let mut hydrated: Option<String> = None;
+                                                for cid in candidates.iter() {
+                                                    if let Some(path) = crate::history::resolve_session_path(&base, Some(cid), None) {
+                                                        if let Ok(f) = std::fs::File::open(&path) {
+                                                            use std::io::{BufRead, BufReader};
+                                                            let r = BufReader::new(f);
+                                                            for line in r.lines().flatten() {
+                                                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                                                                    if let Some(update) = acp_event_translator::translate_codex_event_to_acp_update(&v) {
+                                                                        use agent_client_protocol::SessionUpdate as SU;
+                                                                        match update {
+                                                                            SU::UserMessageChunk(_) | SU::AgentMessageChunk(_) | SU::AgentThoughtChunk(_) => {
+                                                                                let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                                                                                let mode = if ty == "item.delta" || ty == "event_msg" { crate::tinyvex_write::StreamMode::Delta } else { crate::tinyvex_write::StreamMode::Finalize };
+                                                                                crate::tinyvex_write::mirror_acp_update_to_tinyvex_mode(&stdin_state, "codex", cid, &update, mode).await;
+                                                                            }
+                                                                            _ => {}
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            hydrated = Some(cid.clone());
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if let Some(hid) = hydrated { send_rows(&hid) } else { send_rows(tid) }
+                                            }
+                                        } else {
+                                            // DB error: return empty for requested id
+                                            send_rows(tid)
                                         }
                                     }
                                 } else if name == "messages.tailMany" {
@@ -267,13 +332,58 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     let lim = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(50);
                                     let per = args.get("perThreadTail").and_then(|x| x.as_i64()).unwrap_or(50);
                                     match stdin_state.tinyvex.list_threads(lim) {
-                                        Ok(rows) => {
+                                        Ok(mut rows) => {
                                             let mut tails: Vec<serde_json::Value> = Vec::new();
+                                            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
                                             for r in &rows {
-                                                let tid = r.thread_id.as_deref().unwrap_or(&r.id);
-                                                match stdin_state.tinyvex.list_messages(tid, per) {
+                                                let tid = r.thread_id.as_deref().unwrap_or(&r.id).to_string();
+                                                seen.insert(tid.clone());
+                                                match stdin_state.tinyvex.list_messages(&tid, per) {
                                                     Ok(m) => tails.push(serde_json::json!({"threadId": tid, "rows": m})),
                                                     Err(_) => tails.push(serde_json::json!({"threadId": tid, "rows": []})),
+                                                }
+                                            }
+                                            if (rows.len() as i64) < lim {
+                                                let base = crate::watchers::codex_base_path();
+                                                if let Ok(hist) = crate::history::scan_history(&base, lim as usize) {
+                                                    for item in hist {
+                                                        let fname_owned = std::path::PathBuf::from(&item.path);
+                                                        let fname_str = fname_owned.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                                                        let tid = extract_uuid_like_from_name(fname_str).unwrap_or_else(|| fname_str.to_string());
+                                                        if tid.is_empty() || seen.contains(&tid) { continue; }
+                                                        let created = (item.mtime as i64) * 1000;
+                                                        // push synthetic tail rows from history
+                                                        let tail_rows = if let Some(t) = item.tail.clone() {
+                                                            let mut out = Vec::new();
+                                                            for (idx, it) in t.into_iter().enumerate() {
+                                                                out.push(serde_json::json!({
+                                                                    "id": idx as i64,
+                                                                    "thread_id": tid,
+                                                                    "role": it.role,
+                                                                    "kind": it.kind,
+                                                                    "text": it.text,
+                                                                    "ts": (it.ts as i64)
+                                                                }));
+                                                            }
+                                                            out
+                                                        } else { Vec::new() };
+                                                        tails.push(serde_json::json!({"threadId": tid, "rows": tail_rows}));
+                                                        // also append a typed row so clients have metadata
+                                                        rows.push(tinyvex::ThreadRow{
+                                                            id: tid.clone(),
+                                                            thread_id: Some(tid.clone()),
+                                                            title: item.title.clone(),
+                                                            project_id: None,
+                                                            resume_id: None,
+                                                            rollout_path: Some(item.path.clone()),
+                                                            source: Some("codex".into()),
+                                                            created_at: created,
+                                                            updated_at: created,
+                                                            message_count: Some(tail_rows.len() as i64),
+                                                        });
+                                                        seen.insert(tid);
+                                                        if (rows.len() as i64) >= lim { break; }
+                                                    }
                                                 }
                                             }
                                             let line = serde_json::json!({
