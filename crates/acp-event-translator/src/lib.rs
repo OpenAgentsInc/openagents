@@ -315,6 +315,48 @@ pub fn translate_codex_event_to_acp_update(v: &JsonValue) -> Option<SessionUpdat
     }
 }
 
+#[cfg(test)]
+mod tests_codex_legacy {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn response_item_message_maps_to_agent_message_chunk() {
+        let v = json!({
+            "type": "response_item",
+            "payload": { "type": "message", "content": [ {"type": "text", "text": "Hello"}, {"type":"text","text":" world"} ] }
+        });
+        let out = translate_codex_event_to_acp_update(&v);
+        match out { Some(SessionUpdate::AgentMessageChunk(ch)) => {
+            match ch.content { ContentBlock::Text(TextContent{ text, .. }) => assert_eq!(text, "Hello\n world"), _ => panic!("wrong content kind") }
+        } _ => panic!("expected AgentMessageChunk") }
+    }
+
+    #[test]
+    fn response_item_reasoning_uses_summary_text() {
+        let v = json!({
+            "type": "response_item",
+            "payload": { "type": "reasoning", "summary": [ {"type":"summary_text","text":"Summary one"}, {"type":"other","text":"ignored"} ] }
+        });
+        let out = translate_codex_event_to_acp_update(&v);
+        match out { Some(SessionUpdate::AgentThoughtChunk(ch)) => {
+            match ch.content { ContentBlock::Text(TextContent{ text, .. }) => assert!(text.contains("Summary one")), _ => panic!("wrong content kind") }
+        } _ => panic!("expected AgentThoughtChunk") }
+    }
+
+    #[test]
+    fn event_msg_agent_reasoning_maps_to_thought() {
+        let v = json!({
+            "type": "event_msg",
+            "payload": { "type": "agent_reasoning", "text": "Thinking..." }
+        });
+        let out = translate_codex_event_to_acp_update(&v);
+        match out { Some(SessionUpdate::AgentThoughtChunk(ch)) => {
+            match ch.content { ContentBlock::Text(TextContent{ text, .. }) => assert_eq!(text, "Thinking..."), _ => panic!("wrong content kind") }
+        } _ => panic!("expected AgentThoughtChunk") }
+    }
+}
+
 /// Stub: Translate a Claude Code streaming event to ACP SessionUpdate
 pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpdate> {
     // Claude Code streams Anthropic-like events. We support a minimal subset:
