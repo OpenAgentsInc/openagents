@@ -166,6 +166,49 @@ fn list_jsonl_files(base: &Path) -> Vec<PathBuf> {
     out
 }
 
+fn scan_for_thread_id(file_path: &Path) -> Option<String> {
+    // Scan the first ~500 lines for an id in thread.started or session_meta
+    if let Ok(f) = fs::File::open(file_path) {
+        let r = BufReader::new(f);
+        for (i, line) in r.lines().flatten().enumerate() {
+            if i > 500 { break; }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                if ty == "thread.started" {
+                    if let Some(id) = v.get("thread_id").and_then(|x| x.as_str()) { return Some(id.to_string()); }
+                }
+                if ty == "session_meta" {
+                    if let Some(id) = v.get("payload").and_then(|p| p.get("id")).and_then(|x| x.as_str()) { return Some(id.to_string()); }
+                }
+                // Some Codex variants may nest id under payload.session.id
+                if let Some(id) = v.get("payload").and_then(|p| p.get("session")).and_then(|s| s.get("id")).and_then(|x| x.as_str()) { return Some(id.to_string()); }
+            }
+        }
+    }
+    None
+}
+
+fn extract_uuid_like_from_filename(p: &Path) -> Option<String> {
+    let name = p.file_name()?.to_str()?;
+    let bytes = name.as_bytes();
+    // scan for 36-char UUID-like token with hyphens at positions 8,13,18,23
+    for i in 0..=bytes.len().saturating_sub(36) {
+        let slice = &name[i..i+36];
+        let b = slice.as_bytes();
+        let hyphen_positions = [8,13,18,23];
+        let mut ok = true;
+        for pos in hyphen_positions { if b.get(pos) != Some(&b'-') { ok = false; break; } }
+        if !ok { continue; }
+        for (idx, ch) in b.iter().enumerate() {
+            if hyphen_positions.contains(&idx) { continue; }
+            let c = *ch as char;
+            if !(c.is_ascii_hexdigit()) { ok = false; break; }
+        }
+        if ok { return Some(slice.to_string()); }
+    }
+    None
+}
+
 pub fn spawn_codex_watcher(state: std::sync::Arc<AppState>) -> mpsc::Sender<SyncCommand> {
     let (tx, mut rx) = mpsc::channel::<SyncCommand>(16);
     let base = default_codex_base();
@@ -196,6 +239,16 @@ pub fn spawn_codex_watcher(state: std::sync::Arc<AppState>) -> mpsc::Sender<Sync
                 for p in files {
                     let key = p.to_string_lossy().to_string();
                     let fs_ent = state_file.files.entry(key.clone()).or_insert_with(FileState::default);
+                    // If we don't yet have a thread id cached for this file, try to learn it upfront.
+                    if fs_ent.thread_id.is_none() {
+                        if let Some(id) = scan_for_thread_id(&p) {
+                            info!(path=%p.display(), thread_id=%id, "codex watcher: thread id primed from head scan");
+                            fs_ent.thread_id = Some(id);
+                        } else if let Some(id2) = extract_uuid_like_from_filename(&p) {
+                            info!(path=%p.display(), thread_id=%id2, "codex watcher: thread id derived from filename");
+                            fs_ent.thread_id = Some(id2);
+                        }
+                    }
                     if let Err(e) = process_file_append(&state, &p, fs_ent).await {
                         warn!(?e, path=%key, "codex watcher: process file append failed");
                     }
