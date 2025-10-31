@@ -33,6 +33,7 @@ mod util;
 mod ws;
 mod provider_claude;
 mod claude_runner;
+pub mod watchers;
 // spool/mirror removed — we write directly to Convex
 
 #[derive(Parser, Debug, Clone)]
@@ -135,12 +136,22 @@ async fn main() -> Result<()> {
         bridge_ready: std::sync::atomic::AtomicBool::new(true),
         tinyvex: tinyvex.clone(),
         tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tinyvex.clone())),
+        sync_enabled: std::sync::atomic::AtomicBool::new(true),
+        sync_two_way: std::sync::atomic::AtomicBool::new(false),
+        sync_last_read_ms: Mutex::new(0),
+        sync_cmd_tx: Mutex::new(None),
         sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
     });
 
 
     // Start readers for stdout/stderr → broadcast + console
     crate::ws::start_stream_forwarders(child, state.clone()).await?;
+
+    // Start Codex sessions watcher (inbound sync) by default
+    {
+        let tx_cmd = crate::watchers::spawn_codex_watcher(state.clone());
+        *state.sync_cmd_tx.lock().await = Some(tx_cmd);
+    }
 
     // Watchers removed with Convex; Tinyvex writes occur on JSONL events only.
 
