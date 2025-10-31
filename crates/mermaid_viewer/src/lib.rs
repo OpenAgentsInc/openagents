@@ -82,7 +82,7 @@ pub fn render_mermaid_docs_index(dir: impl AsRef<Path>) -> Result<MermaidView> {
         } else if ext == "md" || ext == "markdown" {
             match extract_first_mermaid_block(&raw) {
                 Some(code) => ("mermaid", code),
-                None => ("mermaid", raw),
+                None => continue, // skip MD without a mermaid block to avoid syntax errors
             }
         } else {
             ("mermaid", raw)

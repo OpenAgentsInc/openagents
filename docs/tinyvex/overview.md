@@ -15,11 +15,11 @@ flowchart LR
     DB[(SQLite file<br/>crates/tinyvex)]
   end
 
-  App -- connect ws://host:8787/ws --> WS
-  WS -- broadcast JSONL + tinyvex.update --> App
-  Writer -- upserts/queries --> DB
-  App -- tvx.query / tvx.subscribe --> WS
-  WS --> DB: query
+  App --|connect ws://host:8787/ws|--> WS
+  WS --|broadcast JSONL + tinyvex.update|--> App
+  Writer --|upserts/queries|--> DB
+  App --|tvx.query / tvx.subscribe|--> WS
+  WS --|query|--> DB
 
   style App fill:#08090a,stroke:#23252a,color:#f7f8f8
   style WS fill:#0e0e12,stroke:#23252a,color:#f7f8f8
