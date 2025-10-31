@@ -590,6 +590,120 @@ pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpda
     None
 }
 
+/// Claude-specific helper: produce ToolCallUpdateFields.content/title from a tool_result
+/// using the same logic as zed-industries/claude-code-acp's tools.ts.
+///
+/// This function intentionally does not guess beyond the upstream mapping; it mirrors
+/// `toolUpdateFromToolResult` and `toAcpContentUpdate` behaviors.
+pub fn claude_tool_update_from_tool_result(
+    tool_result: &JsonValue,
+    tool_use: Option<&JsonValue>,
+) -> agent_client_protocol::ToolCallUpdateFields {
+    let mut fields = agent_client_protocol::ToolCallUpdateFields::default();
+    // Helper: wrap text in fenced code block if is_error
+    fn to_acp_content_update(
+        content: &JsonValue,
+        is_error: bool,
+    ) -> Option<Vec<ToolCallContent>> {
+        if let Some(arr) = content.as_array() {
+            if arr.is_empty() { return None; }
+            let mut out = Vec::new();
+            for c in arr {
+                // If content.type === 'text' and is_error, wrap the text in triple backticks
+                if c.get("type").and_then(|x| x.as_str()) == Some("text") {
+                    let txt = c.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                    let wrapped = if is_error { format!("{}\n{}\n{}", "```", txt, "```") } else { txt.to_string() };
+                    out.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: wrapped, meta: None })));
+                } else {
+                    // Pass-through unknown content blocks as raw JSON in text form
+                    let raw = serde_json::to_string(c).unwrap_or_default();
+                    out.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: raw, meta: None })));
+                }
+            }
+            return Some(out);
+        }
+        if let Some(s) = content.as_str() {
+            if s.is_empty() { return None; }
+            let wrapped = if is_error { format!("{}\n{}\n{}", "```", s, "```") } else { s.to_string() };
+            return Some(vec![ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: wrapped, meta: None }))]);
+        }
+        None
+    }
+
+    // toolUse?.name drives certain mappings (e.g., Read → escape markdown and remove SYSTEM_REMINDER)
+    let tool_name = tool_use.and_then(|u| u.get("name")).and_then(|x| x.as_str()).unwrap_or("");
+    // Check error flag on the tool_result
+    let is_error = tool_result.get("is_error").and_then(|x| x.as_bool()).unwrap_or(false);
+
+    // Handle Read mapping specially: prefer text content, remove SYSTEM_REMINDER, and escape markdown
+    if tool_name == "Read" || tool_name.ends_with("__acp__Read") {
+        let content = tool_result.get("content");
+        if let Some(c) = content {
+            // Remove SYSTEM_REMINDER if present
+            let cleaned = match c {
+                JsonValue::String(s) => JsonValue::String(s.replace(SYSTEM_REMINDER, "")),
+                JsonValue::Array(arr) => JsonValue::Array(
+                    arr.iter()
+                        .map(|el| {
+                            if el.get("type").and_then(|x| x.as_str()) == Some("text") {
+                                let txt = el.get("text").and_then(|x| x.as_str()).unwrap_or("").replace(SYSTEM_REMINDER, "");
+                                serde_json::json!({"type":"text","text": txt})
+                            } else { el.clone() }
+                        })
+                        .collect(),
+                ),
+                _ => c.clone(),
+            };
+            // markdownEscape per upstream: ensure fence is longer than any in text
+            let escape = |text: &str| markdown_escape(text);
+            if let Some(arr) = cleaned.as_array() {
+                let mut out = Vec::new();
+                for el in arr {
+                    if el.get("type").and_then(|x| x.as_str()) == Some("text") {
+                        let txt = el.get("text").and_then(|x| x.as_str()).unwrap_or("");
+                        let esc = escape(txt);
+                        out.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: esc, meta: None })));
+                    }
+                }
+                if !out.is_empty() { fields.content = Some(out); }
+            } else if let Some(s) = cleaned.as_str() {
+                let esc = escape(s);
+                fields.content = Some(vec![ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: esc, meta: None }))]);
+            }
+        }
+        return fields;
+    }
+
+    // Default path: reuse toAcpContentUpdate behavior for other tools
+    if let Some(c) = tool_result.get("content") {
+        fields.content = to_acp_content_update(c, is_error);
+    }
+    fields
+}
+
+/// SYSTEM_REMINDER string from upstream (used by Read mapping)
+const SYSTEM_REMINDER: &str = "\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>";
+
+/// Escape backtick fences to avoid colliding with existing code fences
+fn markdown_escape(text: &str) -> String {
+    let mut fence = "```".to_string();
+    // Scan for lines starting with one or more backticks and extend fence as needed
+    for line in text.lines() {
+        let mut count = 0;
+        for ch in line.chars() {
+            if ch == '`' { count += 1; } else { break; }
+        }
+        while count >= fence.len() { fence.push('`'); }
+    }
+    let mut out = String::new();
+    out.push_str(&fence);
+    out.push('\n');
+    out.push_str(text);
+    if !text.ends_with('\n') { out.push('\n'); }
+    out.push_str(&fence);
+    out
+}
+
 /// Stub: Translate an OpenCode SSE event to ACP SessionUpdate
 pub fn translate_opencode_event_to_acp_update(_v: &JsonValue) -> Option<SessionUpdate> {
     // TODO: implement once OpenCode event schema is finalized in this repo
