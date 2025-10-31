@@ -24,8 +24,8 @@ A good agent frees you from your computer, doesn't tie you to it.
 - TypeScript
 - Rust
 - Tinyvex (in‑process SQLite + WS changefeed)
-- OpenAI Codex CLI
-- Tailscale
+- OpenAI Codex CLI or Claude Code CLI
+- Tailscale (optional)
 
 ## The name
 
@@ -46,9 +46,12 @@ How it works
 - Scan the QR code from the app and start chatting.
 
 Desktop (pairing QR)
-- `cd packages/tricoder && bun dev`
-  - Boots the bridge and prints a pairing QR code in the terminal.
-  - Scanning the QR is required; there is no Settings/manual input flow.
+- Regular (recommended): `npx tricoder@latest`
+  - Runs the latest published Tricoder CLI, boots the bridge, and prints a pairing QR code.
+- Development (from source): `cd packages/tricoder && bun dev`
+  - Builds/runs from this repo and prints the same pairing QR code.
+  - For contributor workflows and local changes.
+Note: Scanning the QR is required; there is no Settings/manual input flow.
 
 Pairing options
 - Local network (Wi‑Fi): direct pairing on the same network; no accounts.
@@ -60,5 +63,10 @@ Requirements
 
 ## Local Persistence
 
-All current builds use Tinyvex (in‑process SQLite) for threads and messages.
-- No external database process; the bridge serves WS snapshots and updates via `/ws`.
+We use Tinyvex for fast, local‑first sync: an in‑process SQLite DB plus a WebSocket changefeed.
+
+- Mirrors data for UI queries/sync; Codex JSONL rollouts remain the source of truth.
+- Single SQLite file at `~/.openagents/tinyvex/data.sqlite3`; no external DB.
+- App subscribes/queries over the bridge WS using `tvx.subscribe` / `tvx.query`.
+
+Details: see docs/tinyvex/tinyvex.md for schema, protocol, and goals.
