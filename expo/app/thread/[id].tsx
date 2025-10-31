@@ -127,23 +127,24 @@ export default function ThreadScreen() {
           type ToolLike = { title?: any; status?: any; kind?: any; content?: any; locations?: any }
           const toolById = new Map<string, { firstTs: number; props: ToolLike }>()
 
-          const pushPlan = (n: SessionNotificationWithTs, u: any) => {
+          const pushPlan = (n: SessionNotificationWithTs, u: any, index: number) => {
+            const ts = Number((n as any).addedAt || Date.now())
             items.push({
-              ts: Number((n as any).addedAt || Date.now()),
-              key: `plan-${(n as any).addedAt}-${Math.random().toString(36).slice(2)}`,
+              ts,
+              key: `plan-${ts}-${index}`,
               render: () => <SessionUpdatePlan entries={u.entries || []} />,
             })
           }
 
-          const maybeAddMessageChunk = (n: SessionNotificationWithTs, u: any) => {
+          const maybeAddMessageChunk = (n: SessionNotificationWithTs, u: any, index: number) => {
             if (haveTinyvex) return // dedupe against Tinyvex history
             const ts = Number((n as any).addedAt || Date.now())
             if (u?.sessionUpdate === 'user_message_chunk') {
-              items.push({ ts, key: `acp-u-${ts}`, render: () => <SessionUpdateUserMessageChunk content={u.content} /> })
+              items.push({ ts, key: `acp-u-${ts}-${index}`, render: () => <SessionUpdateUserMessageChunk content={u.content} /> })
             } else if (u?.sessionUpdate === 'agent_message_chunk') {
-              items.push({ ts, key: `acp-a-${ts}`, render: () => <SessionUpdateAgentMessageChunk content={u.content} /> })
+              items.push({ ts, key: `acp-a-${ts}-${index}`, render: () => <SessionUpdateAgentMessageChunk content={u.content} /> })
             } else if (u?.sessionUpdate === 'agent_thought_chunk') {
-              items.push({ ts, key: `acp-t-${ts}`, render: () => <SessionUpdateAgentThoughtChunk content={u.content} /> })
+              items.push({ ts, key: `acp-t-${ts}-${index}`, render: () => <SessionUpdateAgentThoughtChunk content={u.content} /> })
             }
           }
 
@@ -152,7 +153,7 @@ export default function ThreadScreen() {
             const u: any = (n as any).update
             if (!u) continue
             if (u.sessionUpdate === 'plan') {
-              pushPlan(n, u)
+              pushPlan(n, u, i)
               continue
             }
             if (u.sessionUpdate === 'tool_call') {
@@ -184,7 +185,7 @@ export default function ThreadScreen() {
               continue
             }
             // Text/Thought chunks (when no Tinyvex history to dedupe against)
-            maybeAddMessageChunk(n, u)
+            maybeAddMessageChunk(n, u, i)
           }
 
           // Emit tool cards as timeline items
