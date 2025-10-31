@@ -207,7 +207,35 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let limit = args.get("limit").and_then(|x| x.as_i64()).unwrap_or(50);
                                 if name == "threads.list" {
                                     match stdin_state.tinyvex.list_threads(limit) {
-                                        Ok(rows) => {
+                                        Ok(mut rows) => {
+                                            if (rows.len() as i64) < limit {
+                                                // Fallback: surface additional recent sessions from Codex history
+                                                let base = crate::watchers::codex_base_path();
+                                                if let Ok(hist) = crate::history::scan_history(&base, limit as usize) {
+                                                    let mut seen: std::collections::HashSet<String> = rows.iter().map(|r| r.thread_id.clone().unwrap_or_else(|| r.id.clone())).collect();
+                                                    for item in hist {
+                                                        let p = std::path::PathBuf::from(&item.path);
+                                                        let tid = extract_uuid_like_from_filename(&p)
+                                                            .unwrap_or_else(|| p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string());
+                                                        if tid.is_empty() || seen.contains(&tid) { continue; }
+                                                        let created = (item.mtime as i64) * 1000;
+                                                        rows.push(tinyvex::ThreadRow{
+                                                            id: tid.clone(),
+                                                            thread_id: Some(tid.clone()),
+                                                            title: item.title.clone(),
+                                                            project_id: None,
+                                                            resume_id: None,
+                                                            rollout_path: Some(item.path.clone()),
+                                                            source: Some("codex".into()),
+                                                            created_at: created,
+                                                            updated_at: created,
+                                                            message_count: None,
+                                                        });
+                                                        seen.insert(tid);
+                                                        if (rows.len() as i64) >= limit { break; }
+                                                    }
+                                                }
+                                            }
                                             let line = serde_json::json!({"type":"tinyvex.query_result","name":"threads.list","rows": rows}).to_string();
                                             let _ = stdin_state.tx.send(line);
                                         }
