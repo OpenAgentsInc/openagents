@@ -16,6 +16,7 @@ import { SessionUpdateAgentThoughtChunk } from '@/components/acp/SessionUpdateAg
 import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
 import { SessionUpdatePlan } from '@/components/acp/SessionUpdatePlan'
 import { SessionUpdateToolCall } from '@/components/acp/SessionUpdateToolCall'
+import * as Haptics from 'expo-haptics'
 
 export default function ThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -83,14 +84,36 @@ export default function ThreadScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, marginRight: 8 }}>Provider</Text>
             <Pressable
-              onPress={() => { try { setAgentProvider('codex') } catch {} }}
+              onPress={async () => {
+                try {
+                  if (agentProvider !== 'codex') {
+                    if (process.env.EXPO_OS === 'ios') {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    } else {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    }
+                  }
+                } catch {}
+                try { setAgentProvider('codex') } catch {}
+              }}
               accessibilityRole='button'
               style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'codex' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
             >
               <Text style={{ color: agentProvider === 'codex' ? Colors.foreground : Colors.secondary, fontFamily: Typography.bold }}>Codex</Text>
             </Pressable>
             <Pressable
-              onPress={() => { try { setAgentProvider('claude_code') } catch {} }}
+              onPress={async () => {
+                try {
+                  if (agentProvider !== 'claude_code') {
+                    if (process.env.EXPO_OS === 'ios') {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    } else {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    }
+                  }
+                } catch {}
+                try { setAgentProvider('claude_code') } catch {}
+              }}
               accessibilityRole='button'
               style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: agentProvider === 'claude_code' ? Colors.foreground : Colors.border, backgroundColor: Colors.card }}
             >
