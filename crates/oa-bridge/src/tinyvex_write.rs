@@ -444,6 +444,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;
         // Drain until we see the bridge.tinyvex_write event
@@ -493,6 +494,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         finalize_or_snapshot(&state, "th", "assistant", "hello world").await;
         let rows = state.tinyvex.list_messages("th", 50).unwrap();
@@ -533,6 +535,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         // Simulate deltas then final.
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;
