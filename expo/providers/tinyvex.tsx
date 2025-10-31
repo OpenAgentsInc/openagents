@@ -7,6 +7,7 @@ import { createPerKeyThrottle, createPerKeyDebounce } from '@/utils/throttle'
 const MSG_QUERY_THROTTLE_MS = 350 // per-thread throttle window for messages.list
 const THREADS_REFRESH_DEBOUNCE_MS = 400 // debounce for threads.list refresh on updates
 const PREFETCH_TOP_THREADS = 10 // number of recent threads to warm on connect
+const DEFAULT_THREAD_TAIL = 50 // number of most recent messages to fetch per thread
 
 type ThreadsRow = { id: string; thread_id?: string; title: string; project_id?: string; resume_id?: string; created_at: number; updated_at: number }
 type MessageRow = { id: number; thread_id: string; role?: string; kind: string; text?: string; item_id?: string; partial?: number; seq?: number; ts: number; created_at: number; updated_at?: number }
@@ -164,7 +165,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const scheduleMsgQuery = useMemo(() => {
     const throttle = createPerKeyThrottle(MSG_QUERY_THROTTLE_MS)
     return (threadId: string) => throttle(threadId, () => {
-      try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId, limit: 200 } })) } catch {}
+      try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId, limit: DEFAULT_THREAD_TAIL } })) } catch {}
     })
   }, [bridge])
   const scheduleThreadsRefresh = useMemo(() => {
@@ -181,7 +182,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' })) } catch {}
     try {
       bootstrapPendingRef.current = true
-      bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threadsAndTails.list', args: { limit: 50, perThreadTail: 50 } }))
+      bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threadsAndTails.list', args: { limit: 50, perThreadTail: DEFAULT_THREAD_TAIL } }))
       const timer = setTimeout(() => {
         try {
           if (bootstrapPendingRef.current) {
@@ -230,7 +231,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const queryThreads = useCallback((limit: number = 50) => {
     bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit } }))
   }, [bridge])
-  const queryMessages = useCallback((threadId: string, limit: number = 200) => {
+  const queryMessages = useCallback((threadId: string, limit: number = DEFAULT_THREAD_TAIL) => {
     bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId, limit } }))
   }, [bridge])
 

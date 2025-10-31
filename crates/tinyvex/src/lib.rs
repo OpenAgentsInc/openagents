@@ -219,9 +219,13 @@ impl Tinyvex {
 
     pub fn list_messages(&self, thread_id: &str, limit: i64) -> Result<Vec<MessageRow>> {
         let conn = Connection::open(&self.db_path)?;
+        // Return the most recent `limit` messages in ascending order by ts
         let mut stmt = conn.prepare(
             "SELECT id, threadId, role, kind, text, itemId, partial, seq, ts, createdAt, updatedAt \
-             FROM messages WHERE threadId=?1 ORDER BY ts ASC LIMIT ?2",
+             FROM (
+               SELECT id, threadId, role, kind, text, itemId, partial, seq, ts, createdAt, updatedAt \
+               FROM messages WHERE threadId=?1 ORDER BY ts DESC LIMIT ?2
+             ) sub ORDER BY ts ASC",
         )?;
         let rows = stmt
             .query_map(params![thread_id, limit], |r| {

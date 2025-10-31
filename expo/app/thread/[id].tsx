@@ -48,7 +48,7 @@ export default function ThreadScreen() {
   React.useEffect(() => {
     if (!threadId) return
     try { subscribeMessages(threadId) } catch {}
-    try { queryMessages(threadId, 200) } catch {}
+    try { queryMessages(threadId, 50) } catch {}
   }, [threadId, subscribeMessages, queryMessages])
   // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
   React.useEffect(() => {
@@ -78,7 +78,9 @@ export default function ThreadScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
       <View key={`thread-${threadId}`} style={{ flex: 1 }}>
-      <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps='handled' contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}>
+      <ScrollView ref={(r) => { try { (globalThis as any).__threadScroll = r } catch {} }} style={{ flex: 1 }} keyboardShouldPersistTaps='handled' contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}
+        onContentSizeChange={() => { try { (globalThis as any).__threadScroll?.scrollToEnd?.({ animated: false }) } catch {} }}
+      >
         {/* Provider selector: show only before any messages exist */}
         {acpUpdates.length === 0 && tvxMessages.length === 0 && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
