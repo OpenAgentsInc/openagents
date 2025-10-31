@@ -4,18 +4,17 @@ This folder documents three provider adapters and proposes a single, unified eve
 
 ## Contents
 
-- `openai-codex.md` — Codex Exec JSONL integration (current)
 - `opencode.md` — OpenCode server + SSE integration (planned)
 - `claude-code.md` — Claude Code headless CLI integration (planned)
 
 ## Unifying Strategy
 
-- Canonical envelope: adopt the Codex JSONL envelope as the single wire format the bridge broadcasts to the app, regardless of provider.
+- Canonical contract: emit ACP-compliant updates and Tinyvex typed rows from the bridge; the app consumes generated TS types under `expo/types/bridge/*`.
 - Adapter model:
   - Codex: pass‑through (already emits canonical JSONL).
   - OpenCode: subscribe to `/event` SSE, map Bus events → canonical items.
   - Claude Code: parse `--output-format stream-json`, map to canonical items.
-- App/UI: unchanged; uses `expo/lib/codex-events.ts` to render rows/cards.
+- App/UI: uses typed ACP components (`expo/components/acp/*`) and Tinyvex provider (`expo/providers/tinyvex.tsx`).
 
 ## Canonical Event Schema
 

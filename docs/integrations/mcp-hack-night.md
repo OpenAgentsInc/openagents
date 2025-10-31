@@ -87,4 +87,4 @@ Tip: If your agent stack lets you configure MCP servers, point it at your Worker
 - Cloudflare Workers: https://developers.cloudflare.com/workers/
 - Cloudflare Agents Starter (template base): https://github.com/cloudflare/agents-starter
 - Tricoder repo: https://github.com/OpenAgentsInc/openagents
-- Codex JSONL schema in this repo: docs/exec-jsonl-schema.md
+- Bridge emits ACP-compliant updates and typed Tinyvex rows; see ADR 0002 and `expo/types/bridge/*` for the TypeScript contract.

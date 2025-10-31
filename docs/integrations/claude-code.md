@@ -44,7 +44,7 @@ Introduce a “Claude” runner in the bridge that spawns the `claude` CLI per p
 
 ## Event Mapping (Claude stream‑JSON → canonical ThreadEvent)
 
-Emit canonical ThreadEvent JSON lines. The app’s current parser will render these without change.
+Emit canonical ACP/Tinyvex updates. The app’s typed ACP components and Tinyvex provider render these without change.
 
 - Thread
   - Claude `system/init` → `{"type":"thread.started","thread_id": session_id || <random>}`
@@ -78,7 +78,7 @@ Emit canonical ThreadEvent JSON lines. The app’s current parser will render th
 
 ## App Behavior
 
-- No app changes required in phase 1; the adapter feeds Codex‑style events over WS.
+- No app changes required in phase 1; the adapter feeds ACP/Tinyvex-typed updates over WS.
 - Settings adds a Provider selector with options: `Codex (CLI)`, `OpenCode (server)`, `Claude Code (CLI)`.
 - History/log store works unchanged; we can enrich entries with Claude’s `session_id` in metadata for deep‑linking later.
 
@@ -146,7 +146,7 @@ When `assistant.message.usage` appears, also emit `{"type":"turn.completed","usa
 
 ## File References
 
-- Canonical event types: `crates/oa-bridge/src/events.rs:1`
-- App parser: `expo/lib/codex-events.ts:1`
-- Codex JSONL schema (historical reference): `docs/exec-jsonl-schema.md:1`
+- Canonical transport types: `crates/oa-bridge/src/types.rs:1`, `crates/oa-bridge/src/ws.rs:1`
+- App typed providers/components: `expo/providers/tinyvex.tsx:1`, `expo/providers/acp.tsx:1`, `expo/components/acp/index.ts:1`
+ 
 - Example Claude headless stream (user provided): `claude --output-format stream-json`
