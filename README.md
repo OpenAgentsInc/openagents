@@ -38,91 +38,22 @@ You can submit PRs but they'd better be good.
 Releases
 - See `docs/bridge-release.md` for the oa-bridge release and tricoder publishing process.
 
-## Version Compatibility
+## Getting Started
 
-- v0.1.0 and v0.1.1 (mobile only): require the legacy bridge flow below. You must check out the old commit to match that app build: `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`.
-- v0.2.0+ (desktop/tauri and forward): current builds use Tinyvex for local storage and WS changefeed. The older Tauri+Convex sidecar flow is historical and documented below.
+Bridge (Rust)
+- `cargo bridge`
+- A WebSocket token is created on first run in `~/.openagents/bridge.json`.
 
-## Desktop (Tauri) — v0.2+ (historical)
+Mobile app (Expo)
+- `cd expo && bun install && bun run start`
+- Launch on a device/simulator (`bun run ios|android|web`).
+- In Settings, set Bridge Host (e.g., `ws://<your-ip>:8787/ws`) and paste the bridge token.
 
-Single command, offline‑first dev.
-
-1) Clone and run
-   - `git clone https://github.com/OpenAgentsInc/openagents && cd openagents`
-   - `bun run desktop:dev`
-   - This script will:
-     - Launch `cargo tauri dev` (bridge auto‑spawns, UI connects to `ws://127.0.0.1:8787/ws`).
-     - Note: Historical builds used a Convex sidecar on 3210; modern builds use Tinyvex only.
-3) Use it
-   - Left sidebar shows Bridge WS and Codex PID (historical builds also surfaced Convex at http://127.0.0.1:3210)
-   - Recent threads load; click a thread to view messages (preface/instructions are hidden)
-
-Options
-- Historical Convex options no longer apply to Tinyvex.
-
-## Legacy Bridge (Mobile) — v0.1.0 / v0.1.1
-
-If you are using the early mobile builds (v0.1.x), use this legacy flow (ports/paths differ):
-
-1) Clone and check out the legacy commit:
-   - `git clone https://github.com/OpenAgentsInc/openagents && cd openagents`
-   - `git checkout 3cbd75e21a14951149d1c81a4ba0139676ffe935`
-2) Run the bridge (requires Rust toolchain):
-   - `cargo bridge`
-   - First run bootstrap:
-     - Starts a local Convex backend on `0.0.0.0:7788`
-     - Ensures Bun is installed, runs `bun install`
-     - Installs the Convex local backend binary if missing
-     - Deploys Convex schema/functions (`bun run convex:dev:once`) using a generated `.env.local`
-     - Launches the Codex WebSocket bridge
-3) Install the mobile app via TestFlight and connect:
-   - Join TestFlight: https://testflight.apple.com/join/dvQdns5B
-   - In the app, open the sidebar → Settings → set Bridge Host to your computer’s IP
-   - The red dot turns green when connected
-
-IP tips: Tailscale VPN works well to put devices on the same private network. It’s free and avoids local network headaches.
-
-Any setup issues, DM us or open an issue.
-
-Requirements (dev): Rust toolchain, `bash` + `curl` (for Bun install) and a working Node/npm. If Bun is already installed, we’ll use it.
-
-Notes:
-- You also need the Codex CLI installed and on your `PATH` (`codex --version`).
-- Desktop (v0.2+, historical sidecar): no manual `.env.local` needed; Tauri set env when deploying functions to the Convex sidecar.
-- Mobile (v0.1.x): `.env.local` is generated on the first `cargo bridge` run (port 7788).
-
-## Troubleshooting
-
-- Bun not found / install fails
-  - Ensure `curl` is available and network allows `https://bun.sh`.
-  - You can preinstall Bun: `curl -fsSL https://bun.sh/install | bash`.
-- Convex backend binary missing
-  - The bridge will fetch it via the Convex CLI. If blocked, run: `bunx convex dev --once --skip-push --local-force-upgrade` once from the repo root, then rerun `cargo bridge`.
-- Codex CLI not found
-  - Install the Codex CLI and ensure `codex` is on your `PATH`.
-
-## Stop / Restart
-
-- Stop the bridge: `Ctrl+C` in the terminal running `cargo bridge`.
-- Restart: run `cargo bridge` again (idempotent — bootstrap only happens when needed).
-
-## Advanced
-
-- Tinyvex DB location: `~/.openagents/tinyvex/data.sqlite3` (created on first run).
-- Historical Convex options (legacy only):
-  - Bind interface for Convex: set `OPENAGENTS_CONVEX_INTERFACE=127.0.0.1` to restrict to loopback.
-  - Skip bootstrap (if you manage Bun/Convex manually): set `OPENAGENTS_BOOTSTRAP=0`.
+Requirements
+- Rust toolchain and the OpenAI Codex CLI (`codex --version` must work).
+- Bun for the Expo app (`curl -fsSL https://bun.sh/install | bash`).
 
 ## Local Persistence
 
 All current builds use Tinyvex (in‑process SQLite) for threads and messages.
-
 - No external database process; the bridge serves WS snapshots and updates via `/ws`.
-- For the historical Convex integration, see `docs/convex/`.
-
-## Addendum (2025-10-26)
-
-- Bridge docs clarified: WS is primarily for control and legacy JSONL streaming. All persistence now goes to Tinyvex (threads, messages, tool rows). Historical Convex references remain in `docs/convex/` for older builds only.
-- Tauri sidebar: “New” thread button remains at the top of the Recent Threads block for quick thread creation; composer autofocus on selection is wired.
-- Styling: Thread count badge keeps a fixed minimum width for better alignment and the status rows use a compact 12px type to keep the header condensed.
-- Housekeeping: Verified no references to the removed legacy `events.rs`; remaining bridge helpers live in dedicated modules (`bootstrap`, `ws`, `tinyvex_write`).
