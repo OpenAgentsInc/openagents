@@ -475,7 +475,7 @@ pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpda
                     .map(|s| ToolCallId(Arc::from(s)))
                     .unwrap_or_else(|| ToolCallId(Arc::from("tool_use")));
                 let name = ch.get("name").and_then(|x| x.as_str()).unwrap_or("");
-                // TodoWrite with todos → Plan
+                // TodoWrite with todos → Plan (per upstream adapter)
                 if name == "TodoWrite" {
                     if let Some(todos) = ch.get("input").and_then(|i| i.get("todos")).and_then(|x| x.as_array()) {
                         let mut entries = Vec::new();
@@ -487,29 +487,20 @@ pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpda
                                 .unwrap_or("")
                                 .to_string();
                             // Claude todos don’t include status; default pending
-                            entries.push(PlanEntry {
-                                content,
-                                priority: PlanEntryPriority::Medium,
-                                status: PlanEntryStatus::Pending,
-                                meta: None,
-                            });
+                            entries.push(PlanEntry { content, priority: PlanEntryPriority::Medium, status: PlanEntryStatus::Pending, meta: None });
                         }
                         return Some(SessionUpdate::Plan(Plan { entries, meta: None }));
                     }
                 }
-                // Otherwise a generic tool call (pending)
+                // Otherwise build ToolCall using upstream semantics
+                if let Some(call) = claude_tool_call_from_tool_use(ch) {
+                    return Some(SessionUpdate::ToolCall(ToolCall { id, ..call }));
+                }
+                // Fallback minimal call
                 let call = ToolCall {
                     id,
-                    title: if name.is_empty() {
-                        "Tool Call".to_string()
-                    } else {
-                        format!("Tool: {}", name)
-                    },
-                    kind: match name {
-                        "bash" | "bashOutput" | "execute" => ToolKind::Execute,
-                        "webSearch" => ToolKind::Search,
-                        _ => ToolKind::Other,
-                    },
+                    title: if name.is_empty() { "Tool Call".to_string() } else { format!("Tool: {}", name) },
+                    kind: ToolKind::Other,
                     status: ToolCallStatus::Pending,
                     content: vec![],
                     locations: vec![],
@@ -674,6 +665,10 @@ pub fn claude_tool_update_from_tool_result(
         return fields;
     }
 
+    // Title updates for certain tools
+    if tool_name == "ExitPlanMode" {
+        fields.title = Some("Exited Plan Mode".to_string());
+    }
     // Default path: reuse toAcpContentUpdate behavior for other tools
     if let Some(c) = tool_result.get("content") {
         fields.content = to_acp_content_update(c, is_error);
@@ -1041,4 +1036,108 @@ mod tests {
             _ => panic!("expected ToolCallUpdate"),
         }
     }
+}
+/// Claude-specific helper: construct a ToolCall from a tool_use block
+fn claude_tool_call_from_tool_use(ch: &JsonValue) -> Option<ToolCall> {
+    let name = ch.get("name").and_then(|x| x.as_str()).unwrap_or("");
+    let input = ch.get("input").cloned().unwrap_or(JsonValue::Null);
+    // Normalize for matching
+    let n = name.to_string();
+    let lower = n.to_lowercase();
+    // Helper extractors
+    let s = |k: &str| input.get(k).and_then(|x| x.as_str()).unwrap_or("");
+    let opt_s = |k: &str| input.get(k).and_then(|x| x.as_str());
+    let num = |k: &str| input.get(k).and_then(|x| x.as_i64());
+
+    // Cases mirrored from claude-code-acp tools.ts
+    if lower == "bash" || n == "Bash" {
+        let cmd = s("command");
+        let title = if !cmd.is_empty() { format!("`{}`", cmd.replace('`', "\\`")) } else { "Terminal".to_string() };
+        let mut content = Vec::new();
+        if let Some(desc) = opt_s("description") { content.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: desc.to_string(), meta: None }))); }
+        return Some(ToolCall { title, kind: ToolKind::Execute, status: ToolCallStatus::Pending, content, locations: vec![], raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "BashOutput" || lower == "bashoutput" {
+        return Some(ToolCall { title: "Tail Logs".into(), kind: ToolKind::Execute, status: ToolCallStatus::Pending, content: vec![], locations: vec![], raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "KillShell" || lower == "killshell" {
+        return Some(ToolCall { title: "Kill Process".into(), kind: ToolKind::Execute, status: ToolCallStatus::Pending, content: vec![], locations: vec![], raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "Read" || lower == "read" {
+        let path = s("file_path");
+        let mut title = "Read File".to_string();
+        if !path.is_empty() {
+            let mut suffix = String::new();
+            if let Some(off) = num("offset") { suffix.push_str(&format!(" (from line {} )", off + 1)); }
+            if let Some(limit) = num("limit") { suffix = format!(" ({} - {} )", (num("offset").unwrap_or(0) + 1), (num("offset").unwrap_or(0) + limit)); }
+            title = format!("Read {}{}", path, suffix);
+        }
+        let locations = if !path.is_empty() { vec![ToolCallLocation { path: path.into(), line: num("offset").map(|x| x as i64), meta: None }] } else { vec![] };
+        return Some(ToolCall { title, kind: ToolKind::Read, status: ToolCallStatus::Pending, content: vec![], locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "Edit" || lower == "edit" {
+        let path = s("file_path");
+        let old_text = input.get("old_string").and_then(|x| x.as_str());
+        let new_text = input.get("new_string").and_then(|x| x.as_str()).unwrap_or("");
+        let mut content = Vec::new();
+        if !path.is_empty() {
+            content.push(ToolCallContent::Diff(agent_client_protocol::ToolCallContentDiff { path: path.to_string(), old_text: old_text.map(|s| s.to_string()).unwrap_or_default(), new_text: new_text.to_string(), meta: None }));
+        }
+        let title = if !path.is_empty() { format!("Edit `{}`", path) } else { "Edit".to_string() };
+        let locations = if !path.is_empty() { vec![ToolCallLocation { path: path.into(), line: None, meta: None }] } else { vec![] };
+        return Some(ToolCall { title, kind: ToolKind::Edit, status: ToolCallStatus::Pending, content, locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "Write" || lower == "write" {
+        let path = s("file_path");
+        let new_text = s("content");
+        let mut content = Vec::new();
+        if !path.is_empty() {
+            content.push(ToolCallContent::Diff(agent_client_protocol::ToolCallContentDiff { path: path.to_string(), old_text: String::new(), new_text: new_text.to_string(), meta: None }));
+        } else if !new_text.is_empty() {
+            content.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: new_text.to_string(), meta: None })));
+        }
+        let locations = if !path.is_empty() { vec![ToolCallLocation { path: path.into(), line: None, meta: None }] } else { vec![] };
+        let title = if !path.is_empty() { format!("Write {}", path) } else { "Write".to_string() };
+        return Some(ToolCall { title, kind: ToolKind::Edit, status: ToolCallStatus::Pending, content, locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "LS" || lower == "ls" {
+        let title = if let Some(p) = opt_s("path") { format!("List the `{}` directory's contents", p) } else { "List the current directory's contents".to_string() };
+        let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string(), line: None, meta: None }] } else { vec![] };
+        return Some(ToolCall { title, kind: ToolKind::Search, status: ToolCallStatus::Pending, content: vec![], locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "Glob" || lower == "glob" {
+        let mut label = "Find".to_string();
+        if let Some(p) = opt_s("path") { label.push_str(&format!(" `{}`", p)); }
+        if let Some(pattern) = opt_s("pattern") { label.push_str(&format!(" `{}`", pattern)); }
+        let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string(), line: None, meta: None }] } else { vec![] };
+        return Some(ToolCall { title: label, kind: ToolKind::Search, status: ToolCallStatus::Pending, content: vec![], locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "Grep" || lower == "grep" {
+        let pattern = s("pattern");
+        let mut label = "grep".to_string();
+        if input.get("-i").is_some() { label.push_str(" -i"); }
+        if input.get("-n").is_some() { label.push_str(" -n"); }
+        for flag in ["-A","-B","-C"] { if let Some(v) = input.get(flag).and_then(|x| x.as_i64()) { label.push_str(&format!(" {} {}", flag, v)); } }
+        if let Some(head) = input.get("head_limit").and_then(|x| x.as_i64()) { label.push_str(&format!(" | head -{}", head)); }
+        if let Some(glob) = opt_s("glob") { label.push_str(&format!(" --include=\"{}\"", glob)); }
+        if let Some(t) = opt_s("type") { label.push_str(&format!(" --type={}", t)); }
+        if input.get("multiline").is_some() { label.push_str(" -P"); }
+        label.push_str(&format!(" \"{}\"", pattern));
+        if let Some(path) = opt_s("path") { label.push_str(&format!(" {}", path)); }
+        return Some(ToolCall { title: label, kind: ToolKind::Search, status: ToolCallStatus::Pending, content: vec![], locations: vec![], raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "WebFetch" || lower == "webfetch" {
+        let mut title = "Fetch".to_string();
+        if let Some(u) = opt_s("url") { title = format!("Fetch {}", u); }
+        let mut content = Vec::new();
+        if let Some(prompt) = opt_s("prompt") { content.push(ToolCallContent::from(ContentBlock::Text(TextContent { annotations: None, text: prompt.to_string(), meta: None }))); }
+        return Some(ToolCall { title, kind: ToolKind::Fetch, status: ToolCallStatus::Pending, content, locations: vec![], raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    if n == "WebSearch" || lower == "websearch" {
+        let query = s("query");
+        let title = format!("\"{}\"", query);
+        return Some(ToolCall { title, kind: ToolKind::Fetch, status: ToolCallStatus::Pending, content: vec![], locations: vec![], raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
+    }
+    // Default: other/think
+    Some(ToolCall { title: if n.is_empty() { "Tool Call".into() } else { format!("Tool: {}", n) }, kind: ToolKind::Other, status: ToolCallStatus::Pending, content: vec![], locations: vec![], raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) })
 }
