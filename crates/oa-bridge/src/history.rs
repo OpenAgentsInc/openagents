@@ -282,8 +282,17 @@ pub fn resolve_session_path(base: &Path, id: Option<&str>, hint: Option<&str>) -
                     stack.push(p);
                     continue;
                 }
-                if p.file_name().and_then(|n| n.to_str()) == Some(target) {
-                    return Some(p.to_string_lossy().to_string());
+                if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                    // Exact filename match (e.g., rollout-...jsonl)
+                    if name == target {
+                        return Some(p.to_string_lossy().to_string());
+                    }
+                    // Fallback: if `target` looks like a UUID, allow substring match
+                    // so callers can pass just the session id ("019a..."), and we
+                    // resolve the corresponding rollout JSONL file.
+                    if target.len() == 36 && name.contains(target) {
+                        return Some(p.to_string_lossy().to_string());
+                    }
                 }
             }
         }
