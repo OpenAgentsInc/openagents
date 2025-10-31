@@ -108,7 +108,7 @@ UX & Parity Improvements
 
 Documentation
 - Align and cross-link:
-  - docs/ARCHITECTURE.md — architecture and data flow (added).
+  - docs/architecture/architecture-and-performance.md — architecture and data flow (updated to ACP/Tinyvex).
   - docs/sync.md — up-to-date module references (`ws.rs`, `watchers.rs`, `convex_write.rs`).
   - docs/test-coverage.md — reflect new tests and target gaps.
   - docs/permissions.md — call out dev vs. safe profiles.
@@ -143,7 +143,7 @@ Concrete Backlog (Actionable)
   - [ ] Verify indexes exist for hot paths pre-deploy; fail fast if missing.
 
 Appendix: References
-- Architecture: docs/ARCHITECTURE.md
+- Architecture: docs/architecture/architecture-and-performance.md
 - Sync model and module mapping: docs/sync.md
 - Test coverage audit: docs/test-coverage.md
 - Permissions: docs/permissions.md

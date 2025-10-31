@@ -1,14 +1,14 @@
 # Repository Guidelines
 
 ## Codebase Summary
-- Purpose: mobile command center for coding agents. Expo app drives agent sessions over a local WebSocket bridge to the OpenAI Codex CLI; Rust service spawns/streams the CLI; docs capture JSONL schema and operational notes.
+- Purpose: mobile command center for coding agents. Expo app drives agent sessions over a local WebSocket bridge to a Rust service that manages ACP sessions and streams typed Tinyvex data to the app.
 - Architecture: two layers
-  - App (`expo/`): Expo Router screens — Session (live feed + input), History (in Drawer; fetched from bridge), Library (UI component samples), Settings (bridge URL + permissions). Parses Codex JSONL into typed UI rows and cards.
+  - App (`expo/`): Expo Router screens — Session (live feed + input), History (in Drawer; fetched from bridge), Library (UI component samples), Settings (bridge URL + permissions). Consumes ACP-compliant updates and Tinyvex typed rows over WebSocket; no JSONL parsing in the app.
 - Bridge (`crates/oa-bridge/`): Axum WebSocket server on `--bind` (default `0.0.0.0:8787`) that launches `codex exec --json` (auto‑adds `resume --last` when supported) and forwards stdout/stderr lines to all clients; each prompt is written to the child’s stdin then closed to signal EOF.
 - Key App Modules:
   - Routing: `expo/app/` with routes: `/session`, `/session/[id]`, `/projects`, `/project/[id]`, `/library`, `/settings`; message detail at `expo/app/message/[id].tsx`.
-  - Session UI: `expo/app/session/index.tsx` renders a streaming feed. Incoming lines are parsed by `expo/lib/codex-events.ts` into kinds like `md`, `reason`, `exec_begin`, `file_change`, `web_search`, `mcp_call`, `todo_list`, `cmd_item`, `err`, `turn`, `thread`, `item_lifecycle`.
-  - Components: JSONL renderers in `expo/components/jsonl/*` (e.g., `MarkdownBlock`, `ReasoningHeadline`, `ExecBeginRow`, `FileChangeCard`, `CommandExecutionCard`). A `HapticTab` adds iOS haptics for the tab bar.
+  - Session UI: streaming feed renders ACP updates and Tinyvex data using typed components under `expo/components/acp/*`.
+  - Components: UI renderers in `expo/components/acp/*` and `expo/components/jsonl/*` (used by ACP content renderers and library samples). A `HapticTab` adds iOS haptics for the tab bar.
   - State & storage: lightweight log store in `expo/lib/log-store.ts` (AsyncStorage backed) powers History and Message detail views.
 - Connection/permissions: `expo/providers/ws.tsx` manages the WebSocket connection, exposes `readOnly`, `networkEnabled`, `approvals`, and `attachPreface` toggles (persisted). The header shows a green/red dot for connection.
 - Rule: No HTTP calls to the bridge. All bridge control is via WebSocket control messages (e.g., `{ "control": "run.submit", ... }`) or via Convex queries/mutations. Do not add REST endpoints.
@@ -22,8 +22,6 @@
   - Resilience: if stdin is consumed after one prompt, the bridge respawns the child process for the next message. Large `exec_command_output_delta` payloads are summarized for console logs.
   - Repo root detection: runs Codex from the repository root (heuristic checks for both `expo/` and `crates/`).
 - Docs:
-  - JSONL schema and mappings: `docs/exec-jsonl-schema.md`.
-  - Resume behavior: `docs/exec-resume-json.md`.
   - Permissions model and recommended setups: `docs/permissions.md`.
   - Projects & Skills schema: `docs/projects-and-skills-schema.md`.
 - Repository Layout:

@@ -71,7 +71,7 @@ We will add an “OpenCode mode” to the bridge that launches an OpenCode headl
 
 ### Event mapping (OpenCode → canonical ThreadEvent)
 
-Map OpenCode bus payloads into canonical ThreadEvent items (bridge emits one JSON line per event). The app’s `expo/lib/codex-events.ts:1` will continue to render these as it already targets the same envelope:
+Map OpenCode bus payloads into canonical bridge types and ACP-compatible updates. The app renders these via typed ACP components and Tinyvex provider; no JSONL parser is used:
 
 - MessageV2.PartUpdated with `part.type`:
   - `text` → `{ type: "item.completed", item: { type: "agent_message", id, text } }`.
@@ -166,6 +166,6 @@ We will reuse current controls where feasible and add OpenCode‑specific ones c
 File references (for contributors):
 - OpenCode server: `~/code/opencode/packages/opencode/src/server/server.ts:1`
 - OpenCode messages: `~/code/opencode/packages/opencode/src/session/message-v2.ts:1`
-- Canonical event types: `crates/oa-bridge/src/events.rs:1`
-- App parser: `expo/lib/codex-events.ts:1`
-- Existing JSONL contract: `docs/exec-jsonl-schema.md:1`
+- Canonical transport types: `crates/oa-bridge/src/types.rs:1`, `crates/oa-bridge/src/ws.rs:1`
+- App typed providers/components: `expo/providers/tinyvex.tsx:1`, `expo/providers/acp.tsx:1`, `expo/components/acp/index.ts:1`
+ 

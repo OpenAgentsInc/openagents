@@ -65,7 +65,7 @@ Requirements
 
 We use Tinyvex for fast, local‑first sync: an in‑process SQLite DB plus a WebSocket changefeed.
 
-- Mirrors data for UI queries/sync; Codex JSONL rollouts remain the source of truth.
+- Mirrors data for UI queries/sync; the bridge emits ACP-compliant updates and canonical, snake_case rows defined in Rust and exported to TypeScript.
 - Single SQLite file at `~/.openagents/tinyvex/data.sqlite3`; no external DB.
 - App subscribes/queries over the bridge WS using `tvx.subscribe` / `tvx.query`.
 

@@ -41,9 +41,9 @@ High‑value targets:
   - Issues: event envelopes (`tinyvex.snapshot`, `tinyvex.query_result`, `bridge.sync_status`) parsed as `any`.
   - Fix: import `TinyvexSnapshot<T>`, `TinyvexQueryResult<T>`, `SyncStatusTs` and narrow by `name/stream`.
 
-- JSONL renderers (session feed)
-  - File: expo/lib/codex-events.ts and expo/components/jsonl/*
-  - Note: These parse CLI lines directly and are inherently heuristic. Keep heuristics here, but for ACP‑backed data rendered inline (e.g., tool calls), prefer the generated Tinyvex/ACP shapes when available.
+- JSONL renderers (legacy)
+  - File: expo/components/jsonl/* (renderers used by library samples and ACP content helpers)
+  - Note: The app uses ACP/Tinyvex typed data and components for live session rendering.
 
 - Settings sync view
   - File: expo/app/settings/index.tsx
