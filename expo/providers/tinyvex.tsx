@@ -163,7 +163,16 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           }
         } catch {}
       } else if (obj.name === 'messages.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
+        // Store under the reported id
         setMessagesByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as MessageRow[] }))
+        // If these rows correspond to a canonical session id, also project them onto the
+        // client doc id so thread screens keyed by that id hydrate immediately.
+        try {
+          const alias = getAliasForCanonical(String(obj.threadId))
+          if (alias && alias !== obj.threadId) {
+            setMessagesByThread((prev) => ({ ...prev, [alias]: obj.rows as MessageRow[] }))
+          }
+        } catch {}
       } else if (obj.name === 'toolCalls.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
         setToolCallsByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as any[] }))
       } else if (obj.name === 'threadsAndTails.list') {
