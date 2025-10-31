@@ -486,7 +486,7 @@ mod tests {
         for i in 0..3i64 {
             let ts = now_ms() + i;
             let id = format!("tc{}", i);
-            let content = format!("[{\"type\":\"text\",\"text\":\"#{}\"}]", i);
+            let content = format!("[{{\"type\":\"text\",\"text\":\"#{}\"}}]", i);
             tvx.upsert_acp_tool_call(t, &id, Some("call"), Some("Execute"), Some("Completed"), Some(&content), Some("[]"), ts).unwrap();
         }
         let rows = tvx.list_tool_calls(t, 2).unwrap();
