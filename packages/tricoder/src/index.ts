@@ -120,8 +120,10 @@ function b64url(s: string): string {
 function buildBridgeCode(host: string, port: number, token: string, secure = false, hosts?: string[]) {
   const scheme = secure ? 'wss' : 'ws';
   const bridge = `${scheme}://${host}:${port}/ws`;
-  const payload: any = { v: 1, type: 'bridge', provider: 'openagents', bridge, token };
-  if (Array.isArray(hosts) && hosts.length > 0) {
+  // Compact payload to reduce QR size: only include fields the app requires.
+  // Optionally include hosts[] when explicitly requested.
+  const payload: any = { bridge, token };
+  if (process.env.TRICODER_QR_INCLUDE_HOSTS === '1' && Array.isArray(hosts) && hosts.length > 0) {
     payload.hosts = hosts;
   }
   const code = b64url(JSON.stringify(payload));
@@ -277,7 +279,7 @@ async function main() {
     console.log(chalk.gray('Token: using persisted token from ~/.openagents/bridge.json'));
   }
 
-  // Compute candidate hosts for QR payload in priority order
+  // Compute candidate hosts (may be included in payload when explicitly enabled)
   const lanCandidates = getLanIPv4Candidates().map((ip) => `${ip}:${bridgePort}`);
   let tsCandidates: string[] = [];
   if (prefer !== 'lan' && tsPath && tsStatus && isTailscaleActive(tsStatus)) {
