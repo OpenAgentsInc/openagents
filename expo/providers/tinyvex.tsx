@@ -14,6 +14,9 @@ type MessageRow = { id: number; thread_id: string; role?: string; kind: string; 
 type TinyvexContextValue = {
   threads: ThreadsRow[];
   messagesByThread: Record<string, MessageRow[]>;
+  toolCallsByThread: Record<string, string[]>;
+  planTouched: Record<string, number>;
+  stateTouched: Record<string, number>;
   subscribeThreads: () => void;
   subscribeMessages: (threadId: string) => void;
   queryThreads: (limit?: number) => void;
@@ -37,6 +40,9 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const connected = bridge.connected;
   const [threads, setThreads] = useState<ThreadsRow[]>([])
   const [messagesByThread, setMessagesByThread] = useState<Record<string, MessageRow[]>>({})
+  const [toolCallsByThread, setToolCallsByThread] = useState<Record<string, string[]>>({})
+  const [planTouched, setPlanTouched] = useState<Record<string, number>>({})
+  const [stateTouched, setStateTouched] = useState<Record<string, number>>({})
 
   // Handle incoming bridge events. We only parse JSON objects and ignore
   // plaintext rows for safety/perf. This function mutates provider state and
@@ -87,6 +93,24 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           // Fallback: Debounce refreshes to avoid repeated full refreshes on bursts.
           try { scheduleThreadsRefresh() } catch {}
         }
+      } else if (obj.stream === 'toolCalls' && typeof obj.threadId === 'string') {
+        const tid: string = obj.threadId
+        const tcid: string | undefined = typeof obj.toolCallId === 'string' ? obj.toolCallId : undefined
+        if (tcid) {
+          setToolCallsByThread((prev) => {
+            const next = { ...prev }
+            const list = Array.isArray(next[tid]) ? next[tid].slice() : []
+            if (!list.includes(tcid)) list.push(tcid)
+            next[tid] = list
+            return next
+          })
+        }
+      } else if (obj.stream === 'plan' && typeof obj.threadId === 'string') {
+        const tid: string = obj.threadId
+        setPlanTouched((prev) => ({ ...prev, [tid]: Date.now() }))
+      } else if (obj.stream === 'state' && typeof obj.threadId === 'string') {
+        const tid: string = obj.threadId
+        setStateTouched((prev) => ({ ...prev, [tid]: Date.now() }))
       }
     } else if (t === 'tinyvex.query_result') {
       if (obj.name === 'threads.list' && Array.isArray(obj.rows)) {
@@ -211,7 +235,18 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   }, [bridge])
 
   const value = useMemo(() => ({ threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages }), [threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages])
-  return <TinyvexContext.Provider value={value}>{children}</TinyvexContext.Provider>
+  const ctxValue = useMemo(() => ({
+    threads,
+    messagesByThread,
+    toolCallsByThread,
+    planTouched,
+    stateTouched,
+    subscribeThreads,
+    subscribeMessages,
+    queryThreads,
+    queryMessages,
+  }), [threads, messagesByThread, toolCallsByThread, planTouched, stateTouched, subscribeThreads, subscribeMessages, queryThreads, queryMessages])
+  return <TinyvexContext.Provider value={ctxValue}>{children}</TinyvexContext.Provider>
 }
 
 export function useTinyvex() {
