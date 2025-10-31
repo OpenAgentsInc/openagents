@@ -237,6 +237,67 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "itemId": item_id
                 }).to_string());
             }
+            tinyvex::WriterNotification::ToolCallUpsert { thread_id, tool_call_id } => {
+                // Debug event + typed tinyvex.update for tools
+                let _ = state.tx.send(json!({
+                    "type": "bridge.tinyvex_write",
+                    "op": "toolCallUpsert",
+                    "threadId": thread_id,
+                    "toolCallId": tool_call_id,
+                    "ok": true
+                }).to_string());
+                let _ = state.tx.send(json!({
+                    "type":"tinyvex.update",
+                    "stream":"toolCalls",
+                    "op":"upsert",
+                    "threadId": thread_id,
+                    "toolCallId": tool_call_id
+                }).to_string());
+            }
+            tinyvex::WriterNotification::ToolCallUpdate { thread_id, tool_call_id } => {
+                let _ = state.tx.send(json!({
+                    "type": "bridge.tinyvex_write",
+                    "op": "toolCallUpdate",
+                    "threadId": thread_id,
+                    "toolCallId": tool_call_id,
+                    "ok": true
+                }).to_string());
+                let _ = state.tx.send(json!({
+                    "type":"tinyvex.update",
+                    "stream":"toolCalls",
+                    "op":"update",
+                    "threadId": thread_id,
+                    "toolCallId": tool_call_id
+                }).to_string());
+            }
+            tinyvex::WriterNotification::PlanUpsert { thread_id } => {
+                let _ = state.tx.send(json!({
+                    "type": "bridge.tinyvex_write",
+                    "op": "planUpsert",
+                    "threadId": thread_id,
+                    "ok": true
+                }).to_string());
+                let _ = state.tx.send(json!({
+                    "type":"tinyvex.update",
+                    "stream":"plan",
+                    "op":"upsert",
+                    "threadId": thread_id
+                }).to_string());
+            }
+            tinyvex::WriterNotification::StateUpsert { thread_id } => {
+                let _ = state.tx.send(json!({
+                    "type": "bridge.tinyvex_write",
+                    "op": "stateUpsert",
+                    "threadId": thread_id,
+                    "ok": true
+                }).to_string());
+                let _ = state.tx.send(json!({
+                    "type":"tinyvex.update",
+                    "stream":"state",
+                    "op":"upsert",
+                    "threadId": thread_id
+                }).to_string());
+            }
             _ => {}
         }
     }
