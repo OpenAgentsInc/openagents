@@ -73,7 +73,8 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
             if (!tid) return prev
             const next = Array.isArray(prev) ? [...prev] : []
             const idx = next.findIndex((r: any) => String((r?.id || r?.thread_id || r?.threadId || '')) === tid)
-            if (idx >= 0) next[idx] = row as ThreadsRow; else next.unshift(row as ThreadsRow)
+            if (idx >= 0) next.splice(idx, 1)
+            next.unshift(row as ThreadsRow)
             return next
           })
           try {
@@ -101,6 +102,14 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
       } else if (obj.name === 'messages.list' && typeof obj.threadId === 'string' && Array.isArray(obj.rows)) {
         setMessagesByThread((prev) => ({ ...prev, [obj.threadId]: obj.rows as MessageRow[] }))
       } else if (obj.name === 'threadsAndTails.list') {
+        // cancel fallback to threads.list if pending
+        try {
+          if (bootstrapPendingRef.current) {
+            bootstrapPendingRef.current = false
+            const id = fallbackTimerRef.current
+            if (id != null) { clearTimeout(id as any); fallbackTimerRef.current = null as any }
+          }
+        } catch {}
         const threadsRows = Array.isArray(obj.threads) ? (obj.threads as ThreadsRow[]) : []
         setThreads(threadsRows)
         try {
@@ -146,12 +155,26 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     if (!connected) return;
     // Single bootstrap: subscribe + list
     try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' })) } catch {}
-    try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threadsAndTails.list', args: { limit: 50, perThreadTail: 50 } })) } catch {}
-    try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
+    try {
+      bootstrapPendingRef.current = true
+      bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threadsAndTails.list', args: { limit: 50, perThreadTail: 50 } }))
+      const timer = setTimeout(() => {
+        try {
+          if (bootstrapPendingRef.current) {
+            bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } }))
+            bootstrapPendingRef.current = false
+          }
+        } catch {}
+      }, 1200)
+      fallbackTimerRef.current = timer as any
+    } catch {}
   }, [connected])
 
   // Prefetch messages for known threads so history opens instantly
   const prefetchRef = useRef<Set<string>>(new Set())
+  // Track aggregated bootstrap status and fallback timer
+  const bootstrapPendingRef = useRef<boolean>(false)
+  const fallbackTimerRef = useRef<number | null>(null)
   useEffect(() => {
     if (!connected) return
     try {

@@ -310,7 +310,19 @@ pub async fn mirror_acp_update_to_tinyvex(state: &AppState, provider: &str, thre
                     message_count: None,
                 };
                 let _ = state.tinyvex.upsert_thread(&thr);
-                let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"threads","op":"upsert","threadId": thread_id, "updatedAt": t}).to_string());
+                let row = json!({
+                    "id": thr.id,
+                    "thread_id": thr.thread_id,
+                    "title": thr.title,
+                    "project_id": thr.project_id,
+                    "resume_id": thr.resume_id,
+                    "rollout_path": thr.rollout_path,
+                    "source": thr.source,
+                    "created_at": thr.created_at,
+                    "updated_at": thr.updated_at,
+                    "message_count": thr.message_count,
+                });
+                let _ = state.tx.send(json!({"type":"tinyvex.update","stream":"threads","op":"upsert","threadId": thread_id, "updatedAt": t, "row": row}).to_string());
                 let item_id = format!("acp:reason:{}", t);
                 let _ = state.tinyvex.upsert_streamed_message(thread_id, "reason", None, &txt, &item_id, 0, t);
                 let _ = state.tinyvex.finalize_streamed_message(thread_id, &item_id, &txt, t);
