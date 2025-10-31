@@ -316,8 +316,9 @@ pub async fn mirror_acp_update_to_tinyvex(
 }
 
 fn two_way_base_dir() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().to_string());
-    let p = std::path::PathBuf::from(home).join(".codex").join("sessions").join("openagents");
+    // Honor CODEXD_HISTORY_DIR via the shared helper used by the watcher,
+    // then append our provider namespace to avoid collisions.
+    let p = crate::watchers::codex_base_path().join("openagents");
     let _ = std::fs::create_dir_all(&p);
     p
 }
