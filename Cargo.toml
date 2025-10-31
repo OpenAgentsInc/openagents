@@ -6,6 +6,6 @@ members = [
     "crates/oa-validate",
     "crates/fake-codex",
     "crates/fake-claude",
-    "crates/tinyvex",
+    "crates/tinyvex", "crates/mermaid_viewer",
 ]
 resolver = "2"
