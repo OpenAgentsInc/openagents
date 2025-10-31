@@ -34,7 +34,7 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
   const { eventsForThread } = useAcp()
-  const { messagesByThread, subscribeMessages, queryMessages } = useTinyvex()
+  const { messagesByThread, subscribeMessages, queryMessages, queryToolCalls, toolCallsByThread } = useTinyvex() as any
   const { send, connected } = useBridge()
   const agentProvider = useSettings((s) => s.agentProvider)
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
@@ -49,9 +49,7 @@ export default function ThreadScreen() {
     if (!threadId) return
     try { subscribeMessages(threadId) } catch {}
     try { queryMessages(threadId, 50) } catch {}
-    // Also hydrate tool calls for this thread
-    try { (require('@/providers/tinyvex') as any) } catch {}
-    try { const { useTinyvex } = require('@/providers/tinyvex') as any; useTinyvex().queryToolCalls?.(threadId, 50) } catch {}
+    try { queryToolCalls?.(threadId, 50) } catch {}
   }, [threadId, subscribeMessages, queryMessages])
   // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
   React.useEffect(() => {
@@ -151,7 +149,7 @@ export default function ThreadScreen() {
             })
           }
 
-          // Aggregate tool calls (create + updates) by id
+          // Aggregate tool calls (create + updates) by id from live ACP
           type ToolLike = { title?: any; status?: any; kind?: any; content?: any; locations?: any }
           const toolById = new Map<string, { firstTs: number; props: ToolLike }>()
 
@@ -225,6 +223,32 @@ export default function ThreadScreen() {
               render: () => <SessionUpdateToolCall {...props} />,
             })
           }
+
+          // Hydrated tool calls from Tinyvex — add minimal cards sorted by updatedAt
+          try {
+            const trows: any[] = Array.isArray((toolCallsByThread as any)?.[threadId]) ? (toolCallsByThread as any)[threadId] : []
+            for (const r of trows) {
+              const ts = Number((r?.updated_at ?? r?.updatedAt ?? r?.created_at ?? r?.createdAt ?? Date.now()))
+              const title = String(r?.title || 'Tool')
+              const statusRaw = String(r?.status || '').toLowerCase()
+              const status = (statusRaw.includes('complete') ? 'completed' : (statusRaw.includes('fail') ? 'failed' : (statusRaw.includes('progress') ? 'in_progress' : 'pending')))
+              const kindRaw = String(r?.kind || '').toLowerCase()
+              let kind: any = 'other'
+              if (kindRaw.includes('execute')) kind = 'execute'
+              else if (kindRaw.includes('edit')) kind = 'edit'
+              else if (kindRaw.includes('search')) kind = 'search'
+              else if (kindRaw.includes('read')) kind = 'read'
+              else if (kindRaw.includes('delete')) kind = 'delete'
+              else if (kindRaw.includes('move')) kind = 'move'
+              else if (kindRaw.includes('fetch')) kind = 'fetch'
+              else if (kindRaw.includes('think')) kind = 'think'
+              else if (kindRaw.includes('switch')) kind = 'switch_mode'
+              let locations: any[] = []
+              try { const lj = r?.locations_json || r?.locations; if (lj) { const arr = typeof lj === 'string' ? JSON.parse(lj) : lj; if (Array.isArray(arr)) { locations = arr.slice(0, 8) } } } catch {}
+              const props: any = { title, status, kind, content: [], locations }
+              items.push({ ts, key: `tvx-tool-${String(r?.tool_call_id || r?.toolCallId || r?.id || ts)}`, render: () => <SessionUpdateToolCall {...props} /> })
+            }
+          } catch {}
 
           // Final: sort by timestamp, stable
           items.sort((a, b) => a.ts - b.ts)
