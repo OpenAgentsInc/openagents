@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 sequenceDiagram
   participant Client as TinyvexProvider
   participant Bridge as WS Bridge
-  participant DB as TinyVex DB
+  participant DB as Tinyvex DB
 
   Client->>Bridge: tvx.query "threadsAndTails.list" {limit, perThreadTail}
   activate Bridge
