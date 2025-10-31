@@ -16,6 +16,11 @@ type SettingsState = {
   agentProvider: 'codex' | 'claude_code'
   updatesAutoPoll: boolean
   lastRoute: string
+  // Bridge sync preferences (persisted):
+  // - syncEnabled controls the Codex sessions watcher (inbound sync)
+  // - syncTwoWay controls the provider-native writer (outbound sync)
+  syncEnabled: boolean
+  syncTwoWay: boolean
   setBridgeHost: (v: string) => void
   setBridgeCode: (v: string) => void
   setBridgeToken: (v: string) => void
@@ -27,6 +32,8 @@ type SettingsState = {
   setAgentProvider: (v: 'codex' | 'claude_code') => void
   setUpdatesAutoPoll: (v: boolean) => void
   setLastRoute: (v: string) => void
+  setSyncEnabled: (v: boolean) => void
+  setSyncTwoWay: (v: boolean) => void
 }
 
 export const useSettings = create<SettingsState>()(
@@ -45,6 +52,9 @@ export const useSettings = create<SettingsState>()(
       agentProvider: 'codex',
       updatesAutoPoll: false,
       lastRoute: '',
+      // Default to watcher ON and two-way OFF unless user overrides.
+      syncEnabled: true,
+      syncTwoWay: false,
       setBridgeHost: (v) => set({ bridgeHost: v }),
       setBridgeCode: (v) => set({ bridgeCode: v }),
       setBridgeToken: (v) => set({ bridgeToken: v }),
@@ -56,6 +66,8 @@ export const useSettings = create<SettingsState>()(
       setAgentProvider: (v) => set({ agentProvider: v }),
       setUpdatesAutoPoll: (v) => set({ updatesAutoPoll: v }),
       setLastRoute: (v) => set({ lastRoute: v }),
+      setSyncEnabled: (v) => set({ syncEnabled: v }),
+      setSyncTwoWay: (v) => set({ syncTwoWay: v }),
     }),
     {
       name: '@openagents/settings-v4',
