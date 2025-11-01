@@ -3,6 +3,8 @@ name: Bridge Connect (Manual Host/Token)
 ---
 - launchApp
 - openLink: "exp://localhost:8081"
+# Force a route that shows the header
+- openLink: "exp://localhost:8081/--/thread/new"
 # Wait for header menu (root screen) and open Settings via drawer
 - extendedWaitUntil:
     visible:
