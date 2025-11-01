@@ -11,6 +11,7 @@ flows=(
   ".maestro/flows/ui_drawer_history_empty.yaml"
   ".maestro/flows/bridge_connect_manual.yaml"
   ".maestro/flows/bridge_connect_and_stream.yaml"
+  ".maestro/flows/bridge_disconnect.yaml"
 )
 
 for f in "${flows[@]}"; do
@@ -22,4 +23,3 @@ for f in "${flows[@]}"; do
 done
 
 echo "All flows completed."
-

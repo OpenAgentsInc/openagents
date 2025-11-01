@@ -1,0 +1,43 @@
+appId: com.openagents.app
+name: Bridge → Disconnect via Settings
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+- openLink: "exp://localhost:8081/--/settings"
+- extendedWaitUntil:
+    visible:
+      id: settings-root
+    timeout: 90000
+# Fill host and token and apply
+- tapOn:
+    id: settings-host-input
+- inputText:
+    id: settings-host-input
+    text: "192.168.1.11:8788"
+- tapOn:
+    id: settings-token-input
+- inputText:
+    id: settings-token-input
+    text: "2d716c46ffb7b1c788db80b8cc21a027101dfad9372659339a48bd0d48ddf7ce"
+- tapOn:
+    id: settings-apply
+# Tap Connect if visible
+- runFlow:
+    when:
+      visible:
+        id: settings-connect
+    commands:
+      - tapOn:
+          id: settings-connect
+# Assert the header connection indicator exists
+- extendedWaitUntil:
+    visible:
+      id: header-connection-indicator
+    timeout: 120000
+# Disconnect and assert pill text
+- tapOn:
+    id: settings-disconnect
+- extendedWaitUntil:
+    visible:
+      text: Disconnected
+    timeout: 60000
