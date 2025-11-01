@@ -52,6 +52,8 @@ fn claude_projects_base() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".claude/projects")
 }
 
+pub fn claude_projects_base_path() -> PathBuf { claude_projects_base() }
+
 fn list_transcript_files(base: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![base.to_path_buf()];
@@ -183,6 +185,8 @@ pub fn spawn_claude_watcher(state: std::sync::Arc<AppState>) -> mpsc::Sender<cra
         let mut state_file = load_state();
         let mut enabled = state.sync_enabled.load(std::sync::atomic::Ordering::Relaxed);
         loop {
+            // Refresh enabled from shared atomic in case command channel isn't wired
+            enabled = state.sync_enabled.load(std::sync::atomic::Ordering::Relaxed);
             while let Ok(cmd) = rx.try_recv() {
                 match cmd {
                     crate::watchers::SyncCommand::Enable(b) => { enabled = b; state.sync_enabled.store(b, std::sync::atomic::Ordering::Relaxed); info!(enabled=b, "claude watcher: enable toggled"); }
@@ -232,4 +236,3 @@ mod tests {
         assert!(out2.iter().any(|u| matches!(u, agent_client_protocol::SessionUpdate::ToolCallUpdate(_))));
     }
 }
-

@@ -375,17 +375,29 @@ fn two_way_base_dir_codex_openagents() -> std::path::PathBuf {
     p
 }
 
-fn claude_sessions_base_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("CLAUDE_SESSIONS_DIR") {
+fn claude_projects_base_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("CLAUDE_PROJECTS_DIR") {
         let dir = std::path::PathBuf::from(p);
         let _ = std::fs::create_dir_all(&dir);
         return dir;
     }
-    // Default to ~/.claude/sessions
+    // Default to ~/.claude/projects
     let base = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or(std::env::temp_dir());
-    let dir = base.join(".claude").join("sessions");
+    let dir = base.join(".claude").join("projects");
     let _ = std::fs::create_dir_all(&dir);
     dir
+}
+
+fn sanitize_cwd_for_projects_dir(p: &std::path::Path) -> String {
+    let s = p.to_string_lossy();
+    let mut out = String::with_capacity(s.len() + 2);
+    for ch in s.chars() {
+        match ch {
+            '/' | '\\' | ' ' | ':' => out.push('-'),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 async fn append_two_way_jsonl_codex_compat(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
@@ -615,24 +627,34 @@ fn map_acp_to_claude_stream_lines(update: &agent_client_protocol::SessionUpdate)
 }
 
 async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
-    let base = claude_sessions_base_path();
-    let file_path = base.join(format!("{}.stream.jsonl", thread_id));
+    // Persist to Claude’s transcript folder for the current repo/project
+    let base = claude_projects_base_path();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let dir = base.join(sanitize_cwd_for_projects_dir(&cwd));
+    let _ = std::fs::create_dir_all(&dir);
+    let file_path = dir.join(format!("{}.jsonl", thread_id));
 
     // Helper to append lines with a system init header on first write
-    let write_lines = |file_path: &std::path::Path, session_id: &str, lines: Vec<serde_json::Value>| -> anyhow::Result<()> {
+    let write_lines = |file_path: &std::path::Path, _session_id: &str, lines: Vec<serde_json::Value>| -> anyhow::Result<()> {
         if lines.is_empty() { return Ok(()); }
         use std::io::Write;
-        let first_write = !file_path.exists() || std::fs::metadata(file_path).map(|m| m.len() == 0).unwrap_or(true);
         let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file_path)?;
-        if first_write {
-            let init = serde_json::json!({"type":"system","subtype":"init","session_id": session_id});
-            writeln!(f, "{}", init.to_string())?;
-        }
         for v in lines { writeln!(f, "{}", v.to_string())?; }
         Ok(())
     };
 
-    let lines = map_acp_to_claude_stream_lines(update);
+    // Wrap ACP→Claude stream lines with minimal transcript metadata (cwd, sessionId)
+    let cwd_str = std::env::current_dir().ok().map(|p| p.display().to_string()).unwrap_or_else(|| "".into());
+    let lines: Vec<serde_json::Value> = map_acp_to_claude_stream_lines(update)
+        .into_iter()
+        .map(|mut v| {
+            if v.get("message").is_some() || v.get("type").and_then(|x| x.as_str()).is_some() {
+                v["cwd"] = serde_json::json!(cwd_str);
+                v["sessionId"] = serde_json::json!(thread_id);
+            }
+            v
+        })
+        .collect();
 
     if lines.is_empty() { return Ok(()); }
     tokio::task::spawn_blocking({
@@ -679,6 +701,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
             client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;
@@ -729,6 +752,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
             client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         finalize_or_snapshot(&state, "th", "assistant", "hello world").await;
@@ -770,6 +794,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
             client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         // Simulate deltas then final.
