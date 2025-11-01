@@ -219,6 +219,9 @@ export default function Onboarding() {
               <Ionicons name='qr-code-outline' size={22} color={Colors.foreground} />
               <Text style={styles.pairText}>Pair with Desktop</Text>
             </Pressable>
+            <Pressable onPress={() => { try { router.push('/onboarding/manual-code' as any) } catch {} }} accessibilityRole='button' style={{ marginTop: 12 }}>
+              <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, textDecorationLine: 'underline' }}>Enter code manually</Text>
+            </Pressable>
           </>
         )}
       </View>
