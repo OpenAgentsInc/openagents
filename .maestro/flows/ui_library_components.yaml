@@ -3,20 +3,8 @@ name: UI Library → Agent Message
 ---
 - launchApp
 - openLink: "exp://localhost:8081"
-# If we’re on Settings, go back first (header back chevron)
-- runFlow:
-    when:
-      visible:
-        text: "Settings"
-    commands:
-      - tapOn:
-          id: header-menu-button
-# Open drawer
-- tapOn:
-    id: header-menu-button
-# Tap Library in drawer
-- tapOn:
-    id: drawer-library
+# Navigate directly to the Library route to avoid header/drawer variance
+- openLink: "exp://localhost:8081/--/library"
 # Wait for Library root by id
 - extendedWaitUntil:
     visible:
