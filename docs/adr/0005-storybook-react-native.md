@@ -79,6 +79,7 @@ Provide a simple runtime toggle: if `USE_STORYBOOK` is true (boolean flag or env
 
 - `USE_STORYBOOK=1` boots StorybookUIRoot; default boots normal app.
 - Stories exist for ACP components and primary UI primitives.
+- Initial coverage implemented: ACP Agent Message, Agent Thought, Tool Call (execute/edit), Plan, Available Commands, Current Mode, and Example Conversation.
 - Legacy `expo/app/library/*` removed after parity.
 - Optional Maestro flows can target Storybook controls/states when enabled.
 
