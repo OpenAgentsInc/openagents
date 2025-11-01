@@ -1,0 +1,53 @@
+appId: com.openagents.app
+name: Bridge Connect and Stream
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+- openLink: "exp://localhost:8081/--/settings"
+- extendedWaitUntil:
+    visible:
+      id: settings-status
+    timeout: 90000
+- tapOn:
+    id: settings-host-input
+- inputText:
+    id: settings-host-input
+    text: "192.168.1.11:8788"
+- tapOn:
+    id: settings-token-input
+- inputText:
+    id: settings-token-input
+    text: "2d716c46ffb7b1c788db80b8cc21a027101dfad9372659339a48bd0d48ddf7ce"
+- tapOn:
+    id: settings-apply
+- runFlow:
+    when:
+      visible:
+        id: settings-connect
+    commands:
+      - tapOn:
+          id: settings-connect
+- extendedWaitUntil:
+    visible:
+      id: header-connection-indicator
+    timeout: 120000
+# Start a new chat and send a message
+- tapOn:
+    id: header-new-chat
+- extendedWaitUntil:
+    visible:
+      id: composer-input
+    timeout: 60000
+- inputText:
+    id: composer-input
+    text: "Hello from Maestro"
+- tapOn:
+    id: composer-send
+- extendedWaitUntil:
+    visible:
+      id: user-message
+    timeout: 90000
+- extendedWaitUntil:
+    visible:
+      id: agent-message
+    timeout: 120000
