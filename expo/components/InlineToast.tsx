@@ -15,3 +15,4 @@ export function InlineToast({ text, position = 'bottom', align = 'right' }: { te
     </View>
   )
 }
+

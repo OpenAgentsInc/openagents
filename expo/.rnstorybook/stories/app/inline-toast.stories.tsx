@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react-native'
 import { View, Text } from 'react-native'
-import { InlineToast } from '@/components/inline-toast'
+import { InlineToast } from '@/components/InlineToast'
 import { Colors } from '@/constants/theme'
 
 const meta = { title: 'App/InlineToast' } satisfies Meta
@@ -17,4 +17,3 @@ export const Positions: Story = {
     </View>
   ),
 }
-

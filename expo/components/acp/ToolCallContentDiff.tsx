@@ -2,7 +2,7 @@ import React from 'react'
 import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
-import { CodeBlock } from '@/components/code-block'
+import { CodeBlock } from '@/components/CodeBlock'
 
 export function ToolCallContentDiff({ path, oldText, newText }: { path: string; oldText?: string | null; newText: string }) {
   return (

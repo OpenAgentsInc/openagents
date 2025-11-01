@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react-native'
 import { View, Text } from 'react-native'
-import { HapticTab } from '@/components/haptic-tab'
+import { HapticTab } from '@/components/HapticTab'
 import { Colors } from '@/constants/theme'
 import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs'
 
@@ -33,4 +33,3 @@ function Wrapper() {
 export const Basic: Story = {
   render: () => <Wrapper />,
 }
-

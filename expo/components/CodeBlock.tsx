@@ -18,8 +18,6 @@ function normalizeLanguage(lang?: string): string {
 
 export function CodeBlock({ code, language, maxHeight }: { code: string; language?: string; maxHeight?: number }) {
   const lang = normalizeLanguage(language)
-  // Normalize newlines and trim any trailing newlines to avoid
-  // rendering an extra blank line at the end of blocks.
   const lines = String(code ?? '')
     .replace(/\r\n/g, '\n')
     .replace(/\n+$/, '')
@@ -47,3 +45,4 @@ export function CodeBlock({ code, language, maxHeight }: { code: string; languag
     </View>
   )
 }
+

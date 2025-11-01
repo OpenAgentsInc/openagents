@@ -19,13 +19,14 @@ Existing folders and roles today:
 
 ## Decision
 
-Define a three‑layer component organization and conventions that support Storybook and Maestro:
+Define a three‑layer component organization and conventions (aligned with Ignite) that support Storybook and Maestro:
 
 1) UI Primitives — reusable, app‑agnostic components
    - Location: `expo/components/ui/`
-   - Contents: buttons, text, inputs, cards, images, list items, toggles, layout helpers (including existing `collapsible.tsx`).
+   - Naming: PascalCase filenames matching component names (e.g., `Text.tsx`, `Button.tsx`, `TextField.tsx`, `Switch.tsx`, `ListItem.tsx`, `AutoImage.tsx`, `Screen.tsx`, `Collapsible.tsx`).
+   - Contents: buttons, text, inputs, cards, images, list items, toggles, layout helpers (including `Collapsible.tsx`).
    - Group related items in subfolders (e.g., `toggle/{checkbox,radio,switch}.tsx`).
-   - Filenames: kebab‑case; exports: named PascalCase components.
+   - Filenames: PascalCase; exports: named PascalCase components.
    - Theming/typography: use `expo/constants/theme.ts` and `expo/constants/typography.ts`; no separate theme provider.
    - Testing: accept and pass through `testID`/accessibility props (ADR‑0004).
    - Storybook: each primitive has a story (ADR‑0005).
@@ -33,7 +34,7 @@ Define a three‑layer component organization and conventions that support Story
 2) Domain Renderers — data‑typed views for ACP/Tinyvex
    - Locations: `expo/components/acp/*`, `expo/components/jsonl/*` (unchanged).
    - Purpose: translate typed events/rows into UI; compose primitives from `ui/` where appropriate.
-   - Filenames: keep existing; prefer kebab‑case for any new files.
+   - Filenames: PascalCase preferred for new files. Normalize existing files opportunistically to PascalCase.
    - Testing: expose stable anchors for Maestro where flows need to assert domain UI.
    - Storybook: add stories for representative states, colocated under Storybook folder per ADR‑0005.
 
@@ -41,6 +42,7 @@ Define a three‑layer component organization and conventions that support Story
    - Locations: `expo/components/app-header.tsx`, `expo/components/composer.tsx`, `expo/components/drawer/*`, `expo/components/projects/*` (unchanged).
    - Purpose: wire navigation, header chrome, and screen‑level composition.
    - Testing: include durable `testID`s required by Maestro flows (`header-menu-button`, `header-connection-indicator`, etc.).
+   - Naming: PascalCase filenames (e.g., `AppHeader.tsx`, `Composer.tsx`, `ToastOverlay.tsx`, `InlineToast.tsx`, `ErrorBoundary.tsx`, `HapticTab.tsx`).
    - Storybook: optional stories if useful; not required for all shell pieces.
 
 Barrels (optional):
@@ -81,7 +83,7 @@ Phase 1 — Fill gaps incrementally
 
 Phase 2 — Opportunistic convergence
 - When modifying domain or shell code, prefer composing from `ui/` primitives.
-- Normalize filenames to kebab‑case when touching files; avoid broad refactors.
+- Normalize filenames to PascalCase when touching files; avoid broad refactors.
 
 ## Acceptance Criteria
 

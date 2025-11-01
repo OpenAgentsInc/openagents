@@ -1,16 +1,16 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react'
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
+import React from 'react'
+import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import * as Updates from 'expo-updates'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 
-type CatchMode = 'always' | 'dev' | 'prod' | 'never'
+type CatchMode = 'always' | 'dev' | 'prod'
 
-export class ErrorBoundary extends Component<{ children: ReactNode; catchErrors?: CatchMode }, { error: Error | null; info: ErrorInfo | null }> {
-  state = { error: null as Error | null, info: null as ErrorInfo | null }
+export class ErrorBoundary extends React.Component<React.PropsWithChildren<{ catchErrors?: CatchMode }>, { error: Error | null, info: React.ErrorInfo | null }> {
+  state = { error: null as Error | null, info: null as React.ErrorInfo | null }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
     if (!this.isEnabled()) return
     try { console.error('[ErrorBoundary] JS error:', error, info?.componentStack) } catch {}
     this.setState({ error, info })

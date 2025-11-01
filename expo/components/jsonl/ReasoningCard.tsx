@@ -4,7 +4,7 @@ import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import type { ReasoningItem } from '@/types/exec-jsonl'
-import { CodeBlock } from '@/components/code-block'
+import { CodeBlock } from '@/components/CodeBlock'
 
 export function ReasoningCard({ item }: { item: ReasoningItem }) {
   return (

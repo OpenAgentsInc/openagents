@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react-native'
 import { View, Text } from 'react-native'
-import { Collapsible } from '@/components/ui/collapsible'
+import { Collapsible } from '@/components/ui'
 import { Colors } from '@/constants/theme'
 
 const meta = { title: 'UI/Collapsible' } satisfies Meta
@@ -31,4 +31,3 @@ export const Closed: Story = {
     </View>
   ),
 }
-

@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react-native'
 import { View, Text } from 'react-native'
-import { CodeBlock } from '@/components/code-block'
+import { CodeBlock } from '@/components/CodeBlock'
 import { Colors } from '@/constants/theme'
 
 const meta = { title: 'App/CodeBlock' } satisfies Meta
@@ -25,4 +25,3 @@ export const Bash: Story = {
     </View>
   ),
 }
-

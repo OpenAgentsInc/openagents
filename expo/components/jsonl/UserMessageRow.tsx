@@ -4,7 +4,7 @@ import Markdown from "react-native-markdown-display"
 import { Colors } from "@/constants/theme"
 import { Typography } from "@/constants/typography"
 import { copyToClipboard } from '@/lib/copy'
-import { InlineToast } from '@/components/inline-toast'
+import { InlineToast } from '@/components/InlineToast'
 
 export function UserMessageRow({ text }: { text: string; numberOfLines?: number }) {
   const [copied, setCopied] = React.useState(false)

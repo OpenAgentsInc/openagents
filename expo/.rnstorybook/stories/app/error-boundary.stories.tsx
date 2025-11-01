@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react-native'
 import { View, Text, Pressable } from 'react-native'
-import { ErrorBoundary } from '@/components/error-boundary'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Colors } from '@/constants/theme'
 
 const meta = { title: 'App/ErrorBoundary' } satisfies Meta
@@ -30,4 +30,3 @@ export const Basic: Story = {
     </ErrorBoundary>
   ),
 }
-

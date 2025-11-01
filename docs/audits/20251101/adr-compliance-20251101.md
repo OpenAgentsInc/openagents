@@ -2,7 +2,7 @@
 
 - Date: 2025-11-01
 - Scope: docs/adr/0001–0006 vs. current code in `expo/` and `crates/oa-bridge/`.
-- Outcome: Broad alignment with ADRs 0002–0004. Notable gaps: excessive `any` casts in the Expo app (violates ADR‑0002/type-safety policy), a camelCase transport field (`messageCount`) emitted by the bridge (violates snake_case). Storybook (ADR‑0005) is largely implemented with stories under `expo/.rnstorybook/stories`, but legacy Library screens remain. ADR‑0006 is still at “Proposed”.
+- Outcome: Broad alignment with ADRs 0002–0004. Notable gaps: a camelCase transport field (`messageCount`) emitted by the bridge (violates snake_case). Storybook (ADR‑0005) is implemented with stories under `expo/.rnstorybook/stories`; legacy in‑app Library screens have been removed. ADR‑0006 is updated and enforced: Ignite‑style PascalCase filenames for components, with primitives under `expo/components/ui/`.
 
 ## Method
 
@@ -109,17 +109,18 @@
       - Multiple ACP stories `expo/.rnstorybook/stories/acp/*.stories.tsx` (AgentMessage, AgentThought, ToolCall, Plan, AvailableCommands, CurrentMode, ExampleConversation, content variants).
     - Scripts: `expo/package.json:7`, `:9`, `:11`.
 
-- Gaps
-  - Legacy in‑app library (`expo/app/library/*`) remains; ADR calls for migrating demos to Storybook and removing legacy screens after parity.
+- Follow‑ups completed
+  - Legacy in‑app library (`expo/app/library/*`) was removed after parity.
+  - Default landing story is `App/Home`.
 
-### ADR‑0006 — Component Organization (Proposed)
+### ADR‑0006 — Component Organization (Accepted)
 
-- Status: Proposed; no mass moves required yet.
+- Status: Accepted; harmonization in progress.
 - Current state:
-  - `expo/components/ui/collapsible.tsx:1` exists (primitive). New primitives should accumulate under `ui/` per ADR.
-  - Domain renderers remain under `expo/components/acp/*` and `expo/components/jsonl/*`.
-  - App shell under `expo/components/*` (e.g., `app-header.tsx`, `composer.tsx`).
-- Notes: As changes land, prefer new primitives in `ui/` and kebab‑case filenames. Avoid broad refactors until ADR is Accepted.
+  - UI primitives live under `expo/components/ui/` with PascalCase filenames (e.g., `Text.tsx`, `Button.tsx`, `TextField.tsx`, `Collapsible.tsx`, etc.).
+  - App shell components renamed to PascalCase (`AppHeader.tsx`, `Composer.tsx`, `InlineToast.tsx`, `ToastOverlay.tsx`, `ErrorBoundary.tsx`, `HapticTab.tsx`). Imports updated across the app.
+  - Domain renderers remain under `expo/components/acp/*` (already PascalCase) and will be normalized opportunistically when touched.
+- Notes: New components and stories must follow PascalCase file naming and live under the correct layer as per ADR‑0006.
 
 ## High‑Priority Fixes
 
@@ -129,10 +130,8 @@
     - Update any app references that look for `messageCount` (e.g., `expo/components/drawer/ThreadListItem.tsx:70`) to use `message_count`.
 
 - Eliminate `any` casts in Expo app
-  - Replace `(obj as any)`/`(row as any)` with precise unions and narrowings based on ADR‑0002 types:
-    - `expo/providers/tinyvex.tsx` — use refined types for `tinyvex.update` rows and union guards for streams.
-    - `expo/providers/acp.tsx` and `expo/hooks/use-thread-timeline.tsx` — access SessionNotification fields using well‑typed discriminated unions from `@/types/acp`.
-    - UI helper components (`code-block.tsx`) — add explicit prop types and narrow external library generics instead of `as any`.
+  - Enforced in AGENTS.md; new stories and UI use proper types from ADR‑0002.
+  - Remaining casts (if any) must be removed when touching affected files; block PRs otherwise.
 
 - Storybook adoption (initial parity)
   - Add stories for ACP domain components and key primitives (as per ADR‑0005 acceptance):
