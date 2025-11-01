@@ -1,0 +1,9 @@
+appId: com.openagents.app
+name: Library (Route) → ACP Plan
+---
+- launchApp
+- openLink: "exp://localhost:8081/--/library/acp-plan"
+- extendedWaitUntil:
+    visible:
+      id: plan
+    timeout: 60000
