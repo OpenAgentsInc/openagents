@@ -31,11 +31,13 @@ Additional flows are included but may require specific conditions (dev-client ro
 - `maestro test .maestro/flows/bridge_connect_manual.yaml`
 - (optional) `maestro test .maestro/flows/bridge_connect_and_stream.yaml`
 - `maestro test .maestro/flows/ui_thread_composer.yaml`
+- `maestro test .maestro/flows/bridge_header_indicator.yaml`
 - Or run everything: `scripts/maestro-run-all.sh`
 
 ## Stability Notes
 - Use id-based selectors and avoid raw text where possible. We added explicit `testID`s to Settings, header, composer, and ACP renderers.
 - Prefer opening the base dev-client link (`exp://localhost:8081`) and then using the drawer to navigate when direct route links prove flaky.
+- For Settings specifically, warming both the base route and `/--/thread/new` helps ensure the header is visible before drawer navigation.
 - The “Component Library” drawer entry is dev-only. Ensure `EXPO_PUBLIC_ENV=development` if you need to run Library flows.
 - Streaming assertions can be slow depending on the bridge; we increased waits. If `user-message` is delayed, asserting only `agent-message` is more robust.
 - Tinyvex WS contract is snake_case (ADR‑0002). If you built older code, restart the bridge to ensure the app and server agree on field names like `thread_id`.
