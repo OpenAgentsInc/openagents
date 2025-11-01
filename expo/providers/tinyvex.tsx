@@ -147,17 +147,17 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         const row = (u as TvxUpdateThreadsRow).row
         if (row && typeof row === 'object') {
           setThreads((prev) => {
-            const tid = String(((row as any)?.id || (row as any)?.thread_id || (row as any)?.threadId || ''))
+            const tid = String(((row as any)?.id || (row as any)?.thread_id || ''))
             if (!tid) return prev
             const next = Array.isArray(prev) ? [...prev] : []
-            const idx = next.findIndex((r: any) => String(((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')) === tid)
+            const idx = next.findIndex((r: any) => String(((r as any)?.id || (r as any)?.thread_id || '')) === tid)
             if (idx >= 0) next.splice(idx, 1)
             next.unshift(row as ThreadRow)
             return next
           })
           try {
             const setProvider = useThreadProviders.getState().setProvider
-            const tid = String(((row as any)?.id || (row as any)?.thread_id || (row as any)?.threadId || ''))
+            const tid = String(((row as any)?.id || (row as any)?.thread_id || ''))
             const src = String(((row as any)?.source || ''))
             if (tid) setProvider(tid, src === 'claude_code' ? 'claude_code' : 'codex')
           } catch {}

@@ -54,8 +54,8 @@ export default function ThreadScreen() {
     try {
       // Prefer canonical session id if the threads list records it as resume_id
       const rows: any[] = Array.isArray(threads) ? threads : []
-      const row = rows.find((r: any) => String((r?.id || r?.thread_id || r?.threadId || '')) === threadId)
-      const canon = String((row?.resume_id || row?.resumeId || threadId) || threadId)
+      const row = rows.find((r: any) => String((r?.id || r?.thread_id || '')) === threadId)
+      const canon = String((row?.resume_id || threadId) || threadId)
       queryToolCalls?.(canon, 50)
     } catch {}
   }, [threadId, subscribeMessages, queryMessages])
