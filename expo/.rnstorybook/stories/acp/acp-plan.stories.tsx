@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react-native'
-import { View } from 'react-native'
+import { View, Text } from 'react-native'
 import { SessionUpdatePlan } from '@/components/acp'
 import type { PlanEntry } from '@/types/acp'
 import { Colors } from '@/constants/theme'
@@ -23,6 +23,12 @@ export const Basic: Story = {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16 }}>
         <SessionUpdatePlan entries={entries} />
+        <View style={{ marginTop: 12 }}>
+          <Text style={{ color: Colors.secondary }}>Component: SessionUpdatePlan</Text>
+          <Text style={{ color: Colors.foreground }}>Displays a checklist-like plan with status icons.</Text>
+          <Text style={{ color: Colors.secondary, marginTop: 6 }}>Props</Text>
+          <Text style={{ color: Colors.foreground }}>{'entries: ReadonlyArray<PlanEntry> — each entry has content, priority, status'}</Text>
+        </View>
       </View>
     )
   },
