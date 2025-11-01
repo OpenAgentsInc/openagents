@@ -1,6 +1,8 @@
 appId: com.openagents.app
 name: Session Submit And Stream
 onFlowStart:
+  # Configure Bridge via deep link and auto-connect
+  - openLink: "openagents://connect?j=eyJ2IjoxLCJ0eXBlIjoiYnJpZGdlIiwiaG9zdHMiOlsiMTI3LjAuMC4xOjg3ODciXSwidG9rZW4iOm51bGx9"
   - launchApp
   - waitForIdle
 steps:

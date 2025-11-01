@@ -2,25 +2,24 @@ appId: com.openagents.app
 name: Connect And Persist
 onFlowStart:
   - clearState
+  # Configure Bridge via deep link and auto-connect
+  - openLink: "openagents://connect?j=eyJ2IjoxLCJ0eXBlIjoiYnJpZGdlIiwiaG9zdHMiOlsiMTI3LjAuMC4xOjg3ODciXSwidG9rZW4iOm51bGx9"
   - launchApp
   - waitForIdle
 steps:
+  # Verify header dot turns green (indicator exists)
+  - waitForVisible:
+      id: header-connection-indicator
+      timeout: 15000
+  # Optional: peek at Settings and validate pill text
   - tapOn:
       id: header-menu-button
   - tapOn:
       text: Settings
   - waitForVisible:
       id: settings-status
-  - runFlow:
-      when:
-        notVisible: "Connected"
-      commands:
-        - tapOn:
-            id: settings-connect
-        - waitForVisible:
-            text: Connected
-  - assertVisible:
-      text: Connected
+  - assertVisible: Connected
+  # Relaunch and confirm indicator persists
   - closeApp
   - launchApp
   - waitForVisible:
