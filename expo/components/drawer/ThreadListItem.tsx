@@ -14,6 +14,7 @@ export function ThreadListItemBase({
   count,
   onPress,
   onLongPress,
+  testID,
 }: {
   title: string
   meta?: React.ReactNode
@@ -21,10 +22,11 @@ export function ThreadListItemBase({
   count?: number | null
   onPress?: () => void
   onLongPress?: () => void
+  testID?: string
 }) {
   const ts = typeof timestamp === 'number' && timestamp > 0 ? formatRelative(new Date(timestamp).getTime()) : ''
   return (
-    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300} accessibilityRole="button" testID={testID} style={{ paddingVertical: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <View style={{ flex: 1, paddingRight: 8 }}>
           <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{title || 'Thread'}</Text>
@@ -145,7 +147,15 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
     )
   })()
   return (
-    <ThreadListItemBase title={lastSnippet || String(row?.title || 'Thread')} meta={meta} timestamp={updatedAt} count={typeof count === 'number' ? count : undefined} onPress={open} onLongPress={onLongPress} />
+    <ThreadListItemBase
+      title={lastSnippet || String(row?.title || 'Thread')}
+      meta={meta}
+      timestamp={updatedAt}
+      count={typeof count === 'number' ? count : undefined}
+      onPress={open}
+      onLongPress={onLongPress}
+      testID={`drawer-thread-${threadId}`}
+    />
   )
 }
 
