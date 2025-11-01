@@ -57,6 +57,21 @@ name: Bridge Connect and Stream
     visible:
       id: agent-message
     timeout: 120000
+# Retry once if no agent message rendered yet
+- runFlow:
+    when:
+      notVisible:
+        id: agent-message
+    commands:
+      - inputText:
+          id: composer-input
+          text: "Hello again"
+      - tapOn:
+          id: composer-send
+      - extendedWaitUntil:
+          visible:
+            id: agent-message
+          timeout: 120000
 # Finally, open drawer and assert history container
 - tapOn:
     id: header-menu-button
