@@ -525,11 +525,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             ControlCommand::SyncStatus => {
                                 let enabled = stdin_state.sync_enabled.load(std::sync::atomic::Ordering::Relaxed);
                                 let two_way = stdin_state.sync_two_way.load(std::sync::atomic::Ordering::Relaxed);
-                                let base = crate::watchers::codex_base_path();
-                                // Count JSONL files (best-effort)
-                                let files = {
+                                fn count_jsonl(base: &std::path::Path) -> i64 {
                                     let mut count = 0usize;
-                                    let mut stack = vec![base.clone()];
+                                    let mut stack = vec![base.to_path_buf()];
                                     while let Some(dir) = stack.pop() {
                                         if let Ok(rd) = std::fs::read_dir(&dir) {
                                             for ent in rd.flatten() {
@@ -539,48 +537,51 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             }
                                         }
                                     }
-                                    count
-                                } as i64;
+                                    count as i64
+                                }
                                 let last = { *stdin_state.sync_last_read_ms.lock().await } as i64;
-                                // Emit snake_case fields per SyncStatusTs
+                                let mut watched = Vec::new();
+                                let codex_base = crate::watchers::codex_base_path();
+                                watched.push(serde_json::json!({
+                                    "provider": "codex",
+                                    "base": codex_base.display().to_string(),
+                                    "files": count_jsonl(&codex_base),
+                                    "last_read": last
+                                }));
+                                let claude_base = crate::watchers::claude_projects_base_path();
+                                watched.push(serde_json::json!({
+                                    "provider": "claude",
+                                    "base": claude_base.display().to_string(),
+                                    "files": count_jsonl(&claude_base),
+                                    "last_read": last
+                                }));
                                 let line = serde_json::json!({
                                     "type": "bridge.sync_status",
                                     "enabled": enabled,
                                     "two_way": two_way,
-                                    "watched": [{
-                                        "provider": "codex",
-                                        "base": base.display().to_string(),
-                                        "files": files,
-                                        "last_read": last
-                                    }]
+                                    "watched": watched
                                 }).to_string();
                                 let _ = stdin_state.tx.send(line);
                             }
                             ControlCommand::SyncEnable { enabled } => {
                                 stdin_state.sync_enabled.store(enabled, std::sync::atomic::Ordering::Relaxed);
                                 let tx_opt = stdin_state.sync_cmd_tx.lock().await.clone();
-                                if let Some(tx) = tx_opt {
-                                    if let Err(err) = tx.send(SyncCommand::Enable(enabled)).await {
-                                        tracing::warn!(?err, "sync enable send failed");
-                                    }
-                                }
+                                if let Some(tx) = tx_opt { let _ = tx.send(SyncCommand::Enable(enabled)).await; }
+                                let tx2_opt = stdin_state.sync_cmd_tx_claude.lock().await.clone();
+                                if let Some(tx2) = tx2_opt { let _ = tx2.send(SyncCommand::Enable(enabled)).await; }
                             }
                             ControlCommand::SyncTwoWay { enabled } => {
                                 stdin_state.sync_two_way.store(enabled, std::sync::atomic::Ordering::Relaxed);
                                 let tx_opt = stdin_state.sync_cmd_tx.lock().await.clone();
-                                if let Some(tx) = tx_opt {
-                                    if let Err(err) = tx.send(SyncCommand::TwoWay(enabled)).await {
-                                        tracing::warn!(?err, "sync twoWay send failed");
-                                    }
-                                }
+                                if let Some(tx) = tx_opt { let _ = tx.send(SyncCommand::TwoWay(enabled)).await; }
+                                let tx2_opt = stdin_state.sync_cmd_tx_claude.lock().await.clone();
+                                if let Some(tx2) = tx2_opt { let _ = tx2.send(SyncCommand::TwoWay(enabled)).await; }
                             }
                             ControlCommand::SyncFullRescan => {
                                 let tx_opt = stdin_state.sync_cmd_tx.lock().await.clone();
-                                if let Some(tx) = tx_opt {
-                                    if let Err(err) = tx.send(SyncCommand::FullRescan).await {
-                                        tracing::warn!(?err, "sync fullRescan send failed");
-                                    }
-                                }
+                                if let Some(tx) = tx_opt { let _ = tx.send(SyncCommand::FullRescan).await; }
+                                let tx2_opt = stdin_state.sync_cmd_tx_claude.lock().await.clone();
+                                if let Some(tx2) = tx2_opt { let _ = tx2.send(SyncCommand::FullRescan).await; }
                             }
                             ControlCommand::TvxMutate { name, args } => {
                                 // Echo the requested mutation so fields are read and visible to clients
@@ -846,6 +847,7 @@ mod auth_tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
         })
     }
 

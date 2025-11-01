@@ -304,12 +304,18 @@ pub async fn mirror_acp_update_to_tinyvex(
 
     // Optional: two-way writer — persist non-Codex provider sessions as Codex-compatible JSONL
     // Guarded by `sync_two_way` and only for non-"codex" provider.
-    if provider != "codex" && state.sync_two_way.load(std::sync::atomic::Ordering::Relaxed) {
+    if state.sync_two_way.load(std::sync::atomic::Ordering::Relaxed) {
         let thread = thread_id.to_string();
+        let prov = provider.to_string();
         let upd = update.clone();
         tokio::spawn(async move {
-            if let Err(e) = append_two_way_jsonl(&thread, &upd).await {
-                tracing::warn!(?e, thread_id=%thread, "two_way_writer: append failed");
+            let res = match prov.as_str() {
+                "codex" => Ok(()), // Codex persists its own logs
+                "claude_code" => append_two_way_jsonl_claude(&thread, &upd).await,
+                _ => append_two_way_jsonl_codex_compat(&thread, &upd).await,
+            };
+            if let Err(e) = res {
+                tracing::warn!(?e, thread_id=%thread, provider=%prov, "two_way_writer: append failed");
             }
         });
     }
@@ -361,7 +367,7 @@ pub async fn mirror_acp_update_to_tinyvex_mode(
     mirror_acp_update_to_tinyvex(state, provider, thread_id, update).await;
 }
 
-fn two_way_base_dir() -> std::path::PathBuf {
+fn two_way_base_dir_codex_openagents() -> std::path::PathBuf {
     // Honor CODEXD_HISTORY_DIR via the shared helper used by the watcher,
     // then append our provider namespace to avoid collisions.
     let p = crate::watchers::codex_base_path().join("openagents");
@@ -369,42 +375,292 @@ fn two_way_base_dir() -> std::path::PathBuf {
     p
 }
 
-async fn append_two_way_jsonl(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
-    use agent_client_protocol::SessionUpdate as SU;
-    let base = two_way_base_dir();
+fn claude_projects_base_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("CLAUDE_PROJECTS_DIR") {
+        let dir = std::path::PathBuf::from(p);
+        let _ = std::fs::create_dir_all(&dir);
+        return dir;
+    }
+    // Default to ~/.claude/projects
+    let base = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or(std::env::temp_dir());
+    let dir = base.join(".claude").join("projects");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+fn sanitize_cwd_for_projects_dir(p: &std::path::Path) -> String {
+    let s = p.to_string_lossy();
+    let mut out = String::with_capacity(s.len() + 2);
+    for ch in s.chars() {
+        match ch {
+            '/' | '\\' | ' ' | ':' => out.push('-'),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+async fn append_two_way_jsonl_codex_compat(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
+    use agent_client_protocol::{SessionUpdate as SU, ContentBlock, ToolCallStatus, ToolKind};
+    let base = two_way_base_dir_codex_openagents();
     let file_path = base.join(format!("{}.jsonl", thread_id));
-    // Map ACP update → Codex-style JSONL event(s)
-    let lines: Vec<serde_json::Value> = match update {
+
+    // Helper to append lines with a thread.started header on first write
+    let write_lines = |file_path: &std::path::Path, thread: &str, lines: Vec<serde_json::Value>| -> anyhow::Result<()> {
+        if lines.is_empty() { return Ok(()); }
+        use std::io::Write;
+        let first_write = !file_path.exists() || std::fs::metadata(file_path).map(|m| m.len() == 0).unwrap_or(true);
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file_path)?;
+        if first_write {
+            let started = serde_json::json!({"type":"thread.started","thread_id": thread});
+            writeln!(f, "{}", started.to_string())?;
+        }
+        for v in lines { writeln!(f, "{}", v.to_string())?; }
+        Ok(())
+    };
+
+    let mut lines: Vec<serde_json::Value> = Vec::new();
+    match update {
+        // Textual items → completed lines
         SU::UserMessageChunk(ch) => {
-            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
-            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"user_message","text": text}})] }
+            let text = match &ch.content { ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if !text.is_empty() { lines.push(serde_json::json!({"type":"item.completed","item":{"type":"user_message","text": text}})); }
         }
         SU::AgentMessageChunk(ch) => {
-            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
-            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text": text}})] }
+            let text = match &ch.content { ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if !text.is_empty() { lines.push(serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text": text}})); }
         }
         SU::AgentThoughtChunk(ch) => {
-            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
-            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"reasoning","text": text}})] }
+            let text = match &ch.content { ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if !text.is_empty() { lines.push(serde_json::json!({"type":"item.completed","item":{"type":"reasoning","text": text}})); }
         }
-        _ => Vec::new(),
-    };
+        // ToolCall → item.started (status in_progress)
+        SU::ToolCall(call) => {
+            match call.kind {
+                ToolKind::Execute => {
+                    let mut v = serde_json::json!({"type":"command_execution","status":"in_progress","id": call.id.0.as_ref()});
+                    if let Some(raw) = &call.raw_input {
+                        if let Some(cmd) = raw.get("command").and_then(|x| x.as_str()) { v["command"] = serde_json::json!(cmd); }
+                        if let Some(cmd) = raw.get("cmd").and_then(|x| x.as_str()) { v["command"] = serde_json::json!(cmd); }
+                    }
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+                ToolKind::Edit => {
+                    let mut changes: Vec<serde_json::Value> = Vec::new();
+                    for loc in &call.locations {
+                        let p = &loc.path;
+                        let non_empty = match p.as_os_str().is_empty() { false => true, true => false };
+                        if non_empty {
+                            let path_str = p.to_string_lossy().to_string();
+                            changes.push(serde_json::json!({"path": path_str, "kind": "edit"}));
+                        }
+                    }
+                    let mut v = serde_json::json!({"type":"file_change","status":"in_progress","id": call.id.0.as_ref()});
+                    if !changes.is_empty() { v["changes"] = serde_json::json!(changes); }
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+                ToolKind::Search => {
+                    let mut v = serde_json::json!({"type":"web_search","status":"in_progress","id": call.id.0.as_ref()});
+                    if let Some(raw) = &call.raw_input { if let Some(q) = raw.get("query").and_then(|x| x.as_str()) { v["query"] = serde_json::json!(q); } }
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+                ToolKind::Fetch => {
+                    let mut v = serde_json::json!({"type":"web_fetch","status":"in_progress","id": call.id.0.as_ref()});
+                    if let Some(raw) = &call.raw_input { if let Some(u) = raw.get("url").and_then(|x| x.as_str()) { v["url"] = serde_json::json!(u); } }
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+                _ => {
+                    let v = serde_json::json!({"type":"mcp_tool_call","status":"in_progress","id": call.id.0.as_ref()});
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+            }
+        }
+        // ToolCallUpdate → item.completed with status and optional stdout/text summary
+        SU::ToolCallUpdate(up) => {
+            let status = match up.fields.status.unwrap_or(ToolCallStatus::Completed) {
+                ToolCallStatus::Failed => "failed",
+                ToolCallStatus::InProgress => "in_progress",
+                ToolCallStatus::Pending => "pending",
+                ToolCallStatus::Completed => "completed",
+            };
+            let mut summary: Option<String> = None;
+            if let Some(content) = &up.fields.content {
+                let mut buf = String::new();
+                for c in content {
+                    if let Ok(val) = serde_json::to_value(c) {
+                        if val.get("type").and_then(|x| x.as_str()) == Some("text") {
+                            if let Some(t) = val.get("text").and_then(|x| x.as_str()) {
+                                if !buf.is_empty() { buf.push('\n'); }
+                                buf.push_str(t);
+                            }
+                        }
+                    }
+                }
+                if !buf.trim().is_empty() { summary = Some(buf); }
+            }
+            if summary.is_none() {
+                if let Some(raw) = &up.fields.raw_output {
+                    if let Some(stdout) = raw.get("stdout").and_then(|x| x.as_str()) { if !stdout.is_empty() { summary = Some(stdout.to_string()); } }
+                }
+            }
+            let mut item = serde_json::json!({"type":"mcp_tool_call","id": up.id.0.as_ref(), "status": status});
+            if let Some(text) = summary { item["stdout"] = serde_json::json!(text); }
+            lines.push(serde_json::json!({"type":"item.completed","item": item}));
+        }
+        // Plan → todo_list completion
+        SU::Plan(plan) => {
+            let mut items: Vec<serde_json::Value> = Vec::new();
+            for e in &plan.entries {
+                let completed = matches!(e.status, agent_client_protocol::PlanEntryStatus::Completed);
+                items.push(serde_json::json!({"text": e.content, "completed": completed}));
+            }
+            if !items.is_empty() {
+                lines.push(serde_json::json!({"type":"item.completed","item": {"type":"todo_list","items": items}}));
+            }
+        }
+        _ => {}
+    }
+
     if lines.is_empty() { return Ok(()); }
     tokio::task::spawn_blocking({
         let thread = thread_id.to_string();
-        move || -> anyhow::Result<()> {
-            use std::io::Write;
-            let first_write = !file_path.exists() || std::fs::metadata(&file_path).map(|m| m.len()==0).unwrap_or(true);
-            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&file_path)?;
-            if first_write {
-                let started = serde_json::json!({"type":"thread.started","thread_id": thread});
-                writeln!(f, "{}", started.to_string())?;
+        let file_path = file_path.clone();
+        move || -> anyhow::Result<()> { write_lines(&file_path, &thread, lines) }
+    }).await??;
+    Ok(())
+}
+
+fn map_acp_to_claude_stream_lines(update: &agent_client_protocol::SessionUpdate) -> Vec<serde_json::Value> {
+    use agent_client_protocol::{SessionUpdate as SU, ContentBlock, ToolCallStatus, ToolKind};
+    let mut lines: Vec<serde_json::Value> = Vec::new();
+    match update {
+        // Messages
+        SU::UserMessageChunk(ch) => {
+            if let ContentBlock::Text(t) = &ch.content {
+                if !t.text.is_empty() {
+                    lines.push(serde_json::json!({
+                        "type": "user",
+                        "message": {"content": [{"type":"text","text": t.text}]}
+                    }));
+                }
             }
-            for v in lines {
-                writeln!(f, "{}", v.to_string())?;
-            }
-            Ok(())
         }
+        SU::AgentMessageChunk(ch) | SU::AgentThoughtChunk(ch) => {
+            if let ContentBlock::Text(t) = &ch.content {
+                if !t.text.is_empty() {
+                    lines.push(serde_json::json!({
+                        "type": "assistant",
+                        "message": {"content": [{"type":"text","text": t.text}]}
+                    }));
+                }
+            }
+        }
+        // Tool call start → content_block_start.tool_use
+        SU::ToolCall(call) => {
+            let name = match call.kind {
+                ToolKind::Execute => "Bash",
+                ToolKind::Edit => "Edit",
+                ToolKind::Read => "Read",
+                ToolKind::Search => "WebSearch",
+                ToolKind::Fetch => "WebFetch",
+                _ => "Tool",
+            };
+            let input = call.raw_input.clone().unwrap_or(serde_json::json!({}));
+            lines.push(serde_json::json!({
+                "type": "content_block_start",
+                "content_block": {"type":"tool_use","id": call.id.0.as_ref(), "name": name, "input": input}
+            }));
+        }
+        // Tool call update → top-level tool_result
+        SU::ToolCallUpdate(up) => {
+            let is_error = matches!(up.fields.status.unwrap_or(ToolCallStatus::Completed), ToolCallStatus::Failed);
+            // Prefer text aggregation from content; else raw_output.stdout
+            let mut text: Option<String> = None;
+            if let Some(content) = &up.fields.content {
+                let mut buf = String::new();
+                for c in content {
+                    if let Ok(val) = serde_json::to_value(c) {
+                        if val.get("type").and_then(|x| x.as_str()) == Some("text") {
+                            if let Some(tx) = val.get("text").and_then(|x| x.as_str()) {
+                                if !buf.is_empty() { buf.push('\n'); }
+                                buf.push_str(tx);
+                            }
+                        }
+                    }
+                }
+                if !buf.trim().is_empty() { text = Some(buf); }
+            }
+            if text.is_none() {
+                if let Some(raw) = &up.fields.raw_output {
+                    if let Some(stdout) = raw.get("stdout").and_then(|x| x.as_str()) {
+                        if !stdout.is_empty() { text = Some(stdout.to_string()); }
+                    }
+                }
+            }
+            let content_val = text.map(|s| serde_json::json!({"type":"text","text": s})).unwrap_or(serde_json::json!(null));
+            let mut obj = serde_json::json!({
+                "type": "tool_result",
+                "tool_use_id": up.id.0.as_ref(),
+                "is_error": is_error,
+            });
+            if !content_val.is_null() { obj["content"] = content_val; }
+            lines.push(obj);
+        }
+        // Plan → assistant text (simple checklist)
+        SU::Plan(plan) => {
+            if !plan.entries.is_empty() {
+                let mut s = String::new();
+                for e in &plan.entries {
+                    let done = matches!(e.status, agent_client_protocol::PlanEntryStatus::Completed);
+                    let mark = if done { "[x]" } else { "[ ]" };
+                    s.push_str(&format!("- {} {}\n", mark, e.content));
+                }
+                lines.push(serde_json::json!({
+                    "type": "assistant",
+                    "message": {"content": [{"type":"text","text": s}]}
+                }));
+            }
+        }
+        _ => {}
+    }
+    lines
+}
+
+async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
+    // Persist to Claude’s transcript folder for the current repo/project
+    let base = claude_projects_base_path();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let dir = base.join(sanitize_cwd_for_projects_dir(&cwd));
+    let _ = std::fs::create_dir_all(&dir);
+    let file_path = dir.join(format!("{}.jsonl", thread_id));
+
+    // Helper to append lines with a system init header on first write
+    let write_lines = |file_path: &std::path::Path, _session_id: &str, lines: Vec<serde_json::Value>| -> anyhow::Result<()> {
+        if lines.is_empty() { return Ok(()); }
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file_path)?;
+        for v in lines { writeln!(f, "{}", v.to_string())?; }
+        Ok(())
+    };
+
+    // Wrap ACP→Claude stream lines with minimal transcript metadata (cwd, sessionId)
+    let cwd_str = std::env::current_dir().ok().map(|p| p.display().to_string()).unwrap_or_else(|| "".into());
+    let lines: Vec<serde_json::Value> = map_acp_to_claude_stream_lines(update)
+        .into_iter()
+        .map(|mut v| {
+            if v.get("message").is_some() || v.get("type").and_then(|x| x.as_str()).is_some() {
+                v["cwd"] = serde_json::json!(cwd_str);
+                v["sessionId"] = serde_json::json!(thread_id);
+            }
+            v
+        })
+        .collect();
+
+    if lines.is_empty() { return Ok(()); }
+    tokio::task::spawn_blocking({
+        let sid = thread_id.to_string();
+        let file_path = file_path.clone();
+        move || -> anyhow::Result<()> { write_lines(&file_path, &sid, lines) }
     }).await??;
     Ok(())
 }
@@ -413,6 +669,7 @@ async fn append_two_way_jsonl(thread_id: &str, update: &agent_client_protocol::S
 mod tests {
     use super::*;
     use tokio::sync::{broadcast, Mutex};
+    use serde_json::json;
 
     #[tokio::test]
     async fn tinyvex_stream_upsert_broadcasts() {
@@ -444,6 +701,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
             client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;
@@ -494,6 +752,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
             client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         finalize_or_snapshot(&state, "th", "assistant", "hello world").await;
@@ -535,6 +794,7 @@ mod tests {
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
             client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         // Simulate deltas then final.
@@ -543,5 +803,46 @@ mod tests {
         let rows = state.tinyvex.list_messages("th", 50).unwrap();
         assert_eq!(rows.len(), 1, "expected exactly one finalized row");
         assert_eq!(rows[0].partial, Some(0));
+    }
+
+    #[test]
+    fn two_way_claude_maps_lines_and_roundtrips_minimally() {
+        // Arrange
+        // ToolCall (Execute) → content_block_start.tool_use
+        use agent_client_protocol::{ToolCall, ToolCallId, ToolKind, ToolCallStatus};
+        let call = ToolCall {
+            id: ToolCallId(std::sync::Arc::from("tu_1")),
+            title: "Bash".into(),
+            kind: ToolKind::Execute,
+            status: ToolCallStatus::Pending,
+            content: vec![],
+            locations: vec![],
+            raw_input: Some(json!({"command":"echo hi"})),
+            raw_output: None,
+            meta: None,
+        };
+        let lines1 = map_acp_to_claude_stream_lines(&agent_client_protocol::SessionUpdate::ToolCall(call));
+        // ToolCallUpdate (Completed) → tool_result
+        let mut fields = agent_client_protocol::ToolCallUpdateFields::default();
+        fields.status = Some(ToolCallStatus::Completed);
+        let upd = agent_client_protocol::ToolCallUpdate { id: agent_client_protocol::ToolCallId(std::sync::Arc::from("tu_1")), fields, meta: None };
+        let lines2 = map_acp_to_claude_stream_lines(&agent_client_protocol::SessionUpdate::ToolCallUpdate(upd));
+        // tool_use
+        let tool_use_line = lines1.into_iter().next().expect("tool_use line");
+        assert_eq!(tool_use_line.get("type").and_then(|x| x.as_str()), Some("content_block_start"));
+        let cb = tool_use_line.get("content_block").unwrap();
+        assert_eq!(cb.get("type").and_then(|x| x.as_str()), Some("tool_use"));
+        assert_eq!(cb.get("id").and_then(|x| x.as_str()), Some("tu_1"));
+
+        // Translate to ACP to ensure compatibility
+        let su1 = acp_event_translator::translate_claude_event_to_acp_update(&tool_use_line).expect("map tool_use");
+        match su1 { agent_client_protocol::SessionUpdate::ToolCall(_c) => {}, _ => panic!("expected ToolCall") }
+
+        // tool_result
+        let tool_res_line = lines2.into_iter().next().expect("tool_result line");
+        assert_eq!(tool_res_line.get("type").and_then(|x| x.as_str()), Some("tool_result"));
+        assert_eq!(tool_res_line.get("tool_use_id").and_then(|x| x.as_str()), Some("tu_1"));
+        let su2 = acp_event_translator::translate_claude_event_to_acp_update(&tool_res_line).expect("map tool_result");
+        match su2 { agent_client_protocol::SessionUpdate::ToolCallUpdate(_u) => {}, _ => panic!("expected ToolCallUpdate") }
     }
 }

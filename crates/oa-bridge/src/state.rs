@@ -55,6 +55,8 @@ pub struct AppState {
     pub sync_two_way: AtomicBool,
     pub sync_last_read_ms: Mutex<u64>,
     pub sync_cmd_tx: Mutex<Option<mpsc::Sender<crate::watchers::SyncCommand>>>,
+    // Additional watcher command channel (Claude)
+    pub sync_cmd_tx_claude: Mutex<Option<mpsc::Sender<crate::watchers::SyncCommand>>>,
     // Map client thread doc id -> last known session id (for per-thread resume)
     pub sessions_by_client_doc: Mutex<HashMap<String, String>>,
     // Map session id -> client thread doc id (alias for watcher mirroring)
