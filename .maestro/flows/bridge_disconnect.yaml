@@ -62,7 +62,7 @@ name: Bridge → Disconnect via Settings
     id: settings-host-input
 - inputText:
     id: settings-host-input
-    text: "192.168.1.11:8788"
+    text: "192.168.1.94:8788"
 - tapOn:
     id: settings-token-input
 - inputText:

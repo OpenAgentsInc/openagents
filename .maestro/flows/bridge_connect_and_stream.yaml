@@ -2,17 +2,37 @@ appId: com.openagents.app
 name: Bridge Connect and Stream
 ---
 - launchApp
- - openLink: "exp://localhost:8081"
- - openLink: "exp://localhost:8081/--/settings"
-- extendedWaitUntil:
-    visible:
-      id: settings-root
-    timeout: 90000
+- openLink: "exp://localhost:8081"
+# Navigate to Settings via drawer first, then fall back to deep link
+- runFlow:
+    when:
+      visible:
+        id: header-menu-button
+    commands:
+      - tapOn:
+          id: header-menu-button
+      - extendedWaitUntil:
+          visible:
+            id: drawer-settings
+          timeout: 30000
+      - tapOn:
+          id: drawer-settings
+- runFlow:
+    when:
+      notVisible:
+        id: settings-host-input
+    commands:
+      - openLink: "exp://localhost:8081/--/settings"
+      - extendedWaitUntil:
+          visible:
+            id: settings-host-input
+          timeout: 90000
+# Fill host and token
 - tapOn:
     id: settings-host-input
 - inputText:
     id: settings-host-input
-    text: "192.168.1.11:8788"
+    text: "192.168.1.94:8788"
 - tapOn:
     id: settings-token-input
 - inputText:
@@ -44,16 +64,12 @@ name: Bridge Connect and Stream
 - tapOn:
     id: composer-send
 
-# Then send main message and assert reply
+# Then send main message and assert history container
 - inputText:
     id: composer-input
     text: "Hello from Maestro"
 - tapOn:
     id: composer-send
-
-# Non-blocking observation of streamed content is intentionally skipped here due to
-# provider/environment variability. We assert drawer history after sending.
-# Finally, open drawer and assert history container
 - tapOn:
     id: header-menu-button
 - extendedWaitUntil:
