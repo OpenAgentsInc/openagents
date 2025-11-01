@@ -3,21 +3,19 @@ name: Bridge Connect (Manual Host/Token)
 ---
 - launchApp
 - openLink: "exp://localhost:8081"
-# Navigate to Settings via drawer if available; otherwise open route
-- runFlow:
-    when:
-      visible:
-        id: header-menu-button
-    commands:
-      - tapOn:
-          id: header-menu-button
-      - extendedWaitUntil:
-          visible:
-            id: drawer-settings
-          timeout: 30000
-      - tapOn:
-          id: drawer-settings
-- openLink: "exp://localhost:8081/--/settings"
+# Wait for header menu (root screen) and open Settings via drawer
+- extendedWaitUntil:
+    visible:
+      id: header-menu-button
+    timeout: 90000
+- tapOn:
+    id: header-menu-button
+- extendedWaitUntil:
+    visible:
+      id: drawer-settings
+    timeout: 30000
+- tapOn:
+    id: drawer-settings
 - extendedWaitUntil:
     visible:
       id: settings-status
