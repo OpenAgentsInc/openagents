@@ -13,6 +13,10 @@ name: UI Drawer → Settings
     commands:
       - tapOn:
           id: header-menu-button
+      - extendedWaitUntil:
+          visible:
+            id: drawer-settings
+          timeout: 30000
 # Tap Settings by id (drawer item has testID)
 - runFlow:
     when:
