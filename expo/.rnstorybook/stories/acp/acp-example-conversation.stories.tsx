@@ -16,32 +16,54 @@ type Story = StoryObj<typeof meta>
 export const Basic: Story = {
   render: () => (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, gap: 12 }}>
-      {exampleItems.map((it) => (
-        <View key={it.id}>
-          {it.type === 'user_message' ? (
-            <SessionUpdateUserMessageChunk content={it.content as any} />
-          ) : null}
-          {it.type === 'agent_message' ? (
-            <SessionUpdateAgentMessageChunk content={it.content as any} />
-          ) : null}
-          {it.type === 'agent_thought' ? (
-            <SessionUpdateAgentThoughtChunk content={it.content as any} />
-          ) : null}
-          {it.type === 'current_mode_update' ? (
-            <SessionUpdateCurrentModeUpdate currentModeId={String(it.currentModeId)} />
-          ) : null}
-          {it.type === 'available_commands_update' ? (
-            <SessionUpdateAvailableCommandsUpdate available_commands={(it as any).available_commands} />
-          ) : null}
-          {it.type === 'plan' ? (
-            <SessionUpdatePlan entries={(it as any).entries} />
-          ) : null}
-          {it.type === 'tool_call' ? (
-            <SessionUpdateToolCall {...(it as any).props} />
-          ) : null}
-        </View>
-      ))}
+      {exampleItems.map((it) => {
+        switch (it.type) {
+          case 'user_message':
+            return (
+              <View key={it.id}>
+                <SessionUpdateUserMessageChunk content={it.content} />
+              </View>
+            )
+          case 'agent_message':
+            return (
+              <View key={it.id}>
+                <SessionUpdateAgentMessageChunk content={it.content} />
+              </View>
+            )
+          case 'agent_thought':
+            return (
+              <View key={it.id}>
+                <SessionUpdateAgentThoughtChunk content={it.content} />
+              </View>
+            )
+          case 'current_mode_update':
+            return (
+              <View key={it.id}>
+                <SessionUpdateCurrentModeUpdate currentModeId={it.currentModeId} />
+              </View>
+            )
+          case 'available_commands_update':
+            return (
+              <View key={it.id}>
+                <SessionUpdateAvailableCommandsUpdate available_commands={it.available_commands} />
+              </View>
+            )
+          case 'plan':
+            return (
+              <View key={it.id}>
+                <SessionUpdatePlan entries={it.entries} />
+              </View>
+            )
+          case 'tool_call':
+            return (
+              <View key={it.id}>
+                <SessionUpdateToolCall {...it.props} />
+              </View>
+            )
+          default:
+            return null
+        }
+      })}
     </ScrollView>
   ),
 }
-

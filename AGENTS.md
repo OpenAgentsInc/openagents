@@ -40,6 +40,11 @@
   - Rust deps: add via `cargo add` without versions; let Cargo lock at root.
   - Security: no secrets; iOS bundle id `com.openagents.app`.
   - Gotchas: none specific to paths with parentheses now; the `(tabs)` group has been removed.
+  - Type safety (MANDATORY): Never cast to `any` in this repo. Always use real types from ADR‑0002’s sources of truth:
+    - ACP and update/content types from `@agentclientprotocol/sdk` re‑exported via `@/types/acp`.
+    - Bridge/Tinyvex transport types generated under `expo/types/bridge/*`.
+    - If a correct type cannot be identified, STOP and flag in your PR or task comments. Do not land code that uses `any`.
+    - Stories and UI examples must also be fully typed — no `as any` shims. Prefer explicit type annotations for props and sample data.
 
 ## Project Structure & Module Organization
 - Mobile app: `expo/` (Expo Router in `expo/app/`, assets in `expo/assets/`).

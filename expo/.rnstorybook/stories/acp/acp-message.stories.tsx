@@ -15,8 +15,7 @@ type Story = StoryObj<typeof meta>
 export const Basic: Story = {
   render: () => (
     <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16 }}>
-      <SessionUpdateAgentMessageChunk content={{ type: 'text', text: '**Hello** from ACP!\n\n- bullet\n- list' } as any} />
+      <SessionUpdateAgentMessageChunk content={{ type: 'text', text: '**Hello** from ACP!\n\n- bullet\n- list' }} />
     </View>
   ),
 }
-
