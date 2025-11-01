@@ -18,17 +18,17 @@ name: Bridge → Disconnect via Settings
           timeout: 30000
       - tapOn:
           id: drawer-settings
-# If Settings still not rendered, deep-link to /settings
+# If Settings still not rendered, deep-link to /settings and wait
 - runFlow:
     when:
       notVisible:
         id: settings-root
     commands:
       - openLink: "exp://localhost:8081/--/settings"
-- extendedWaitUntil:
-    visible:
-      id: settings-root
-    timeout: 90000
+      - extendedWaitUntil:
+          visible:
+            id: settings-root
+          timeout: 90000
 # Final fallback: if still not visible, retry drawer and accept host input visibility
 - runFlow:
     when:
