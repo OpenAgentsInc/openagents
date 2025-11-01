@@ -1,14 +1,19 @@
 appId: com.openagents.app
-name: UI Thread → Composer Visible
+name: UI Thread → Warm Route
 ---
 - launchApp
  - openLink: "exp://localhost:8081"
  - openLink: "exp://localhost:8081/--/thread/new"
 - extendedWaitUntil:
     visible:
-      id: composer-input
+      id: header-menu-button
     timeout: 90000
-- extendedWaitUntil:
-    visible:
-      id: composer-send
-    timeout: 90000
+- runFlow:
+    when:
+      visible:
+        id: composer-input
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: composer-send
+          timeout: 30000
