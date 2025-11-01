@@ -8,6 +8,23 @@ name: Bridge Connect (Manual Host/Token)
     visible:
       id: settings-status
     timeout: 90000
+- runFlow:
+    when:
+      notVisible:
+        id: settings-status
+    commands:
+      - tapOn:
+          id: header-menu-button
+      - extendedWaitUntil:
+          visible:
+            id: drawer-settings
+          timeout: 30000
+      - tapOn:
+          id: drawer-settings
+      - extendedWaitUntil:
+          visible:
+            id: settings-status
+          timeout: 60000
 # Fill host and token (from user-provided bridge)
 - tapOn:
     id: settings-host-input
