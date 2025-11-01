@@ -1,0 +1,53 @@
+appId: com.openagents.app
+name: Bridge Connect (Manual Host/Token)
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+# Navigate to Settings via drawer if available; otherwise open route
+- runFlow:
+    when:
+      visible:
+        id: header-menu-button
+    commands:
+      - tapOn:
+          id: header-menu-button
+      - extendedWaitUntil:
+          visible:
+            id: drawer-settings
+          timeout: 30000
+      - tapOn:
+          id: drawer-settings
+- openLink: "exp://localhost:8081/--/settings"
+- extendedWaitUntil:
+    visible:
+      id: settings-status
+    timeout: 60000
+# Fill host and token (from user-provided bridge)
+- tapOn:
+    id: settings-host-input
+- inputText:
+    id: settings-host-input
+    text: "192.168.1.11:8788"
+- tapOn:
+    id: settings-token-input
+- inputText:
+    id: settings-token-input
+    text: "2d716c46ffb7b1c788db80b8cc21a027101dfad9372659339a48bd0d48ddf7ce"
+- tapOn:
+    id: settings-apply
+- tapOn:
+    id: settings-connect
+# Accept either Connected pill or header indicator as success
+- runFlow:
+    when:
+      visible:
+        text: Connected
+    commands:
+      - extendedWaitUntil:
+          visible:
+            text: Connected
+          timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: header-connection-indicator
+    timeout: 120000
