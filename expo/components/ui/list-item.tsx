@@ -1,35 +1,30 @@
 import React from 'react'
-import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native'
+import { Pressable, View, type PressableProps } from 'react-native'
+import { Text } from '@/components/ui/text'
 import { Colors } from '@/constants/theme'
-import { Text } from './text'
 import { Ionicons } from '@expo/vector-icons'
 
-export type ListItemProps = {
+export interface ListItemProps extends Omit<PressableProps, 'style'> {
   title: string
   subtitle?: string
   left?: React.ReactNode
   right?: React.ReactNode
-  onPress?: () => void
-  chevron?: boolean
-  testID?: string
-  style?: StyleProp<ViewStyle>
+  showChevron?: boolean
 }
 
-export function ListItem({ title, subtitle, left, right, onPress, chevron = false, testID, style }: ListItemProps) {
+export function ListItem({ title, subtitle, left, right, showChevron = false, ...rest }: ListItemProps) {
   return (
-    <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined} testID={testID}>
-      <View style={[{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12 }, style]}>
+    <Pressable accessibilityRole="button" {...rest} style={{ paddingVertical: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {left}
         <View style={{ flex: 1 }}>
           <Text variant="body">{title}</Text>
-          {!!subtitle && <Text variant="caption" tone="tertiary" style={{ marginTop: 2 }}>{subtitle}</Text>}
+          {subtitle ? <Text tone="secondary" variant="caption">{subtitle}</Text> : null}
         </View>
         {right}
-        {chevron && <Ionicons name="chevron-forward" size={16} color={Colors.tertiary} />}
+        {showChevron ? <Ionicons name="chevron-forward" size={16} color={Colors.secondary} /> : null}
       </View>
     </Pressable>
   )
 }
-
-export default ListItem
 

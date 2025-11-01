@@ -1,14 +1,11 @@
 import React from 'react'
-import { Image, type ImageProps, type ImageStyle, type StyleProp } from 'react-native'
+import { Image, type ImageProps, type ImageStyle } from 'react-native'
 
-export type AutoImageProps = Omit<ImageProps, 'style'> & {
-  style?: StyleProp<ImageStyle>
+export interface AutoImageProps extends Omit<ImageProps, 'style'> {
+  style?: ImageStyle | ImageStyle[]
 }
 
-// Simple AutoImage: respects given style; defaults to contain and maxWidth: '100%'.
 export function AutoImage({ style, resizeMode = 'contain', ...rest }: AutoImageProps) {
-  return <Image {...rest} resizeMode={resizeMode} style={[{ alignSelf: 'stretch' }, style]} />
+  return <Image {...rest} resizeMode={resizeMode} style={[{ width: '100%' }, style as any]} />
 }
-
-export default AutoImage
 

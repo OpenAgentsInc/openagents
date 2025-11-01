@@ -1,100 +1,41 @@
 import React from 'react'
-import { TextInput, View, type StyleProp, type ViewStyle, type TextStyle } from 'react-native'
+import { View, TextInput, type TextInputProps, type StyleProp, type ViewStyle, type TextStyle } from 'react-native'
 import { Colors } from '@/constants/theme'
-import { Typography } from '@/constants/typography'
-import { Text } from './text'
+import { Text } from '@/components/ui/text'
 
-export type TextFieldProps = {
+export interface TextFieldProps extends Omit<TextInputProps, 'style'> {
   label?: string
-  value: string
-  onChangeText: (text: string) => void
-  placeholder?: string
-  secureTextEntry?: boolean
-  keyboardType?: React.ComponentProps<typeof TextInput>['keyboardType']
-  multiline?: boolean
-  editable?: boolean
   helperText?: string
   errorText?: string
-  left?: React.ReactNode
-  right?: React.ReactNode
   containerStyle?: StyleProp<ViewStyle>
   inputStyle?: StyleProp<TextStyle>
-  testID?: string
+  left?: React.ReactNode
+  right?: React.ReactNode
 }
 
-export function TextField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  secureTextEntry,
-  keyboardType,
-  multiline = false,
-  editable = true,
-  helperText,
-  errorText,
-  left,
-  right,
-  containerStyle,
-  inputStyle,
-  testID,
-}: TextFieldProps) {
-  const hasError = typeof errorText === 'string' && errorText.length > 0
-
+export const TextField = React.forwardRef<TextInput, TextFieldProps>(function TextField(
+  { label, helperText, errorText, containerStyle, inputStyle, left, right, multiline, ...rest },
+  ref
+) {
+  const borderColor = errorText ? Colors.destructive : Colors.border
+  const caption = errorText ?? helperText
+  const captionTone = errorText ? 'danger' : 'secondary'
   return (
-    <View style={containerStyle}>
-      {!!label && (
-        <Text variant="label" tone={hasError ? 'danger' : 'secondary'} style={{ marginBottom: 6 }}>
-          {label}
-        </Text>
-      )}
-      <View
-        style={{
-          borderWidth: 1,
-          borderColor: hasError ? Colors.destructive : Colors.border,
-          backgroundColor: Colors.card,
-          borderRadius: 0,
-          flexDirection: 'row',
-          alignItems: 'center',
-        }}
-      >
+    <View style={[{ gap: 6 }, containerStyle]}>
+      {label ? <Text variant="label">{label}</Text> : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor, backgroundColor: Colors.card }}>
         {left}
         <TextInput
-          testID={testID}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={Colors.tertiary}
-          secureTextEntry={secureTextEntry}
-          keyboardType={keyboardType}
+          ref={ref}
           multiline={multiline}
-          editable={editable}
-          style={[
-            {
-              flex: 1,
-              paddingHorizontal: 12,
-              paddingVertical: multiline ? 10 : 8,
-              fontFamily: Typography.primary,
-              color: Colors.foreground,
-              minHeight: multiline ? 84 : 40,
-            },
-            inputStyle,
-          ]}
+          placeholderTextColor={Colors.tertiary}
+          style={[{ flex: 1, paddingVertical: multiline ? 8 : 6, paddingHorizontal: 10 }, inputStyle]}
+          {...rest}
         />
         {right}
       </View>
-      {!!helperText && !hasError && (
-        <Text tone="tertiary" variant="caption" style={{ marginTop: 6 }}>
-          {helperText}
-        </Text>
-      )}
-      {!!hasError && (
-        <Text tone="danger" variant="caption" style={{ marginTop: 6 }}>
-          {errorText}
-        </Text>
-      )}
+      {caption ? <Text tone={captionTone as any} variant="caption">{caption}</Text> : null}
     </View>
-  )}
-
-export default TextField
+  )
+})
 

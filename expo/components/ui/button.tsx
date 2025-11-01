@@ -1,97 +1,82 @@
 import React from 'react'
-import { ActivityIndicator, Pressable, View, type GestureResponderEvent, type StyleProp, type ViewStyle } from 'react-native'
+import { Pressable, ActivityIndicator, type GestureResponderEvent, type PressableProps, type StyleProp, type ViewStyle } from 'react-native'
 import { Colors } from '@/constants/theme'
-import { Text } from './text'
+import { Text } from '@/components/ui/text'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive'
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
-export type ButtonProps = {
-  label?: string
+export interface ButtonProps extends Omit<PressableProps, 'onPress' | 'style'> {
+  title?: string
+  onPress?: (e: GestureResponderEvent) => void
   variant?: ButtonVariant
   size?: ButtonSize
-  disabled?: boolean
   loading?: boolean
-  leftIcon?: React.ReactNode
-  rightIcon?: React.ReactNode
-  onPress?: (e: GestureResponderEvent) => void
-  testID?: string
+  left?: React.ReactNode
+  right?: React.ReactNode
   style?: StyleProp<ViewStyle>
 }
 
 export function Button({
-  label,
+  title,
+  onPress,
   variant = 'primary',
   size = 'md',
-  disabled = false,
   loading = false,
-  leftIcon,
-  rightIcon,
-  onPress,
-  testID,
+  disabled,
+  left,
+  right,
   style,
+  children,
+  ...rest
 }: ButtonProps) {
-  const [pressed, setPressed] = React.useState(false)
-
-  const dims = (() => {
-    switch (size) {
-      case 'sm':
-        return { padV: 8, padH: 12, font: 12 }
-      case 'lg':
-        return { padV: 14, padH: 18, font: 16 }
-      case 'md':
-      default:
-        return { padV: 10, padH: 14, font: 14 }
-    }
-  })()
-
-  const scheme = (() => {
-    switch (variant) {
-      case 'secondary':
-        return { bg: Colors.card, fg: Colors.foreground, border: Colors.border }
-      case 'ghost':
-        return { bg: Colors.transparent, fg: Colors.foreground, border: Colors.border }
-      case 'destructive':
-        return { bg: Colors.destructive, fg: Colors.destructiveForeground, border: Colors.destructive }
-      case 'primary':
-      default:
-        return { bg: Colors.foreground, fg: Colors.primaryForeground, border: Colors.foreground }
-    }
-  })()
-
-  const opacity = disabled ? 0.5 : pressed ? 0.85 : 1
-
+  const [bg, fg, border] = colorsFor(variant, disabled || loading)
+  const [padV, padH, fontSize] = metricsFor(size)
   return (
     <Pressable
       accessibilityRole="button"
-      testID={testID}
-      disabled={disabled || loading}
       onPress={onPress}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      style={[{ opacity }, style]}
+      disabled={disabled || loading}
+      {...rest}
+      style={[{ backgroundColor: bg, borderColor: border, borderWidth: 1, paddingVertical: padV, paddingHorizontal: padH, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }, style]}
     >
-      <View
-        style={{
-          backgroundColor: scheme.bg,
-          borderColor: scheme.border,
-          borderWidth: 1,
-          paddingHorizontal: dims.padH,
-          paddingVertical: dims.padV,
-          borderRadius: 0,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-        }}
-      >
-        {loading ? <ActivityIndicator color={scheme.fg} /> : leftIcon}
-        {!!label && <Text style={{ color: scheme.fg, fontSize: dims.font }} variant="mono">{label}</Text>}
-        {!loading && rightIcon}
-      </View>
+      {left}
+      {loading ? (
+        <ActivityIndicator color={fg} />
+      ) : (
+        <Text style={{ color: fg, fontSize }} variant="label">
+          {title ?? children}
+        </Text>
+      )}
+      {right}
     </Pressable>
   )
 }
 
-export default Button
+function colorsFor(variant: ButtonVariant, disabled?: boolean): [string, string, string] {
+  if (disabled) return [Colors.border, Colors.tertiary, Colors.border]
+  switch (variant) {
+    case 'secondary':
+      return [Colors.card, Colors.foreground, Colors.border]
+    case 'ghost':
+      return [Colors.transparent, Colors.foreground, Colors.border]
+    case 'destructive':
+      return [Colors.destructive, Colors.destructiveForeground, Colors.destructive]
+    case 'primary':
+    default:
+      return [Colors.foreground, Colors.primaryForeground, Colors.foreground]
+  }
+}
+
+function metricsFor(size: ButtonSize): [number, number, number] {
+  switch (size) {
+    case 'sm':
+      return [6, 10, 12]
+    case 'lg':
+      return [12, 16, 16]
+    case 'md':
+    default:
+      return [10, 14, 14]
+  }
+}
 

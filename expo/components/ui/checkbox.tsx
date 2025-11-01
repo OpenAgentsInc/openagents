@@ -1,47 +1,25 @@
 import React from 'react'
-import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native'
-import { Colors } from '@/constants/theme'
-import { Text } from './text'
+import { Pressable, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { Text } from '@/components/ui/text'
+import { Colors } from '@/constants/theme'
 
-export type CheckboxProps = {
+export interface CheckboxProps {
   label?: string
-  checked: boolean
-  onChange: (next: boolean) => void
+  value: boolean
+  onValueChange?: (next: boolean) => void
   disabled?: boolean
-  style?: StyleProp<ViewStyle>
-  testID?: string
 }
 
-export function Checkbox({ label, checked, onChange, disabled = false, style, testID }: CheckboxProps) {
+export function Checkbox({ label, value, onValueChange, disabled }: CheckboxProps) {
+  const toggle = () => { if (!disabled) onValueChange?.(!value) }
   return (
-    <Pressable
-      onPress={() => onChange(!checked)}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked, disabled }}
-      disabled={disabled}
-      testID={testID}
-      style={[{ opacity: disabled ? 0.6 : 1 }, style]}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View
-          style={{
-            width: 20,
-            height: 20,
-            borderWidth: 1,
-            borderColor: checked ? Colors.quaternary : Colors.border,
-            backgroundColor: checked ? Colors.quaternary : Colors.card,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {checked ? <Ionicons name="checkmark" size={14} color={Colors.foreground} /> : null}
-        </View>
-        {!!label && <Text variant="body">{label}</Text>}
+    <Pressable accessibilityRole="checkbox" onPress={toggle} disabled={disabled} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ width: 18, height: 18, borderWidth: 1, borderColor: Colors.border, backgroundColor: value ? Colors.foreground : Colors.transparent, alignItems: 'center', justifyContent: 'center' }}>
+        {value ? <Ionicons name="checkmark" size={12} color={Colors.primaryForeground} /> : null}
       </View>
+      {label ? <Text variant="body" tone={disabled ? 'tertiary' : 'default'}>{label}</Text> : null}
     </Pressable>
   )
 }
-
-export default Checkbox
 
