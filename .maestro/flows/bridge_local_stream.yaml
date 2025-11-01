@@ -4,9 +4,7 @@ name: Bridge Local Stream (Manual Code)
 - launchApp
 - openLink: "exp://localhost:8081"
 # Navigate to onboarding (Expo dev-client route)
-- openLink: "exp://localhost:8081/--/onboarding"
-# Jump straight to Settings to avoid hidden header on onboarding
-- openLink: "exp://localhost:8081/--/settings"
+- openLink: "exp://localhost:8081"
 # Try dev quick connect first (development only)
 - runFlow:
     when:
@@ -15,7 +13,15 @@ name: Bridge Local Stream (Manual Code)
     commands:
       - tapOn:
           id: dev-quick-connect
-# Ensure Settings is visible
+# Open Settings via the drawer (header must be visible on root)
+- tapOn:
+    id: header-menu-button
+- extendedWaitUntil:
+    visible:
+      id: drawer-settings
+    timeout: 30000
+- tapOn:
+    id: drawer-settings
 - extendedWaitUntil:
     visible:
       id: settings-status
