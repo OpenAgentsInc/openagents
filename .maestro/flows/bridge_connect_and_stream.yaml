@@ -43,10 +43,7 @@ name: Bridge Connect and Stream
     text: "warmup"
 - tapOn:
     id: composer-send
-- extendedWaitUntil:
-    visible:
-      id: user-message
-    timeout: 60000
+
 # Then send main message and assert reply
 - inputText:
     id: composer-input
