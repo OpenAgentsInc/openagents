@@ -14,7 +14,7 @@ name: History After Stream
     id: drawer-settings
 - extendedWaitUntil:
     visible:
-      id: settings-status
+      id: settings-root
     timeout: 30000
 - runFlow:
     when:

@@ -35,5 +35,5 @@ name: Settings Toggles and Rescan
     text: "Full Rescan"
 - extendedWaitUntil:
     visible:
-      id: settings-status
+      id: settings-root
     timeout: 60000
