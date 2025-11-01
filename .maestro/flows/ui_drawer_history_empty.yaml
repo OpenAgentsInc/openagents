@@ -1,0 +1,20 @@
+appId: com.openagents.app
+name: UI Drawer → History Empty
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+- runFlow:
+    when:
+      visible:
+        id: header-menu-button
+    commands:
+      - tapOn:
+          id: header-menu-button
+- extendedWaitUntil:
+    visible:
+      text: "History"
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      text: "No history yet."
+    timeout: 60000

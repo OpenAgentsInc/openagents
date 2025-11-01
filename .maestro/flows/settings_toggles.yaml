@@ -1,0 +1,16 @@
+appId: com.openagents.app
+name: Settings Toggles and Rescan
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+- openLink: "exp://localhost:8081/--/settings"
+- extendedWaitUntil:
+    visible:
+      id: settings-status
+    timeout: 90000
+- tapOn:
+    text: "Full Rescan"
+- extendedWaitUntil:
+    visible:
+      id: settings-status
+    timeout: 60000
