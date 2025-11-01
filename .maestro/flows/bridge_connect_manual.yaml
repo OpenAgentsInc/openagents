@@ -3,6 +3,8 @@ name: Bridge Connect (Manual Host/Token)
 ---
 - launchApp
 - openLink: "exp://localhost:8081"
+# Try to land on a screen that shows the header
+- openLink: "exp://localhost:8081/--/thread/new"
 # Try drawer first if header is visible
 - runFlow:
     when:
@@ -17,6 +19,32 @@ name: Bridge Connect (Manual Host/Token)
           timeout: 30000
       - tapOn:
           id: drawer-settings
+# If header wasn't visible, try direct route to Settings then drawer
+- runFlow:
+    when:
+      notVisible:
+        id: header-menu-button
+    commands:
+      - openLink: "exp://localhost:8081/--/settings"
+      - runFlow:
+          when:
+            notVisible:
+              id: settings-status
+          commands:
+            - openLink: "exp://localhost:8081"
+            - openLink: "exp://localhost:8081/--/thread/new"
+            - extendedWaitUntil:
+                visible:
+                  id: header-menu-button
+                timeout: 60000
+            - tapOn:
+                id: header-menu-button
+            - extendedWaitUntil:
+                visible:
+                  id: drawer-settings
+                timeout: 30000
+            - tapOn:
+                id: drawer-settings
 # If pill still not visible, deep-link to settings
 - runFlow:
     when:
