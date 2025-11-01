@@ -18,6 +18,7 @@ Additional flows are included but may require specific conditions (dev-client ro
 - If `/--/settings` deep link doesn’t show content, use the drawer path first: tap `header-menu-button` → `drawer-settings` → assert `settings-root`.
 - If Library deep links do not render, open the base link first (`exp://localhost:8081`) and then the specific library route. Some simulators require the base dev-client to be warmed up.
 - For streaming, if `agent-message` doesn’t appear, try sending a short warm‑up message and re-sending the real prompt; also increase timeouts.
+- Avoid hardcoding IPs/tokens in flows. Use the `BRIDGE_HOST` and `BRIDGE_TOKEN` env variables or the Settings “Dev Quick Connect” button which reads `EXPO_PUBLIC_BRIDGE_HOST`/`EXPO_PUBLIC_BRIDGE_TOKEN` from the app env when Metro starts.
 - Artifacts: Maestro writes screenshots/logs to `~/.maestro/tests/<timestamp>`. See `docs/maestro/artifacts.md`.
 
 ## Environment
@@ -27,15 +28,18 @@ Additional flows are included but may require specific conditions (dev-client ro
 - iOS Simulator must be running (e.g., iPhone 16). Maestro can launch a recommended device, but having it pre-open reduces variance.
 
 ## Running
-- `maestro test .maestro/flows/ui_drawer_settings.yaml`
-- `maestro test .maestro/flows/settings_toggles.yaml`
-- `maestro test .maestro/flows/ui_drawer_history_empty.yaml`
-- `maestro test .maestro/flows/bridge_connect_manual.yaml`
-- (optional) `maestro test .maestro/flows/bridge_connect_and_stream.yaml`
-- `maestro test .maestro/flows/ui_thread_composer.yaml`
-- `maestro test .maestro/flows/bridge_header_indicator.yaml`
-- `maestro test .maestro/flows/bridge_disconnect.yaml`
-- Or run everything: `scripts/maestro-run-all.sh`
+- Use environment variables in flows rather than hardcoding host/token. Two options:
+  - Start Metro with `EXPO_PUBLIC_BRIDGE_HOST`/`EXPO_PUBLIC_BRIDGE_TOKEN` so Settings → "Dev Quick Connect" works.
+  - Or pass an env file to Maestro and the flows will substitute `${BRIDGE_HOST}` and `${BRIDGE_TOKEN}`.
+- Create `scripts/maestro.env` (based on `scripts/maestro.env.example`) and run:
+  - `maestro test -e scripts/maestro.env .maestro/flows/ui_drawer_settings.yaml`
+  - `maestro test -e scripts/maestro.env .maestro/flows/settings_toggles.yaml`
+  - `maestro test -e scripts/maestro.env .maestro/flows/ui_drawer_history_empty.yaml`
+  - `maestro test -e scripts/maestro.env .maestro/flows/bridge_connect_and_stream.yaml`
+  - `maestro test -e scripts/maestro.env .maestro/flows/ui_thread_composer.yaml`
+  - `maestro test -e scripts/maestro.env .maestro/flows/bridge_header_indicator.yaml`
+  - `maestro test -e scripts/maestro.env .maestro/flows/bridge_disconnect.yaml`
+- Or run everything: `MAESTRO_ENV_FILE=scripts/maestro.env scripts/maestro-run-all.sh`
 
 ## Stability Notes
 - Use id-based selectors and avoid raw text where possible. We added explicit `testID`s to Settings, header, composer, and ACP renderers.

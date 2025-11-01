@@ -14,7 +14,11 @@ flows=(
 
 for f in "${flows[@]}"; do
   echo "==> Running $f"
-  maestro test "$f"
+  if [[ -n "${MAESTRO_ENV_FILE:-}" ]]; then
+    maestro test -e "$MAESTRO_ENV_FILE" "$f"
+  else
+    maestro test "$f"
+  fi
 done
 
 echo "All stable flows completed."

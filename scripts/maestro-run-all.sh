@@ -16,10 +16,17 @@ flows=(
 
 for f in "${flows[@]}"; do
   echo "==> Running $f"
-  maestro test "$f" || {
-    echo "Flow failed: $f" >&2
-    exit 1
-  }
+  if [[ -n "${MAESTRO_ENV_FILE:-}" ]]; then
+    maestro test -e "$MAESTRO_ENV_FILE" "$f" || {
+      echo "Flow failed: $f" >&2
+      exit 1
+    }
+  } else {
+    maestro test "$f" || {
+      echo "Flow failed: $f" >&2
+      exit 1
+    }
+  fi
 done
 
 echo "All flows completed."

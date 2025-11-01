@@ -18,71 +18,62 @@ name: Bridge → Disconnect via Settings
           timeout: 30000
       - tapOn:
           id: drawer-settings
-# If Settings still not rendered, deep-link to /settings and wait
+# If Dev Quick Connect is available, use it to quickly connect
 - runFlow:
     when:
-      notVisible:
-        id: settings-root
+      visible:
+        id: settings-dev-quick
     commands:
-      - openLink: "exp://localhost:8081/--/settings"
+      - tapOn:
+          id: settings-dev-quick
       - extendedWaitUntil:
           visible:
-            id: settings-root
-          timeout: 90000
-# Final fallback: if still not visible, retry drawer and accept host input visibility
+            id: header-connection-indicator
+          timeout: 120000
+# Otherwise, deep-link to Settings and manually enter using Maestro env
 - runFlow:
     when:
       notVisible:
-        id: settings-root
+        id: header-connection-indicator
     commands:
-      - runFlow:
-          when:
-            visible:
-              id: header-menu-button
-          commands:
-            - tapOn:
-                id: header-menu-button
-            - extendedWaitUntil:
-                visible:
-                  id: drawer-settings
-                timeout: 30000
-            - tapOn:
-                id: drawer-settings
       - runFlow:
           when:
             notVisible:
-              id: settings-root
+              id: settings-host-input
           commands:
+            - openLink: "exp://localhost:8081/--/settings"
             - extendedWaitUntil:
                 visible:
                   id: settings-host-input
                 timeout: 90000
-# Fill host and token and apply
-- tapOn:
-    id: settings-host-input
-- inputText:
-    id: settings-host-input
-    text: "192.168.1.94:8788"
-- tapOn:
-    id: settings-token-input
-- inputText:
-    id: settings-token-input
-    text: "2d716c46ffb7b1c788db80b8cc21a027101dfad9372659339a48bd0d48ddf7ce"
-- tapOn:
-    id: settings-apply
-# Tap Connect if visible
-- runFlow:
-    when:
-      visible:
-        id: settings-connect
-    commands:
-      - tapOn:
-          id: settings-connect
-# Assert the header connection indicator exists
-- extendedWaitUntil:
-    visible:
-      id: header-connection-indicator
-    timeout: 120000
+      - runFlow:
+          when:
+            visible:
+              id: settings-host-input
+          commands:
+            - tapOn:
+                id: settings-host-input
+            - inputText:
+                id: settings-host-input
+                text: "${BRIDGE_HOST}"
+            - tapOn:
+                id: settings-token-input
+            - inputText:
+                id: settings-token-input
+                text: "${BRIDGE_TOKEN}"
+            - tapOn:
+                id: settings-apply
+            - runFlow:
+                when:
+                  visible:
+                    id: settings-connect
+                commands:
+                  - tapOn:
+                      id: settings-connect
+      - extendedWaitUntil:
+          visible:
+            id: header-connection-indicator
+          timeout: 120000
 # Disconnect and assert pill text
 - tapOn:
     id: settings-disconnect
