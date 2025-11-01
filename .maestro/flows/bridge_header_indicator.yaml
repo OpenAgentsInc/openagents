@@ -2,12 +2,35 @@ appId: com.openagents.app
 name: Bridge → Header Connection Indicator
 ---
 - launchApp
-- openLink: "exp://localhost:8081"
-- openLink: "exp://localhost:8081/--/settings"
+- openLink: "exp+devclient://localhost:8081"
+- openLink: "exp+devclient://localhost:8081/--/settings"
 - extendedWaitUntil:
     visible:
       id: settings-root
     timeout: 90000
+# Fallback via drawer if settings content did not render
+- runFlow:
+    when:
+      notVisible:
+        id: settings-root
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: header-menu-button
+          commands:
+            - tapOn:
+                id: header-menu-button
+            - extendedWaitUntil:
+                visible:
+                  id: drawer-settings
+                timeout: 30000
+            - tapOn:
+                id: drawer-settings
+      - extendedWaitUntil:
+          visible:
+            id: settings-root
+          timeout: 90000
 # Fill host and token and apply
 - tapOn:
     id: settings-host-input
