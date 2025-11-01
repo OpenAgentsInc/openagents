@@ -1,0 +1,19 @@
+appId: com.openagents.app
+name: UI Library → ACP Tool Call
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+- tapOn:
+    id: header-menu-button
+- tapOn:
+    id: drawer-library
+- extendedWaitUntil:
+    visible:
+      id: library-root
+    timeout: 60000
+- tapOn:
+    id: library-link-tool-call
+- extendedWaitUntil:
+    visible:
+      id: tool-call
+    timeout: 30000
