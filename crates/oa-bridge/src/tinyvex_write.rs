@@ -518,25 +518,8 @@ async fn append_two_way_jsonl_codex_compat(thread_id: &str, update: &agent_clien
     Ok(())
 }
 
-async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
+fn map_acp_to_claude_stream_lines(update: &agent_client_protocol::SessionUpdate) -> Vec<serde_json::Value> {
     use agent_client_protocol::{SessionUpdate as SU, ContentBlock, ToolCallStatus, ToolKind};
-    let base = claude_sessions_base_path();
-    let file_path = base.join(format!("{}.stream.jsonl", thread_id));
-
-    // Helper to append lines with a system init header on first write
-    let write_lines = |file_path: &std::path::Path, session_id: &str, lines: Vec<serde_json::Value>| -> anyhow::Result<()> {
-        if lines.is_empty() { return Ok(()); }
-        use std::io::Write;
-        let first_write = !file_path.exists() || std::fs::metadata(file_path).map(|m| m.len() == 0).unwrap_or(true);
-        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file_path)?;
-        if first_write {
-            let init = serde_json::json!({"type":"system","subtype":"init","session_id": session_id});
-            writeln!(f, "{}", init.to_string())?;
-        }
-        for v in lines { writeln!(f, "{}", v.to_string())?; }
-        Ok(())
-    };
-
     let mut lines: Vec<serde_json::Value> = Vec::new();
     match update {
         // Messages
@@ -560,7 +543,7 @@ async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_prot
                 }
             }
         }
-        // Tool call start → assistant.tool_use
+        // Tool call start → content_block_start.tool_use
         SU::ToolCall(call) => {
             let name = match call.kind {
                 ToolKind::Execute => "Bash",
@@ -572,11 +555,11 @@ async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_prot
             };
             let input = call.raw_input.clone().unwrap_or(serde_json::json!({}));
             lines.push(serde_json::json!({
-                "type": "assistant",
-                "message": {"content": [{"type":"tool_use","id": call.id.0.as_ref(), "name": name, "input": input}]}
+                "type": "content_block_start",
+                "content_block": {"type":"tool_use","id": call.id.0.as_ref(), "name": name, "input": input}
             }));
         }
-        // Tool call update → user.tool_result
+        // Tool call update → top-level tool_result
         SU::ToolCallUpdate(up) => {
             let is_error = matches!(up.fields.status.unwrap_or(ToolCallStatus::Completed), ToolCallStatus::Failed);
             // Prefer text aggregation from content; else raw_output.stdout
@@ -586,9 +569,9 @@ async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_prot
                 for c in content {
                     if let Ok(val) = serde_json::to_value(c) {
                         if val.get("type").and_then(|x| x.as_str()) == Some("text") {
-                            if let Some(t) = val.get("text").and_then(|x| x.as_str()) {
+                            if let Some(tx) = val.get("text").and_then(|x| x.as_str()) {
                                 if !buf.is_empty() { buf.push('\n'); }
-                                buf.push_str(t);
+                                buf.push_str(tx);
                             }
                         }
                     }
@@ -602,11 +585,14 @@ async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_prot
                     }
                 }
             }
-            let content_val = text.map(|s| serde_json::json!({"type":"text","text": s})).unwrap_or(serde_json::json!({"type":"text","text":""}));
-            lines.push(serde_json::json!({
-                "type": "user",
-                "message": {"content": [{"type":"tool_result","tool_use_id": up.id.0.as_ref(), "content": content_val}], "is_error": is_error}
-            }));
+            let content_val = text.map(|s| serde_json::json!({"type":"text","text": s})).unwrap_or(serde_json::json!(null));
+            let mut obj = serde_json::json!({
+                "type": "tool_result",
+                "tool_use_id": up.id.0.as_ref(),
+                "is_error": is_error,
+            });
+            if !content_val.is_null() { obj["content"] = content_val; }
+            lines.push(obj);
         }
         // Plan → assistant text (simple checklist)
         SU::Plan(plan) => {
@@ -625,6 +611,28 @@ async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_prot
         }
         _ => {}
     }
+    lines
+}
+
+async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
+    let base = claude_sessions_base_path();
+    let file_path = base.join(format!("{}.stream.jsonl", thread_id));
+
+    // Helper to append lines with a system init header on first write
+    let write_lines = |file_path: &std::path::Path, session_id: &str, lines: Vec<serde_json::Value>| -> anyhow::Result<()> {
+        if lines.is_empty() { return Ok(()); }
+        use std::io::Write;
+        let first_write = !file_path.exists() || std::fs::metadata(file_path).map(|m| m.len() == 0).unwrap_or(true);
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file_path)?;
+        if first_write {
+            let init = serde_json::json!({"type":"system","subtype":"init","session_id": session_id});
+            writeln!(f, "{}", init.to_string())?;
+        }
+        for v in lines { writeln!(f, "{}", v.to_string())?; }
+        Ok(())
+    };
+
+    let lines = map_acp_to_claude_stream_lines(update);
 
     if lines.is_empty() { return Ok(()); }
     tokio::task::spawn_blocking({
@@ -639,6 +647,7 @@ async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_prot
 mod tests {
     use super::*;
     use tokio::sync::{broadcast, Mutex};
+    use serde_json::json;
 
     #[tokio::test]
     async fn tinyvex_stream_upsert_broadcasts() {
@@ -769,5 +778,46 @@ mod tests {
         let rows = state.tinyvex.list_messages("th", 50).unwrap();
         assert_eq!(rows.len(), 1, "expected exactly one finalized row");
         assert_eq!(rows[0].partial, Some(0));
+    }
+
+    #[test]
+    fn two_way_claude_maps_lines_and_roundtrips_minimally() {
+        // Arrange
+        // ToolCall (Execute) → content_block_start.tool_use
+        use agent_client_protocol::{ToolCall, ToolCallId, ToolKind, ToolCallStatus};
+        let call = ToolCall {
+            id: ToolCallId(std::sync::Arc::from("tu_1")),
+            title: "Bash".into(),
+            kind: ToolKind::Execute,
+            status: ToolCallStatus::Pending,
+            content: vec![],
+            locations: vec![],
+            raw_input: Some(json!({"command":"echo hi"})),
+            raw_output: None,
+            meta: None,
+        };
+        let lines1 = map_acp_to_claude_stream_lines(&agent_client_protocol::SessionUpdate::ToolCall(call));
+        // ToolCallUpdate (Completed) → tool_result
+        let mut fields = agent_client_protocol::ToolCallUpdateFields::default();
+        fields.status = Some(ToolCallStatus::Completed);
+        let upd = agent_client_protocol::ToolCallUpdate { id: agent_client_protocol::ToolCallId(std::sync::Arc::from("tu_1")), fields, meta: None };
+        let lines2 = map_acp_to_claude_stream_lines(&agent_client_protocol::SessionUpdate::ToolCallUpdate(upd));
+        // tool_use
+        let tool_use_line = lines1.into_iter().next().expect("tool_use line");
+        assert_eq!(tool_use_line.get("type").and_then(|x| x.as_str()), Some("content_block_start"));
+        let cb = tool_use_line.get("content_block").unwrap();
+        assert_eq!(cb.get("type").and_then(|x| x.as_str()), Some("tool_use"));
+        assert_eq!(cb.get("id").and_then(|x| x.as_str()), Some("tu_1"));
+
+        // Translate to ACP to ensure compatibility
+        let su1 = acp_event_translator::translate_claude_event_to_acp_update(&tool_use_line).expect("map tool_use");
+        match su1 { agent_client_protocol::SessionUpdate::ToolCall(_c) => {}, _ => panic!("expected ToolCall") }
+
+        // tool_result
+        let tool_res_line = lines2.into_iter().next().expect("tool_result line");
+        assert_eq!(tool_res_line.get("type").and_then(|x| x.as_str()), Some("tool_result"));
+        assert_eq!(tool_res_line.get("tool_use_id").and_then(|x| x.as_str()), Some("tu_1"));
+        let su2 = acp_event_translator::translate_claude_event_to_acp_update(&tool_res_line).expect("map tool_result");
+        match su2 { agent_client_protocol::SessionUpdate::ToolCallUpdate(_u) => {}, _ => panic!("expected ToolCallUpdate") }
     }
 }
