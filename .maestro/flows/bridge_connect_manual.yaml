@@ -20,6 +20,16 @@ name: Bridge Connect (Manual Host/Token)
     visible:
       id: settings-status
     timeout: 90000
+ - runFlow:
+     when:
+       notVisible:
+         id: settings-status
+     commands:
+       - openLink: "exp://localhost:8081/--/settings"
+       - extendedWaitUntil:
+           visible:
+             id: settings-status
+           timeout: 90000
 # Fill host and token (from user-provided bridge)
 - tapOn:
     id: settings-host-input
