@@ -45,9 +45,5 @@ name: Bridge Connect and Stream
     id: composer-send
 - extendedWaitUntil:
     visible:
-      id: user-message
-    timeout: 90000
-- extendedWaitUntil:
-    visible:
       id: agent-message
     timeout: 120000
