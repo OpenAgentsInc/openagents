@@ -12,6 +12,7 @@ This guide summarizes the passing E2E flows, how to run them against a local bri
 Additional flows are included but may require specific conditions (dev-client routing, streaming readiness) and can be flaky if Metro or the bridge are not warmed up:
 - Library flows (`ui_library_*`) require the `Component Library` drawer item to be visible. Set `EXPO_PUBLIC_ENV=development` when starting Metro to surface the dev-only link.
 - Streaming flows require a reachable LAN bridge and a codex/claude provider that can stream on demand. Prefer the combined `bridge_connect_and_stream.yaml` (manual host/token) when testing streaming, and consider a warm‑up send before asserting.
+ - In `bridge_connect_and_stream.yaml`, we wait for a user echo, then prefer an `agent-message`. If not visible, we fall back to `tool-call` or `agent-thought`, then retry once with a compact follow-up.
 
 ## Troubleshooting
 - If `/--/settings` deep link doesn’t show the status pill, use the drawer path first: tap `header-menu-button` → `drawer-settings` → assert `settings-status`.
