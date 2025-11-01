@@ -7,6 +7,7 @@ This guide summarizes the passing E2E flows, how to run them against a local bri
 - `.maestro/flows/settings_toggles.yaml` — opens Settings directly and exercises `Full Rescan` (status pill remains visible).
 - `.maestro/flows/ui_drawer_history_empty.yaml` — opens the drawer and asserts the History section is present (resilient whether history is empty or not).
 - `.maestro/flows/bridge_connect_manual.yaml` — opens Settings, fills host/token, taps Apply and Connect if needed, then relies on the header connection indicator.
+- `.maestro/flows/bridge_connect_and_stream.yaml` — same manual connect, sends a warm‑up prompt, then a main prompt and asserts the agent reply and drawer history.
 
 Additional flows are included but may require specific conditions (dev-client routing, streaming readiness) and can be flaky if Metro or the bridge are not warmed up:
 - Library flows (`ui_library_*`) require the `Component Library` drawer item to be visible. Set `EXPO_PUBLIC_ENV=development` when starting Metro to surface the dev-only link.
@@ -35,6 +36,7 @@ Additional flows are included but may require specific conditions (dev-client ro
 - Prefer opening the base dev-client link (`exp://localhost:8081`) and then using the drawer to navigate when direct route links prove flaky.
 - The “Component Library” drawer entry is dev-only. Ensure `EXPO_PUBLIC_ENV=development` if you need to run Library flows.
 - Streaming assertions can be slow depending on the bridge; we increased waits. If `user-message` is delayed, asserting only `agent-message` is more robust.
+- Tinyvex WS contract is snake_case (ADR‑0002). If you built older code, restart the bridge to ensure the app and server agree on field names like `thread_id`.
 
 ## ADR Compliance
 - ADR 0002 — Rust → TypeScript source of truth: the app consumes TS types exported from the bridge under `expo/types/bridge/*` (generated via `ts-rs`). Settings, Tinyvex provider, and ACP renderers use those shapes; no ad-hoc `any` for WS payloads in these paths.
