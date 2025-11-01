@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
 import { Colors } from '@/constants/theme'
+import { useIsDevEnv, devBridgeHost, devBridgeToken } from '@/lib/env'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
 import type { SyncStatusTs } from '@/types/bridge/SyncStatusTs'
@@ -76,6 +77,14 @@ export default function SettingsScreen() {
     try { send(JSON.stringify({ control: 'sync.full_rescan' })) } catch {}
     setTimeout(refreshSyncStatus, 400)
   }, [send, refreshSyncStatus])
+  const isDev = useIsDevEnv()
+  const onDevQuick = React.useCallback(() => {
+    const host = devBridgeHost() || '127.0.0.1:8787'
+    const token = devBridgeToken() || 'test'
+    try { setBridgeHost(host) } catch {}
+    try { setBridgeToken(token) } catch {}
+    try { connect() } catch {}
+  }, [connect, setBridgeHost, setBridgeToken])
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Connection</Text>
@@ -89,6 +98,11 @@ export default function SettingsScreen() {
         <StatusPill connected={connected} />
       </View>
       <View style={{ height: 16 }} />
+      {isDev ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <Button title='Dev Quick Connect' onPress={onDevQuick} testID='settings-dev-quick' />
+        </View>
+      ) : null}
       <Text style={styles.title}>Sync</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Sessions Watcher</Text>

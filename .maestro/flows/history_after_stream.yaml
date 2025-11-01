@@ -1,0 +1,61 @@
+appId: com.openagents.app
+name: History After Stream
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+# Ensure connection via Settings (Dev Quick preferred)
+- tapOn:
+    id: header-menu-button
+- extendedWaitUntil:
+    visible:
+      id: drawer-settings
+    timeout: 30000
+- tapOn:
+    id: drawer-settings
+- extendedWaitUntil:
+    visible:
+      id: settings-status
+    timeout: 30000
+- runFlow:
+    when:
+      visible:
+        id: settings-dev-quick
+    commands:
+      - tapOn:
+          id: settings-dev-quick
+- runFlow:
+    when:
+      visible:
+        id: settings-connect
+    commands:
+      - tapOn:
+          id: settings-connect
+- extendedWaitUntil:
+    visible:
+      text: Connected
+    timeout: 60000
+# Back to threads and send a message
+- tapOn:
+    id: header-menu-button
+- tapOn:
+    id: header-new-chat
+- extendedWaitUntil:
+    visible:
+      id: composer-input
+    timeout: 60000
+- inputText:
+    id: composer-input
+    text: "Ping from Maestro"
+- tapOn:
+    id: composer-send
+- extendedWaitUntil:
+    visible:
+      id: agent-message
+    timeout: 90000
+# Open drawer and assert we have a threads list rendered
+- tapOn:
+    id: header-menu-button
+- extendedWaitUntil:
+    visible:
+      id: drawer-threads
+    timeout: 60000

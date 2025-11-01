@@ -10,7 +10,7 @@ export default function ComponentLibraryScreen() {
   const router = useRouter()
 
   const LinkRow = ({ title, path, subtitle }: { title: string; path: string; subtitle?: string }) => (
-    <Pressable accessibilityRole="button" onPress={() => router.push(path as any)} style={{ paddingVertical: 12 }}>
+    <Pressable accessibilityRole="button" testID={`library-link-${title.replace(/\s+/g,'-').toLowerCase()}`} onPress={() => router.push(path as any)} style={{ paddingVertical: 12 }}>
       <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{title}</Text>
       {subtitle ? (
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{subtitle}</Text>

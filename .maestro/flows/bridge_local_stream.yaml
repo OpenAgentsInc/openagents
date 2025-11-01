@@ -3,6 +3,8 @@ name: Bridge Local Stream (Manual Code)
 ---
 - launchApp
 - openLink: "exp://localhost:8081"
+# Navigate to onboarding (Expo dev-client route)
+- openLink: "exp://localhost:8081/--/onboarding"
 # Try dev quick connect first (development only)
 - runFlow:
     when:
@@ -11,6 +13,45 @@ name: Bridge Local Stream (Manual Code)
     commands:
       - tapOn:
           id: dev-quick-connect
+# Verify connection by opening Settings and asserting Connected
+- tapOn:
+    id: header-menu-button
+- extendedWaitUntil:
+    visible:
+      id: drawer-settings
+    timeout: 30000
+- tapOn:
+    id: drawer-settings
+- extendedWaitUntil:
+    visible:
+      id: settings-status
+    timeout: 30000
+- runFlow:
+    when:
+      visible:
+        id: settings-dev-quick
+    commands:
+      - tapOn:
+          id: settings-dev-quick
+- runFlow:
+    when:
+      visible:
+        id: settings-connect
+    commands:
+      - tapOn:
+          id: settings-connect
+- extendedWaitUntil:
+    visible:
+      text: Connected
+    timeout: 60000
+# Start a new chat from header
+- tapOn:
+    id: header-new-chat
+# Ensure composer is visible
+- extendedWaitUntil:
+    visible:
+      id: composer-input
+    timeout: 60000
 # Otherwise, navigate to manual code screen and paste JSON
 - runFlow:
     when:
@@ -38,8 +79,8 @@ name: Bridge Local Stream (Manual Code)
 - extendedWaitUntil:
     visible:
       id: user-message
-    timeout: 60000
+    timeout: 90000
 - extendedWaitUntil:
     visible:
       id: agent-message
-    timeout: 90000
+    timeout: 120000
