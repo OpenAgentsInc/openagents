@@ -2,9 +2,9 @@ appId: com.openagents.app
 name: UI Drawer → Settings
 ---
 - launchApp
-- openLink: "exp://localhost:8081"
+- openLink: "exp+devclient://localhost:8081"
 # Warm the dev-client on a header-visible route
-- openLink: "exp://localhost:8081/--/thread/new"
+- openLink: "exp+devclient://localhost:8081/--/thread/new"
 # Open drawer if header button is visible
 - runFlow:
     when:
@@ -26,7 +26,7 @@ name: UI Drawer → Settings
       notVisible:
         id: settings-root
     commands:
-      - openLink: "exp://localhost:8081/--/settings"
+      - openLink: "exp+devclient://localhost:8081/--/settings"
 - extendedWaitUntil:
     visible:
       id: settings-root
