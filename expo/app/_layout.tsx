@@ -261,7 +261,7 @@ export default function RootLayout() {
   if (USE_STORYBOOK) {
     // Lazy require to avoid bundling Storybook into normal app builds
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const StorybookUIRoot = require('../storybook').default as React.ComponentType
+    const StorybookUIRoot = require('../.rnstorybook').default as React.ComponentType
     return <StorybookUIRoot />
   }
   const fontsLoaded = useTypographySetup();
