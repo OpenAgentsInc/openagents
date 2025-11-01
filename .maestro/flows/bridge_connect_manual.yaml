@@ -16,7 +16,6 @@ name: Bridge Connect (Manual Host/Token)
           timeout: 30000
       - tapOn:
           id: drawer-settings
-- openLink: "exp://localhost:8081/--/settings"
 - extendedWaitUntil:
     visible:
       id: settings-status
