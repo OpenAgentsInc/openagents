@@ -90,4 +90,4 @@ Scope is intentionally small: Threads, Messages, and Tool Calls for live session
 - App provider: `expo/providers/tinyvex.tsx`
 - Bridge writer: `crates/oa-bridge/src/tinyvex_write.rs`
 - Sessions watcher: `crates/oa-bridge/src/watchers/sessions_watch.rs`
-- ADR 0002 (Rust → TS types): docs/adr/0002-rust-to-typescript-types-source-of-truth.md
+- ADR 0002 (Rust → TS types): docs/adr/0002-rust-to-ts-types.md

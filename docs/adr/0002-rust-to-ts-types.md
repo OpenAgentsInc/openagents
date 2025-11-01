@@ -1,4 +1,4 @@
-# ADR 0002 — Rust → TypeScript Types as Single Source of Truth
+# ADR 0002 — Rust → TS Types
 
  - Date: 2025-10-31
  - Status: Accepted — Implemented (typed endpoints live; app imports `expo/types/bridge/*`)
