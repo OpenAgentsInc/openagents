@@ -15,8 +15,7 @@ type Story = StoryObj<typeof meta>
 export const Basic: Story = {
   render: () => (
     <View style={{ flex: 1, backgroundColor: Colors.background, padding: 16 }}>
-      <SessionUpdateAgentThoughtChunk content={{ type: 'text', text: '_Thinking_ about how to structure this.' } as any} />
+      <SessionUpdateAgentThoughtChunk content={{ type: 'text', text: '_Thinking_ about how to structure this.' }} />
     </View>
   ),
 }
-
