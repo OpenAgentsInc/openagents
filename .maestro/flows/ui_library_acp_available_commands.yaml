@@ -1,0 +1,19 @@
+appId: com.openagents.app
+name: UI Library → ACP Available Commands
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+- tapOn:
+    id: header-menu-button
+- tapOn:
+    id: drawer-library
+- extendedWaitUntil:
+    visible:
+      id: library-root
+    timeout: 60000
+- tapOn:
+    id: library-link-available-commands
+- extendedWaitUntil:
+    visible:
+      id: available-commands
+    timeout: 30000

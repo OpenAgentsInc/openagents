@@ -7,7 +7,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons'
 
 export function SessionUpdatePlan({ entries }: { entries: ReadonlyArray<PlanEntry> }) {
   return (
-    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, padding: 12, gap: 8 }}>
+    <View testID="plan" style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, padding: 12, gap: 8 }}>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.bold }}>Plan</Text>
       <View style={{ gap: 6 }}>
         {entries.map((e, i) => (
