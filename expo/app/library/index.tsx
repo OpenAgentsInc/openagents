@@ -20,7 +20,7 @@ export default function ComponentLibraryScreen() {
   )
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <ScrollView testID="library-root" style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 8 }}>Example Screens</Text>
       <LinkRow title="ACP Example Conversation" path="/library/acp-example-conversation" subtitle="A full chat showcasing ACP components in order" />
 

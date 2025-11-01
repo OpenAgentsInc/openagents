@@ -80,7 +80,7 @@ export function AppHeader() {
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}>
-          <Pressable onPress={onNewChat} accessibilityRole="button" accessibilityLabel="New chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
+          <Pressable onPress={onNewChat} accessibilityRole="button" accessibilityLabel="New chat" testID="header-new-chat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 6, paddingVertical: 6 }}>
             <MaterialCommunityIcons name="comment-plus-outline" size={22} color={Colors.foreground} />
           </Pressable>
         </View>

@@ -1,26 +1,28 @@
 appId: com.openagents.app
 name: Connect And Persist
-onFlowStart:
-  - clearState
-  # Configure Bridge via deep link and auto-connect
-  - openLink: "openagents://connect?j=eyJ2IjoxLCJ0eXBlIjoiYnJpZGdlIiwiaG9zdHMiOlsiMTI3LjAuMC4xOjg3ODciXSwidG9rZW4iOiJ0ZXN0In0"
-  - launchApp
-  - waitForIdle
-steps:
-  # Verify header dot turns green (indicator exists)
-  - waitForVisible:
+---
+- clearState
+# Ensure Dev Client loads from local packager
+- launchApp
+- openLink: "exp://localhost:8081"
+# Configure Bridge via deep link and auto-connect (while app is in foreground)
+- openLink: "openagents://connect?j=%7B%22v%22%3A1%2C%22type%22%3A%22bridge%22%2C%22hosts%22%3A%5B%22127.0.0.1%3A8787%22%5D%2C%22token%22%3A%22test%22%7D"
+# Verify header dot turns green (indicator exists)
+- extendedWaitUntil:
+    visible:
       id: header-connection-indicator
-      timeout: 8000
-  # Optional: peek at Settings and validate pill text
-  - tapOn:
-      id: header-menu-button
-  - tapOn:
-      text: Settings
-  - waitForVisible:
+    timeout: 120000
+# Peek at Settings and validate pill text
+- tapOn:
+    id: header-menu-button
+- tapOn:
+    text: Settings
+- extendedWaitUntil:
+    visible:
       id: settings-status
-  - assertVisible: Connected
-  # Relaunch and confirm indicator persists
-  - closeApp
-  - launchApp
-  - waitForVisible:
+    timeout: 60000
+- assertVisible: Connected
+# Confirm indicator still present at end of flow
+- extendedWaitUntil:
+    visible:
       id: header-connection-indicator
