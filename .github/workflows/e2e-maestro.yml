@@ -1,0 +1,52 @@
+name: E2E (Maestro)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e-maestro:
+    runs-on: macos-latest
+    # Run only if both secrets are configured; otherwise skip gracefully.
+    if: ${{ secrets.MAESTRO_CLOUD_API_KEY != '' && secrets.EXPO_TOKEN != '' }}
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      MAESTRO_CLOUD_API_KEY: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install CLI tools
+        run: |
+          brew update
+          brew tap wandb/tap || true
+          brew install maestro || true
+          npm i -g eas-cli
+
+      - name: Install Expo app deps
+        working-directory: expo
+        run: |
+          corepack enable
+          bun install || (npm i -g bun && bun install)
+
+      - name: Build iOS dev client (Preview)
+        working-directory: expo
+        run: |
+          eas build --platform ios --profile preview --non-interactive --output build-ios.zip
+
+      - name: Run Maestro Cloud tests
+        run: |
+          maestro cloud test --apiKey "$MAESTRO_CLOUD_API_KEY" --app build-ios.zip .maestro/flows
+
+  e2e-maestro-skip:
+    runs-on: ubuntu-latest
+    if: ${{ !(secrets.MAESTRO_CLOUD_API_KEY != '' && secrets.EXPO_TOKEN != '') }}
+    steps:
+      - name: Skipped
+        run: echo "Skipping Maestro E2E: missing MAESTRO_CLOUD_API_KEY and/or EXPO_TOKEN"
+

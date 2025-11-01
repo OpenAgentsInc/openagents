@@ -82,9 +82,9 @@ export default function SettingsScreen() {
       {/* Bridge Host / Token / Endpoint are intentionally hidden to simplify the Settings page UI. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (
-          <Button title='Connect' onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; connect() }} />
+          <Button title='Connect' onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; connect() }} testID="settings-connect" />
         ) : (
-          <Button title='Disconnect' onPress={disconnect} />
+          <Button title='Disconnect' onPress={disconnect} testID="settings-disconnect" />
         )}
         <StatusPill connected={connected} />
       </View>
@@ -136,9 +136,9 @@ const styles = StyleSheet.create({
   clearIconArea: { position: 'absolute', right: 8, top: 0, bottom: 8, width: 28, alignItems: 'center', justifyContent: 'center' },
 });
 
-function Button({ title, onPress }: { title: string; onPress: () => void }) {
+function Button({ title, onPress, testID }: { title: string; onPress: () => void; testID?: string }) {
   return (
-    <Pressable onPress={onPress} style={{ backgroundColor: Colors.quaternary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}>
+    <Pressable onPress={onPress} testID={testID} style={{ backgroundColor: Colors.quaternary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 0 }}>
       <Text style={{ color: Colors.foreground, fontFamily: Typography.bold }}>{title}</Text>
     </Pressable>
   )
@@ -158,7 +158,7 @@ function Segmented({ title, active, onPress }: { title: string; active: boolean;
 
 function StatusPill({ connected }: { connected: boolean }) {
   return (
-    <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 0, borderWidth: 1, borderColor: connected ? Colors.gray : Colors.border, backgroundColor: Colors.card }}>
+    <View testID="settings-status" style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 0, borderWidth: 1, borderColor: connected ? Colors.gray : Colors.border, backgroundColor: Colors.card }}>
       <Text style={{ color: Colors.secondary, fontSize: 12, fontFamily: Typography.bold }}>
         {connected ? 'Connected' : 'Disconnected'}
       </Text>
