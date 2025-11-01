@@ -110,14 +110,21 @@ fn map_claude_transcript_line_to_acp(v: &serde_json::Value) -> Vec<agent_client_
         }
     } else if ty == "user" {
         if let Some(msg) = v.get("message") {
-            // a) Plain user text
-            if let Some(s) = msg.get("content").and_then(|x| x.as_str()) {
-                if !s.is_empty() {
-                    out.push(SU::UserMessageChunk(ContentChunk { content: ContentBlock::Text(TextContent { annotations: None, text: s.to_string(), meta: None }), meta: None }));
-                }
-            }
-            // b) tool_result objects
+            // a) Text blocks in content array → aggregate to a single user message
             if let Some(arr) = msg.get("content").and_then(|x| x.as_array()) {
+                let mut text = String::new();
+                for el in arr {
+                    if el.get("type").and_then(|x| x.as_str()) == Some("text") {
+                        if let Some(t) = el.get("text").and_then(|x| x.as_str()) {
+                            if !text.is_empty() { text.push('\n'); }
+                            text.push_str(t);
+                        }
+                    }
+                }
+                if !text.is_empty() {
+                    out.push(SU::UserMessageChunk(ContentChunk { content: ContentBlock::Text(TextContent { annotations: None, text, meta: None }), meta: None }));
+                }
+                // b) tool_result objects within the array
                 for el in arr {
                     if el.get("type").and_then(|x| x.as_str()) == Some("tool_result") {
                         let mut stub = serde_json::json!({
@@ -129,6 +136,11 @@ fn map_claude_transcript_line_to_acp(v: &serde_json::Value) -> Vec<agent_client_
                             out.push(update);
                         }
                     }
+                }
+            } else if let Some(s) = msg.get("content").and_then(|x| x.as_str()) {
+                // c) Some transcripts may encode user content as a plain string
+                if !s.is_empty() {
+                    out.push(SU::UserMessageChunk(ContentChunk { content: ContentBlock::Text(TextContent { annotations: None, text: s.to_string(), meta: None }), meta: None }));
                 }
             }
         }
@@ -167,7 +179,8 @@ async fn process_file_append(state: &AppState, file_path: &Path, st: &mut FileSt
             if updates.is_empty() { continue; }
             let tid = if let Some(s) = st.session_id.clone() { s } else { continue };
             for update in updates {
-                crate::tinyvex_write::mirror_acp_update_to_tinyvex_mode(state, "claude_code", &tid, &update, crate::tinyvex_write::StreamMode::Finalize).await;
+                // Use the non-streaming mirror so text is persisted even without deltas
+                crate::tinyvex_write::mirror_acp_update_to_tinyvex(state, "claude_code", &tid, &update).await;
             }
         }
     }
@@ -234,5 +247,26 @@ mod tests {
         });
         let out2 = map_claude_transcript_line_to_acp(&tool_res);
         assert!(out2.iter().any(|u| matches!(u, agent_client_protocol::SessionUpdate::ToolCallUpdate(_))));
+    }
+
+    #[test]
+    fn transcript_user_text_blocks_map_to_user_chunk() {
+        let user_line = json!({
+            "type": "user",
+            "message": {"content": [
+                {"type":"text","text":"Line one"},
+                {"type":"text","text":"Line two"}
+            ]}
+        });
+        let out = map_claude_transcript_line_to_acp(&user_line);
+        assert!(out.iter().any(|u| matches!(u, agent_client_protocol::SessionUpdate::UserMessageChunk(_))));
+        // Ensure the aggregated text contains both lines
+        let mut found = false;
+        for u in out {
+            if let agent_client_protocol::SessionUpdate::UserMessageChunk(ch) = u {
+                if let agent_client_protocol::ContentBlock::Text(t) = ch.content { assert!(t.text.contains("Line one") && t.text.contains("Line two")); found = true; }
+            }
+        }
+        assert!(found);
     }
 }
