@@ -87,7 +87,7 @@ export default function SettingsScreen() {
     try { connect() } catch {}
   }, [connect, setBridgeHost, setBridgeToken])
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID='settings-root'>
       <Text style={styles.title}>Connection</Text>
       {/* Bridge Host / Token / Endpoint are intentionally hidden to simplify the Settings page UI. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>

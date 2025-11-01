@@ -29,7 +29,7 @@ name: Bridge Connect (Manual Host/Token)
       - runFlow:
           when:
             notVisible:
-              id: settings-status
+              id: settings-root
           commands:
             - openLink: "exp://localhost:8081"
             - openLink: "exp://localhost:8081/--/thread/new"
@@ -49,19 +49,19 @@ name: Bridge Connect (Manual Host/Token)
 - runFlow:
     when:
       notVisible:
-        id: settings-status
+        id: settings-root
     commands:
       - openLink: "exp://localhost:8081/--/settings"
 # Wait for pill (after whichever path succeeded)
 - extendedWaitUntil:
     visible:
-      id: settings-status
+      id: settings-root
     timeout: 90000
 # If somehow still not visible, try drawer again
 - runFlow:
     when:
       notVisible:
-        id: settings-status
+        id: settings-root
     commands:
       - runFlow:
           when:
@@ -78,7 +78,7 @@ name: Bridge Connect (Manual Host/Token)
                 id: drawer-settings
       - extendedWaitUntil:
           visible:
-            id: settings-status
+            id: settings-root
           timeout: 90000
 # Fill host and token (from user-provided bridge)
 - tapOn:
