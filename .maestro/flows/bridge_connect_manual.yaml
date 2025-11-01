@@ -22,10 +22,32 @@ name: Bridge Connect (Manual Host/Token)
         id: settings-status
     commands:
       - openLink: "exp://localhost:8081/--/settings"
-      - extendedWaitUntil:
-          visible:
-            id: settings-status
-          timeout: 90000
+  - extendedWaitUntil:
+      visible:
+        id: settings-status
+      timeout: 90000
+  - runFlow:
+      when:
+        notVisible:
+          id: settings-status
+      commands:
+        - runFlow:
+            when:
+              visible:
+                id: header-menu-button
+            commands:
+              - tapOn:
+                  id: header-menu-button
+              - extendedWaitUntil:
+                  visible:
+                    id: drawer-settings
+                  timeout: 30000
+              - tapOn:
+                  id: drawer-settings
+        - extendedWaitUntil:
+            visible:
+              id: settings-status
+            timeout: 90000
 - extendedWaitUntil:
     visible:
       id: settings-status
