@@ -1101,14 +1101,12 @@ fn claude_tool_call_from_tool_use(ch: &JsonValue) -> Option<ToolCall> {
     if n == "LS" || lower == "ls" {
         let title = if let Some(p) = opt_s("path") { format!("List the `{}` directory's contents", p) } else { "List the current directory's contents".to_string() };
         let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string().into(), line: None, meta: None }] } else { vec![] };
-        let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string().into(), line: None, meta: None }] } else { vec![] };
         return Some(ToolCall { title, kind: ToolKind::Search, status: ToolCallStatus::Pending, content: vec![], locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
     }
     if n == "Glob" || lower == "glob" {
         let mut label = "Find".to_string();
         if let Some(p) = opt_s("path") { label.push_str(&format!(" `{}`", p)); }
         if let Some(pattern) = opt_s("pattern") { label.push_str(&format!(" `{}`", pattern)); }
-        let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string().into(), line: None, meta: None }] } else { vec![] };
         let locations = if let Some(p) = opt_s("path") { vec![ToolCallLocation { path: p.to_string().into(), line: None, meta: None }] } else { vec![] };
         return Some(ToolCall { title: label, kind: ToolKind::Search, status: ToolCallStatus::Pending, content: vec![], locations, raw_input: ch.get("input").cloned(), raw_output: None, meta: None, id: ToolCallId(Arc::from("")) });
     }
