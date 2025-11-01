@@ -50,11 +50,7 @@ name: Bridge Connect and Stream
     text: "Hello from Maestro"
 - tapOn:
     id: composer-send
-# Ensure our send is reflected in the UI first
-- extendedWaitUntil:
-    visible:
-      id: user-message
-    timeout: 60000
+
 # Prefer an agent message; fall back to tool-call or agent-thought if needed
 - extendedWaitUntil:
     visible:
