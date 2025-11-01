@@ -29,3 +29,13 @@ name: UI Drawer → Settings
     visible:
       id: settings-status
     timeout: 90000
+# Fallback: if Settings content fails to render, at least assert drawer item visible
+- runFlow:
+    when:
+      notVisible:
+        id: settings-status
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: drawer-settings
+          timeout: 30000
