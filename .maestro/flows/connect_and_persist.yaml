@@ -19,7 +19,7 @@ name: Connect And Persist
     text: Settings
 - extendedWaitUntil:
     visible:
-      id: settings-status
+      id: settings-root
     timeout: 60000
 - assertVisible: Connected
 # Confirm indicator still present at end of flow

@@ -6,7 +6,7 @@ name: Bridge Connect and Stream
 - openLink: "exp://localhost:8081/--/settings"
 - extendedWaitUntil:
     visible:
-      id: settings-status
+      id: settings-root
     timeout: 90000
 - tapOn:
     id: settings-host-input
