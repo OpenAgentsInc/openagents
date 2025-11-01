@@ -45,8 +45,8 @@ jobs:
 
   e2e-maestro-skip:
     runs-on: ubuntu-latest
-    if: ${{ !(secrets.MAESTRO_CLOUD_API_KEY != '' && secrets.EXPO_TOKEN != '') }}
+    if: ${{ secrets.MAESTRO_CLOUD_API_KEY == '' || secrets.EXPO_TOKEN == '' }}
     steps:
       - name: Skipped
-        run: echo "Skipping Maestro E2E: missing MAESTRO_CLOUD_API_KEY and/or EXPO_TOKEN"
-
+        run: |
+          echo 'Skipping Maestro E2E: missing MAESTRO_CLOUD_API_KEY and/or EXPO_TOKEN'
