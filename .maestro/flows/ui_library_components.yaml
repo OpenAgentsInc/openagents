@@ -3,17 +3,26 @@ name: UI Library → Agent Message
 ---
 - launchApp
 - openLink: "exp://localhost:8081"
-# Navigate directly to the Library route to avoid header/drawer variance
-- openLink: "exp://localhost:8081/--/library"
-# Wait for Library root by id
+# Use the header/drawer to navigate to Library when available
+- runFlow:
+    when:
+      visible:
+        id: header-menu-button
+    commands:
+      - tapOn:
+          id: header-menu-button
+      - extendedWaitUntil:
+          visible:
+            id: drawer-library
+          timeout: 30000
+      - tapOn:
+          id: drawer-library
 - extendedWaitUntil:
     visible:
       id: library-root
     timeout: 60000
-# Tap sample by id
 - tapOn:
     id: library-link-agent-message
-# The demo component should render agent-message
 - extendedWaitUntil:
     visible:
       id: agent-message
