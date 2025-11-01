@@ -30,6 +30,8 @@ Additional flows are included but may require specific conditions (dev-client ro
 - `maestro test .maestro/flows/ui_drawer_history_empty.yaml`
 - `maestro test .maestro/flows/bridge_connect_manual.yaml`
 - (optional) `maestro test .maestro/flows/bridge_connect_and_stream.yaml`
+- `maestro test .maestro/flows/ui_thread_composer.yaml`
+- Or run everything: `scripts/maestro-run-all.sh`
 
 ## Stability Notes
 - Use id-based selectors and avoid raw text where possible. We added explicit `testID`s to Settings, header, composer, and ACP renderers.
