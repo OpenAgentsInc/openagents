@@ -4,8 +4,11 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "start:sb": "EXPO_PUBLIC_USE_STORYBOOK=1 expo start",
     "android": "expo run:android",
+    "android:sb": "EXPO_PUBLIC_USE_STORYBOOK=1 expo run:android",
     "ios": "expo run:ios",
+    "ios:sb": "EXPO_PUBLIC_USE_STORYBOOK=1 expo run:ios",
     "web": "expo start --web",
     "copy:sources": "node ../scripts/copy-sources-to-clipboard.js",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
@@ -55,10 +58,13 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@storybook/addon-ondevice-actions": "^10.0.0",
+    "@storybook/addon-ondevice-controls": "^10.0.0",
+    "@storybook/react-native": "^10.0.0",
     "@types/react": "~19.1.0",
-    "typescript": "~5.9.2",
     "eslint": "^9.25.0",
-    "eslint-config-expo": "~10.0.0"
+    "eslint-config-expo": "~10.0.0",
+    "typescript": "~5.9.2"
   },
   "private": true
 }
