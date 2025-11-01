@@ -1,6 +1,6 @@
 // Expo Metro config with optional Storybook integration
 const { getDefaultConfig } = require('expo/metro-config')
-const withStorybook = require('@storybook/react-native/metro/withStorybook')
+const { withStorybook } = require('@storybook/react-native/metro/withStorybook')
 
 const config = getDefaultConfig(__dirname)
 
@@ -10,4 +10,3 @@ module.exports = withStorybook(config, {
   // Keep Storybook config in the standard location
   configPath: './.rnstorybook',
 })
-
