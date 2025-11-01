@@ -33,6 +33,7 @@ Additional flows are included but may require specific conditions (dev-client ro
 - (optional) `maestro test .maestro/flows/bridge_connect_and_stream.yaml`
 - `maestro test .maestro/flows/ui_thread_composer.yaml`
 - `maestro test .maestro/flows/bridge_header_indicator.yaml`
+- `maestro test .maestro/flows/bridge_disconnect.yaml`
 - Or run everything: `scripts/maestro-run-all.sh`
 
 ## Stability Notes
