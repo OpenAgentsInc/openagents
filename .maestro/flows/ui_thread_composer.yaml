@@ -1,0 +1,14 @@
+appId: com.openagents.app
+name: UI Thread → Composer Visible
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+- openLink: "exp://localhost:8081/--/thread/new"
+- extendedWaitUntil:
+    visible:
+      id: composer-input
+    timeout: 90000
+- extendedWaitUntil:
+    visible:
+      id: composer-send
+    timeout: 90000
