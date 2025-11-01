@@ -29,7 +29,13 @@ You can export these when starting Metro so the Settings Dev Quick button can pi
 Flows live under `.maestro/flows/`:
 - `ui_drawer_settings.yaml` — open the drawer, navigate to Settings, assert status pill renders.
 - `ui_library_components.yaml` — open the drawer, navigate to Component Library, open “Agent Message” sample, assert renderer.
-- `bridge_local_stream.yaml` — connect via Dev Quick, assert Connected in Settings, start a new chat, send a prompt, wait for `user-message` and `agent-message`.
+- `ui_library_acp_thought.yaml` — open ACP Thought sample, assert `agent-thought`.
+- `ui_library_acp_tool_call.yaml` — open ACP Tool Call sample, assert `tool-call`.
+- `ui_library_acp_plan.yaml` — open ACP Plan sample, assert `plan`.
+- `ui_library_acp_available_commands.yaml` — open ACP Available Commands sample, assert `available-commands`.
+- `ui_library_acp_current_mode.yaml` — open ACP Current Mode sample, assert `current-mode`.
+- `ui_onboarding_manual.yaml` — open onboarding and assert manual link is visible.
+- `bridge_local_stream.yaml` — connect via Dev Quick, assert Connected (or header dot) in Settings, start a new chat, send a prompt, wait for `user-message` and `agent-message`.
 - `history_after_stream.yaml` — after streaming, open the drawer and assert the threads list renders (id `drawer-threads`).
 
 Selectors are stabilized via explicit testIDs:
@@ -44,6 +50,12 @@ Selectors are stabilized via explicit testIDs:
 From the repo root (with Metro and the bridge running):
 - `maestro test .maestro/flows/ui_drawer_settings.yaml`
 - `maestro test .maestro/flows/ui_library_components.yaml`
+- `maestro test .maestro/flows/ui_library_acp_thought.yaml`
+- `maestro test .maestro/flows/ui_library_acp_tool_call.yaml`
+- `maestro test .maestro/flows/ui_library_acp_plan.yaml`
+- `maestro test .maestro/flows/ui_library_acp_available_commands.yaml`
+- `maestro test .maestro/flows/ui_library_acp_current_mode.yaml`
+- `maestro test .maestro/flows/ui_onboarding_manual.yaml`
 - `maestro test .maestro/flows/bridge_local_stream.yaml`
 - `maestro test .maestro/flows/history_after_stream.yaml`
 
@@ -61,4 +73,3 @@ Tips:
 ## CI Notes
 - The `.maestro/` folder is gitignored by default for local scratch. Committed flows live under the same directory and are explicitly added in commits.
 - For CI, ensure the LAN bridge is replaced with a localhost-forwarded port via a simulator host mapping, or run a mock provider.
-
