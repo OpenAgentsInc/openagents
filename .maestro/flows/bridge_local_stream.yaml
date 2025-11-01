@@ -27,6 +27,7 @@ name: Bridge Local Stream (Manual Code)
           timeout: 30000
       - tapOn:
           id: drawer-settings
+- openLink: "exp://localhost:8081/--/settings"
 - extendedWaitUntil:
     visible:
       id: settings-status
