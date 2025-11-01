@@ -45,8 +45,8 @@ name: Bridge Connect and Stream
     id: composer-send
 - extendedWaitUntil:
     visible:
-      id: agent-message
-    timeout: 90000
+      id: user-message
+    timeout: 60000
 # Then send main message and assert reply
 - inputText:
     id: composer-input
