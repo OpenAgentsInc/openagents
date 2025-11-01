@@ -33,7 +33,7 @@ export function ThreadListItemBase({
           {meta ? (
             <View style={{ marginTop: 2 }}>{meta}</View>
           ) : null}
-          {!!ts && (
+          {!!ts && !meta && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <Ionicons name="time-outline" size={12} color={Colors.tertiary} />
               <Text numberOfLines={1} style={{ color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 12 }}>{ts}</Text>
