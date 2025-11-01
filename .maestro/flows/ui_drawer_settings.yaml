@@ -1,0 +1,20 @@
+appId: com.openagents.app
+name: UI Drawer → Settings
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+# Open drawer if header button is visible
+- runFlow:
+    when:
+      visible:
+        id: header-menu-button
+    commands:
+      - tapOn:
+          id: header-menu-button
+# Tap Settings by id (drawer item has testID)
+- tapOn:
+    id: drawer-settings
+- extendedWaitUntil:
+    visible:
+      id: settings-status
+    timeout: 30000

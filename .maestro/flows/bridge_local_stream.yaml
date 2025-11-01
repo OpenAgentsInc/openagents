@@ -1,0 +1,45 @@
+appId: com.openagents.app
+name: Bridge Local Stream (Manual Code)
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+# Try dev quick connect first (development only)
+- runFlow:
+    when:
+      visible:
+        id: dev-quick-connect
+    commands:
+      - tapOn:
+          id: dev-quick-connect
+# Otherwise, navigate to manual code screen and paste JSON
+- runFlow:
+    when:
+      visible:
+        text: "Enter code manually"
+    commands:
+      - tapOn:
+          id: onboarding-manual-link
+      - tapOn:
+          text: "Paste pairing code or link"
+      - inputText: '{"v":1,"type":"bridge","hosts":["127.0.0.1:8787"],"token":"test"}'
+      - tapOn:
+          text: "Connect"
+- extendedWaitUntil:
+    visible:
+      id: header-connection-indicator
+    timeout: 120000
+- tapOn:
+    id: header-new-chat
+- inputText:
+    id: composer-input
+    text: "Hello from Maestro"
+- tapOn:
+    id: composer-send
+- extendedWaitUntil:
+    visible:
+      id: user-message
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: agent-message
+    timeout: 90000

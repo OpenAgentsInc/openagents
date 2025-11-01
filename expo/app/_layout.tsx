@@ -198,6 +198,7 @@ function DrawerContent() {
             onPress={closeAnd(() => router.push('/settings'))}
             accessibilityRole="button"
             accessibilityLabel="Open settings"
+            testID="drawer-settings"
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
           >
             <Ionicons name="settings-outline" size={18} color={Colors.foreground} />
@@ -217,6 +218,7 @@ function DrawerContent() {
               onPress={closeAnd(() => router.push('/library'))}
               accessibilityRole="button"
               accessibilityLabel="Open component library"
+              testID="drawer-library"
               style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
             >
               <Ionicons name="book-outline" size={18} color={Colors.foreground} />

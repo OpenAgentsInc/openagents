@@ -5,7 +5,7 @@ import {
 } from "react-native"
 import { Colors } from "@/constants/theme"
 import { Typography } from "@/constants/typography"
-import { useIsDevEnv } from "@/lib/env"
+import { useIsDevEnv, devBridgeHost, devBridgeToken } from "@/lib/env"
 import { useHeaderTitle } from "@/lib/header-store"
 import { useSettings } from "@/lib/settings-store"
 import { useBridge } from "@/providers/ws"
@@ -219,9 +219,31 @@ export default function Onboarding() {
               <Ionicons name='qr-code-outline' size={22} color={Colors.foreground} />
               <Text style={styles.pairText}>Pair with Desktop</Text>
             </Pressable>
-            <Pressable onPress={() => { try { router.push('/onboarding/manual-code' as any) } catch {} }} accessibilityRole='button' style={{ marginTop: 12 }}>
+            <Pressable
+              onPress={() => { try { router.push('/onboarding/manual-code' as any) } catch {} }}
+              accessibilityRole='button'
+              testID='onboarding-manual-link'
+              style={{ marginTop: 12 }}
+            >
               <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, textDecorationLine: 'underline' }}>Enter code manually</Text>
             </Pressable>
+            {isDevEnv ? (
+              <Pressable
+                onPress={() => {
+                  const host = devBridgeHost() || `127.0.0.1:${BRIDGE_PORT}`
+                  const token = devBridgeToken() || 'test'
+                  try { setBridgeHost(host) } catch {}
+                  try { setBridgeToken(token) } catch {}
+                  try { connect() } catch {}
+                }}
+                accessibilityRole='button'
+                testID='dev-quick-connect'
+                style={[styles.pairBtn as any, { marginTop: 12, backgroundColor: Colors.quaternary }]}
+              >
+                <Ionicons name='link-outline' size={22} color={Colors.foreground} />
+                <Text style={styles.pairText}>Connect to Local Bridge</Text>
+              </Pressable>
+            ) : null}
           </>
         )}
       </View>
