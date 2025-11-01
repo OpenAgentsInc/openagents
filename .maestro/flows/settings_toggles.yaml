@@ -8,6 +8,29 @@ name: Settings Toggles and Rescan
     visible:
       id: settings-status
     timeout: 90000
+# Fallback: try drawer navigation if pill not visible
+- runFlow:
+    when:
+      notVisible:
+        id: settings-status
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: header-menu-button
+          commands:
+            - tapOn:
+                id: header-menu-button
+            - extendedWaitUntil:
+                visible:
+                  id: drawer-settings
+                timeout: 30000
+            - tapOn:
+                id: drawer-settings
+      - extendedWaitUntil:
+          visible:
+            id: settings-status
+          timeout: 90000
 - tapOn:
     text: "Full Rescan"
 - extendedWaitUntil:
