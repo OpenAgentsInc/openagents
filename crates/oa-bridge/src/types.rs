@@ -58,7 +58,7 @@ pub struct ThreadRowTs {
     pub source: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
-    #[serde(rename = "messageCount", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_message_ts: Option<i64>,

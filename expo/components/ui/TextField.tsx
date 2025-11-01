@@ -1,7 +1,7 @@
 import React from 'react'
 import { View, TextInput, type TextInputProps, type StyleProp, type ViewStyle, type TextStyle } from 'react-native'
 import { Colors } from '@/constants/theme'
-import { Text } from '@/components/ui/text'
+import { Text } from '@/components/ui/Text'
 
 export interface TextFieldProps extends Omit<TextInputProps, 'style'> {
   label?: string
@@ -38,4 +38,3 @@ export const TextField = React.forwardRef<TextInput, TextFieldProps>(function Te
     </View>
   )
 })
-
