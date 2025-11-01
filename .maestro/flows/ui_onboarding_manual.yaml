@@ -1,0 +1,9 @@
+appId: com.openagents.app
+name: Onboarding → Manual Link Visible
+---
+- launchApp
+- openLink: "exp://localhost:8081/--/onboarding"
+- extendedWaitUntil:
+    visible:
+      id: onboarding-manual-link
+    timeout: 30000
