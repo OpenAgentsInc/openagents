@@ -6,13 +6,13 @@ name: Settings Toggles and Rescan
 - openLink: "exp://localhost:8081/--/settings"
 - extendedWaitUntil:
     visible:
-      id: settings-status
+      id: settings-root
     timeout: 90000
 # Fallback: try drawer navigation if pill not visible
 - runFlow:
     when:
       notVisible:
-        id: settings-status
+        id: settings-root
     commands:
       - runFlow:
           when:
@@ -29,7 +29,7 @@ name: Settings Toggles and Rescan
                 id: drawer-settings
       - extendedWaitUntil:
           visible:
-            id: settings-status
+            id: settings-root
           timeout: 90000
 - tapOn:
     text: "Full Rescan"
