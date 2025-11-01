@@ -48,8 +48,36 @@ fn save_state(state: &SyncStateFile) {
 }
 
 fn claude_projects_base() -> PathBuf {
-    if let Ok(p) = std::env::var("CLAUDE_PROJECTS_DIR") { return PathBuf::from(p); }
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".claude/projects")
+    if let Ok(p) = std::env::var("CLAUDE_PROJECTS_DIR") {
+        return PathBuf::from(p);
+    }
+    let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()));
+    // Common locations observed in local Claude installs
+    let candidates = [
+        home.join(".claude").join("projects"),
+        home.join(".claude").join("local").join("claude").join("projects"),
+        home.join(".claude").join("local").join("projects"),
+    ];
+    for c in candidates {
+        if c.exists() { return c; }
+    }
+    // Fallback: scan for any 'projects' dir under ~/.claude
+    let root = home.join(".claude");
+    if let Ok(rd) = std::fs::read_dir(&root) {
+        let mut stack: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
+        while let Some(p) = stack.pop() {
+            if p.is_dir() {
+                if p.file_name().and_then(|s| s.to_str()) == Some("projects") {
+                    return p;
+                }
+                if let Ok(inner) = std::fs::read_dir(&p) {
+                    for e in inner.flatten() { stack.push(e.path()); }
+                }
+            }
+        }
+    }
+    // Default fallback
+    root.join("projects")
 }
 
 pub fn claude_projects_base_path() -> PathBuf { claude_projects_base() }
