@@ -31,13 +31,23 @@ name: Bridge Connect and Stream
     visible:
       id: header-connection-indicator
     timeout: 120000
-# Start a new chat and send a message
+# Start a new chat and send a warm-up message
 - tapOn:
     id: header-new-chat
 - extendedWaitUntil:
     visible:
       id: composer-input
     timeout: 60000
+- inputText:
+    id: composer-input
+    text: "warmup"
+- tapOn:
+    id: composer-send
+- extendedWaitUntil:
+    visible:
+      id: agent-message
+    timeout: 90000
+# Then send main message and assert reply
 - inputText:
     id: composer-input
     text: "Hello from Maestro"
@@ -47,3 +57,10 @@ name: Bridge Connect and Stream
     visible:
       id: agent-message
     timeout: 120000
+# Finally, open drawer and assert history container
+- tapOn:
+    id: header-menu-button
+- extendedWaitUntil:
+    visible:
+      id: drawer-threads
+    timeout: 60000
