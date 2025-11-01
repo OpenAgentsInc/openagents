@@ -94,6 +94,8 @@ export function Composer({
             returnKeyType="send"
             onSubmitEditing={doSend}
             ref={inputRef}
+            testID="composer-input"
+            accessibilityLabel="Prompt input"
             style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, color: Colors.foreground, fontSize: 16, fontFamily: Typography.primary }}
             placeholderTextColor={Colors.secondary}
           />
@@ -108,6 +110,8 @@ export function Composer({
             onPress={doSend}
             disabled={!canSend}
             accessibilityRole="button"
+            accessibilityLabel="Send"
+            testID="composer-send"
             style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canSend ? Colors.foreground : Colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
           >
             <Ionicons name="arrow-up" size={18} color={canSend ? Colors.black : Colors.foreground} />
