@@ -155,6 +155,17 @@ async fn main() -> Result<()> {
         *state.sync_cmd_tx.lock().await = Some(tx_cmd);
     }
 
+    // Start Claude sessions watcher (inbound sync) by default
+    {
+        let tx_cmd2 = crate::watchers::spawn_claude_watcher(state.clone());
+        // If a command tx is already present (Codex), keep that for backwards compat;
+        // Claude watcher reads atomic toggles directly. This also allows WS to reuse
+        // the existing enable/two_way flags without new plumbing.
+        // Optionally, when sending commands, ws.rs will broadcast to both if present.
+        // For now we ignore wiring of the second tx here to avoid wide changes.
+        let _ = tx_cmd2; // quiet unused in case of future wiring
+    }
+
     // Watchers removed with Convex; Tinyvex writes occur on JSONL events only.
 
     // HTTP submit endpoint for app → bridge turn submission
