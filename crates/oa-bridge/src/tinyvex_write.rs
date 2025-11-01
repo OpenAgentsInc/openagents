@@ -304,12 +304,18 @@ pub async fn mirror_acp_update_to_tinyvex(
 
     // Optional: two-way writer — persist non-Codex provider sessions as Codex-compatible JSONL
     // Guarded by `sync_two_way` and only for non-"codex" provider.
-    if provider != "codex" && state.sync_two_way.load(std::sync::atomic::Ordering::Relaxed) {
+    if state.sync_two_way.load(std::sync::atomic::Ordering::Relaxed) {
         let thread = thread_id.to_string();
+        let prov = provider.to_string();
         let upd = update.clone();
         tokio::spawn(async move {
-            if let Err(e) = append_two_way_jsonl(&thread, &upd).await {
-                tracing::warn!(?e, thread_id=%thread, "two_way_writer: append failed");
+            let res = match prov.as_str() {
+                "codex" => Ok(()), // Codex persists its own logs
+                "claude_code" => append_two_way_jsonl_claude(&thread, &upd).await,
+                _ => append_two_way_jsonl_codex_compat(&thread, &upd).await,
+            };
+            if let Err(e) = res {
+                tracing::warn!(?e, thread_id=%thread, provider=%prov, "two_way_writer: append failed");
             }
         });
     }
@@ -361,7 +367,7 @@ pub async fn mirror_acp_update_to_tinyvex_mode(
     mirror_acp_update_to_tinyvex(state, provider, thread_id, update).await;
 }
 
-fn two_way_base_dir() -> std::path::PathBuf {
+fn two_way_base_dir_codex_openagents() -> std::path::PathBuf {
     // Honor CODEXD_HISTORY_DIR via the shared helper used by the watcher,
     // then append our provider namespace to avoid collisions.
     let p = crate::watchers::codex_base_path().join("openagents");
@@ -369,9 +375,22 @@ fn two_way_base_dir() -> std::path::PathBuf {
     p
 }
 
-async fn append_two_way_jsonl(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
+fn claude_sessions_base_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("CLAUDE_SESSIONS_DIR") {
+        let dir = std::path::PathBuf::from(p);
+        let _ = std::fs::create_dir_all(&dir);
+        return dir;
+    }
+    // Default to ~/.claude/sessions
+    let base = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or(std::env::temp_dir());
+    let dir = base.join(".claude").join("sessions");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+async fn append_two_way_jsonl_codex_compat(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
     use agent_client_protocol::{SessionUpdate as SU, ContentBlock, ToolCallStatus, ToolKind};
-    let base = two_way_base_dir();
+    let base = two_way_base_dir_codex_openagents();
     let file_path = base.join(format!("{}.jsonl", thread_id));
 
     // Helper to append lines with a thread.started header on first write
@@ -495,6 +514,123 @@ async fn append_two_way_jsonl(thread_id: &str, update: &agent_client_protocol::S
         let thread = thread_id.to_string();
         let file_path = file_path.clone();
         move || -> anyhow::Result<()> { write_lines(&file_path, &thread, lines) }
+    }).await??;
+    Ok(())
+}
+
+async fn append_two_way_jsonl_claude(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
+    use agent_client_protocol::{SessionUpdate as SU, ContentBlock, ToolCallStatus, ToolKind};
+    let base = claude_sessions_base_path();
+    let file_path = base.join(format!("{}.stream.jsonl", thread_id));
+
+    // Helper to append lines with a system init header on first write
+    let write_lines = |file_path: &std::path::Path, session_id: &str, lines: Vec<serde_json::Value>| -> anyhow::Result<()> {
+        if lines.is_empty() { return Ok(()); }
+        use std::io::Write;
+        let first_write = !file_path.exists() || std::fs::metadata(file_path).map(|m| m.len() == 0).unwrap_or(true);
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file_path)?;
+        if first_write {
+            let init = serde_json::json!({"type":"system","subtype":"init","session_id": session_id});
+            writeln!(f, "{}", init.to_string())?;
+        }
+        for v in lines { writeln!(f, "{}", v.to_string())?; }
+        Ok(())
+    };
+
+    let mut lines: Vec<serde_json::Value> = Vec::new();
+    match update {
+        // Messages
+        SU::UserMessageChunk(ch) => {
+            if let ContentBlock::Text(t) = &ch.content {
+                if !t.text.is_empty() {
+                    lines.push(serde_json::json!({
+                        "type": "user",
+                        "message": {"content": [{"type":"text","text": t.text}]}
+                    }));
+                }
+            }
+        }
+        SU::AgentMessageChunk(ch) | SU::AgentThoughtChunk(ch) => {
+            if let ContentBlock::Text(t) = &ch.content {
+                if !t.text.is_empty() {
+                    lines.push(serde_json::json!({
+                        "type": "assistant",
+                        "message": {"content": [{"type":"text","text": t.text}]}
+                    }));
+                }
+            }
+        }
+        // Tool call start → assistant.tool_use
+        SU::ToolCall(call) => {
+            let name = match call.kind {
+                ToolKind::Execute => "Bash",
+                ToolKind::Edit => "Edit",
+                ToolKind::Read => "Read",
+                ToolKind::Search => "WebSearch",
+                ToolKind::Fetch => "WebFetch",
+                _ => "Tool",
+            };
+            let input = call.raw_input.clone().unwrap_or(serde_json::json!({}));
+            lines.push(serde_json::json!({
+                "type": "assistant",
+                "message": {"content": [{"type":"tool_use","id": call.id.0.as_ref(), "name": name, "input": input}]}
+            }));
+        }
+        // Tool call update → user.tool_result
+        SU::ToolCallUpdate(up) => {
+            let is_error = matches!(up.fields.status.unwrap_or(ToolCallStatus::Completed), ToolCallStatus::Failed);
+            // Prefer text aggregation from content; else raw_output.stdout
+            let mut text: Option<String> = None;
+            if let Some(content) = &up.fields.content {
+                let mut buf = String::new();
+                for c in content {
+                    if let Ok(val) = serde_json::to_value(c) {
+                        if val.get("type").and_then(|x| x.as_str()) == Some("text") {
+                            if let Some(t) = val.get("text").and_then(|x| x.as_str()) {
+                                if !buf.is_empty() { buf.push('\n'); }
+                                buf.push_str(t);
+                            }
+                        }
+                    }
+                }
+                if !buf.trim().is_empty() { text = Some(buf); }
+            }
+            if text.is_none() {
+                if let Some(raw) = &up.fields.raw_output {
+                    if let Some(stdout) = raw.get("stdout").and_then(|x| x.as_str()) {
+                        if !stdout.is_empty() { text = Some(stdout.to_string()); }
+                    }
+                }
+            }
+            let content_val = text.map(|s| serde_json::json!({"type":"text","text": s})).unwrap_or(serde_json::json!({"type":"text","text":""}));
+            lines.push(serde_json::json!({
+                "type": "user",
+                "message": {"content": [{"type":"tool_result","tool_use_id": up.id.0.as_ref(), "content": content_val}], "is_error": is_error}
+            }));
+        }
+        // Plan → assistant text (simple checklist)
+        SU::Plan(plan) => {
+            if !plan.entries.is_empty() {
+                let mut s = String::new();
+                for e in &plan.entries {
+                    let done = matches!(e.status, agent_client_protocol::PlanEntryStatus::Completed);
+                    let mark = if done { "[x]" } else { "[ ]" };
+                    s.push_str(&format!("- {} {}\n", mark, e.content));
+                }
+                lines.push(serde_json::json!({
+                    "type": "assistant",
+                    "message": {"content": [{"type":"text","text": s}]}
+                }));
+            }
+        }
+        _ => {}
+    }
+
+    if lines.is_empty() { return Ok(()); }
+    tokio::task::spawn_blocking({
+        let sid = thread_id.to_string();
+        let file_path = file_path.clone();
+        move || -> anyhow::Result<()> { write_lines(&file_path, &sid, lines) }
     }).await??;
     Ok(())
 }
