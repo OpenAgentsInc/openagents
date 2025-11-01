@@ -21,18 +21,14 @@ name: Bridge Connect (Manual Host/Token)
     text: "2d716c46ffb7b1c788db80b8cc21a027101dfad9372659339a48bd0d48ddf7ce"
 - tapOn:
     id: settings-apply
-- tapOn:
-    id: settings-connect
-# Accept either Connected pill or header indicator as success
 - runFlow:
     when:
       visible:
-        text: Connected
+        id: settings-connect
     commands:
-      - extendedWaitUntil:
-          visible:
-            text: Connected
-          timeout: 60000
+      - tapOn:
+          id: settings-connect
+# Accept either Connected pill or header indicator as success
 - extendedWaitUntil:
     visible:
       id: header-connection-indicator
