@@ -41,7 +41,7 @@ type TvxQueryMessages = { type: 'tinyvex.query_result'; name: 'messages.list'; t
 type TvxQueryToolCalls = { type: 'tinyvex.query_result'; name: 'toolCalls.list'; threadId: string; rows: ToolCallRow[] }
 type TvxQueryThreadsAndTails = { type: 'tinyvex.query_result'; name: 'threadsAndTails.list'; threads: ThreadRow[]; tails: { threadId: string; rows: MessageRow[] }[] }
 type TvxUpdateMessages = { type: 'tinyvex.update'; stream: 'messages'; threadId: string }
-type TvxUpdateThreadsRow = { type: 'tinyvex.update'; stream: 'threads'; row?: Partial<ThreadRow> & { id?: string; thread_id?: string; threadId?: string } }
+type TvxUpdateThreadsRow = { type: 'tinyvex.update'; stream: 'threads'; row?: Partial<ThreadRow> & { id?: string; thread_id?: string } }
 type TvxUpdateToolCalls = { type: 'tinyvex.update'; stream: 'toolCalls'; threadId: string }
 type TvxUpdatePlan = { type: 'tinyvex.update'; stream: 'plan'; threadId: string }
 type TvxUpdateState = { type: 'tinyvex.update'; stream: 'state'; threadId: string }
@@ -250,7 +250,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         try {
           const setProvider = useThreadProviders.getState().setProvider
           for (const r of nextThreads) {
-            const tid = String((r as any)?.id || (r as any)?.thread_id || (r as any)?.threadId || '')
+            const tid = String((r as any)?.id || (r as any)?.thread_id || '')
             const src = String((r as any)?.source || '')
             if (tid) setProvider(tid, src === 'claude_code' ? 'claude_code' : 'codex')
           }
