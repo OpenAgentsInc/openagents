@@ -2,6 +2,7 @@ appId: com.openagents.app
 name: Library (Route) → Agent Message
 ---
 - launchApp
+- openLink: "exp://localhost:8081"
 - openLink: "exp://localhost:8081/--/library/acp-message"
 - extendedWaitUntil:
     visible:
