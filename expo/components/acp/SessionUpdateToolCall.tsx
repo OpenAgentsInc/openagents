@@ -16,7 +16,7 @@ export function SessionUpdateToolCall(props: ToolCallLike) {
   const icon = iconForKind(props.kind)
   const statusColor = colorForStatus(props.status)
   return (
-    <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
+    <View testID="tool-call" accessibilityLabel="Tool call" style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, borderRadius: 0, padding: 12, gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <MaterialCommunityIcons name={icon as unknown as never} size={18} color={statusColor} />
         <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 13 }}>{props.title}</Text>

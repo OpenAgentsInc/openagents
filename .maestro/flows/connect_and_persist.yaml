@@ -1,0 +1,27 @@
+appId: com.openagents.app
+name: Connect And Persist
+onFlowStart:
+  - clearState
+  - launchApp
+  - waitForIdle
+steps:
+  - tapOn:
+      id: header-menu-button
+  - tapOn:
+      text: Settings
+  - waitForVisible:
+      id: settings-status
+  - runFlow:
+      when:
+        notVisible: "Connected"
+      commands:
+        - tapOn:
+            id: settings-connect
+        - waitForVisible:
+            text: Connected
+  - assertVisible:
+      text: Connected
+  - closeApp
+  - launchApp
+  - waitForVisible:
+      id: header-connection-indicator

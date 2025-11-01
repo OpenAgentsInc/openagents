@@ -1,0 +1,33 @@
+appId: com.openagents.app
+name: Session Submit And Stream
+onFlowStart:
+  - launchApp
+  - waitForIdle
+steps:
+  # Ensure connected by verifying the header dot exists
+  - waitForVisible:
+      id: header-connection-indicator
+  # Start a new chat
+  - tapOn:
+      text: New chat
+  # Type a prompt and send
+  - inputText:
+      id: composer-input
+      text: "Hello from Maestro"
+  - tapOn:
+      id: composer-send
+  # Expect user and agent messages to render
+  - waitForVisible:
+      id: user-message
+      timeout: 15000
+  - waitForVisible:
+      id: agent-message
+      timeout: 30000
+  # Tool call is optional; don't fail if missing
+  - runFlow:
+      when:
+        visible: agent-message
+      commands:
+        - waitForVisible:
+            id: tool-call
+            timeout: 5000

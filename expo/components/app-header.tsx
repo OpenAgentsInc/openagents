@@ -51,6 +51,7 @@ export function AppHeader() {
           <Pressable
             onPress={() => { try { if (process.env.EXPO_OS === 'ios') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) } } catch {}; showBack ? router.back() : toggle() }}
             accessibilityRole="button"
+            testID="header-menu-button"
             // Expand the tappable area without changing visuals
             hitSlop={{ top: 32, bottom: 32, left: 20, right: 20 }}
             pressRetentionOffset={{ top: 20, bottom: 20, left: 20, right: 20 }}
@@ -59,6 +60,8 @@ export function AppHeader() {
             <Ionicons name={showBack ? 'chevron-back' : 'menu'} size={22} color={Colors.foreground} />
             <View
               pointerEvents="none"
+              accessibilityLabel="Connection status"
+              testID="header-connection-indicator"
               style={{ position: 'absolute', right: 9, top: 12, width: 9, height: 9, borderRadius: 4.5, backgroundColor: connected ? Colors.success : Colors.danger, borderWidth: 1, borderColor: Colors.black }}
             />
           </Pressable>
