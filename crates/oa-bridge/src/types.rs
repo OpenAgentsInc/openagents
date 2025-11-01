@@ -1,7 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, TS)]
+#[allow(dead_code)]
 #[ts(export, export_to = "../../expo/types/bridge/")]
 pub struct SyncWatchedDirTs {
     pub provider: String,
@@ -11,6 +12,7 @@ pub struct SyncWatchedDirTs {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
+#[allow(dead_code)]
 #[ts(export, export_to = "../../expo/types/bridge/")]
 pub struct SyncStatusTs {
     pub enabled: bool,
@@ -19,6 +21,7 @@ pub struct SyncStatusTs {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub struct TinyvexSnapshot<T: Serialize + Clone> {
     #[serde(rename = "type")]
     pub type_name: &'static str,
@@ -30,6 +33,7 @@ pub struct TinyvexSnapshot<T: Serialize + Clone> {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub struct TinyvexQueryResult<T: Serialize + Clone> {
     #[serde(rename = "type")]
     pub type_name: &'static str,
@@ -42,6 +46,7 @@ pub struct TinyvexQueryResult<T: Serialize + Clone> {
 // Canonical transport row types (TS export lives here, not in Tinyvex)
 
 #[derive(Debug, Clone, Serialize, TS)]
+#[allow(dead_code)]
 #[ts(export, export_to = "../../expo/types/bridge/")]
 pub struct ThreadRowTs {
     pub id: String,
