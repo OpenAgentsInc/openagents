@@ -1,117 +1,99 @@
-# ADR 0006 — Component Organization for UI Primitives and Domain Renderers
+# ADR 0006 — Component Organization for Primitives, Domain Renderers, and App Shell
 
  - Date: 2025-11-01
  - Status: Proposed — Structure defined; no moves yet
 
 ## Context
 
-We are adopting the common UI components from the Ignite boilerplate (AutoImage, Button, Card, Checkbox/Radio/Switch, EmptyState, Header, Icon, Screen, Text, TextField) as a lightweight design system to complement our existing domain renderers.
+We need a predictable, testable, and story‑friendly component organization that works hand‑in‑hand with:
+- ADR‑0004 (Maestro E2E) — stable `testID`/accessibility anchors and clear boundaries for flow tests.
+- ADR‑0005 (Storybook RN) — a single, discoverable place to author stories for reusable UI.
 
-Today our components live under several folders:
-- `expo/components/acp/*` — typed ACP renderers for streaming session updates
-- `expo/components/jsonl/*` — JSONL/Tinyvex cards used by ACP renderers and Library
-- `expo/components/*` — app scaffolding (e.g., `app-header.tsx`, `composer.tsx`, `code-block.tsx`, `inline-toast.tsx`, `toast-overlay.tsx`)
-- `expo/components/drawer/*`, `expo/components/projects/*` — feature/domain‑specific
-- `expo/components/ui/collapsible.tsx` — an initial primitive
+The current codebase mixes reusable UI, domain renderers, and app shell helpers under `expo/components/`. Without a clear structure, stories get scattered and E2E selectors are inconsistent. We will standardize folder roles, naming, and conventions to improve reuse, testing, and documentation.
 
-Ignite organizes its reusable primitives under `app/components/` with related items grouped in subfolders (e.g., `Toggle/{Checkbox,Switch,Radio}.tsx`) and provides a generator template (`PizzaApp3/ignite/templates/component/NAME.tsx.ejs`). Our repo policy prefers kebab‑case filenames and TypeScript strict mode, and we already have dark‑theme tokens in `expo/constants/theme.ts` and typography defaults in `expo/constants/typography.ts`.
-
-We need a clear place to add the Ignite components without colliding with domain renderers and while following our naming/theming conventions. We will not move existing components yet; this ADR defines structure, conventions, and a migration path.
+Existing folders and roles today:
+- `expo/components/acp/*` — typed renderers for ACP session updates (domain‑specific).
+- `expo/components/jsonl/*` — JSONL/Tinyvex cards consumed by ACP and Library (domain‑specific).
+- `expo/components/*` — app shell pieces such as `app-header.tsx`, `composer.tsx`, `code-block.tsx`, `inline-toast.tsx`, `toast-overlay.tsx`.
+- `expo/components/ui/collapsible.tsx` — an initial primitive.
 
 ## Decision
 
-Establish `expo/components/ui/` as the single home for reusable UI primitives (Ignite‑style components), with related items grouped in subfolders. Keep domain‑specific renderers under their existing folders. Adopt kebab‑case filenames and named exports for new UI primitives.
+Define a three‑layer component organization and conventions that support Storybook and Maestro:
 
-Proposed folder layout (additive; no moves yet):
-- `expo/components/ui/`
-  - Primitives (files, kebab‑case):
-    - `auto-image.tsx`
-    - `button.tsx`
-    - `card.tsx`
-    - `empty-state.tsx`
-    - `icon.tsx`
-    - `list-item.tsx` (Ignite has `ListItem` used by Card; we include it as a primitive)
-    - `screen.tsx` (safe area + keyboard avoiding wrapper)
-    - `text.tsx`
-    - `text-field.tsx`
-    - `collapsible.tsx` (already present)
-  - Grouped primitives:
-    - `toggle/checkbox.tsx`
-    - `toggle/radio.tsx`
-    - `toggle/switch.tsx`
-  - Barrels (optional, for ergonomics):
-    - `index.ts` re‑exports public primitives
+1) UI Primitives — reusable, app‑agnostic components
+   - Location: `expo/components/ui/`
+   - Contents: buttons, text, inputs, cards, images, list items, toggles, layout helpers (including existing `collapsible.tsx`).
+   - Group related items in subfolders (e.g., `toggle/{checkbox,radio,switch}.tsx`).
+   - Filenames: kebab‑case; exports: named PascalCase components.
+   - Theming/typography: use `expo/constants/theme.ts` and `expo/constants/typography.ts`; no separate theme provider.
+   - Testing: accept and pass through `testID`/accessibility props (ADR‑0004).
+   - Storybook: each primitive has a story (ADR‑0005).
 
-Domain and app‑specific components remain in place:
-- `expo/components/acp/*` — unchanged (typed ACP renderers)
-- `expo/components/jsonl/*` — unchanged (cards/primitives used by ACP)
-- `expo/components/drawer/*`, `expo/components/projects/*` — unchanged
-- `expo/components/app-header.tsx`, `expo/components/composer.tsx`, etc. — app shell components (remain where they are for now)
+2) Domain Renderers — data‑typed views for ACP/Tinyvex
+   - Locations: `expo/components/acp/*`, `expo/components/jsonl/*` (unchanged).
+   - Purpose: translate typed events/rows into UI; compose primitives from `ui/` where appropriate.
+   - Filenames: keep existing; prefer kebab‑case for any new files.
+   - Testing: expose stable anchors for Maestro where flows need to assert domain UI.
+   - Storybook: add stories for representative states, colocated under Storybook folder per ADR‑0005.
 
-API & conventions for new UI primitives:
-- Filenames: kebab‑case; exports: named PascalCase components (e.g., `export function Button()` in `button.tsx`).
-- Theming: use `Colors` (tokens) and `Typography` from `expo/constants` instead of introducing a theme provider. Do not hardcode colors; add tokens when needed.
-- E2E: accept and pass through `testID` and accessibility props (aligns with ADR‑0004 Maestro testing).
-- i18n: initially support plain `text` props; we may add Ignite‑style `tx`/`txOptions` later. Do not block adoption on i18n wiring.
-- RN collisions: avoid using React Native’s built‑in `Button`. Our `Button` should be imported from `@/components/ui/button` (or barrel). Prefer `Pressable` internally.
-- Storybook: add stories for new primitives per ADR‑0005.
+3) App Shell — navigation/header/composer and feature shells
+   - Locations: `expo/components/app-header.tsx`, `expo/components/composer.tsx`, `expo/components/drawer/*`, `expo/components/projects/*` (unchanged).
+   - Purpose: wire navigation, header chrome, and screen‑level composition.
+   - Testing: include durable `testID`s required by Maestro flows (`header-menu-button`, `header-connection-indicator`, etc.).
+   - Storybook: optional stories if useful; not required for all shell pieces.
+
+Barrels (optional):
+- `expo/components/ui/index.ts` may re‑export primitives for ergonomics. Avoid deep barrels in domain/app layers to keep import paths explicit.
 
 ## Rationale
 
-- Clear separation of concerns:
-  - `ui/` is the reusable, app‑agnostic design layer (Ignite primitives).
-  - `acp/` and `jsonl/` are domain renderers bound to Tinyvex/ACP types.
-  - App shell components (header, composer) stay distinct from both.
-- Consistency with our repo conventions (kebab‑case files, strict TS, dark theme tokens) while retaining the essence of Ignite’s component set.
-- Easier discoverability and reuse; future contributors know where primitives live.
-- Smooth path to Storybook (ADR‑0005) with a single place to author stories.
+- Testability (ADR‑0004): clear separation makes it easy to attach stable selectors to shells and verify domain output without coupling to primitive internals.
+- Storybook (ADR‑0005): a single `ui/` home for primitives provides a natural catalog, while domain renderers can showcase data‑typed states separately.
+- Consistency: kebab‑case files, strict TypeScript, centralized tokens for dark theme and typography; no ad‑hoc theming.
+- Maintainability: contributors quickly find primitives vs. domain vs. shell; encourages reuse and reduces duplication.
 
 ## Alternatives Considered
 
-1) Keep Ignite components at the top level of `expo/components/`
-   - Con: muddles primitives with domain renderers and app shell; harder to navigate.
+1) Flat `expo/components/` without sub‑domains
+   - Con: primitives, domain, and shell mix together; stories and tests become hard to navigate.
 
-2) Introduce `expo/components/ignite/*`
-   - Con: leans on external naming and encourages copy‑pasting rather than integrating with our tokens/conventions.
+2) Vendor‑specific folders (e.g., `ignite/*`) for primitives
+   - Con: leaks external nomenclature and discourages integration with our tokens and ADR‑driven process.
 
-3) Adopt a third‑party UI kit instead of Ignite primitives
-   - Con: heavier theming/runtime cost and potential Expo SDK mismatches; Ignite’s primitives are simpler and align with our custom design.
+3) Adopt a heavy UI kit for all primitives
+   - Con: increases runtime/theming complexity and may not align with Expo SDK versions; our needs are modest and custom.
 
 ## Consequences
 
-- Positive: predictable, scalable component organization; reusable primitives in one place; easier onboarding and Storybook coverage.
-- Neutral: minor overhead to adapt Ignite examples to our tokens and file naming; `Header` remains app‑specific (`app-header.tsx`) for now.
-- Risk: file‑name style divergence (some legacy PascalCase files under `jsonl/`). Mitigation: enforce kebab‑case for new `ui/` files and normalize incrementally when touching legacy files (no mass renames).
+- Positive: predictable imports and discoverability; Storybook catalogs primitives cleanly; Maestro flows target stable anchors.
+- Neutral: some legacy files are PascalCase; we will adopt kebab‑case for new files and normalize opportunistically (no mass renames).
+- Operational: no REST or bridge changes; this is an app‑level organization decision.
 
 ## Migration Plan (No moves yet)
 
-Phase 0 — This ADR
-- Create `expo/components/ui/` (exists) and use it for all new primitives. Do not move existing files.
+Phase 0 — Adopt structure (this ADR)
+- Use `expo/components/ui/` for any new reusable primitives.
 
-Phase 1 — Add Ignite primitives (as needed)
-- Implement primitives in `ui/` using `Colors`/`Typography` and Expo‑compatible APIs:
-  - `auto-image`, `button`, `card`, `empty-state`, `icon`, `list-item`, `screen`, `text`, `text-field`, `toggle/{checkbox,radio,switch}`.
-- Add Storybook stories for each (ADR‑0005), wire `testID` passthrough for E2E.
+Phase 1 — Fill gaps incrementally
+- As we add primitives (e.g., button, text, text‑field, card, list‑item, icon, auto‑image, toggles, screen), place them in `ui/` and author Storybook stories.
+- Ensure primitives accept `testID` and accessibility props; keep them theme‑token based.
 
-Phase 2 — Optional convergence
-- As we touch app surfaces, opportunistically migrate to `ui/` primitives.
-- Evaluate whether to keep `AppHeader` as the sole header or introduce a generic `ui/header` for non‑app contexts. Avoid breaking changes in app routes.
-- Normalize legacy PascalCase filenames during nearby changes (no broad refactors).
+Phase 2 — Opportunistic convergence
+- When modifying domain or shell code, prefer composing from `ui/` primitives.
+- Normalize filenames to kebab‑case when touching files; avoid broad refactors.
 
 ## Acceptance Criteria
 
-- New reusable UI components live under `expo/components/ui/` using kebab‑case filenames and named exports.
-- Domain renderers remain in `acp/` and `jsonl/` with no structural changes now.
-- New primitives use `Colors` and `Typography`; no hardcoded colors.
-- Storybook stories are added for new primitives as they are introduced.
-- E2E selectors (`testID`) are supported on primitives.
+- New reusable UI components live under `expo/components/ui/` with kebab‑case filenames and named exports.
+- Domain renderers remain under `acp/` and `jsonl/`; shells remain in their current locations.
+- Primitives use `Colors` and `Typography` tokens; no hardcoded colors.
+- Primitives and key shell components surface stable `testID`s for Maestro.
+- Stories exist (or are added) for primitives per ADR‑0005.
 
 ## References
 
-- Ignite components overview: `https://github.com/infinitered/ignite/blob/master/docs/boilerplate/app/components/Components.md`
-- Ignite example app components: `/Users/christopherdavid/code/PizzaApp3/app/components/`
-- Ignite component template: `/Users/christopherdavid/code/PizzaApp3/ignite/templates/component/NAME.tsx.ejs`
-- Our theme/typography: `expo/constants/theme.ts`, `expo/constants/typography.ts`
+- ADR‑0004 — Maestro E2E Testing
+- ADR‑0005 — Storybook React Native
+- Theme/typography tokens: `expo/constants/theme.ts`, `expo/constants/typography.ts`
 - Existing domains: `expo/components/acp/*`, `expo/components/jsonl/*`
-- ADR 0004 — Maestro E2E Testing; ADR 0005 — Storybook React Native
-
