@@ -72,57 +72,52 @@ export function Composer({
   return (
     <View style={{ paddingBottom: 2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        {/* Left circular + button — commented out for full-width input */}
-        {/**
         <Pressable
-          onPress={() => { try { console.log('composer:add'); } catch {} }}
+          onPress={handleInterrupt}
           accessibilityRole="button"
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' }}
+          accessibilityLabel="Interrupt"
+          disabled={!canInterrupt}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ opacity: canInterrupt ? 1 : 0.4 }}
         >
-          <Ionicons name="add" size={20} color={Colors.foreground} />
+          <Ionicons name="stop-circle-outline" size={22} color={BUTTON_COLOR} />
         </Pressable>
-        */}
-
-        {/* Input pill */}
-        <View style={{ flex: 1, backgroundColor: Colors.card, borderRadius: 22, borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1, borderColor: Colors.border, borderWidth: 1, backgroundColor: Colors.card, paddingHorizontal: 12, paddingVertical: 8 }}>
           <TextInput
+            ref={inputRef}
+            placeholder={resolvedPlaceholder}
+            placeholderTextColor={Colors.tertiary}
             value={text}
             onChangeText={handleChange}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder={resolvedPlaceholder}
-            returnKeyType="send"
             onSubmitEditing={doSend}
-            ref={inputRef}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            multiline
+            style={{ minHeight: 20, maxHeight: 120, color: Colors.foreground, fontFamily: Typography.primary }}
             testID="composer-input"
-            accessibilityLabel="Prompt input"
-            style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, color: Colors.foreground, fontSize: 16, fontFamily: Typography.primary }}
-            placeholderTextColor={Colors.secondary}
           />
-          {/* Mic icon — commented out for now */}
-          {/**
-          <Pressable onPress={() => { try { console.log('composer:mic'); } catch {} }} accessibilityRole="button" style={{ paddingHorizontal: 10, paddingVertical: 8 }}>
-            <Ionicons name="mic-outline" size={20} color={Colors.secondary} />
-          </Pressable>
-          */}
-          {/* Submit button */}
-          <Pressable
-            onPress={doSend}
-            disabled={!canSend}
-            accessibilityRole="button"
-            accessibilityLabel="Send"
-            testID="composer-send"
-            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: canSend ? Colors.foreground : Colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
-          >
-            <Ionicons name="arrow-up" size={18} color={canSend ? Colors.black : Colors.foreground} />
-          </Pressable>
         </View>
+        <Pressable
+          onPress={doSend}
+          accessibilityRole="button"
+          accessibilityLabel="Send"
+          disabled={!canSend}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ opacity: canSend ? 1 : 0.4 }}
+          testID="composer-send"
+        >
+          <Ionicons name="send-sharp" size={22} color={BUTTON_COLOR} />
+        </Pressable>
       </View>
+
+      {queuedMessages.length > 0 ? (
+        <View style={{ marginTop: 8, paddingHorizontal: 2 }}>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
+            queued: {queuedMessages.length}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function truncate(value: string, max: number): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max)}…`;
-}

@@ -12,9 +12,9 @@ import {
 } from "react-native"
 import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
-import { AppHeader } from "@/components/app-header"
+import { AppHeader } from "@/components/AppHeader"
 import { DrawerThreadItem } from "@/components/drawer/ThreadListItem"
-import { ToastOverlay } from "@/components/toast-overlay"
+import { ToastOverlay } from "@/components/ToastOverlay"
 import { Colors, NavigationTheme } from "@/constants/theme"
 import {
     applyTypographyGlobals, Typography, useTypographySetup
@@ -32,7 +32,7 @@ import { parseBridgeCode, normalizeBridgeCodeInput } from "@/lib/pairing"
 import { usePairingStore } from "@/lib/pairing-store"
 import { AntDesign, Ionicons } from "@expo/vector-icons"
 import { ThemeProvider } from "@react-navigation/native"
-import { ErrorBoundary } from "@/components/error-boundary"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { useUpdateStore } from "@/lib/update-store"
 import { useArchiveStore } from "@/lib/archive-store"
 

@@ -2,7 +2,7 @@ import React from 'react'
 import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
-import { CodeBlock } from '@/components/code-block'
+import { CodeBlock } from '@/components/CodeBlock'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 
 export function CommandExecutionCard({

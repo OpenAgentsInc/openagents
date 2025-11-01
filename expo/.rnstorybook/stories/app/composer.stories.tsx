@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react-native'
 import { View, Text } from 'react-native'
-import { Composer } from '@/components/composer'
+import { Composer } from '@/components/Composer'
 import { Colors } from '@/constants/theme'
 
 const meta = { title: 'App/Composer' } satisfies Meta
@@ -24,4 +24,3 @@ export const Running: Story = {
     </View>
   ),
 }
-

@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react-native'
 import { View, Text } from 'react-native'
-import { ToastOverlay } from '@/components/toast-overlay'
+import { ToastOverlay } from '@/components/ToastOverlay'
 import { Colors } from '@/constants/theme'
 import { toast } from '@/lib/toast-store'
 
@@ -26,4 +26,3 @@ function Demo() {
 export const Basic: Story = {
   render: () => <Demo />,
 }
-

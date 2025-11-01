@@ -2,7 +2,7 @@ import React from 'react'
 import { View, Text } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
-import { CodeBlock } from '@/components/code-block'
+import { CodeBlock } from '@/components/CodeBlock'
 
 export function ContentResource({ resource }: { resource: { text?: string; blob?: string; uri: string; mimeType?: string | null } }) {
   const { text, blob, uri, mimeType } = resource
@@ -17,4 +17,3 @@ export function ContentResource({ resource }: { resource: { text?: string; blob?
     </View>
   )
 }
-

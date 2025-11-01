@@ -3,8 +3,8 @@ import { View, Pressable } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
-import { CodeBlock } from '@/components/code-block'
-import { InlineToast } from '@/components/inline-toast'
+import { CodeBlock } from '@/components/CodeBlock'
+import { InlineToast } from '@/components/InlineToast'
 import { copyToClipboard } from '@/lib/copy'
 
 export function ReasoningHeadline({ text }: { text: string }) {
