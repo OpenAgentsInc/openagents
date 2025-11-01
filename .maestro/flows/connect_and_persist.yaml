@@ -10,7 +10,7 @@ steps:
   # Verify header dot turns green (indicator exists)
   - waitForVisible:
       id: header-connection-indicator
-      timeout: 15000
+      timeout: 8000
   # Optional: peek at Settings and validate pill text
   - tapOn:
       id: header-menu-button
