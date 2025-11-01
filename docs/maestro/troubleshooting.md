@@ -13,6 +13,8 @@
 ## Fixes
 - Start Metro before running flows:
   - `cd expo && EXPO_PUBLIC_BRIDGE_HOST=<lan-ip:port> EXPO_PUBLIC_BRIDGE_TOKEN=<token> bun run start`
+- Warm the dev-client by opening both the base link and a header-visible route before navigating:
+  - `exp://localhost:8081` then `exp://localhost:8081/--/thread/new`
 - Warm the dev-client with the base link first (`exp://localhost:8081`) and then navigate to specific routes.
 - For Settings, prefer drawer navigation (tap `header-menu-button` → `drawer-settings`) before using the `/--/settings` route.
 - For streaming, send a short warm-up prompt first; then assert on `agent-message`. Increase `extendedWaitUntil` timeouts if needed.
@@ -24,4 +26,3 @@
 ## ADR Alignment Notes
 - ADR 0002: The app relies on snake_case fields for Tinyvex/bridge types. Maestro flows only interact with UI—no custom WS payloads were added.
 - ADR 0003: Tests depend on WS + Tinyvex only. No REST endpoints were introduced.
-
