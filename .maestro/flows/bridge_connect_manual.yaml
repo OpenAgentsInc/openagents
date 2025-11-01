@@ -3,15 +3,10 @@ name: Bridge Connect (Manual Host/Token)
 ---
 - launchApp
 - openLink: "exp://localhost:8081"
-- openLink: "exp://localhost:8081/--/settings"
-- extendedWaitUntil:
-    visible:
-      id: settings-status
-    timeout: 90000
 - runFlow:
     when:
-      notVisible:
-        id: settings-status
+      visible:
+        id: header-menu-button
     commands:
       - tapOn:
           id: header-menu-button
@@ -21,10 +16,11 @@ name: Bridge Connect (Manual Host/Token)
           timeout: 30000
       - tapOn:
           id: drawer-settings
-      - extendedWaitUntil:
-          visible:
-            id: settings-status
-          timeout: 60000
+- openLink: "exp://localhost:8081/--/settings"
+- extendedWaitUntil:
+    visible:
+      id: settings-status
+    timeout: 90000
 # Fill host and token (from user-provided bridge)
 - tapOn:
     id: settings-host-input
