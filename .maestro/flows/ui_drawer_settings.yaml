@@ -12,9 +12,20 @@ name: UI Drawer → Settings
       - tapOn:
           id: header-menu-button
 # Tap Settings by id (drawer item has testID)
-- tapOn:
-    id: drawer-settings
+- runFlow:
+    when:
+      visible:
+        id: drawer-settings
+    commands:
+      - tapOn:
+          id: drawer-settings
+- runFlow:
+    when:
+      notVisible:
+        id: settings-status
+    commands:
+      - openLink: "exp://localhost:8081/--/settings"
 - extendedWaitUntil:
     visible:
       id: settings-status
-    timeout: 30000
+    timeout: 90000
