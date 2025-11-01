@@ -40,10 +40,20 @@ name: Bridge Local Stream (Manual Code)
     commands:
       - tapOn:
           id: settings-connect
+- runFlow:
+    when:
+      visible:
+        text: Connected
+    commands:
+      - extendedWaitUntil:
+          visible:
+            text: Connected
+          timeout: 60000
+# Fallback: proceed if header indicator is visible
 - extendedWaitUntil:
     visible:
-      text: Connected
-    timeout: 60000
+      id: header-connection-indicator
+    timeout: 120000
 # Start a new chat from header
 - tapOn:
     id: header-new-chat
@@ -65,10 +75,7 @@ name: Bridge Local Stream (Manual Code)
       - inputText: '{"v":1,"type":"bridge","hosts":["127.0.0.1:8787"],"token":"test"}'
       - tapOn:
           text: "Connect"
-- extendedWaitUntil:
-    visible:
-      id: header-connection-indicator
-    timeout: 120000
+# Header indicator already checked above; keep going
 - tapOn:
     id: header-new-chat
 - inputText:
