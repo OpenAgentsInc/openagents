@@ -96,7 +96,7 @@ fn map_claude_transcript_line_to_acp(v: &serde_json::Value) -> Vec<agent_client_
                 // 2) tool_use blocks → synthesize content_block_start for translator
                 for el in arr {
                     if el.get("type").and_then(|x| x.as_str()) == Some("tool_use") {
-                        let mut stub = serde_json::json!({
+                        let stub = serde_json::json!({
                             "type": "content_block_start",
                             "content_block": el
                         });
@@ -127,7 +127,7 @@ fn map_claude_transcript_line_to_acp(v: &serde_json::Value) -> Vec<agent_client_
                 // b) tool_result objects within the array
                 for el in arr {
                     if el.get("type").and_then(|x| x.as_str()) == Some("tool_result") {
-                        let mut stub = serde_json::json!({
+                        let stub = serde_json::json!({
                             "type": "tool_result",
                             "tool_use_id": el.get("tool_use_id").cloned().unwrap_or(serde_json::Value::Null),
                             "content": el.get("content").cloned().unwrap_or(serde_json::Value::Null),
@@ -196,17 +196,16 @@ pub fn spawn_claude_watcher(state: std::sync::Arc<AppState>) -> mpsc::Sender<cra
     tokio::spawn(async move {
         info!(base=%base.display(), "claude watcher started");
         let mut state_file = load_state();
-        let mut enabled = state.sync_enabled.load(std::sync::atomic::Ordering::Relaxed);
+        // Read enabled flag directly from shared atomic to avoid stale copies
         loop {
-            // Refresh enabled from shared atomic in case command channel isn't wired
-            enabled = state.sync_enabled.load(std::sync::atomic::Ordering::Relaxed);
             while let Ok(cmd) = rx.try_recv() {
                 match cmd {
-                    crate::watchers::SyncCommand::Enable(b) => { enabled = b; state.sync_enabled.store(b, std::sync::atomic::Ordering::Relaxed); info!(enabled=b, "claude watcher: enable toggled"); }
+                    crate::watchers::SyncCommand::Enable(b) => { state.sync_enabled.store(b, std::sync::atomic::Ordering::Relaxed); info!(enabled=b, "claude watcher: enable toggled"); }
                     crate::watchers::SyncCommand::TwoWay(b) => { state.sync_two_way.store(b, std::sync::atomic::Ordering::Relaxed); info!(two_way=b, "claude watcher: two_way toggled"); }
                     crate::watchers::SyncCommand::FullRescan => { state_file.files.clear(); save_state(&state_file); info!("claude watcher: full rescan"); }
                 }
             }
+            let enabled = state.sync_enabled.load(std::sync::atomic::Ordering::Relaxed);
             if enabled && base.exists() {
                 let files = list_transcript_files(&base);
                 for p in files {

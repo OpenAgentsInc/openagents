@@ -136,14 +136,16 @@ function DrawerContent() {
               (topThreads?.filter((r: any) => typeof r.messageCount === 'number' ? r.messageCount > 0 : true).length ?? 0) === 0 ? (
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
-                (topThreads || []).map((row: any) => (
-                  <DrawerThreadItem
-                    key={String(row.id)}
-                    row={row}
-                    onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}` as any))}
-                    onLongPress={() => showActions(String(row.id))}
-                  />
-                ))
+                <View testID="drawer-threads">
+                  {(topThreads || []).map((row: any) => (
+                    <DrawerThreadItem
+                      key={String(row.id)}
+                      row={row}
+                      onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}` as any))}
+                      onLongPress={() => showActions(String(row.id))}
+                    />
+                  ))}
+                </View>
               )
             )}
             {/* Archived link moved below History */}

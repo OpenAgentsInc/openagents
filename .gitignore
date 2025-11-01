@@ -12,6 +12,7 @@ dist
 src-tauri/
 packages/tricoder/tmp.ts
 docs/logs/claude
+.maestro/
 
 # Claude Code local configuration
 settings.local.json

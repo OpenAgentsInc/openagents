@@ -3,14 +3,6 @@ name: UI Library → Agent Message
 ---
 - launchApp
 - openLink: "exp://localhost:8081"
-# Open drawer if header button visible
-- runFlow:
-    when:
-      visible:
-        id: header-menu-button
-    commands:
-      - tapOn:
-          id: header-menu-button
 # If we’re on Settings, go back first (header back chevron)
 - runFlow:
     when:
@@ -19,6 +11,10 @@ name: UI Library → Agent Message
     commands:
       - tapOn:
           id: header-menu-button
+# Open drawer
+- tapOn:
+    id: header-menu-button
+# Tap Library in drawer
 - tapOn:
     id: drawer-library
 # Wait for Library root by id
@@ -26,11 +22,10 @@ name: UI Library → Agent Message
     visible:
       id: library-root
     timeout: 60000
-# Tap sample by text
+# Tap sample by id
 - tapOn:
-    text: "Agent Message"
-- tapOn:
-    text: Agent Message
+    id: library-link-agent-message
+# The demo component should render agent-message
 - extendedWaitUntil:
     visible:
       id: agent-message
