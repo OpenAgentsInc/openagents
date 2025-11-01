@@ -1,51 +1,28 @@
 import React from 'react'
-import { ScrollView, View, type StyleProp, type ViewStyle } from 'react-native'
+import { ScrollView, View, type ViewProps, type StyleProp, type ViewStyle } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors } from '@/constants/theme'
 
 export type ScreenPreset = 'fixed' | 'scroll'
 
-export type ScreenProps = {
+export interface ScreenProps extends Omit<ViewProps, 'style'> {
   preset?: ScreenPreset
-  safeTop?: boolean
-  safeBottom?: boolean
-  style?: StyleProp<ViewStyle>
   contentContainerStyle?: StyleProp<ViewStyle>
-  children?: React.ReactNode
-  testID?: string
+  style?: StyleProp<ViewStyle>
 }
 
-export function Screen({
-  preset = 'fixed',
-  safeTop = true,
-  safeBottom = true,
-  style,
-  contentContainerStyle,
-  children,
-  testID,
-}: ScreenProps) {
-  const inner = (
-    preset === 'scroll' ? (
-      <ScrollView
-        testID={testID}
-        style={{ flex: 1 }}
-        contentContainerStyle={[{ padding: 16 }, contentContainerStyle]}
-      >
-        {children}
-      </ScrollView>
-    ) : (
-      <View testID={testID} style={[{ flex: 1, padding: 16 }, contentContainerStyle]}>
-        {children}
-      </View>
+export function Screen({ preset = 'fixed', style, contentContainerStyle, children, ...rest }: ScreenProps) {
+  if (preset === 'scroll') {
+    return (
+      <SafeAreaView style={[{ flex: 1, backgroundColor: Colors.background }, style] as any}>
+        <ScrollView contentContainerStyle={contentContainerStyle}>{children}</ScrollView>
+      </SafeAreaView>
     )
-  )
-
+  }
   return (
-    <SafeAreaView style={[{ flex: 1, backgroundColor: Colors.background }, style]} edges={[safeTop ? 'top' : undefined, safeBottom ? 'bottom' : undefined].filter(Boolean) as ('top'|'bottom')[]}>
-      {inner}
+    <SafeAreaView style={[{ flex: 1, backgroundColor: Colors.background }, style] as any} {...rest}>
+      <View style={contentContainerStyle as any}>{children}</View>
     </SafeAreaView>
   )
 }
-
-export default Screen
 

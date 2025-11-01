@@ -1,31 +1,25 @@
 import React from 'react'
-import { View, Switch as RNSwitch, type StyleProp, type ViewStyle } from 'react-native'
+import { View, Switch as RNSwitch, type SwitchProps as RNSwitchProps } from 'react-native'
+import { Text } from '@/components/ui/text'
 import { Colors } from '@/constants/theme'
-import { Text } from './text'
 
-export type SwitchProps = {
+export interface SwitchProps extends RNSwitchProps {
   label?: string
-  value: boolean
-  onValueChange: (next: boolean) => void
-  disabled?: boolean
-  style?: StyleProp<ViewStyle>
-  testID?: string
 }
 
-export function Switch({ label, value, onValueChange, disabled = false, style, testID }: SwitchProps) {
+export function Switch({ label, value, onValueChange, disabled, ...rest }: SwitchProps) {
   return (
-    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, style]}>
-      {!!label && <Text variant="body" tone={disabled ? 'tertiary' : 'default'}>{label}</Text>}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      {label ? <Text variant="label" tone={disabled ? 'tertiary' : 'default'}>{label}</Text> : null}
       <RNSwitch
-        testID={testID}
-        value={value}
+        value={!!value}
         onValueChange={onValueChange}
         disabled={disabled}
         trackColor={{ false: Colors.border, true: Colors.quaternary }}
-        thumbColor={value ? Colors.foreground : Colors.secondary}
+        thumbColor={disabled ? Colors.gray : Colors.foreground}
+        {...rest}
       />
     </View>
-  )}
-
-export default Switch
+  )
+}
 

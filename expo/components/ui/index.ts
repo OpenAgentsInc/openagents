@@ -7,4 +7,5 @@ export * from './switch'
 export * from './checkbox'
 export * from './auto-image'
 export * from './screen'
+export * from './collapsible'
 
