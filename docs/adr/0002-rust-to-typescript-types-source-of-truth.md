@@ -1,9 +1,7 @@
 # ADR 0002 — Rust → TypeScript Types as Single Source of Truth
 
-- Date: 2025-10-31
+ - Date: 2025-10-31
  - Status: Accepted — Implemented (typed endpoints live; app imports `expo/types/bridge/*`)
-- Deciders: OpenAgents maintainers
-- Consulted: Mobile, Bridge, Tinyvex contributors
 
 ## Context
 
