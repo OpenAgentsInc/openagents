@@ -1,6 +1,6 @@
 import React from 'react'
 import { Pressable, View, type PressableProps } from 'react-native'
-import { Text } from '@/components/ui/text'
+import { Text } from '@/components/ui/Text'
 import { Colors } from '@/constants/theme'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -27,4 +27,3 @@ export function ListItem({ title, subtitle, left, right, showChevron = false, ..
     </Pressable>
   )
 }
-

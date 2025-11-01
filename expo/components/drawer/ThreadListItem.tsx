@@ -67,7 +67,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
     return ts ?? Number(row.updated_at || 0)
   }, [msgs, row])
   const count = React.useMemo(() => {
-    const mc: any = (row as any)?.messageCount
+    const mc = (row as any)?.message_count
     if (typeof mc === 'number') return mc
     return msgs.length > 0 ? msgs.length : undefined
   }, [row, msgs.length])

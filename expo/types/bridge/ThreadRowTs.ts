@@ -10,6 +10,6 @@ export type ThreadRowTs = {
   source: string | null;
   created_at: bigint;
   updated_at: bigint;
-  messageCount: bigint | null;
+  message_count: bigint | null;
   last_message_ts: bigint | null;
 };
