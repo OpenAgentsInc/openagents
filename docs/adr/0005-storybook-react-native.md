@@ -17,7 +17,7 @@ Storybook v10 for React Native provides a focused, component‑driven workflow, 
 
 Adopt Storybook v10 (React Native) as the single component library surface for the mobile app. Consolidate the existing custom library into Storybook stories and remove the legacy library screens after parity.
 
-Provide a simple runtime toggle: if `USE_STORYBOOK` is true (boolean flag or env var), the app boots Storybook instead of the normal app shell; otherwise it boots the app.
+Provide a simple runtime toggle: if `USE_STORYBOOK` is true (boolean flag or env var), the app boots Storybook instead of the normal app shell; otherwise it boots the app. The default landing story is `App/Home` which renders a demo conversation using ACP components (mirrors the Library “Example Conversation”).
 
 ## Rationale
 
@@ -35,10 +35,11 @@ Provide a simple runtime toggle: if `USE_STORYBOOK` is true (boolean flag or env
      - `stories/**/*/*.stories.tsx` for components.
    - Add `StorybookUIRoot` via `getStorybookUI`.
 
-2) Startup toggle (`USE_STORYBOOK`)
+2) Startup toggle (`USE_STORYBOOK`) and default story
    - In app entry (e.g., `expo/index.ts` or the root used by Expo Router), import either `StorybookUIRoot` or the normal app root based on a boolean:
      - Code constant (temporary) and/or env var (`process.env.USE_STORYBOOK === '1'`).
    - For DX, also add a dev menu item or a separate NPM/Bun script to launch Storybook mode.
+   - Configure the default landing story via `.rnstorybook/main.ts` using `reactNative.initialSelection` pointing to `App/Home`.
 
 3) Consolidation strategy
    - Migrate existing demo screens under `expo/app/library/*` into Storybook stories:
