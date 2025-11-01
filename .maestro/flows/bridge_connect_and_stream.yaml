@@ -53,16 +53,44 @@ name: Bridge Connect and Stream
     text: "Hello from Maestro"
 - tapOn:
     id: composer-send
-- extendedWaitUntil:
+ # Ensure our send is reflected in the UI first
+ - extendedWaitUntil:
+    visible:
+      id: user-message
+    timeout: 60000
+ # Prefer an agent message; fall back to tool-call or agent-thought if needed
+ - extendedWaitUntil:
     visible:
       id: agent-message
     timeout: 120000
-# Retry once if no agent message rendered yet
-- runFlow:
+ - runFlow:
     when:
       notVisible:
         id: agent-message
     commands:
+      - extendedWaitUntil:
+          visible:
+            id: tool-call
+          timeout: 120000
+ - runFlow:
+    when:
+      notVisible:
+        id: agent-message
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: agent-thought
+          timeout: 120000
+ # Retry once if no agent message rendered yet
+ - runFlow:
+     when:
+       notVisible:
+         id: agent-message
+     commands:
+      - extendedWaitUntil:
+          visible:
+            id: composer-input
+          timeout: 60000
       - inputText:
           id: composer-input
           text: "Hello again"
