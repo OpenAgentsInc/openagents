@@ -1,0 +1,9 @@
+appId: com.openagents.app
+name: Library (Route) → ACP Current Mode
+---
+- launchApp
+- openLink: "exp://localhost:8081/--/library/acp-current-mode"
+- extendedWaitUntil:
+    visible:
+      id: current-mode
+    timeout: 60000

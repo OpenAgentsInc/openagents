@@ -1,0 +1,9 @@
+appId: com.openagents.app
+name: Library (Route) → ACP Tool Call
+---
+- launchApp
+- openLink: "exp://localhost:8081/--/library/acp-tool-call"
+- extendedWaitUntil:
+    visible:
+      id: tool-call
+    timeout: 60000
