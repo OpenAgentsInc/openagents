@@ -1,7 +1,7 @@
 # ADR 0002 — Rust → TypeScript Types as Single Source of Truth
 
 - Date: 2025-10-31
-- Status: Accepted (PR 1345 introduces ADR process; this is ADR #2)
+ - Status: Accepted — Implemented (typed endpoints live; app imports `expo/types/bridge/*`)
 - Deciders: OpenAgents maintainers
 - Consulted: Mobile, Bridge, Tinyvex contributors
 
@@ -50,6 +50,12 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 - Bridge: All WS endpoints must serialize the canonical TS‑exported structs; synthesized history rows must set real timestamps (no `now()` fallbacks).
 - Tooling: Ensure `expo/types/bridge/generated/` exists; export per‑type `.ts` files there. We maintain readable shims under `expo/types/bridge/*` if needed.
 - Conventions: snake_case fields; use `#[ts(optional)]` for truly optional fields (avoid `T | null` where absence is intended).
+
+## Implementation Status (2025-10-31)
+
+- Bridge emits `ThreadSummaryTs[]`/`MessageRowTs[]`/`ToolCallRowTs[]` and `SyncStatusTs` over WS.
+- App consumes only generated types in `TinyvexProvider`/drawer/thread timeline/WS envelopes; mixed‑case probing removed.
+- `bridge.sync_status` uses snake_case (`two_way`, `last_read`), matching `SyncStatusTs`.
 
 ## Implementation Plan
 
