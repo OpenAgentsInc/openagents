@@ -1,13 +1,16 @@
 import type { StorybookConfig } from '@storybook/react-native'
 
 const main: StorybookConfig = {
-  // Point to stories inside this folder for now; we can extend later
+  // Story files
   stories: ['../.rnstorybook/stories/**/*.stories.@(ts|tsx|js|jsx)'],
   addons: [
     '@storybook/addon-ondevice-actions',
     '@storybook/addon-ondevice-controls',
   ],
+  // Ensure a stable default landing story
+  reactNative: {
+    initialSelection: { kind: 'App/Home', name: 'Default' },
+  },
 }
 
 export default main
-
