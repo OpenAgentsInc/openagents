@@ -30,15 +30,15 @@ Provide a simple runtime toggle: if `USE_STORYBOOK` is true (boolean flag or env
 
 1) Bootstrap Storybook (v10, React Native)
    - Add `@storybook/react-native` and required deps (per Storybook RN v10 docs).
-   - Create `storybook/` folder with:
-     - `index.ts` (register stories, configure addons).
-     - `stories/**/*/*.stories.tsx` for components.
-   - Add `StorybookUIRoot` via `getStorybookUI`.
+   - Use the RN v10 standard config path: `expo/.rnstorybook/` with:
+     - `main.ts` — story globs and addons (e.g., `stories: ['../.rnstorybook/stories/**/*.stories.@(ts|tsx|js|jsx)']`).
+     - `index.ts` — create `StorybookUIRoot` via `getStorybookUI`.
+     - `preview.tsx` — global decorators (fonts/theme) for consistent RN rendering.
+     - Put story files under `expo/.rnstorybook/stories/**` using CSF (`*.stories.tsx`).
 
 2) Startup toggle (`USE_STORYBOOK`) and default story
-   - In app entry (e.g., `expo/index.ts` or the root used by Expo Router), import either `StorybookUIRoot` or the normal app root based on a boolean:
-     - Code constant (temporary) and/or env var (`process.env.USE_STORYBOOK === '1'`).
-   - For DX, also add a dev menu item or a separate NPM/Bun script to launch Storybook mode.
+   - In the app entry used by Expo Router (e.g., `expo/app/_layout.tsx`), branch on an env flag and require `../.rnstorybook` to render `StorybookUIRoot` when enabled; otherwise render the normal app.
+   - Provide DX scripts that set `EXPO_PUBLIC_USE_STORYBOOK=1` to enable Storybook mode.
    - Configure the default landing story via `.rnstorybook/main.ts` using `reactNative.initialSelection` pointing to `App/Home`.
 
 3) Consolidation strategy
@@ -51,8 +51,9 @@ Provide a simple runtime toggle: if `USE_STORYBOOK` is true (boolean flag or env
 
 4) Developer experience
    - Add scripts:
-     - `bun run storybook` — start Metro in Storybook mode (or reuse Expo dev-client with `USE_STORYBOOK=1`).
-     - `bun run storybook:ios` / `:android` — convenience scripts to open the platform simulator in Storybook mode.
+     - `bun run storybook` — start Metro in Storybook mode (`EXPO_PUBLIC_USE_STORYBOOK=1`).
+     - `bun run storybook:ios` / `:android` — convenience scripts to open the simulator in Storybook mode.
+   - Metro integration uses `withStorybook({ enabled: envFlag, configPath: './.rnstorybook' })` in `expo/metro.config.js`.
    - Document local steps in `docs/app/` or a Storybook README.
 
 5) Testing & CI
