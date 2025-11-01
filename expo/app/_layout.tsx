@@ -215,18 +215,7 @@ function DrawerContent() {
             <Ionicons name="help-circle-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Help</Text>
           </Pressable>
-          {isDevEnv ? (
-            <Pressable
-              onPress={closeAnd(() => router.push('/library'))}
-              accessibilityRole="button"
-              accessibilityLabel="Open component library"
-              testID="drawer-library"
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
-            >
-              <Ionicons name="book-outline" size={18} color={Colors.foreground} />
-              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Component Library</Text>
-            </Pressable>
-          ) : null}
+          {/* Component Library removed; use Storybook (USE_STORYBOOK) for demos */}
           {/** Logs link disabled in drawer
           <Pressable
             onPress={closeAnd(() => router.push('/logs'))}
@@ -409,29 +398,7 @@ function DrawerWrapper() {
           <Stack.Screen name="skills/index" />
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="project/new" />
-          <Stack.Screen name="library/index" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/markdown" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/user-message" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/reasoning-headline" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/reasoning-card" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/exec" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/file-change" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/command" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/search-mcp" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/todo" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/turn-error" options={{ animation: 'slide_from_right' }} />
-          {/* ACP-specific library demos */}
-          <Stack.Screen name="library/acp-message" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/acp-thought" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/acp-tool-call" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/acp-plan" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/acp-available-commands" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/acp-current-mode" options={{ animation: 'slide_from_right' }} />
-          {/* Example conversation + details */}
-          <Stack.Screen name="library/acp-example-conversation" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/acp-example-conversation/[id]" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/drawer" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="library/unused" options={{ animation: 'slide_from_right' }} />
+          {/* Component Library routes removed */}
           <Stack.Screen name="settings/index" />
           <Stack.Screen name="logs/index" />
         </Stack>

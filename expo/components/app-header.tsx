@@ -23,8 +23,7 @@ export function AppHeader() {
     const p = String(pathname || '')
     // Show back arrow on deep detail screens (message detail, library subpages, thread metadata)
     if (p.startsWith('/message/')) return true
-    // Library detail pages live under /library/* (but not /library itself)
-    if (p.startsWith('/library/')) return true
+    // Library routes removed; no special back behavior needed
     return false
   }, [pathname])
 
