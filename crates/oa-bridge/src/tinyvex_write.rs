@@ -26,8 +26,8 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
                     "type":"tinyvex.update",
                     "stream":"threads",
                     "op":"upsert",
-                    "threadId": thread_id,
-                    "updatedAt": row.updated_at,
+                    "thread_id": thread_id,
+                    "updated_at": row.updated_at,
                     "row": row_json
                 }).to_string());
             }
@@ -35,19 +35,19 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
                     "op": "upsertStreamed",
-                    "threadId": thread_id,
+                    "thread_id": thread_id,
                     "kind": kind,
-                    "itemId": item_id,
+                    "item_id": item_id,
                     "len": text_len,
                     "ok": true
                 }).to_string());
                 let _ = state.tx.send(json!({
                     "type": "tinyvex.update",
                     "stream": "messages",
-                    "op": "upsertStreamed",
-                    "threadId": thread_id,
+                    "op": "upsert_streamed",
+                    "thread_id": thread_id,
                     "kind": kind,
-                    "itemId": item_id,
+                    "item_id": item_id,
                     "seq": seq
                 }).to_string());
             }
@@ -63,20 +63,20 @@ pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &
             if let tinyvex::WriterNotification::MessagesFinalize { thread_id, item_id, kind, text_len } = n {
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
-                    "op": "finalizeStreamed",
-                    "threadId": thread_id,
+                    "op": "finalize_streamed",
+                    "thread_id": thread_id,
                     "kind": kind,
-                    "itemId": item_id,
+                    "item_id": item_id,
                     "len": text_len,
                     "ok": true
                 }).to_string());
                 let _ = state.tx.send(json!({
                     "type": "tinyvex.update",
                     "stream": "messages",
-                    "op": "finalizeStreamed",
-                    "threadId": thread_id,
+                    "op": "finalize_streamed",
+                    "thread_id": thread_id,
                     "kind": kind,
-                    "itemId": item_id
+                    "item_id": item_id
                 }).to_string());
             }
         }
@@ -113,8 +113,8 @@ pub async fn finalize_or_snapshot(state: &AppState, thread_id: &str, kind: &str,
                     "type":"tinyvex.update",
                     "stream":"threads",
                     "op":"upsert",
-                    "threadId": thread_id,
-                    "updatedAt": row.updated_at,
+                    "thread_id": thread_id,
+                    "updated_at": row.updated_at,
                     "row": row_json
                 }).to_string());
             }
@@ -122,10 +122,10 @@ pub async fn finalize_or_snapshot(state: &AppState, thread_id: &str, kind: &str,
                 // still surface a progress debug
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
-                    "op": "upsertStreamed",
-                    "threadId": thread_id,
+                    "op": "upsert_streamed",
+                    "thread_id": thread_id,
                     "kind": kind,
-                    "itemId": item_id,
+                    "item_id": item_id,
                     "len": text_len,
                     "ok": true
                 }).to_string());
@@ -136,8 +136,8 @@ pub async fn finalize_or_snapshot(state: &AppState, thread_id: &str, kind: &str,
                     "type":"tinyvex.update",
                     "stream":"messages",
                     "op":"insert",
-                    "threadId": thread_id,
-                    "itemId": item_id
+                    "thread_id": thread_id,
+                    "item_id": item_id
                 }).to_string());
             }
             _ => {}
@@ -154,20 +154,20 @@ pub async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
         if let tinyvex::WriterNotification::MessagesFinalize { thread_id, item_id, kind, text_len } = n {
             let _ = state.tx.send(json!({
                 "type": "bridge.tinyvex_write",
-                "op": "finalizeStreamed",
-                "threadId": thread_id,
+                "op": "finalize_streamed",
+                "thread_id": thread_id,
                 "kind": kind,
-                "itemId": item_id,
+                "item_id": item_id,
                 "len": text_len,
                 "ok": true
             }).to_string());
             let _ = state.tx.send(json!({
                 "type": "tinyvex.update",
                 "stream": "messages",
-                "op": "finalizeStreamed",
-                "threadId": thread_id,
+                "op": "finalize_streamed",
+                "thread_id": thread_id,
                 "kind": kind,
-                "itemId": item_id
+                "item_id": item_id
             }).to_string());
         }
     }

@@ -35,12 +35,12 @@ export type ToolCallRow = Omit<ToolCallRowBase, 'created_at'|'updated_at'> & {
 
 // WS envelope typings (subset used by this provider)
 type TvxSnapshotThreads = { type: 'tinyvex.snapshot'; stream: 'threads'; rows: ThreadRow[]; rev: number }
-type TvxSnapshotMessages = { type: 'tinyvex.snapshot'; stream: 'messages'; threadId: string; rows: MessageRow[]; rev: number }
+type TvxSnapshotMessages = { type: 'tinyvex.snapshot'; stream: 'messages'; thread_id: string; rows: MessageRow[]; rev: number }
 type TvxQueryThreads = { type: 'tinyvex.query_result'; name: 'threads.list'; rows: ThreadRow[] }
-type TvxQueryMessages = { type: 'tinyvex.query_result'; name: 'messages.list'; threadId: string; rows: MessageRow[] }
-type TvxQueryToolCalls = { type: 'tinyvex.query_result'; name: 'toolCalls.list'; threadId: string; rows: ToolCallRow[] }
-type TvxQueryThreadsAndTails = { type: 'tinyvex.query_result'; name: 'threadsAndTails.list'; threads: ThreadRow[]; tails: { threadId: string; rows: MessageRow[] }[] }
-type TvxUpdateMessages = { type: 'tinyvex.update'; stream: 'messages'; threadId: string }
+type TvxQueryMessages = { type: 'tinyvex.query_result'; name: 'messages.list'; thread_id: string; rows: MessageRow[] }
+type TvxQueryToolCalls = { type: 'tinyvex.query_result'; name: 'toolCalls.list'; thread_id: string; rows: ToolCallRow[] }
+type TvxQueryThreadsAndTails = { type: 'tinyvex.query_result'; name: 'threadsAndTails.list'; threads: ThreadRow[]; tails: { thread_id: string; rows: MessageRow[] }[] }
+type TvxUpdateMessages = { type: 'tinyvex.update'; stream: 'messages'; thread_id: string }
 type TvxUpdateThreadsRow = { type: 'tinyvex.update'; stream: 'threads'; row?: Partial<ThreadRow> & { id?: string; thread_id?: string } }
 type TvxUpdateToolCalls = { type: 'tinyvex.update'; stream: 'toolCalls'; threadId: string }
 type TvxUpdatePlan = { type: 'tinyvex.update'; stream: 'plan'; threadId: string }
@@ -119,24 +119,24 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           }
         } catch {}
       } else if (s.stream === 'messages') {
-        setMessagesByThread((prev) => ({ ...prev, [s.threadId]: s.rows }))
+        setMessagesByThread((prev) => ({ ...prev, [s.thread_id]: s.rows }))
         try {
-          const alias = getAliasForCanonical(String(s.threadId))
-          if (alias && alias !== s.threadId) {
+          const alias = getAliasForCanonical(String(s.thread_id))
+          if (alias && alias !== s.thread_id) {
             setMessagesByThread((prev) => ({ ...prev, [alias]: s.rows }))
           }
         } catch {}
       }
     } else if (ot === 'tinyvex.update') {
       const u = obj as TvxUpdateMessages | TvxUpdateThreadsRow | TvxUpdateToolCalls | TvxUpdatePlan | TvxUpdateState
-      if (u.stream === 'messages' && typeof (u as TvxUpdateMessages).threadId === 'string') {
+      if (u.stream === 'messages' && typeof (u as TvxUpdateMessages).thread_id === 'string') {
         // Live message writes can emit many updates while streaming.
         // Throttle per thread to avoid storms during streaming.
-        try { scheduleMsgQuery((u as TvxUpdateMessages).threadId) } catch {}
+        try { scheduleMsgQuery((u as TvxUpdateMessages).thread_id) } catch {}
         // Also schedule a query for the canonical id if this was the client doc id,
         // or vice-versa schedule for the alias if we received a canonical update.
         try {
-          const tid = String((u as TvxUpdateMessages).threadId)
+          const tid = String((u as TvxUpdateMessages).thread_id)
           const resume = getResumeForId(tid)
           if (resume && resume !== tid) { scheduleMsgQuery(resume) }
           const alias = getAliasForCanonical(tid)
@@ -187,17 +187,17 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           }
         } catch {}
       } else if (q.name === 'messages.list') {
-        setMessagesByThread((prev) => ({ ...prev, [q.threadId]: q.rows }))
+        setMessagesByThread((prev) => ({ ...prev, [q.thread_id]: q.rows }))
         // If these rows correspond to a canonical session id, also project them onto the
         // client doc id so thread screens keyed by that id hydrate immediately.
         try {
-          const alias = getAliasForCanonical(String(q.threadId))
-          if (alias && alias !== q.threadId) {
+          const alias = getAliasForCanonical(String(q.thread_id))
+          if (alias && alias !== q.thread_id) {
             setMessagesByThread((prev) => ({ ...prev, [alias]: q.rows }))
           }
         } catch {}
       } else if (q.name === 'toolCalls.list') {
-        setToolCallsByThread((prev) => ({ ...prev, [q.threadId]: q.rows }))
+        setToolCallsByThread((prev) => ({ ...prev, [q.thread_id]: q.rows }))
       } else if (q.name === 'threadsAndTails.list') {
         // cancel fallback to threads.list if pending
         try {
@@ -222,7 +222,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           nextThreads.push(r)
         }
         for (const t of tails) {
-          const tid = String((t?.threadId) || '')
+          const tid = String((t?.thread_id) || '')
           if (!tid || known.has(tid)) continue
           const rows = Array.isArray(t?.rows) ? (t.rows as MessageRow[]) : []
           const ts = (() => {
@@ -259,7 +259,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         setMessagesByThread((prev) => {
           const next = { ...prev }
           for (const t of tails) {
-            const tid = String((t?.threadId) || '')
+            const tid = String((t?.thread_id) || '')
             const rows = Array.isArray(t?.rows) ? (t.rows as MessageRow[]) : []
             if (tid && rows.length) next[tid] = rows
           }
@@ -275,7 +275,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const scheduleMsgQuery = useMemo(() => {
     const throttle = createPerKeyThrottle(MSG_QUERY_THROTTLE_MS)
     return (threadId: string) => throttle(threadId, () => {
-      try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId, limit: DEFAULT_THREAD_TAIL } })) } catch {}
+      try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: threadId, limit: DEFAULT_THREAD_TAIL } })) } catch {}
     })
   }, [bridge])
   const scheduleThreadsRefresh = useMemo(() => {
@@ -325,7 +325,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
       for (const r of copy) {
         const tid = String((r as ThreadRow).id || '')
         if (!tid || seen.has(tid)) continue
-        try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', threadId: tid })) } catch {}
+    try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', thread_id: tid })) } catch {}
         try { scheduleMsgQuery(tid) } catch {}
         seen.add(tid)
       }
@@ -336,11 +336,11 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' }))
   }, [bridge])
   const subscribeMessages = useCallback((threadId: string) => {
-    try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', threadId })) } catch {}
+    try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', thread_id: threadId })) } catch {}
     try {
       const canonical = getResumeForId(threadId)
       if (canonical && canonical !== threadId) {
-        bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', threadId: canonical }))
+        bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', thread_id: canonical }))
       }
     } catch {}
   }, [bridge, getResumeForId])
@@ -348,16 +348,16 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit } }))
   }, [bridge])
   const queryMessages = useCallback((threadId: string, limit: number = DEFAULT_THREAD_TAIL) => {
-    try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId, limit } })) } catch {}
+    try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: threadId, limit } })) } catch {}
     try {
       const canonical = getResumeForId(threadId)
       if (canonical && canonical !== threadId) {
-        bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { threadId: canonical, limit } }))
+        bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: canonical, limit } }))
       }
     } catch {}
   }, [bridge, getResumeForId])
   const queryToolCalls = useCallback((threadId: string, limit: number = 50) => {
-    bridge.send(JSON.stringify({ control: 'tvx.query', name: 'toolCalls.list', args: { threadId, limit } }))
+    bridge.send(JSON.stringify({ control: 'tvx.query', name: 'toolCalls.list', args: { thread_id: threadId, limit } }))
   }, [bridge])
 
   const value = useMemo(() => ({ threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls }), [threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls])

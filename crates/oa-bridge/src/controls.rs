@@ -63,7 +63,7 @@ pub fn parse_control_command(payload: &str) -> Option<ControlCommand> {
             .map(|id| ControlCommand::ProjectDelete { id: id.to_string() }),
         "tvx.subscribe" => {
             let stream = v.get("stream").and_then(|x| x.as_str())?.to_string();
-            let thread_id = v.get("threadId").and_then(|x| x.as_str()).map(|s| s.to_string());
+            let thread_id = v.get("thread_id").and_then(|x| x.as_str()).or_else(|| v.get("threadId").and_then(|x| x.as_str())).map(|s| s.to_string());
             Some(ControlCommand::TvxSubscribe { stream, thread_id })
         }
         "tvx.query" => {
