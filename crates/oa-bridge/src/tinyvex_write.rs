@@ -370,41 +370,131 @@ fn two_way_base_dir() -> std::path::PathBuf {
 }
 
 async fn append_two_way_jsonl(thread_id: &str, update: &agent_client_protocol::SessionUpdate) -> anyhow::Result<()> {
-    use agent_client_protocol::SessionUpdate as SU;
+    use agent_client_protocol::{SessionUpdate as SU, ContentBlock, ToolCallStatus, ToolKind};
     let base = two_way_base_dir();
     let file_path = base.join(format!("{}.jsonl", thread_id));
-    // Map ACP update → Codex-style JSONL event(s)
-    let lines: Vec<serde_json::Value> = match update {
+
+    // Helper to append lines with a thread.started header on first write
+    let write_lines = |file_path: &std::path::Path, thread: &str, lines: Vec<serde_json::Value>| -> anyhow::Result<()> {
+        if lines.is_empty() { return Ok(()); }
+        use std::io::Write;
+        let first_write = !file_path.exists() || std::fs::metadata(file_path).map(|m| m.len() == 0).unwrap_or(true);
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(file_path)?;
+        if first_write {
+            let started = serde_json::json!({"type":"thread.started","thread_id": thread});
+            writeln!(f, "{}", started.to_string())?;
+        }
+        for v in lines { writeln!(f, "{}", v.to_string())?; }
+        Ok(())
+    };
+
+    let mut lines: Vec<serde_json::Value> = Vec::new();
+    match update {
+        // Textual items → completed lines
         SU::UserMessageChunk(ch) => {
-            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
-            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"user_message","text": text}})] }
+            let text = match &ch.content { ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if !text.is_empty() { lines.push(serde_json::json!({"type":"item.completed","item":{"type":"user_message","text": text}})); }
         }
         SU::AgentMessageChunk(ch) => {
-            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
-            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text": text}})] }
+            let text = match &ch.content { ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if !text.is_empty() { lines.push(serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text": text}})); }
         }
         SU::AgentThoughtChunk(ch) => {
-            let text = match &ch.content { agent_client_protocol::ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
-            if text.is_empty() { Vec::new() } else { vec![serde_json::json!({"type":"item.completed","item":{"type":"reasoning","text": text}})] }
+            let text = match &ch.content { ContentBlock::Text(t) => t.text.clone(), _ => String::new() };
+            if !text.is_empty() { lines.push(serde_json::json!({"type":"item.completed","item":{"type":"reasoning","text": text}})); }
         }
-        _ => Vec::new(),
-    };
+        // ToolCall → item.started (status in_progress)
+        SU::ToolCall(call) => {
+            match call.kind {
+                ToolKind::Execute => {
+                    let mut v = serde_json::json!({"type":"command_execution","status":"in_progress","id": call.id.0.as_ref()});
+                    if let Some(raw) = &call.raw_input {
+                        if let Some(cmd) = raw.get("command").and_then(|x| x.as_str()) { v["command"] = serde_json::json!(cmd); }
+                        if let Some(cmd) = raw.get("cmd").and_then(|x| x.as_str()) { v["command"] = serde_json::json!(cmd); }
+                    }
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+                ToolKind::Edit => {
+                    let mut changes: Vec<serde_json::Value> = Vec::new();
+                    for loc in &call.locations {
+                        let p = &loc.path;
+                        let non_empty = match p.as_os_str().is_empty() { false => true, true => false };
+                        if non_empty {
+                            let path_str = p.to_string_lossy().to_string();
+                            changes.push(serde_json::json!({"path": path_str, "kind": "edit"}));
+                        }
+                    }
+                    let mut v = serde_json::json!({"type":"file_change","status":"in_progress","id": call.id.0.as_ref()});
+                    if !changes.is_empty() { v["changes"] = serde_json::json!(changes); }
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+                ToolKind::Search => {
+                    let mut v = serde_json::json!({"type":"web_search","status":"in_progress","id": call.id.0.as_ref()});
+                    if let Some(raw) = &call.raw_input { if let Some(q) = raw.get("query").and_then(|x| x.as_str()) { v["query"] = serde_json::json!(q); } }
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+                ToolKind::Fetch => {
+                    let mut v = serde_json::json!({"type":"web_fetch","status":"in_progress","id": call.id.0.as_ref()});
+                    if let Some(raw) = &call.raw_input { if let Some(u) = raw.get("url").and_then(|x| x.as_str()) { v["url"] = serde_json::json!(u); } }
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+                _ => {
+                    let v = serde_json::json!({"type":"mcp_tool_call","status":"in_progress","id": call.id.0.as_ref()});
+                    lines.push(serde_json::json!({"type":"item.started","item": v}));
+                }
+            }
+        }
+        // ToolCallUpdate → item.completed with status and optional stdout/text summary
+        SU::ToolCallUpdate(up) => {
+            let status = match up.fields.status.unwrap_or(ToolCallStatus::Completed) {
+                ToolCallStatus::Failed => "failed",
+                ToolCallStatus::InProgress => "in_progress",
+                ToolCallStatus::Pending => "pending",
+                ToolCallStatus::Completed => "completed",
+            };
+            let mut summary: Option<String> = None;
+            if let Some(content) = &up.fields.content {
+                let mut buf = String::new();
+                for c in content {
+                    if let Ok(val) = serde_json::to_value(c) {
+                        if val.get("type").and_then(|x| x.as_str()) == Some("text") {
+                            if let Some(t) = val.get("text").and_then(|x| x.as_str()) {
+                                if !buf.is_empty() { buf.push('\n'); }
+                                buf.push_str(t);
+                            }
+                        }
+                    }
+                }
+                if !buf.trim().is_empty() { summary = Some(buf); }
+            }
+            if summary.is_none() {
+                if let Some(raw) = &up.fields.raw_output {
+                    if let Some(stdout) = raw.get("stdout").and_then(|x| x.as_str()) { if !stdout.is_empty() { summary = Some(stdout.to_string()); } }
+                }
+            }
+            let mut item = serde_json::json!({"type":"mcp_tool_call","id": up.id.0.as_ref(), "status": status});
+            if let Some(text) = summary { item["stdout"] = serde_json::json!(text); }
+            lines.push(serde_json::json!({"type":"item.completed","item": item}));
+        }
+        // Plan → todo_list completion
+        SU::Plan(plan) => {
+            let mut items: Vec<serde_json::Value> = Vec::new();
+            for e in &plan.entries {
+                let completed = matches!(e.status, agent_client_protocol::PlanEntryStatus::Completed);
+                items.push(serde_json::json!({"text": e.content, "completed": completed}));
+            }
+            if !items.is_empty() {
+                lines.push(serde_json::json!({"type":"item.completed","item": {"type":"todo_list","items": items}}));
+            }
+        }
+        _ => {}
+    }
+
     if lines.is_empty() { return Ok(()); }
     tokio::task::spawn_blocking({
         let thread = thread_id.to_string();
-        move || -> anyhow::Result<()> {
-            use std::io::Write;
-            let first_write = !file_path.exists() || std::fs::metadata(&file_path).map(|m| m.len()==0).unwrap_or(true);
-            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&file_path)?;
-            if first_write {
-                let started = serde_json::json!({"type":"thread.started","thread_id": thread});
-                writeln!(f, "{}", started.to_string())?;
-            }
-            for v in lines {
-                writeln!(f, "{}", v.to_string())?;
-            }
-            Ok(())
-        }
+        let file_path = file_path.clone();
+        move || -> anyhow::Result<()> { write_lines(&file_path, &thread, lines) }
     }).await??;
     Ok(())
 }
