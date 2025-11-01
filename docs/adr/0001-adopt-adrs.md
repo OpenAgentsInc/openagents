@@ -1,9 +1,7 @@
 # ADR 0001 — Adopt Architectural Decision Records (ADRs)
 
-- Date: 2025-11-01
-- Status: Accepted
-- Deciders: OpenAgents maintainers
-- Consulted: Mobile, Bridge (Rust), DX
+ - Date: 2025-11-01
+ - Status: Accepted
 
 ## Context
 

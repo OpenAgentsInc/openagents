@@ -1,9 +1,7 @@
 # ADR 0003 — Tinyvex as the Local Sync Engine (SQLite + WS)
 
-- Date: 2025-10-31
-- Status: Accepted
-- Deciders: OpenAgents maintainers
-- Context owners: Mobile, Bridge
+ - Date: 2025-10-31
+ - Status: Accepted
 
 ## Context
 

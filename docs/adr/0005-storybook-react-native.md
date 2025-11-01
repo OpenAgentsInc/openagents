@@ -1,9 +1,7 @@
 # ADR 0005 — Adopt Storybook (v10) for React Native Component Library
 
-- Date: 2025-11-01
-- Status: Accepted
-- Deciders: OpenAgents maintainers
-- Consulted: Mobile, DX, Design
+ - Date: 2025-11-01
+ - Status: Accepted
 
 ## Context
 
@@ -89,4 +87,3 @@ Provide a simple runtime toggle: if `USE_STORYBOOK` is true (boolean flag or env
 - Storybook React Native v10 docs: https://storybookjs.github.io/react-native/docs/intro/
 - Intro to Storybook (React Native): https://storybook.js.org/tutorials/intro-to-storybook/react-native/en/get-started/
 - Component‑Driven UIs: https://www.componentdriven.org/
-

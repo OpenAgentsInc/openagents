@@ -1,9 +1,7 @@
 # ADR 0004 — Maestro E2E Testing for iOS & Android
 
-- Date: 2025-11-01
-- Status: Accepted
-- Deciders: OpenAgents maintainers
-- Consulted: Mobile, Bridge (Rust), DX
+ - Date: 2025-11-01
+ - Status: Accepted
 
 ## Context
 
