@@ -381,9 +381,18 @@ fn claude_projects_base_path() -> std::path::PathBuf {
         let _ = std::fs::create_dir_all(&dir);
         return dir;
     }
-    // Default to ~/.claude/projects
-    let base = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or(std::env::temp_dir());
-    let dir = base.join(".claude").join("projects");
+    let home = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or(std::env::temp_dir());
+    // Common local Claude layouts
+    let candidates = [
+        home.join(".claude").join("projects"),
+        home.join(".claude").join("local").join("claude").join("projects"),
+        home.join(".claude").join("local").join("projects"),
+    ];
+    for c in &candidates {
+        if c.exists() { return c.clone(); }
+    }
+    // Fallback to ~/.claude/projects (ensure exists)
+    let dir = home.join(".claude").join("projects");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
