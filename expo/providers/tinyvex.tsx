@@ -42,9 +42,9 @@ type TvxQueryToolCalls = { type: 'tinyvex.query_result'; name: 'toolCalls.list';
 type TvxQueryThreadsAndTails = { type: 'tinyvex.query_result'; name: 'threadsAndTails.list'; threads: ThreadRow[]; tails: { thread_id: string; rows: MessageRow[] }[] }
 type TvxUpdateMessages = { type: 'tinyvex.update'; stream: 'messages'; thread_id: string }
 type TvxUpdateThreadsRow = { type: 'tinyvex.update'; stream: 'threads'; row?: Partial<ThreadRow> & { id?: string; thread_id?: string } }
-type TvxUpdateToolCalls = { type: 'tinyvex.update'; stream: 'toolCalls'; threadId: string }
-type TvxUpdatePlan = { type: 'tinyvex.update'; stream: 'plan'; threadId: string }
-type TvxUpdateState = { type: 'tinyvex.update'; stream: 'state'; threadId: string }
+type TvxUpdateToolCalls = { type: 'tinyvex.update'; stream: 'toolCalls'; thread_id: string }
+type TvxUpdatePlan = { type: 'tinyvex.update'; stream: 'plan'; thread_id: string }
+type TvxUpdateState = { type: 'tinyvex.update'; stream: 'state'; thread_id: string }
 
 export type TinyvexContextValue = {
   threads: ThreadRow[];
@@ -165,13 +165,13 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           // Fallback: Debounce refreshes to avoid repeated full refreshes on bursts.
           try { scheduleThreadsRefresh() } catch {}
         }
-      } else if (u.stream === 'toolCalls' && typeof (u as TvxUpdateToolCalls).threadId === 'string') {
+      } else if (u.stream === 'toolCalls' && typeof (u as TvxUpdateToolCalls).thread_id === 'string') {
         // Ignore incremental toolCalls stream; we hydrate via toolCalls.list when needed.
-      } else if (u.stream === 'plan' && typeof (u as TvxUpdatePlan).threadId === 'string') {
-        const tid: string = (u as TvxUpdatePlan).threadId
+      } else if (u.stream === 'plan' && typeof (u as TvxUpdatePlan).thread_id === 'string') {
+        const tid: string = (u as TvxUpdatePlan).thread_id
         setPlanTouched((prev) => ({ ...prev, [tid]: Date.now() }))
-      } else if (u.stream === 'state' && typeof (u as TvxUpdateState).threadId === 'string') {
-        const tid: string = (u as TvxUpdateState).threadId
+      } else if (u.stream === 'state' && typeof (u as TvxUpdateState).thread_id === 'string') {
+        const tid: string = (u as TvxUpdateState).thread_id
         setStateTouched((prev) => ({ ...prev, [tid]: Date.now() }))
       }
     } else if (ot === 'tinyvex.query_result') {
