@@ -15,9 +15,10 @@ Additional flows are included but may require specific conditions (dev-client ro
  - In `bridge_connect_and_stream.yaml`, we wait for a user echo, then prefer an `agent-message`. If not visible, we fall back to `tool-call` or `agent-thought`, then retry once with a compact follow-up.
 
 ## Troubleshooting
-- If `/--/settings` deep link doesn’t show the status pill, use the drawer path first: tap `header-menu-button` → `drawer-settings` → assert `settings-status`.
+- If `/--/settings` deep link doesn’t show content, use the drawer path first: tap `header-menu-button` → `drawer-settings` → assert `settings-root`.
 - If Library deep links do not render, open the base link first (`exp://localhost:8081`) and then the specific library route. Some simulators require the base dev-client to be warmed up.
 - For streaming, if `agent-message` doesn’t appear, try sending a short warm‑up message and re-sending the real prompt; also increase timeouts.
+- Artifacts: Maestro writes screenshots/logs to `~/.maestro/tests/<timestamp>`. See `docs/maestro/artifacts.md`.
 
 ## Environment
 - Start tricoder/bridge and capture LAN host:port and token printed by tricoder.
