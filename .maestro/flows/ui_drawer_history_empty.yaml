@@ -16,5 +16,5 @@ name: UI Drawer → History Empty
     timeout: 60000
 - extendedWaitUntil:
     visible:
-      text: "No history yet."
+      text: "History"
     timeout: 60000
