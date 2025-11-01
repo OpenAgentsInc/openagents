@@ -1,0 +1,19 @@
+appId: com.openagents.app
+name: UI Library → ACP Current Mode
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+- tapOn:
+    id: header-menu-button
+- tapOn:
+    id: drawer-library
+- extendedWaitUntil:
+    visible:
+      id: library-root
+    timeout: 60000
+- tapOn:
+    id: library-link-current-mode
+- extendedWaitUntil:
+    visible:
+      id: current-mode
+    timeout: 30000
