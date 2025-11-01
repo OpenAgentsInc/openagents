@@ -8,9 +8,14 @@ This guide summarizes the passing E2E flows, how to run them against a local bri
 - `.maestro/flows/ui_drawer_history_empty.yaml` — opens the drawer and asserts the History section is present (resilient whether history is empty or not).
 - `.maestro/flows/bridge_connect_manual.yaml` — opens Settings, fills host/token, taps Apply and Connect if needed, then relies on the header connection indicator.
 
-Additional flows are included but require specific conditions (e.g., development drawer links or streaming):
+Additional flows are included but may require specific conditions (dev-client routing, streaming readiness) and can be flaky if Metro or the bridge are not warmed up:
 - Library flows (`ui_library_*`) require the `Component Library` drawer item to be visible. Set `EXPO_PUBLIC_ENV=development` when starting Metro to surface the dev-only link.
-- Streaming flows require a reachable LAN bridge and a codex/claude provider that can stream on demand. Prefer the combined `bridge_connect_and_stream.yaml` (manual host/token) when testing streaming.
+- Streaming flows require a reachable LAN bridge and a codex/claude provider that can stream on demand. Prefer the combined `bridge_connect_and_stream.yaml` (manual host/token) when testing streaming, and consider a warm‑up send before asserting.
+
+## Troubleshooting
+- If `/--/settings` deep link doesn’t show the status pill, use the drawer path first: tap `header-menu-button` → `drawer-settings` → assert `settings-status`.
+- If Library deep links do not render, open the base link first (`exp://localhost:8081`) and then the specific library route. Some simulators require the base dev-client to be warmed up.
+- For streaming, if `agent-message` doesn’t appear, try sending a short warm‑up message and re-sending the real prompt; also increase timeouts.
 
 ## Environment
 - Start tricoder/bridge and capture LAN host:port and token printed by tricoder.
