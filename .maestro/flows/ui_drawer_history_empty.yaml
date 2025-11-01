@@ -2,7 +2,7 @@ appId: com.openagents.app
 name: UI Drawer → History Empty
 ---
 - launchApp
-- openLink: "exp+devclient://localhost:8081"
+ - openLink: "exp://localhost:8081"
 - runFlow:
     when:
       visible:
