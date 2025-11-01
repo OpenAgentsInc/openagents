@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, Pressable, StyleSheet } from 'react-native'
+import { View, Text, Pressable, StyleSheet, TextInput } from 'react-native'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
 import { Colors } from '@/constants/theme'
@@ -13,8 +13,9 @@ export default function SettingsScreen() {
   useHeaderTitle('Settings')
   const { bridgeHost, setBridgeHost, connected, connect, disconnect, addSubscriber, send } = useBridge()
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
-  const bridgeToken = useSettings((s) => s.bridgeToken) // retained for future, not rendered
-  const setBridgeToken = useSettings((s) => s.setBridgeToken) // retained for future, not rendered
+  const bridgeToken = useSettings((s) => s.bridgeToken)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
+  const [tokenInput, setTokenInput] = React.useState<string>(() => String(bridgeToken || ''))
   const updatesAutoPoll = useSettings((s) => s.updatesAutoPoll)
   const setUpdatesAutoPoll = useSettings((s) => s.setUpdatesAutoPoll)
   // Convex removed
@@ -99,9 +100,38 @@ export default function SettingsScreen() {
       </View>
       <View style={{ height: 16 }} />
       {isDev ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <Button title='Dev Quick Connect' onPress={onDevQuick} testID='settings-dev-quick' />
-        </View>
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <Button title='Dev Quick Connect' onPress={onDevQuick} testID='settings-dev-quick' />
+          </View>
+          {/* Dev-only manual host/token inputs for automated tests */}
+          <View style={styles.inputWrapper}>
+            <Text style={styles.label}>Bridge host (dev)</Text>
+            <TextInput
+              testID='settings-host-input'
+              value={hostInput}
+              onChangeText={setHostInput}
+              placeholder='host:port'
+              style={styles.input}
+              autoCapitalize='none'
+              autoCorrect={false}
+            />
+            <Text style={styles.label}>Token (dev)</Text>
+            <TextInput
+              testID='settings-token-input'
+              value={tokenInput}
+              onChangeText={setTokenInput}
+              placeholder='token'
+              style={styles.input}
+              autoCapitalize='none'
+              autoCorrect={false}
+              secureTextEntry
+            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              <Button title='Apply' onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; try { setBridgeToken(tokenInput.trim()) } catch {} }} testID='settings-apply' />
+            </View>
+          </View>
+        </>
       ) : null}
       <Text style={styles.title}>Sync</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
