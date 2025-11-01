@@ -2,7 +2,7 @@
 
 - Date: 2025-11-01
 - Scope: docs/adr/0001–0006 vs. current code in `expo/` and `crates/oa-bridge/`.
-- Outcome: Broad alignment with ADRs 0002–0004. Notable gaps: excessive `any` casts in the Expo app (violates ADR‑0002/type-safety policy), a camelCase transport field (`messageCount`) emitted by the bridge (violates snake_case), incomplete Storybook adoption (ADR‑0005), and ADR‑0006 still at “Proposed”.
+- Outcome: Broad alignment with ADRs 0002–0004. Notable gaps: excessive `any` casts in the Expo app (violates ADR‑0002/type-safety policy), a camelCase transport field (`messageCount`) emitted by the bridge (violates snake_case). Storybook (ADR‑0005) is largely implemented with stories under `expo/.rnstorybook/stories`, but legacy Library screens remain. ADR‑0006 is still at “Proposed”.
 
 ## Method
 
@@ -98,13 +98,18 @@
 
 - Positives
   - Storybook wiring present and toggleable via env:
-    - Metro config: `expo/metro.config.js:3`, `:9`.
-    - Storybook entry: `expo/storybook/index.ts:1`–`6`, `expo/storybook/storybook.requires.ts:6`.
-    - App toggle: `expo/app/_layout.tsx:258`–`264`.
+    - Metro config uses the official RN v10 integration and points to `.rnstorybook`: `expo/metro.config.js:3`, `:9`.
+    - App toggle: `expo/app/_layout.tsx:258`–`264` requires `../.rnstorybook` when enabled.
+    - RN v10 config files exist in `expo/.rnstorybook/`:
+      - `expo/.rnstorybook/main.ts:5` (stories glob, `initialSelection` → `App/Home`).
+      - `expo/.rnstorybook/index.ts:8` (creates `StorybookUIRoot`).
+      - `expo/.rnstorybook/preview.tsx:1` (global decorators: fonts/theme).
+    - Stories are present under `expo/.rnstorybook/stories/**`: e.g.,
+      - `expo/.rnstorybook/stories/app/home.stories.tsx:17` (`title: 'App/Home'`).
+      - Multiple ACP stories `expo/.rnstorybook/stories/acp/*.stories.tsx` (AgentMessage, AgentThought, ToolCall, Plan, AvailableCommands, CurrentMode, ExampleConversation, content variants).
     - Scripts: `expo/package.json:7`, `:9`, `:11`.
 
-- Gaps (non‑compliance with acceptance goals)
-  - No stories detected under `storybook/` or elsewhere (`rg` found none).
+- Gaps
   - Legacy in‑app library (`expo/app/library/*`) remains; ADR calls for migrating demos to Storybook and removing legacy screens after parity.
 
 ### ADR‑0006 — Component Organization (Proposed)
@@ -165,4 +170,3 @@
   - expo/components/composer.tsx:97
   - expo/app/settings/index.tsx:90
   - .github/workflows/e2e-maestro.yml:1
-
