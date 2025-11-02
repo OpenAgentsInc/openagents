@@ -1374,6 +1374,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 "stream": "threads",
                                 "row": typed_row
                             }).to_string();
+                            info!(thread_id=%val, client_doc=%client_doc_str, "broadcasting thread update with resume_id mapping");
                             let _ = tx_out.send(update);
                         }
                         // If we have a pending user text for this client thread doc id, emit ACP and write to Tinyvex acp_events
