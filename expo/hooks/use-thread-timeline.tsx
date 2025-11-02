@@ -76,6 +76,12 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     }
   }
 
+  // DEBUG: Log final items count
+  console.log(`[Timeline Debug] Final items count: ${items.length}`)
+  items.forEach((item, idx) => {
+    console.log(`[Timeline Debug] Item[${idx}]: key=${item.key}`)
+  })
+
   // ACP updates
   // Watermark: if Tinyvex has already persisted messages up to a timestamp,
   // suppress older ACP chat chunks to avoid duplicate rendering of the same
