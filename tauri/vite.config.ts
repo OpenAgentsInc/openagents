@@ -19,6 +19,15 @@ export default defineConfig(async () => ({
       // Tinyvex client + tricoder types
       'tinyvex': path.resolve(__dirname, '..', 'packages', 'tinyvex', 'src'),
       'tricoder': path.resolve(__dirname, '..', 'packages', 'tricoder', 'src'),
+      // Expo component reuse shims and alias
+      'react-native': 'react-native-web',
+      '@expo/vector-icons': path.resolve(__dirname, 'src', 'shims', 'expo-vector-icons.tsx'),
+      '@/constants/theme': path.resolve(__dirname, 'src', 'shims', 'expo-theme.ts'),
+      '@/constants/typography': path.resolve(__dirname, 'src', 'shims', 'expo-typography.ts'),
+      '@/providers/tinyvex': path.resolve(__dirname, 'src', 'shims', 'expo-tinyvex-provider.ts'),
+      'expo-router': path.resolve(__dirname, 'src', 'shims', 'expo-router.ts'),
+      // Allow importing Expo component files directly
+      'expo': path.resolve(__dirname, '..', 'expo'),
     },
   },
 
