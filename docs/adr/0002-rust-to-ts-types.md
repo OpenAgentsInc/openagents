@@ -44,7 +44,7 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 
 ## Consequences
 
-- App: Remove `any` and mixed‑case probing for threads/messages/tool calls/sync/envelopes. Prefer `row.last_message_ts ?? row.updated_at`.
+- App: Remove `any` and mixed‑case probing for threads/messages/tool calls/sync/envelopes. Prefer `row.last_message_ts ?? row.updated_at`. Render only Tinyvex‑typed rows in the thread timeline; do not render raw ACP updates directly.
 - Bridge: All WS endpoints must serialize the canonical TS‑exported structs; synthesized history rows must set real timestamps (no `now()` fallbacks).
 - Tooling: Ensure `expo/types/bridge/generated/` exists; export per‑type `.ts` files there. We maintain readable shims under `expo/types/bridge/*` if needed.
 - Conventions: snake_case fields; use `#[ts(optional)]` for truly optional fields (avoid `T | null` where absence is intended).
@@ -64,9 +64,10 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
    - Switch `threads.list` / `threadsAndTails.list` / `messages.list` / `toolCalls.list` / snapshots / `sync.status` to emit only canonical types; compute `last_message_ts` from data/file mtime.
 
 2) App (Expo)
-   - Import from `expo/types/bridge/*`.
-   - Replace local provider/drawer/thread timeline types with imports from the generated files.
-   - Remove `any` and camelCase/snake_case fallbacks in these paths.
+  - Import from `expo/types/bridge/*`.
+  - Replace local provider/drawer/thread timeline types with imports from the generated files.
+  - Remove `any` and camelCase/snake_case fallbacks in these paths.
+  - Provider aliases canonical session ids and client thread doc ids for all list/query results (threads, messages, tool calls) so screens keyed by the route id hydrate consistently.
 
 3) Tests/Docs
    - Add unit tests mapping sample ACP events → canonical bridge types.
