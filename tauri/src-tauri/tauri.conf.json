@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tauri",
+  "productName": "OpenAgents",
   "version": "0.1.0",
   "identifier": "com.openagents.desktop",
   "build": {
@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "tauri",
-        "width": 800,
-        "height": 600
+        "title": "OpenAgents",
+        "width": 1600,
+        "height": 1000
       }
     ],
     "security": {

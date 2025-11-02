@@ -56,7 +56,8 @@ export class TinyvexClient {
     this.t.send({ name: 'run.submit', args: { text, thread_id, ...opts } });
   }
 
-  private subscribeThread(threadId: string) {
+  // Subscribe to messages for a specific thread
+  subscribeThread(threadId: string) {
     this.t.send({ name: 'tvx.subscribe', args: { stream: 'messages', thread_id: threadId } });
   }
   private queryHistory(threadId: string) {
@@ -64,9 +65,6 @@ export class TinyvexClient {
   }
 
   // Public helpers for external UIs
-  subscribeThread(threadId: string) {
-    this.t.send({ name: 'tvx.subscribe', args: { stream: 'messages', thread_id: threadId } });
-  }
   queryMessages(threadId: string, limit = 1) {
     this.t.send({ name: 'tvx.query', args: { name: 'messages.list', args: { thread_id: threadId, limit } } });
   }

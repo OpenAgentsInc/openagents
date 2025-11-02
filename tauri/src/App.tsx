@@ -123,14 +123,14 @@ function App() {
                 const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.queryThreads(20) }
               } else if (obj.type === 'tinyvex.snapshot' && obj.stream === 'messages' && Array.isArray(obj.rows)) {
                 const rows = obj.rows as MessageRowTs[]
-                setMessages(filterFinalMessages(rows))
-                // If this snapshot belongs to a specific thread, update that thread's last text
                 const tid = String(obj.thread_id || '')
+                // Only update main chat when rows belong to the selected thread
+                if (tid && tid === selectedThread) setMessages(filterFinalMessages(rows))
                 if (tid) updateLastFromRows(tid, rows)
               } else if (obj.type === 'tinyvex.query_result' && obj.name === 'messages.list' && Array.isArray(obj.rows)) {
                 const rows = obj.rows as MessageRowTs[]
-                setMessages(filterFinalMessages(rows))
                 const tid = String(obj.thread_id || '')
+                if (tid && tid === selectedThread) setMessages(filterFinalMessages(rows))
                 if (tid) updateLastFromRows(tid, rows)
               } else if (obj.type === 'tinyvex.update' && obj.stream === 'messages' && selectedThread) {
                 const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.["queryHistory"]?.(selectedThread) }
@@ -153,9 +153,15 @@ function App() {
   }
 
   function filterFinalMessages(rows: MessageRowTs[]): MessageRowTs[] {
-    return rows
-      .filter((r) => String(r.kind || '') === 'message' && !!r.role)
-      .sort((a, b) => Number(a.ts) - Number(b.ts))
+    const finals = rows.filter((r) => String(r.kind || '') === 'message' && !!r.role)
+    const byKey = new Map<string, MessageRowTs>()
+    const keyOf = (r: MessageRowTs) => String(r.item_id || `${r.seq ?? ''}:${r.ts}:${String(r.text || '').slice(0, 120)}`)
+    for (const r of finals) {
+      const k = keyOf(r)
+      const prev = byKey.get(k)
+      if (!prev || Number(r.ts) >= Number(prev.ts)) byKey.set(k, r)
+    }
+    return Array.from(byKey.values()).sort((a, b) => Number(a.ts) - Number(b.ts))
   }
 
   function updateLastFromRows(threadId: string, rows: MessageRowTs[]) {
@@ -227,7 +233,7 @@ function App() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
             <h3 style={{ margin: 0, marginBottom: 6, textAlign: 'left' }}>Recent chats</h3>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto', minHeight: 140 }}>
               {threads
                 .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')))
                 .sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
