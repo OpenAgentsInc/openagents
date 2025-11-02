@@ -134,9 +134,9 @@ function App() {
                 if (matchTid) updateLastFromRows(matchTid, rows)
               } else if (obj.type === 'tinyvex.query_result' && obj.name === 'messages.list' && Array.isArray(obj.rows)) {
                 const rows = obj.rows as MessageRowTs[]
-                // Bridge returns args: { thread_id, limit }
+                // Bridge returns thread_id at top-level; args may also exist in some paths
                 const args = (obj.args || {}) as { thread_id?: string }
-                const rawTid = String(args.thread_id || selectedThread || '')
+                const rawTid = String((obj.thread_id as string | undefined) || args.thread_id || selectedThread || '')
                 const matchTid = resolveMatchThreadId(rawTid)
                 if (matchTid && matchTid === selectedThread) setMessages(filterFinalMessages(rows))
                 if (matchTid) updateLastFromRows(matchTid, rows)
