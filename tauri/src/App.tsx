@@ -18,6 +18,7 @@ function App() {
   const clientRef = useRef<TinyvexClient | null>(null)
   const unsubRef = useRef<(() => void) | null>(null)
   const lastMsgReqRef = useRef<number>(0)
+  const autoDetectedRef = useRef<boolean>(false)
 
   const wsUrl = useMemo(() => {
     const scheme = 'ws'
@@ -37,6 +38,44 @@ function App() {
     })()
     return () => { cancelled = true }
   }, [])
+
+  // Auto-detect local bridge port: probe a small range and pick the highest responsive port
+  useEffect(() => {
+    if (!token) return; // wait until token is loaded to avoid auth failures
+    if (autoDetectedRef.current) return; // only run once
+    // Only auto-detect when host is unset or default
+    const defaultHost = '127.0.0.1:8787'
+    if (host && host !== defaultHost) return
+    let cancelled = false
+    const ports = Array.from({ length: 12 }, (_, i) => 8787 + i) // 8787..8798
+    const probe = (port: number) => new Promise<number | null>((resolve) => {
+      try {
+        const url = `ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}`
+        const ws = new WebSocket(url)
+        let done = false
+        const finish = (ok: boolean) => {
+          if (done) return; done = true
+          try { ws.close() } catch {}
+          resolve(ok ? port : null)
+        }
+        const to = setTimeout(() => finish(false), 700)
+        ws.onopen = () => { clearTimeout(to); finish(true) }
+        ws.onerror = () => { clearTimeout(to); finish(false) }
+        ws.onclose = () => {/* no-op */}
+      } catch { resolve(null) }
+    })
+    ;(async () => {
+      const results = await Promise.all(ports.map(probe))
+      if (cancelled) return
+      const okPorts = results.filter((p): p is number => typeof p === 'number')
+      if (okPorts.length > 0) {
+        const best = Math.max(...okPorts)
+        autoDetectedRef.current = true
+        setHost(`127.0.0.1:${best}`)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [token, host])
 
   const connect = () => {
     try { disconnect() } catch {}
