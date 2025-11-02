@@ -4,6 +4,23 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[tauri::command]
+fn get_bridge_token() -> Option<String> {
+    use std::path::PathBuf;
+    // Prefer OPENAGENTS_HOME if set (points to ~/.openagents)
+    let base = if let Ok(home) = std::env::var("OPENAGENTS_HOME") {
+        PathBuf::from(home)
+    } else if let Some(home) = dirs::home_dir() {
+        home.join(".openagents")
+    } else {
+        return None;
+    };
+    let p = base.join("bridge.json");
+    let data = std::fs::read_to_string(&p).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&data).ok()?;
+    v.get("token").and_then(|x| x.as_str()).map(|s| s.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -16,7 +33,7 @@ pub fn run() {
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet, get_bridge_token])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

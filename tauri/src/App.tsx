@@ -7,7 +7,7 @@ import { WsTransport } from 'tinyvex/client/WsTransport'
 function App() {
   // Bridge connection inputs
   const [host, setHost] = useState<string>(() => '127.0.0.1:8787')
-  const [token, setToken] = useState<string>(() => '')
+  const [token, setToken] = useState<string>('')
   const [status, setStatus] = useState<'idle'|'connecting'|'open'|'closed'|'error'>('idle')
   const [connected, setConnected] = useState<boolean>(false)
   const [logs, setLogs] = useState<string[]>([])
@@ -19,6 +19,7 @@ function App() {
     const qp = token ? `?token=${encodeURIComponent(token)}` : ''
     return host ? `${scheme}://${host}/ws${qp}` : ''
   }, [host, token])
+  const wsBase = useMemo(() => (host ? `ws://${host}/ws` : ''), [host])
 
   const connect = () => {
     try { disconnect() } catch {}
@@ -64,14 +65,13 @@ function App() {
       <h1>OpenAgents — Bridge</h1>
       <div className="row" style={{ gap: 8 }}>
         <input id="host-input" placeholder="host:port (e.g., 127.0.0.1:8787)" value={host} onChange={(e) => setHost(e.currentTarget.value)} />
-        <input id="token-input" placeholder="token" value={token} onChange={(e) => setToken(e.currentTarget.value)} />
         {!connected ? (
           <button onClick={connect}>Connect</button>
         ) : (
           <button onClick={disconnect}>Disconnect</button>
         )}
       </div>
-      <p>wsUrl: {wsUrl || '—'}</p>
+      <p>wsUrl: {wsBase || '—'}</p>
       <p>Status: {status}</p>
       <div style={{ textAlign: 'left', maxWidth: 960, margin: '0 auto' }}>
         <h3>Raw events</h3>
@@ -84,3 +84,14 @@ function App() {
 }
 
 export default App;
+  // Fetch token in the background from ~/.openagents/bridge.json and prefill state
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const t = await invoke<string | null>('get_bridge_token')
+        if (!cancelled && t) setToken(t)
+      } catch {}
+    })()
+    return () => { cancelled = true }
+  }, [])
