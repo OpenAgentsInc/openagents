@@ -86,6 +86,9 @@ export default function SettingsScreen() {
     try { setBridgeToken(token) } catch {}
     try { connect() } catch {}
   }, [connect, setBridgeHost, setBridgeToken])
+  const setAgentProvider = useSettings((s) => s.setAgentProvider)
+  const onDevProviderCodex = React.useCallback(() => { try { setAgentProvider('codex') } catch {} }, [setAgentProvider])
+  const onDevProviderClaude = React.useCallback(() => { try { setAgentProvider('claude_code') } catch {} }, [setAgentProvider])
   return (
     <View style={styles.container} testID='settings-root'>
       <Text style={styles.title}>Connection</Text>
@@ -102,6 +105,8 @@ export default function SettingsScreen() {
       {isDev ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
           <Button title='Dev Quick Connect' onPress={onDevQuick} testID='settings-dev-quick' />
+          <Button title='Use Codex' onPress={onDevProviderCodex} testID='settings-provider-codex' />
+          <Button title='Use Claude' onPress={onDevProviderClaude} testID='settings-provider-claude' />
         </View>
       ) : null}
       {/* Manual host/token inputs for automated tests */}
@@ -134,11 +139,11 @@ export default function SettingsScreen() {
       <Text style={styles.title}>Sync</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Sessions Watcher</Text>
-        <Segmented title={syncEnabled ? 'On' : 'Off'} active={syncEnabled} onPress={toggleSync} />
+        <Segmented title={syncEnabled ? 'On' : 'Off'} active={syncEnabled} onPress={toggleSync} testID='settings-sync-toggle' />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Two‑way Writer</Text>
-        <Segmented title={twoWay ? 'On' : 'Off'} active={twoWay} onPress={toggleTwoWay} />
+        <Segmented title={twoWay ? 'On' : 'Off'} active={twoWay} onPress={toggleTwoWay} testID='settings-two-way-toggle' />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
         <Button title='Full Rescan' onPress={fullRescan} />
@@ -186,13 +191,13 @@ function Button({ title, onPress, testID }: { title: string; onPress: () => void
   )
 }
 
-function Segmented({ title, active, onPress }: { title: string; active: boolean; onPress: () => void }) {
+function Segmented({ title, active, onPress, testID }: { title: string; active: boolean; onPress: () => void; testID?: string }) {
   const base = { paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: Colors.border }
   const activeStyle = { backgroundColor: Colors.quaternary }
   const text = { color: Colors.secondary, fontFamily: Typography.primary }
   const textActive = { color: Colors.foreground, fontFamily: Typography.bold }
   return (
-    <Pressable onPress={onPress} style={[base, active ? activeStyle : undefined]}>
+    <Pressable onPress={onPress} testID={testID} style={[base, active ? activeStyle : undefined]}>
       <Text style={[text, active ? textActive : undefined]}>{title}</Text>
     </Pressable>
   )
