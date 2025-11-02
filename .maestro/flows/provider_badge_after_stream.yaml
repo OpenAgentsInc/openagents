@@ -1,0 +1,85 @@
+appId: com.openagents.app
+name: Provider Badge After Stream (Codex)
+---
+- launchApp
+- openLink: "exp://localhost:8081"
+# Navigate to Settings via drawer, prefer Dev Quick Connect, fall back to env
+- runFlow:
+    when:
+      visible:
+        id: header-menu-button
+    commands:
+      - tapOn:
+          id: header-menu-button
+      - extendedWaitUntil:
+          visible:
+            id: drawer-settings
+          timeout: 30000
+      - tapOn:
+          id: drawer-settings
+- runFlow:
+    when:
+      visible:
+        id: settings-dev-quick
+    commands:
+      - tapOn:
+          id: settings-dev-quick
+      - extendedWaitUntil:
+          visible:
+            id: header-connection-indicator
+          timeout: 120000
+- runFlow:
+    when:
+      notVisible:
+        id: header-connection-indicator
+    commands:
+      - openLink: "exp://localhost:8081/--/settings"
+      - extendedWaitUntil:
+          visible:
+            id: settings-host-input
+          timeout: 90000
+      - tapOn:
+          id: settings-host-input
+      - inputText:
+          id: settings-host-input
+          text: "${BRIDGE_HOST}"
+      - tapOn:
+          id: settings-token-input
+      - inputText:
+          id: settings-token-input
+          text: "${BRIDGE_TOKEN}"
+      - tapOn:
+          id: settings-apply
+      - runFlow:
+          when:
+            visible:
+              id: settings-connect
+          commands:
+            - tapOn:
+                id: settings-connect
+      - extendedWaitUntil:
+          visible:
+            id: header-connection-indicator
+          timeout: 120000
+# Start a new chat and send, then open drawer and assert provider badge (Codex)
+- tapOn:
+    id: header-new-chat
+- extendedWaitUntil:
+    visible:
+      id: composer-input
+    timeout: 60000
+- inputText:
+    id: composer-input
+    text: "provider test"
+- tapOn:
+    id: composer-send
+- tapOn:
+    id: header-menu-button
+- extendedWaitUntil:
+    visible:
+      id: drawer-threads
+    timeout: 60000
+- extendedWaitUntil:
+    visible:
+      id: provider-badge-codex
+    timeout: 60000
