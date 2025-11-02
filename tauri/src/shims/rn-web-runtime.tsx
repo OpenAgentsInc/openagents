@@ -36,9 +36,9 @@ export const Text: React.FC<TextProps> = ({ children, numberOfLines, style, test
 }
 
 export type PressableProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  onLongPress?: () => void; delayLongPress?: number; testID?: string; style?: React.CSSProperties | any
+  onPress?: () => void; onLongPress?: () => void; delayLongPress?: number; testID?: string; style?: React.CSSProperties | any; accessibilityRole?: string
 }
-export const Pressable: React.FC<PressableProps> = ({ children, onClick, onLongPress, delayLongPress = 300, style, testID, ...rest }) => {
+export const Pressable: React.FC<PressableProps> = ({ children, onPress, onClick, onLongPress, delayLongPress = 300, style, testID, accessibilityRole, ...rest }) => {
   const timeout = React.useRef<number | null>(null)
   const handleMouseDown = () => {
     if (!onLongPress) return
@@ -61,7 +61,15 @@ export const Pressable: React.FC<PressableProps> = ({ children, onClick, onLongP
   }
   const merged = { ...base, ...normalizeStyle(style) }
   return (
-    <button data-testid={testID} style={merged} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onClick={onClick as any} {...rest}>
+    <button
+      data-testid={testID}
+      role={accessibilityRole as any}
+      style={merged}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onClick={(onClick as any) || onPress}
+      {...rest as any}
+    >
       {children}
     </button>
   )
