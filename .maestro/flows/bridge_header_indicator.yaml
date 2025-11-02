@@ -2,7 +2,7 @@ appId: com.openagents.app
 name: Bridge → Header Connection Indicator
 ---
 - launchApp
-- openLink: "exp://localhost:8081"
+- openLink: "${EXP_URL}"
 # Prefer drawer navigation to Settings for reliability
 - runFlow:
     when:
@@ -35,7 +35,7 @@ name: Bridge → Header Connection Indicator
       notVisible:
         id: settings-host-input
     commands:
-      - openLink: "exp://localhost:8081/--/settings"
+      - openLink: "${EXP_URL}/--/settings"
       - extendedWaitUntil:
           visible:
             id: settings-host-input

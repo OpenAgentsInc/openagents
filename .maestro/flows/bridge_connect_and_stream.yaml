@@ -2,7 +2,7 @@ appId: com.openagents.app
 name: Bridge Connect and Stream
 ---
 - launchApp
-- openLink: "exp://localhost:8081"
+- openLink: "${EXP_URL}"
 # Navigate to Settings via drawer first, then fall back to deep link
 - runFlow:
     when:
@@ -40,7 +40,7 @@ name: Bridge Connect and Stream
             notVisible:
               id: settings-host-input
           commands:
-            - openLink: "exp://localhost:8081/--/settings"
+      - openLink: "${EXP_URL}/--/settings"
             - extendedWaitUntil:
                 visible:
                   id: settings-host-input

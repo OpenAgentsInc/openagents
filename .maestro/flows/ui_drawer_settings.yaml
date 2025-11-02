@@ -2,11 +2,11 @@ appId: com.openagents.app
 name: UI Drawer → Settings
 ---
 - launchApp
-- openLink: "exp://localhost:8081"
+- openLink: "${EXP_URL}"
 # Warm the dev-client on a header-visible route
-- openLink: "exp://localhost:8081/--/thread/new"
+- openLink: "${EXP_URL}/--/thread/new"
 # Prefer direct link to settings, then fallback to drawer
-- openLink: "exp://localhost:8081/--/settings"
+- openLink: "${EXP_URL}/--/settings"
 # Open drawer if header button is visible
 - runFlow:
     when:

@@ -2,8 +2,8 @@ appId: com.openagents.app
 name: Settings Toggles and Rescan
 ---
 - launchApp
- - openLink: "exp://localhost:8081"
- - openLink: "exp://localhost:8081/--/settings"
+- openLink: "${EXP_URL}"
+- openLink: "${EXP_URL}/--/settings"
 - extendedWaitUntil:
     visible:
       id: settings-root
