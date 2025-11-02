@@ -1,10 +1,6 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+/* Theme variables */
+@import "@openagentsinc/theme/web/theme.css";
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
 /* Berkeley Mono font faces */
 @font-face {
   font-family: "Berkeley Mono";
@@ -35,6 +31,13 @@
   font-display: swap;
 }
 
+.logo.vite:hover {
+  filter: drop-shadow(0 0 2em #747bff);
+}
+
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafb);
+}
 /* Expo theme colors ported to CSS variables */
 :root {
   /* Core Design System Colors */
