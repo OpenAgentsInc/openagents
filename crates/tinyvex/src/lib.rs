@@ -340,7 +340,7 @@ impl Tinyvex {
         role: Option<&str>,
     ) -> Result<()> {
         let conn = Connection::open(&self.db_path)?;
-        // Try update; if no row, insert finalized
+        // Try update; if no row, check if message already exists before inserting
         let n = conn.execute(
             r#"UPDATE messages
                 SET text=?3, partial=0, updatedAt=?4
@@ -348,11 +348,23 @@ impl Tinyvex {
             params![thread_id, item_id, text, ts],
         )?;
         if n == 0 {
-            conn.execute(
-                r#"INSERT INTO messages (threadId, role, kind, text, data, itemId, partial, seq, ts, createdAt, updatedAt)
-                    VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, 0, ?6, ?6, ?6)"#,
-                params![thread_id, role, kind, text, item_id, ts],
-            )?;
+            // Check if a finalized message with this exact text already exists
+            // to prevent duplicates when finalize_or_snapshot is called repeatedly
+            let exists: bool = conn.query_row(
+                r#"SELECT EXISTS(SELECT 1 FROM messages 
+                   WHERE threadId=?1 AND kind=?2 AND text=?3 AND partial=0 
+                   LIMIT 1)"#,
+                params![thread_id, kind, text],
+                |row| row.get(0),
+            ).unwrap_or(false);
+            
+            if !exists {
+                conn.execute(
+                    r#"INSERT INTO messages (threadId, role, kind, text, data, itemId, partial, seq, ts, createdAt, updatedAt)
+                        VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, 0, ?6, ?6, ?6)"#,
+                    params![thread_id, role, kind, text, item_id, ts],
+                )?;
+            }
         }
         Ok(())
     }
