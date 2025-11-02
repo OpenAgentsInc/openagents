@@ -23,23 +23,7 @@ export function SessionUpdateToolCall(props: ToolCallLike) {
         <View style={{ marginLeft: 'auto' }} />
         <Text style={{ color: statusColor, fontFamily: Typography.primary, fontSize: 12 }}>{props.status}</Text>
       </View>
-      {Array.isArray(props.content) && props.content.length > 0 ? (
-        <View style={{ gap: 8 }}>
-          {props.content.map((c, i) => (
-            <ToolCallContent key={i} content={c} />
-          ))}
-        </View>
-      ) : null}
-      {Array.isArray(props.locations) && props.locations.length > 0 ? (
-        <View style={{ gap: 2 }}>
-          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Locations:</Text>
-          {props.locations!.map((loc, i) => (
-            <Text key={i} selectable style={{ color: Colors.foreground, fontFamily: Typography.primary }}>
-              {loc.path}{typeof loc.line === 'number' ? `:${loc.line}` : ''}
-            </Text>
-          ))}
-        </View>
-      ) : null}
+      {/** Inline content suppressed. Open detail view to see full results. */}
     </View>
   )
 }

@@ -14,6 +14,8 @@ import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAg
 import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
 import { SessionUpdatePlan } from '@/components/acp/SessionUpdatePlan'
 import { SessionUpdateToolCall } from '@/components/acp/SessionUpdateToolCall'
+import { Pressable } from 'react-native'
+import { router } from 'expo-router'
 
 export type TimelineItem = { key: string; ts: number; node: React.ReactNode }
 
@@ -130,7 +132,12 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     const kind = normalizeKind(r.kind)
     const locations = parseLocations(r.locations_json)
     const props: ToolCallLike = { title, status, kind, content: [], locations }
-    items.push({ key, ts, node: <SessionUpdateToolCall {...props} /> })
+    const go = () => { try { router.push(`/thread/${encodeURIComponent(threadId)}/tool/${encodeURIComponent(r.tool_call_id)}` as any) } catch {} }
+    items.push({ key, ts, node: (
+      <Pressable onPress={go} accessibilityRole="button">
+        <SessionUpdateToolCall {...props} />
+      </Pressable>
+    ) })
   }
 
   items.sort((a, b) => a.ts - b.ts)
