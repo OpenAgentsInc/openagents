@@ -19,6 +19,8 @@ function App() {
   const unsubRef = useRef<(() => void) | null>(null)
   const lastMsgReqRef = useRef<number>(0)
   const autoDetectedRef = useRef<boolean>(false)
+  const chatContainerRef = useRef<HTMLDivElement | null>(null)
+  const logsContainerRef = useRef<HTMLDivElement | null>(null)
 
   const wsUrl = useMemo(() => {
     const scheme = 'ws'
@@ -106,8 +108,8 @@ function App() {
           try {
             const line = JSON.stringify(evt)
             setLogs((prev) => {
-              const next = [line, ...prev]
-              return next.slice(0, 200)
+              const next = [...prev, line]
+              return next.length > 200 ? next.slice(next.length - 200) : next
             })
             const obj: any = evt
             if (obj && typeof obj === 'object') {
@@ -164,6 +166,20 @@ function App() {
     }
   }
 
+  // Keep chat and logs scrolled to bottom as new items arrive
+  useEffect(() => {
+    try {
+      const el = chatContainerRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    } catch {}
+  }, [messages])
+  useEffect(() => {
+    try {
+      const el = logsContainerRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    } catch {}
+  }, [logs])
+
   return (
     <main className="container">
       <h1>OpenAgents — Bridge</h1>
@@ -177,32 +193,36 @@ function App() {
       </div>
       <p>wsUrl: {wsBase || '—'}</p>
       <p>Status: {status}</p>
-      <div style={{ textAlign: 'left', maxWidth: 960, margin: '16px auto' }}>
-        <h3>Latest Codex Chat</h3>
-        <div style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10' }}>
-          {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
-          {messages.map((m, idx) => (
-            <div key={`${m.id}-${idx}`} style={{ display: 'flex', justifyContent: m.role === 'assistant' ? 'flex-start' : 'flex-end', padding: '6px 0' }}>
-              <div style={{
-                maxWidth: 680,
-                padding: '10px 12px',
-                borderRadius: 8,
-                background: m.role === 'assistant' ? '#121317' : '#1b1d22',
-                border: '1px solid var(--border)',
-                color: 'var(--foreground)'
-              }}>
-                <div style={{ fontSize: 12, color: 'var(--tertiary)', marginBottom: 4 }}>{m.role}</div>
-                <div style={{ whiteSpace: 'pre-wrap' }}>{String(m.text || '')}</div>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'center', maxWidth: 1200, margin: '16px auto', width: '100%' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3>Latest Codex Chat</h3>
+          <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto' }}>
+            {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
+            {messages.map((m, idx) => (
+              <div key={`${m.id}-${idx}`} style={{ display: 'flex', justifyContent: m.role === 'assistant' ? 'flex-start' : 'flex-end', padding: '6px 0' }}>
+                <div style={{
+                  maxWidth: 680,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  background: m.role === 'assistant' ? '#121317' : '#1b1d22',
+                  border: '1px solid var(--border)',
+                  color: 'var(--foreground)'
+                }}>
+                  <div style={{ fontSize: 12, color: 'var(--tertiary)', marginBottom: 4 }}>{m.role}</div>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{String(m.text || '')}</div>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-      <div style={{ textAlign: 'left', maxWidth: 960, margin: '0 auto' }}>
-        <h3>Raw events</h3>
-        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: '#0e0f10', color: '#d0d6e0', padding: 12, borderRadius: 4, border: '1px solid #23252a', minHeight: 240 }}>
-          {logs.join('\n')}
-        </pre>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3>Raw events</h3>
+          <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto', padding: 12 }}>
+            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0 }}>
+              {logs.join('\n')}
+            </pre>
+          </div>
+        </div>
       </div>
     </main>
   );
