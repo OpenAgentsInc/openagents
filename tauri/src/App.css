@@ -70,10 +70,11 @@
 .container {
   margin: 0;
   padding: 16px;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   text-align: center;
+  overflow: hidden; /* contain internal scroll areas */
 }
 
 .logo {
@@ -142,3 +143,9 @@ button {
 }
 
 /* Our theme is dark by default; no alt scheme needed */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* prevent page-level scroll; inner panes handle it */
+}
