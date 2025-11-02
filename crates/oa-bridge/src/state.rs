@@ -49,7 +49,7 @@ pub struct AppState {
     // Tinyvex database (mandatory)
     pub tinyvex: std::sync::Arc<tinyvex::Tinyvex>,
     // Transport-agnostic writer that performs DB writes and returns typed notifications
-    pub tinyvex_writer: std::sync::Arc<tinyvex::Writer>,
+    pub tinyvex_writer: std::sync::Arc<crate::tinyvex_writer::Writer>,
     // Sync (sessions watcher) controls
     pub sync_enabled: AtomicBool,
     pub sync_two_way: AtomicBool,

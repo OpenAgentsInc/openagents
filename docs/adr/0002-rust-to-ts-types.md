@@ -1,17 +1,17 @@
 # ADR 0002 — Rust → TS Types
 
  - Date: 2025-10-31
- - Status: Accepted — Implemented (typed endpoints live; app imports `expo/types/bridge/*`)
+ - Status: Accepted — Implemented (typed endpoints live; app imports `tricoder/types`)
 
 ## Context
 
-The mobile app renders data provided by the Rust bridge over WebSocket. Today, several app surfaces rely on ad‑hoc shapes and `any`, probing mixed‑case fields (`updated_at` vs `updatedAt`) and guessing identifiers. This leads to brittle UI logic (e.g., “just now” timestamps) and drift between Rust and TypeScript.
+The mobile app renders data provided by the Rust bridge over WebSocket. Historically, several app surfaces relied on ad‑hoc shapes and `any`, probing mixed‑case fields (`updated_at` vs `updatedAt`) and guessing identifiers. This led to brittle UI logic (e.g., “just now” timestamps) and drift between Rust and TypeScript.
 
 We want a single, definitive Rust source of truth for bridge payload types that the app consumes directly, eliminating mixed‑case probing and `any` while staying aligned with the upstream Agent Client Protocol (ACP) crate we use in the bridge.
 
 ## Decision
 
-Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent our bridge WebSocket payloads. These exported types live in‑repo and are imported by the Expo app.
+Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent our bridge WebSocket payloads. These exported types live in‑repo and are imported by the app and client libraries from the `tricoder/types` subpath.
 
 - Define canonical, snake_case Rust structs for all WS payloads we own:
   - ThreadSummaryTs (with `last_message_ts`)
@@ -19,8 +19,8 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
   - ToolCallRowTs
   - Envelopes: TinyvexSnapshot<T>, TinyvexQueryResult<T>
   - SyncStatusTs
-- Derive `TS` on these structs and export per‑type `.ts` files into `expo/types/bridge/generated/`.
-- Import from `expo/types/bridge/*` in the Expo app and remove all app‑side `any`/mixed‑case fallbacks for these payloads.
+- Derive `TS` on these structs and export per‑type `.ts` files into `packages/tricoder/src/types/generated/`.
+- Import from `tricoder/types` in the app and libraries and remove all app‑side `any`/mixed‑case fallbacks for these payloads.
 - Map ACP events into these canonical bridge types at the Rust boundary (thin wrappers). When ACP changes, adjust the mapping, keeping the app contract stable.
 
 ## Rationale
@@ -44,9 +44,9 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 
 ## Consequences
 
-- App: Remove `any` and mixed‑case probing for threads/messages/tool calls/sync/envelopes. Prefer `row.last_message_ts ?? row.updated_at`. Render only Tinyvex‑typed rows in the thread timeline; do not render raw ACP updates directly.
+- App/libraries: Remove `any` and mixed‑case probing for threads/messages/tool calls/sync/envelopes. Prefer `row.last_message_ts ?? row.updated_at`. Render only Tinyvex‑typed rows in the thread timeline; do not render raw ACP updates directly.
 - Bridge: All WS endpoints must serialize the canonical TS‑exported structs; synthesized history rows must set real timestamps (no `now()` fallbacks).
-- Tooling: Ensure `expo/types/bridge/generated/` exists; export per‑type `.ts` files there. We maintain readable shims under `expo/types/bridge/*` if needed.
+- Tooling: Ensure `packages/tricoder/src/types/generated/` exists; export per‑type `.ts` files there. The `tricoder` package re‑exports these types at `tricoder/types`.
 - Conventions: snake_case fields; use `#[ts(optional)]` for truly optional fields (avoid `T | null` where absence is intended).
 
 ## Implementation Status (2025-10-31)
@@ -98,12 +98,12 @@ Adopt `ts-rs` to export TypeScript definitions from Rust structs that represent 
 
 ## Export Details
 
-- We use `#[derive(TS)]` with `#[ts(export, export_to = "../../expo/types/bridge/generated/")]` (from the bridge crate) on non‑generic structs to emit per‑type `.ts` files during `cargo build`.
+- We use `#[derive(TS)]` with `#[ts(export, export_to = "../../packages/tricoder/src/types/generated/")]` (from the bridge crate) on non‑generic structs to emit per‑type `.ts` files during `cargo build`.
 - Generic envelopes are not exported initially; if we need TS coverage, we will introduce concrete variants (e.g., `TinyvexMessagesSnapshot`) or leave envelopes untyped in TS and type the `rows` contents.
 - The export directory is `expo/types/bridge/` (within the app). Ensure the directory exists before building.
 
 ## Ownership Boundaries
 
 - Tinyvex owns data row types (`ThreadRow`, `MessageRow`, `ToolCallRow`).
-- The bridge owns WS‑specific types (`ThreadSummaryTs`, `SyncStatusTs` and envelopes).
-- A dedicated shared types crate is not required now; we may introduce one later if multiple crates beyond the bridge need to depend on the same transport types.
+- The bridge owns WS‑specific types (`ThreadSummaryTs`, `SyncStatusTs` and envelopes) and exports TS to `tricoder/types`.
+- A dedicated shared types crate is not required now; `tricoder/types` is the single source of truth for app/client imports.

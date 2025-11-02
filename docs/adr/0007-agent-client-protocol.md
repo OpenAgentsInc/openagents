@@ -25,6 +25,7 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 - In the database (Tinyvex)
   - Tables remain the minimal, typed projection required by the app (snake_case fields; ADR‑0002).
   - An append‑only `acp_events` log is maintained for traceability of ACP updates (already present in schema).
+  - The Tinyvex Rust crate is DB‑only; the bridge hosts the writer that ingests ACP updates and mirrors into Tinyvex.
 
 - Naming & casing
   - All public payloads the app observes are snake_case and align with ACP concepts (ADR‑0002). No mixed case fallback in the app.
@@ -44,8 +45,8 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 ## Implementation Plan
 
 1) Maintain and extend `acp-event-translator` for Codex/Claude mapping parity.
-2) Keep Tinyvex writer focused on ACP `SessionUpdate` ingestion and typed row upserts; avoid provider‑specific logic here.
-3) Ensure watchers call translator → writer exclusively; no bypasses.
+2) Keep the bridge‑hosted writer (`tvx_writer`) focused on ACP `SessionUpdate` ingestion and typed row upserts; avoid provider‑specific logic inside the Tinyvex crate.
+3) Ensure watchers call translator → bridge writer exclusively; no bypasses.
 4) WS controls expose only typed Tinyvex snapshots/updates and control envelopes; remove any accidental passthrough of provider JSON.
 5) Tests (see issue 1351 TDD plan):
    - Unit: translator mappings for Codex/Claude; writer invariants.
@@ -70,4 +71,3 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 - ADR‑0002 — Rust → TypeScript types as source of truth (snake_case).
 - ADR‑0003 — Tinyvex as the local sync engine.
 - ACP Introduction: https://agentclientprotocol.com/overview/introduction
-
