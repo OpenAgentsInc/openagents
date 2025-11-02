@@ -203,6 +203,13 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       } else if (q.name === 'toolCalls.list') {
         setToolCallsByThread((prev) => ({ ...prev, [q.thread_id]: q.rows }))
+        // Also project onto the client doc id if this thread_id is canonical
+        try {
+          const alias = getAliasForCanonical(String(q.thread_id))
+          if (alias && alias !== q.thread_id) {
+            setToolCallsByThread((prev) => ({ ...prev, [alias]: q.rows }))
+          }
+        } catch {}
       } else if (q.name === 'threadsAndTails.list') {
         // cancel fallback to threads.list if pending
         try {
