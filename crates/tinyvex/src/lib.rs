@@ -358,12 +358,17 @@ impl Tinyvex {
                 |row| row.get(0),
             ).unwrap_or(false);
             
+            tracing::info!(thread_id=%thread_id, item_id=%item_id, kind=%kind, exists=%exists, text_preview=%text.chars().take(50).collect::<String>(), "lib.rs:361 - Finalize: checking for duplicate [BUILD MARKER: 2025-11-02-v2]");
+            
             if !exists {
                 conn.execute(
                     r#"INSERT INTO messages (threadId, role, kind, text, data, itemId, partial, seq, ts, createdAt, updatedAt)
                         VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, 0, ?6, ?6, ?6)"#,
                     params![thread_id, role, kind, text, item_id, ts],
                 )?;
+                tracing::info!(thread_id=%thread_id, item_id=%item_id, "lib.rs:367 - Inserted new finalized message");
+            } else {
+                tracing::info!(thread_id=%thread_id, item_id=%item_id, "lib.rs:369 - Skipped duplicate message (already exists)");
             }
         }
         Ok(())
