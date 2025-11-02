@@ -6,6 +6,7 @@ import { WsTransport } from 'tinyvex/client/WsTransport'
 import type { ThreadSummaryTs, MessageRowTs } from 'tricoder/types'
 import { ThreadListItem, ChatMessageBubble } from '@openagentsinc/core'
 import { View, Text } from 'react-native'
+import { Typography } from '@/constants/typography'
 import { Ionicons } from '@expo/vector-icons'
 
 function App() {
@@ -290,7 +291,7 @@ function App() {
                   const providerBadge = provider ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       {provider === 'claude_code' ? <Ionicons name="flash-outline" size={12} color="#62666d" /> : provider === 'codex' ? <Ionicons name="code-slash" size={12} color="#62666d" /> : null}
-                      <Text style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>{provider === 'claude_code' ? 'Claude Code' : provider === 'codex' ? 'Codex' : provider}</Text>
+                      <Text style={{ color: '#62666d', fontFamily: Typography.primary, fontSize: 12 }}>{provider === 'claude_code' ? 'Claude Code' : provider === 'codex' ? 'Codex' : provider}</Text>
                     </View>
                   ) : null
                   const meta = (
@@ -298,13 +299,13 @@ function App() {
                       {!!tsText && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Ionicons name="time-outline" size={12} color="#62666d" />
-                          <Text numberOfLines={1} style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>{tsText}</Text>
+                          <Text numberOfLines={1} style={{ color: '#62666d', fontFamily: Typography.primary, fontSize: 12 }}>{tsText}</Text>
                         </View>
                       )}
                       {providerBadge ? (
                         <>
                           {!!tsText && (
-                            <Text style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>•</Text>
+                            <Text style={{ color: '#62666d', fontFamily: Typography.primary, fontSize: 12 }}>•</Text>
                           )}
                           {providerBadge}
                         </>
