@@ -322,4 +322,28 @@ mod tests {
         drop(f);
         assert!(file_is_new_format(&p));
     }
+
+    #[tokio::test]
+    async fn process_file_append_maps_event_and_writes_message() {
+        // Arrange: temp JSONL with session_meta (id) and a message
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("rollout-test.jsonl");
+        let mut f = std::fs::File::create(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"sess-int"}})).unwrap();
+        // delta then completed
+        writeln!(f, "{}", serde_json::json!({"type":"item.delta","item":{"type":"agent_message","text":"hello from codex"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text":"hello from codex"}})).unwrap();
+        drop(f);
+        // Build state and prime FileState with thread id derived from head scan
+        let state = test_state().await;
+        let mut fs = FileState::default();
+        fs.thread_id = scan_for_thread_id(&p);
+        assert_eq!(fs.thread_id.as_deref(), Some("sess-int"));
+        // Act
+        process_file_append(&state, &p, &mut fs).await.expect("process ok");
+        // Assert: Tinyvex has one message row for sess-int
+        let msgs = state.tinyvex.list_messages("sess-int", 50).unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].text.as_deref(), Some("hello from codex"));
+    }
 }
