@@ -339,7 +339,11 @@ pub async fn mirror_acp_update_to_tinyvex_mode(
             if txt.is_empty() { return; }
             match mode {
                 StreamMode::Delta => stream_upsert_or_append(state, thread_id, "user", &txt).await,
-                StreamMode::Finalize => { let _ = try_finalize_stream_kind(state, thread_id, "user").await; },
+                StreamMode::Finalize => {
+                    if !try_finalize_stream_kind(state, thread_id, "user").await {
+                        finalize_or_snapshot(state, thread_id, "user", &txt).await;
+                    }
+                },
             }
             return;
         }
@@ -348,7 +352,12 @@ pub async fn mirror_acp_update_to_tinyvex_mode(
             if txt.is_empty() { return; }
             match mode {
                 StreamMode::Delta => stream_upsert_or_append(state, thread_id, "assistant", &txt).await,
-                StreamMode::Finalize => { let _ = try_finalize_stream_kind(state, thread_id, "assistant").await; },
+                StreamMode::Finalize => {
+                    // Try to finalize existing stream; if no stream exists, create snapshot
+                    if !try_finalize_stream_kind(state, thread_id, "assistant").await {
+                        finalize_or_snapshot(state, thread_id, "assistant", &txt).await;
+                    }
+                },
             }
             return;
         }
@@ -357,7 +366,11 @@ pub async fn mirror_acp_update_to_tinyvex_mode(
             if txt.is_empty() { return; }
             match mode {
                 StreamMode::Delta => stream_upsert_or_append(state, thread_id, "reason", &txt).await,
-                StreamMode::Finalize => { let _ = try_finalize_stream_kind(state, thread_id, "reason").await; },
+                StreamMode::Finalize => {
+                    if !try_finalize_stream_kind(state, thread_id, "reason").await {
+                        finalize_or_snapshot(state, thread_id, "reason", &txt).await;
+                    }
+                },
             }
             return;
         }
