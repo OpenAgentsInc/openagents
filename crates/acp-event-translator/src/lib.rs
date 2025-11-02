@@ -355,6 +355,22 @@ mod tests_codex_legacy {
             match ch.content { ContentBlock::Text(TextContent{ text, .. }) => assert_eq!(text, "Thinking..."), _ => panic!("wrong content kind") }
         } _ => panic!("expected AgentThoughtChunk") }
     }
+
+    #[test]
+    fn codex_maps_agent_message_delta() {
+        let v = json!({
+            "type": "item.delta",
+            "item": {"id": "item_2", "type": "agent_message", "text": "Delta hello"}
+        });
+        let upd = translate_codex_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::AgentMessageChunk(chunk) => match chunk.content {
+                ContentBlock::Text(t) => assert_eq!(t.text, "Delta hello"),
+                _ => panic!("expected text"),
+            },
+            _ => panic!("expected AgentMessageChunk"),
+        }
+    }
 }
 
 /// Stub: Translate a Claude Code streaming event to ACP SessionUpdate

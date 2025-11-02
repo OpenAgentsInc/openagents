@@ -300,3 +300,35 @@ fn content_to_text(content: &agent_client_protocol::ContentBlock) -> String {
         _ => String::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_client_protocol as acp;
+
+    #[tokio::test]
+    async fn mirror_user_and_assistant_updates_last_message_ts_and_roles() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(crate::Tinyvex::open(&db).unwrap());
+        let writer = Writer::new(tvx.clone());
+        let tid = "t-1";
+
+        // user chunk then assistant chunk
+        let u = acp::SessionUpdate::UserMessageChunk(acp::ContentChunk { content: acp::ContentBlock::Text(acp::TextContent{ annotations: None, text: "hi".into(), meta: None }), meta: None });
+        let a = acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk { content: acp::ContentBlock::Text(acp::TextContent{ annotations: None, text: "hello".into(), meta: None }), meta: None });
+        writer.mirror_acp_update_to_tinyvex("codex", tid, &u).await;
+        writer.mirror_acp_update_to_tinyvex("codex", tid, &a).await;
+
+        let threads = tvx.list_threads(10).unwrap();
+        assert_eq!(threads.len(), 1);
+        assert_eq!(threads[0].id, tid);
+        assert!(threads[0].last_message_ts.unwrap_or(0) > 0);
+
+        let msgs = tvx.list_messages(tid, 50).unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0].role.as_deref(), Some("user"));
+        assert_eq!(msgs[1].role.as_deref(), Some("assistant"));
+    }
+
+}

@@ -296,4 +296,29 @@ mod tests {
         }
         assert!(found);
     }
+
+    #[test]
+    fn transcript_tool_use_then_text_then_result_maps_all() {
+        // tool_use start (pending tool call)
+        let tu = json!({
+            "type": "assistant",
+            "message": {"content": [{"type":"tool_use","id":"tu_2","name":"TodoWrite","input":{"todos":[{"content":"A"}]}}] }
+        });
+        let out1 = map_claude_transcript_line_to_acp(&tu);
+        assert!(out1.iter().any(|u| matches!(u, agent_client_protocol::SessionUpdate::Plan(_)) || matches!(u, agent_client_protocol::SessionUpdate::ToolCall(_))));
+        // then a text delta
+        let txt = json!({
+            "type": "assistant",
+            "message": {"content": [{"type":"text","text":"hello"}]}
+        });
+        let out2 = map_claude_transcript_line_to_acp(&txt);
+        assert!(out2.iter().any(|u| matches!(u, agent_client_protocol::SessionUpdate::AgentMessageChunk(_))));
+        // and a tool_result completion
+        let tr = json!({
+            "type": "user",
+            "message": {"content": [{"type":"tool_result","tool_use_id":"tu_2","content":"done"}]}
+        });
+        let out3 = map_claude_transcript_line_to_acp(&tr);
+        assert!(out3.iter().any(|u| matches!(u, agent_client_protocol::SessionUpdate::ToolCallUpdate(_))));
+    }
 }
