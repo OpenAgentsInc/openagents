@@ -35,7 +35,7 @@ use ts_rs::TS;
 use crate::types;
 
 #[derive(serde::Serialize, TS)]
-#[ts(export, export_to = "../../packages/tricoder/src/types/generated/")]
+#[ts(export, export_to = "../../../packages/tricoder/src/types/generated/")]
 pub struct ThreadSummaryTs {
     id: String,
     thread_id: Option<String>,
