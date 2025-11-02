@@ -380,6 +380,17 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [stableSend, getResumeForId])
 
+  // On reconnect, re-subscribe to any message streams we previously subscribed to.
+  useEffect(() => {
+    if (!connected) return
+    try {
+      const set = subscribedThreadsRef.current
+      for (const tid of Array.from(set)) {
+        try { stableSend(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', thread_id: tid })) } catch {}
+      }
+    } catch {}
+  }, [connected, stableSend])
+
   const value = useMemo(() => ({ threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls }), [threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls])
   const ctxValue = useMemo(() => ({
     threads,
