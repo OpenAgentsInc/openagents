@@ -254,6 +254,45 @@ pub fn codex_base_path() -> PathBuf { default_codex_base() }
 mod tests {
     use super::*;
     use std::io::Write;
+    use tokio::sync::{broadcast, Mutex};
+
+    // Helper to build a minimal AppState for tests
+    async fn test_state() -> crate::state::AppState {
+        let (tx, _rx) = broadcast::channel(8);
+        // Persist DB under a temp directory that outlives this function
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.into_path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(&db_path).unwrap());
+        crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts: crate::Opts {
+                bind: "127.0.0.1:0".into(),
+                codex_bin: None,
+                codex_args: None,
+                extra: vec![],
+                ws_token: Some("t".into()),
+                claude_bin: None,
+                claude_args: None,
+            },
+            last_thread_id: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
+            current_thread_doc: Mutex::new(None),
+            stream_track: Mutex::new(std::collections::HashMap::new()),
+            pending_user_text: Mutex::new(std::collections::HashMap::new()),
+            bridge_ready: std::sync::atomic::AtomicBool::new(true),
+            tinyvex: tvx.clone(),
+            tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            sync_enabled: std::sync::atomic::AtomicBool::new(true),
+            sync_two_way: std::sync::atomic::AtomicBool::new(false),
+            sync_last_read_ms: Mutex::new(0),
+            sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
+            sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+        }
+    }
 
     #[test]
     fn finds_thread_id_in_session_meta() {
@@ -271,5 +310,16 @@ mod tests {
         let p = PathBuf::from("rollout-2025-10-22T12-05-17-019a0ce1-d491-76d2-93ba-0d47dde32657.jsonl");
         let id = extract_uuid_like_from_filename(&p);
         assert_eq!(id.as_deref(), Some("019a0ce1-d491-76d2-93ba-0d47dde32657"));
+    }
+
+    #[test]
+    fn detects_new_format_jsonl_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("rollout-test.jsonl");
+        let mut f = std::fs::File::create(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"sess-1"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text":"hi"}})).unwrap();
+        drop(f);
+        assert!(file_is_new_format(&p));
     }
 }

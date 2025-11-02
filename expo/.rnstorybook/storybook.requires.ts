@@ -36,16 +36,21 @@ global.STORIES = normalizedStories;
 // @ts-ignore
 module?.hot?.accept?.();
 
-
+const options = {
+  "initialSelection": {
+    "kind": "App/Home",
+    "name": "Default"
+  }
+}
 
 if (!global.view) {
   global.view = start({
     annotations,
     storyEntries: normalizedStories,
-
+    options,
   });
 } else {
-  updateView(global.view, annotations, normalizedStories);
+  updateView(global.view, annotations, normalizedStories, options);
 }
 
 export const view: View = global.view;
