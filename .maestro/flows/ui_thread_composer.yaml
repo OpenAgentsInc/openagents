@@ -6,14 +6,9 @@ name: UI Thread → Warm Route
 - openLink: "exp://localhost:8081/--/thread/new"
 - extendedWaitUntil:
     visible:
-      id: header-menu-button
+      id: composer-input
     timeout: 90000
-- runFlow:
-    when:
-      visible:
-        id: composer-input
-    commands:
-      - extendedWaitUntil:
-          visible:
-            id: composer-send
-          timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: composer-send
+    timeout: 90000
