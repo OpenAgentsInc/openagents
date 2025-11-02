@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@openagentsinc/theme": "workspace:*",
+    "tinyvex": "workspace:*",
+    "tricoder": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "@tauri-apps/api": "^2",
