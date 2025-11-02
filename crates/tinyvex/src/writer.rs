@@ -136,10 +136,10 @@ impl Writer {
             }
         };
         let t = now_ms();
+        let (out_kind, role) = Self::map_kind_role(kind);
         let _ = self
             .tvx
-            .finalize_streamed_message(thread_id, &item_id, &final_text, t);
-        let (out_kind, _role) = Self::map_kind_role(kind);
+            .finalize_streamed_message_with_kind(thread_id, &item_id, &final_text, t, out_kind, role);
         Some(vec![WriterNotification::MessagesFinalize {
             thread_id: thread_id.to_string(),
             item_id,

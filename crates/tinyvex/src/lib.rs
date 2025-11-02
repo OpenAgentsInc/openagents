@@ -327,6 +327,18 @@ impl Tinyvex {
         text: &str,
         ts: i64,
     ) -> Result<()> {
+        self.finalize_streamed_message_with_kind(thread_id, item_id, text, ts, "message", None)
+    }
+
+    pub fn finalize_streamed_message_with_kind(
+        &self,
+        thread_id: &str,
+        item_id: &str,
+        text: &str,
+        ts: i64,
+        kind: &str,
+        role: Option<&str>,
+    ) -> Result<()> {
         let conn = Connection::open(&self.db_path)?;
         // Try update; if no row, insert finalized
         let n = conn.execute(
@@ -338,8 +350,8 @@ impl Tinyvex {
         if n == 0 {
             conn.execute(
                 r#"INSERT INTO messages (threadId, role, kind, text, data, itemId, partial, seq, ts, createdAt, updatedAt)
-                    VALUES (?1, NULL, 'message', ?3, NULL, ?2, 0, 0, ?4, ?4, ?4)"#,
-                params![thread_id, item_id, text, ts],
+                    VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, 0, ?6, ?6, ?6)"#,
+                params![thread_id, role, kind, text, item_id, ts],
             )?;
         }
         Ok(())
