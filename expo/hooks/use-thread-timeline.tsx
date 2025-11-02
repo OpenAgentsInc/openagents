@@ -10,6 +10,7 @@ import type {
   ToolCallLike,
 } from '@/types/acp'
 import { useTinyvex, type MessageRow, type ToolCallRow } from '@/providers/tinyvex'
+import { renderMessages } from '@/lib/timeline'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
 import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
 import { SessionUpdatePlan } from '@/components/acp/SessionUpdatePlan'
@@ -37,42 +38,14 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
   }, [threadId, msgRows])
 
   const items: TimelineItem[] = []
-  // Track seen text to deduplicate messages
-  const seenTexts = new Set<string>()
-  
-  // Tinyvex messages: last N already ascending
-  for (const r of msgRows) {
-    const ts = Number(r.ts || r.updated_at || r.created_at || Date.now())
-    const kind = String(r.kind || '').toLowerCase()
-    const text = String(r.text || '')
-    console.log(`[Timeline Debug] Processing msg id=${r.id} kind=${kind} role=${r.role}`)
-    
-    if (kind === 'reason') {
-      console.log(`[Timeline Debug] Skipping reason message id=${r.id}`)
-      continue // omit inline; shown in detail
-    }
-    
-    // Skip XML context blocks (system prompts/instructions that shouldn't be displayed)
-    if (text.trim().startsWith('<')) {
-      console.log(`[Timeline Debug] Skipping XML context block id=${r.id}`)
-      continue
-    }
-    
-    // Deduplicate: skip if we've already seen this exact text
-    if (seenTexts.has(text)) {
-      console.log(`[Timeline Debug] Skipping duplicate message id=${r.id} text=${text.substring(0, 50)}`)
-      continue
-    }
-    seenTexts.add(text)
-    
-    if (kind === 'assistant' || (kind === 'message' && (r.role || '').toLowerCase() === 'assistant')) {
-      console.log(`[Timeline Debug] Rendering ASSISTANT message id=${r.id} text=${text.substring(0, 50)}`)
-      const content: { type: 'text'; text: string } = { type: 'text', text }
-      items.push({ key: `tvx-a-${r.id}`, ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
+  // Tinyvex messages: transform via shared utility
+  const rendered = renderMessages(msgRows)
+  for (const it of rendered) {
+    const content: { type: 'text'; text: string } = { type: 'text', text: it.text }
+    if (it.role === 'assistant') {
+      items.push({ key: `tvx-a-${it.key}`, ts: it.ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
     } else {
-      console.log(`[Timeline Debug] Rendering USER message id=${r.id} text=${text.substring(0, 50)}`)
-      const content: { type: 'text'; text: string } = { type: 'text', text }
-      items.push({ key: `tvx-u-${r.id}`, ts, node: <SessionUpdateUserMessageChunk content={content} /> })
+      items.push({ key: `tvx-u-${it.key}`, ts: it.ts, node: <SessionUpdateUserMessageChunk content={content} /> })
     }
   }
 
