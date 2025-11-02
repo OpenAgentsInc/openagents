@@ -1,5 +1,5 @@
-// Temporary hand-authored TS types for WS payloads and Tinyvex rows.
-// In Phase 2 these will be overwritten by ts-rs generated files from the Rust bridge.
+// Bridge WS and Tinyvex row types.
+// TODO: In Phase 2, generate these from Rust via ts-rs into this path.
 
 export interface ThreadSummaryTs {
   id: string;

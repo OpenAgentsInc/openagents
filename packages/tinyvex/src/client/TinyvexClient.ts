@@ -4,7 +4,7 @@ import { silentLogger } from './logger';
 import { Dedupe } from './dedupe';
 import { LiveAggregator, type LiveState } from './aggregator';
 import { resolveAlias } from './identity';
-import type { BridgeEvent, MessageRowTs, TinyvexQueryResult, TinyvexSnapshot } from '@openagents/bridge-types';
+import type { BridgeEvent, MessageRowTs, TinyvexQueryResult, TinyvexSnapshot } from 'tricoder/types';
 
 export type EventsHandlers = {
   history: (rows: MessageRowTs[]) => void;
@@ -69,17 +69,13 @@ export class TinyvexClient {
         break;
       }
       case 'tinyvex.update': {
-        // Persisted row changed; rely on client dedupe after requery or direct row payloads
-        // Future: optionally trigger a targeted query.
         handlers.debug?.({ tag: 'update' });
         break;
       }
       default: {
-        // Ephemeral ACP live updates may be surfaced via bridge-specific events (not standardized here)
         break;
       }
     }
-    // Emit a snapshot of the live aggregator for UI live rendering
     handlers.live(this.live.snapshot());
   }
 }

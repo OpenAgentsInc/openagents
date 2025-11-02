@@ -1,4 +1,4 @@
-import type { MessageRowTs } from '@openagents/bridge-types';
+import type { MessageRowTs } from 'tricoder/types';
 
 export class Dedupe {
   private byKey = new Map<string, MessageRowTs>();

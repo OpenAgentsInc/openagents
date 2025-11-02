@@ -1,6 +1,6 @@
 import { useContext, useEffect, useReducer } from 'react';
 import { TinyvexContext } from './Provider';
-import type { MessageRowTs } from '@openagents/bridge-types';
+import type { MessageRowTs } from 'tricoder/types';
 
 type Status = 'idle' | 'connecting' | 'ready' | 'error';
 type Live = { assistant: string; thought?: string };

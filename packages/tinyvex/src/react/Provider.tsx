@@ -1,7 +1,6 @@
 import React from 'react';
-import type { Transport } from '@openagents/tinyvex-client';
-import { TinyvexClient } from '@openagents/tinyvex-client';
-import { silentLogger } from '@openagents/tinyvex-client';
+import type { Transport } from '../client';
+import { TinyvexClient, silentLogger } from '../client';
 
 export type TinyvexConfig = {
   url: string;
@@ -12,16 +11,13 @@ export type TinyvexConfig = {
 class WsTransport implements Transport {
   private _status: 'connecting' | 'open' | 'closed' | 'error' = 'closed';
   private listeners = new Set<(evt: unknown) => void>();
-  // Placeholder; Phase 2 will implement actual WS.
   async connect(): Promise<void> {
     this._status = 'open';
   }
   close(): void {
     this._status = 'closed';
   }
-  send(_control: { name: string; args?: unknown }): void {
-    // no-op in scaffold
-  }
+  send(_control: { name: string; args?: unknown }): void {}
   onMessage(cb: (evt: unknown) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
