@@ -211,8 +211,8 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "type":"tinyvex.update",
                     "stream":"threads",
                     "op":"upsert",
-                    "threadId": thread_id,
-                    "updatedAt": row.updated_at,
+                    "thread_id": thread_id,
+                    "updated_at": row.updated_at,
                     "row": row_json
                 }).to_string());
             }
@@ -234,8 +234,8 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "type":"tinyvex.update",
                     "stream":"messages",
                     "op":"insert",
-                    "threadId": thread_id,
-                    "itemId": item_id
+                    "thread_id": thread_id,
+                    "item_id": item_id
                 }).to_string());
             }
             tinyvex::WriterNotification::ToolCallUpsert { thread_id, tool_call_id } => {
@@ -251,8 +251,8 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "type":"tinyvex.update",
                     "stream":"toolCalls",
                     "op":"upsert",
-                    "threadId": thread_id,
-                    "toolCallId": tool_call_id
+                    "thread_id": thread_id,
+                    "tool_call_id": tool_call_id
                 }).to_string());
             }
             tinyvex::WriterNotification::ToolCallUpdate { thread_id, tool_call_id } => {
@@ -267,8 +267,8 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "type":"tinyvex.update",
                     "stream":"toolCalls",
                     "op":"update",
-                    "threadId": thread_id,
-                    "toolCallId": tool_call_id
+                    "thread_id": thread_id,
+                    "tool_call_id": tool_call_id
                 }).to_string());
             }
             tinyvex::WriterNotification::PlanUpsert { thread_id } => {
@@ -282,7 +282,7 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "type":"tinyvex.update",
                     "stream":"plan",
                     "op":"upsert",
-                    "threadId": thread_id
+                    "thread_id": thread_id
                 }).to_string());
             }
             tinyvex::WriterNotification::StateUpsert { thread_id } => {
@@ -296,7 +296,7 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "type":"tinyvex.update",
                     "stream":"state",
                     "op":"upsert",
-                    "threadId": thread_id
+                    "thread_id": thread_id
                 }).to_string());
             }
         }
@@ -703,6 +703,7 @@ mod tests {
             stream_track: Mutex::new(std::collections::HashMap::new()),
             pending_user_text: Mutex::new(std::collections::HashMap::new()),
             sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: tvx.clone(),
             tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
@@ -711,7 +712,6 @@ mod tests {
             sync_last_read_ms: Mutex::new(0),
             sync_cmd_tx: Mutex::new(None),
             sync_cmd_tx_claude: Mutex::new(None),
-            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         };
         stream_upsert_or_append(&state, "th", "assistant", "hello").await;
         // Drain until we see the bridge.tinyvex_write event
@@ -771,6 +771,96 @@ mod tests {
         assert_eq!(rows[0].partial, Some(0));
     }
 
+    #[tokio::test]
+    async fn tool_call_updates_broadcast_snake_case() {
+        use tokio::sync::broadcast;
+        use serde_json::Value as JsonValue;
+        // Arrange app state
+        let (tx, mut rx) = broadcast::channel(64);
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(&db_path).unwrap());
+        let state = crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts: crate::Opts {
+                bind: "127.0.0.1:0".into(),
+                codex_bin: None,
+                codex_args: None,
+                extra: vec![],
+                ws_token: Some("t".into()),
+                claude_bin: None,
+                claude_args: None,
+            },
+            last_thread_id: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
+            current_thread_doc: Mutex::new(None),
+            stream_track: Mutex::new(std::collections::HashMap::new()),
+            pending_user_text: Mutex::new(std::collections::HashMap::new()),
+            sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
+            bridge_ready: std::sync::atomic::AtomicBool::new(true),
+            tinyvex: tvx.clone(),
+            tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            sync_enabled: std::sync::atomic::AtomicBool::new(true),
+            sync_two_way: std::sync::atomic::AtomicBool::new(false),
+            sync_last_read_ms: Mutex::new(0),
+            sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+        };
+        let thread_id = "t-tool";
+        // Emit a Codex-like command_execution start → ToolCall
+        let start = serde_json::json!({
+            "type": "item.started",
+            "item": {"id":"exec_1","type":"command_execution","command":"echo hi","aggregated_output":"","status":"in_progress"}
+        });
+        let upd_start = acp_event_translator::translate_codex_event_to_acp_update(&start).expect("mapped");
+        super::mirror_acp_update_to_tinyvex(&state, "codex", thread_id, &upd_start).await;
+        // Expect tinyvex.update toolCalls with snake_case
+        let mut saw_upsert = false;
+        for _ in 0..20 {
+            if let Ok(Ok(msg)) = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await {
+                if let Ok(v) = serde_json::from_str::<JsonValue>(&msg) {
+                    if v.get("type").and_then(|x| x.as_str()) == Some("tinyvex.update")
+                        && v.get("stream").and_then(|x| x.as_str()) == Some("toolCalls")
+                        && v.get("op").and_then(|x| x.as_str()) == Some("upsert")
+                    {
+                        assert_eq!(v.get("thread_id").and_then(|x| x.as_str()), Some(thread_id));
+                        assert!(v.get("tool_call_id").is_some());
+                        saw_upsert = true; break;
+                    }
+                }
+            }
+        }
+        assert!(saw_upsert, "expected toolCalls upsert with snake_case fields");
+
+        // Emit a Claude-like tool_result → ToolCallUpdate
+        let result = serde_json::json!({
+            "type": "tool_result",
+            "tool_use_id": "exec_1",
+            "is_error": false,
+            "result": {"stdout":"ok"}
+        });
+        let upd_res = acp_event_translator::translate_claude_event_to_acp_update(&result).expect("mapped");
+        super::mirror_acp_update_to_tinyvex(&state, "codex", thread_id, &upd_res).await;
+        let mut saw_update = false;
+        for _ in 0..20 {
+            if let Ok(Ok(msg)) = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await {
+                if let Ok(v) = serde_json::from_str::<JsonValue>(&msg) {
+                    if v.get("type").and_then(|x| x.as_str()) == Some("tinyvex.update")
+                        && v.get("stream").and_then(|x| x.as_str()) == Some("toolCalls")
+                        && v.get("op").and_then(|x| x.as_str()) == Some("update")
+                    {
+                        assert_eq!(v.get("thread_id").and_then(|x| x.as_str()), Some(thread_id));
+                        assert!(v.get("tool_call_id").is_some());
+                        saw_update = true; break;
+                    }
+                }
+            }
+        }
+        assert!(saw_update, "expected toolCalls update with snake_case fields");
+    }
     #[tokio::test]
     async fn claude_writer_persists_transcript_at_expected_path() {
         // Arrange a temp CLAUDE_PROJECTS_DIR and session id
