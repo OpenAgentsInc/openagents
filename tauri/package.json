@@ -10,13 +10,11 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@openagentsinc/theme": "workspace:*",
-    "tinyvex": "workspace:*",
-    "tricoder": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-opener": "^2",
+    "react-native-web": "^0.19.12"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",

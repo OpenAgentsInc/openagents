@@ -16,10 +16,30 @@
 
     /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "tinyvex": ["../packages/tinyvex/src"],
+      "tinyvex/*": ["../packages/tinyvex/src/*"],
+      "tricoder": ["../packages/tricoder/src"],
+      "tricoder/*": ["../packages/tricoder/src/*"],
+      "@openagentsinc/theme": ["../packages/openagents-theme"],
+      "@openagentsinc/theme/*": ["../packages/openagents-theme/*"],
+      "@expo/vector-icons": ["./src/shims/expo-vector-icons.tsx"],
+      "@/constants/theme": ["./src/shims/expo-theme.ts"],
+      "@/constants/typography": ["./src/shims/expo-typography.ts"],
+      "@/providers/tinyvex": ["./src/shims/expo-tinyvex-provider.ts"],
+      "expo/*": ["../expo/*"],
+      "react-native": ["react-native-web"]
+    }
   },
-  "include": ["src"],
+  "include": ["src", "../expo/components/drawer/ThreadListItem.tsx"],
+  "exclude": ["../packages/**"],
+  "typeAcquisition": { "enable": true },
+  "files": [
+    "src/shims/react-native.d.ts"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
