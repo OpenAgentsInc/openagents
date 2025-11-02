@@ -7,5 +7,6 @@ members = [
     "crates/fake-codex",
     "crates/fake-claude",
     "crates/tinyvex", "crates/mermaid_viewer",
+    "tauri/src-tauri",
 ]
 resolver = "2"

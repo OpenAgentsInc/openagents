@@ -9,7 +9,7 @@ local_backend
 node_modules
 dist
 *.tgz
-src-tauri/
+/src-tauri/
 packages/tricoder/tmp.ts
 docs/logs/claude
 .maestro/
