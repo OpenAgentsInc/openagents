@@ -25,3 +25,8 @@ CLAUDE.local.md
 .env*.local
 *.env
 *.env.*
+# Ignore ts-rs generated types (Phase 2); CI/codegen will manage these
+packages/tricoder/src/types/generated/
+
+# Ignore mistakenly-generated path from older export_to setting
+crates/packages/
