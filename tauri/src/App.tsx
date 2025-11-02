@@ -207,9 +207,9 @@ function App() {
 
   return (
     <main className="container">
-      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'center', maxWidth: 1200, margin: '16px auto 0', width: '100%', flex: 1 }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'stretch', width: '100%', margin: '16px 0 0', flex: 1, minHeight: 0 }}>
         {/* Sidebar with recent chats and compact raw feed */}
-        <div style={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+        <div style={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0 }}>
           {/* Connection panel */}
           <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', padding: 10 }}>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -225,9 +225,9 @@ function App() {
               <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>Status: <span style={{ color: 'var(--secondary)' }}>{status}</span></div>
             </div>
           </div>
-          <div>
-            <h3>Recent chats</h3>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto', maxHeight: 'calc(100% - 34vh)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
+            <h3 style={{ margin: 0, marginBottom: 6, textAlign: 'left' }}>Recent chats</h3>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto', minHeight: 0 }}>
               {threads
                 .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')))
                 .sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
@@ -250,17 +250,17 @@ function App() {
                 })}
             </div>
           </div>
-          <div>
-            <h3>Raw events</h3>
-            <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', height: '30vh', overflowY: 'auto', padding: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ margin: 0, marginBottom: 6, textAlign: 'left' }}>Raw events</h3>
+            <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: '0 0 32%', overflowY: 'auto', padding: 10 }}>
               <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0, fontSize: 11, lineHeight: '15px' }}>
                 {logs.slice(-10).join('\n')}
               </pre>
             </div>
           </div>
         </div>
-        <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto' }}>
+        <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+          <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
             {messages.map((m, idx) => {
               const isAssistant = String(m.role || '').toLowerCase() === 'assistant'
