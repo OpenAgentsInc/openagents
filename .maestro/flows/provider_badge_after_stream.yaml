@@ -2,7 +2,7 @@ appId: com.openagents.app
 name: Provider Badge After Stream (Codex)
 ---
 - launchApp
-- openLink: "exp://localhost:8081"
+- openLink: "${EXP_URL}"
 # Navigate to Settings via drawer, prefer Dev Quick Connect, fall back to env
 - runFlow:
     when:
@@ -33,7 +33,7 @@ name: Provider Badge After Stream (Codex)
       notVisible:
         id: header-connection-indicator
     commands:
-      - openLink: "exp://localhost:8081/--/settings"
+      - openLink: "${EXP_URL}/--/settings"
       - extendedWaitUntil:
           visible:
             id: settings-host-input
