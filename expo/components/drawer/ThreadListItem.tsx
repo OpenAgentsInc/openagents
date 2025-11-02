@@ -108,7 +108,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
   const providerBadge = (() => {
     if (source === 'claude_code') {
       return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View testID="provider-badge-claude" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Ionicons name="flash-outline" size={12} color={Colors.quaternary} />
           <Text style={{ color: Colors.quaternary, fontFamily: Typography.primary, fontSize: 12 }}>Claude Code</Text>
         </View>
@@ -116,7 +116,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
     }
     if (source === 'codex') {
       return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View testID="provider-badge-codex" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Ionicons name="code-slash" size={12} color={Colors.quaternary} />
           <Text style={{ color: Colors.quaternary, fontFamily: Typography.primary, fontSize: 12 }}>Codex</Text>
         </View>
