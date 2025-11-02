@@ -41,9 +41,9 @@ export default function SettingsScreen() {
           setStatusEnabled(!!s.enabled)
           setStatusTwoWay(!!s.two_way)
           const w = Array.isArray(s.watched) && s.watched[0] ? s.watched[0] : null
-          // SyncWatchedDir fields per bridge types
-          setSyncFiles(0)
-          setSyncBase(String(w?.path || ''))
+          // SyncWatchedDir fields per ADR‑0002 (base, files, last_read)
+          setSyncFiles(Number(w?.files || 0))
+          setSyncBase(String(w?.base || ''))
           setSyncLastRead(Number(w?.last_read || 0))
         }
       } catch {}
