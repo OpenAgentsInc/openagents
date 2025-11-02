@@ -208,22 +208,27 @@ function App() {
   return (
     <main className="container">
       <h1>OpenAgents — Bridge</h1>
-      <div className="row" style={{ gap: 8 }}>
-        <input id="host-input" placeholder="host:port (e.g., 127.0.0.1:8787)" value={host} onChange={(e) => setHost(e.currentTarget.value)} />
-        {!connected ? (
-          <button onClick={connect}>Connect</button>
-        ) : (
-          <button onClick={disconnect}>Disconnect</button>
-        )}
-      </div>
-      <p>wsUrl: {wsBase || '—'}</p>
-      <p>Status: {status}</p>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'center', maxWidth: 1200, margin: '16px auto', width: '100%' }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'center', maxWidth: 1200, margin: '16px auto 0', width: '100%', flex: 1 }}>
         {/* Sidebar with recent chats and compact raw feed */}
-        <div style={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+          {/* Connection panel */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', padding: 10 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input id="host-input" placeholder="host:port" value={host} onChange={(e) => setHost(e.currentTarget.value)} style={{ flex: 1 }} />
+              {!connected ? (
+                <button onClick={connect}>Connect</button>
+              ) : (
+                <button onClick={disconnect}>Disconnect</button>
+              )}
+            </div>
+            <div style={{ textAlign: 'left', marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>wsUrl: <span style={{ color: 'var(--secondary)' }}>{wsBase || '—'}</span></div>
+              <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>Status: <span style={{ color: 'var(--secondary)' }}>{status}</span></div>
+            </div>
+          </div>
           <div>
             <h3>Recent chats</h3>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', maxHeight: '46vh', overflowY: 'auto' }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto', maxHeight: 'calc(100% - 34vh)' }}>
               {threads
                 .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')))
                 .sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
@@ -248,16 +253,16 @@ function App() {
           </div>
           <div>
             <h3>Raw events</h3>
-            <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', maxHeight: '22vh', overflowY: 'auto', padding: 10 }}>
+            <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', height: '30vh', overflowY: 'auto', padding: 10 }}>
               <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0, fontSize: 11, lineHeight: '15px' }}>
                 {logs.slice(-10).join('\n')}
               </pre>
             </div>
           </div>
         </div>
-        <div style={{ flex: 2, minWidth: 0 }}>
+        <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
           <h3>Latest Codex Chat</h3>
-          <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto' }}>
+          <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto' }}>
             {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
             {messages.map((m, idx) => {
               const isAssistant = String(m.role || '').toLowerCase() === 'assistant'
