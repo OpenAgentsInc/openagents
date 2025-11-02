@@ -77,11 +77,20 @@ function App() {
     return () => { cancelled = true }
   }, [token, host])
 
+  // Auto-connect once token and host are known and we are not connected
+  useEffect(() => {
+    if (!token || !host) return
+    if (connected) return
+    connect()
+  // intentionally omit connect from deps to avoid recreating
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, host, connected])
+
   const connect = () => {
     try { disconnect() } catch {}
     if (!wsUrl) return
     const t = new WsTransport({ url: wsUrl })
-    setStatus(t.status())
+    setStatus('connecting')
     const c = new TinyvexClient(t)
     clientRef.current = c
     ;(async () => {
