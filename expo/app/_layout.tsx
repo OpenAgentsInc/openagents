@@ -215,6 +215,18 @@ function DrawerContent() {
             <Ionicons name="help-circle-outline" size={18} color={Colors.foreground} />
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Help</Text>
           </Pressable>
+          {isDevEnv ? (
+            <Pressable
+              onPress={closeAnd(() => router.push('/developer' as any))}
+              accessibilityRole="button"
+              accessibilityLabel="Open developer tools"
+              testID="drawer-developer"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
+            >
+              <Ionicons name="construct-outline" size={18} color={Colors.foreground} />
+              <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Developer</Text>
+            </Pressable>
+          ) : null}
           {/* Component Library removed; use Storybook (USE_STORYBOOK) for demos */}
           {/** Logs link disabled in drawer
           <Pressable
@@ -403,6 +415,9 @@ function DrawerWrapper() {
           {/* Component Library routes removed */}
           <Stack.Screen name="settings/index" />
           <Stack.Screen name="logs/index" />
+          {/* Developer-only routes (screen code also guards env) */}
+          <Stack.Screen name="developer/index" />
+          <Stack.Screen name="developer/recent-thread" />
         </Stack>
         {open ? (
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: Colors.white, opacity: 0.04 }} />
