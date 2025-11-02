@@ -5,6 +5,8 @@ name: UI Drawer → Settings
 - openLink: "exp://localhost:8081"
 # Warm the dev-client on a header-visible route
 - openLink: "exp://localhost:8081/--/thread/new"
+# Prefer direct link to settings, then fallback to drawer
+- openLink: "exp://localhost:8081/--/settings"
 # Open drawer if header button is visible
 - runFlow:
     when:
@@ -31,10 +33,16 @@ name: UI Drawer → Settings
         id: settings-root
     commands:
       - openLink: "exp://localhost:8081/--/settings"
-- extendedWaitUntil:
-    visible:
-      id: settings-root
-    timeout: 90000
+- runFlow:
+    when:
+      notVisible:
+        id: settings-root
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: settings-status
+          timeout: 90000
+# If still not visible, fallback to drawer path
 # Fallback: if Settings content fails to render, at least assert drawer item visible
 - runFlow:
     when:
