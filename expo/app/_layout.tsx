@@ -23,6 +23,7 @@ import { useAutoUpdate } from "@/hooks/use-auto-update"
 import { useAppLogStore } from "@/lib/app-log"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
 import { TinyvexProvider, useTinyvex } from "@/providers/tinyvex"
+import { useTinyvexThreads } from "tinyvex/react"
 import { TinyvexProvider as TinyvexPkgProvider } from "tinyvex/react"
 import { AcpProvider } from "@/providers/acp"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
@@ -49,7 +50,8 @@ function DrawerContent() {
   // - `threads` subscribe + initial `threads.list` query on WS connect
   // - bounded prefetch for top threads
   // - throttled message tail queries on live updates
-  const { threads, subscribeMessages, queryMessages } = useTinyvex()
+  // Switched drawer to package client for threads
+  const { threads } = useTinyvexThreads(50)
   const { isArchived, archive, unarchive } = useArchiveStore()
   const archivedMap = useArchiveStore((s) => s.archived)
   const [menuFor, setMenuFor] = React.useState<string | null>(null)
