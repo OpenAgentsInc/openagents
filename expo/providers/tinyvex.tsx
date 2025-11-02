@@ -171,7 +171,7 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
           try { scheduleThreadsRefresh() } catch {}
         }
       } else if (u.stream === 'toolCalls' && typeof (u as TvxUpdateToolCalls).thread_id === 'string') {
-        // Ignore incremental toolCalls stream; we hydrate via toolCalls.list when needed.
+        try { scheduleToolQuery((u as TvxUpdateToolCalls).thread_id) } catch {}
       } else if (u.stream === 'plan' && typeof (u as TvxUpdatePlan).thread_id === 'string') {
         const tid: string = (u as TvxUpdatePlan).thread_id
         setPlanTouched((prev) => ({ ...prev, [tid]: Date.now() }))
@@ -289,6 +289,12 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     const debounce = createPerKeyDebounce(THREADS_REFRESH_DEBOUNCE_MS)
     return () => debounce('threads', () => {
       try { stableSend(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
+    })
+  }, [stableSend])
+  const scheduleToolQuery = useMemo(() => {
+    const throttle = createPerKeyThrottle(MSG_QUERY_THROTTLE_MS)
+    return (threadId: string) => throttle(`tool-${threadId}`, () => {
+      try { stableSend(JSON.stringify({ control: 'tvx.query', name: 'toolCalls.list', args: { thread_id: threadId, limit: 50 } })) } catch {}
     })
   }, [stableSend])
 
