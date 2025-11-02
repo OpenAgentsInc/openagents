@@ -77,19 +77,9 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
       items.push({ key: `acp-plan-${ts}-${i}`, ts, node: <SessionUpdatePlan entries={p.entries} /> })
       continue
     }
-    if (u.sessionUpdate === 'tool_call') {
-      const t = u as ToolCallCreate
-      const props: ToolCallLike = { title: t.title, status: t.status, kind: t.kind, content: t.content, locations: t.locations }
-      items.push({ key: `acp-tool-${ts}-${i}`, ts, node: <SessionUpdateToolCall {...props} /> })
-      continue
-    }
-    if (u.sessionUpdate === 'tool_call_update') {
-      const t = u as ToolCallUpdate
-      // Some SDKs surface updates directly on the object; others nest under `fields`.
-      const anyT: any = t as any
-      const src = anyT.fields ?? anyT
-      const props: ToolCallLike = { title: src?.title, status: src?.status, kind: src?.kind, content: src?.content, locations: src?.locations }
-      items.push({ key: `acp-tool-${ts}-${i}`, ts, node: <SessionUpdateToolCall {...props} /> })
+    // Do not render ACP tool_call/create/update inline; rely on Tinyvex-hydrated
+    // tool call rows so we can dedupe and provide navigation to details.
+    if (u.sessionUpdate === 'tool_call' || u.sessionUpdate === 'tool_call_update') {
       continue
     }
   }
@@ -123,11 +113,25 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     } catch { return [] }
   }
 
-  // Hydrated tool calls (Tinyvex) — typed, minimal mapping
+  // Hydrated tool calls (Tinyvex) — dedupe by tool_call_id to latest
+  function stripRunPrefix(raw?: string | null): string {
+    const s = String(raw || '')
+    return s.replace(/^\s*Run:\s*/i, '')
+  }
+  const latestById = new Map<string, ToolCallRow>()
   for (const r of toolRows) {
+    const id = String(r.tool_call_id || '')
+    if (!id) continue
+    const prev = latestById.get(id)
+    if (!prev || Number(r.updated_at) > Number(prev.updated_at)) {
+      latestById.set(id, r)
+    }
+  }
+  const deduped = Array.from(latestById.values()).sort((a, b) => a.updated_at - b.updated_at)
+  for (const r of deduped) {
     const ts = r.updated_at
     const key = `tvx-tool-${r.tool_call_id}`
-    const title = r.title || 'Tool'
+    const title = stripRunPrefix(r.title || 'Tool')
     const status = normalizeStatus(r.status)
     const kind = normalizeKind(r.kind)
     const locations = parseLocations(r.locations_json)
