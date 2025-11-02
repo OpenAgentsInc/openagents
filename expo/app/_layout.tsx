@@ -133,15 +133,15 @@ function DrawerContent() {
               {/* Tinyvex snapshot loads quickly; spinner optional */}
             </View>
             {Array.isArray(threads) && (
-              (topThreads?.filter((r: any) => typeof (r as any).message_count === 'number' ? (r as any).message_count > 0 : true).length ?? 0) === 0 ? (
+              (topThreads?.filter((r) => typeof r.message_count === 'number' ? r.message_count > 0 : true).length ?? 0) === 0 ? (
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
                 <View testID="drawer-threads">
-                  {(topThreads || []).map((row: any) => (
+                  {(topThreads || []).map((row) => (
                     <DrawerThreadItem
                       key={String(row.id)}
                       row={row}
-                      onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}` as any))}
+                      onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}`))}
                       onLongPress={() => showActions(String(row.id))}
                     />
                   ))}
@@ -154,7 +154,7 @@ function DrawerContent() {
               <Ionicons name="archive-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Archived</Text>
             </View>
-            <Pressable onPress={closeAnd(() => router.push('/thread/archived' as any))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+            <Pressable onPress={closeAnd(() => router.push('/thread/archived'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>View archived</Text>
             </Pressable>
           </View>
@@ -207,7 +207,7 @@ function DrawerContent() {
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Settings</Text>
           </Pressable>
           <Pressable
-            onPress={closeAnd(() => router.push('/help' as any))}
+            onPress={closeAnd(() => router.push('/help'))}
             accessibilityRole="button"
             accessibilityLabel="Open help"
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
@@ -217,7 +217,7 @@ function DrawerContent() {
           </Pressable>
           {isDevEnv ? (
             <Pressable
-              onPress={closeAnd(() => router.push('/developer' as any))}
+              onPress={closeAnd(() => router.push('/developer'))}
               accessibilityRole="button"
               accessibilityLabel="Open developer tools"
               testID="drawer-developer"

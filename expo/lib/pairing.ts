@@ -12,7 +12,10 @@ function b64urlDecode(s: string): string {
   try {
     const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4))
     const b64 = (s || '').replace(/-/g, '+').replace(/_/g, '/') + pad
-    const atobFn: ((x: string) => string) | undefined = (globalThis as any).atob
+    // Check if atob is available (browser/modern RN)
+    const atobFn: ((x: string) => string) | undefined = typeof (globalThis as { atob?: (x: string) => string }).atob === 'function'
+      ? (globalThis as { atob: (x: string) => string }).atob
+      : undefined
     if (typeof atobFn === 'function') {
       const bin = atobFn(b64)
       let out = ''
@@ -61,8 +64,8 @@ export function parseBridgeCode(code: string): { bridgeHost?: string; token?: st
     if (!obj || typeof obj !== 'object') return null
     const out: { bridgeHost?: string; token?: string | null } = {}
     // Prefer hosts[] if present (first item is highest priority), else fall back to bridge URL
-    if (Array.isArray((obj as any).hosts) && (obj as any).hosts.length > 0) {
-      const h = String((obj as any).hosts[0] || '').trim()
+    if ('hosts' in obj && Array.isArray(obj.hosts) && obj.hosts.length > 0) {
+      const h = String(obj.hosts[0] || '').trim()
       if (h) out.bridgeHost = h
     } else if (obj.bridge && typeof obj.bridge === 'string') {
       try {

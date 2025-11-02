@@ -3,8 +3,7 @@ import { Pressable, Text, View } from 'react-native'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useRouter } from 'expo-router'
-import { useTinyvex } from '@/providers/tinyvex'
-import type { ThreadSummaryTs as ThreadRow } from '../../types/bridge/ThreadSummaryTs'
+import { useTinyvex, type ThreadRow } from '@/providers/tinyvex'
 import { Ionicons } from '@expo/vector-icons'
 
 export function ThreadListItemBase({

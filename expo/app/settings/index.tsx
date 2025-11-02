@@ -41,9 +41,10 @@ export default function SettingsScreen() {
           setStatusEnabled(!!s.enabled)
           setStatusTwoWay(!!s.two_way)
           const w = Array.isArray(s.watched) && s.watched[0] ? s.watched[0] : null
-          setSyncFiles(Number((w?.files as any) || 0))
+          // SyncWatchedDir fields are snake_case per bridge types
+          setSyncFiles(Number(w?.files || 0))
           setSyncBase(String(w?.base || ''))
-          setSyncLastRead(Number((w?.last_read as any) || 0))
+          setSyncLastRead(Number(w?.last_read || 0))
         }
       } catch {}
     })
