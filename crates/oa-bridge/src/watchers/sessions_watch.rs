@@ -312,6 +312,31 @@ mod tests {
         assert_eq!(id.as_deref(), Some("019a0ce1-d491-76d2-93ba-0d47dde32657"));
     }
 
+    #[tokio::test]
+    async fn mirrors_to_alias_when_client_doc_mapping_exists() {
+        // Given a file with a known session id
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("rollout-test.jsonl");
+        let mut f = std::fs::File::create(&p).unwrap();
+        use std::io::Write;
+        writeln!(f, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"sess-alias"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.delta","item":{"type":"agent_message","text":"hello"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"type":"agent_message","text":"hello"}})).unwrap();
+        drop(f);
+        let state = test_state().await;
+        // Map session id to a client thread doc id alias
+        {
+            let mut map = state.client_doc_by_session.lock().await;
+            map.insert("sess-alias".into(), "t-alias".into());
+        }
+        let mut fs = FileState::default();
+        fs.thread_id = scan_for_thread_id(&p);
+        process_file_append(&state, &p, &mut fs).await.expect("process ok");
+        // Expect messages under both ids
+        assert_eq!(state.tinyvex.list_messages("sess-alias", 50).unwrap().len(), 1);
+        assert_eq!(state.tinyvex.list_messages("t-alias", 50).unwrap().len(), 1);
+    }
+
     #[test]
     fn detects_new_format_jsonl_files() {
         let dir = tempfile::tempdir().unwrap();

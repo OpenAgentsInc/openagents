@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react';
 import { appLog } from '@/lib/app-log';
 import { useSettings, type Approvals as StoreApprovals } from '@/lib/settings-store'
-import { isDevEnv } from '@/lib/env'
+import { isDevEnv, devBridgeHost, devBridgeToken } from '@/lib/env'
 import { parseSessionNotification } from '@/lib/acp/validation'
 import { usePairingStore } from '@/lib/pairing-store'
 
@@ -79,7 +79,11 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     try {
       const val = String(raw || '').trim();
       if (!val) return '';
-      const stripped = val
+      // If host text accidentally contains repeated host:port concatenations,
+      // extract the first plausible host:port and discard the rest.
+      const repeatedMatch = val.match(/((?:[a-zA-Z0-9.-]+|\d{1,3}(?:\.\d{1,3}){3}):\d{2,5})/);
+      const basis = repeatedMatch ? repeatedMatch[1] : val;
+      const stripped = basis
         .replace(/^ws:\/\//i, '')
         .replace(/^wss:\/\//i, '')
         .replace(/^http:\/\//i, '')
@@ -123,6 +127,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     const tokenNow = useSettings.getState().bridgeToken;
     const host = sanitizeHost(String(rawHost || ''));
     if (!host) return;
+    // Persist sanitized host back into settings to keep UI clean
+    try { if (host !== rawHost) useSettings.getState().setBridgeHost(host) } catch {}
     // Compute secure scheme for this host now
     const parts = host.split(':');
     const port = parts.length > 1 ? parts[1] : '';
@@ -376,3 +382,31 @@ export function useBridge() {
 // Back-compat exports (deprecated)
 export const WsProvider = BridgeProvider;
 export const useWs = useBridge;
+
+// Dev-only auto-connect helper: if EXPO_PUBLIC_AUTO_CONNECT=1 and
+// EXPO_PUBLIC_BRIDGE_HOST/TOKEN are provided at build time, attempt a
+// one-shot connect on mount without user interaction. This is only
+// active when `EXPO_PUBLIC_ENV=development`.
+export function DevAutoConnectGate() {
+  const { connect } = useBridge();
+  const setBridgeHost = useSettings((s) => s.setBridgeHost)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
+  const connected = useBridge().connected
+  const connecting = useBridge().connecting
+  useEffect(() => {
+    try {
+      const want = String(process.env.EXPO_PUBLIC_AUTO_CONNECT || '').trim() === '1'
+      if (!want) return
+      if (!isDevEnv()) return
+      if (connected || connecting) return
+      const host = devBridgeHost();
+      const token = devBridgeToken();
+      if (host && token) {
+        try { setBridgeHost(host) } catch {}
+        try { setBridgeToken(token) } catch {}
+        try { connect() } catch {}
+      }
+    } catch {}
+  }, [connected, connecting, connect, setBridgeHost, setBridgeToken])
+  return null
+}

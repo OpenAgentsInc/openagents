@@ -26,7 +26,7 @@ import { TinyvexProvider, useTinyvex } from "@/providers/tinyvex"
 import { AcpProvider } from "@/providers/acp"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 // Projects/Skills providers temporarily disabled
-import { BridgeProvider, useBridge } from "@/providers/ws"
+import { BridgeProvider, useBridge, DevAutoConnectGate } from "@/providers/ws"
 import { useSettings } from "@/lib/settings-store"
 import { parseBridgeCode, normalizeBridgeCodeInput } from "@/lib/pairing"
 import { usePairingStore } from "@/lib/pairing-store"
@@ -373,6 +373,8 @@ function DrawerWrapper() {
       renderDrawerContent={() => <DrawerContent />}
     >
       <StatusBar style="light" />
+      {/* Dev-only auto-connect gate (no-op in prod) */}
+      <DevAutoConnectGate />
       <View style={{ flex: 1 }}>
         {(() => {
           const path = String(pathname || '')

@@ -55,7 +55,7 @@ export const useSettings = create<SettingsState>()(
       // Default to watcher ON and two-way OFF unless user overrides.
       syncEnabled: true,
       syncTwoWay: false,
-      setBridgeHost: (v) => set({ bridgeHost: v }),
+      setBridgeHost: (v) => set({ bridgeHost: sanitizeHostInput(v) }),
       setBridgeCode: (v) => set({ bridgeCode: v }),
       setBridgeToken: (v) => set({ bridgeToken: v }),
       setBridgeAutoReconnect: (v) => set({ bridgeAutoReconnect: v }),
@@ -96,3 +96,25 @@ export const useSettings = create<SettingsState>()(
     }
   )
 )
+
+// Best-effort sanitize for Bridge Host input to prevent accidental concatenation
+// or protocol fragments. Keeps only the first plausible host:port, strips ws://,
+// http(s)://, trailing / and /ws suffix.
+function sanitizeHostInput(raw: string): string {
+  try {
+    const val = String(raw || '').trim()
+    if (!val) return ''
+    const m = val.match(/((?:[a-zA-Z0-9.-]+|\d{1,3}(?:\.\d{1,3}){3}):\d{2,5})/)
+    const basis = m ? m[1] : val
+    return basis
+      .replace(/^ws:\/\//i, '')
+      .replace(/^wss:\/\//i, '')
+      .replace(/^http:\/\//i, '')
+      .replace(/^https:\/\//i, '')
+      .replace(/\/$/, '')
+      .replace(/\/ws$/i, '')
+      .replace(/\/$/, '')
+  } catch {
+    return ''
+  }
+}
