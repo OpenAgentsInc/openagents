@@ -2,9 +2,9 @@ appId: com.openagents.app
 name: Bridge Connect (Manual Host/Token)
 ---
 - launchApp
-- openLink: "exp://localhost:8081"
+- openLink: "${EXP_URL}"
 # Try to land on a screen that shows the header
-- openLink: "exp://localhost:8081/--/thread/new"
+- openLink: "${EXP_URL}/--/thread/new"
 # Try drawer first if header is visible
 - runFlow:
     when:
@@ -25,14 +25,14 @@ name: Bridge Connect (Manual Host/Token)
       notVisible:
         id: header-menu-button
     commands:
-      - openLink: "exp://localhost:8081/--/settings"
+      - openLink: "${EXP_URL}/--/settings"
       - runFlow:
           when:
             notVisible:
               id: settings-root
           commands:
-            - openLink: "exp://localhost:8081"
-            - openLink: "exp://localhost:8081/--/thread/new"
+            - openLink: "${EXP_URL}"
+            - openLink: "${EXP_URL}/--/thread/new"
             - extendedWaitUntil:
                 visible:
                   id: header-menu-button
@@ -51,7 +51,7 @@ name: Bridge Connect (Manual Host/Token)
       notVisible:
         id: settings-root
     commands:
-      - openLink: "exp://localhost:8081/--/settings"
+      - openLink: "${EXP_URL}/--/settings"
 # Wait for pill (after whichever path succeeded)
 - extendedWaitUntil:
     visible:
@@ -85,12 +85,12 @@ name: Bridge Connect (Manual Host/Token)
     id: settings-host-input
 - inputText:
     id: settings-host-input
-    text: "192.168.1.11:8788"
+    text: "${BRIDGE_HOST}"
 - tapOn:
     id: settings-token-input
 - inputText:
     id: settings-token-input
-    text: "2d716c46ffb7b1c788db80b8cc21a027101dfad9372659339a48bd0d48ddf7ce"
+    text: "${BRIDGE_TOKEN}"
 - tapOn:
     id: settings-apply
 - runFlow:
