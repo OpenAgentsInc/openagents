@@ -258,6 +258,43 @@ pub fn spawn_claude_watcher(state: std::sync::Arc<AppState>) -> mpsc::Sender<cra
 mod tests {
     use super::*;
     use serde_json::json;
+    use tokio::sync::{broadcast, Mutex};
+
+    async fn test_state() -> crate::state::AppState {
+        let (tx, _rx) = broadcast::channel(8);
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.into_path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(&db_path).unwrap());
+        crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts: crate::Opts {
+                bind: "127.0.0.1:0".into(),
+                codex_bin: None,
+                codex_args: None,
+                extra: vec![],
+                ws_token: Some("t".into()),
+                claude_bin: None,
+                claude_args: None,
+            },
+            last_thread_id: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
+            current_thread_doc: Mutex::new(None),
+            stream_track: Mutex::new(std::collections::HashMap::new()),
+            pending_user_text: Mutex::new(std::collections::HashMap::new()),
+            bridge_ready: std::sync::atomic::AtomicBool::new(true),
+            tinyvex: tvx.clone(),
+            tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            sync_enabled: std::sync::atomic::AtomicBool::new(true),
+            sync_two_way: std::sync::atomic::AtomicBool::new(false),
+            sync_last_read_ms: Mutex::new(0),
+            sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
+            sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+        }
+    }
 
     #[test]
     fn transcript_line_maps_tool_use_and_result() {
@@ -295,6 +332,29 @@ mod tests {
             }
         }
         assert!(found);
+    }
+
+    #[tokio::test]
+    async fn process_file_append_appends_and_writes_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let proj = dir.path().join("proj1");
+        std::fs::create_dir_all(&proj).unwrap();
+        let p = proj.join("s1.jsonl");
+        use std::io::Write;
+        let mut f = std::fs::File::create(&p).unwrap();
+        // assistant text
+        writeln!(f, "{}", json!({
+            "type": "assistant",
+            "message": {"content": [{"type":"text","text":"Hello Claude"}]}
+        })).unwrap();
+        drop(f);
+        let state = test_state().await;
+        let mut fs = FileState::default();
+        process_file_append(&state, &p, &mut fs).await.expect("process ok");
+        // Thread id derived from filename
+        let msgs = state.tinyvex.list_messages("s1", 50).unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].text.as_deref(), Some("Hello Claude"));
     }
 
     #[test]
