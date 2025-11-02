@@ -67,10 +67,11 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
     return ts ?? Number(row.updated_at || 0)
   }, [msgs, row])
   const count = React.useMemo(() => {
-    const mc = (row as any)?.message_count
+    // ThreadRow has message_count as an optional field (bigint | null in TS, number | null here after shim)
+    const mc = row.message_count
     if (typeof mc === 'number') return mc
     return msgs.length > 0 ? msgs.length : undefined
-  }, [row, msgs.length])
+  }, [row.message_count, msgs.length])
   // Use the last message text (assistant or user) as the snippet; fall back to row.title or "Thread"
   const lastSnippet = React.useMemo(() => {
     const arr = msgs && msgs.length > 0 ? msgs : []
@@ -78,7 +79,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
     try {
       if (arr.length > 1) {
         const byTs = [...arr]
-        byTs.sort((a: any, b: any) => (Number(a?.ts || 0) - Number(b?.ts || 0)))
+        byTs.sort((a, b) => (Number(a.ts || 0) - Number(b.ts || 0)))
         last = byTs[byTs.length - 1]
       }
     } catch {}

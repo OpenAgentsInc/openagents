@@ -53,10 +53,11 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     } catch { return 0 }
   })()
   for (let i = 0; i < acpUpdates.length; i++) {
-    const n = acpUpdates[i] as SessionNotificationWithTs
-    const u = (n as any).update as SessionUpdate | undefined
+    const n = acpUpdates[i]
+    if (!n || !('update' in n)) continue
+    const u = n.update
     if (!u) continue
-    const ts = Number((n as any).addedAt || Date.now())
+    const ts = Number(n.addedAt || Date.now())
     // Do not render ACP user messages; Tinyvex persists user rows immediately
     // at send time to avoid duplicates.
     if (u.sessionUpdate === 'user_message_chunk') {
@@ -64,7 +65,10 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     }
     if (u.sessionUpdate === 'agent_message_chunk') {
       const m = u as AgentMessageChunk
-      const fullText = String((m.content as any)?.text || '')
+      // Extract text from content union type - content is an array
+      const contentArray = Array.isArray(m.content) ? m.content : []
+      const textContent = contentArray.find((c: { type: string }) => c.type === 'text')
+      const fullText = textContent && 'text' in textContent ? String(textContent.text || '') : ''
       const firstLine = fullText.split('\n')[0]
       const content: { type: 'text'; text: string } = { type: 'text', text: firstLine }
       if (ts > tvxMaxTs) {
@@ -136,7 +140,7 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     const kind = normalizeKind(r.kind)
     const locations = parseLocations(r.locations_json)
     const props: ToolCallLike = { title, status, kind, content: [], locations }
-    const go = () => { try { router.push(`/thread/${encodeURIComponent(threadId)}/tool/${encodeURIComponent(r.tool_call_id)}` as any) } catch {} }
+    const go = () => { try { router.push(`/thread/${encodeURIComponent(threadId)}/tool/${encodeURIComponent(r.tool_call_id)}`) } catch {} }
     items.push({ key, ts, node: (
       <Pressable onPress={go} accessibilityRole="button">
         <SessionUpdateToolCall {...props} />
