@@ -4,6 +4,9 @@ import "./App.css";
 import { TinyvexClient } from 'tinyvex/client'
 import { WsTransport } from 'tinyvex/client/WsTransport'
 import type { ThreadSummaryTs, MessageRowTs } from 'tricoder/types'
+import { ThreadListItemBase } from 'expo/components/drawer/ThreadListItem'
+import { View, Text } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 
 function App() {
   // Bridge connection inputs
@@ -211,6 +214,42 @@ function App() {
     } catch {}
   }, [logs])
 
+  function formatRelative(ts: number): string {
+    const now = Date.now()
+    const diff = Math.max(0, now - ts)
+    const sec = Math.floor(diff / 1000)
+    if (sec < 5) return 'just now'
+    if (sec < 60) return `${sec} seconds ago`
+    const min = Math.floor(sec / 60)
+    if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`
+    const hr = Math.floor(min / 60)
+    if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`
+    const day = Math.floor(hr / 24)
+    if (day < 7) return `${day} day${day === 1 ? '' : 's'} ago`
+    const week = Math.floor(day / 7)
+    if (week < 5) return `${week} week${week === 1 ? '' : 's'} ago`
+    const month = Math.floor(day / 30)
+    if (month < 12) return `${month} month${month === 1 ? '' : 's'} ago`
+    const year = Math.floor(day / 365)
+    return `${year} year${year === 1 ? '' : 's'} ago`
+  }
+
+  function computeSnippet(lastText: string, fallbackTitle?: string | null): string {
+    const raw = String(lastText || '')
+    const cleaned = raw
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`([^`]*)`/g, '$1')
+      .replace(/^#+\s*/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/\[(.*?)\]\([^)]*\)/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim()
+    const base = cleaned || (fallbackTitle ? String(fallbackTitle) : '') || 'Thread'
+    const maxLen = 48
+    return base.length > maxLen ? `${base.slice(0, maxLen - 1)}…` : base
+  }
+
   return (
     <main className="container">
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'stretch', width: '100%', margin: '16px 0 0', flex: 1, minHeight: 0 }}>
@@ -240,17 +279,48 @@ function App() {
                 .slice(0, 10)
                 .map((r) => {
                   const tid = String(r.id)
-                  const last = lastByThread[tid]
                   const provider = String(r.source || '')
                   const active = selectedThread === tid
+                  const last = (lastByThread[tid] || '').trim()
+                  const title = computeSnippet(last, r.title)
+                  const updatedAt = typeof r.last_message_ts === 'number' && r.last_message_ts > 0 ? r.last_message_ts : Number(r.updated_at || 0)
+                  const tsText = updatedAt ? formatRelative(updatedAt) : ''
+                  const providerBadge = provider ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {provider === 'claude_code' ? <Ionicons name="flash-outline" size={12} color="#62666d" /> : provider === 'codex' ? <Ionicons name="code-slash" size={12} color="#62666d" /> : null}
+                      <Text style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>{provider === 'claude_code' ? 'Claude Code' : provider === 'codex' ? 'Codex' : provider}</Text>
+                    </View>
+                  ) : null
+                  const meta = (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {!!tsText && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="time-outline" size={12} color="#62666d" />
+                          <Text numberOfLines={1} style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>{tsText}</Text>
+                        </View>
+                      )}
+                      {providerBadge ? (
+                        <>
+                          {!!tsText && (
+                            <Text style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>•</Text>
+                          )}
+                          {providerBadge}
+                        </>
+                      ) : null}
+                    </View>
+                  )
                   return (
-                    <div key={tid} onClick={() => { setSelectedThread(tid); try { clientRef.current?.subscribeThread(tid); clientRef.current?.["queryHistory"]?.(tid) } catch {} }}
-                         style={{ cursor: 'pointer', padding: 10, borderBottom: '1px solid var(--border)', background: active ? '#111216' : 'transparent' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontFamily: 'inherit', color: 'var(--foreground)', fontSize: 13 }}>{r.title || 'Thread'}</div>
-                        <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>{provider}</div>
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--secondary)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{last || '—'}</div>
+                    <div key={tid} style={{ borderBottom: '1px solid var(--border)', background: active ? '#111216' : 'transparent' }}>
+                      <ThreadListItemBase
+                        title={title}
+                        meta={meta}
+                        timestamp={updatedAt}
+                        onPress={() => {
+                          setSelectedThread(tid)
+                          try { clientRef.current?.subscribeThread(tid); clientRef.current?.["queryHistory"]?.(tid) } catch {}
+                        }}
+                        testID={`drawer-thread-${tid}`}
+                      />
                     </div>
                   )
                 })}
