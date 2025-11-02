@@ -371,4 +371,90 @@ mod tests {
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].text.as_deref(), Some("hello from codex"));
     }
+
+    #[tokio::test]
+    async fn handles_file_truncation_without_duplicates() {
+        // Arrange: create file with 3 lines, process all
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("rollout-truncate.jsonl");
+        let mut f = std::fs::File::create(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"sess-trunc"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.delta","item":{"id":"item_1","type":"agent_message","text":"message 1"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"message 1"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.delta","item":{"id":"item_2","type":"agent_message","text":"message 2"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"message 2"}})).unwrap();
+        drop(f);
+        
+        let state = test_state().await;
+        let mut fs = FileState::default();
+        fs.thread_id = scan_for_thread_id(&p);
+        
+        // Process all lines (offset advances to end of file)
+        process_file_append(&state, &p, &mut fs).await.expect("process ok");
+        let initial_offset = fs.offset;
+        assert!(initial_offset > 0, "offset should have advanced");
+        
+        // Verify 2 messages written
+        let msgs = state.tinyvex.list_messages("sess-trunc", 50).unwrap();
+        assert_eq!(msgs.len(), 2, "expected 2 messages after initial processing");
+        
+        // Act: truncate file to just the header line (simulate log rotation)
+        let mut f = std::fs::OpenOptions::new().write(true).truncate(true).open(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"sess-trunc"}})).unwrap();
+        drop(f);
+        
+        // Process again - should detect truncation and reset offset
+        process_file_append(&state, &p, &mut fs).await.expect("process ok after truncation");
+        
+        // Assert: offset was reset (file is smaller than previous offset)
+        assert_eq!(fs.offset, std::fs::metadata(&p).unwrap().len(), "offset should be reset to new file size");
+        
+        // Assert: no duplicate messages created (still 2 messages)
+        let msgs_after = state.tinyvex.list_messages("sess-trunc", 50).unwrap();
+        assert_eq!(msgs_after.len(), 2, "truncation should not create duplicate messages");
+    }
+
+    #[tokio::test]
+    async fn persists_offset_across_processing_batches() {
+        // This test simulates restart behavior by using the same FileState across multiple process calls
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("rollout-persist.jsonl");
+        
+        // Create initial file with 2 messages
+        let mut f = std::fs::File::create(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"sess-persist"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.delta","item":{"id":"item_1","type":"agent_message","text":"msg 1"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"msg 1"}})).unwrap();
+        drop(f);
+        
+        let state = test_state().await;
+        let mut fs = FileState::default();
+        fs.thread_id = scan_for_thread_id(&p);
+        
+        // First batch: process existing lines
+        process_file_append(&state, &p, &mut fs).await.expect("first batch ok");
+        let offset_after_first = fs.offset;
+        assert!(offset_after_first > 0, "offset should advance");
+        
+        let msgs = state.tinyvex.list_messages("sess-persist", 50).unwrap();
+        assert_eq!(msgs.len(), 1, "expected 1 message after first batch");
+        
+        // Append new line to file (simulating new activity)
+        let mut f = std::fs::OpenOptions::new().append(true).open(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.delta","item":{"id":"item_2","type":"agent_message","text":"msg 2"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"msg 2"}})).unwrap();
+        drop(f);
+        
+        // Second batch: process only new lines (offset should prevent reprocessing)
+        process_file_append(&state, &p, &mut fs).await.expect("second batch ok");
+        
+        // Assert: offset advanced further
+        assert!(fs.offset > offset_after_first, "offset should advance with new content");
+        
+        // Assert: exactly 2 messages (no duplicates from reprocessing)
+        let msgs_final = state.tinyvex.list_messages("sess-persist", 50).unwrap();
+        assert_eq!(msgs_final.len(), 2, "expected 2 messages total, no duplicates");
+        assert_eq!(msgs_final[0].text.as_deref(), Some("msg 1"));
+        assert_eq!(msgs_final[1].text.as_deref(), Some("msg 2"));
+    }
 }
