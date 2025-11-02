@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Transport } from '../client';
 import { TinyvexClient, silentLogger } from '../client';
+import { WsTransport } from '../client/WsTransport';
 
 export type TinyvexConfig = {
   url: string;
@@ -8,27 +9,8 @@ export type TinyvexConfig = {
   debug?: boolean;
 };
 
-class WsTransport implements Transport {
-  private _status: 'connecting' | 'open' | 'closed' | 'error' = 'closed';
-  private listeners = new Set<(evt: unknown) => void>();
-  async connect(): Promise<void> {
-    this._status = 'open';
-  }
-  close(): void {
-    this._status = 'closed';
-  }
-  send(_control: { name: string; args?: unknown }): void {}
-  onMessage(cb: (evt: unknown) => void): () => void {
-    this.listeners.add(cb);
-    return () => this.listeners.delete(cb);
-  }
-  status() {
-    return this._status;
-  }
-}
-
 function makeClient(cfg: TinyvexConfig) {
-  const t = new WsTransport();
+  const t: Transport = new WsTransport({ url: cfg.url, token: cfg.token });
   return new TinyvexClient(t, cfg.debug ? console : silentLogger);
 }
 
@@ -38,4 +20,3 @@ export function TinyvexProvider({ config, children }: { config: TinyvexConfig; c
   const client = React.useMemo(() => makeClient(config), [config.url, config.token, config.debug]);
   return <TinyvexContext.Provider value={client}>{children}</TinyvexContext.Provider>;
 }
-

@@ -35,7 +35,7 @@ use ts_rs::TS;
 use crate::types;
 
 #[derive(serde::Serialize, TS)]
-#[ts(export, export_to = "../../expo/types/bridge/")]
+#[ts(export, export_to = "../../packages/tricoder/src/types/generated/")]
 pub struct ThreadSummaryTs {
     id: String,
     thread_id: Option<String>,
@@ -93,7 +93,7 @@ mod ws_smoke_tests {
             pending_user_text: Mutex::new(std::collections::HashMap::new()),
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: tvx.clone(),
-            tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            tinyvex_writer: std::sync::Arc::new(crate::tvx_writer::Writer::new(tvx.clone())),
             sync_enabled: std::sync::atomic::AtomicBool::new(true),
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),

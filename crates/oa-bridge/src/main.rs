@@ -145,7 +145,7 @@ async fn main() -> Result<()> {
         pending_user_text: Mutex::new(std::collections::HashMap::new()),
         bridge_ready: std::sync::atomic::AtomicBool::new(true),
         tinyvex: tinyvex.clone(),
-        tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tinyvex.clone())),
+        tinyvex_writer: std::sync::Arc::new(crate::tvx_writer::Writer::new(tinyvex.clone())),
         sync_enabled: std::sync::atomic::AtomicBool::new(true),
         sync_two_way: std::sync::atomic::AtomicBool::new(false),
         sync_last_read_ms: Mutex::new(0),
