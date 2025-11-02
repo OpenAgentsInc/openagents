@@ -185,7 +185,7 @@ mod ws_smoke_tests {
             child_stdin: Mutex::new(None),
             child_pid: Mutex::new(None),
             opts: crate::Opts { bind: "127.0.0.1:0".into(), codex_bin: None, codex_args: None, extra: vec![], ws_token: Some("t".into()), claude_bin: None, claude_args: None },
-            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(crate::tinyvex_writer::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         });
         let app = axum::Router::new().route("/ws", axum::routing::get(super::ws_handler)).with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -231,7 +231,7 @@ mod ws_smoke_tests {
             tx,
             child_stdin: Mutex::new(None), child_pid: Mutex::new(None),
             opts: crate::Opts { bind: "127.0.0.1:0".into(), codex_bin: None, codex_args: None, extra: vec![], ws_token: Some("t".into()), claude_bin: None, claude_args: None },
-            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(crate::tinyvex_writer::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         });
         let app = axum::Router::new().route("/ws", axum::routing::get(super::ws_handler)).with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -285,7 +285,7 @@ mod ws_smoke_tests {
             tx,
             child_stdin: Mutex::new(None), child_pid: Mutex::new(None),
             opts: crate::Opts { bind: "127.0.0.1:0".into(), codex_bin: None, codex_args: None, extra: vec![], ws_token: Some("t".into()), claude_bin: None, claude_args: None },
-            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(crate::tinyvex_writer::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         });
         let app = axum::Router::new().route("/ws", axum::routing::get(super::ws_handler)).with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -333,7 +333,7 @@ mod ws_smoke_tests {
             opts: crate::Opts { bind: "127.0.0.1:0".into(), codex_bin: None, codex_args: None, extra: vec![], ws_token: Some("t".into()), claude_bin: None, claude_args: None },
             last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()),
             current_thread_doc: Mutex::new(Some("t-client".into())),
-            stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+            stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(crate::tinyvex_writer::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
         });
 
         // Simulate thread.started event processing by manually calling the relevant code path
@@ -1185,7 +1185,7 @@ mod auth_tests {
             sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
             bridge_ready: std::sync::atomic::AtomicBool::new(true),
             tinyvex: tvx.clone(),
-            tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            tinyvex_writer: std::sync::Arc::new(crate::tinyvex_writer::Writer::new(tvx.clone())),
             sync_enabled: std::sync::atomic::AtomicBool::new(true),
             sync_two_way: std::sync::atomic::AtomicBool::new(false),
             sync_last_read_ms: Mutex::new(0),
