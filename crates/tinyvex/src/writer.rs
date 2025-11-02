@@ -158,6 +158,16 @@ impl Writer {
         if let Some(notifs) = self.try_finalize_stream_kind(thread_id, kind).await {
             return notifs;
         }
+        
+        // Check if this exact message already exists (prevents duplicates when watcher re-processes)
+        let (out_kind, _role) = Self::map_kind_role(kind);
+        if let Ok(exists) = self.tvx.message_exists(thread_id, out_kind, final_text) {
+            if exists {
+                tracing::info!(thread_id=%thread_id, kind=%kind, text_preview=%final_text.chars().take(50).collect::<String>(), "writer.rs:finalize_or_snapshot - Message already exists, skipping duplicate");
+                return vec![];
+            }
+        }
+        
         let mut notifs = self
             .stream_upsert_or_append(provider, thread_id, kind, final_text)
             .await;
