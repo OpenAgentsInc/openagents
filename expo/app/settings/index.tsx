@@ -6,7 +6,7 @@ import { Colors } from '@/constants/theme'
 import { useIsDevEnv, devBridgeHost, devBridgeToken } from '@/lib/env'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
-import type { SyncStatusTs } from '@/types/bridge/SyncStatusTs'
+import type { SyncStatusTs } from 'tricoder/types'
 // removed QR/Icons in simplified settings
 
 export default function SettingsScreen() {
