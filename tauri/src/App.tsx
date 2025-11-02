@@ -132,11 +132,13 @@ function App() {
                 if (tid) updateLastFromRows(tid, rows)
               } else if (obj.type === 'tinyvex.query_result' && obj.name === 'messages.list' && Array.isArray(obj.rows)) {
                 const rows = obj.rows as MessageRowTs[]
-                const tid = String(obj.thread_id || '')
+                // Bridge returns args: { thread_id, limit }
+                const args = (obj.args || {}) as { thread_id?: string }
+                const tid = String(args.thread_id || selectedThread || '')
                 if (tid && tid === selectedThread) setMessages(filterFinalMessages(rows))
                 if (tid) updateLastFromRows(tid, rows)
               } else if (obj.type === 'tinyvex.update' && obj.stream === 'messages' && selectedThread) {
-                const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.["queryHistory"]?.(selectedThread) }
+                const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.queryMessages(selectedThread, 500) }
               }
             }
           } catch {}
@@ -317,7 +319,7 @@ function App() {
                         timestamp={updatedAt}
                         onPress={() => {
                           setSelectedThread(tid)
-                          try { clientRef.current?.subscribeThread(tid); clientRef.current?.["queryHistory"]?.(tid) } catch {}
+                          try { clientRef.current?.subscribeThread(tid); clientRef.current?.queryMessages(tid, 500) } catch {}
                         }}
                         testID={`drawer-thread-${tid}`}
                       />
