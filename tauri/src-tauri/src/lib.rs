@@ -7,11 +7,13 @@ fn greet(name: &str) -> String {
 #[tauri::command]
 fn get_bridge_token() -> Option<String> {
     use std::path::PathBuf;
-    // Prefer OPENAGENTS_HOME if set (points to ~/.openagents)
+    // Prefer OPENAGENTS_HOME if set (points to ~/.openagents). Otherwise derive from HOME/USERPROFILE.
     let base = if let Ok(home) = std::env::var("OPENAGENTS_HOME") {
         PathBuf::from(home)
-    } else if let Some(home) = dirs::home_dir() {
-        home.join(".openagents")
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".openagents")
+    } else if let Ok(profile) = std::env::var("USERPROFILE") {
+        PathBuf::from(profile).join(".openagents")
     } else {
         return None;
     };
