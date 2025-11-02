@@ -161,7 +161,11 @@ function App() {
   }
 
   function filterFinalMessages(rows: MessageRowTs[]): MessageRowTs[] {
-    const finals = rows.filter((r) => String(r.kind || '') === 'message' && !!r.role)
+    const finals = rows.filter((r) => {
+      const k = String(r.kind || '').toLowerCase()
+      if (k === 'reason') return false
+      return !!r.role // render assistant/user with any non-reason kind
+    })
     const byKey = new Map<string, MessageRowTs>()
     const keyOf = (r: MessageRowTs) => String(r.item_id || `${r.seq ?? ''}:${r.ts}:${String(r.text || '').slice(0, 120)}`)
     for (const r of finals) {
@@ -174,7 +178,11 @@ function App() {
 
   function updateLastFromRows(threadId: string, rows: MessageRowTs[]) {
     try {
-      const finals = rows.filter((r) => String(r.kind || '') === 'message' && !!r.role)
+      const finals = rows.filter((r) => {
+        const k = String(r.kind || '').toLowerCase()
+        if (k === 'reason') return false
+        return !!r.role
+      })
       if (!finals.length) return
       const last = finals[finals.length - 1]
       setLastByThread((prev) => ({ ...prev, [threadId]: String(last.text || '') }))
