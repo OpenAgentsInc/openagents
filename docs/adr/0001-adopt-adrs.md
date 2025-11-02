@@ -38,7 +38,7 @@ Minor refactors or isolated UI tweaks do not require an ADR.
 - Numbering: zero‑padded sequential files (`0001-*.md`).
 - Status values: `Proposed` → `Accepted` → `Superseded`/`Deprecated` (with links).
 - Template:
-  - Title/number/date/status/deciders/consulted
+  - Title/number/date/status
   - Context
   - Decision
   - Rationale
