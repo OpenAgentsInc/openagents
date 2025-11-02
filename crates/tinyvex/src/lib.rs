@@ -320,6 +320,23 @@ impl Tinyvex {
         Ok(())
     }
 
+    pub fn message_exists(
+        &self,
+        thread_id: &str,
+        kind: &str,
+        text: &str,
+    ) -> Result<bool> {
+        let conn = Connection::open(&self.db_path)?;
+        let exists: bool = conn.query_row(
+            r#"SELECT EXISTS(SELECT 1 FROM messages 
+               WHERE threadId=?1 AND kind=?2 AND text=?3 AND partial=0 
+               LIMIT 1)"#,
+            params![thread_id, kind, text],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
+    }
+
     pub fn finalize_streamed_message(
         &self,
         thread_id: &str,
