@@ -248,6 +248,9 @@ function App() {
                     </div>
                   )
                 })}
+              {threads.filter((r) => ['codex', 'claude_code'].includes(String(r.source || ''))).length === 0 ? (
+                <div style={{ padding: 12, color: 'var(--tertiary)', fontSize: 12, textAlign: 'left' }}>No recent Codex/Claude chats.</div>
+              ) : null}
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
