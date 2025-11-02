@@ -47,26 +47,25 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
       const arr = messagesByThread[id]
       if (Array.isArray(arr)) rows.push(...arr)
     }
-    type Row = MessageRow & { item_id?: string | null }
-    const keyFor = (r: Row) => String((r as any).item_id || `${(r as any).seq ?? ''}:${r.ts}:${(r as any).role ?? ''}:${String((r as any).text ?? '')}`)
-    const isFinal = (r: Row) => (r as any).partial == null || Number((r as any).partial) === 0
-    const prefer = (a: Row | undefined, b: Row): Row => {
+    const keyFor = (r: MessageRow) => String(r.item_id || `${r.seq ?? ''}:${r.ts}:${r.role ?? ''}:${String(r.text ?? '')}`)
+    const isFinal = (r: MessageRow) => r.partial == null || Number(r.partial) === 0
+    const prefer = (a: MessageRow | undefined, b: MessageRow): MessageRow => {
       if (!a) return b
       const aFinal = isFinal(a), bFinal = isFinal(b)
       if (aFinal !== bFinal) return bFinal ? b : a
-      const aRole = !!(a as any).role, bRole = !!(b as any).role
+      const aRole = !!a.role, bRole = !!b.role
       if (aRole !== bRole) return bRole ? b : a
       return b.ts >= a.ts ? b : a
     }
-    const map = new Map<string, Row>()
+    const map = new Map<string, MessageRow>()
     for (const r of rows) {
-      const key = keyFor(r as Row)
-      map.set(key, prefer(map.get(key), r as Row))
+      const key = keyFor(r)
+      map.set(key, prefer(map.get(key), r))
     }
     // Only keep chat messages and finalized rows
-    const merged = Array.from(map.values()).filter((r) => String((r as any).kind || '').toLowerCase() === 'message' && isFinal(r))
+    const merged = Array.from(map.values()).filter((r) => String(r.kind || '').toLowerCase() === 'message' && isFinal(r))
     merged.sort((a, b) => a.ts - b.ts)
-    return merged as MessageRow[]
+    return merged
   }, [candidateThreadIds, messagesByThread])
   const toolRows: ToolCallRow[] = React.useMemo(() => toolCallsByThread[threadId] ?? [], [toolCallsByThread, threadId])
 
@@ -79,7 +78,7 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
         const arr = eventsForThread(id)
         if (Array.isArray(arr) && arr.length) items.push(...arr)
       }
-      items.sort((a, b) => Number((a as any).addedAt || 0) - Number((b as any).addedAt || 0))
+      items.sort((a, b) => Number(a.addedAt || 0) - Number(b.addedAt || 0))
       return items
     } catch { return [] as SessionNotificationWithTs[] }
   }, [eventsForThread, candidateThreadIds])
@@ -173,7 +172,16 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     if (!json) return []
     try {
       const v = JSON.parse(json)
-      return Array.isArray(v) ? v.slice(0, 8).map((x: any) => ({ path: String(x?.path || ''), line: (typeof x?.line === 'number' ? x.line : undefined) })).filter((x: any) => !!x.path) : []
+      if (!Array.isArray(v)) return []
+      return v.slice(0, 8).map((x: unknown) => {
+        if (typeof x === 'object' && x !== null) {
+          const obj = x as Record<string, unknown>
+          const path = typeof obj.path === 'string' ? obj.path : ''
+          const line = typeof obj.line === 'number' ? obj.line : undefined
+          return { path, line }
+        }
+        return { path: '' }
+      }).filter((x) => !!x.path)
     } catch { return [] }
   }
 
