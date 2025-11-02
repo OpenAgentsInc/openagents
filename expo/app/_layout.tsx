@@ -406,6 +406,7 @@ function DrawerWrapper() {
           <Stack.Screen name="dashboard/index" options={{ headerShown: false }} />
           <Stack.Screen name="help/index" options={{ headerShown: false }} />
           <Stack.Screen name="thread/[id]" options={{ animation: 'none' }} />
+          <Stack.Screen name="thread/[id]/tool/[toolId]" />
           <Stack.Screen name="thread/archived" options={{ headerShown: false }} />
           <Stack.Screen name="projects/index" />
           {/** Convex screens removed in Tinyvex build */}

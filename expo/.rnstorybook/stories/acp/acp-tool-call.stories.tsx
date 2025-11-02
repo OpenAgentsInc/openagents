@@ -27,7 +27,8 @@ export const ExecuteInProgress: Story = {
         <SessionUpdateToolCall {...call} />
         <View style={{ marginTop: 12 }}>
           <Text style={{ color: Colors.secondary }}>Component: SessionUpdateToolCall</Text>
-          <Text style={{ color: Colors.foreground }}>Renders a tool call row with header, content items, and optional locations.</Text>
+          <Text style={{ color: Colors.foreground }}>Renders a compact tool call row with title and status only.</Text>
+          <Text style={{ color: Colors.foreground }}>Inline content is intentionally suppressed. Tap the row in app to open a detail view that shows the full result.</Text>
           <Text style={{ color: Colors.secondary, marginTop: 6 }}>Props</Text>
           <Text style={{ color: Colors.foreground }}>{'title: string — display title'}</Text>
           <Text style={{ color: Colors.foreground }}>{'kind: ToolKind — execute | edit | search | read | …'}</Text>
@@ -54,8 +55,10 @@ export const EditCompleted: Story = {
         <SessionUpdateToolCall {...call} />
         <View style={{ marginTop: 12 }}>
           <Text style={{ color: Colors.secondary }}>Component: SessionUpdateToolCall</Text>
-          <Text style={{ color: Colors.foreground }}>Example showing a diff content block and a location list.</Text>
-          <Text style={{ color: Colors.secondary, marginTop: 6 }}>Props — see above</Text>
+          <Text style={{ color: Colors.foreground }}>Inline content is not displayed here by design. In the app, selecting a tool call navigates to a detail screen that renders diffs, terminal output, and other content blocks.</Text>
+          <Text style={{ color: Colors.secondary, marginTop: 6 }}>Props</Text>
+          <Text style={{ color: Colors.foreground }}>{'title, kind, status — header fields rendered inline'}</Text>
+          <Text style={{ color: Colors.foreground }}>{'content, locations — rendered in the detail view'}</Text>
         </View>
       </ScrollView>
     )
