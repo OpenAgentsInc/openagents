@@ -88,6 +88,10 @@ export const useSettings = create<SettingsState>()(
             obj.bridgeCode = ''
             obj.bridgeToken = ''
           }
+          // Sanitize any malformed or duplicated host strings stored previously
+          if (obj.bridgeHost && typeof obj.bridgeHost === 'string') {
+            obj.bridgeHost = sanitizeHostInput(String(obj.bridgeHost))
+          }
           return obj
         } catch {
           return persisted

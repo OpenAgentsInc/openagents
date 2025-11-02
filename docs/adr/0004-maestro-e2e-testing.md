@@ -91,6 +91,25 @@ Notes:
 - All exp:// deep links use `${EXP_URL}` so you can point to any Metro port.
 - If Settings content doesn’t render after a deep link, opening it once via the drawer typically warms the route on simulators.
 
+## Deterministic Local Setup (Agents)
+
+- We provide `scripts/maestro-prepare.sh` for programmatic, repeatable setup on macOS:
+  - Boots the iOS Simulator (iPhone 16) if needed.
+  - Starts `oa-bridge` on `0.0.0.0:$BRIDGE_PORT` with `OPENAGENTS_BRIDGE_TOKEN`.
+  - Starts Metro on `$METRO_PORT` with `EXPO_PUBLIC_AUTO_CONNECT=1` and writes `scripts/maestro.env`.
+  - Warms key app routes in the Simulator via `xcrun simctl openurl`.
+  - Defaults: `BRIDGE_PORT=8788`, `METRO_PORT=8083`, `BRIDGE_TOKEN=test-maestro-token`.
+
+- One command to prepare + run:
+  - `scripts/maestro-prepare.sh`
+  - `MAESTRO_ENV_FILE=scripts/maestro.env scripts/maestro-run-stable.sh`
+  - Or: `MAESTRO_ENV_FILE=scripts/maestro.env scripts/maestro-run-all.sh`
+
+- Environment knobs (export before running if you need overrides):
+  - `DEVICE` (default `iPhone 16`)
+  - `BRIDGE_PORT`, `BRIDGE_TOKEN`, `METRO_PORT` (defaults above)
+  - `BRIDGE_HOST` (default `127.0.0.1:$BRIDGE_PORT`)
+
 - E2E coverage becomes portable and maintainable, with reliable assertions based on durable anchors and Tinyvex history.
 - Tests are resilient to typical dev‑client timing issues by warming routes and using fallbacks.
 - Some rich content checks are intentionally replaced by history assertions to remain stable across providers/environments.

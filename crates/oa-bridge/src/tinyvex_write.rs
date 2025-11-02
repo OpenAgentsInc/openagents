@@ -772,6 +772,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn claude_writer_persists_transcript_at_expected_path() {
+        // Arrange a temp CLAUDE_PROJECTS_DIR and session id
+        let dir = tempfile::tempdir().unwrap();
+        // Safe for tests: set a process env var to override CLAUDE projects dir
+        unsafe { std::env::set_var("CLAUDE_PROJECTS_DIR", dir.path()); }
+        let session = "sess-writer";
+
+        // Emit a user message, assistant message, tool use and tool result
+        use agent_client_protocol as acp;
+        let u = acp::SessionUpdate::UserMessageChunk(acp::ContentChunk { content: acp::ContentBlock::Text(acp::TextContent{ annotations: None, text: "user hi".into(), meta: None }), meta: None });
+        let a = acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk { content: acp::ContentBlock::Text(acp::TextContent{ annotations: None, text: "assistant hello".into(), meta: None }), meta: None });
+
+        // Tool call
+        let call = acp::ToolCall { id: acp::ToolCallId(std::sync::Arc::from("tu_99")), title: "Bash".into(), kind: acp::ToolKind::Execute, status: acp::ToolCallStatus::Pending, content: vec![], locations: vec![], raw_input: Some(json!({"command":"echo test"})), raw_output: None, meta: None };
+        let tc = acp::SessionUpdate::ToolCall(call);
+        // Tool result (completed)
+        let mut fields = acp::ToolCallUpdateFields::default();
+        fields.status = Some(acp::ToolCallStatus::Completed);
+        fields.content = Some(vec![acp::ToolCallContent::from(acp::ContentBlock::Text(acp::TextContent { annotations: None, text: "ok".into(), meta: None }))]);
+        let upd = acp::ToolCallUpdate { id: acp::ToolCallId(std::sync::Arc::from("tu_99")), fields, meta: None };
+        let tr = acp::SessionUpdate::ToolCallUpdate(upd);
+
+        // Act: append lines using the writer helper
+        append_two_way_jsonl_claude(session, &u).await.unwrap();
+        append_two_way_jsonl_claude(session, &a).await.unwrap();
+        append_two_way_jsonl_claude(session, &tc).await.unwrap();
+        append_two_way_jsonl_claude(session, &tr).await.unwrap();
+
+        // Find the file under CLAUDE_PROJECTS_DIR/**/sess-writer.jsonl
+        let mut found: Option<std::path::PathBuf> = None;
+        for entry in walkdir::WalkDir::new(dir.path()) {
+            let e = entry.unwrap();
+            if e.file_type().is_file() && e.path().extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                if e.path().file_stem().and_then(|s| s.to_str()) == Some(session) {
+                    found = Some(e.path().to_path_buf());
+                    break;
+                }
+            }
+        }
+        let file = found.expect("transcript file not found");
+        let data = std::fs::read_to_string(&file).unwrap();
+        let lines: Vec<_> = data.lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).collect();
+        assert!(lines.iter().any(|v| v.get("type").and_then(|x| x.as_str()) == Some("user")));
+        assert!(lines.iter().any(|v| v.get("type").and_then(|x| x.as_str()) == Some("assistant")));
+        assert!(lines.iter().any(|v| v.get("type").and_then(|x| x.as_str()) == Some("content_block_start")));
+        assert!(lines.iter().any(|v| v.get("type").and_then(|x| x.as_str()) == Some("tool_result")));
+        // Ensure cwd and sessionId fields are present on message-like lines
+        let has_meta = lines.iter().filter(|v| v.get("message").is_some() || v.get("type").is_some()).all(|v| v.get("cwd").is_some() && v.get("sessionId").is_some());
+        assert!(has_meta, "expected cwd and sessionId metadata on transcript lines");
+    }
+
+    #[tokio::test]
     async fn upsert_then_finalize_does_not_duplicate() {
         let (tx, _rx) = broadcast::channel(4);
         let dir = tempfile::tempdir().unwrap();
