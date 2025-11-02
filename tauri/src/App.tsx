@@ -207,7 +207,6 @@ function App() {
 
   return (
     <main className="container">
-      <h1>OpenAgents — Bridge</h1>
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'center', maxWidth: 1200, margin: '16px auto 0', width: '100%', flex: 1 }}>
         {/* Sidebar with recent chats and compact raw feed */}
         <div style={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
@@ -261,7 +260,6 @@ function App() {
           </div>
         </div>
         <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <h3>Latest Codex Chat</h3>
           <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto' }}>
             {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
             {messages.map((m, idx) => {
