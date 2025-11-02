@@ -198,21 +198,24 @@ function App() {
           <h3>Latest Codex Chat</h3>
           <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto' }}>
             {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
-            {messages.map((m, idx) => (
+            {messages.map((m, idx) => {
+              const isAssistant = String(m.role || '').toLowerCase() === 'assistant'
+              const label = isAssistant ? 'assistant' : 'you'
+              return (
               <div key={`${m.id}-${idx}`} style={{ display: 'flex', justifyContent: m.role === 'assistant' ? 'flex-start' : 'flex-end', padding: '6px 0' }}>
                 <div style={{
                   maxWidth: 680,
                   padding: '10px 12px',
                   borderRadius: 8,
-                  background: m.role === 'assistant' ? '#121317' : '#1b1d22',
+                  background: isAssistant ? '#121317' : '#1b1d22',
                   border: '1px solid var(--border)',
                   color: 'var(--foreground)'
                 }}>
-                  <div style={{ fontSize: 12, color: 'var(--tertiary)', marginBottom: 4 }}>{m.role}</div>
+                  <div style={{ fontSize: 12, color: 'var(--tertiary)', marginBottom: 4 }}>{label}</div>
                   <div style={{ whiteSpace: 'pre-wrap' }}>{String(m.text || '')}</div>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
