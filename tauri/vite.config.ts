@@ -16,11 +16,12 @@ export default defineConfig(async () => ({
     alias: {
       // Monorepo alias so CSS import resolves: '@openagentsinc/theme/web/theme.css'
       '@openagentsinc/theme': path.resolve(__dirname, '..', 'packages', 'openagents-theme'),
+      '@openagentsinc/core': path.resolve(__dirname, '..', 'packages', 'openagents-core', 'src'),
       // Tinyvex client + tricoder types
       'tinyvex': path.resolve(__dirname, '..', 'packages', 'tinyvex', 'src'),
       'tricoder': path.resolve(__dirname, '..', 'packages', 'tricoder', 'src'),
       // Expo component reuse shims and alias
-      'react-native': 'react-native-web',
+      'react-native': path.resolve(__dirname, 'src', 'shims', 'rn-web-runtime.tsx'),
       '@expo/vector-icons': path.resolve(__dirname, 'src', 'shims', 'expo-vector-icons.tsx'),
       '@/constants/theme': path.resolve(__dirname, 'src', 'shims', 'expo-theme.ts'),
       '@/constants/typography': path.resolve(__dirname, 'src', 'shims', 'expo-typography.ts'),

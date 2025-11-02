@@ -141,14 +141,20 @@ function DrawerContent() {
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
                 <View testID="drawer-threads">
-                  {(topThreads || []).map((row) => (
+                  {(topThreads || []).map((row) => {
+                    // Normalize types for DrawerThreadItem (expects provider ThreadRow shape)
+                    const rowNorm = {
+                      ...row,
+                      last_message_ts: (row as any).last_message_ts ?? null,
+                    } as import('@/providers/tinyvex').ThreadRow;
+                    return (
                     <DrawerThreadItem
                       key={String(row.id)}
-                      row={row}
+                      row={rowNorm}
                       onPress={closeAnd(() => typedRouter.push(`/thread/${encodeURIComponent(String(row.id))}`))}
                       onLongPress={() => showActions(String(row.id))}
                     />
-                  ))}
+                  )})}
                 </View>
               )
             )}
@@ -330,6 +336,7 @@ function BridgeAwareTinyvexProvider({ children }: { children: React.ReactNode })
   const { wsUrl } = useBridge();
   const token = useSettings((s) => s.bridgeToken);
   const cfg = React.useMemo(() => ({ url: wsUrl, token }), [wsUrl, token]);
+  // @ts-expect-error React 18 vs 19 type mismatch across monorepo packages; runtime is correct.
   return <TinyvexPkgProvider config={cfg}>{children}</TinyvexPkgProvider>;
 }
 

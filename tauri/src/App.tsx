@@ -4,7 +4,7 @@ import "./App.css";
 import { TinyvexClient } from 'tinyvex/client'
 import { WsTransport } from 'tinyvex/client/WsTransport'
 import type { ThreadSummaryTs, MessageRowTs } from 'tricoder/types'
-import { ThreadListItemBase } from 'expo/components/drawer/ThreadListItem'
+import { ThreadListItem, ChatMessageBubble } from '@openagentsinc/core'
 import { View, Text } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -311,7 +311,7 @@ function App() {
                   )
                   return (
                     <div key={tid} style={{ borderBottom: '1px solid var(--border)', background: active ? '#111216' : 'transparent' }}>
-                      <ThreadListItemBase
+                      <ThreadListItem
                         title={title}
                         meta={meta}
                         timestamp={updatedAt}
@@ -341,24 +341,9 @@ function App() {
         <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
           <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
-            {messages.map((m, idx) => {
-              const isAssistant = String(m.role || '').toLowerCase() === 'assistant'
-              const label = isAssistant ? 'assistant' : 'you'
-              return (
-              <div key={`${m.id}-${idx}`} style={{ display: 'flex', justifyContent: m.role === 'assistant' ? 'flex-start' : 'flex-end', padding: '6px 0' }}>
-                <div style={{
-                  maxWidth: 680,
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  background: isAssistant ? '#121317' : '#1b1d22',
-                  border: '1px solid var(--border)',
-                  color: 'var(--foreground)'
-                }}>
-                  <div style={{ fontSize: 12, color: 'var(--tertiary)', marginBottom: 4 }}>{label}</div>
-                  <div style={{ whiteSpace: 'pre-wrap' }}>{String(m.text || '')}</div>
-                </div>
-              </div>
-            )})}
+            {messages.map((m, idx) => (
+              <ChatMessageBubble key={`${m.id}-${idx}`} role={String(m.role || '').toLowerCase() === 'assistant' ? 'assistant' : 'user'} text={String(m.text || '')} />
+            ))}
           </div>
         </div>
       </div>
