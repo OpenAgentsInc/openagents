@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, InteractionManager } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { useRouter } from 'expo-router'
+import { typedRouter } from '@/lib/typed-router'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { parseBridgeCode, normalizeBridgeCodeInput } from '@/lib/pairing'
@@ -43,7 +44,7 @@ export default function ScanScreen() {
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
     try { connect() } catch {}
     // Navigate straight to new thread; layout gating now allows this while connecting
-    try { router.replace('/thread/new' as any) } catch {}
+    try { typedRouter.replace('/thread/new') } catch {}
     return true
   }, [connect, router])
 

@@ -7,6 +7,7 @@ import { useArchiveStore } from '@/lib/archive-store'
 import { ThreadListItemBase } from '@/components/drawer/ThreadListItem'
 import { useHeaderTitle } from '@/lib/header-store'
 import { router } from 'expo-router'
+import { typedRouter } from '@/lib/typed-router'
 
 export default function ArchivedThreadsScreen() {
   useHeaderTitle('Archived')

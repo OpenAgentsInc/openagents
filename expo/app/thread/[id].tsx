@@ -1,5 +1,6 @@
 import React from 'react'
 import { useLocalSearchParams, router } from 'expo-router'
+import { typedRouter } from '@/lib/typed-router'
 import { FlatList, Text, View, KeyboardAvoidingView, Platform, Pressable } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTinyvex } from '@/providers/tinyvex'

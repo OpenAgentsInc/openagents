@@ -12,6 +12,7 @@ import { useBridge } from "@/providers/ws"
 // pairing helpers not needed here; IP-only flow
 import { Ionicons } from "@expo/vector-icons"
 import { usePairingStore } from "@/lib/pairing-store"
+import { typedRouter } from "@/lib/typed-router"
 
 export default function Onboarding() {
   useHeaderTitle('Connect')
@@ -94,14 +95,14 @@ export default function Onboarding() {
   // Require explicit continue once connected; avoid auto-advance on flaky connects
   const onContinue = React.useCallback(() => {
     if (!connected || !convexReady) return
-    try { router.replace('/thread/new' as any) } catch {}
+    try { typedRouter.replace('/thread/new') } catch {}
   }, [connected, convexReady])
 
   // If a deep link initiated pairing and connection completes while we're on
   // this screen, immediately move past onboarding to a new thread.
   React.useEffect(() => {
     if (connected) {
-      try { router.replace('/thread/new' as any) } catch {}
+      try { typedRouter.replace('/thread/new') } catch {}
       try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
     }
   }, [connected])
@@ -172,7 +173,7 @@ export default function Onboarding() {
             />
           </View>
           <View style={{ height: 12 }} />
-          <Pressable onPress={() => { try { router.push('/scan' as any) } catch {} }} accessibilityRole='button' style={styles.devToolsBtn as any}>
+          <Pressable onPress={() => { try { typedRouter.push('/scan') } catch {} }} accessibilityRole='button' style={styles.devToolsBtn as any}>
             <Text style={styles.devToolsText}>Scan Bridge QR Code</Text>
           </Pressable>
           <View style={{ height: 12 }} />
@@ -212,7 +213,7 @@ export default function Onboarding() {
             <Text style={styles.logoBrand}>OPENAGENTS</Text>
             <Text style={styles.logoTitle}>TRICODER</Text>
             <Pressable
-              onPress={() => { try { router.push('/scan' as any) } catch {} }}
+              onPress={() => { try { typedRouter.push('/scan') } catch {} }}
               accessibilityRole='button'
               style={styles.pairBtn as any}
             >
@@ -220,7 +221,7 @@ export default function Onboarding() {
               <Text style={styles.pairText}>Pair with Desktop</Text>
             </Pressable>
             <Pressable
-              onPress={() => { try { router.push('/onboarding/manual-code' as any) } catch {} }}
+              onPress={() => { try { typedRouter.push('/onboarding/manual-code') } catch {} }}
               accessibilityRole='button'
               testID='onboarding-manual-link'
               style={{ marginTop: 12 }}
