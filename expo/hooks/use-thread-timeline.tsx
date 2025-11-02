@@ -23,7 +23,6 @@ export type TimelineItem = { key: string; ts: number; node: React.ReactNode }
 export function useThreadTimeline(threadId: string): TimelineItem[] {
   const { eventsForThread } = useAcp()
   const { messagesByThread, toolCallsByThread, threads } = useTinyvex()
-  const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
   // Build candidate thread ids (alias + canonical) and merge rows across them.
   const candidateThreadIds = React.useMemo(() => {
     try {
@@ -70,6 +69,20 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     return merged as MessageRow[]
   }, [candidateThreadIds, messagesByThread])
   const toolRows: ToolCallRow[] = React.useMemo(() => toolCallsByThread[threadId] ?? [], [toolCallsByThread, threadId])
+
+  // Collect ACP updates for both the alias id and the canonical session id so
+  // live agent chunks render even when events are keyed by session id.
+  const acpUpdates = React.useMemo(() => {
+    try {
+      const items: SessionNotificationWithTs[] = []
+      for (const id of candidateThreadIds) {
+        const arr = eventsForThread(id)
+        if (Array.isArray(arr) && arr.length) items.push(...arr)
+      }
+      items.sort((a, b) => Number((a as any).addedAt || 0) - Number((b as any).addedAt || 0))
+      return items
+    } catch { return [] as SessionNotificationWithTs[] }
+  }, [eventsForThread, candidateThreadIds])
 
   // No debug logs in production — timeline derives purely from Tinyvex rows and live ACP.
 
