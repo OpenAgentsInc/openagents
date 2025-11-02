@@ -41,6 +41,15 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
   }
 
   // ACP updates
+  // Watermark: if Tinyvex has already persisted messages up to a timestamp,
+  // suppress older ACP chat chunks to avoid duplicate rendering of the same
+  // content (live ACP → persisted Tinyvex).
+  const tvxMaxTs = (() => {
+    try {
+      if (!msgRows.length) return 0
+      return Number(msgRows[msgRows.length - 1]?.ts || 0)
+    } catch { return 0 }
+  })()
   for (let i = 0; i < acpUpdates.length; i++) {
     const n = acpUpdates[i] as SessionNotificationWithTs
     const u = (n as any).update as SessionUpdate | undefined
@@ -48,7 +57,9 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     const ts = Number((n as any).addedAt || Date.now())
     if (u.sessionUpdate === 'user_message_chunk') {
       const m = u as UserMessageChunk
-      items.push({ key: `acp-u-${ts}-${i}`, ts, node: <SessionUpdateUserMessageChunk content={m.content} /> })
+      if (ts > tvxMaxTs) {
+        items.push({ key: `acp-u-${ts}-${i}`, ts, node: <SessionUpdateUserMessageChunk content={m.content} /> })
+      }
       continue
     }
     if (u.sessionUpdate === 'agent_message_chunk') {
@@ -56,7 +67,9 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
       const fullText = String((m.content as any)?.text || '')
       const firstLine = fullText.split('\n')[0]
       const content: { type: 'text'; text: string } = { type: 'text', text: firstLine }
-      items.push({ key: `acp-a-${ts}-${i}`, ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
+      if (ts > tvxMaxTs) {
+        items.push({ key: `acp-a-${ts}-${i}`, ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
+      }
       continue
     }
     if (u.sessionUpdate === 'plan') {

@@ -51,14 +51,8 @@ export default function ThreadScreen() {
     if (!threadId) return
     try { subscribeMessages(threadId) } catch {}
     try { queryMessages(threadId, 50) } catch {}
-    try {
-      // Prefer canonical session id if the threads list records it as resume_id
-      const rows: any[] = Array.isArray(threads) ? threads : []
-      const row = rows.find((r: any) => String((r?.id || r?.thread_id || '')) === threadId)
-      const canon = String((row?.resume_id || threadId) || threadId)
-      queryToolCalls?.(canon, 50)
-    } catch {}
-  }, [threadId, subscribeMessages, queryMessages])
+    try { queryToolCalls?.(threadId, 50) } catch {}
+  }, [threadId, subscribeMessages, queryMessages, queryToolCalls])
   // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
   React.useEffect(() => {
     if (!threadId) return
