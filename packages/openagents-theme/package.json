@@ -5,6 +5,8 @@
   "type": "module",
   "description": "OpenAgents shared theme tokens and web CSS",
   "files": [
+    "index.js",
+    "index.d.ts",
     "colors.js",
     "colors.d.ts",
     "typography.js",
@@ -13,8 +15,18 @@
     "README.md"
   ],
   "exports": {
-    "./colors": "./colors.js",
-    "./typography": "./typography.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./colors": {
+      "types": "./colors.d.ts",
+      "default": "./colors.js"
+    },
+    "./typography": {
+      "types": "./typography.d.ts",
+      "default": "./typography.js"
+    },
     "./web/theme.css": "./web/theme.css"
   }
 }

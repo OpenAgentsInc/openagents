@@ -3,7 +3,7 @@ import { Text, TextInput } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { Colors } from '@/constants/theme';
-import { Typography as SharedTypography } from '@openagentsinc/theme/typography';
+import { Typography as SharedTypography } from '@openagentsinc/theme';
 
 export const Typography = SharedTypography;
 
