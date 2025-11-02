@@ -23,6 +23,7 @@ import { useAutoUpdate } from "@/hooks/use-auto-update"
 import { useAppLogStore } from "@/lib/app-log"
 import { ensureThreadsRehydrated, useThreads } from "@/lib/threads-store"
 import { TinyvexProvider, useTinyvex } from "@/providers/tinyvex"
+import { TinyvexProvider as TinyvexPkgProvider } from "tinyvex/react"
 import { AcpProvider } from "@/providers/acp"
 import { DrawerProvider, useDrawer } from "@/providers/drawer"
 // Projects/Skills providers temporarily disabled
@@ -307,6 +308,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={NavigationTheme}>
         <BridgeProvider>
+          <BridgeAwareTinyvexProvider>
           <AcpProvider>
           <TinyvexProvider>
             <DrawerProvider>
@@ -315,10 +317,18 @@ export default function RootLayout() {
             </DrawerProvider>
           </TinyvexProvider>
           </AcpProvider>
+          </BridgeAwareTinyvexProvider>
         </BridgeProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
+}
+
+function BridgeAwareTinyvexProvider({ children }: { children: React.ReactNode }) {
+  const { wsUrl } = useBridge();
+  const token = useSettings((s) => s.bridgeToken);
+  const cfg = React.useMemo(() => ({ url: wsUrl, token }), [wsUrl, token]);
+  return <TinyvexPkgProvider config={cfg}>{children}</TinyvexPkgProvider>;
 }
 
 function DrawerWrapper() {
