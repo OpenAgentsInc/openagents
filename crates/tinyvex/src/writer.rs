@@ -331,4 +331,60 @@ mod tests {
         assert_eq!(msgs[1].role.as_deref(), Some("assistant"));
     }
 
+    #[tokio::test]
+    async fn finalize_or_snapshot_preserves_role_for_assistant_messages() {
+        // Tests that when finalize_or_snapshot is called with "assistant" kind,
+        // and no prior stream exists (direct insert path), the role is correctly set.
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(crate::Tinyvex::open(&db).unwrap());
+        let writer = Writer::new(tvx.clone());
+        let tid = "t-finalize-test";
+
+        // Directly finalize an assistant message without prior stream
+        // This exercises the code path where finalize_or_snapshot creates a new message
+        writer.finalize_or_snapshot("codex", tid, "assistant", "Hey there!").await;
+
+        let msgs = tvx.list_messages(tid, 50).unwrap();
+        assert_eq!(msgs.len(), 1, "expected exactly one message");
+        assert_eq!(msgs[0].kind.as_str(), "message", "kind should be 'message'");
+        assert_eq!(msgs[0].role.as_deref(), Some("assistant"), "role should be 'assistant'");
+        assert_eq!(msgs[0].text.as_deref(), Some("Hey there!"));
+        assert_eq!(msgs[0].partial, Some(0), "message should be finalized");
+    }
+
+    #[tokio::test]
+    async fn finalize_or_snapshot_preserves_role_for_user_messages() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(crate::Tinyvex::open(&db).unwrap());
+        let writer = Writer::new(tvx.clone());
+        let tid = "t-user-test";
+
+        writer.finalize_or_snapshot("codex", tid, "user", "Hi").await;
+
+        let msgs = tvx.list_messages(tid, 50).unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].kind.as_str(), "message");
+        assert_eq!(msgs[0].role.as_deref(), Some("user"));
+        assert_eq!(msgs[0].text.as_deref(), Some("Hi"));
+    }
+
+    #[tokio::test]
+    async fn finalize_or_snapshot_preserves_role_for_reasoning() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(crate::Tinyvex::open(&db).unwrap());
+        let writer = Writer::new(tvx.clone());
+        let tid = "t-reason-test";
+
+        writer.finalize_or_snapshot("codex", tid, "reason", "**Thinking...**").await;
+
+        let msgs = tvx.list_messages(tid, 50).unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].kind.as_str(), "reason");
+        assert_eq!(msgs[0].role, None, "reasoning messages should have NULL role");
+        assert_eq!(msgs[0].text.as_deref(), Some("**Thinking...**"));
+    }
+
 }
