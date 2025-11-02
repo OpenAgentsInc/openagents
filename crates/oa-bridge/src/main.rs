@@ -136,7 +136,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState {
         tx,
         child_stdin: Mutex::new(match &mut child_opt { Some(c) => Some(c.stdin.take().context("child stdin missing")?), None => None }),
-        child_pid: Mutex::new(child_opt.as_ref().and_then(|c| Some(c.pid))),
+        child_pid: Mutex::new(child_opt.as_ref().map(|c| c.pid)),
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
         history: Mutex::new(Vec::new()),
