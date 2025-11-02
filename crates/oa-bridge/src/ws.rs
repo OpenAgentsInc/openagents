@@ -168,6 +168,156 @@ mod ws_smoke_tests {
         assert!(got_update);
         serve.abort();
     }
+
+    #[tokio::test]
+    async fn ws_snapshot_messages_is_snake_case() {
+        use tokio::sync::{broadcast, Mutex};
+        let (tx, _rx) = broadcast::channel(64);
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(&db).unwrap());
+        // Seed thread
+        let thr = tinyvex::ThreadRow { id: "t-ws2".into(), thread_id: Some("t-ws2".into()), title: "Thread".into(), project_id: None, resume_id: Some("t-ws2".into()), rollout_path: None, source: Some("codex".into()), created_at: 1, updated_at: 1, message_count: None, last_message_ts: None };
+        tvx.upsert_thread(&thr).unwrap();
+        // Start app
+        let state = std::sync::Arc::new(crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts: crate::Opts { bind: "127.0.0.1:0".into(), codex_bin: None, codex_args: None, extra: vec![], ws_token: Some("t".into()), claude_bin: None, claude_args: None },
+            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+        });
+        let app = axum::Router::new().route("/ws", axum::routing::get(super::ws_handler)).with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let serve = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let url = format!("ws://{}/ws?token=t", addr);
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(url).await.unwrap();
+        // Subscribe to messages snapshot
+        let sub = serde_json::json!({"control":"tvx.subscribe","stream":"messages","thread_id":"t-ws2"}).to_string();
+        ws.send(tokio_tungstenite::tungstenite::Message::Text(sub.into())).await.unwrap();
+        let mut saw = false;
+        for _ in 0..10 {
+            if let Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(txt)))) = tokio::time::timeout(std::time::Duration::from_millis(250), ws.next()).await {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                    if v.get("type").and_then(|x| x.as_str()) == Some("tinyvex.snapshot") && v.get("stream").and_then(|x| x.as_str()) == Some("messages") {
+                        // Ensure only snake_case keys (no uppercase letters) at top level
+                        let snake = |s: &str| !s.chars().any(|c| c.is_ascii_uppercase());
+                        for k in v.as_object().unwrap().keys() { assert!(snake(k), "non-snake-case key: {}", k); }
+                        assert!(v.get("thread_id").is_some(), "expected thread_id key");
+                        saw = true;
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(saw, "did not observe snapshot");
+        serve.abort();
+    }
+
+    #[tokio::test]
+    async fn ws_query_threads_list_is_snake_case() {
+        use tokio::sync::{broadcast, Mutex};
+        let (tx, _rx) = broadcast::channel(64);
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(&db).unwrap());
+        // Seed two threads
+        for id in ["t-qa1", "t-qa2"] {
+            let thr = tinyvex::ThreadRow { id: id.into(), thread_id: Some(id.into()), title: "Thread".into(), project_id: None, resume_id: Some(id.into()), rollout_path: None, source: Some("codex".into()), created_at: 1, updated_at: 1, message_count: None, last_message_ts: None };
+            tvx.upsert_thread(&thr).unwrap();
+        }
+        let state = std::sync::Arc::new(crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None), child_pid: Mutex::new(None),
+            opts: crate::Opts { bind: "127.0.0.1:0".into(), codex_bin: None, codex_args: None, extra: vec![], ws_token: Some("t".into()), claude_bin: None, claude_args: None },
+            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+        });
+        let app = axum::Router::new().route("/ws", axum::routing::get(super::ws_handler)).with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let serve = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let url = format!("ws://{}/ws?token=t", addr);
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(url).await.unwrap();
+        // Query threads.list
+        let q = serde_json::json!({"control":"tvx.query","name":"threads.list","args":{"limit": 10}}).to_string();
+        ws.send(tokio_tungstenite::tungstenite::Message::Text(q.into())).await.unwrap();
+        let mut saw = false;
+        for _ in 0..10 {
+            if let Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(txt)))) = tokio::time::timeout(std::time::Duration::from_millis(250), ws.next()).await {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                    if v.get("type").and_then(|x| x.as_str()) == Some("tinyvex.query_result") && v.get("name").and_then(|x| x.as_str()) == Some("threads.list") {
+                        // top-level keys must be snake_case
+                        let snake = |s: &str| !s.chars().any(|c| c.is_ascii_uppercase());
+                        for k in v.as_object().unwrap().keys() { assert!(snake(k), "non-snake-case key: {}", k); }
+                        // rows keys must also be snake_case
+                        let rows = v.get("rows").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+                        assert!(!rows.is_empty());
+                        if let Some(obj) = rows[0].as_object() {
+                            for k in obj.keys() { assert!(snake(k), "row has non-snake-case key: {}", k); }
+                            assert!(obj.get("updated_at").is_some());
+                        }
+                        saw = true;
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(saw, "did not observe threads.list query_result");
+        serve.abort();
+    }
+
+    #[tokio::test]
+    async fn ws_query_messages_list_is_snake_case() {
+        use tokio::sync::{broadcast, Mutex};
+        let (tx, _rx) = broadcast::channel(64);
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(&db).unwrap());
+        // Seed thread and one message
+        let tid = "t-qa-msg";
+        let thr = tinyvex::ThreadRow { id: tid.into(), thread_id: Some(tid.into()), title: "Thread".into(), project_id: None, resume_id: Some(tid.into()), rollout_path: None, source: Some("codex".into()), created_at: 1, updated_at: 1, message_count: None, last_message_ts: None };
+        tvx.upsert_thread(&thr).unwrap();
+        tvx.upsert_streamed_message(tid, "message", Some("assistant"), "hi", "item1", 1, 2).unwrap();
+        tvx.finalize_streamed_message(tid, "item1", "hi", 3).unwrap();
+
+        let state = std::sync::Arc::new(crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None), child_pid: Mutex::new(None),
+            opts: crate::Opts { bind: "127.0.0.1:0".into(), codex_bin: None, codex_args: None, extra: vec![], ws_token: Some("t".into()), claude_bin: None, claude_args: None },
+            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()), current_thread_doc: Mutex::new(None), stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+        });
+        let app = axum::Router::new().route("/ws", axum::routing::get(super::ws_handler)).with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let serve = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let url = format!("ws://{}/ws?token=t", addr);
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(url).await.unwrap();
+
+        let q = serde_json::json!({"control":"tvx.query","name":"messages.list","args":{"thread_id": tid, "limit": 10}}).to_string();
+        ws.send(tokio_tungstenite::tungstenite::Message::Text(q.into())).await.unwrap();
+        let mut saw = false;
+        for _ in 0..10 {
+            if let Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(txt)))) = tokio::time::timeout(std::time::Duration::from_millis(250), ws.next()).await {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                    if v.get("type").and_then(|x| x.as_str()) == Some("tinyvex.query_result") && v.get("name").and_then(|x| x.as_str()) == Some("messages.list") {
+                        let snake = |s: &str| !s.chars().any(|c| c.is_ascii_uppercase());
+                        for k in v.as_object().unwrap().keys() { assert!(snake(k), "non-snake-case key: {}", k); }
+                        assert!(v.get("thread_id").is_some());
+                        let rows = v.get("rows").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+                        assert!(!rows.is_empty());
+                        if let Some(obj) = rows[0].as_object() {
+                            for k in obj.keys() { assert!(snake(k), "row non-snake-case key: {}", k); }
+                        }
+                        saw = true;
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(saw, "did not observe messages.list query_result");
+        serve.abort();
+    }
 }
 
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
@@ -330,7 +480,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 let line = serde_json::json!({
                                                     "type":"tinyvex.snapshot",
                                                     "stream":"messages",
-                                                    "threadId": tid,
+                                                    "thread_id": tid,
                                                     "rows": rows,
                                                     "rev": 0
                                                 }).to_string();

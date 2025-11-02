@@ -29,7 +29,7 @@ name: Settings Toggles and Rescan
                 id: drawer-settings
       - extendedWaitUntil:
           visible:
-            id: settings-root
+            id: settings-status
           timeout: 90000
 - tapOn:
     text: "Full Rescan"

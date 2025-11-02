@@ -50,5 +50,13 @@ EXP_URL=exp://localhost:${METRO_PORT}
 ENV
 
 log "Env written to scripts/maestro.env"
+EXP_URL="exp://localhost:${METRO_PORT}"
+# 5) Warm key routes in Simulator
+log "Warming routes in Simulator"
+xcrun simctl openurl booted "${EXP_URL}" || true
+sleep 1
+xcrun simctl openurl booted "${EXP_URL}/--/thread/new" || true
+sleep 1
+xcrun simctl openurl booted "${EXP_URL}/--/settings" || true
 log "Run stable:   MAESTRO_ENV_FILE=scripts/maestro.env scripts/maestro-run-stable.sh"
 log "Run all:      MAESTRO_ENV_FILE=scripts/maestro.env scripts/maestro-run-all.sh"
