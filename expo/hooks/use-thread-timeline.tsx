@@ -33,8 +33,7 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     const kind = String(r.kind || '').toLowerCase()
     if (kind === 'reason') continue // omit inline; shown in detail
     if (kind === 'assistant' || (kind === 'message' && (r.role || '').toLowerCase() === 'assistant')) {
-      const firstLine = String(r.text || '').split('\n')[0]
-      const content: { type: 'text'; text: string } = { type: 'text', text: firstLine }
+      const content: { type: 'text'; text: string } = { type: 'text', text: String(r.text || '') }
       items.push({ key: `tvx-a-${r.id}`, ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
     } else {
       const content: { type: 'text'; text: string } = { type: 'text', text: String(r.text || '') }
@@ -69,8 +68,7 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
       const contentArray = Array.isArray(m.content) ? m.content : []
       const textContent = contentArray.find((c: { type: string }) => c.type === 'text')
       const fullText = textContent && 'text' in textContent ? String(textContent.text || '') : ''
-      const firstLine = fullText.split('\n')[0]
-      const content: { type: 'text'; text: string } = { type: 'text', text: firstLine }
+      const content: { type: 'text'; text: string } = { type: 'text', text: fullText }
       if (ts > tvxMaxTs) {
         items.push({ key: `acp-a-${ts}-${i}`, ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
       }
