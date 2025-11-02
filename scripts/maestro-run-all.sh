@@ -14,6 +14,7 @@ flows=(
   ".maestro/flows/provider_badge_claude_after_stream.yaml"
   ".maestro/flows/settings_sync_toggle_writer.yaml"
   ".maestro/flows/bridge_disconnect.yaml"
+  ".maestro/flows/thread_send_and_assert.yaml"
 )
 
 for f in "${flows[@]}"; do

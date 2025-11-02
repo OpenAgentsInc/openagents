@@ -9,6 +9,7 @@ flows=(
   ".maestro/flows/settings_toggles.yaml"
   ".maestro/flows/ui_drawer_history_empty.yaml"
   ".maestro/flows/bridge_header_indicator.yaml"
+  ".maestro/flows/thread_send_and_assert.yaml"
 )
 
 for f in "${flows[@]}"; do
