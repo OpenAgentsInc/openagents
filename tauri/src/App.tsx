@@ -284,14 +284,6 @@ function App() {
             )})}
           </div>
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h3>Raw events</h3>
-          <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto', padding: 12 }}>
-            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0 }}>
-              {logs.join('\n')}
-            </pre>
-          </div>
-        </div>
       </div>
     </main>
   );
