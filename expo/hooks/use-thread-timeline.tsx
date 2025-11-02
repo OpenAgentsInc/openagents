@@ -55,11 +55,9 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     const u = (n as any).update as SessionUpdate | undefined
     if (!u) continue
     const ts = Number((n as any).addedAt || Date.now())
+    // Do not render ACP user messages; Tinyvex persists user rows immediately
+    // at send time to avoid duplicates.
     if (u.sessionUpdate === 'user_message_chunk') {
-      const m = u as UserMessageChunk
-      if (ts > tvxMaxTs) {
-        items.push({ key: `acp-u-${ts}-${i}`, ts, node: <SessionUpdateUserMessageChunk content={m.content} /> })
-      }
       continue
     }
     if (u.sessionUpdate === 'agent_message_chunk') {
