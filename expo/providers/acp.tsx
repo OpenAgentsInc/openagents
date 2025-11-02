@@ -39,7 +39,8 @@ export function AcpProvider({ children }: { children: React.ReactNode }) {
 
   const addEventForSession = useCallback((n: SessionNotification) => {
     const withTs: SessionNotificationWithTs = Object.assign({}, n, { addedAt: Date.now() })
-    const sid = String((n as SessionNotification as any).sessionId || '')
+    // SessionNotification has sessionId as a required field per ACP types
+    const sid = String(n.sessionId || '')
     const tdoc = sessionToThreadRef.current[sid]
     if (tdoc) {
       setEventsByThread((prev) => {
