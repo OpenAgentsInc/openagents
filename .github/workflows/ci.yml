@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Build and test workspace
+        run: |
+          cargo test --workspace --all-features --color always
+
+  # Optional: iOS Maestro (requires macOS runner and preconfigured Simulator)
+  # maestro-ios:
+  #   runs-on: macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install Maestro
+  #       run: |
+  #         brew tap mobile-dev-inc/tap
+  #         brew install maestro
+  #     - name: Install Node and Bun
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #     - run: curl -fsSL https://bun.sh/install | bash
+  #     - name: Start Metro (background)
+  #       run: |
+  #         cd expo
+  #         nohup bash -lc 'EXPO_PUBLIC_ENV=development EXPO_PUBLIC_AUTO_CONNECT=1 EXPO_PUBLIC_BRIDGE_HOST=127.0.0.1:8787 EXPO_PUBLIC_BRIDGE_TOKEN=test bun run start' &
+  #     - name: Run Maestro stable suite
+  #       env:
+  #         EXP_URL: exp://localhost:8081
+  #         BRIDGE_HOST: 127.0.0.1:8787
+  #         BRIDGE_TOKEN: test
+  #       run: |
+  #         scripts/maestro-run-stable.sh
