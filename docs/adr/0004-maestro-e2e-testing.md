@@ -66,6 +66,31 @@ Adopt Maestro as the primary E2E test runner for both iOS and Android. Target ne
 
 ## Consequences
 
+
+## Running
+
+Recommended env-driven workflow (no hardcoded host/token):
+
+- Start Metro with auto-connect for dev builds so the app connects on mount:
+  - `cd expo && EXPO_PUBLIC_ENV=development EXPO_PUBLIC_AUTO_CONNECT=1 EXPO_PUBLIC_BRIDGE_HOST=<lan-ip:port> EXPO_PUBLIC_BRIDGE_TOKEN=<token> bun run start`
+  - Use your LAN IP and current bridge token (from tricoder/bridge logs).
+
+- Create an env file for Maestro (do not commit secrets):
+  - `cp scripts/maestro.env.example scripts/maestro.env`
+  - Set:
+    - `BRIDGE_HOST=<lan-ip:port>`
+    - `BRIDGE_TOKEN=<token>`
+    - `EXP_URL=exp://<lan-ip>:<metro-port>` (e.g., `exp://192.168.1.11:8083`)
+
+- Run flows with the env file (scripts parse it into `-e KEY=VALUE`):
+  - Stable subset: `MAESTRO_ENV_FILE=scripts/maestro.env scripts/maestro-run-stable.sh`
+  - Full suite: `MAESTRO_ENV_FILE=scripts/maestro.env scripts/maestro-run-all.sh`
+
+Notes:
+- Flows prefer Settings → “Dev Quick Connect” (reads `EXPO_PUBLIC_BRIDGE_HOST/TOKEN`) and fall back to `BRIDGE_HOST`/`BRIDGE_TOKEN`.
+- All exp:// deep links use `${EXP_URL}` so you can point to any Metro port.
+- If Settings content doesn’t render after a deep link, opening it once via the drawer typically warms the route on simulators.
+
 - E2E coverage becomes portable and maintainable, with reliable assertions based on durable anchors and Tinyvex history.
 - Tests are resilient to typical dev‑client timing issues by warming routes and using fallbacks.
 - Some rich content checks are intentionally replaced by history assertions to remain stable across providers/environments.
