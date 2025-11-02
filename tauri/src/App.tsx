@@ -194,7 +194,7 @@ function App() {
       <p>wsUrl: {wsBase || '—'}</p>
       <p>Status: {status}</p>
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'center', maxWidth: 1200, margin: '16px auto', width: '100%' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 2, minWidth: 0 }}>
           <h3>Latest Codex Chat</h3>
           <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto' }}>
             {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
