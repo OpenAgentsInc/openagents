@@ -84,8 +84,13 @@ export default function SettingsScreen() {
     const token = devBridgeToken() || 'test'
     try { setBridgeHost(host) } catch {}
     try { setBridgeToken(token) } catch {}
+    try { setHostInput(host) } catch {}
+    try { setTokenInput(token) } catch {}
     try { connect() } catch {}
   }, [connect, setBridgeHost, setBridgeToken])
+  // Keep local inputs in sync with store updates so UI reflects sanitized values
+  React.useEffect(() => { try { setHostInput(String(bridgeHost || '')) } catch {} }, [bridgeHost])
+  React.useEffect(() => { try { setTokenInput(String(bridgeToken || '')) } catch {} }, [bridgeToken])
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
   const onDevProviderCodex = React.useCallback(() => { try { setAgentProvider('codex') } catch {} }, [setAgentProvider])
   const onDevProviderClaude = React.useCallback(() => { try { setAgentProvider('claude_code') } catch {} }, [setAgentProvider])
