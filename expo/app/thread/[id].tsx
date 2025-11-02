@@ -3,7 +3,8 @@ import { useLocalSearchParams, router } from 'expo-router'
 import { typedRouter } from '@/lib/typed-router'
 import { FlatList, Text, View, KeyboardAvoidingView, Platform, Pressable } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useTinyvex } from '@/providers/tinyvex'
+// import { useTinyvex } from '@/providers/tinyvex'
+import { useTinyvexThread } from 'tinyvex/react'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { Composer } from '@/components/Composer'
@@ -13,12 +14,9 @@ import { useAcp, type SessionNotificationWithTs } from '@/providers/acp'
 import { useSettings } from '@/lib/settings-store'
 import { useThreadProviders } from '@/lib/thread-provider-store'
 import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
-import { SessionUpdateAgentThoughtChunk } from '@/components/acp/SessionUpdateAgentThoughtChunk'
 import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
-import { SessionUpdatePlan } from '@/components/acp/SessionUpdatePlan'
-import { SessionUpdateToolCall } from '@/components/acp/SessionUpdateToolCall'
 import * as Haptics from 'expo-haptics'
-import { useThreadTimeline } from '@/hooks/use-thread-timeline'
+// tinyvex/react provides history + live; no custom timeline hook needed
 
 export default function ThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -36,24 +34,17 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
   const { eventsForThread } = useAcp()
-  const { messagesByThread, subscribeMessages, queryMessages, queryToolCalls, toolCallsByThread, threads } = useTinyvex()
-  const { send, connected } = useBridge()
+  const { status, history, live, send: sendViaTinyvex } = useTinyvexThread({ idOrAlias: threadId || '' })
+  const { connected } = useBridge()
   const agentProvider = useSettings((s) => s.agentProvider)
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
   const threadProviders = useThreadProviders()
   // Title for thread screen
   useHeaderTitle('New Thread')
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
-  const tvxMessages = React.useMemo(() => messagesByThread[threadId] || [], [messagesByThread, threadId])
-  const timeline = useThreadTimeline(threadId)
 
   // Ensure we are subscribed to Tinyvex messages for this thread and have a recent snapshot
-  React.useEffect(() => {
-    if (!threadId) return
-    try { subscribeMessages(threadId) } catch {}
-    try { queryMessages(threadId, 50) } catch {}
-    try { queryToolCalls?.(threadId, 50) } catch {}
-  }, [threadId, subscribeMessages, queryMessages, queryToolCalls])
+  React.useEffect(() => { /* tinyvex/react hook handles subscribe/query */ }, [threadId])
   // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
   React.useEffect(() => {
     if (!threadId) return
@@ -70,12 +61,9 @@ export default function ThreadScreen() {
   }, [threadId])
   const onSend = React.useCallback((text: string) => {
     if (!threadId) return
-    const payload: any = { control: 'run.submit', threadDocId: threadId, text, resumeId: 'last' as const }
-    if (agentProvider === 'claude_code') payload.provider = 'claude_code'
-    try { send(JSON.stringify(payload)) } catch {}
-    // Remember provider for this thread so future resumes use the correct agent
+    try { sendViaTinyvex(text, { resumeId: 'last', provider: agentProvider === 'claude_code' ? 'claude_code' : undefined }) } catch {}
     try { threadProviders.setProvider(threadId, agentProvider) } catch {}
-  }, [threadId, send, agentProvider])
+  }, [threadId, sendViaTinyvex, agentProvider])
   const insets = useSafeAreaInsets()
   const headerHeight = useHeaderStore((s) => s.height)
   const keyboardOffset = Platform.OS === 'ios' ? headerHeight : 0
@@ -83,9 +71,17 @@ export default function ThreadScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
       <View key={`thread-${threadId}`} style={{ flex: 1 }}>
       <FlatList
-        data={timeline}
+        data={[...history.map((r, i) => ({ key: `h-${r.id}-${i}`, ts: r.ts, role: r.role, text: String(r.text || '') })), ...(live.assistant ? [{ key: `live-a`, ts: Date.now(), role: 'assistant' as const, text: live.assistant }] : [])]}
         keyExtractor={(it) => it.key}
-        renderItem={({ item }) => (<View style={{ paddingVertical: 4 }}>{item.node}</View>)}
+        renderItem={({ item }) => (
+          <View style={{ paddingVertical: 4 }}>
+            {item.role === 'assistant' ? (
+              <SessionUpdateAgentMessageChunk content={{ type: 'text', text: item.text }} />
+            ) : (
+              <SessionUpdateUserMessageChunk content={{ type: 'text', text: item.text }} />
+            )}
+          </View>
+        )}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}
         keyboardShouldPersistTaps='handled'
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}

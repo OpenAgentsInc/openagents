@@ -38,6 +38,19 @@ export class TinyvexClient {
     };
   }
 
+  // Subscribe to all threads updates (for drawer/history)
+  subscribeThreads() {
+    this.t.send({ name: 'tvx.subscribe', args: { stream: 'threads' } });
+  }
+  // Query threads list
+  queryThreads(limit = 50) {
+    this.t.send({ name: 'tvx.query', args: { name: 'threads.list', args: { limit } } });
+  }
+  // Expose a raw event subscription for advanced hooks (threads, tools, etc.)
+  onRaw(cb: (evt: unknown) => void) {
+    return this.t.onMessage(cb);
+  }
+
   send(text: string, opts?: { resumeId?: 'last'; provider?: string }) {
     const thread_id = this.canonicalThreadId ?? undefined;
     this.t.send({ name: 'run.submit', args: { text, thread_id, ...opts } });
@@ -79,4 +92,3 @@ export class TinyvexClient {
     handlers.live(this.live.snapshot());
   }
 }
-
