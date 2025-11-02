@@ -114,7 +114,16 @@ async fn main() -> Result<()> {
 
     // Tinyvex replaces Convex; no external backend management here.
 
-    let (mut child, tx) = codex_runner::spawn_codex(&opts).await?;
+    // Try to spawn Codex, but tolerate missing CLI in CI/test environments so
+    // the WS server can still handle Claude-only flows.
+    let (mut child_opt, tx) = match codex_runner::spawn_codex(&opts).await {
+        Ok((child, tx)) => (Some(child), tx),
+        Err(e) => {
+            warn!(?e, "codex spawn failed; continuing without codex (WS will still serve Claude flows)");
+            let (tx, _rx) = tokio::sync::broadcast::channel::<String>(1024);
+            (None, tx)
+        }
+    };
     // Initialize Tinyvex database
     let db = std::env::var("HOME")
         .map(|h| std::path::PathBuf::from(h).join(".openagents/tinyvex/data.sqlite3"))
@@ -126,8 +135,8 @@ async fn main() -> Result<()> {
     };
     let state = Arc::new(AppState {
         tx,
-        child_stdin: Mutex::new(Some(child.stdin.take().context("child stdin missing")?)),
-        child_pid: Mutex::new(Some(child.pid)),
+        child_stdin: Mutex::new(match &mut child_opt { Some(c) => Some(c.stdin.take().context("child stdin missing")?), None => None }),
+        child_pid: Mutex::new(child_opt.as_ref().map(|c| c.pid)),
         opts: opts.clone(),
         last_thread_id: Mutex::new(None),
         history: Mutex::new(Vec::new()),
@@ -147,8 +156,8 @@ async fn main() -> Result<()> {
     });
 
 
-    // Start readers for stdout/stderr → broadcast + console
-    crate::ws::start_stream_forwarders(child, state.clone()).await?;
+    // Start readers for stdout/stderr → broadcast + console when Codex is available
+    if let Some(child) = child_opt { crate::ws::start_stream_forwarders(child, state.clone()).await?; }
 
     // Start Codex sessions watcher (inbound sync) by default
     {
