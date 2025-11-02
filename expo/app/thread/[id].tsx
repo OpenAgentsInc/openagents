@@ -35,7 +35,7 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
   const { eventsForThread } = useAcp()
-  const { messagesByThread, subscribeMessages, queryMessages, queryToolCalls, toolCallsByThread, threads } = useTinyvex() as any
+  const { messagesByThread, subscribeMessages, queryMessages, queryToolCalls, toolCallsByThread, threads } = useTinyvex()
   const { send, connected } = useBridge()
   const agentProvider = useSettings((s) => s.agentProvider)
   const setAgentProvider = useSettings((s) => s.setAgentProvider)

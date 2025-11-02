@@ -121,15 +121,18 @@ export const useThreads = create<ThreadsState>()(
         try {
           if (persisted && typeof persisted === 'object') {
             const next: Record<string, unknown> = { ...(persisted as Record<string, unknown>) };
-            if (Array.isArray(next.items) && !Array.isArray(next.history)) {
-              (next as any).history = next.items;
+            // Migrate old 'items' field to 'history'
+            if ('items' in next && Array.isArray(next.items) && !('history' in next)) {
+              next.history = next.items;
               delete next.items;
             }
-            if (Array.isArray(next.history) && next.history.length > MAX_HISTORY_CACHE) {
-              (next as any).history = next.history.slice(0, MAX_HISTORY_CACHE);
+            // Truncate history if too long
+            if ('history' in next && Array.isArray(next.history) && next.history.length > MAX_HISTORY_CACHE) {
+              next.history = next.history.slice(0, MAX_HISTORY_CACHE);
             }
-            if ((next as any).thread && typeof (next as any).thread === 'object') {
-              (next as any).thread = {};
+            // Clear old thread cache (no longer persisted)
+            if ('thread' in next && typeof next.thread === 'object') {
+              next.thread = {};
             }
             return next;
           }

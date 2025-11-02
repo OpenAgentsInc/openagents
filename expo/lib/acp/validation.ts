@@ -5,7 +5,8 @@ export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: unknow
 
 export function parseSessionNotification(input: unknown): ParseResult<SessionNotification> {
   try {
-    const r = sessionNotificationSchema.safeParse(input as any)
+    // safeParse accepts unknown, no cast needed
+    const r = sessionNotificationSchema.safeParse(input)
     if (r.success) return { ok: true, value: r.data }
     return { ok: false, error: r.error }
   } catch (err) {
