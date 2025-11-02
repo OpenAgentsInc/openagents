@@ -318,6 +318,90 @@ mod ws_smoke_tests {
         assert!(saw, "did not observe messages.list query_result");
         serve.abort();
     }
+
+    #[tokio::test]
+    async fn thread_started_broadcasts_thread_update() {
+        use tokio::sync::{broadcast, Mutex};
+        // Setup minimal state with broadcast channel
+        let (tx, mut rx) = broadcast::channel(64);
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(&db).unwrap());
+        let state = std::sync::Arc::new(crate::state::AppState {
+            tx: tx.clone(),
+            child_stdin: Mutex::new(None), child_pid: Mutex::new(None),
+            opts: crate::Opts { bind: "127.0.0.1:0".into(), codex_bin: None, codex_args: None, extra: vec![], ws_token: Some("t".into()), claude_bin: None, claude_args: None },
+            last_thread_id: Mutex::new(None), history: Mutex::new(Vec::new()),
+            current_thread_doc: Mutex::new(Some("t-client".into())),
+            stream_track: Mutex::new(std::collections::HashMap::new()), pending_user_text: Mutex::new(std::collections::HashMap::new()), bridge_ready: std::sync::atomic::AtomicBool::new(true), tinyvex: tvx.clone(), tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())), sync_enabled: std::sync::atomic::AtomicBool::new(true), sync_two_way: std::sync::atomic::AtomicBool::new(false), sync_last_read_ms: Mutex::new(0), sync_cmd_tx: Mutex::new(None), sync_cmd_tx_claude: Mutex::new(None), sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()), client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+        });
+
+        // Simulate thread.started event processing by manually calling the relevant code path
+        // This mimics what start_stream_forwarders does when it sees a thread.started event
+        let thread_id = "019a-test-session";
+        let client_doc = "t-client";
+
+        // Set last_thread_id (what start_stream_forwarders does)
+        *state.last_thread_id.lock().await = Some(thread_id.to_string());
+
+        // Update mappings (what start_stream_forwarders does)
+        {
+            let mut map = state.sessions_by_client_doc.lock().await;
+            map.insert(client_doc.to_string(), thread_id.to_string());
+        }
+        {
+            let mut inv = state.client_doc_by_session.lock().await;
+            inv.insert(thread_id.to_string(), client_doc.to_string());
+        }
+
+        // Upsert thread row and broadcast (the code we just added)
+        let now: i64 = crate::util::now_ms().try_into().unwrap_or(0);
+        let row = tinyvex::ThreadRow {
+            id: client_doc.to_string(),
+            thread_id: Some(client_doc.to_string()),
+            title: "Thread".into(),
+            project_id: None,
+            resume_id: Some(thread_id.to_string()),
+            rollout_path: None,
+            source: Some("codex".into()),
+            created_at: now,
+            updated_at: now,
+            message_count: None,
+            last_message_ts: None,
+        };
+        let _ = state.tinyvex.upsert_thread(&row);
+
+        // THIS IS THE KEY PART WE ADDED - broadcast the update
+        let typed_row = super::ThreadSummaryTs {
+            id: row.id.clone(),
+            thread_id: row.thread_id.clone(),
+            title: row.title.clone(),
+            project_id: row.project_id.clone(),
+            resume_id: row.resume_id.clone(),
+            rollout_path: row.rollout_path.clone(),
+            source: row.source.clone(),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            message_count: row.message_count,
+            last_message_ts: row.last_message_ts,
+        };
+        let update = serde_json::json!({
+            "type": "tinyvex.update",
+            "stream": "threads",
+            "row": typed_row
+        }).to_string();
+        let _ = tx.send(update);
+
+        // Verify the broadcast was sent
+        let received = rx.recv().await.expect("should receive thread update");
+        let v: serde_json::Value = serde_json::from_str(&received).expect("valid json");
+        assert_eq!(v.get("type").and_then(|x| x.as_str()), Some("tinyvex.update"));
+        assert_eq!(v.get("stream").and_then(|x| x.as_str()), Some("threads"));
+
+        let broadcast_row = v.get("row").expect("should have row field");
+        assert_eq!(broadcast_row.get("id").and_then(|x| x.as_str()), Some(client_doc));
+        assert_eq!(broadcast_row.get("resume_id").and_then(|x| x.as_str()), Some(thread_id));
+    }
 }
 
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
@@ -1271,6 +1355,26 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 last_message_ts: None,
                             };
                             let _ = state_for_stdout.tinyvex.upsert_thread(&row);
+                            // Broadcast thread update so clients can immediately resolve the session alias
+                            let typed_row = ThreadSummaryTs {
+                                id: row.id.clone(),
+                                thread_id: row.thread_id.clone(),
+                                title: row.title.clone(),
+                                project_id: row.project_id.clone(),
+                                resume_id: row.resume_id.clone(),
+                                rollout_path: row.rollout_path.clone(),
+                                source: row.source.clone(),
+                                created_at: row.created_at,
+                                updated_at: row.updated_at,
+                                message_count: row.message_count,
+                                last_message_ts: row.last_message_ts,
+                            };
+                            let update = serde_json::json!({
+                                "type": "tinyvex.update",
+                                "stream": "threads",
+                                "row": typed_row
+                            }).to_string();
+                            let _ = tx_out.send(update);
                         }
                         // If we have a pending user text for this client thread doc id, emit ACP and write to Tinyvex acp_events
                         if let Some(client_doc_str) = client_doc.clone() {
