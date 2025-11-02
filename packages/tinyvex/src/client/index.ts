@@ -4,4 +4,4 @@ export * from './aggregator';
 export * from './dedupe';
 export * from './identity';
 export * from './logger';
-
+export * from './WsTransport';

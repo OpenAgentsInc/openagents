@@ -3,7 +3,7 @@ use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, TS)]
 #[allow(dead_code)]
-#[ts(export, export_to = "../../expo/types/bridge/")]
+#[ts(export, export_to = "../../packages/tricoder/src/types/generated/")]
 pub struct SyncWatchedDirTs {
     pub provider: String,
     pub base: String,
@@ -13,7 +13,7 @@ pub struct SyncWatchedDirTs {
 
 #[derive(Debug, Clone, Serialize, TS)]
 #[allow(dead_code)]
-#[ts(export, export_to = "../../expo/types/bridge/")]
+#[ts(export, export_to = "../../packages/tricoder/src/types/generated/")]
 pub struct SyncStatusTs {
     pub enabled: bool,
     pub two_way: bool,
@@ -47,7 +47,7 @@ pub struct TinyvexQueryResult<T: Serialize + Clone> {
 
 #[derive(Debug, Clone, Serialize, TS)]
 #[allow(dead_code)]
-#[ts(export, export_to = "../../expo/types/bridge/")]
+#[ts(export, export_to = "../../packages/tricoder/src/types/generated/")]
 pub struct ThreadRowTs {
     pub id: String,
     pub thread_id: Option<String>,
@@ -83,7 +83,7 @@ impl From<&tinyvex::ThreadRow> for ThreadRowTs {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../expo/types/bridge/")]
+#[ts(export, export_to = "../../packages/tricoder/src/types/generated/")]
 pub struct MessageRowTs {
     pub id: i64,
     pub thread_id: String,
@@ -117,7 +117,7 @@ impl From<&tinyvex::MessageRow> for MessageRowTs {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../expo/types/bridge/")]
+#[ts(export, export_to = "../../packages/tricoder/src/types/generated/")]
 pub struct ToolCallRowTs {
     pub thread_id: String,
     pub tool_call_id: String,
