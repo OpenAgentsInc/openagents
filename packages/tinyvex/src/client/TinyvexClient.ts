@@ -63,6 +63,14 @@ export class TinyvexClient {
     this.t.send({ name: 'tvx.query', args: { name: 'messages.list', args: { thread_id: threadId, limit: 500 } } });
   }
 
+  // Public helpers for external UIs
+  subscribeThread(threadId: string) {
+    this.t.send({ name: 'tvx.subscribe', args: { stream: 'messages', thread_id: threadId } });
+  }
+  queryMessages(threadId: string, limit = 1) {
+    this.t.send({ name: 'tvx.query', args: { name: 'messages.list', args: { thread_id: threadId, limit } } });
+  }
+
   private handleEvent(evt: BridgeEvent, handlers: EventsHandlers) {
     switch ((evt as any).type) {
       case 'tinyvex.snapshot': {

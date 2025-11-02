@@ -21,6 +21,7 @@ function App() {
   const autoDetectedRef = useRef<boolean>(false)
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
   const logsContainerRef = useRef<HTMLDivElement | null>(null)
+  const [lastByThread, setLastByThread] = useState<Record<string, string>>({})
 
   const wsUrl = useMemo(() => {
     const scheme = 'ws'
@@ -121,9 +122,16 @@ function App() {
                 // throttle requery
                 const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.queryThreads(20) }
               } else if (obj.type === 'tinyvex.snapshot' && obj.stream === 'messages' && Array.isArray(obj.rows)) {
-                setMessages(filterFinalMessages(obj.rows as MessageRowTs[]))
+                const rows = obj.rows as MessageRowTs[]
+                setMessages(filterFinalMessages(rows))
+                // If this snapshot belongs to a specific thread, update that thread's last text
+                const tid = String(obj.thread_id || '')
+                if (tid) updateLastFromRows(tid, rows)
               } else if (obj.type === 'tinyvex.query_result' && obj.name === 'messages.list' && Array.isArray(obj.rows)) {
-                setMessages(filterFinalMessages(obj.rows as MessageRowTs[]))
+                const rows = obj.rows as MessageRowTs[]
+                setMessages(filterFinalMessages(rows))
+                const tid = String(obj.thread_id || '')
+                if (tid) updateLastFromRows(tid, rows)
               } else if (obj.type === 'tinyvex.update' && obj.stream === 'messages' && selectedThread) {
                 const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.["queryHistory"]?.(selectedThread) }
               }
@@ -150,12 +158,29 @@ function App() {
       .sort((a, b) => Number(a.ts) - Number(b.ts))
   }
 
+  function updateLastFromRows(threadId: string, rows: MessageRowTs[]) {
+    try {
+      const finals = rows.filter((r) => String(r.kind || '') === 'message' && !!r.role)
+      if (!finals.length) return
+      const last = finals[finals.length - 1]
+      setLastByThread((prev) => ({ ...prev, [threadId]: String(last.text || '') }))
+    } catch {}
+  }
+
   function handleThreads(rows: ThreadSummaryTs[]) {
     setThreads(rows)
     // Choose most recent Codex thread, fallback to most recent
-    const codex = rows.filter((r) => String(r.source || '') === 'codex')
+    const providerRows = rows.filter((r) => {
+      const s = String(r.source || '')
+      return s === 'codex' || s === 'claude_code'
+    })
     const sorted = (xs: ThreadSummaryTs[]) => xs.slice().sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
-    const pick = (sorted(codex)[0] || sorted(rows)[0]) as ThreadSummaryTs | undefined
+    const top = sorted(providerRows).slice(0, 10)
+    // Query last message for the top threads
+    for (const thr of top) {
+      try { clientRef.current?.queryMessages(String(thr.id), 1) } catch {}
+    }
+    const pick = (top[0] || sorted(rows)[0]) as ThreadSummaryTs | undefined
     const tid = pick?.id ? String(pick.id) : ''
     if (tid && tid !== selectedThread) {
       setSelectedThread(tid)
@@ -194,6 +219,32 @@ function App() {
       <p>wsUrl: {wsBase || '—'}</p>
       <p>Status: {status}</p>
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'center', maxWidth: 1200, margin: '16px auto', width: '100%' }}>
+        {/* Sidebar with recent chats */}
+        <div style={{ width: 280, minWidth: 240 }}>
+          <h3>Recent chats</h3>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto' }}>
+            {threads
+              .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')))
+              .sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
+              .slice(0, 10)
+              .map((r) => {
+                const tid = String(r.id)
+                const last = lastByThread[tid]
+                const provider = String(r.source || '')
+                const active = selectedThread === tid
+                return (
+                  <div key={tid} onClick={() => { setSelectedThread(tid); try { clientRef.current?.subscribeThread(tid); clientRef.current?.["queryHistory"]?.(tid) } catch {} }}
+                       style={{ cursor: 'pointer', padding: 10, borderBottom: '1px solid var(--border)', background: active ? '#111216' : 'transparent' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontFamily: 'inherit', color: 'var(--foreground)', fontSize: 13 }}>{r.title || 'Thread'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>{provider}</div>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--secondary)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{last || '—'}</div>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
         <div style={{ flex: 2, minWidth: 0 }}>
           <h3>Latest Codex Chat</h3>
           <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto' }}>
