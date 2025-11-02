@@ -8,7 +8,7 @@
       },
     },
     "packages/openagents-theme": {
-      "name": "@openagents/theme",
+      "name": "@openagentsinc/theme",
       "version": "0.1.0",
     },
     "packages/tinyvex": {
@@ -100,7 +100,7 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.4", "", { "os": "win32", "cpu": "x64" }, "sha512-nOT2vZNw6hJ+z43oP1SPea/G/6AbN6X+bGNhNuq8NtRHy4wsMhw765IKLNmnjek7GvjWBYQ8Q5VBoYTFg9y1UQ=="],
 
-    "@openagents/theme": ["@openagents/theme@workspace:packages/openagents-theme"],
+    "@openagentsinc/theme": ["@openagentsinc/theme@workspace:packages/openagents-theme"],
 
     "@types/adm-zip": ["@types/adm-zip@0.5.7", "", { "dependencies": { "@types/node": "*" } }, "sha512-DNEs/QvmyRLurdQPChqq0Md4zGvPwHerAJYWk9l2jCbD1VPpnzRJorOdiq4zsw09NFbYnhfsoEhWtxIzXpn2yw=="],
 

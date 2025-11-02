@@ -1,6 +1,6 @@
 import { DarkTheme as NavigationDarkTheme } from "@react-navigation/native"
 import type { Theme } from "@react-navigation/native"
-import { Colors as SharedColors } from "@openagents/theme/colors";
+import { Colors as SharedColors } from "@openagentsinc/theme/colors";
 
 export const Colors = SharedColors;
 

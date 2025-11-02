@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/theme",
+  "name": "@openagentsinc/theme",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,4 +18,3 @@
     "./web/theme.css": "./web/theme.css"
   }
 }
-

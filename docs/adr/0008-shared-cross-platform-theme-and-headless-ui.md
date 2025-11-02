@@ -19,7 +19,7 @@ We also discussed deeper sharing approaches: using React Native Web (RNW) inside
 
 Adopt a staged approach that starts with shared tokens and a headless core, deferring cross‑platform component rendering until later:
 
-- Create a dedicated workspace package `@openagents/theme` that exports:
+- Create a dedicated workspace package `@openagentsinc/theme` that exports:
   - `Colors` (typed, constant tokens) — identical across platforms
   - `Typography` (family names) — shared identifiers; platform loaders remain app‑local
   - `web/theme.css` — web `:root` variables for Tauri/DOM
@@ -61,7 +61,7 @@ Adopt a staged approach that starts with shared tokens and a headless core, defe
 
 ## Acceptance
 
-- `packages/@openagents/theme` exists with `colors`, `typography`, and `web/theme.css`
+- `packages/@openagentsinc/theme` exists with `colors`, `typography`, and `web/theme.css`
 - Expo imports `Colors`/`Typography` from the package; font loading remains via `expo-font`
 - Tauri imports `web/theme.css` and uses Berkeley Mono everywhere via local `@font-face`
 - PRs reference this ADR and Issue #1390 for future work
@@ -69,5 +69,5 @@ Adopt a staged approach that starts with shared tokens and a headless core, defe
 ## References
 
 - Issue #1390 — Shared theming package: packages/openagents-theme (Expo + Tauri)
-- PR #1392 — feat(theme): shared @openagents/theme and migrate Expo/Tauri
+- PR #1392 — feat(theme): shared @openagentsinc/theme and migrate Expo/Tauri
 - ADR 0006 — Component Organization
