@@ -1416,6 +1416,7 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                     meta: None,
                                 });
                                 // Write user message to BOTH session ID and client doc ID (mapping exists at this point)
+                                info!(session_id=%val, client_doc=%client_doc_str, "ws.rs:1419 - Writing user message to BOTH IDs [BUILD MARKER: 2025-11-02-v2]");
                                 crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, "codex", val, &update).await;
                                 crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, "codex", &client_doc_str, &update).await;
                                 // Also write to unified acp_events log

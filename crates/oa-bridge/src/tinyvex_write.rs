@@ -354,7 +354,9 @@ pub async fn mirror_acp_update_to_tinyvex_mode(
                 StreamMode::Delta => stream_upsert_or_append(state, thread_id, "assistant", &txt).await,
                 StreamMode::Finalize => {
                     // Try to finalize existing stream; if no stream exists, create snapshot
+                    tracing::info!(thread_id=%thread_id, text_preview=%txt.chars().take(50).collect::<String>(), "tinyvex_write.rs:353 - Finalize assistant message [BUILD MARKER: 2025-11-02-v2]");
                     if !try_finalize_stream_kind(state, thread_id, "assistant").await {
+                        tracing::info!(thread_id=%thread_id, "tinyvex_write.rs:355 - No stream exists, calling finalize_or_snapshot");
                         finalize_or_snapshot(state, thread_id, "assistant", &txt).await;
                     }
                 },
