@@ -56,15 +56,16 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
   })
 
   // ACP updates
-  // Watermark: if Tinyvex has already persisted messages up to a timestamp,
-  // suppress older ACP chat chunks to avoid duplicate rendering of the same
-  // content (live ACP → persisted Tinyvex).
-  const tvxMaxTs = (() => {
-    try {
-      if (!msgRows.length) return 0
-      return Number(msgRows[msgRows.length - 1]?.ts || 0)
-    } catch { return 0 }
-  })()
+  // Show live ACP agent chunks as soon as they arrive for responsiveness,
+  // but dedupe against Tinyvex‑persisted assistant texts so we don’t render
+  // the same response twice when persistence completes.
+  const seenAssistantTexts = new Set<string>()
+  try {
+    // Seed from Tinyvex-rendered items we already built above
+    for (const it of rendered) {
+      if (it.role === 'assistant') seenAssistantTexts.add(it.text)
+    }
+  } catch {}
   for (let i = 0; i < acpUpdates.length; i++) {
     const n = acpUpdates[i]
     if (!n || !('update' in n)) continue
@@ -83,8 +84,10 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
       const textContent = contentArray.find((c: { type: string }) => c.type === 'text')
       const fullText = textContent && 'text' in textContent ? String(textContent.text || '') : ''
       const content: { type: 'text'; text: string } = { type: 'text', text: fullText }
-      if (ts > tvxMaxTs) {
+      if (fullText && !seenAssistantTexts.has(fullText)) {
         items.push({ key: `acp-a-${ts}-${i}`, ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
+        // Track so multiple ACP chunks with identical text don’t spam
+        seenAssistantTexts.add(fullText)
       }
       continue
     }
