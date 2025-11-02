@@ -9,7 +9,7 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
         .await;
     for n in notifs {
         match n {
-            crate::tvx_writer::WriterNotification::ThreadsUpsert { row } => {
+            crate::tinyvex_writer::WriterNotification::ThreadsUpsert { row } => {
                 let row_json = json!({
                     "id": row.id,
                     "thread_id": row.thread_id,
@@ -31,7 +31,7 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
                     "row": row_json
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::MessagesUpsert { thread_id, item_id, kind, seq, text_len, .. } => {
+            crate::tinyvex_writer::WriterNotification::MessagesUpsert { thread_id, item_id, kind, seq, text_len, .. } => {
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
                     "op": "upsertStreamed",
@@ -60,7 +60,7 @@ pub async fn stream_upsert_or_append(state: &AppState, thread_id: &str, kind: &s
 pub async fn try_finalize_stream_kind(state: &AppState, thread_id: &str, kind: &str) -> bool {
     if let Some(notifs) = state.tinyvex_writer.try_finalize_stream_kind(thread_id, kind).await {
         for n in notifs {
-            if let crate::tvx_writer::WriterNotification::MessagesFinalize { thread_id, item_id, kind, text_len } = n {
+            if let crate::tinyvex_writer::WriterNotification::MessagesFinalize { thread_id, item_id, kind, text_len } = n {
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
                     "op": "finalize_streamed",
@@ -96,7 +96,7 @@ pub async fn finalize_or_snapshot(state: &AppState, thread_id: &str, kind: &str,
     // Map finalization notifications to insert events for tinyvex.update
     for n in notifs {
         match n {
-            crate::tvx_writer::WriterNotification::ThreadsUpsert { row } => {
+            crate::tinyvex_writer::WriterNotification::ThreadsUpsert { row } => {
                 let row_json = json!({
                     "id": row.id,
                     "thread_id": row.thread_id,
@@ -118,7 +118,7 @@ pub async fn finalize_or_snapshot(state: &AppState, thread_id: &str, kind: &str,
                     "row": row_json
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::MessagesUpsert { thread_id, item_id, kind, text_len, .. } => {
+            crate::tinyvex_writer::WriterNotification::MessagesUpsert { thread_id, item_id, kind, text_len, .. } => {
                 // still surface a progress debug
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
@@ -130,7 +130,7 @@ pub async fn finalize_or_snapshot(state: &AppState, thread_id: &str, kind: &str,
                     "ok": true
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::MessagesFinalize { thread_id, item_id, .. } => {
+            crate::tinyvex_writer::WriterNotification::MessagesFinalize { thread_id, item_id, .. } => {
                 // For snapshot-style writes, keep legacy op label "insert"
                 let _ = state.tx.send(json!({
                     "type":"tinyvex.update",
@@ -151,7 +151,7 @@ pub async fn finalize_streaming_for_thread(state: &AppState, thread_id: &str) {
         .finalize_streaming_for_thread(thread_id)
         .await;
     for n in notifs {
-        if let crate::tvx_writer::WriterNotification::MessagesFinalize { thread_id, item_id, kind, text_len } = n {
+        if let crate::tinyvex_writer::WriterNotification::MessagesFinalize { thread_id, item_id, kind, text_len } = n {
             let _ = state.tx.send(json!({
                 "type": "bridge.tinyvex_write",
                 "op": "finalize_streamed",
@@ -194,7 +194,7 @@ pub async fn mirror_acp_update_to_tinyvex(
         .await;
     for n in notifs {
         match n {
-            crate::tvx_writer::WriterNotification::ThreadsUpsert { row } => {
+            crate::tinyvex_writer::WriterNotification::ThreadsUpsert { row } => {
                 let row_json = json!({
                     "id": row.id,
                     "thread_id": row.thread_id,
@@ -216,7 +216,7 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "row": row_json
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::MessagesUpsert { thread_id, item_id, kind, text_len, .. } => {
+            crate::tinyvex_writer::WriterNotification::MessagesUpsert { thread_id, item_id, kind, text_len, .. } => {
                 // Progress debug for visibility
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
@@ -228,7 +228,7 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "ok": true
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::MessagesFinalize { thread_id, item_id, .. } => {
+            crate::tinyvex_writer::WriterNotification::MessagesFinalize { thread_id, item_id, .. } => {
                 // Keep legacy insert op for ACP snapshots
                 let _ = state.tx.send(json!({
                     "type":"tinyvex.update",
@@ -238,7 +238,7 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "item_id": item_id
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::ToolCallUpsert { thread_id, tool_call_id } => {
+            crate::tinyvex_writer::WriterNotification::ToolCallUpsert { thread_id, tool_call_id } => {
                 // Debug event + typed tinyvex.update for tools
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
@@ -255,7 +255,7 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "tool_call_id": tool_call_id
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::ToolCallUpdate { thread_id, tool_call_id } => {
+            crate::tinyvex_writer::WriterNotification::ToolCallUpdate { thread_id, tool_call_id } => {
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
                     "op": "toolCallUpdate",
@@ -271,7 +271,7 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "tool_call_id": tool_call_id
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::PlanUpsert { thread_id } => {
+            crate::tinyvex_writer::WriterNotification::PlanUpsert { thread_id } => {
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
                     "op": "planUpsert",
@@ -285,7 +285,7 @@ pub async fn mirror_acp_update_to_tinyvex(
                     "thread_id": thread_id
                 }).to_string());
             }
-            crate::tvx_writer::WriterNotification::StateUpsert { thread_id } => {
+            crate::tinyvex_writer::WriterNotification::StateUpsert { thread_id } => {
                 let _ = state.tx.send(json!({
                     "type": "bridge.tinyvex_write",
                     "op": "stateUpsert",
