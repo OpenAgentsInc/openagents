@@ -3,15 +3,9 @@ import { Text, TextInput } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { Colors } from '@/constants/theme';
+import { Typography as SharedTypography } from '@openagents/theme/typography';
 
-export const Typography = {
-  primary: 'BerkeleyMono',
-  bold: 'BerkeleyMono-Bold',
-  italic: 'BerkeleyMono-Italic',
-  boldItalic: 'BerkeleyMono-BoldItalic',
-  // You can add semantic roles here later (e.g., title, label),
-  // but default is to use `primary` for all text.
-};
+export const Typography = SharedTypography;
 
 // Load fonts and set global defaults so all <Text/> uses the primary font.
 let appliedTypographyGlobals = false;

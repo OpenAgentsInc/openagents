@@ -1,0 +1,21 @@
+{
+  "name": "@openagents/theme",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenAgents shared theme tokens and web CSS",
+  "files": [
+    "colors.js",
+    "colors.d.ts",
+    "typography.js",
+    "typography.d.ts",
+    "web/theme.css",
+    "README.md"
+  ],
+  "exports": {
+    "./colors": "./colors.js",
+    "./typography": "./typography.js",
+    "./web/theme.css": "./web/theme.css"
+  }
+}
+
