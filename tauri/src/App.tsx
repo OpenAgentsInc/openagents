@@ -219,30 +219,40 @@ function App() {
       <p>wsUrl: {wsBase || '—'}</p>
       <p>Status: {status}</p>
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'center', maxWidth: 1200, margin: '16px auto', width: '100%' }}>
-        {/* Sidebar with recent chats */}
-        <div style={{ width: 280, minWidth: 240 }}>
-          <h3>Recent chats</h3>
-          <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', height: '70vh', overflowY: 'auto' }}>
-            {threads
-              .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')))
-              .sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
-              .slice(0, 10)
-              .map((r) => {
-                const tid = String(r.id)
-                const last = lastByThread[tid]
-                const provider = String(r.source || '')
-                const active = selectedThread === tid
-                return (
-                  <div key={tid} onClick={() => { setSelectedThread(tid); try { clientRef.current?.subscribeThread(tid); clientRef.current?.["queryHistory"]?.(tid) } catch {} }}
-                       style={{ cursor: 'pointer', padding: 10, borderBottom: '1px solid var(--border)', background: active ? '#111216' : 'transparent' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontFamily: 'inherit', color: 'var(--foreground)', fontSize: 13 }}>{r.title || 'Thread'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>{provider}</div>
+        {/* Sidebar with recent chats and compact raw feed */}
+        <div style={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <h3>Recent chats</h3>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', maxHeight: '46vh', overflowY: 'auto' }}>
+              {threads
+                .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')))
+                .sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
+                .slice(0, 10)
+                .map((r) => {
+                  const tid = String(r.id)
+                  const last = lastByThread[tid]
+                  const provider = String(r.source || '')
+                  const active = selectedThread === tid
+                  return (
+                    <div key={tid} onClick={() => { setSelectedThread(tid); try { clientRef.current?.subscribeThread(tid); clientRef.current?.["queryHistory"]?.(tid) } catch {} }}
+                         style={{ cursor: 'pointer', padding: 10, borderBottom: '1px solid var(--border)', background: active ? '#111216' : 'transparent' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontFamily: 'inherit', color: 'var(--foreground)', fontSize: 13 }}>{r.title || 'Thread'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>{provider}</div>
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--secondary)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{last || '—'}</div>
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--secondary)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{last || '—'}</div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+            </div>
+          </div>
+          <div>
+            <h3>Raw events</h3>
+            <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', maxHeight: '22vh', overflowY: 'auto', padding: 10 }}>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0, fontSize: 11, lineHeight: '15px' }}>
+                {logs.slice(-10).join('\n')}
+              </pre>
+            </div>
           </div>
         </div>
         <div style={{ flex: 2, minWidth: 0 }}>
