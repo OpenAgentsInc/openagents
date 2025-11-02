@@ -22,9 +22,53 @@ export type TimelineItem = { key: string; ts: number; node: React.ReactNode }
 
 export function useThreadTimeline(threadId: string): TimelineItem[] {
   const { eventsForThread } = useAcp()
-  const { messagesByThread, toolCallsByThread } = useTinyvex()
+  const { messagesByThread, toolCallsByThread, threads } = useTinyvex()
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
-  const msgRows: MessageRow[] = React.useMemo(() => messagesByThread[threadId] ?? [], [messagesByThread, threadId])
+  // Build candidate thread ids (alias + canonical) and merge rows across them.
+  const candidateThreadIds = React.useMemo(() => {
+    try {
+      const ids = new Set<string>()
+      const id = String(threadId || '')
+      if (id) ids.add(id)
+      const list = Array.isArray(threads) ? threads : []
+      // Resolve canonical for alias id
+      const row = list.find((r) => String(r.id) === id)
+      const resume = row?.resume_id ? String(row.resume_id) : null
+      if (resume) ids.add(resume)
+      // Resolve alias for canonical id
+      const alias = list.find((r) => String(r.resume_id ?? '') === id)?.id
+      if (alias) ids.add(String(alias))
+      return Array.from(ids)
+    } catch { return [threadId] }
+  }, [threads, threadId])
+  const msgRows: MessageRow[] = React.useMemo(() => {
+    // Gather rows across candidates and dedupe by stable key that ignores thread alias
+    const rows: MessageRow[] = []
+    for (const id of candidateThreadIds) {
+      const arr = messagesByThread[id]
+      if (Array.isArray(arr)) rows.push(...arr)
+    }
+    type Row = MessageRow & { item_id?: string | null }
+    const keyFor = (r: Row) => String((r as any).item_id || `${(r as any).seq ?? ''}:${r.ts}:${(r as any).role ?? ''}:${String((r as any).text ?? '')}`)
+    const isFinal = (r: Row) => (r as any).partial == null || Number((r as any).partial) === 0
+    const prefer = (a: Row | undefined, b: Row): Row => {
+      if (!a) return b
+      const aFinal = isFinal(a), bFinal = isFinal(b)
+      if (aFinal !== bFinal) return bFinal ? b : a
+      const aRole = !!(a as any).role, bRole = !!(b as any).role
+      if (aRole !== bRole) return bRole ? b : a
+      return b.ts >= a.ts ? b : a
+    }
+    const map = new Map<string, Row>()
+    for (const r of rows) {
+      const key = keyFor(r as Row)
+      map.set(key, prefer(map.get(key), r as Row))
+    }
+    // Only keep chat messages and finalized rows
+    const merged = Array.from(map.values()).filter((r) => String((r as any).kind || '').toLowerCase() === 'message' && isFinal(r))
+    merged.sort((a, b) => a.ts - b.ts)
+    return merged as MessageRow[]
+  }, [candidateThreadIds, messagesByThread])
   const toolRows: ToolCallRow[] = React.useMemo(() => toolCallsByThread[threadId] ?? [], [toolCallsByThread, threadId])
 
   // No debug logs in production — timeline derives purely from Tinyvex rows and live ACP.
