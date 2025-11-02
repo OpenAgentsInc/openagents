@@ -1,3 +1,5 @@
+# Tinyvex React chat hook plan
+
 Yes. Let’s standardize this the Convex way: one tiny, well-typed React hook that any app can drop in to consume Tinyvex (your “TinyFAX”) with zero app-specific logic.
 
 Below is a complete plan + skeleton you can hand to the coding agent.
@@ -41,7 +43,7 @@ Everything else (aliases, WS resubscribe, dedupe, partials, etc.) is **inside** 
 
 # Package layout
 
-```
+```text
 packages/
   tvx-client/              # framework-agnostic transport + state machine
     src/
@@ -157,7 +159,7 @@ export class TvxClient {
 }
 ```
 
-**Notes**
+## Notes
 
 * `Dedupe.merge()` uses a stable `message_id` (or deterministic fallback).
 * `LiveAggregator` is in-memory only. Persisted history is final only.
@@ -235,7 +237,7 @@ function reducer(state: State, action: any): State {
 }
 ```
 
-**App usage (Expo)**
+## App usage (Expo)
 
 ```tsx
 import { TvxProvider, useTvxThread } from '@openagents/tvx-react';
@@ -267,19 +269,19 @@ function ThreadScreen({ idOrAlias }) {
 
 # Tests
 
-**tvx-client (unit)**
+## tvx-client (unit)
 
 * Aggregator: any chunk sequence + done → single final persisted row (idempotent on duplicate done).
 * Dedupe: same `message_id` twice → one item.
 
-**tvx-react (react)**
+## tvx-react (react)
 
 * Render with a mock `Transport`:
 
   * chunks → live text updates; on `agent_message_done` → live clears; on `tinyvex.update` → history +1.
 * Reconnect path: `Transport` close/open retains cached `threadId`, resubscribes once.
 
-**Maestro (E2E)**
+## Maestro (E2E)
 
 * “Send → stream → finalize”: one live bubble grows, one history bubble committed, no duplicates after reconnect.
 

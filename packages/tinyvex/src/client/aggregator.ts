@@ -9,11 +9,10 @@ export class LiveAggregator {
 
   update(kind: 'assistant' | 'reason', text: string) {
     if (kind === 'assistant') this.state.assistant = text;
-    if (kind === 'reason') this.state.thought = text;
+    else if (kind === 'reason') this.state.thought = text;
   }
 
   snapshot(): LiveState {
     return { ...this.state };
   }
 }
-
