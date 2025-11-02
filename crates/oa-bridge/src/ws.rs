@@ -1338,6 +1338,28 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                             let mut inv = state_for_stdout.client_doc_by_session.lock().await;
                             inv.insert(val.to_string(), client_doc_str.clone());
                         }
+                        // Copy any existing messages from session ID to client doc ID (handles watcher race)
+                        if let Some(client_doc_str) = client_doc.clone() {
+                            if let Ok(existing_msgs) = state_for_stdout.tinyvex.list_messages(val, 1000) {
+                                if !existing_msgs.is_empty() {
+                                    // Use writer to properly copy messages with notifications
+                                    for msg in &existing_msgs {
+                                        if msg.partial.unwrap_or(1) == 0 {
+                                            // Finalized message - use finalize_or_snapshot
+                                            if let Some(text) = &msg.text {
+                                                state_for_stdout.tinyvex_writer.finalize_or_snapshot(
+                                                    "codex",
+                                                    &client_doc_str,
+                                                    &msg.kind,
+                                                    text
+                                                ).await;
+                                            }
+                                        }
+                                    }
+                                    info!(session=%val, client_doc=%client_doc_str, count=existing_msgs.len(), "copied existing messages to client doc for new mapping");
+                                }
+                            }
+                        }
                         // Upsert threads row for the client doc id to record resume_id = session id
                         if let Some(client_doc_str) = client_doc.clone() {
                             let now: i64 = now_ms().try_into().unwrap_or(0);
