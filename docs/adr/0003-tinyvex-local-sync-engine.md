@@ -1,7 +1,7 @@
 # ADR 0003 — Tinyvex as the Local Sync Engine (SQLite + WS)
 
  - Date: 2025-10-31
- - Status: Accepted
+ - Status: Accepted — Updated for two‑package client and bridge‑hosted writer
 
 ## Context
 
@@ -18,8 +18,8 @@ We need a simple, in‑process alternative that:
 Adopt Tinyvex as our local sync engine:
 - In‑process SQLite database + lightweight WebSocket changefeed.
 - Source of truth remains at the provider boundary (ACP events, Codex JSONL rollouts). Tinyvex mirrors for fast queries and live UI.
-- Typed rows are defined in Rust and exported to TypeScript via `ts-rs`.
-- The app consumes typed Tinyvex snapshots/updates and makes typed queries over the existing bridge WebSocket (`/ws`).
+- Typed rows are defined in Rust and exported to TypeScript via `ts-rs` into `tricoder/types`.
+- The app and libraries consume typed Tinyvex snapshots/updates and make typed queries over the existing bridge WebSocket (`/ws`).
 
 Scope is intentionally small: Threads, Messages, and Tool Calls for live session views and the drawer; optional Projects/Skills mirroring for UI chrome.
 
@@ -61,11 +61,11 @@ Scope is intentionally small: Threads, Messages, and Tool Calls for live session
   - SQLite file: `~/.openagents/tinyvex/data.sqlite3`.
   - DDL for `threads`, `messages`, `tool_calls` (see `docs/tinyvex/schema.md`).
 - Bridge integration
-  - Writer that mirrors ACP updates to Tinyvex with idempotent upserts and finalization (`crates/oa-bridge/src/tinyvex_write.rs`).
-  - Typed envelopes and rows (`tinyvex.snapshot`, `tinyvex.update`, `tinyvex.query_result`) returned over `/ws` using `ts-rs` exported types (`expo/types/bridge/*`).
-  - Inbound sessions watcher for Codex rollouts (`crates/oa-bridge/src/watchers/sessions_watch.rs`) tails `~/.codex/sessions`, translates new‑format JSONL → ACP → Tinyvex.
+  - Writer hosted in the bridge that mirrors ACP updates to Tinyvex with idempotent upserts and finalization (`crates/oa-bridge/src/tvx_writer.rs`, used by `tinyvex_write.rs`).
+  - Typed envelopes and rows (`tinyvex.snapshot`, `tinyvex.update`, `tinyvex.query_result`) returned over `/ws` using `ts-rs` exported types (`tricoder/types`).
+  - Inbound sessions watcher for providers tails session stores and translates new‑format JSONL → ACP → Tinyvex.
 - App integration
-  - `TinyvexProvider` subscribes/queries over WS and renders typed rows. Drawer and thread timeline hydrate from Tinyvex snapshots/updates. The thread view is Tinyvex‑driven end‑to‑end — the app must not render raw ACP updates for the core chat/tool stream.
+  - Use the `tinyvex` npm package (`tinyvex/react`) for `<TinyvexProvider>` and a single hook to subscribe/query over WS and render typed rows. Drawer and thread timeline hydrate from Tinyvex snapshots/updates. The thread view is Tinyvex‑driven end‑to‑end — the app must not render raw ACP updates for the core chat/tool stream.
   - Tool calls: the provider treats Tinyvex as the single source of truth. On `tinyvex.update(stream:"toolCalls")` the provider schedules a bounded `toolCalls.list` requery and dedupes by `tool_call_id` on the client.
   - Aliasing: since the bridge may emit rows under either the canonical session id or the client thread doc id, the provider MUST alias results across both keys. When listing by canonical id, also project the same rows under the client doc id (and vice‑versa) so UI keyed by the route id hydrates immediately.
   - Optional: the provider may inject a short‑lived optimistic user message upon `run.submit` to cover the small window before Tinyvex persistence completes; this optimistic row is replaced once the Tinyvex write arrives.
@@ -81,7 +81,7 @@ Scope is intentionally small: Threads, Messages, and Tool Calls for live session
 - Bridge boots and logs Tinyvex readiness quickly (< 1s typical).
 - App can subscribe and query typed rows via WS with no additional services. The thread timeline renders only Tinyvex rows (messages/tool calls/plan/state); ACP updates are consumed by the bridge and mirrored into Tinyvex, not rendered directly by the app.
 - Inbound Codex sessions appear in the app within seconds; Tinyvex updates are idempotent.
-- WS payloads and app types are generated from Rust and use snake_case consistently (see ADR 0002).
+- WS payloads and app/client types are generated from Rust and use snake_case consistently (see ADR 0002). Types are consumed from `tricoder/types`.
 
 ## References
 
@@ -90,7 +90,7 @@ Scope is intentionally small: Threads, Messages, and Tool Calls for live session
 - WS bootstrap: docs/tinyvex/ws-bootstrap.md
 - Write paths: docs/tinyvex/write-paths.md
 - Threads/tails sequence: docs/tinyvex/threads-and-tails-sequence.md
-- App provider: `expo/providers/tinyvex.tsx`
-- Bridge writer: `crates/oa-bridge/src/tinyvex_write.rs`
-- Sessions watcher: `crates/oa-bridge/src/watchers/sessions_watch.rs`
+- App library: `tinyvex/react` (Provider + hook)
+- Bridge writer: `crates/oa-bridge/src/tvx_writer.rs` (used by `tinyvex_write.rs`)
+- Sessions watcher: `crates/oa-bridge/src/watchers/*`
 - ADR 0002 (Rust → TS types): docs/adr/0002-rust-to-ts-types.md
