@@ -16,6 +16,9 @@ export default defineConfig(async () => ({
     alias: {
       // Monorepo alias so CSS import resolves: '@openagentsinc/theme/web/theme.css'
       '@openagentsinc/theme': path.resolve(__dirname, '..', 'packages', 'openagents-theme'),
+      // Tinyvex client + tricoder types
+      'tinyvex': path.resolve(__dirname, '..', 'packages', 'tinyvex', 'src'),
+      'tricoder': path.resolve(__dirname, '..', 'packages', 'tricoder', 'src'),
     },
   },
 
