@@ -65,7 +65,10 @@ Scope is intentionally small: Threads, Messages, and Tool Calls for live session
   - Typed envelopes and rows (`tinyvex.snapshot`, `tinyvex.update`, `tinyvex.query_result`) returned over `/ws` using `ts-rs` exported types (`expo/types/bridge/*`).
   - Inbound sessions watcher for Codex rollouts (`crates/oa-bridge/src/watchers/sessions_watch.rs`) tails `~/.codex/sessions`, translates new‑format JSONL → ACP → Tinyvex.
 - App integration
-  - `TinyvexProvider` subscribes/queries over WS and renders typed rows. Drawer and thread timeline hydrate from Tinyvex snapshots/updates.
+  - `TinyvexProvider` subscribes/queries over WS and renders typed rows. Drawer and thread timeline hydrate from Tinyvex snapshots/updates. The thread view is Tinyvex‑driven end‑to‑end — the app must not render raw ACP updates for the core chat/tool stream.
+  - Tool calls: the provider treats Tinyvex as the single source of truth. On `tinyvex.update(stream:"toolCalls")` the provider schedules a bounded `toolCalls.list` requery and dedupes by `tool_call_id` on the client.
+  - Aliasing: since the bridge may emit rows under either the canonical session id or the client thread doc id, the provider MUST alias results across both keys. When listing by canonical id, also project the same rows under the client doc id (and vice‑versa) so UI keyed by the route id hydrates immediately.
+  - Optional: the provider may inject a short‑lived optimistic user message upon `run.submit` to cover the small window before Tinyvex persistence completes; this optimistic row is replaced once the Tinyvex write arrives.
   - No REST layer; all control is via WebSocket messages (e.g., `tvx.subscribe`, `tvx.query`).
 
 ## Operations
@@ -76,7 +79,7 @@ Scope is intentionally small: Threads, Messages, and Tool Calls for live session
 ## Acceptance
 
 - Bridge boots and logs Tinyvex readiness quickly (< 1s typical).
-- App can subscribe and query typed rows via WS with no additional services.
+- App can subscribe and query typed rows via WS with no additional services. The thread timeline renders only Tinyvex rows (messages/tool calls/plan/state); ACP updates are consumed by the bridge and mirrored into Tinyvex, not rendered directly by the app.
 - Inbound Codex sessions appear in the app within seconds; Tinyvex updates are idempotent.
 - WS payloads and app types are generated from Rust and use snake_case consistently (see ADR 0002).
 
