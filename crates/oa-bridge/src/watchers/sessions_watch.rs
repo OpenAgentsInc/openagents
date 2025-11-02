@@ -118,10 +118,13 @@ async fn process_file_append(state: &AppState, file_path: &Path, st: &mut FileSt
                     let mode = if ty == "item.delta" || ty == "event_msg" { crate::tinyvex_write::StreamMode::Delta } else { crate::tinyvex_write::StreamMode::Finalize };
                     crate::tinyvex_write::mirror_acp_update_to_tinyvex_mode(state, "codex", &id, &update, mode).await;
                     // Also mirror to client thread doc id if we have a mapping for this session
-                    if let Some(alias) = { state.client_doc_by_session.lock().await.get(&id).cloned() } {
+                    let alias_opt = { state.client_doc_by_session.lock().await.get(&id).cloned() };
+                    if let Some(alias) = alias_opt.clone() {
                         crate::tinyvex_write::mirror_acp_update_to_tinyvex_mode(state, "codex", &alias, &update, mode).await;
+                        tracing::info!(path=%file_path.display(), thread_id=%id, alias=%alias, mode=?mode, "codex watcher: mirrored update to BOTH session and alias");
+                    } else {
+                        tracing::warn!(path=%file_path.display(), thread_id=%id, mode=?mode, "codex watcher: NO ALIAS MAPPING FOUND - mirrored to session only");
                     }
-                    tracing::info!(path=%file_path.display(), thread_id=%id, mode=?mode, "codex watcher: mirrored update");
                 } else {
                     tracing::warn!(path=%file_path.display(), "codex watcher: update without known thread id; skipping");
                 }
@@ -412,6 +415,61 @@ mod tests {
         // Assert: no duplicate messages created (still 2 messages)
         let msgs_after = state.tinyvex.list_messages("sess-trunc", 50).unwrap();
         assert_eq!(msgs_after.len(), 2, "truncation should not create duplicate messages");
+    }
+
+    #[tokio::test]
+    async fn mirrors_to_alias_created_after_file_processing() {
+        // This test covers the race condition where:
+        // 1. Watcher processes a new file and writes to session ID
+        // 2. Mapping is created immediately after
+        // 3. Subsequent updates should mirror to both IDs
+        
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("rollout-race.jsonl");
+        
+        // Create file with session and initial message
+        let mut f = std::fs::File::create(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"sess-race"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.delta","item":{"id":"item_1","type":"agent_message","text":"msg 1"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"msg 1"}})).unwrap();
+        drop(f);
+        
+        let state = test_state().await;
+        let mut fs = FileState::default();
+        fs.thread_id = scan_for_thread_id(&p);
+        
+        // Process file WITHOUT mapping (simulates watcher processing before thread.started)
+        process_file_append(&state, &p, &mut fs).await.expect("first process ok");
+        
+        // Verify message exists under session ID only
+        let msgs_session = state.tinyvex.list_messages("sess-race", 50).unwrap();
+        assert_eq!(msgs_session.len(), 1, "message should exist under session ID");
+        
+        let msgs_client = state.tinyvex.list_messages("t-client-race", 50).unwrap();
+        assert_eq!(msgs_client.len(), 0, "message should NOT exist under client doc yet");
+        
+        // NOW create the mapping (simulates thread.started being processed)
+        {
+            let mut map = state.client_doc_by_session.lock().await;
+            map.insert("sess-race".into(), "t-client-race".into());
+        }
+        
+        // Append a new message (simulates codex continuing to write)
+        let mut f = std::fs::OpenOptions::new().append(true).open(&p).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.delta","item":{"id":"item_2","type":"agent_message","text":"msg 2"}})).unwrap();
+        writeln!(f, "{}", serde_json::json!({"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"msg 2"}})).unwrap();
+        drop(f);
+        
+        // Process new content WITH mapping
+        process_file_append(&state, &p, &mut fs).await.expect("second process ok");
+        
+        // Verify NEW message exists under BOTH IDs
+        let msgs_session_after = state.tinyvex.list_messages("sess-race", 50).unwrap();
+        assert_eq!(msgs_session_after.len(), 2, "both messages should exist under session ID");
+        
+        let msgs_client_after = state.tinyvex.list_messages("t-client-race", 50).unwrap();
+        assert_eq!(msgs_client_after.len(), 1, "ONLY the new message (after mapping) should exist under client doc");
+        assert_eq!(msgs_client_after[0].text.as_deref(), Some("msg 2"), "second message should be mirrored to client doc");
     }
 
     #[tokio::test]
