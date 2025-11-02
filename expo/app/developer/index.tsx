@@ -1,6 +1,7 @@
 import React from 'react'
 import { ScrollView, Text, View, Pressable } from 'react-native'
 import { router } from 'expo-router'
+import { typedRouter } from '@/lib/typed-router'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useHeaderTitle } from '@/lib/header-store'
@@ -21,7 +22,7 @@ export default function DeveloperMenu() {
       <View style={{ gap: 12 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Thread Tools</Text>
         <Pressable
-          onPress={() => { try { router.push('/developer/recent-thread' as any) } catch {} }}
+          onPress={() => { try { typedRouter.push('/developer/recent-thread') } catch {} }}
           accessibilityRole="button"
           style={{ paddingVertical: 10 }}
         >

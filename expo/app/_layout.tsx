@@ -35,6 +35,7 @@ import { ThemeProvider } from "@react-navigation/native"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { useUpdateStore } from "@/lib/update-store"
 import { useArchiveStore } from "@/lib/archive-store"
+import { typedRouter } from "@/lib/typed-router"
 
 function DrawerContent() {
   const router = useRouter();
@@ -141,7 +142,7 @@ function DrawerContent() {
                     <DrawerThreadItem
                       key={String(row.id)}
                       row={row}
-                      onPress={closeAnd(() => router.push(`/thread/${encodeURIComponent(String(row.id))}`))}
+                      onPress={closeAnd(() => typedRouter.push(`/thread/${encodeURIComponent(String(row.id))}`))}
                       onLongPress={() => showActions(String(row.id))}
                     />
                   ))}
@@ -154,7 +155,7 @@ function DrawerContent() {
               <Ionicons name="archive-outline" size={14} color={Colors.secondary} />
               <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Archived</Text>
             </View>
-            <Pressable onPress={closeAnd(() => router.push('/thread/archived'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
+            <Pressable onPress={closeAnd(() => typedRouter.push('/thread/archived'))} accessibilityRole="button" style={{ paddingVertical: 8 }}>
               <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>View archived</Text>
             </Pressable>
           </View>
@@ -207,7 +208,7 @@ function DrawerContent() {
             <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Settings</Text>
           </Pressable>
           <Pressable
-            onPress={closeAnd(() => router.push('/help'))}
+            onPress={closeAnd(() => typedRouter.push('/help'))}
             accessibilityRole="button"
             accessibilityLabel="Open help"
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
@@ -217,7 +218,7 @@ function DrawerContent() {
           </Pressable>
           {isDevEnv ? (
             <Pressable
-              onPress={closeAnd(() => router.push('/developer'))}
+              onPress={closeAnd(() => typedRouter.push('/developer'))}
               accessibilityRole="button"
               accessibilityLabel="Open developer tools"
               testID="drawer-developer"
@@ -348,7 +349,7 @@ function DrawerWrapper() {
     const path = String(pathname || '')
     if (connected && path.startsWith('/onboarding')) {
       // Restore last route if we have one; otherwise go to a new thread
-      try { router.replace((lastRoute && !lastRoute.startsWith('/onboarding')) ? (lastRoute as any) : ('/thread/new' as any)) } catch {}
+      typedRouter.replace((lastRoute && !lastRoute.startsWith('/onboarding')) ? lastRoute : '/thread/new')
       try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
     }
   }, [connected, pathname, lastRoute])
@@ -451,7 +452,7 @@ function LinkingBootstrap() {
         try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
         try { connect() } catch {}
         // While connecting, Drawer gating allows /thread paths; land user in a new thread.
-        try { router.replace('/thread/new' as any) } catch {}
+        typedRouter.replace('/thread/new')
       } catch {}
     }
     try { Linking.getInitialURL().then((u) => { if (u) handleUrl(u) }).catch(() => {}) } catch {}

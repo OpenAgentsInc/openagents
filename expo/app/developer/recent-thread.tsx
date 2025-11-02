@@ -1,6 +1,7 @@
 import React from 'react'
 import { Text, View, Pressable } from 'react-native'
 import { router } from 'expo-router'
+import { typedRouter } from '@/lib/typed-router'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useIsDevEnv } from '@/lib/env'
@@ -62,7 +63,7 @@ export default function RecentCodexThread() {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, textAlign: 'center', marginBottom: 10 }}>No Codex chats found yet.</Text>
-        <Pressable onPress={() => { try { router.replace('/thread/new' as any) } catch {} }} accessibilityRole="button" style={{ paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card }}>
+        <Pressable onPress={() => { try { typedRouter.replace('/thread/new') } catch {} }} accessibilityRole="button" style={{ paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card }}>
           <Text style={{ color: Colors.foreground, fontFamily: Typography.bold, fontSize: 14 }}>Start New Thread</Text>
         </Pressable>
       </View>

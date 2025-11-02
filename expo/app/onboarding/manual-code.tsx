@@ -6,6 +6,7 @@ import { Typography } from '@/constants/typography'
 import { normalizeBridgeCodeInput, parseBridgeCode } from '@/lib/pairing'
 import { useBridge } from '@/providers/ws'
 import { useSettings } from '@/lib/settings-store'
+import { typedRouter } from '@/lib/typed-router'
 
 export default function ManualCodeScreen() {
   const router = useRouter()
@@ -40,7 +41,7 @@ export default function ManualCodeScreen() {
     try { if (parsed.bridgeHost) setBridgeHost(parsed.bridgeHost) } catch {}
     try { if (parsed.token) setBridgeToken(parsed.token || '') } catch {}
     try { connect() } catch {}
-    try { router.replace('/thread/new' as any) } catch {}
+    typedRouter.replace('/thread/new')
   }, [canConnect, connecting, display])
 
   return (
