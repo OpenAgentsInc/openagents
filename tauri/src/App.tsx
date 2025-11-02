@@ -21,6 +21,18 @@ function App() {
   }, [host, token])
   const wsBase = useMemo(() => (host ? `ws://${host}/ws` : ''), [host])
 
+  // Fetch token in the background from ~/.openagents/bridge.json and prefill state
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const t = await invoke<string | null>('get_bridge_token')
+        if (!cancelled && t) setToken(t)
+      } catch {}
+    })()
+    return () => { cancelled = true }
+  }, [])
+
   const connect = () => {
     try { disconnect() } catch {}
     if (!wsUrl) return
@@ -84,14 +96,3 @@ function App() {
 }
 
 export default App;
-  // Fetch token in the background from ~/.openagents/bridge.json and prefill state
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const t = await invoke<string | null>('get_bridge_token')
-        if (!cancelled && t) setToken(t)
-      } catch {}
-    })()
-    return () => { cancelled = true }
-  }, [])
