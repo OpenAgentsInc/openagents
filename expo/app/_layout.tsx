@@ -14,6 +14,7 @@ import { Drawer } from "react-native-drawer-layout"
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"
 import { AppHeader } from "@/components/AppHeader"
 import { DrawerThreadItem } from "@/components/drawer/ThreadListItem"
+import type { ThreadRow } from '@/providers/tinyvex'
 import { ToastOverlay } from "@/components/ToastOverlay"
 import { Colors, NavigationTheme } from "@/constants/theme"
 import {
@@ -142,11 +143,11 @@ function DrawerContent() {
               ) : (
                 <View testID="drawer-threads">
                   {(topThreads || []).map((row) => {
-                    // Normalize types for DrawerThreadItem (expects provider ThreadRow shape)
-                    const rowNorm = {
+                    // Normalize to provider ThreadRow shape without type assertions
+                    const rowNorm: ThreadRow = {
                       ...row,
-                      last_message_ts: (row as any).last_message_ts ?? null,
-                    } as import('@/providers/tinyvex').ThreadRow;
+                      last_message_ts: row.last_message_ts ?? null,
+                    };
                     return (
                     <DrawerThreadItem
                       key={String(row.id)}
