@@ -61,6 +61,115 @@ mod ts_export {
     }
 }
 
+#[cfg(test)]
+mod ws_smoke_tests {
+    use futures::{SinkExt, StreamExt};
+    use tokio::sync::{broadcast, Mutex};
+
+    #[tokio::test]
+    async fn ws_query_and_update_smoke() {
+        // Minimal state
+        let (tx, _rx) = broadcast::channel(64);
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("tvx.sqlite3");
+        let tvx = std::sync::Arc::new(tinyvex::Tinyvex::open(&db_path).unwrap());
+        let state = std::sync::Arc::new(crate::state::AppState {
+            tx,
+            child_stdin: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            opts: crate::Opts {
+                bind: "127.0.0.1:0".into(),
+                codex_bin: None,
+                codex_args: None,
+                extra: vec![],
+                ws_token: Some("t".into()),
+                claude_bin: None,
+                claude_args: None,
+            },
+            last_thread_id: Mutex::new(None),
+            history: Mutex::new(Vec::new()),
+            current_thread_doc: Mutex::new(None),
+            stream_track: Mutex::new(std::collections::HashMap::new()),
+            pending_user_text: Mutex::new(std::collections::HashMap::new()),
+            bridge_ready: std::sync::atomic::AtomicBool::new(true),
+            tinyvex: tvx.clone(),
+            tinyvex_writer: std::sync::Arc::new(tinyvex::Writer::new(tvx.clone())),
+            sync_enabled: std::sync::atomic::AtomicBool::new(true),
+            sync_two_way: std::sync::atomic::AtomicBool::new(false),
+            sync_last_read_ms: Mutex::new(0),
+            sync_cmd_tx: Mutex::new(None),
+            sync_cmd_tx_claude: Mutex::new(None),
+            sessions_by_client_doc: Mutex::new(std::collections::HashMap::new()),
+            client_doc_by_session: Mutex::new(std::collections::HashMap::new()),
+        });
+
+        // Seed a thread row
+        let now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+        let thr = tinyvex::ThreadRow {
+            id: "t-ws".into(),
+            thread_id: Some("t-ws".into()),
+            title: "Thread".into(),
+            project_id: None,
+            resume_id: Some("t-ws".into()),
+            rollout_path: None,
+            source: Some("codex".into()),
+            created_at: now(),
+            updated_at: now(),
+            message_count: None,
+            last_message_ts: None,
+        };
+        tvx.upsert_thread(&thr).unwrap();
+
+        // Start server
+        let app = axum::Router::new()
+            .route("/ws", axum::routing::get(super::ws_handler))
+            .with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let serve = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        // Connect
+        let url = format!("ws://{}/ws?token=t", addr);
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(url).await.unwrap();
+        // Drain any initial message
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(50), ws.next()).await;
+        // Query threads.list
+        let q = serde_json::json!({"control":"tvx.query","name":"threads.list","args":{"limit": 10}}).to_string();
+        ws.send(tokio_tungstenite::tungstenite::Message::Text(q.into())).await.unwrap();
+        let mut saw = false;
+        for _ in 0..10 {
+            if let Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(txt)))) = tokio::time::timeout(std::time::Duration::from_millis(250), ws.next()).await {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                    if v.get("type").and_then(|x| x.as_str()) == Some("tinyvex.query_result") && v.get("name").and_then(|x| x.as_str()) == Some("threads.list") {
+                        let rows = v.get("rows").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+                        assert!(!rows.is_empty());
+                        assert!(rows[0].get("updated_at").is_some());
+                        saw = true;
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(saw);
+
+        // Trigger update
+        super::stream_upsert_or_append(&state, "t-ws", "assistant", "hello").await;
+        let mut got_update = false;
+        for _ in 0..10 {
+            if let Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(txt)))) = tokio::time::timeout(std::time::Duration::from_millis(250), ws.next()).await {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                    if v.get("type").and_then(|x| x.as_str()) == Some("tinyvex.update") && v.get("stream").and_then(|x| x.as_str()) == Some("messages") {
+                        got_update = true;
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(got_update);
+        serve.abort();
+    }
+}
+
 /// Axum handler for the `/ws` route. Upgrades to a WebSocket and delegates to `handle_socket`.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
