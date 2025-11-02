@@ -79,6 +79,9 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   const [toolCallsByThread, setToolCallsByThread] = useState<Record<string, ToolCallRow[]>>({})
   const [planTouched, setPlanTouched] = useState<Record<string, number>>({})
   const [stateTouched, setStateTouched] = useState<Record<string, number>>({})
+  // Latest threads in a ref to avoid recreating callbacks; used for stable lookups
+  const threadsRef = useRef<ThreadRow[]>(threads)
+  useEffect(() => { threadsRef.current = threads }, [threads])
 
   // Helpers to resolve aliasing between a client thread doc id and the
   // canonical session id (resume_id). When the bridge restarts before the
@@ -87,17 +90,19 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   // under the client doc key as well.
   const getResumeForId = useCallback((tid: string): string | null => {
     try {
-      const row = (Array.isArray(threads) ? threads : []).find((r) => String(r.id) === String(tid))
+      const list = Array.isArray(threadsRef.current) ? threadsRef.current : []
+      const row = list.find((r) => String(r.id) === String(tid))
       const rid = row?.resume_id ?? null
       return rid ? String(rid) : null
     } catch { return null }
-  }, [threads])
+  }, [])
   const getAliasForCanonical = useCallback((canonicalId: string): string | null => {
     try {
-      const row = (Array.isArray(threads) ? threads : []).find((r) => String(r.resume_id ?? '') === String(canonicalId))
+      const list = Array.isArray(threadsRef.current) ? threadsRef.current : []
+      const row = list.find((r) => String(r.resume_id ?? '') === String(canonicalId))
       return row ? String(row.id) : null
     } catch { return null }
-  }, [threads])
+  }, [])
 
   // Handle incoming bridge events. We only parse JSON objects and ignore
   // plaintext rows for safety/perf. This function mutates provider state and
@@ -272,18 +277,20 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => bridge.addSubscriber(onMessage), [bridge, onMessage])
 
   // Throttlers and debouncers used for follow-up queries
+  // Use stable `send` from bridge to keep these throttles persistent across renders
+  const stableSend = bridge.send
   const scheduleMsgQuery = useMemo(() => {
     const throttle = createPerKeyThrottle(MSG_QUERY_THROTTLE_MS)
     return (threadId: string) => throttle(threadId, () => {
-      try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: threadId, limit: DEFAULT_THREAD_TAIL } })) } catch {}
+      try { stableSend(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: threadId, limit: DEFAULT_THREAD_TAIL } })) } catch {}
     })
-  }, [bridge])
+  }, [stableSend])
   const scheduleThreadsRefresh = useMemo(() => {
     const debounce = createPerKeyDebounce(THREADS_REFRESH_DEBOUNCE_MS)
     return () => debounce('threads', () => {
-      try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
+      try { stableSend(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } })) } catch {}
     })
-  }, [bridge])
+  }, [stableSend])
 
   // Auto-subscribe and fetch when the bridge connects
   useEffect(() => {
@@ -333,32 +340,56 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
   }, [threads, connected])
 
   const subscribeThreads = useCallback(() => {
-    bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' }))
-  }, [bridge])
+    stableSend(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' }))
+  }, [stableSend])
+  // Track which threads we've subscribed to for idempotency
+  const subscribedThreadsRef = useRef<Set<string>>(new Set())
   const subscribeMessages = useCallback((threadId: string) => {
-    try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', thread_id: threadId })) } catch {}
+    const trySub = (tid: string) => {
+      if (!tid) return
+      const set = subscribedThreadsRef.current
+      if (set.has(tid)) return
+      set.add(tid)
+      try { stableSend(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', thread_id: tid })) } catch {}
+    }
+    trySub(threadId)
     try {
       const canonical = getResumeForId(threadId)
-      if (canonical && canonical !== threadId) {
-        bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', thread_id: canonical }))
-      }
+      if (canonical && canonical !== threadId) trySub(canonical)
     } catch {}
-  }, [bridge, getResumeForId])
+  }, [stableSend, getResumeForId])
   const queryThreads = useCallback((limit: number = 50) => {
-    bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit } }))
-  }, [bridge])
+    stableSend(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit } }))
+  }, [stableSend])
   const queryMessages = useCallback((threadId: string, limit: number = DEFAULT_THREAD_TAIL) => {
-    try { bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: threadId, limit } })) } catch {}
+    try { stableSend(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: threadId, limit } })) } catch {}
     try {
       const canonical = getResumeForId(threadId)
       if (canonical && canonical !== threadId) {
-        bridge.send(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: canonical, limit } }))
+        stableSend(JSON.stringify({ control: 'tvx.query', name: 'messages.list', args: { thread_id: canonical, limit } }))
       }
     } catch {}
-  }, [bridge, getResumeForId])
+  }, [stableSend, getResumeForId])
   const queryToolCalls = useCallback((threadId: string, limit: number = 50) => {
-    bridge.send(JSON.stringify({ control: 'tvx.query', name: 'toolCalls.list', args: { thread_id: threadId, limit } }))
-  }, [bridge])
+    try { stableSend(JSON.stringify({ control: 'tvx.query', name: 'toolCalls.list', args: { thread_id: threadId, limit } })) } catch {}
+    try {
+      const canonical = getResumeForId(threadId)
+      if (canonical && canonical !== threadId) {
+        stableSend(JSON.stringify({ control: 'tvx.query', name: 'toolCalls.list', args: { thread_id: canonical, limit } }))
+      }
+    } catch {}
+  }, [stableSend, getResumeForId])
+
+  // On reconnect, re-subscribe to any message streams we previously subscribed to.
+  useEffect(() => {
+    if (!connected) return
+    try {
+      const set = subscribedThreadsRef.current
+      for (const tid of Array.from(set)) {
+        try { stableSend(JSON.stringify({ control: 'tvx.subscribe', stream: 'messages', thread_id: tid })) } catch {}
+      }
+    } catch {}
+  }, [connected, stableSend])
 
   const value = useMemo(() => ({ threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls }), [threads, messagesByThread, subscribeThreads, subscribeMessages, queryThreads, queryMessages, queryToolCalls])
   const ctxValue = useMemo(() => ({
