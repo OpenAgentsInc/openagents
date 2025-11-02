@@ -1388,11 +1388,12 @@ pub async fn start_stream_forwarders(mut child: ChildWithIo, state: Arc<AppState
                                 });
                                 let _ = tx_out.send(serde_json::json!({"type":"bridge.acp","notification": notif}).to_string());
                                 // Persist via Tinyvex mirror so UI history shows user message
+                                // IMPORTANT: Write to canonical session ID (val), not client doc ID, so all messages appear in same thread
                                 let update = agent_client_protocol::SessionUpdate::UserMessageChunk(agent_client_protocol::ContentChunk {
                                     content: agent_client_protocol::ContentBlock::Text(agent_client_protocol::TextContent { annotations: None, text: user_text.clone(), meta: None }),
                                     meta: None,
                                 });
-                                crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, "codex", &client_doc_str, &update).await;
+                                crate::tinyvex_write::mirror_acp_update_to_tinyvex(&state_for_stdout, "codex", val, &update).await;
                                 // Also write to unified acp_events log
                                 let _ = state_for_stdout.tinyvex.insert_acp_event(Some(&val.to_string()), Some(&client_doc_str), ts_now.try_into().unwrap(), Some(0), "user_message_chunk", Some("user"), Some(&user_text), None, None, None, None, None, None);
                             }
