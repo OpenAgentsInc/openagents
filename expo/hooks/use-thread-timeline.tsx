@@ -27,15 +27,7 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
   const msgRows: MessageRow[] = React.useMemo(() => messagesByThread[threadId] ?? [], [messagesByThread, threadId])
   const toolRows: ToolCallRow[] = React.useMemo(() => toolCallsByThread[threadId] ?? [], [toolCallsByThread, threadId])
 
-  // DEBUG: Log message rows to diagnose rendering issue
-  React.useEffect(() => {
-    if (msgRows.length > 0) {
-      console.log(`[Timeline Debug] threadId=${threadId} msgRows.length=${msgRows.length}`)
-      msgRows.forEach((r, idx) => {
-        console.log(`[Timeline Debug] msg[${idx}]: id=${r.id} kind=${r.kind} role=${r.role} text=${r.text?.substring(0, 50)}...`)
-      })
-    }
-  }, [threadId, msgRows])
+  // No debug logs in production — timeline derives purely from Tinyvex rows and live ACP.
 
   const items: TimelineItem[] = []
   // Tinyvex messages: transform via shared utility
@@ -49,11 +41,7 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
     }
   }
 
-  // DEBUG: Log final items count
-  console.log(`[Timeline Debug] Final items count: ${items.length}`)
-  items.forEach((item, idx) => {
-    console.log(`[Timeline Debug] Item[${idx}]: key=${item.key}`)
-  })
+  // Do not log item keys in production.
 
   // ACP updates
   // Show live ACP agent chunks as soon as they arrive for responsiveness,
