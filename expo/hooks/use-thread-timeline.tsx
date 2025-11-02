@@ -26,16 +26,32 @@ export function useThreadTimeline(threadId: string): TimelineItem[] {
   const msgRows: MessageRow[] = React.useMemo(() => messagesByThread[threadId] ?? [], [messagesByThread, threadId])
   const toolRows: ToolCallRow[] = React.useMemo(() => toolCallsByThread[threadId] ?? [], [toolCallsByThread, threadId])
 
+  // DEBUG: Log message rows to diagnose rendering issue
+  React.useEffect(() => {
+    if (msgRows.length > 0) {
+      console.log(`[Timeline Debug] threadId=${threadId} msgRows.length=${msgRows.length}`)
+      msgRows.forEach((r, idx) => {
+        console.log(`[Timeline Debug] msg[${idx}]: id=${r.id} kind=${r.kind} role=${r.role} text=${r.text?.substring(0, 50)}...`)
+      })
+    }
+  }, [threadId, msgRows])
+
   const items: TimelineItem[] = []
   // Tinyvex messages: last N already ascending
   for (const r of msgRows) {
     const ts = Number(r.ts || r.updated_at || r.created_at || Date.now())
     const kind = String(r.kind || '').toLowerCase()
-    if (kind === 'reason') continue // omit inline; shown in detail
+    console.log(`[Timeline Debug] Processing msg id=${r.id} kind=${kind} role=${r.role}`)
+    if (kind === 'reason') {
+      console.log(`[Timeline Debug] Skipping reason message id=${r.id}`)
+      continue // omit inline; shown in detail
+    }
     if (kind === 'assistant' || (kind === 'message' && (r.role || '').toLowerCase() === 'assistant')) {
+      console.log(`[Timeline Debug] Rendering ASSISTANT message id=${r.id} text=${r.text?.substring(0, 50)}`)
       const content: { type: 'text'; text: string } = { type: 'text', text: String(r.text || '') }
       items.push({ key: `tvx-a-${r.id}`, ts, node: <SessionUpdateAgentMessageChunk content={content} /> })
     } else {
+      console.log(`[Timeline Debug] Rendering USER message id=${r.id} text=${r.text?.substring(0, 50)}`)
       const content: { type: 'text'; text: string } = { type: 'text', text: String(r.text || '') }
       items.push({ key: `tvx-u-${r.id}`, ts, node: <SessionUpdateUserMessageChunk content={content} /> })
     }

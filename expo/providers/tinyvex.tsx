@@ -251,12 +251,17 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
     } else if (isTvxQueryMessages(obj)) {
+      console.log(`[Tinyvex Provider] Received messages.list for thread_id=${obj.thread_id} rows=${obj.rows.length}`)
+      obj.rows.forEach((r, idx) => {
+        console.log(`[Tinyvex Provider] row[${idx}]: id=${r.id} kind=${r.kind} role=${r.role} text=${r.text?.substring(0, 50)}`)
+      })
       setMessagesByThread((prev) => ({ ...prev, [obj.thread_id]: obj.rows }))
       // If these rows correspond to a canonical session id, also project them onto the
       // client doc id so thread screens keyed by that id hydrate immediately.
       try {
         const alias = getAliasForCanonical(String(obj.thread_id))
         if (alias && alias !== obj.thread_id) {
+          console.log(`[Tinyvex Provider] Also projecting ${obj.rows.length} rows onto alias=${alias}`)
           setMessagesByThread((prev) => ({ ...prev, [alias]: obj.rows }))
         }
       } catch {}
