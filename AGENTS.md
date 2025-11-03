@@ -35,7 +35,8 @@
   - Agent prompts: Session screen optionally prefixes a one‑line JSON config indicating sandbox/approvals to match the bridge.
 - Conventions & Policies (highlights):
   - TypeScript strict, 2‑space indent, imports grouped React/external → internal. Expo Router filename conventions.
-  - Expo installs: use `bunx expo install` for RN/Expo packages; `bun add` for generic libs. Don’t pin versions manually; commit `bun.lock`.
+- Expo installs: use `bunx expo install` for RN/Expo packages; `bun add` for generic libs. Don’t pin versions manually; commit `bun.lock`.
+ - Always prefer the package manager to manage versions. Do NOT hand-edit `package.json` to set specific versions or guess from memory. Use `bun add <pkg>` (or `bunx expo install <pkg>` for Expo/RN) so compatible latest versions are resolved and written to `bun.lock`.
   - OTA iOS default: prefer `bun run update:ios -- "<msg>"` unless Android explicitly requested.
   - Rust deps: add via `cargo add` without versions; let Cargo lock at root.
   - Security: no secrets; iOS bundle id `com.openagents.app`.
