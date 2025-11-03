@@ -43,6 +43,42 @@ enum LocalCodexScanner {
         return out
     }
 
+    /// Fast top-N file finder tailored for Codex sessions shape: base/YYYY/MM/DD/rollout-*.jsonl
+    /// Falls back to a shallow enumerator if the shape isn't present.
+    static func listRecentTopN(at base: URL, topK: Int) -> [URL] {
+        var picked: [URL] = []
+        let fm = FileManager.default
+        // Try shaped walk first
+        let years = (try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true && $0.lastPathComponent.count == 4 } ?? []
+        if !years.isEmpty {
+            let ySorted = years.sorted { $0.lastPathComponent > $1.lastPathComponent }
+            for y in ySorted {
+                let months = (try? fm.contentsOfDirectory(at: y, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
+                let mSorted = months.sorted { $0.lastPathComponent > $1.lastPathComponent }
+                for m in mSorted {
+                    let days = (try? fm.contentsOfDirectory(at: m, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
+                    let dSorted = days.sorted { $0.lastPathComponent > $1.lastPathComponent }
+                    for d in dSorted {
+                        var files = (try? fm.contentsOfDirectory(at: d, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]))?.filter { $0.pathExtension.lowercased() == "jsonl" } ?? []
+                        files.sort { fileMTime($0) > fileMTime($1) }
+                        for f in files { picked.append(f); if picked.count >= topK { return picked } }
+                    }
+                }
+            }
+        }
+        // Fallback: shallow enumerator, collect topK by mtime without content checks
+        var all: [URL] = []
+        if let en = fm.enumerator(at: base, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) {
+            for case let url as URL in en {
+                if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { continue }
+                if url.pathExtension.lowercased() == "jsonl" { all.append(url) }
+            }
+        }
+        all.sort { fileMTime($0) > fileMTime($1) }
+        if all.count > topK { all = Array(all.prefix(topK)) }
+        return all
+    }
+
     static func extractThreadID(fromJSONLine line: String) -> String? {
         guard let data = line.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         let type = json["type"] as? String ?? ""
@@ -216,16 +252,22 @@ enum LocalCodexDiscovery {
         return uniq
     }
 
-    static func loadAllSummaries(maxFilesPerBase: Int = 1000, maxResults: Int = 500) -> [LocalThreadSummary] {
-        var rows: [LocalThreadSummary] = []
+    static func loadAllSummaries(topK: Int = 10) -> [LocalThreadSummary] {
         let bases = discoverBaseDirs()
-        for base in bases {
-            let r = LocalCodexScanner.scanFast(options: .init(baseDir: base, maxFiles: maxFilesPerBase))
-            rows.append(contentsOf: r)
+        // Gather recent candidates per base without content reads
+        var candidates: [URL] = []
+        for b in bases {
+            candidates.append(contentsOf: LocalCodexScanner.listRecentTopN(at: b, topK: topK))
         }
-        // sort newest first
-        rows.sort { $0.updated_at > $1.updated_at }
-        if rows.count > maxResults { rows = Array(rows.prefix(maxResults)) }
+        // Merge and pick global topK by mtime
+        candidates.sort { LocalCodexScanner.fileMTime($0) > LocalCodexScanner.fileMTime($1) }
+        if candidates.count > topK { candidates = Array(candidates.prefix(topK)) }
+        let rows: [LocalThreadSummary] = candidates.map { url in
+            let base = bases.first { url.path.hasPrefix($0.path) } ?? url.deletingLastPathComponent()
+            let id = LocalCodexScanner.scanForThreadID(url) ?? LocalCodexScanner.relativeId(for: url, base: base)
+            let updated = LocalCodexScanner.fileMTime(url)
+            return LocalThreadSummary(id: id, title: nil, source: "codex", created_at: nil, updated_at: updated, last_message_ts: nil, message_count: nil)
+        }
         print("[History] Codex bases=\(bases.map{ $0.path }) items=\(rows.count)")
         return rows
     }
