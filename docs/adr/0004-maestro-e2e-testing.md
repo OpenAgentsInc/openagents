@@ -41,6 +41,7 @@ Adopt Maestro as the primary E2E test runner for both iOS and Android. Target ne
   - Deep‑link pairing stress tests (optional later).
   - Rich content assertions for streaming (we prefer history confirmation for robustness).
   - Library demos in the stable lane (run only under dev guard when needed).
+  - Desktop (Tauri) coverage — handled separately; see ADR‑0010.
 
 ## Implementation Plan
 
@@ -124,6 +125,7 @@ Notes:
 
 - Detox/Appium — more setup, slower iteration; Maestro’s declarative flows better match our needs and DX.
 - In‑app integration tests — useful but do not exercise OS‑level navigation and dev‑client boot paths.
+- Desktop: WebdriverIO (ADR‑0010) is chosen for Tauri instead of Maestro, since Maestro targets mobile only.
 
 ## Compliance with ADR‑0002 and ADR‑0003
 
