@@ -56,9 +56,30 @@ export default function SettingsScreen() {
   React.useEffect(() => {
     const off = addSubscriber((raw) => {
       try {
-        const s = String(raw || '')
-        // Ignore JSON envelopes here (handled above) and empty lines
-        if (!s || s[0] === '{') return
+        const s = String(raw || '').trim()
+        if (!s) return
+        // If JSON, format a concise one-line log; otherwise store raw
+        if (s[0] === '{') {
+          try {
+            const obj = JSON.parse(s)
+            const type = typeof obj.type === 'string' ? obj.type : ''
+            // Only surface likely log-like envelopes
+            if (type && (type.startsWith('bridge.') || type.includes('tinyvex') || type.includes('ws') || type.includes('exec'))) {
+              const name = obj.name ? String(obj.name) : ''
+              const stream = obj.stream ? String(obj.stream) : ''
+              const rows = Array.isArray(obj.rows) ? ` rows=${obj.rows.length}` : ''
+              const msg = obj.msg || obj.message || obj.text_preview || ''
+              const line = [type, name || stream, rows || ''].filter(Boolean).join(' ').trim() + (msg ? ` — ${String(msg).slice(0, 180)}` : '')
+              setBridgeLogs((prev) => {
+                const next = [...prev, line]
+                return next.length > 200 ? next.slice(next.length - 200) : next
+              })
+              return
+            }
+          } catch {}
+          return
+        }
+        // Plain text line
         setBridgeLogs((prev) => {
           const next = [...prev, s]
           return next.length > 200 ? next.slice(next.length - 200) : next
