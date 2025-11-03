@@ -110,6 +110,40 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, connecting, setBridgeHost, setBridgeToken, connect]);
 
+  // When running in Tauri, poll bridge_status logs and print new lines to the console.
+  useEffect(() => {
+    const anyWin: any = typeof window !== 'undefined' ? (window as any) : null;
+    if (!anyWin || !anyWin.__TAURI__ || !anyWin.__TAURI__.core?.invoke) return;
+    let alive = true;
+    const prevLenRef = { current: 0 } as { current: number };
+    const tick = async () => {
+      try {
+        const s = await anyWin.__TAURI__.core.invoke('bridge_status');
+        if (!alive || !s) return;
+        const obj = s as { running?: boolean; bind?: string; logs?: string[] };
+        if (Array.isArray(obj.logs)) {
+          const start = Math.max(0, obj.logs.length - 200);
+          const newLen = obj.logs.length;
+          const prev = prevLenRef.current;
+          if (newLen > prev) {
+            for (let i = prev; i < newLen; i++) {
+              const line = obj.logs[i];
+              try { console.log('[bridge.sidecar]', line) } catch {}
+            }
+            prevLenRef.current = newLen;
+          } else if (prev > newLen) {
+            // logs truncated/rotated; reset pointer
+            prevLenRef.current = newLen;
+          }
+        }
+      } catch {}
+    };
+    const id = setInterval(tick, 1000);
+    // Fire once immediately to surface initial status
+    tick().catch(() => {});
+    return () => { alive = false; clearInterval(id) };
+  }, []);
+
   // Normalize any legacy or malformed host values (e.g., ws://host:port/ws)
   const sanitizeHost = useCallback((raw: string): string => {
     try {
