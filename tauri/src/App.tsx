@@ -15,6 +15,8 @@ function App() {
   const [token, setToken] = useState<string>('')
   const [status, setStatus] = useState<'idle'|'connecting'|'open'|'closed'|'error'>('idle')
   const [connected, setConnected] = useState<boolean>(false)
+  const [runLocal, setRunLocal] = useState<boolean>(false)
+  const [sidecarLogs, setSidecarLogs] = useState<string[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [threads, setThreads] = useState<ThreadSummaryTs[]>([])
   const threadsRef = useRef<ThreadSummaryTs[]>([])
@@ -236,6 +238,30 @@ function App() {
     } catch {}
   }, [logs])
 
+  // Sidecar helpers
+  async function startLocalBridge() {
+    try {
+      const host = await invoke<string>('bridge_start', { bind: null, token: token || null })
+      if (host) { setHost(host); setRunLocal(true) }
+      // fetch initial status/logs
+      await refreshBridgeStatus()
+    } catch (e) {
+      console.warn('bridge_start failed', e)
+    }
+  }
+  async function stopLocalBridge() {
+    try { await invoke<boolean>('bridge_stop'); setRunLocal(false) } catch {}
+    await refreshBridgeStatus()
+  }
+  async function refreshBridgeStatus() {
+    try {
+      const s = await invoke<{ running: boolean; bind?: string; logs: string[] }>('bridge_status')
+      if (s?.bind) setHost(s.bind)
+      setRunLocal(!!s?.running)
+      setSidecarLogs(Array.isArray(s?.logs) ? s.logs.slice().reverse() : [])
+    } catch {}
+  }
+
   function formatRelative(ts: number): string {
     const now = Date.now()
     const diff = Math.max(0, now - ts)
@@ -307,6 +333,11 @@ function App() {
             <div style={{ textAlign: 'left', marginTop: 6 }}>
               <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>wsUrl: <span style={{ color: 'var(--secondary)' }}>{wsBase || '—'}</span></div>
               <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>Status: <span style={{ color: 'var(--secondary)' }}>{status}</span></div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+                <input id='run-local' type='checkbox' checked={runLocal} onChange={(e) => { if (e.currentTarget.checked) startLocalBridge(); else stopLocalBridge(); }} />
+                <label htmlFor='run-local' style={{ fontSize: 12, color: 'var(--secondary)' }}>Run local bridge</label>
+                <button onClick={refreshBridgeStatus} style={{ marginLeft: 'auto' }}>Refresh</button>
+              </div>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: '0 0 auto' }}>
@@ -373,6 +404,12 @@ function App() {
             <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: '0 0 auto', maxHeight: 200, overflowY: 'auto', padding: 10 }}>
               <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0, fontSize: 11, lineHeight: '15px' }}>
                 {logs.slice(-10).join('\n')}
+              </pre>
+            </div>
+            <h3 style={{ margin: '10px 0 6px', textAlign: 'left' }}>Bridge logs</h3>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: '0 0 auto', maxHeight: 140, overflowY: 'auto', padding: 10 }}>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0, fontSize: 11, lineHeight: '15px' }}>
+                {sidecarLogs.slice(-8).join('\n')}
               </pre>
             </div>
           </div>
