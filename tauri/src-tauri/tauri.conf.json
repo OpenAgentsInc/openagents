@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.openagents.desktop",
   "build": {
-    "beforeDevCommand": "cd ../expo && bunx expo export -p web --output-dir web-dev && node scripts/patch-web-dev-html.js web-dev && bunx http-server web-dev -p 19006 -c-1",
+    "beforeDevCommand": "cd ../expo && npx expo export -p web --output-dir web-dev && node scripts/patch-web-dev-html.js web-dev && npx http-server web-dev -p 19006 -c-1",
     "devUrl": "http://localhost:19006",
-    "beforeBuildCommand": "cd ../expo && bunx expo export -p web --output-dir web-dist",
+    "beforeBuildCommand": "cd ../expo && npx expo export -p web --output-dir web-dist",
     "frontendDist": "../../expo/web-dist"
   },
   "app": {
