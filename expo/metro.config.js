@@ -18,6 +18,11 @@ config.watchFolders = Array.from(new Set([
 ]))
 function resolveRequest(context, moduleName, platform) {
   try {
+    // Disable RN Web vendor prefixing to avoid inline-style-prefixer crashes in WebKit
+    if (/react-native-web\/(src|dist|cjs)\/modules\/prefixStyles$/.test(moduleName)) {
+      const filePath = path.resolve(__dirname, 'shims', 'rnw-prefixStyles', 'index.js')
+      return { type: 'sourceFile', filePath }
+    }
     // Web-only: shim expo-font to avoid 6000ms timeout in WebView
     if (platform === 'web' && (moduleName === 'expo-font' || moduleName.startsWith('expo-font/build'))) {
       const filePath = path.resolve(__dirname, 'shims', 'expo-font', 'index.js')
