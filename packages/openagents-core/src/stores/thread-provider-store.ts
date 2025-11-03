@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware/persist'
+import { universalJSONStorage } from './persist'
 
 export type AgentProvider = 'codex' | 'claude_code'
 
@@ -7,8 +9,17 @@ type ThreadProviderState = {
   setProvider: (threadId: string, provider: AgentProvider) => void
 }
 
-export const useThreadProviders = create<ThreadProviderState>()((set) => ({
-  byThread: {},
-  setProvider: (threadId, provider) => set((s) => ({ byThread: { ...s.byThread, [threadId]: provider } })),
-}))
-
+export const useThreadProviders = create<ThreadProviderState>()(
+  persist(
+    (set) => ({
+      byThread: {},
+      setProvider: (threadId, provider) => set((s) => ({ byThread: { ...s.byThread, [threadId]: provider } })),
+    }),
+    {
+      name: '@openagents/thread-provider-v1',
+      version: 1,
+      storage: universalJSONStorage(),
+      partialize: (s) => ({ byThread: s.byThread }),
+    }
+  )
+)

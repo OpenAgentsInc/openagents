@@ -11,10 +11,7 @@
       "tricoder/types": ["../packages/tricoder/src/types/index.ts"],
       "@openagentsinc/theme": ["../packages/openagents-theme"],
       "@openagentsinc/theme/*": ["../packages/openagents-theme/*"],
-      "@openagentsinc/core": ["../packages/openagents-core/index.d.ts"],
-      "zustand": ["./node_modules/zustand/index.d.ts"],
-      "zustand/middleware": ["./node_modules/zustand/middleware"],
-      "zustand/middleware/persist": ["./node_modules/zustand/middleware/persist/index.d.ts"]
+      "@openagentsinc/core": ["../packages/openagents-core/index.d.ts"]
     }
   },
   "include": [

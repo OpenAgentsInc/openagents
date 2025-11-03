@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware/persist'
 import { universalJSONStorage } from './persist'
 
 export type ThreadItem = { ts: number; kind: 'message'|'reason'|'cmd'; role?: 'assistant'|'user'; text: string }
@@ -85,4 +85,3 @@ export function ensureThreadsRehydrated(): Promise<void> {
   }
   return threadsRehydratePromise
 }
-

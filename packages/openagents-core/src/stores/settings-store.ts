@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware/persist'
 import { universalJSONStorage } from './persist'
 
 export type Approvals = 'never' | 'on-request' | 'on-failure'
@@ -109,4 +109,3 @@ function sanitizeHostInput(raw: string): string {
     return ''
   }
 }
-

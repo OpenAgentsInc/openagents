@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware/persist'
 import { universalJSONStorage } from './persist'
 
 export type SkillId = string
@@ -18,4 +18,3 @@ export const useSkillsStore = create<SkillsState>()(
     { name: '@openagents/skills-v1', version: 1, storage: universalJSONStorage() }
   )
 )
-

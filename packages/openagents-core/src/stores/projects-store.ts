@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware/persist'
 import { universalJSONStorage } from './persist'
 
 export type ProjectId = string
@@ -37,4 +37,3 @@ export const useProjectsStore = create<ProjectsState>()(
     { name: '@openagents/projects-v2', version: 1, storage: universalJSONStorage() }
   )
 )
-
