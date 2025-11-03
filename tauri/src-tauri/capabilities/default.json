@@ -3,8 +3,22 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": ["main"],
+  "webviews": ["*"],
+  "remote": {
+    "urls": [
+      "http://localhost:*/*",
+      "http://127.0.0.1:*/*",
+      "http://0.0.0.0:*/*",
+      "http://192.168.*.*:*/*",
+      "http://10.*.*.*:*/*",
+      "http://172.*.*.*:*/*"
+    ]
+  },
   "permissions": [
     "core:default",
+    "core:app:default",
+    "core:event:default",
+    "core:window:default",
     "opener:default"
   ]
 }

@@ -44,6 +44,35 @@ type BridgeContextValue = {
 
 const BridgeContext = createContext<BridgeContextValue | undefined>(undefined);
 
+// Build a stable, TDZ-free preview string for outbound payloads.
+// Uses only function-scoped `var` and avoids nested blocks to work around
+// WebKit/Safari JIT quirks for block-scoped bindings in tight callsites.
+function payloadPreview(payload: string | ArrayBuffer | Blob): string {
+  var preview = '';
+  if (typeof payload === 'string') {
+    var s = payload;
+    if (s.length > 160) {
+      return s.slice(0, 160) + '…';
+    }
+    return s;
+  }
+  if (typeof ArrayBuffer !== 'undefined') {
+    if (payload instanceof ArrayBuffer) {
+      var len = payload.byteLength;
+      return '[' + String(len) + ' bytes]';
+    }
+    // Covers typed arrays (ArrayBufferView)
+    if (typeof ArrayBuffer.isView === 'function' && ArrayBuffer.isView(payload)) {
+      var view = payload as ArrayBufferView;
+      return '[' + String(view.byteLength) + ' bytes]';
+    }
+  }
+  if (typeof Blob !== 'undefined' && payload instanceof Blob) {
+    return '[' + String(payload.size) + ' bytes]';
+  }
+  return preview;
+}
+
 export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const bridgeHost = useSettings((s) => s.bridgeHost)
   const setBridgeHost = useSettings((s) => s.setBridgeHost)
@@ -75,50 +104,42 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const [hydrated] = useState(true);
   const autoTriedRef = useRef(false);
 
-  // If running inside Tauri, try to start the local bridge sidecar and set host/token.
-  // This mirrors the desktop app behavior (ADR-0009). No-ops in browsers/mobile.
-  useEffect(() => {
-    (async () => {
-      try {
-        if (connected || connecting) return;
-        // Avoid repeated starts
-        if (autoTriedRef.current) return;
-        // Tauri v2 injects a __TAURI__ namespace; access directly to avoid bundling @tauri-apps/api in Expo web
-        const anyWin: any = typeof window !== 'undefined' ? (window as any) : null;
-        if (!anyWin || !anyWin.__TAURI__ || !anyWin.__TAURI__.core?.invoke) return;
-        autoTriedRef.current = true;
-        try { console.info('[bridge.autostart] detected Tauri environment; attempting sidecar start') } catch {}
-        // Fetch token from ~/.openagents/bridge.json
-        let tok: string | null = null;
-        try { tok = await anyWin.__TAURI__.core.invoke('get_bridge_token'); } catch (e) { try { console.warn('[bridge.autostart] get_bridge_token failed', e) } catch {} }
-        if (tok && typeof tok === 'string') {
-          try { setBridgeToken(tok) } catch {}
-          try { console.info('[bridge.autostart] token loaded from ~/.openagents/bridge.json') } catch {}
-        }
-        // Start (or connect to) a local sidecar bridge; returns host:port
-        let host: string | null = null;
-        try { host = await anyWin.__TAURI__.core.invoke('bridge_start', { bind: null, token: tok || null }); } catch (e) { try { console.warn('[bridge.autostart] bridge_start failed', e) } catch {} }
-        if (host && typeof host === 'string') {
-          try { console.info('[bridge.autostart] sidecar running at', host) } catch {}
-          try { setBridgeHost(host) } catch {}
-          try { connect() } catch {}
-        } else {
-          try { console.warn('[bridge.autostart] no host returned from sidecar') } catch {}
-        }
-      } catch {}
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, connecting, setBridgeHost, setBridgeToken, connect]);
+  // Tauri invoker resolver: supports both v2 (core.invoke) and v1 (invoke/tauri.invoke)
+  type TauriInvoke = (cmd: string, args?: unknown) => Promise<unknown>;
+  type TauriCoreModule = { invoke: TauriInvoke };
+  const getTauriInvoke = React.useCallback(async (): Promise<TauriInvoke | null> => {
+    try {
+      const anyWin: unknown = typeof window !== 'undefined' ? (window as unknown) : null;
+      const w = anyWin as { __TAURI__?: any } | null;
+      const tauri = w && w.__TAURI__ ? w.__TAURI__ : null;
+      if (tauri) {
+        const coreInvoke: unknown = tauri.core && typeof tauri.core.invoke === 'function' ? tauri.core.invoke.bind(tauri.core) : null;
+        const topInvoke: unknown = typeof tauri.invoke === 'function' ? tauri.invoke.bind(tauri) : null;
+        const nsInvoke: unknown = tauri.tauri && typeof tauri.tauri.invoke === 'function' ? tauri.tauri.invoke.bind(tauri.tauri) : null;
+        const cand = (coreInvoke || topInvoke || nsInvoke) as TauriInvoke | null;
+        if (cand) return cand;
+      }
+    } catch { /* fall through to dynamic import */ }
+    try {
+      // Dynamic import fallback (works in Tauri web only; ignored on native/web without the package)
+      const mod: unknown = await import('@tauri-apps/api/core');
+      const m = mod as TauriCoreModule;
+      if (m && typeof m.invoke === 'function') return m.invoke;
+    } catch { /* ignore */ }
+    return null;
+  }, []);
 
   // When running in Tauri, poll bridge_status logs and print new lines to the console.
   useEffect(() => {
-    const anyWin: any = typeof window !== 'undefined' ? (window as any) : null;
-    if (!anyWin || !anyWin.__TAURI__ || !anyWin.__TAURI__.core?.invoke) return;
+    let cancelled = false;
+    (async () => {
+      const invoke = await getTauriInvoke();
+      if (cancelled || !invoke) return;
     let alive = true;
     const prevLenRef = { current: 0 } as { current: number };
     const tick = async () => {
       try {
-        const s = await anyWin.__TAURI__.core.invoke('bridge_status');
+        const s = await invoke('bridge_status');
         if (!alive || !s) return;
         const obj = s as { running?: boolean; bind?: string; logs?: string[] };
         if (Array.isArray(obj.logs)) {
@@ -141,8 +162,9 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     const id = setInterval(tick, 1000);
     // Fire once immediately to surface initial status
     tick().catch(() => {});
-    return () => { alive = false; clearInterval(id) };
-  }, []);
+    return () => { cancelled = true; alive = false; clearInterval(id) };
+    })();
+  }, [getTauriInvoke]);
 
   // Normalize any legacy or malformed host values (e.g., ws://host:port/ws)
   const sanitizeHost = useCallback((raw: string): string => {
@@ -297,6 +319,61 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [sanitizeHost, setAutoReconnect]);
 
+  // If running inside Tauri, try to start the local bridge sidecar and set host/token.
+  // This mirrors the desktop app behavior (ADR-0009). No-ops in browsers/mobile.
+  useEffect(() => {
+    (async () => {
+      try {
+        if (connected || connecting) return;
+        // Avoid repeated starts
+        if (autoTriedRef.current) return;
+        const invoke = await getTauriInvoke();
+        if (!invoke) {
+          try { console.info('[bridge.autostart] Tauri API not detected; skipping sidecar start', { origin: typeof window !== 'undefined' ? window.location?.origin : '(no window)' }) } catch {}
+          return;
+        }
+        autoTriedRef.current = true;
+        try { console.info('[bridge.autostart] detected Tauri environment; attempting sidecar start') } catch {}
+        // Fetch token from ~/.openagents/bridge.json
+        let tok: string | null = null;
+        try {
+          const resp = await invoke('get_bridge_token');
+          tok = typeof resp === 'string' ? resp : null;
+        } catch (e) { try { console.warn('[bridge.autostart] get_bridge_token failed', e) } catch {} }
+        if (tok && typeof tok === 'string') {
+          try { setBridgeToken(tok) } catch {}
+          try { console.info('[bridge.autostart] token loaded from ~/.openagents/bridge.json') } catch {}
+        }
+        // Start (or connect to) a local sidecar bridge; returns host:port
+        let host: string | null = null;
+        try {
+          const resp = await invoke('bridge_start', { bind: null, token: tok || null });
+          host = typeof resp === 'string' ? resp : null;
+        } catch (e) { try { console.warn('[bridge.autostart] bridge_start failed', e) } catch {} }
+        // If token was missing before start, try to read it again (bridge may have generated it)
+        if (!tok) {
+          try {
+            const retry = await invoke('get_bridge_token');
+            const retryTok = typeof retry === 'string' ? retry : null;
+            if (retryTok) {
+              tok = retryTok;
+              try { setBridgeToken(retryTok) } catch {}
+              try { console.info('[bridge.autostart] token initialized by bridge') } catch {}
+            }
+          } catch {}
+        }
+        if (host && typeof host === 'string') {
+          try { console.info('[bridge.autostart] sidecar running at', host) } catch {}
+          try { setBridgeHost(host) } catch {}
+          try { connect() } catch {}
+        } else {
+          try { console.warn('[bridge.autostart] no host returned from sidecar') } catch {}
+        }
+      } catch {}
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, connecting, setBridgeHost, setBridgeToken, connect, getTauriInvoke]);
+
   // Helper: wait until the WebSocket is OPEN (or time out)
   const awaitConnected = useCallback(async (_timeoutMs: number = 8000) => {
     // Do not auto-connect; only report current state
@@ -327,15 +404,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   const send = useCallback((payload: string | ArrayBuffer | Blob) => {
     const ws = wsRef.current;
-    let preview = '';
-    if (typeof payload === 'string') {
-      const s = payload;
-      preview = s.length > 160 ? s.slice(0, 160) + '…' : s;
-    } else if (payload && typeof (payload as any).byteLength === 'number') {
-      // Covers ArrayBuffer and blobs with byteLength-like fields without relying on instanceof
-      const len = Number((payload as any).byteLength) || 0;
-      preview = `[${len} bytes]`;
-    }
+    const preview = payloadPreview(payload);
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       try { appLog('ws.send.skipped', { preview, reason: 'not_open' }); } catch {}
       return false;
@@ -413,8 +482,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     () => ({
       bridgeHost, // expose raw for UI editing; connect uses effectiveHost
       setBridgeHost,
-      wsUrl: effectiveHost ? `ws://${effectiveHost}/ws` : '',
-      httpBase: effectiveHost ? `http://${effectiveHost}` : '',
+      wsUrl: effectiveHost ? `${isSecureHost ? 'wss' : 'ws'}://${effectiveHost}/ws` : '',
+      httpBase: effectiveHost ? `${isSecureHost ? 'https' : 'http'}://${effectiveHost}` : '',
       connected,
       connecting,
       connect,
@@ -439,7 +508,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
       resumeNextId,
       setResumeNextId,
     }),
-    [bridgeHost, effectiveHost, connected, connecting, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
+    [bridgeHost, effectiveHost, isSecureHost, connected, connecting, connect, disconnect, send, setOnMessage, readOnly, networkEnabled, approvals, attachPreface, resumeNextId]
   );
 
   return <BridgeContext.Provider value={value}>{children}</BridgeContext.Provider>;
