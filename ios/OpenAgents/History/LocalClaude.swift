@@ -11,6 +11,7 @@ struct LocalClaudeDiscovery {
         }
         let home = fm.homeDirectoryForCurrentUser
         let home2 = URL(fileURLWithPath: NSHomeDirectory())
+        let realHome = URL(fileURLWithPath: "/Users/\(NSUserName())", isDirectory: true)
         let candidates: [URL] = [
             home.appendingPathComponent(".claude/projects", isDirectory: true),
             home.appendingPathComponent(".claude/local/claude/projects", isDirectory: true),
@@ -18,11 +19,14 @@ struct LocalClaudeDiscovery {
             home2.appendingPathComponent(".claude/projects", isDirectory: true),
             home2.appendingPathComponent(".claude/local/claude/projects", isDirectory: true),
             home2.appendingPathComponent(".claude/local/projects", isDirectory: true),
+            realHome.appendingPathComponent(".claude/projects", isDirectory: true),
+            realHome.appendingPathComponent(".claude/local/claude/projects", isDirectory: true),
+            realHome.appendingPathComponent(".claude/local/projects", isDirectory: true),
         ]
         // Always include candidates; sandbox checks can lie on fileExists
         for c in candidates { out.append(c) }
         // Fallback: any 'projects' dir under ~/.claude
-        for root in [home.appendingPathComponent(".claude", isDirectory: true), home2.appendingPathComponent(".claude", isDirectory: true)] {
+        for root in [home.appendingPathComponent(".claude", isDirectory: true), home2.appendingPathComponent(".claude", isDirectory: true), realHome.appendingPathComponent(".claude", isDirectory: true)] {
           if let en = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
             for case let p as URL in en {
                 if p.lastPathComponent == "projects" { out.append(p) }
