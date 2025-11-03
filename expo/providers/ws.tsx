@@ -339,6 +339,18 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
           const resp = await invoke('bridge_start', { bind: null, token: tok || null });
           host = typeof resp === 'string' ? resp : null;
         } catch (e) { try { console.warn('[bridge.autostart] bridge_start failed', e) } catch {} }
+        // If token was missing before start, try to read it again (bridge may have generated it)
+        if (!tok) {
+          try {
+            const retry = await invoke('get_bridge_token');
+            const retryTok = typeof retry === 'string' ? retry : null;
+            if (retryTok) {
+              tok = retryTok;
+              try { setBridgeToken(retryTok) } catch {}
+              try { console.info('[bridge.autostart] token initialized by bridge') } catch {}
+            }
+          } catch {}
+        }
         if (host && typeof host === 'string') {
           try { console.info('[bridge.autostart] sidecar running at', host) } catch {}
           try { setBridgeHost(host) } catch {}
