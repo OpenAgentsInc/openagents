@@ -18,6 +18,11 @@ config.watchFolders = Array.from(new Set([
 ]))
 function resolveRequest(context, moduleName, platform) {
   try {
+    // Web-only: shim expo-font to avoid 6000ms timeout in WebView
+    if (platform === 'web' && (moduleName === 'expo-font' || moduleName.startsWith('expo-font/build'))) {
+      const filePath = path.resolve(__dirname, 'shims', 'expo-font', 'index.js')
+      return { type: 'sourceFile', filePath }
+    }
     // Force CJS middleware for Zustand regardless of deep import paths
     if (
       moduleName === 'zustand/middleware' ||
