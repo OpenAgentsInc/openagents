@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create } from 'zustand/traditional'
 
 export type ToastType = 'info' | 'success' | 'error'
 export type Toast = { id: string; text: string; type: ToastType; duration: number }
@@ -27,4 +27,3 @@ export function toast(text: string, opts?: { type?: ToastType; duration?: number
   const ms = Math.max(800, opts?.duration || 1800)
   try { setTimeout(() => useToastStore.getState().remove(id), ms) } catch {}
 }
-

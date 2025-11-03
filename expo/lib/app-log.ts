@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create } from 'zustand/traditional'
 
 export type AppLogLevel = 'info' | 'warn' | 'error'
 export type AppLogItem = { ts: number; level: AppLogLevel; event: string; details?: any }
@@ -24,4 +24,3 @@ export const useAppLogStore = create<AppLogState>((set, get) => ({
 export function appLog(event: string, details?: any, level: AppLogLevel = 'info') {
   try { useAppLogStore.getState().add(level, event, details) } catch {}
 }
-
