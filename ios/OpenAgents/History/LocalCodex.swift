@@ -129,14 +129,32 @@ enum LocalCodexScanner {
 enum LocalCodexDiscovery {
     struct Options { var preferEnvOnly: Bool = false }
     private static let overrideKey = "codex_base_override"
+    private static let overrideBookmarkKey = "codex_base_override_bookmark"
 
     static func setUserOverride(_ url: URL?) {
         let d = UserDefaults.standard
-        if let u = url { d.set(u.path, forKey: overrideKey) } else { d.removeObject(forKey: overrideKey) }
+        if let u = url {
+            d.set(u.path, forKey: overrideKey)
+            // Persist security-scoped bookmark for sandbox access (macOS sandboxed builds)
+            if let data = try? u.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+                d.set(data, forKey: overrideBookmarkKey)
+            }
+        } else {
+            d.removeObject(forKey: overrideKey)
+            d.removeObject(forKey: overrideBookmarkKey)
+        }
     }
 
     static func userOverride() -> URL? {
-        if let p = UserDefaults.standard.string(forKey: overrideKey), !p.isEmpty {
+        let d = UserDefaults.standard
+        if let data = d.data(forKey: overrideBookmarkKey) {
+            var isStale = false
+            if let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale) {
+                _ = url.startAccessingSecurityScopedResource()
+                return url
+            }
+        }
+        if let p = d.string(forKey: overrideKey), !p.isEmpty {
             return URL(fileURLWithPath: p).standardizedFileURL
         }
         return nil
@@ -154,13 +172,28 @@ enum LocalCodexDiscovery {
             if fm.fileExists(atPath: u.path) { out.append(u) }
         }
         if !opts.preferEnvOnly {
+            // Try both APIs for HOME derivation
             let home = fm.homeDirectoryForCurrentUser
+            let home2 = URL(fileURLWithPath: NSHomeDirectory())
             let defaultBase = home.appendingPathComponent(".codex/sessions", isDirectory: true)
+            let defaultBase2 = home2.appendingPathComponent(".codex/sessions", isDirectory: true)
             if fm.fileExists(atPath: defaultBase.path) { out.append(defaultBase) }
+            else if fm.fileExists(atPath: defaultBase2.path) { out.append(defaultBase2) }
             let codexRoot = home.appendingPathComponent(".codex", isDirectory: true)
+            let codexRoot2 = home2.appendingPathComponent(".codex", isDirectory: true)
             if let en = fm.enumerator(at: codexRoot, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
                 var seen = Set(out.map { $0.path })
                 for case let p as URL in en {
+                    if (try? p.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                        if LocalCodexScanner.listJSONLFiles(at: p).count > 0 {
+                            if !seen.contains(p.path) { out.append(p); seen.insert(p.path) }
+                        }
+                    }
+                }
+            }
+            if let en2 = fm.enumerator(at: codexRoot2, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
+                var seen = Set(out.map { $0.path })
+                for case let p as URL in en2 {
                     if (try? p.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
                         if LocalCodexScanner.listJSONLFiles(at: p).count > 0 {
                             if !seen.contains(p.path) { out.append(p); seen.insert(p.path) }
