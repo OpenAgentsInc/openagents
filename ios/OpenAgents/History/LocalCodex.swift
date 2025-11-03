@@ -178,7 +178,8 @@ enum LocalCodexDiscovery {
             let defaultBase = home.appendingPathComponent(".codex/sessions", isDirectory: true)
             let defaultBase2 = home2.appendingPathComponent(".codex/sessions", isDirectory: true)
             if fm.fileExists(atPath: defaultBase.path) { out.append(defaultBase) }
-            else if fm.fileExists(atPath: defaultBase2.path) { out.append(defaultBase2) }
+            // Always include the real-home candidate even if the file check returns false (perm)
+            if !out.contains(where: { $0.path == defaultBase2.path }) { out.append(defaultBase2) }
             let codexRoot = home.appendingPathComponent(".codex", isDirectory: true)
             let codexRoot2 = home2.appendingPathComponent(".codex", isDirectory: true)
             if let en = fm.enumerator(at: codexRoot, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
