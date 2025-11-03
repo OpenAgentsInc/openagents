@@ -2,11 +2,11 @@
 
 This guide explains how to produce a signed, distributable desktop build of OpenAgents using the Tauri project in `tauri/`.
 
-The Tauri app bundles a Rust/WASM UI (built with Trunk) and launches local sidecars for the Convex backend and the Codex WebSocket bridge. For production, ensure assets and sidecars are prepared before packaging.
+Update: The desktop window now loads the Expo app’s Web build. In development, Tauri points to the Expo Web dev server. In production, Tauri bundles the Expo static export. The Rust backend continues to supervise sidecars (Convex, bridge) per ADR‑0009.
 
 ## Overview
 
-- Frontend: Rust → WASM, built by `trunk` into `tauri/dist` (configured by `tauri/Trunk.toml`).
+- Frontend: Expo Web. Dev proxies to `http://localhost:19006` (Expo dev server). Prod bundles the static export at `expo/web-dist`.
 - Tauri bundle config: `tauri/src-tauri/tauri.conf.json` (icons, product name, version, resources).
 - Sidecars:
   - Convex local backend binary is bundled as a resource at `tauri/src-tauri/bin/local_backend`.
@@ -14,16 +14,15 @@ The Tauri app bundles a Rust/WASM UI (built with Trunk) and launches local sidec
 
 ## Prerequisites
 
-- Rust toolchain (stable), including `wasm32-unknown-unknown` target.
-  - `rustup target add wasm32-unknown-unknown`
-- Trunk (WASM bundler): `cargo install trunk`.
-- Bun (for Convex CLI helpers used during dev/bootstrap): https://bun.sh
+- Rust toolchain (stable).
+- Bun (for scripts and Expo/Tauri dev): https://bun.sh
 - Tauri CLI: `cargo install tauri-cli@2`.
+- Expo CLI (comes via `expo` dependency in the app; invoked through `bunx expo`).
 - Apple/Windows signing tooling as applicable (see Signing below).
 
 ## Prepare Versioning, Branding, and Icons
 
-Edit `tauri/src-tauri/tauri.conf.json`:
+Development wiring (Tauri ↔ Expo Web)
 
 - `productName`: public app name (menus/dock/window title)
 - `version`: semantic version of the desktop app
@@ -31,12 +30,15 @@ Edit `tauri/src-tauri/tauri.conf.json`:
 - `app.windows[0].title`: initial window title
 - `bundle.icon`: ensure icons exist under `tauri/src-tauri/icons/`
 
-Example (already set):
+Edit `tauri/src-tauri/tauri.conf.json` build section to proxy dev and bundle the Expo export:
 
 ```
-"productName": "OpenAgents",
-"identifier": "com.openagents.desktop",
-"bundle": { "icon": [ ... ] }
+"build": {
+  "beforeDevCommand": "cd ../../expo && bun run web",
+  "devUrl": "http://localhost:19006",
+  "beforeBuildCommand": "cd ../../expo && bunx expo export -p web --output-dir web-dist",
+  "frontendDist": "../../expo/web-dist"
+}
 ```
 
 ## Prepare Sidecars (Convex)
@@ -56,7 +58,7 @@ Optional runtime tuning via env vars (defaults in code):
 
 ## Build Commands
 
-Build runs Trunk first (frontend), then Tauri packaging:
+Run from the Tauri project. The `beforeBuildCommand` runs the Expo export; then Tauri packages the app:
 
 ```
 cd tauri
@@ -195,9 +197,8 @@ Notes
 
 ## Troubleshooting
 
-- Trunk not found: `cargo install trunk`.
-- WASM target missing: `rustup target add wasm32-unknown-unknown`.
 - Bun not found: install from https://bun.sh.
+- Expo dev server port conflict: set a custom port or adjust `devUrl`.
 - Missing Convex backend: run `bun run convex:fetch-backend` or set `CONVEX_URL` to an existing backend.
 - Bridge not connecting: start the bridge separately (`cargo run -p oa-bridge -- --bind 0.0.0.0:8787`) until a sidecar is added.
 
