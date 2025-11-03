@@ -21,5 +21,13 @@ export const TinyvexContext = React.createContext<TinyvexClient | null>(null);
 
 export function TinyvexProvider({ config, children }: { config: TinyvexConfig; children: React.ReactNode }) {
   const client = React.useMemo(() => makeClient(config), [config.url, config.token, config.debug]);
+  React.useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try { await client.connect() } catch {}
+      if (cancelled) return
+    })()
+    return () => { cancelled = true }
+  }, [client])
   return <TinyvexContext.Provider value={client}>{children}</TinyvexContext.Provider>;
 }
