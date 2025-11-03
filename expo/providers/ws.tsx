@@ -74,6 +74,36 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const [hydrated] = useState(true);
   const autoTriedRef = useRef(false);
 
+  // If running inside Tauri, try to start the local bridge sidecar and set host/token.
+  // This mirrors the desktop app behavior (ADR-0009). No-ops in browsers/mobile.
+  useEffect(() => {
+    (async () => {
+      try {
+        if (connected || connecting) return;
+        // Avoid repeated starts
+        if (autoTriedRef.current) return;
+        // Tauri v2 injects a __TAURI__ namespace; access directly to avoid bundling @tauri-apps/api in Expo web
+        const anyWin: any = typeof window !== 'undefined' ? (window as any) : null;
+        if (!anyWin || !anyWin.__TAURI__ || !anyWin.__TAURI__.core?.invoke) return;
+        autoTriedRef.current = true;
+        // Fetch token from ~/.openagents/bridge.json
+        let tok: string | null = null;
+        try { tok = await anyWin.__TAURI__.core.invoke('get_bridge_token'); } catch {}
+        if (tok && typeof tok === 'string') {
+          try { setBridgeToken(tok) } catch {}
+        }
+        // Start (or connect to) a local sidecar bridge; returns host:port
+        let host: string | null = null;
+        try { host = await anyWin.__TAURI__.core.invoke('bridge_start', { bind: null, token: tok || null }); } catch {}
+        if (host && typeof host === 'string') {
+          try { setBridgeHost(host) } catch {}
+          try { connect() } catch {}
+        }
+      } catch {}
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, connecting, setBridgeHost, setBridgeToken, connect]);
+
   // Normalize any legacy or malformed host values (e.g., ws://host:port/ws)
   const sanitizeHost = useCallback((raw: string): string => {
     try {
