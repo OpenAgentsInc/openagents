@@ -10,18 +10,24 @@ struct LocalClaudeDiscovery {
             if fm.fileExists(atPath: u.path) { out.append(u) }
         }
         let home = fm.homeDirectoryForCurrentUser
+        let home2 = URL(fileURLWithPath: NSHomeDirectory())
         let candidates: [URL] = [
             home.appendingPathComponent(".claude/projects", isDirectory: true),
             home.appendingPathComponent(".claude/local/claude/projects", isDirectory: true),
             home.appendingPathComponent(".claude/local/projects", isDirectory: true),
+            home2.appendingPathComponent(".claude/projects", isDirectory: true),
+            home2.appendingPathComponent(".claude/local/claude/projects", isDirectory: true),
+            home2.appendingPathComponent(".claude/local/projects", isDirectory: true),
         ]
-        for c in candidates { if fm.fileExists(atPath: c.path) { out.append(c) } }
+        // Always include candidates; sandbox checks can lie on fileExists
+        for c in candidates { out.append(c) }
         // Fallback: any 'projects' dir under ~/.claude
-        let root = home.appendingPathComponent(".claude", isDirectory: true)
-        if let en = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
+        for root in [home.appendingPathComponent(".claude", isDirectory: true), home2.appendingPathComponent(".claude", isDirectory: true)] {
+          if let en = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
             for case let p as URL in en {
                 if p.lastPathComponent == "projects" { out.append(p) }
             }
+          }
         }
         // dedupe
         var uniq: [URL] = []
@@ -88,4 +94,3 @@ struct LocalClaudeDiscovery {
         return url.deletingPathExtension().lastPathComponent
     }
 }
-

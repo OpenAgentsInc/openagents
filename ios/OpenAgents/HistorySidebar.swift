@@ -78,10 +78,12 @@ struct HistorySidebar: View {
             dbg.append("claudeBases=\(claudeBases.map{ $0.path })")
             var claudeURLs: [URL] = []
             for b in claudeBases { claudeURLs.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10)) }
+            dbg.append("claudeTopKURLs=\(claudeURLs.map{ $0.lastPathComponent })")
             let claudeRows: [LocalThreadSummary] = claudeURLs.map { url in
                 let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
                 return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
             }
+            dbg.append("codexCount=\(codexRows.count) claudeCount=\(claudeRows.count)")
             var merged = codexRows + claudeRows
             merged.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
             if merged.count > 20 { merged = Array(merged.prefix(20)) }
