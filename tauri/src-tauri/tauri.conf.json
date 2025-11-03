@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' data: blob: 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://localhost:8082 ws://localhost:8082; frame-src 'self'"
+      "csp": null
     }
   },
   "bundle": {

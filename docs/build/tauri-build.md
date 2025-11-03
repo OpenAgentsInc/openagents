@@ -6,7 +6,7 @@ Update: The desktop window now loads the Expo app’s Web build. In development,
 
 ## Overview
 
-- Frontend: Expo Web. Dev proxies to `http://localhost:19006` (Expo dev server). Prod bundles the static export at `expo/web-dist`.
+- Frontend: Expo Web. Dev proxies to `http://localhost:8082` (Expo dev server). Prod bundles the static export at `expo/web-dist`.
 - Tauri bundle config: `tauri/src-tauri/tauri.conf.json` (icons, product name, version, resources).
 - Sidecars:
   - Convex local backend binary is bundled as a resource at `tauri/src-tauri/bin/local_backend`.
