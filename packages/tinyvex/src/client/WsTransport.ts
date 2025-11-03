@@ -7,6 +7,7 @@ export class WsTransport implements Transport {
   private listeners = new Set<(evt: unknown) => void>();
   private _status: TransportState = 'closed';
   private url: string;
+  private pending: Array<{ name: string; args?: unknown }> = [];
 
   constructor(cfg: WsConfig) {
     const u = new URL(cfg.url);
@@ -28,6 +29,15 @@ export class WsTransport implements Transport {
       ws.onopen = () => {
         clearTimeout(to);
         this._status = 'open';
+        // Flush any pending control messages queued before open
+        try {
+          for (const ctrl of this.pending) {
+            const payload = { control: ctrl.name, ...(ctrl.args ? ctrl.args : {}) };
+            try { ws.send(JSON.stringify(payload)); } catch {}
+          }
+        } finally {
+          this.pending = [];
+        }
         resolve();
       };
       ws.onmessage = (ev) => {
@@ -60,7 +70,11 @@ export class WsTransport implements Transport {
   }
 
   send(control: { name: string; args?: unknown }): void {
-    if (!this.ws || this._status !== 'open') return;
+    if (!this.ws || this._status !== 'open') {
+      // Queue until connection opens
+      this.pending.push(control);
+      return;
+    }
     const payload = { control: control.name, ...(control.args ? control.args : {}) };
     try { this.ws.send(JSON.stringify(payload)); } catch {}
   }
