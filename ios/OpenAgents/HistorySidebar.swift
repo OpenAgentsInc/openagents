@@ -57,8 +57,12 @@ struct HistorySidebar: View {
         guard !isLoading else { return }
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
-            // Focus on Codex first for reliability
-            let loaded = HistoryLoader.loadSummaries(.init(includeCodex: true, includeClaude: false, maxFilesPerProvider: 400, maxResults: 200))
+            // Focus on Codex first: discover all bases and merge
+            #if canImport(OpenAgentsCore)
+            let loaded = CodexDiscovery.loadAllSummaries(maxFilesPerBase: 1000, maxResults: 500)
+            #else
+            let loaded: [ThreadSummary] = []
+            #endif
             DispatchQueue.main.async {
                 withAnimation { self.rows = loaded }
                 self.isLoading = false
