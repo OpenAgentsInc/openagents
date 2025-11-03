@@ -208,16 +208,19 @@ enum LocalCodexDiscovery {
             if fm.fileExists(atPath: u.path) { out.append(u) }
         }
         if !opts.preferEnvOnly {
-            // Try both APIs for HOME derivation
+            // Derive three home bases: FileManager, NSHomeDirectory (container), and real /Users/<name>
             let home = fm.homeDirectoryForCurrentUser
             let home2 = URL(fileURLWithPath: NSHomeDirectory())
+            let realHome = URL(fileURLWithPath: "/Users/\(NSUserName())", isDirectory: true)
             let defaultBase = home.appendingPathComponent(".codex/sessions", isDirectory: true)
             let defaultBase2 = home2.appendingPathComponent(".codex/sessions", isDirectory: true)
+            let defaultBase3 = realHome.appendingPathComponent(".codex/sessions", isDirectory: true)
             if fm.fileExists(atPath: defaultBase.path) { out.append(defaultBase) }
-            // Always include the real-home candidate even if the file check returns false (perm)
             if !out.contains(where: { $0.path == defaultBase2.path }) { out.append(defaultBase2) }
+            if !out.contains(where: { $0.path == defaultBase3.path }) { out.append(defaultBase3) }
             let codexRoot = home.appendingPathComponent(".codex", isDirectory: true)
             let codexRoot2 = home2.appendingPathComponent(".codex", isDirectory: true)
+            let codexRoot3 = realHome.appendingPathComponent(".codex", isDirectory: true)
             if let en = fm.enumerator(at: codexRoot, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
                 var seen = Set(out.map { $0.path })
                 for case let p as URL in en {
@@ -231,6 +234,16 @@ enum LocalCodexDiscovery {
             if let en2 = fm.enumerator(at: codexRoot2, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
                 var seen = Set(out.map { $0.path })
                 for case let p as URL in en2 {
+                    if (try? p.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                        if LocalCodexScanner.listJSONLFiles(at: p).count > 0 {
+                            if !seen.contains(p.path) { out.append(p); seen.insert(p.path) }
+                        }
+                    }
+                }
+            }
+            if let en3 = fm.enumerator(at: codexRoot3, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
+                var seen = Set(out.map { $0.path })
+                for case let p as URL in en3 {
                     if (try? p.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
                         if LocalCodexScanner.listJSONLFiles(at: p).count > 0 {
                             if !seen.contains(p.path) { out.append(p); seen.insert(p.path) }
