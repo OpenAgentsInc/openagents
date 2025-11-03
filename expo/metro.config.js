@@ -21,6 +21,7 @@ config.resolver = {
     // Map local packages for monorepo-style imports
     tinyvex: path.resolve(__dirname, '..', 'packages', 'tinyvex', 'src'),
     tricoder: path.resolve(__dirname, '..', 'packages', 'tricoder', 'src'),
+    '@openagentsinc/core': path.resolve(__dirname, '..', 'packages', 'openagents-core', 'src'),
   },
 }
 
