@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useContext, useEffect, useRef, useState } from 'react'
 import { useTricoder } from '../hooks/useTricoder'
 import { renderAnsi } from '../lib/ansi'
 import { renderJsonSyntax } from '../lib/jsonSyntax'
-import { TinyvexProvider, useTinyvexThreads, useTinyvexThread } from 'tinyvex/react'
+import { TinyvexProvider, TinyvexContext, useTinyvexThreads, useTinyvexThread } from 'tinyvex/react'
 import { ChatMessageBubble } from '@openagentsinc/core'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
@@ -21,13 +21,53 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
+import { invoke } from '@tauri-apps/api/core'
+
+function ChatThread({ id }: { id: string }) {
+  const { history, status } = useTinyvexThread({ idOrAlias: id })
+  const chatRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => { const el = chatRef.current; if (el) el.scrollTop = el.scrollHeight }, [history])
+  const messages = (history || []).filter((m: MessageRowTs) => m.kind === 'message' && !!m.role)
+  return (
+    <ScrollArea className="flex-1 min-h-0 p-3" ref={chatRef as any}>
+      {status !== 'ready' && (<div className="text-xs text-[var(--tertiary)] mb-2">Loading…</div>)}
+      {messages.map((m) => (
+        <div key={`${m.item_id ?? ''}:${m.ts}`}>
+          <ChatMessageBubble role={(m.role as 'assistant' | 'user') ?? 'assistant'} text={String(m.text || '')} />
+        </div>
+      ))}
+    </ScrollArea>
+  )
+}
+
+function SidebarThreadsInner({ selectedId, onSelect }: { selectedId?: string; onSelect: (id: string) => void }) {
+  const { threads } = useTinyvexThreads(50)
+  return (
+    <>
+      {threads.map((t) => (
+        <SidebarMenuItem key={t.id}>
+          <SidebarMenuButton isActive={selectedId === String(t.id)} onClick={() => onSelect(String(t.id))}>
+            <span className="truncate">{t.title || 'Thread'}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+    </>
+  )
+}
+
+function SidebarThreads({ wsUrl, selectedId, onSelect }: { wsUrl: string; selectedId?: string; onSelect: (id: string) => void }) {
+  if (!wsUrl) return <div className="px-3 py-2 text-[var(--tertiary)] text-xs">Connecting…</div>
+  return (
+    <SidebarMenu>
+      <SidebarThreadsInner selectedId={selectedId} onSelect={onSelect} />
+    </SidebarMenu>
+  )
+}
 
 function WsEventsPanel() {
   const wsRef = useRef<HTMLDivElement | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { TinyvexContext } = require('tinyvex/react')
-  const client = TinyvexContext?._currentValue || null
-  const [lines, setLines] = React.useState<string[]>([])
+  const client = useContext(TinyvexContext as unknown as React.Context<any>) as any
+  const [lines, setLines] = useState<string[]>([])
   useEffect(() => {
     if (!client) return
     const off = client.onRaw((evt: unknown) => {
@@ -64,14 +104,12 @@ function WsEventsPanel() {
 
 function BridgeLogsPanel() {
   const ref = useRef<HTMLDivElement | null>(null)
-  const [lines, setLines] = React.useState<string[]>([])
+  const [lines, setLines] = useState<string[]>([])
   useEffect(() => {
     let mounted = true
     const id = window.setInterval(async () => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { invoke } = require('@tauri-apps/api/core')
-        const s = await invoke('bridge_status') as { logs?: string[] }
+        const s = await invoke<{ logs?: string[] }>('bridge_status')
         const arr = Array.isArray(s?.logs) ? s.logs.slice().reverse() : []
         if (mounted) setLines(arr)
       } catch {}
@@ -99,112 +137,60 @@ function BridgeLogsPanel() {
   )
 }
 
-function ChatThread({ id }: { id: string }) {
-  const { history, status } = useTinyvexThread({ idOrAlias: id })
-  const chatRef = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    const el = chatRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [history])
-  const messages = (history || []).filter((m: MessageRowTs) => m.kind === 'message' && !!m.role)
-  return (
-    <ScrollArea className="flex-1 min-h-0 p-3" ref={chatRef as any}>
-      {status !== 'ready' && (
-        <div className="text-xs text-[var(--tertiary)] mb-2">Loading…</div>
-      )}
-      {messages.map((m) => (
-        <div key={`${m.item_id ?? ''}:${m.ts}`}>
-          <ChatMessageBubble role={(m.role as 'assistant' | 'user') ?? 'assistant'} text={String(m.text || '')} />
-        </div>
-      ))}
-    </ScrollArea>
-  )
-}
-
-function SidebarThreadsInner({ selectedId, onSelect }: { selectedId?: string; onSelect: (id: string) => void }) {
-  const { threads } = useTinyvexThreads(50)
-  return (
-    <>
-      {threads.map((t) => (
-        <SidebarMenuItem key={t.id}>
-          <SidebarMenuButton
-            isActive={selectedId === String(t.id)}
-            onClick={() => onSelect(String(t.id))}
-          >
-            <span className="truncate">{t.title || 'Thread'}</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ))}
-    </>
-  )
-}
-
-function SidebarThreads({ wsUrl, selectedId, onSelect }: { wsUrl: string; selectedId?: string; onSelect: (id: string) => void }) {
-  if (!wsUrl) return <div className="px-3 py-2 text-[var(--tertiary)] text-xs">Connecting…</div>
-  return (
-    <SidebarMenu>
-      <SidebarThreadsInner selectedId={selectedId} onSelect={onSelect} />
-    </SidebarMenu>
-  )
-}
-
 export default function HelloDesktop() {
   const { bridgeRunning, wsUrl, token } = useTricoder()
-  const wsRef = useRef<HTMLDivElement | null>(null)
-  const bridgeRef = useRef<HTMLDivElement | null>(null)
-  const [view, setView] = React.useState<'dev' | 'chat'>('dev')
-  const [selected, setSelected] = React.useState<string>('')
-  // Panels manage their own logs to minimize re-renders
+  const [view, setView] = useState<'dev' | 'chat'>('dev')
+  const [selected, setSelected] = useState<string>('')
 
   return (
     <div className="h-screen w-full flex flex-col bg-background text-foreground font-mono">
       {wsUrl ? (
         <TinyvexProvider config={{ url: wsUrl, token }}>
-      <SidebarProvider>
-        <Sidebar collapsible="icon">
-          <SidebarHeader>Recent threads</SidebarHeader>
-          <SidebarContent>
-            <SidebarThreads wsUrl={wsUrl} selectedId={selected} onSelect={(id) => { setSelected(id); setView('chat') }} />
-          </SidebarContent>
-          <SidebarRail />
-        </Sidebar>
-        <SidebarInset>
-          <header className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <SidebarTrigger />
-              <div className="text-[20px]">Hello world</div>
-            </div>
-            <div className="flex items-center gap-3">
-              {view === 'chat' && selected && (
-                <Badge className="max-w-[520px] truncate" title={selected}>Thread {selected}</Badge>
-              )}
-              {view === 'chat' && (
-                <Button variant="outline" size="sm" onClick={() => setView('dev')}>Developer</Button>
-              )}
-              <div className="text-xs text-[var(--tertiary)]">
-                <span className="mr-3">bridge: <span className="text-[var(--secondary)]">{bridgeRunning ? 'running' : 'starting'}</span></span>
-                <span>ws: <span className="text-[var(--secondary)]">{wsUrl || '—'}</span></span>
-              </div>
-            </div>
-          </header>
-          <div className="flex-1 min-h-0 flex gap-3 p-3">
-            {view === 'dev' ? (
-              <WsEventsPanel />
-            ) : (
-              <Card className="flex-1 min-w-0 flex flex-col">
-                <CardHeader>Thread</CardHeader>
-                {selected ? (
-                  <ChatThread id={selected} />
+          <SidebarProvider>
+            <Sidebar collapsible="icon">
+              <SidebarHeader>Recent threads</SidebarHeader>
+              <SidebarContent>
+                <SidebarThreads wsUrl={wsUrl} selectedId={selected} onSelect={(id) => { setSelected(id); setView('chat') }} />
+              </SidebarContent>
+              <SidebarRail />
+            </Sidebar>
+            <SidebarInset>
+              <header className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <SidebarTrigger />
+                  <div className="text-[20px]">Hello world</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {view === 'chat' && selected && (
+                    <Badge className="max-w-[520px] truncate" title={selected}>Thread {selected}</Badge>
+                  )}
+                  {view === 'chat' && (
+                    <Button variant="outline" size="sm" onClick={() => setView('dev')}>Developer</Button>
+                  )}
+                  <div className="text-xs text-[var(--tertiary)]">
+                    <span className="mr-3">bridge: <span className="text-[var(--secondary)]">{bridgeRunning ? 'running' : 'starting'}</span></span>
+                    <span>ws: <span className="text-[var(--secondary)]">{wsUrl || '—'}</span></span>
+                  </div>
+                </div>
+              </header>
+              <div className="flex-1 min-h-0 flex gap-3 p-3">
+                {view === 'dev' ? (
+                  <WsEventsPanel />
                 ) : (
-                  <div className="p-3 text-xs text-[var(--tertiary)]">Select a thread</div>
+                  <Card className="flex-1 min-w-0 flex flex-col">
+                    <CardHeader>Thread</CardHeader>
+                    {selected ? (
+                      <ChatThread id={selected} />
+                    ) : (
+                      <div className="p-3 text-xs text-[var(--tertiary)]">Select a thread</div>
+                    )}
+                  </Card>
                 )}
-              </Card>
-            )}
 
-            {view === 'dev' && <BridgeLogsPanel />}
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
+                {view === 'dev' && <BridgeLogsPanel />}
+              </div>
+            </SidebarInset>
+          </SidebarProvider>
         </TinyvexProvider>
       ) : (
         <div className="p-3 text-xs text-[var(--tertiary)]">{bridgeRunning ? 'Connecting…' : 'Starting bridge…'}</div>
