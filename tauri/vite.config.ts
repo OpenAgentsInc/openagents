@@ -30,6 +30,7 @@ export default defineConfig(async () => ({
       // Expo component reuse shims and alias
       'react-native': path.resolve(__dirname, 'src', 'shims', 'rn-web-runtime.tsx'),
       '@expo/vector-icons': path.resolve(__dirname, 'src', 'shims', 'expo-vector-icons.tsx'),
+      '@react-native-async-storage/async-storage': path.resolve(__dirname, 'src', 'shims', 'async-storage.ts'),
       '@/constants/theme': path.resolve(__dirname, 'src', 'shims', 'expo-theme.ts'),
       '@/constants/typography': path.resolve(__dirname, 'src', 'shims', 'expo-typography.ts'),
       '@/providers/tinyvex': path.resolve(__dirname, 'src', 'shims', 'expo-tinyvex-provider.ts'),

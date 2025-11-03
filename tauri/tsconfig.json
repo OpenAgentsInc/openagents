@@ -30,6 +30,7 @@
       "@openagentsinc/theme": ["../packages/openagents-theme"],
       "@openagentsinc/theme/*": ["../packages/openagents-theme/*"],
       "@expo/vector-icons": ["./src/shims/expo-vector-icons.tsx"],
+      "@react-native-async-storage/async-storage": ["./src/shims/async-storage.ts"],
       "@/constants/theme": ["./src/shims/expo-theme.ts"],
       "@/constants/typography": ["./src/shims/expo-typography.ts"],
       "@/providers/tinyvex": ["./src/shims/expo-tinyvex-provider.ts"],
