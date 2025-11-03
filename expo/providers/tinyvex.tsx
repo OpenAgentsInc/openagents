@@ -269,14 +269,6 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
     } else if (isTvxQueryThreadsAndTails(obj)) {
-      // cancel fallback to threads.list if pending
-      try {
-        if (bootstrapPendingRef.current) {
-          bootstrapPendingRef.current = false
-          const id = fallbackTimerRef.current
-          if (id != null) { clearTimeout(id); fallbackTimerRef.current = null }
-        }
-      } catch {}
       const threadsRows = obj.threads
       const tails = obj.tails
       // Build a complete list of threads from rows + tails. If Tinyvex DB is cold
@@ -370,25 +362,13 @@ export function TinyvexProvider({ children }: { children: React.ReactNode }) {
     // Single bootstrap: subscribe + list
     try { bridge.send(JSON.stringify({ control: 'tvx.subscribe', stream: 'threads' })) } catch {}
     try {
-      bootstrapPendingRef.current = true
-      bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threadsAndTails.list', args: { limit: 50, perThreadTail: DEFAULT_THREAD_TAIL } }))
-      const timer = setTimeout(() => {
-        try {
-          if (bootstrapPendingRef.current) {
-            bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } }))
-            bootstrapPendingRef.current = false
-          }
-        } catch {}
-      }, 1200)
-      fallbackTimerRef.current = timer
+      // Query threads list immediately; tails will be prefetched below
+      bridge.send(JSON.stringify({ control: 'tvx.query', name: 'threads.list', args: { limit: 50 } }))
     } catch {}
   }, [connected, bridge])
 
   // Prefetch messages for known threads so history opens instantly
   const prefetchRef = useRef<Set<string>>(new Set())
-  // Track aggregated bootstrap status and fallback timer
-  const bootstrapPendingRef = useRef<boolean>(false)
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!connected) return
     try {
