@@ -2,6 +2,7 @@ import React from 'react'
 
 type SgrState = {
   bold?: boolean
+  dim?: boolean
   italic?: boolean
   underline?: boolean
   fg?: string
@@ -63,9 +64,10 @@ function applySgrCodes(codes: number[], st: SgrState): SgrState {
     }
     switch (c) {
       case 1: next.bold = true; break
+      case 2: next.dim = true; break
       case 3: next.italic = true; break
       case 4: next.underline = true; break
-      case 22: next.bold = undefined; break
+      case 22: next.bold = undefined; next.dim = undefined; break
       case 23: next.italic = undefined; break
       case 24: next.underline = undefined; break
       case 39: next.fg = undefined; break
@@ -99,7 +101,8 @@ function applySgrCodes(codes: number[], st: SgrState): SgrState {
 }
 
 export function renderAnsi(input: string): React.ReactNode {
-  const ESC = '\\u001b['
+  // ESC literal 0x1B followed by '['
+  const ESC = '\u001b['
   const nodes: React.ReactNode[] = []
   let idx = 0
   let st: SgrState = {}
@@ -137,8 +140,8 @@ function renderSpan(text: string, st: SgrState, key: number) {
   if (st.fg) style.color = st.fg
   if (st.bg) style.backgroundColor = st.bg
   if (st.bold) style.fontWeight = 700 as React.CSSProperties['fontWeight']
+  if (st.dim) style.opacity = 0.7
   if (st.italic) style.fontStyle = 'italic'
   if (st.underline) style.textDecoration = 'underline'
   return <span key={key} style={style}>{text}</span>
 }
-
