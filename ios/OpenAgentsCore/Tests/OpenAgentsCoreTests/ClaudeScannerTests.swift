@@ -30,4 +30,17 @@ final class ClaudeScannerTests: XCTestCase {
         XCTAssertTrue(ids.contains("projA/transcript"), "ids=\(ids)")
         XCTAssertTrue(ids.contains("projB/transcript"), "ids=\(ids)")
     }
+
+    func testScanTopKReturnsAtMost10() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        for i in 0..<15 {
+            let f = base.appendingPathComponent("p\(i)/s\(i).jsonl")
+            try write(f, ["{\"type\":\"assistant\",\"message\":{\"content\":[],\"ts\": \(1000 + i)}}"])
+        }
+        let rows = ClaudeScanner.scanTopK(options: .init(baseDir: base, maxFiles: 100), topK: 10)
+        XCTAssertEqual(rows.count, 10)
+        // Ensure descending order by updated_at
+        let times = rows.map { $0.updated_at }
+        XCTAssertEqual(times, times.sorted(by: >))
+    }
 }

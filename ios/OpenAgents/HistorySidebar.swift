@@ -61,8 +61,8 @@ struct HistorySidebar: View {
         guard !isLoading else { return }
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
-            // Focus on Codex first: discover all bases and merge
-            let bases = LocalCodexDiscovery.discoverBaseDirs()
+            // Discover both providers and load top-10 each
+            let codexBases = LocalCodexDiscovery.discoverBaseDirs()
             var dbg: [String] = []
             let home = FileManager.default.homeDirectoryForCurrentUser.path
             let home2 = NSHomeDirectory()
@@ -72,11 +72,21 @@ struct HistorySidebar: View {
             dbg.append("env CODEXD_HISTORY_DIR=\(env)")
             dbg.append("home=\(home) home2=\(home2)")
             dbg.append("defaultBaseCandidates=[\(def1), \(def2)]")
-            dbg.append("bases=\(bases.map{ $0.path })")
-            // No per-base counts (expensive). Load only top 10 immediately.
-            let loaded = LocalCodexDiscovery.loadAllSummaries(topK: 10)
+            dbg.append("codexBases=\(codexBases.map{ $0.path })")
+            let codexRows = LocalCodexDiscovery.loadAllSummaries(topK: 10)
+            let claudeBases = LocalClaudeDiscovery.defaultBases()
+            dbg.append("claudeBases=\(claudeBases.map{ $0.path })")
+            var claudeURLs: [URL] = []
+            for b in claudeBases { claudeURLs.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10)) }
+            let claudeRows: [LocalThreadSummary] = claudeURLs.map { url in
+                let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
+                return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
+            }
+            var merged = codexRows + claudeRows
+            merged.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
+            if merged.count > 20 { merged = Array(merged.prefix(20)) }
             DispatchQueue.main.async {
-                withAnimation { self.rows = loaded }
+                withAnimation { self.rows = merged }
                 self.isLoading = false
                 self.debugLines = dbg
             }
