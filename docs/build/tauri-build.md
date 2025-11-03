@@ -34,7 +34,7 @@ Edit `tauri/src-tauri/tauri.conf.json` build section to proxy dev and bundle the
 
 ```
 "build": {
-  "beforeDevCommand": "cd ../expo && bun run web",
+  "beforeDevCommand": "cd ../expo && EXPO_WEB_PORT=19006 bun run web -- --port 8082",
   "devUrl": "http://localhost:19006",
   "beforeBuildCommand": "cd ../expo && bunx expo export -p web --output-dir web-dist",
   "frontendDist": "../../expo/web-dist"
