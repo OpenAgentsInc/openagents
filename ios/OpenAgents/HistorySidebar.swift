@@ -77,7 +77,26 @@ struct HistorySidebar: View {
             let claudeBases = LocalClaudeDiscovery.defaultBases()
             dbg.append("claudeBases=\(claudeBases.map{ $0.path })")
             var claudeURLs: [URL] = []
-            for b in claudeBases { claudeURLs.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10)) }
+            let fm = FileManager.default
+            for b in claudeBases {
+                var line = "\(b.path): "
+                do {
+                    let direct = try fm.contentsOfDirectory(at: b, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+                    let n = direct.filter { let e = $0.pathExtension.lowercased(); return e == "jsonl" || e == "json" }.count
+                    line += "direct=\(n)"
+                } catch { line += "directErr=\(error.localizedDescription)" }
+                if let en = fm.enumerator(at: b, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+                    var visited = 0, found = 0
+                    for case let url as URL in en {
+                        if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { continue }
+                        let e = url.pathExtension.lowercased(); if e == "jsonl" || e == "json" { found += 1 }
+                        visited += 1; if visited > 500 { break }
+                    }
+                    line += " enumFound=\(found)"
+                } else { line += " enumErr=unavailable" }
+                dbg.append(line)
+                claudeURLs.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10))
+            }
             dbg.append("claudeTopKURLs=\(claudeURLs.map{ $0.lastPathComponent })")
             let claudeRows: [LocalThreadSummary] = claudeURLs.map { url in
                 let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
