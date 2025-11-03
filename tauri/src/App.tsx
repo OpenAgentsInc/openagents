@@ -74,14 +74,15 @@ function App() {
 
   // Removed old port-range probing; rely on bridge_start + status to provide host
 
-  // Auto-connect once token and host are known and we are not connected
+  // Auto-connect once bridge reports running and host/token are known
   useEffect(() => {
     if (!token || !host) return
+    if (!runLocal && !host) return
     if (connected) return
     connect()
   // intentionally omit connect from deps to avoid recreating
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, host, connected])
+  }, [token, host, runLocal, connected])
 
   const connect = () => {
     try { disconnect() } catch {}
@@ -311,7 +312,6 @@ function App() {
               <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>Bridge: <span style={{ color: 'var(--secondary)' }}>{runLocal ? 'running (local)' : 'external/unknown'}</span></div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
                 <button onClick={refreshBridgeStatus}>Refresh</button>
-                {connected ? <button onClick={disconnect}>Disconnect</button> : <button onClick={connect}>Connect</button>}
               </div>
             </div>
           </div>
