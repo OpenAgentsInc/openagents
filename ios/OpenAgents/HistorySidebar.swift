@@ -1,16 +1,10 @@
 import SwiftUI
-#if canImport(OpenAgentsCore)
-import OpenAgentsCore
-#endif
 
 struct HistorySidebar: View {
-    #if canImport(OpenAgentsCore)
-    @State private var rows: [ThreadSummary] = []
+    @State private var rows: [LocalThreadSummary] = []
     @State private var isLoading = false
-    #endif
 
     var body: some View {
-        #if canImport(OpenAgentsCore)
         List {
             Section(header: Label("History", systemImage: "clock")) {
                 if isLoading && rows.isEmpty {
@@ -24,7 +18,7 @@ struct HistorySidebar: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                ForEach(rows.prefix(10), id: \.id) { row in
+                ForEach(rows.prefix(10), id: \.uniqueKey) { row in
                     NavigationLink(value: row.id) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(nonEmptyTitle(row) ?? "Thread")
@@ -45,29 +39,14 @@ struct HistorySidebar: View {
         }
         .navigationTitle("OpenAgents")
         .onAppear(perform: load)
-        #else
-        List {
-            Section(header: Text("History")) {
-                Text("Add local package 'OpenAgentsCore' to enable history.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .navigationTitle("OpenAgents")
-        #endif
     }
 
-    #if canImport(OpenAgentsCore)
     private func load() {
         guard !isLoading else { return }
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
             // Focus on Codex first: discover all bases and merge
-            #if canImport(OpenAgentsCore)
-            let loaded = CodexDiscovery.loadAllSummaries(maxFilesPerBase: 1000, maxResults: 500)
-            #else
-            let loaded: [ThreadSummary] = []
-            #endif
+            let loaded = LocalCodexDiscovery.loadAllSummaries(maxFilesPerBase: 1000, maxResults: 500)
             DispatchQueue.main.async {
                 withAnimation { self.rows = loaded }
                 self.isLoading = false
@@ -75,7 +54,7 @@ struct HistorySidebar: View {
         }
     }
 
-    private func nonEmptyTitle(_ row: ThreadSummary) -> String? {
+    private func nonEmptyTitle(_ row: LocalThreadSummary) -> String? {
         if let t = row.title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
         return nil
     }
@@ -111,7 +90,6 @@ struct HistorySidebar: View {
         let week = day / 7
         return "\(week)w ago"
     }
-    #endif
 }
 
 #Preview {
