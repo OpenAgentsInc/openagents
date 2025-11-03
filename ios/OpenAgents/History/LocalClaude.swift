@@ -105,6 +105,20 @@ struct LocalClaudeDiscovery {
                 if visited > topK * 500 { break }
             }
         }
+        if all.isEmpty {
+            // Fallback using enumerator(atPath:) to avoid URL resource keys
+            if let en = fm.enumerator(atPath: base.path) {
+                var visited = 0
+                for case let rel as String in en {
+                    let ext = (rel as NSString).pathExtension.lowercased()
+                    if ext == "jsonl" || ext == "json" {
+                        all.append(base.appendingPathComponent(rel))
+                    }
+                    visited += 1
+                    if visited > topK * 2000 { break }
+                }
+            }
+        }
         all.sort { fileMTime($0) > fileMTime($1) }
         if all.count > topK { all = Array(all.prefix(topK)) }
         return all
