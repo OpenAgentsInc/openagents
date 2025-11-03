@@ -18,9 +18,11 @@
       }
     ],
     "security": {
-      "csp": null,
-      "withGlobalTauri": true
+      "csp": null
     }
+  },
+  "security": {
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
