@@ -5,7 +5,7 @@ import { Pressable, Text, View, type LayoutChangeEvent } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Colors } from "@/constants/theme"
 import { Typography } from "@/constants/typography"
-import { useHeaderStore } from "@/lib/header-store"
+import { useHeaderStore } from "@openagentsinc/core"
 import { clearLogs as clearLogsStore } from "@/lib/log-store"
 import { useDrawer } from "@/providers/drawer"
 import { useBridge } from "@/providers/ws"
@@ -85,4 +85,3 @@ export function AppHeader() {
     </View>
   )
 }
-

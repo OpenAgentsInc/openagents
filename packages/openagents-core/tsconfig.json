@@ -1,12 +1,16 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../expo/tsconfig.json",
   "compilerOptions": {
-    "composite": false,
-    "declaration": false,
-    "emitDeclarationOnly": false,
     "jsx": "react-jsx",
-    "strict": true
+    "types": ["react", "react-native"],
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true
   },
-  "include": ["src"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "index.d.ts"
+  ]
 }
 

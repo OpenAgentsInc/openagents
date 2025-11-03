@@ -3,7 +3,7 @@ import { appLog } from '@/lib/app-log';
 import { useSettings, type Approvals as StoreApprovals } from '@/lib/settings-store'
 import { isDevEnv, devBridgeHost, devBridgeToken } from '@/lib/env'
 import { parseSessionNotification } from '@/lib/acp/validation'
-import { usePairingStore } from '@/lib/pairing-store'
+import { usePairingStore } from '@openagentsinc/core'
 
 type MsgHandler = ((text: string) => void) | null;
 

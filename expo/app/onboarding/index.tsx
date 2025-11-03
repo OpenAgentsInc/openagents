@@ -11,7 +11,7 @@ import { useSettings } from "@/lib/settings-store"
 import { useBridge } from "@/providers/ws"
 // pairing helpers not needed here; IP-only flow
 import { Ionicons } from "@expo/vector-icons"
-import { usePairingStore } from "@/lib/pairing-store"
+import { usePairingStore } from "@openagentsinc/core"
 import { typedRouter } from "@/lib/typed-router"
 
 export default function Onboarding() {

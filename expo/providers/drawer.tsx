@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useDrawerStore } from '@/lib/drawer-store'
+import { useDrawerStore } from '@openagentsinc/core'
 
 type DrawerControls = {
   open: boolean;
