@@ -87,6 +87,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const pendingBufferRef = useRef<string[]>([]); // buffer chunks when no handler is attached
   const subsRef = useRef<Set<MsgHandler>>(new Set());
   const clearLogHandlerRef = useRef<(() => void) | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef(0);
 
   // Persisted settings via Zustand store
   const readOnly = useSettings((s) => s.readOnly)
@@ -209,12 +211,17 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     wsRef.current = null;
     setConnected(false);
     setConnecting(false);
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+    reconnectAttemptRef.current = 0;
   }, []);
 
   const connect = useCallback(() => {
     setAutoReconnect(true);
     // Clear any prior WS close error as a new manual attempt begins
     try { setWsLastClose(null) } catch {}
+    // Cancel any scheduled retry
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+    reconnectAttemptRef.current = 0;
     // Read latest values from the settings store to avoid stale closures
     const rawHost = useSettings.getState().bridgeHost;
     const tokenNow = useSettings.getState().bridgeToken;
@@ -247,6 +254,9 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         try { setWsLastClose(null) } catch {}
         setConnected(true);
         setConnecting(false);
+        // Reset retry state on success
+        if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+        reconnectAttemptRef.current = 0;
         try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
         appLog('bridge.open');
         try { console.log('[bridge.ws] open') } catch {}
@@ -281,6 +291,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
                 const kind = rawNotif?.update?.sessionUpdate;
                 // eslint-disable-next-line no-console
                 console.log('[ws.in][bridge.acp]', { sessionId: sid, kind, valid: parsed.ok });
+                try { appLog('bridge.in.acp', { sessionId: sid, kind, valid: parsed.ok }) } catch {}
                 if (!parsed.ok && isDevEnv()) {
                   // eslint-disable-next-line no-console
                   console.log('[ws.in][bridge.acp][invalid]', { raw: rawNotif });
@@ -288,6 +299,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
               } else if (t && /^bridge\./.test(t)) {
                 // eslint-disable-next-line no-console
                 console.log('[ws.in]', t);
+                try { appLog('bridge.in', { type: t }) } catch {}
               }
             }
           }
@@ -310,6 +322,21 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         setConnected(false);
         setConnecting(false);
         appLog('bridge.close');
+        // Schedule retry if auto-reconnect is enabled
+        try {
+          const want = !!useSettings.getState().bridgeAutoReconnect;
+          if (want) {
+            const attempt = (reconnectAttemptRef.current = Math.min(reconnectAttemptRef.current + 1, 8));
+            const delay = Math.min(5000, 300 * Math.pow(2, attempt));
+            appLog('bridge.retry_scheduled', { attempt, delayMs: delay });
+            if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); }
+            reconnectTimerRef.current = setTimeout(() => {
+              reconnectTimerRef.current = null;
+              appLog('bridge.retry', { attempt });
+              try { connect(); } catch {}
+            }, delay);
+          }
+        } catch {}
       };
       ws.onerror = (_evt: Event) => {
         try { usePairingStore.getState().setDeeplinkPairing(false) } catch {}
