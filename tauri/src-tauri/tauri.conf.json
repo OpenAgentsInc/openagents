@@ -5,7 +5,7 @@
   "identifier": "com.openagents.desktop",
   "build": {
     "beforeDevCommand": "cd ../expo && EXPO_WEB_PORT=19006 bun run web -- --port 8082",
-    "devUrl": "http://localhost:19006",
+    "devUrl": "http://localhost:8082",
     "beforeBuildCommand": "cd ../expo && bunx expo export -p web --output-dir web-dist",
     "frontendDist": "../../expo/web-dist"
   },
@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' data: blob: 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://localhost:19006 ws://localhost:19006; frame-src 'self'"
+      "csp": "default-src 'self' data: blob: 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://localhost:8082 ws://localhost:8082; frame-src 'self'"
     }
   },
   "bundle": {
