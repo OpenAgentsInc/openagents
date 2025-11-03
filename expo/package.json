@@ -55,7 +55,7 @@
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
     "setimmediate": "^1.0.5",
-    "zustand": "4"
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@storybook/addon-ondevice-actions": "^10.0.0",
