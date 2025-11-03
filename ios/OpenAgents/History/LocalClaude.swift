@@ -9,6 +9,16 @@ struct LocalClaudeDiscovery {
             let u = URL(fileURLWithPath: p).standardizedFileURL
             if fm.fileExists(atPath: u.path) { out.append(u) }
         }
+        // Hardcoded project path (requested): scan the repo and its claude logs
+        let hardProject = URL(fileURLWithPath: "/Users/christopherdavid/code/openagents", isDirectory: true)
+        let hardProjectClaude = hardProject.appendingPathComponent("docs/logs/claude", isDirectory: true)
+        out.append(hardProject)
+        out.append(hardProjectClaude)
+        if let extra = env["CLAUDE_EXTRA_DIRS"], !extra.isEmpty {
+            for seg in extra.split(separator: ":") {
+                out.append(URL(fileURLWithPath: String(seg)).standardizedFileURL)
+            }
+        }
         let home = fm.homeDirectoryForCurrentUser
         let home2 = URL(fileURLWithPath: NSHomeDirectory())
         let realHome = URL(fileURLWithPath: "/Users/\(NSUserName())", isDirectory: true)
@@ -16,12 +26,21 @@ struct LocalClaudeDiscovery {
             home.appendingPathComponent(".claude/projects", isDirectory: true),
             home.appendingPathComponent(".claude/local/claude/projects", isDirectory: true),
             home.appendingPathComponent(".claude/local/projects", isDirectory: true),
+            home.appendingPathComponent(".claude/local/claude", isDirectory: true),
+            home.appendingPathComponent(".claude/local", isDirectory: true),
+            home.appendingPathComponent(".claude", isDirectory: true),
             home2.appendingPathComponent(".claude/projects", isDirectory: true),
             home2.appendingPathComponent(".claude/local/claude/projects", isDirectory: true),
             home2.appendingPathComponent(".claude/local/projects", isDirectory: true),
+            home2.appendingPathComponent(".claude/local/claude", isDirectory: true),
+            home2.appendingPathComponent(".claude/local", isDirectory: true),
+            home2.appendingPathComponent(".claude", isDirectory: true),
             realHome.appendingPathComponent(".claude/projects", isDirectory: true),
             realHome.appendingPathComponent(".claude/local/claude/projects", isDirectory: true),
             realHome.appendingPathComponent(".claude/local/projects", isDirectory: true),
+            realHome.appendingPathComponent(".claude/local/claude", isDirectory: true),
+            realHome.appendingPathComponent(".claude/local", isDirectory: true),
+            realHome.appendingPathComponent(".claude", isDirectory: true),
         ]
         // Always include candidates; sandbox checks can lie on fileExists
         for c in candidates { out.append(c) }
@@ -53,7 +72,8 @@ struct LocalClaudeDiscovery {
                 var visited = 0
                 for case let url as URL in en {
                     if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { continue }
-                    if url.pathExtension.lowercased() == "jsonl" { files.append(url) }
+                    let ext = url.pathExtension.lowercased()
+                    if ext == "jsonl" || ext == "json" { files.append(url) }
                     visited += 1
                     if visited > topK * 200 { break }
                 }
@@ -67,7 +87,8 @@ struct LocalClaudeDiscovery {
             var visited = 0
             for case let url as URL in en {
                 if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { continue }
-                if url.pathExtension.lowercased() == "jsonl" { all.append(url) }
+                let ext = url.pathExtension.lowercased()
+                if ext == "jsonl" || ext == "json" { all.append(url) }
                 visited += 1
                 if visited > topK * 500 { break }
             }
