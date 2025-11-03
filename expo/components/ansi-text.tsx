@@ -64,7 +64,21 @@ export function parseAnsi(text: string): Segment[] {
 export function AnsiText({ line }: { line: string }) {
   const segs = React.useMemo(() => parseAnsi(line), [line])
   return (
-    <Text style={{ fontFamily: Typography.primary, fontSize: 12, color: Colors.secondary }}>
+    <Text
+      style={{
+        fontFamily: Typography.primary,
+        fontSize: 12,
+        color: Colors.secondary,
+        // Ensure long tokens don't blow out layout on web
+        // web-only styles for React Native Web
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        whiteSpace: 'pre-wrap',
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        wordBreak: 'break-word',
+      }}
+    >
       {segs.map((s, idx) => (
         <Text key={idx} style={s.style}>{s.text}</Text>
       ))}
