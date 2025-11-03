@@ -17,6 +17,10 @@ struct HistorySidebar: View {
                     Text("\(rows.count) chats found")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } else if !isLoading {
+                    Text("No chats found in Codex folders")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 ForEach(rows.prefix(10), id: \.uniqueKey) { row in
                     NavigationLink(value: row.id) {
