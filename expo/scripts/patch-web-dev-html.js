@@ -20,7 +20,7 @@ function patchHtmlFile(file) {
       '<script type="module" src="/_expo/static/js/web/entry-'
     )
     // Inject a shim for __ExpoImportMetaRegistry.url used by Expo runtime
-    const shim = `<script>(function(){try{var g=globalThis;g.__ExpoImportMetaRegistry=g.__ExpoImportMetaRegistry||{};if(!Object.getOwnPropertyDescriptor(g.__ExpoImportMetaRegistry,'url')){Object.defineProperty(g.__ExpoImportMetaRegistry,'url',{get:function(){try{return (window&&window.location&&window.location.href)||'http://localhost/'}catch(e){return 'http://localhost/'}}, configurable:true});}}catch(e){}})();</script>`
+    const shim = `<script>(function(){try{var g=globalThis;g.__ExpoImportMetaRegistry=g.__ExpoImportMetaRegistry||{};try{Object.defineProperty(g.__ExpoImportMetaRegistry,'url',{get:function(){try{return (window&&window.location&&window.location.href)||'http://localhost/'}catch(e){return 'http://localhost/'}}, configurable:true});}catch(e){try{g.__ExpoImportMetaRegistry.url=(window&&window.location&&window.location.href)||'http://localhost/'}catch(_) {}}}catch(e){}})();</script>`
     html = html.replace('</head>', shim + '</head>')
     fs.writeFileSync(file, html, 'utf8')
     process.stdout.write(`[patched] ${file}\n`)
@@ -36,4 +36,3 @@ if (!fs.existsSync(root)) {
   process.exit(1)
 }
 for (const f of walk(root)) patchHtmlFile(f)
-
