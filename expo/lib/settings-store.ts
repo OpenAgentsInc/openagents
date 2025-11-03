@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { persistStorage } from './persist-storage'
 
 export type Approvals = 'never' | 'on-request' | 'on-failure'
 
@@ -72,7 +72,7 @@ export const useSettings = create<SettingsState>()(
     {
       name: '@openagents/settings-v4',
       version: 4,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistStorage(),
       // Migrate and sanitize legacy values (remove any bore/localhost defaults, clear bad hosts)
       migrate: (persisted: any, from) => {
         try {

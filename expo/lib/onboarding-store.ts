@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { persistStorage } from './persist-storage'
 
 type OnboardingState = {
   completed: boolean
@@ -17,11 +17,10 @@ export const useOnboarding = create<OnboardingState>()(
     }),
     {
       name: '@openagents/onboarding-v1',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistStorage(),
       onRehydrateStorage: () => (state, error) => {
         try { useOnboarding.setState({ rehydrated: true }) } catch {}
       },
     }
   )
 )
-

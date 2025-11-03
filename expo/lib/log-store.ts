@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { persistStorage } from './persist-storage'
 
 export type LogKind = 'md' | 'reason' | 'text' | 'json' | 'summary' | 'delta' | 'exec' | 'file' | 'search' | 'mcp' | 'todo' | 'cmd' | 'err' | 'turn' | 'thread' | 'item_lifecycle'
 
@@ -38,7 +38,7 @@ export const useLogStore = create<LogState>()(
     {
       name: '@openagents/logs-v2',
       version: 2,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistStorage(),
       migrate: (persisted: unknown, _from) => {
         // Migrate v1: plain array of LogDetail
         try {

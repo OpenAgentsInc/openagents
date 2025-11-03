@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { persistStorage } from './persist-storage'
 
 export type SkillId = string
 
@@ -33,7 +33,7 @@ export const useSkillsStore = create<SkillsState>()(
     {
       name: '@openagents/skills-v1',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistStorage(),
     }
   )
 )
