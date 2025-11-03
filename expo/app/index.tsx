@@ -6,10 +6,14 @@ import { useArchiveStore } from '@openagentsinc/core'
 import { useTinyvexThreads } from 'tinyvex/react'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
+import { useSettings } from '@/lib/settings-store'
+import { devBridgeHost, devBridgeToken, isDevEnv } from '@/lib/env'
 
 export default function Index() {
   const router = useRouter()
-  const { connected } = useBridge()
+  const { connected, connecting, connect } = useBridge()
+  const setBridgeHost = useSettings((s) => s.setBridgeHost)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const { threads } = useTinyvexThreads(50)
   const isArchived = useArchiveStore((s) => s.isArchived)
 
@@ -28,6 +32,30 @@ export default function Index() {
       if (tid) router.replace(`/thread/${encodeURIComponent(tid)}` as any)
     } catch {}
   }, [connected, threads, isArchived, router])
+
+  // Dev auto-connect without requiring Settings screen
+  React.useEffect(() => {
+    if (connected || connecting) return
+    try {
+      if (isDevEnv()) {
+        const h = devBridgeHost();
+        const t = devBridgeToken();
+        if (h) { try { setBridgeHost(h) } catch {} }
+        if (t) { try { setBridgeToken(t) } catch {} }
+        if (h) { try { connect() } catch {} }
+      }
+    } catch {}
+  }, [connected, connecting, connect, setBridgeHost, setBridgeToken])
+
+  // Fallback: if we can't connect or find threads within a short window, start a new thread
+  React.useEffect(() => {
+    const id = setTimeout(() => {
+      try {
+        if (!connected) router.replace('/thread/new' as any)
+      } catch {}
+    }, 2500)
+    return () => clearTimeout(id)
+  }, [connected, router])
 
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background }}>
