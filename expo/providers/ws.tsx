@@ -328,13 +328,14 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const send = useCallback((payload: string | ArrayBuffer | Blob) => {
     const ws = wsRef.current;
     let preview = '';
-    try {
-      let s: string;
-      if (typeof payload === 'string') s = payload;
-      else if (payload instanceof ArrayBuffer) s = `[${payload.byteLength} bytes]`;
-      else s = String(payload);
+    if (typeof payload === 'string') {
+      const s = payload;
       preview = s.length > 160 ? s.slice(0, 160) + '…' : s;
-    } catch {}
+    } else if (payload && typeof (payload as any).byteLength === 'number') {
+      // Covers ArrayBuffer and blobs with byteLength-like fields without relying on instanceof
+      const len = Number((payload as any).byteLength) || 0;
+      preview = `[${len} bytes]`;
+    }
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       try { appLog('ws.send.skipped', { preview, reason: 'not_open' }); } catch {}
       return false;
