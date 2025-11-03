@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.openagents.desktop",
   "build": {
-    "beforeDevCommand": "cd ../expo && npx expo start --web --port 19006",
+    "beforeDevCommand": "cd ../expo && BROWSER=none EXPO_NO_WEB_BROWSER=1 npx expo start --web --port 19006 --no-open",
     "devUrl": "http://localhost:19006",
     "beforeBuildCommand": "cd ../expo && npx expo export -p web --output-dir web-dist",
     "frontendDist": "../../expo/web-dist"
