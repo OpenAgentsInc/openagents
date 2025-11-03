@@ -20,9 +20,9 @@ function ThreadsList({ onSelect, selectedId }: { onSelect: (id: string) => void;
           className={[
             'w-full text-left px-3 py-2 border-b border-[var(--border)] cursor-pointer',
             'bg-transparent border-0 border-b',
-            'text-[var(--foreground)] hover:bg-black/20',
+            'text-[var(--foreground)] hover:bg-white/5',
             'focus:outline-none focus:ring-0 shadow-none',
-            selectedId === String(t.id) ? 'bg-black/30' : 'bg-transparent',
+            selectedId === String(t.id) ? 'bg-white/10' : 'bg-transparent',
           ].join(' ')}
           onClick={() => onSelect(String(t.id))}
         >
@@ -84,6 +84,14 @@ export default function HelloDesktop() {
       <header className="px-4 py-4 border-b border-[var(--border)] flex items-center justify-between">
         <div className="text-[20px]">Hello world</div>
         <div className="flex items-center gap-3">
+          {view === 'chat' && selected && (
+            <div
+              className="max-w-[520px] truncate text-xs font-mono text-[var(--secondary)] bg-white/5 border border-[var(--border)] rounded px-2 py-1"
+              title={selected}
+            >
+              Thread {selected}
+            </div>
+          )}
           {view === 'chat' && (
             <button
               className="text-xs border border-[var(--border)] rounded px-2 py-1 hover:bg-black/20"
