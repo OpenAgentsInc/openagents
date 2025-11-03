@@ -19,6 +19,11 @@ struct HistorySidebar: View {
                         Text("Loading…")
                     }
                 }
+                if !rows.isEmpty {
+                    Text("\(rows.count) chats found")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(rows.prefix(10), id: \.id) { row in
                     NavigationLink(value: row.id) {
                         VStack(alignment: .leading, spacing: 4) {
