@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.openagents.desktop",
   "build": {
-    "beforeDevCommand": "cd ../../expo && bun run web",
+    "beforeDevCommand": "cd ../expo && bun run web",
     "devUrl": "http://localhost:19006",
-    "beforeBuildCommand": "cd ../../expo && bunx expo export -p web --output-dir web-dist",
+    "beforeBuildCommand": "cd ../expo && bunx expo export -p web --output-dir web-dist",
     "frontendDist": "../../expo/web-dist"
   },
   "app": {
