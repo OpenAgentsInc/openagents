@@ -11,7 +11,7 @@ import type { SyncStatusTs } from 'tricoder/types'
 
 export default function SettingsScreen() {
   useHeaderTitle('Settings')
-  const { bridgeHost, setBridgeHost, connected, connect, disconnect, addSubscriber, send } = useBridge()
+  const { bridgeHost, setBridgeHost, connected, connecting, wsUrl, httpBase, wsLastClose, connect, disconnect, addSubscriber, send } = useBridge()
   const [hostInput, setHostInput] = React.useState<string>(() => String(bridgeHost || ''))
   const bridgeToken = useSettings((s) => s.bridgeToken)
   const setBridgeToken = useSettings((s) => s.setBridgeToken)
@@ -61,6 +61,14 @@ export default function SettingsScreen() {
     }
   }, [connected, refreshSyncStatus])
 
+  // Autoconnect when a host is present (mirrors desktop behavior)
+  React.useEffect(() => {
+    const h = String(bridgeHost || '').trim()
+    if (!connected && h) {
+      try { connect() } catch {}
+    }
+  }, [bridgeHost, connected, connect])
+
   const toggleSync = React.useCallback(() => {
     const next = !syncEnabled
     try { setSyncEnabled(next) } catch {}
@@ -98,7 +106,25 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container} testID='settings-root'>
       <Text style={styles.title}>Connection</Text>
-      {/* Bridge Host / Token / Endpoint are intentionally hidden to simplify the Settings page UI. */}
+      {/* Connection details (endpoint + status) */}
+      <View style={styles.inputWrapper}>
+        <Text style={styles.label}>Endpoint</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>{wsUrl || '(not set)'}</Text>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Base: {httpBase || '—'}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
+          {!connected ? (
+            <Button title={connecting ? 'Connecting…' : 'Connect'} onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; connect() }} testID="settings-connect" />
+          ) : (
+            <Button title='Disconnect' onPress={disconnect} testID="settings-disconnect" />
+          )}
+          <StatusPill connected={connected} />
+        </View>
+        {wsLastClose ? (
+          <Text style={{ color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 11, marginTop: 4 }}>
+            Last close: code {String(wsLastClose.code ?? '')} {wsLastClose.reason ? `— ${wsLastClose.reason}` : ''}
+          </Text>
+        ) : null}
+      </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {!connected ? (
           <Button title='Connect' onPress={() => { try { setBridgeHost(hostInput.trim()) } catch {}; connect() }} testID="settings-connect" />
