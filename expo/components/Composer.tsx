@@ -120,4 +120,3 @@ export function Composer({
     </View>
   );
 }
-
