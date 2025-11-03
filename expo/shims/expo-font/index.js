@@ -10,5 +10,8 @@ export function useFonts() {
   return [true, undefined];
 }
 
-export default { loadAsync };
+export function resetServerContext() {
+  // SSR-side hook in expo-font; noop in our web shim
+}
 
+export default { loadAsync, resetServerContext };
