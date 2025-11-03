@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import path from 'path'
 import { fileURLToPath } from 'url'
 import react from "@vitejs/plugin-react";
+import tailwindcss from '@tailwindcss/vite'
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -11,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default defineConfig(async () => ({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       // Ensure Zustand middleware is ESM so Vite transforms import.meta.env
