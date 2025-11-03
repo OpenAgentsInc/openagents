@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.openagents.desktop",
   "build": {
-    "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
-    "frontendDist": "../dist"
+    "beforeDevCommand": "cd ../../expo && bun run web",
+    "devUrl": "http://localhost:19006",
+    "beforeBuildCommand": "cd ../../expo && bunx expo export -p web --output-dir web-dist",
+    "frontendDist": "../../expo/web-dist"
   },
   "app": {
     "windows": [
@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' data: blob: 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://localhost:19006 ws://localhost:19006; frame-src 'self'"
     }
   },
   "bundle": {
