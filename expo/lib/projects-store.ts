@@ -1,5 +1,5 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { create } from 'zustand/traditional'
+import { persist } from 'zustand/traditional/middleware'
 import { persistStorage } from './persist-storage'
 
 export type ProjectId = string

@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create } from 'zustand/traditional'
 
 type PairingState = {
   deeplinkPairing: boolean;
@@ -9,4 +9,3 @@ export const usePairingStore = create<PairingState>((set) => ({
   deeplinkPairing: false,
   setDeeplinkPairing: (v: boolean) => set({ deeplinkPairing: v }),
 }))
-
