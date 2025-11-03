@@ -199,15 +199,19 @@ function App() {
     // Choose most recent Codex thread, fallback to most recent
     const providerRows = rows.filter((r) => {
       const s = String(r.source || '')
-      return s === 'codex' || s === 'claude_code'
+      const id = String(r.id || '')
+      return (s === 'codex' || s === 'claude_code') && !id.startsWith('ephemeral_')
     })
     const sorted = (xs: ThreadSummaryTs[]) => xs.slice().sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
     const top = sorted(providerRows).slice(0, 10)
-    // Query last message for the top threads
+    // Query last message for the top non-ephemeral threads
     for (const thr of top) {
-      try { clientRef.current?.queryMessages(String(thr.id), 1) } catch {}
+      const id = String(thr.id || '')
+      if (id.startsWith('ephemeral_')) continue
+      try { clientRef.current?.queryMessages(id, 1) } catch {}
     }
-    const pick = (top[0] || sorted(rows)[0]) as ThreadSummaryTs | undefined
+    const nonEphemeralSorted = sorted(rows).filter((r) => !String(r.id || '').startsWith('ephemeral_'))
+    const pick = (top[0] || nonEphemeralSorted[0]) as ThreadSummaryTs | undefined
     const tid = pick?.id ? String(pick.id) : ''
     if (tid && tid !== selectedThread) {
       setSelectedThread(tid)
@@ -309,7 +313,7 @@ function App() {
             <h3 style={{ margin: 0, marginBottom: 6, textAlign: 'left', flexShrink: 0 }}>Recent chats</h3>
             <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: '0 0 auto', overflowY: 'auto', maxHeight: 200 }}>
               {threads
-                .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')))
+                .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')) && !String(r.id || '').startsWith('ephemeral_'))
                 .sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
                 .slice(0, 10)
                 .map((r) => {
