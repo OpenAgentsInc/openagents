@@ -8,6 +8,8 @@ convex/_generated/
 local_backend
 node_modules
 dist
+expo/web-dev/
+expo/web-dist/
 *.tgz
 /src-tauri/
 packages/tricoder/tmp.ts
