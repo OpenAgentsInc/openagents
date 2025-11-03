@@ -10,14 +10,20 @@ import type { MessageRowTs } from 'tricoder/types'
 // Minimal desktop entrypoint view using our global theme
 // Theme CSS (fonts, colors) is imported by main.tsx via App.css
 
-function ThreadsList({ onSelect }: { onSelect: (id: string) => void }) {
+function ThreadsList({ onSelect, selectedId }: { onSelect: (id: string) => void; selectedId?: string }) {
   const { threads } = useTinyvexThreads(50)
   return (
     <div className="flex-1 min-h-0 overflow-auto">
       {threads.map((t) => (
         <button
           key={t.id}
-          className="w-full text-left px-3 py-2 border-b border-[var(--border)] hover:bg-black/20 cursor-pointer"
+          className={[
+            'w-full text-left px-3 py-2 border-b border-[var(--border)] cursor-pointer',
+            'bg-transparent border-0 border-b',
+            'text-[var(--foreground)] hover:bg-black/20',
+            'focus:outline-none focus:ring-0 shadow-none',
+            selectedId === String(t.id) ? 'bg-black/30' : 'bg-transparent',
+          ].join(' ')}
           onClick={() => onSelect(String(t.id))}
         >
           <div className="text-sm truncate">{t.title || 'Thread'}</div>
@@ -96,7 +102,7 @@ export default function HelloDesktop() {
           <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)]">Recent threads</div>
           {wsUrl ? (
             <TinyvexProvider config={{ url: wsUrl, token }}>
-              <ThreadsList onSelect={(id) => { setSelected(id); setView('chat') }} />
+              <ThreadsList selectedId={selected} onSelect={(id) => { setSelected(id); setView('chat') }} />
             </TinyvexProvider>
           ) : (
             <div className="p-3 text-[var(--tertiary)] text-xs">Connecting…</div>
