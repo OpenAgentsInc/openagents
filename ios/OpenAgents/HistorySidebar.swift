@@ -98,9 +98,14 @@ struct HistorySidebar: View {
                 claudeURLs.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10))
             }
             dbg.append("claudeTopKURLs=\(claudeURLs.map{ $0.lastPathComponent })")
-            let claudeRows: [LocalThreadSummary] = claudeURLs.map { url in
+            var claudeRows: [LocalThreadSummary] = claudeURLs.map { url in
                 let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
                 return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
+            }
+            if claudeRows.isEmpty {
+                let exact = LocalClaudeDiscovery.scanExactProjectTopK(topK: 10)
+                dbg.append("claudeExactProjectCount=\(exact.count)")
+                claudeRows = exact
             }
             dbg.append("codexCount=\(codexRows.count) claudeCount=\(claudeRows.count)")
             var merged = codexRows + claudeRows
