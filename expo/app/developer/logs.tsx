@@ -53,7 +53,7 @@ export default function DeveloperLogsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background, padding: 12 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Live Console</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable
