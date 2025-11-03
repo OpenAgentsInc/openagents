@@ -443,7 +443,7 @@ function DrawerWrapper() {
           <Stack.Screen name="developer/recent-thread" />
           <Stack.Screen name="developer/logs" />
         </Stack>
-        {open ? (
+        {open && isMobile() ? (
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: Colors.white, opacity: 0.04 }} />
         ) : null}
         {/* Toasts overlay (bottom-right corner) */}
