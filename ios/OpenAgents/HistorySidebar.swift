@@ -42,7 +42,7 @@ struct HistorySidebar: View {
                                 .lineLimit(1)
                             HStack(spacing: 8) {
                                 if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
-                                    Label(relative(ts), systemImage: "time")
+                                    Label(relative(ts), systemImage: "clock")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -73,10 +73,8 @@ struct HistorySidebar: View {
             dbg.append("home=\(home) home2=\(home2)")
             dbg.append("defaultBaseCandidates=[\(def1), \(def2)]")
             dbg.append("bases=\(bases.map{ $0.path })")
-            var counts: [String] = []
-            for b in bases { counts.append("\(b.path): \(LocalCodexScanner.listJSONLFiles(at: b).count) files") }
-            dbg.append(contentsOf: counts)
-            let loaded = LocalCodexDiscovery.loadAllSummaries(maxFilesPerBase: 1000, maxResults: 500)
+            // No per-base counts (expensive). Load only top 10 immediately.
+            let loaded = LocalCodexDiscovery.loadAllSummaries(topK: 10)
             DispatchQueue.main.async {
                 withAnimation { self.rows = loaded }
                 self.isLoading = false
