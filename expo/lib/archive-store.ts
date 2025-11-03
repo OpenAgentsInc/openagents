@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { persistStorage } from './persist-storage'
 
 type ArchiveState = {
   archived: Record<string, { archivedAt: number }>
@@ -38,7 +38,7 @@ export const useArchiveStore = create<ArchiveState>()(
     {
       name: '@openagents/archived-threads-v1',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistStorage(),
       partialize: (s) => ({ archived: s.archived }),
     }
   )
@@ -47,4 +47,3 @@ export const useArchiveStore = create<ArchiveState>()(
 export function isThreadArchived(id: string): boolean {
   try { return useArchiveStore.getState().isArchived(id) } catch { return false }
 }
-

@@ -2,6 +2,7 @@ import React from 'react';
 import type { Transport } from '../client';
 import { TinyvexClient, silentLogger } from '../client';
 import { WsTransport } from '../client/WsTransport';
+import { NoopTransport } from '../client/NoopTransport';
 
 export type TinyvexConfig = {
   url: string;
@@ -10,7 +11,9 @@ export type TinyvexConfig = {
 };
 
 function makeClient(cfg: TinyvexConfig) {
-  const t: Transport = new WsTransport({ url: cfg.url, token: cfg.token });
+  const t: Transport = cfg.url && cfg.url.trim()
+    ? new WsTransport({ url: cfg.url, token: cfg.token })
+    : new NoopTransport();
   return new TinyvexClient(t, cfg.debug ? console : silentLogger);
 }
 

@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { persistStorage } from './persist-storage'
 
 export type AgentProvider = 'codex' | 'claude_code'
 
@@ -25,9 +25,8 @@ export const useThreadProviders = create<ThreadProviderState>()(
     {
       name: '@openagents/thread-provider-v1',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistStorage(),
       partialize: (s) => ({ byThread: s.byThread }),
     }
   )
 )
-

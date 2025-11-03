@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { persistStorage } from './persist-storage'
 import { appLog } from '@/lib/app-log'
 import { useBridge } from '@/providers/ws'
 
@@ -111,7 +111,7 @@ export const useThreads = create<ThreadsState>()(
         historyLoadedAt: state.historyLoadedAt,
         threadProject: state.threadProject,
       }),
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistStorage(),
       onRehydrateStorage: () => (state, error) => {
         try {
           useThreads.setState({ rehydrated: true })
