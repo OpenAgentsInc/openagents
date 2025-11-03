@@ -29,6 +29,7 @@ export default function SettingsScreen() {
   const [syncFiles, setSyncFiles] = React.useState<number>(0)
   const [syncBase, setSyncBase] = React.useState<string>('')
   const [syncLastRead, setSyncLastRead] = React.useState<number>(0)
+  const [bridgeLogs, setBridgeLogs] = React.useState<string[]>([])
 
   // Subscribe to bridge.sync_status updates while the screen is mounted
   React.useEffect(() => {
@@ -49,6 +50,22 @@ export default function SettingsScreen() {
       } catch {}
     })
     return () => { try { unsub() } catch {} }
+  }, [addSubscriber])
+
+  // Capture raw bridge logs (stdout/stderr lines broadcast by the bridge)
+  React.useEffect(() => {
+    const off = addSubscriber((raw) => {
+      try {
+        const s = String(raw || '')
+        // Ignore JSON envelopes here (handled above) and empty lines
+        if (!s || s[0] === '{') return
+        setBridgeLogs((prev) => {
+          const next = [...prev, s]
+          return next.length > 200 ? next.slice(next.length - 200) : next
+        })
+      } catch {}
+    })
+    return () => { try { off() } catch {} }
   }, [addSubscriber])
 
   const refreshSyncStatus = React.useCallback(() => {
@@ -201,6 +218,17 @@ export default function SettingsScreen() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary }}>Auto-check every 5s</Text>
         <Segmented title={updatesAutoPoll ? 'On' : 'Off'} active={updatesAutoPoll} onPress={() => { try { setUpdatesAutoPoll(!updatesAutoPoll) } catch {} }} />
+      </View>
+      <View style={{ height: 16 }} />
+      <Text style={styles.title}>Bridge Logs</Text>
+      <View style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, padding: 8, maxHeight: 220 }}>
+        <Text style={{ color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 11 }}>Last {Math.min(bridgeLogs.length, 30)} lines</Text>
+        <View style={{ height: 6 }} />
+        <View style={{ maxHeight: 180 }}>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>
+            {(bridgeLogs.slice(-30)).join('\n') || '(no logs yet)'}
+          </Text>
+        </View>
       </View>
     </View>
   )
