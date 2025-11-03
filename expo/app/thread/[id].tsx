@@ -77,6 +77,7 @@ export default function ThreadScreen() {
   type Item = { key: string; ts: number; role: 'assistant' | 'user'; text: string }
   const listRef = React.useRef<FlatList<Item>>(null)
   const didAutoScrollFor = React.useRef<string | null>(null)
+  const pendingAutoScroll = React.useRef<boolean>(false)
   const items: Item[] = React.useMemo(() => {
     const hist: Item[] = (history || []).map((r, i) => ({ key: `h-${r.id}-${i}`, ts: r.ts, role: r.role === 'assistant' ? 'assistant' : 'user', text: String(r.text || '') }))
     const liveItems: Item[] = live.assistant ? [{ key: 'live-a', ts: Date.now(), role: 'assistant', text: live.assistant }] : []
@@ -86,14 +87,25 @@ export default function ThreadScreen() {
   React.useEffect(() => {
     // Reset flag whenever thread changes
     didAutoScrollFor.current = null
+    pendingAutoScroll.current = true
   }, [threadId])
 
   React.useEffect(() => {
     if (!threadId) return
     if (didAutoScrollFor.current === threadId) return
     if ((items?.length ?? 0) === 0) return
-    try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
-    didAutoScrollFor.current = threadId
+    // Defer to next frame to ensure layout complete
+    try {
+      requestAnimationFrame(() => {
+        try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
+        didAutoScrollFor.current = threadId
+        pendingAutoScroll.current = false
+      })
+    } catch {
+      try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
+      didAutoScrollFor.current = threadId
+      pendingAutoScroll.current = false
+    }
   }, [threadId, items])
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -112,7 +124,20 @@ export default function ThreadScreen() {
         }}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}
         keyboardShouldPersistTaps='handled'
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        onLayout={() => {
+          if (pendingAutoScroll.current && threadId) {
+            try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
+            didAutoScrollFor.current = threadId
+            pendingAutoScroll.current = false
+          }
+        }}
+        onContentSizeChange={() => {
+          if (pendingAutoScroll.current && threadId) {
+            try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
+            didAutoScrollFor.current = threadId
+            pendingAutoScroll.current = false
+          }
+        }}
         style={{ flex: 1 }}
       />
         {/* Provider selector: show only before any messages exist */}
