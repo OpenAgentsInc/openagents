@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.openagents.desktop",
   "build": {
-    "beforeDevCommand": "cd ../expo && npx expo start --web --port 19006",
-    "devUrl": "http://localhost:19006",
-    "beforeBuildCommand": "cd ../expo && npx expo export -p web --output-dir web-dist",
-    "frontendDist": "../../expo/web-dist"
+    "beforeDevCommand": "cd .. && bun run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "cd .. && bun run build",
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [
