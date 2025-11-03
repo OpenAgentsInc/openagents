@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "tailwindcss-animate";
 /* Theme variables */
 @import "@openagentsinc/theme/web/theme.css";
 
