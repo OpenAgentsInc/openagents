@@ -1,4 +1,4 @@
-import { create } from 'zustand/traditional'
+import { create } from 'zustand'
 
 type PairingState = {
   deeplinkPairing: boolean;

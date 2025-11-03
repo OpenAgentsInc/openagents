@@ -1,4 +1,4 @@
-import { create } from 'zustand/traditional'
+import { create } from 'zustand'
 
 export type AppLogLevel = 'info' | 'warn' | 'error'
 export type AppLogItem = { ts: number; level: AppLogLevel; event: string; details?: any }

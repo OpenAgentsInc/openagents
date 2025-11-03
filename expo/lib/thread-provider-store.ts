@@ -1,4 +1,4 @@
-import { create } from 'zustand/traditional'
+import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { persistStorage } from './persist-storage'
 
