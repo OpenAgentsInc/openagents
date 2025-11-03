@@ -267,7 +267,8 @@ function DrawerContent() {
   );
 }
 
-const USE_STORYBOOK = (process.env.EXPO_PUBLIC_USE_STORYBOOK === '1') || (process.env.USE_STORYBOOK === '1')
+// Only enable Storybook on native platforms to avoid web bundler trying to resolve RN Storybook deps
+const USE_STORYBOOK = (Platform.OS !== 'web') && ((process.env.EXPO_PUBLIC_USE_STORYBOOK === '1') || (process.env.USE_STORYBOOK === '1'))
 
 export default function RootLayout() {
   if (USE_STORYBOOK) {
