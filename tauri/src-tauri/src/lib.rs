@@ -25,6 +25,7 @@ fn get_bridge_token() -> Option<String> {
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use std::io::ErrorKind;
 
 struct BridgeState {
     child: Mutex<Option<tokio::process::Child>>,
@@ -66,14 +67,28 @@ async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<St
         first_free_port().await
     };
     let host = format!("127.0.0.1:{}", port);
-    let mut cmd = tokio::process::Command::new("oa-bridge");
-    cmd.arg("--bind").arg(host.clone());
-    // Pass token via env if provided
     let tok = token.or_else(ensure_bridge_token);
-    if let Some(t) = &tok { cmd.env("OPENAGENTS_BRIDGE_TOKEN", t); }
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| format!("failed to spawn oa-bridge: {e}"))?;
+    // Attempt to spawn bridge binary, falling back to `cargo run -p oa-bridge` for dev
+    let mut spawn_bridge = |
+        program: &str, args: &[&str], tok: &Option<String>
+    | -> Result<tokio::process::Child, std::io::Error> {
+        let mut c = tokio::process::Command::new(program);
+        for a in args { c.arg(a); }
+        if let Some(t) = tok { c.env("OPENAGENTS_BRIDGE_TOKEN", t); }
+        c.stdout(std::process::Stdio::piped());
+        c.stderr(std::process::Stdio::piped());
+        c.spawn()
+    };
+
+    let mut child = match spawn_bridge("oa-bridge", &["--bind", &host], &tok) {
+        Ok(ch) => ch,
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            // Fallback to cargo (dev). Note: uses workspace context; assumes repo present in dev.
+            spawn_bridge("cargo", &["run", "-p", "oa-bridge", "--", "--bind", &host], &tok)
+                .map_err(|e2| format!("failed to spawn oa-bridge (cargo fallback): {e2}"))?
+        }
+        Err(e) => return Err(format!("failed to spawn oa-bridge: {e}")),
+    };
     // Pipe logs
     if let Some(mut out) = child.stdout.take() {
         let logs = state.inner().logs.clone();

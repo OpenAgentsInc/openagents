@@ -53,6 +53,25 @@ function App() {
     return () => { cancelled = true }
   }, [])
 
+  // Auto-start a local bridge sidecar on first load, then poll status
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        // Start sidecar regardless; it will bind to the first free port
+        const h = await invoke<string>('bridge_start', { bind: null, token: token || null })
+        if (!cancelled && h) setHost(h)
+      } catch (e) {
+        console.warn('bridge_start failed', e)
+      }
+      // Status poll
+      const id = window.setInterval(() => { refreshBridgeStatus().catch(() => {}) }, 1500)
+      ;(window as any).__bridgePoll = id
+    })()
+    return () => { cancelled = true; try { window.clearInterval((window as any).__bridgePoll) } catch {} }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
+
   // Auto-detect local bridge port: probe a small range and pick the highest responsive port
   useEffect(() => {
     if (!token) return; // wait until token is loaded to avoid auth failures
@@ -318,25 +337,17 @@ function App() {
   return (
     <main className="container">
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'stretch', width: '100%', margin: '16px 0 0', flex: 1, minHeight: 0 }}>
-        {/* Sidebar with recent chats and compact raw feed */}
+        {/* Sidebar with recent chats and compact raw/log feed */}
         <div style={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0, flexShrink: 0 }}>
-          {/* Connection panel */}
+          {/* Connection / Status panel (no manual controls) */}
           <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', padding: 10 }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input id="host-input" placeholder="host:port" value={host} onChange={(e) => setHost(e.currentTarget.value)} style={{ flex: 1 }} />
-              {!connected ? (
-                <button onClick={connect}>Connect</button>
-              ) : (
-                <button onClick={disconnect}>Disconnect</button>
-              )}
-            </div>
-            <div style={{ textAlign: 'left', marginTop: 6 }}>
+            <div style={{ textAlign: 'left' }}>
               <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>wsUrl: <span style={{ color: 'var(--secondary)' }}>{wsBase || '—'}</span></div>
               <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>Status: <span style={{ color: 'var(--secondary)' }}>{status}</span></div>
+              <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>Bridge: <span style={{ color: 'var(--secondary)' }}>{runLocal ? 'running (local)' : 'external/unknown'}</span></div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
-                <input id='run-local' type='checkbox' checked={runLocal} onChange={(e) => { if (e.currentTarget.checked) startLocalBridge(); else stopLocalBridge(); }} />
-                <label htmlFor='run-local' style={{ fontSize: 12, color: 'var(--secondary)' }}>Run local bridge</label>
-                <button onClick={refreshBridgeStatus} style={{ marginLeft: 'auto' }}>Refresh</button>
+                <button onClick={refreshBridgeStatus}>Refresh</button>
+                {connected ? <button onClick={disconnect}>Disconnect</button> : <button onClick={connect}>Connect</button>}
               </div>
             </div>
           </div>
