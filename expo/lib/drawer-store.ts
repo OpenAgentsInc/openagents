@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { persistStorage } from './persist-storage'
 
 type DrawerState = {
   open: boolean
@@ -16,8 +16,7 @@ export const useDrawerStore = create<DrawerState>()(
     {
       name: '@openagents/drawer-v1',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: persistStorage(),
     }
   )
 )
-
