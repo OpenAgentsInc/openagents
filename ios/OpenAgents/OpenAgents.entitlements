@@ -10,6 +10,8 @@
     <array>
         <string>/Users/christopherdavid/.codex/sessions</string>
         <string>/Users/christopherdavid/.claude</string>
+        <string>/Users/christopherdavid/code/openagents</string>
+        <string>/Users/christopherdavid/code/openagents/docs/logs/claude</string>
     </array>
 </dict>
 </plist>
