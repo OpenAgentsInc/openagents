@@ -52,6 +52,9 @@ struct LocalClaudeDiscovery {
             }
           }
         }
+        // Also add exact Claude project folder used for this repo if present
+        let exactProject = realHome.appendingPathComponent(".claude/projects/-Users-christopherdavid-code-openagents", isDirectory: true)
+        out.append(exactProject)
         // dedupe
         var uniq: [URL] = []
         var seen: Set<String> = []
@@ -62,6 +65,15 @@ struct LocalClaudeDiscovery {
     static func listRecentTopN(at base: URL, topK: Int) -> [URL] {
         var out: [URL] = []
         let fm = FileManager.default
+        // If base itself contains transcript files, pick directly
+        if let direct = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) {
+            var directFiles = direct.filter { let e = $0.pathExtension.lowercased(); return e == "jsonl" || e == "json" }
+            if !directFiles.isEmpty {
+                directFiles.sort { fileMTime($0) > fileMTime($1) }
+                if directFiles.count > topK { directFiles = Array(directFiles.prefix(topK)) }
+                return directFiles
+            }
+        }
         // Heuristic: projects/<project>/**/*.jsonl
         let projects = (try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
         let pSorted = projects.sorted { $0.lastPathComponent > $1.lastPathComponent }

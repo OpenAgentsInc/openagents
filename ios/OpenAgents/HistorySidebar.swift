@@ -20,7 +20,7 @@ struct HistorySidebar: View {
                         .foregroundStyle(.secondary)
                 } else if !isLoading {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("No chats found in Codex folders")
+                        Text("No chats found")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         if !debugLines.isEmpty {
@@ -34,7 +34,7 @@ struct HistorySidebar: View {
                         #endif
                     }
                 }
-                ForEach(rows.prefix(10), id: \.uniqueKey) { row in
+                ForEach(rows.prefix(20), id: \.uniqueKey) { row in
                     NavigationLink(value: row.id) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(nonEmptyTitle(row) ?? "Thread")
@@ -87,6 +87,7 @@ struct HistorySidebar: View {
             var merged = codexRows + claudeRows
             merged.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
             if merged.count > 20 { merged = Array(merged.prefix(20)) }
+            print("[History] Claude bases=\(claudeBases.map{ $0.path }) items=\(claudeRows.count)")
             DispatchQueue.main.async {
                 withAnimation { self.rows = merged }
                 self.isLoading = false
