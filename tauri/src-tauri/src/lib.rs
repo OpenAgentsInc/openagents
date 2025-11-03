@@ -77,7 +77,7 @@ async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<St
     let mut host = String::new();
     let tok = token.or_else(ensure_bridge_token);
     // Attempt to spawn bridge binary, falling back to `cargo run -p oa-bridge` for dev
-    let mut spawn_bridge = |
+    let spawn_bridge = |
         program: &str, args: &[&str], tok: &Option<String>
     | -> Result<tokio::process::Child, std::io::Error> {
         let mut c = tokio::process::Command::new(program);
