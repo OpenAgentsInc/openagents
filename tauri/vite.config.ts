@@ -12,6 +12,12 @@ const __dirname = path.dirname(__filename)
 
 export default defineConfig(async () => ({
   plugins: [react()],
+  define: {
+    // Guard dependencies that reference import.meta in non-ESM contexts (e.g., some CJS builds).
+    // This keeps dev tools/middleware code from throwing in WebView when parsed as a script.
+    'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV || 'development'),
+    'import.meta.env': '({ MODE: "' + (process.env.NODE_ENV || 'development') + '" })',
+  },
   resolve: {
     alias: {
       // Monorepo alias so CSS import resolves: '@openagentsinc/theme/web/theme.css'
