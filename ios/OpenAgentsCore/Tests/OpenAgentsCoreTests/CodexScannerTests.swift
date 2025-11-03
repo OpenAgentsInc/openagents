@@ -51,4 +51,16 @@ final class CodexScannerTests: XCTestCase {
         XCTAssertEqual(rows.count, 2, "rows=\(rows)")
         XCTAssertEqual(rows.count, 2)
     }
+
+    func testScanTopKReturnsAtMost10() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        for i in 0..<15 {
+            let f = base.appendingPathComponent("a\(i).jsonl")
+            try write(f, ["{\"type\":\"item.completed\",\"payload\":{\"ts\": \(1000 + i)}}"])
+        }
+        let rows = CodexScanner.scanTopK(options: .init(baseDir: base, maxFiles: 100), topK: 10)
+        XCTAssertEqual(rows.count, 10)
+        let times = rows.map { $0.updated_at }
+        XCTAssertEqual(times, times.sorted(by: >))
+    }
 }

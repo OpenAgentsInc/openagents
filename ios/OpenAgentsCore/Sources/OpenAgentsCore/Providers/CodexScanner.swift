@@ -150,6 +150,22 @@ public enum CodexScanner {
         }
         return rows
     }
+
+    public static func scanTopK(options: Options = .init(), topK: Int = 10) -> [ThreadSummary] {
+        let base = options.baseDir ?? defaultBaseDir()
+        guard FileManager.default.fileExists(atPath: base.path) else { return [] }
+        var files = listJSONLFiles(at: base)
+        files.sort { fileMTime($0) > fileMTime($1) }
+        if files.count > topK { files = Array(files.prefix(topK)) }
+        var rows: [ThreadSummary] = []
+        rows.reserveCapacity(files.count)
+        for url in files {
+            let id = scanForThreadID(url) ?? relativeId(for: url, base: base)
+            let updated = fileMTime(url)
+            rows.append(ThreadSummary(id: id, title: nil, source: "codex", created_at: nil, updated_at: updated, last_message_ts: nil, message_count: nil))
+        }
+        return rows
+    }
 }
 
 fileprivate extension FileHandle {
