@@ -138,6 +138,26 @@ struct LocalClaudeDiscovery {
         return LocalThreadSummary(id: id, title: nil, source: "claude_code", created_at: nil, updated_at: updated, last_message_ts: nil, message_count: nil)
     }
 
+    static func scanExactProjectTopK(topK: Int = 10) -> [LocalThreadSummary] {
+        let base = URL(fileURLWithPath: "/Users/christopherdavid/.claude/projects/-Users-christopherdavid-code-openagents", isDirectory: true)
+        var urls = listRecentTopN(at: base, topK: topK)
+        if urls.isEmpty {
+            // deep fallback
+            urls = []
+            if let en = FileManager.default.enumerator(atPath: base.path) {
+                var all: [URL] = []
+                for case let rel as String in en {
+                    let ext = (rel as NSString).pathExtension.lowercased()
+                    if ext == "jsonl" || ext == "json" { all.append(base.appendingPathComponent(rel)) }
+                    if all.count > topK * 50 { break }
+                }
+                all.sort { fileMTime($0) > fileMTime($1) }
+                if all.count > topK { urls = Array(all.prefix(topK)) } else { urls = all }
+            }
+        }
+        return urls.map { makeSummary(for: $0, base: base) }
+    }
+
     static func relativeId(for url: URL, base: URL) -> String {
         let u = url.deletingPathExtension().resolvingSymlinksInPath().standardizedFileURL.path
         let b = base.resolvingSymlinksInPath().standardizedFileURL.path
