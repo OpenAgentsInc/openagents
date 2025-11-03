@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware/persist'
 import { persistStorage } from './persist-storage'
 import { appLog } from '@/lib/app-log'
 import { useBridge } from '@/providers/ws'

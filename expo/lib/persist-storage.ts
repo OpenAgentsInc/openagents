@@ -1,5 +1,5 @@
 import { Platform } from 'react-native'
-import { createJSONStorage } from 'zustand/middleware'
+import { createJSONStorage } from 'zustand/middleware/persist'
 
 // Provides a persist storage that is safe across native, web, and SSR.
 // - Native: uses AsyncStorage (required lazily)

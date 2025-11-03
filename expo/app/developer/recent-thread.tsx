@@ -7,8 +7,7 @@ import { Typography } from '@/constants/typography'
 import { useIsDevEnv } from '@/lib/env'
 import { useHeaderTitle } from '@/lib/header-store'
 import { useTinyvex, type ThreadRow } from '@/providers/tinyvex'
-import { useArchiveStore } from '@/lib/archive-store'
-import { useThreadProviders, type AgentProvider } from '@/lib/thread-provider-store'
+import { useArchiveStore, useThreadProviders, type AgentProvider } from '@openagentsinc/core'
 
 function pickMostRecentCodex(threads: ThreadRow[], isArchived: (id: string) => boolean, providers: Record<string, AgentProvider | undefined>): ThreadRow | null {
   const arr = Array.isArray(threads) ? threads.slice() : []

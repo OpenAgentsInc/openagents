@@ -1,17 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useBridge } from '@/providers/ws';
-import { listSkills, type Skill } from '@/lib/skills-store'
-import {
-  hydrateProjects,
-  listProjects,
-  getActiveProject,
-  setActiveProject,
-  upsertProject,
-  removeProject,
-  useProjectsStore,
-  type Project,
-  type ProjectId,
-} from '@/lib/projects-store';
+import { useSkillsStore, useProjectsStore, type Project, type ProjectId, type Skill } from '@openagentsinc/core'
 
 type SendOptions = {
   includePreface?: boolean;
@@ -36,9 +25,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      await hydrateProjects();
-      setProjects(listProjects());
-      setActiveState(getActiveProject());
+      try { await (useProjectsStore as any).persist?.rehydrate?.() } catch {}
+      const st = useProjectsStore.getState();
+      setProjects(st.list());
+      setActiveState(st.getActive());
       setReady(true);
     })();
   }, []);
@@ -46,22 +36,23 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   // Tinyvex MVP: keep using local store for projects until we add Tinyvex projects
 
   const refresh = useCallback(() => {
-    setProjects(listProjects());
-    setActiveState(getActiveProject());
+    const st = useProjectsStore.getState();
+    setProjects(st.list());
+    setActiveState(st.getActive());
   }, []);
 
   const setActive = useCallback(async (id: ProjectId | null) => {
-    await setActiveProject(id);
+    useProjectsStore.getState().setActive(id);
     refresh();
   }, [refresh]);
 
   const save = useCallback(async (p: Project) => {
-    await upsertProject(p);
+    useProjectsStore.getState().upsert(p);
     refresh();
   }, [refresh]);
 
   const del = useCallback(async (id: ProjectId) => {
-    await removeProject(id);
+    useProjectsStore.getState().remove(id);
     refresh();
   }, [refresh]);
 
@@ -156,7 +147,7 @@ function buildHumanPreface(
 
   // Include a concise summary of installed skills without overloading context
   try {
-    const all: Skill[] = listSkills();
+    const all: Skill[] = useSkillsStore.getState().list();
     if (Array.isArray(all) && all.length > 0) {
       const max = 10; // keep concise
       const top = all.slice(0, max);

@@ -1,7 +1,7 @@
 import React from 'react'
 import { View, Text } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useToastStore } from '@/lib/toast-store'
+import { useToastStore } from '@openagentsinc/core'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 
@@ -31,4 +31,3 @@ function colorFor(type: 'info' | 'success' | 'error') {
       return Colors.foreground
   }
 }
-

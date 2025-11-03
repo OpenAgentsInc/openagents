@@ -12,8 +12,7 @@ import { useBridge } from '@/providers/ws'
 import { useHeaderTitle, useHeaderStore } from '@/lib/header-store'
 import { useAcp, type SessionNotificationWithTs } from '@/providers/acp'
 import { useSettings } from '@/lib/settings-store'
-import { useThreadProviders } from '@/lib/thread-provider-store'
-import { ChatMessageBubble } from '@openagentsinc/core'
+import { useThreadProviders, ChatMessageBubble } from '@openagentsinc/core'
 import * as Haptics from 'expo-haptics'
 // tinyvex/react provides history + live; no custom timeline hook needed
 
@@ -37,7 +36,8 @@ export default function ThreadScreen() {
   const { connected } = useBridge()
   const agentProvider = useSettings((s) => s.agentProvider)
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
-  const threadProviders = useThreadProviders()
+  const providerByThread = useThreadProviders((s) => s.byThread)
+  const setThreadProvider = useThreadProviders((s) => s.setProvider)
   // Title for thread screen
   useHeaderTitle('New Thread')
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
@@ -48,7 +48,7 @@ export default function ThreadScreen() {
   React.useEffect(() => {
     if (!threadId) return
     try {
-      const p = threadProviders.getProvider(threadId)
+      const p = providerByThread[threadId]
       if (p) {
         if (p !== agentProvider) setAgentProvider(p)
       } else {
@@ -61,7 +61,7 @@ export default function ThreadScreen() {
   const onSend = React.useCallback((text: string) => {
     if (!threadId) return
     try { sendViaTinyvex(text, { resumeId: 'last', provider: agentProvider === 'claude_code' ? 'claude_code' : undefined }) } catch {}
-    try { threadProviders.setProvider(threadId, agentProvider) } catch {}
+    try { setThreadProvider(threadId, agentProvider) } catch {}
   }, [threadId, sendViaTinyvex, agentProvider])
   const insets = useSafeAreaInsets()
   const headerHeight = useHeaderStore((s) => s.height)

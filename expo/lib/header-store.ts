@@ -1,24 +1,8 @@
 import React from 'react'
 import { useFocusEffect } from 'expo-router'
-import { create } from 'zustand'
+import { useHeaderStore } from '@openagentsinc/core'
 
-type HeaderState = {
-  title: string
-  setTitle: (t: string) => void
-  subtitle: string
-  setSubtitle: (t: string) => void
-  height: number
-  setHeight: (h: number) => void
-}
-
-export const useHeaderStore = create<HeaderState>((set) => ({
-  title: '',
-  setTitle: (t) => set({ title: t }),
-  subtitle: '',
-  setSubtitle: (t) => set({ subtitle: t }),
-  height: 0,
-  setHeight: (h) => set({ height: h }),
-}))
+export { useHeaderStore };
 
 export function useHeaderTitle(title: string) {
   const setTitle = useHeaderStore((s) => s.setTitle)

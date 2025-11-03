@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware/persist'
 import { persistStorage } from './persist-storage'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export type ProjectId = string
 
