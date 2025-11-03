@@ -401,6 +401,7 @@ function DrawerWrapper() {
       open={open}
       onOpen={() => setOpen(true)}
       onClose={() => { if (isMobile()) setOpen(false) }}
+      overlayStyle={isMobile() ? undefined : ({ backgroundColor: 'transparent', opacity: 0, pointerEvents: 'none', transition: 'none' } as any)}
       drawerType="back"
       drawerPosition={isRTL ? 'right' : 'left'}
       drawerStyle={{ backgroundColor: Colors.sidebarBackground }}
