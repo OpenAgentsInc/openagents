@@ -93,19 +93,18 @@ export default function ThreadScreen() {
   React.useEffect(() => {
     if (!threadId) return
     if (didAutoScrollFor.current === threadId) return
-    if ((items?.length ?? 0) === 0) return
-    // Defer to next frame to ensure layout complete
-    try {
-      requestAnimationFrame(() => {
-        try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
-        didAutoScrollFor.current = threadId
-        pendingAutoScroll.current = false
-      })
-    } catch {
-      try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
+    const len = items?.length ?? 0
+    if (len === 0) return
+    const toBottom = () => {
+      try { listRef.current?.scrollToIndex?.({ index: len - 1, animated: false }) } catch {}
+      try { listRef.current?.scrollToEnd?.({ animated: false }) } catch {}
       didAutoScrollFor.current = threadId
       pendingAutoScroll.current = false
     }
+    // Defer twice to make sure layout is committed on web
+    try {
+      requestAnimationFrame(() => { setTimeout(toBottom, 0) })
+    } catch { setTimeout(toBottom, 0) }
   }, [threadId, items])
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
@@ -138,6 +137,15 @@ export default function ThreadScreen() {
             pendingAutoScroll.current = false
           }
         }}
+        initialScrollIndex={Math.max(0, items.length - 1)}
+        onScrollToIndexFailed={(info) => {
+          // Wait for layout to settle and try again
+          setTimeout(() => {
+            try { listRef.current?.scrollToIndex?.({ index: info.index, animated: false }) } catch {}
+            try { listRef.current?.scrollToEnd?.({ animated: false }) } catch {}
+          }, 50)
+        }}
+        removeClippedSubviews={false}
         style={{ flex: 1 }}
       />
         {/* Provider selector: show only before any messages exist */}
