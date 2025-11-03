@@ -32,7 +32,7 @@ export default function ThreadScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialId])
   const { eventsForThread } = useAcp()
-  const { status, history, live, send: sendViaTinyvex } = useTinyvexThread({ idOrAlias: threadId || '' })
+  const { status, history, live, send: sendViaTinyvex, refresh, threadId: resolvedId } = useTinyvexThread({ idOrAlias: threadId || '' })
   const { connected } = useBridge()
   const agentProvider = useSettings((s) => s.agentProvider)
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
@@ -44,6 +44,12 @@ export default function ThreadScreen() {
 
   // Ensure we are subscribed to Tinyvex messages for this thread and have a recent snapshot
   React.useEffect(() => { /* tinyvex/react hook handles subscribe/query */ }, [threadId])
+  // If the hook reports ready but no history yet, opportunistically refresh once
+  React.useEffect(() => {
+    if (status === 'ready' && (history?.length ?? 0) === 0 && (resolvedId || threadId)) {
+      try { refresh() } catch {}
+    }
+  }, [status, history?.length, resolvedId, threadId, refresh])
   // When navigating into a thread, if we have a recorded provider for it, switch the active agent accordingly
   React.useEffect(() => {
     if (!threadId) return
