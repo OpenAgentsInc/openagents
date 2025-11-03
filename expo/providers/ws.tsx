@@ -321,15 +321,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     // Only run when host/connection state changes; guard ensures single attempt per app boot
   }, [effectiveHost, connected, connecting, connect]);
 
-  // Disable periodic auto-reconnect; connections are manual
-  // (left intentionally blank)
-
-  useEffect(() => {
-    const cleanup = () => {
-      try { wsRef.current?.close(); } catch {}
-    };
-    return cleanup;
-  }, []);
+  // Do not force-close the WebSocket on unmount; some WebViews (WebKit) exhibit
+  // TDZ quirks around inline cleanup handlers. Let the browser clean up.
 
   const send = useCallback((payload: string | ArrayBuffer | Blob) => {
     const ws = wsRef.current;
