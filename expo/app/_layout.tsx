@@ -38,6 +38,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { useUpdateStore } from "@/lib/update-store"
 import { useArchiveStore } from "@openagentsinc/core"
 import { typedRouter } from "@/lib/typed-router"
+import { isMobile } from "@/lib/platform"
 
 function DrawerContent() {
   const router = useRouter();
@@ -72,7 +73,7 @@ function DrawerContent() {
   }, [threads, archivedMap])
   // Drawer deliberately does not warm per-thread messages.
   // TinyvexProvider prefetches a small recent set to avoid connect-time bursts.
-  const closeAnd = (fn: () => void) => () => { setOpen(false); fn(); };
+  const closeAnd = (fn: () => void) => () => { if (isMobile()) setOpen(false); fn(); };
   const showActions = (threadId: string) => {
     if (!threadId) return
     if (Platform.OS === 'ios') {
