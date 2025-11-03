@@ -20,6 +20,17 @@ export default function DeveloperMenu() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} contentContainerStyle={{ padding: 16 }}>
       <View style={{ gap: 12 }}>
+        <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Diagnostics</Text>
+        <Pressable
+          onPress={() => { try { typedRouter.push('/developer/logs') } catch {} }}
+          accessibilityRole="button"
+          testID="developer-open-logs"
+          style={{ paddingVertical: 10 }}
+        >
+          <Text style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>Logs</Text>
+          <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>View live app and sidecar logs with ANSI colors</Text>
+        </Pressable>
+
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Thread Tools</Text>
         <Pressable
           onPress={() => { try { typedRouter.push('/developer/recent-thread') } catch {} }}
@@ -33,4 +44,3 @@ export default function DeveloperMenu() {
     </ScrollView>
   )
 }
-

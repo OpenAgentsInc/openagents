@@ -440,6 +440,7 @@ function DrawerWrapper() {
           {/* Developer-only routes (screen code also guards env) */}
           <Stack.Screen name="developer/index" />
           <Stack.Screen name="developer/recent-thread" />
+          <Stack.Screen name="developer/logs" />
         </Stack>
         {open ? (
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: Colors.white, opacity: 0.04 }} />
