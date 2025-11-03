@@ -1,0 +1,55 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+/* Our theme variables */
+@import "@openagentsinc/theme/web/theme.css";
+
+/* Map Tailwind v4 color tokens to our CSS variables */
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-secondary: var(--secondary);
+  --color-tertiary: var(--tertiary);
+  --color-muted: var(--quaternary);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+}
+
+@layer base {
+  * { border-color: var(--border); }
+  body { color: var(--foreground); background-color: var(--background); }
+}
+
+/* Fonts (from previous App.css) */
+@font-face {
+  font-family: "BerkeleyMono";
+  src: url("/fonts/BerkeleyMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "BerkeleyMono-Bold";
+  src: url("/fonts/BerkeleyMono-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "BerkeleyMono-Italic";
+  src: url("/fonts/BerkeleyMono-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "BerkeleyMono-BoldItalic";
+  src: url("/fonts/BerkeleyMono-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+
