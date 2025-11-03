@@ -318,7 +318,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         if (autoTriedRef.current) return;
         const invoke = getTauriInvoke();
         if (!invoke) {
-          try { console.info('[bridge.autostart] Tauri API not detected; skipping sidecar start') } catch {}
+          try { console.info('[bridge.autostart] Tauri API not detected; skipping sidecar start', { origin: typeof window !== 'undefined' ? window.location?.origin : '(no window)' }) } catch {}
           return;
         }
         autoTriedRef.current = true;
