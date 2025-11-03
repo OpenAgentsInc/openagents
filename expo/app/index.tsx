@@ -35,6 +35,20 @@ export default function Index() {
     } catch {}
   }, [connected, threads, isArchived, router])
 
+  // Guardrail: if connected but no threads materialize after a short window, route to a new thread
+  React.useEffect(() => {
+    if (!connected) return
+    if (Array.isArray(threads) && threads.length > 0) return
+    const id = setTimeout(() => {
+      try {
+        if (connected && (!Array.isArray(threads) || threads.length === 0)) {
+          router.replace('/thread/new' as any)
+        }
+      } catch {}
+    }, 10000)
+    return () => clearTimeout(id)
+  }, [connected, threads, router])
+
   // Dev auto-connect without requiring Settings screen
   React.useEffect(() => {
     if (connected || connecting) return
