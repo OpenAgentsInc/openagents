@@ -27,6 +27,8 @@ config.resolver = {
     tinyvex: path.resolve(__dirname, '..', 'packages', 'tinyvex', 'src'),
     tricoder: path.resolve(__dirname, '..', 'packages', 'tricoder', 'src'),
     '@openagentsinc/core': path.resolve(__dirname, '..', 'packages', 'openagents-core', 'src'),
+    // Ensure Zustand middleware resolves to CJS variant (avoids import.meta in ESM for Expo web)
+    'zustand/middleware': path.resolve(__dirname, 'node_modules', 'zustand', 'middleware.js'),
   },
 }
 
