@@ -47,6 +47,7 @@ const BridgeContext = createContext<BridgeContextValue | undefined>(undefined);
 export function BridgeProvider({ children }: { children: React.ReactNode }) {
   const bridgeHost = useSettings((s) => s.bridgeHost)
   const setBridgeHost = useSettings((s) => s.setBridgeHost)
+  const setBridgeToken = useSettings((s) => s.setBridgeToken)
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [wsLastClose, setWsLastClose] = useState<{ code?: number; reason?: string } | null>(null);
@@ -86,18 +87,23 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         const anyWin: any = typeof window !== 'undefined' ? (window as any) : null;
         if (!anyWin || !anyWin.__TAURI__ || !anyWin.__TAURI__.core?.invoke) return;
         autoTriedRef.current = true;
+        try { console.info('[bridge.autostart] detected Tauri environment; attempting sidecar start') } catch {}
         // Fetch token from ~/.openagents/bridge.json
         let tok: string | null = null;
-        try { tok = await anyWin.__TAURI__.core.invoke('get_bridge_token'); } catch {}
+        try { tok = await anyWin.__TAURI__.core.invoke('get_bridge_token'); } catch (e) { try { console.warn('[bridge.autostart] get_bridge_token failed', e) } catch {} }
         if (tok && typeof tok === 'string') {
           try { setBridgeToken(tok) } catch {}
+          try { console.info('[bridge.autostart] token loaded from ~/.openagents/bridge.json') } catch {}
         }
         // Start (or connect to) a local sidecar bridge; returns host:port
         let host: string | null = null;
-        try { host = await anyWin.__TAURI__.core.invoke('bridge_start', { bind: null, token: tok || null }); } catch {}
+        try { host = await anyWin.__TAURI__.core.invoke('bridge_start', { bind: null, token: tok || null }); } catch (e) { try { console.warn('[bridge.autostart] bridge_start failed', e) } catch {} }
         if (host && typeof host === 'string') {
+          try { console.info('[bridge.autostart] sidecar running at', host) } catch {}
           try { setBridgeHost(host) } catch {}
           try { connect() } catch {}
+        } else {
+          try { console.warn('[bridge.autostart] no host returned from sidecar') } catch {}
         }
       } catch {}
     })();
