@@ -19,6 +19,7 @@ function App() {
   const [threads, setThreads] = useState<ThreadSummaryTs[]>([])
   const threadsRef = useRef<ThreadSummaryTs[]>([])
   const [selectedThread, setSelectedThread] = useState<string>('')
+  const selectedThreadRef = useRef<string>('')
   const [messages, setMessages] = useState<MessageRowTs[]>([])
   const clientRef = useRef<TinyvexClient | null>(null)
   const unsubRef = useRef<(() => void) | null>(null)
@@ -34,6 +35,9 @@ function App() {
     return host ? `${scheme}://${host}/ws${qp}` : ''
   }, [host, token])
   const wsBase = useMemo(() => (host ? `ws://${host}/ws` : ''), [host])
+
+  // Keep a ref in sync with the selected thread id so event handlers see latest
+  useEffect(() => { selectedThreadRef.current = selectedThread }, [selectedThread])
 
   // Fetch token in the background from ~/.openagents/bridge.json and prefill state
   useEffect(() => {
@@ -130,18 +134,18 @@ function App() {
                 const rows = obj.rows as MessageRowTs[]
                 const rawTid = String(obj.thread_id || '')
                 const matchTid = resolveMatchThreadId(rawTid)
-                if (matchTid && matchTid === selectedThread) setMessages(filterFinalMessages(rows))
+                if (matchTid && matchTid === selectedThreadRef.current) setMessages(filterFinalMessages(rows))
                 if (matchTid) updateLastFromRows(matchTid, rows)
               } else if (obj.type === 'tinyvex.query_result' && obj.name === 'messages.list' && Array.isArray(obj.rows)) {
                 const rows = obj.rows as MessageRowTs[]
                 // Bridge returns thread_id at top-level; args may also exist in some paths
                 const args = (obj.args || {}) as { thread_id?: string }
-                const rawTid = String((obj.thread_id as string | undefined) || args.thread_id || selectedThread || '')
+                const rawTid = String((obj.thread_id as string | undefined) || args.thread_id || selectedThreadRef.current || '')
                 const matchTid = resolveMatchThreadId(rawTid)
-                if (matchTid && matchTid === selectedThread) setMessages(filterFinalMessages(rows))
+                if (matchTid && matchTid === selectedThreadRef.current) setMessages(filterFinalMessages(rows))
                 if (matchTid) updateLastFromRows(matchTid, rows)
               } else if (obj.type === 'tinyvex.update' && obj.stream === 'messages' && selectedThread) {
-                const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.queryMessages(selectedThread, 500) }
+                const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.queryMessages(selectedThreadRef.current, 500) }
               }
             }
           } catch {}
