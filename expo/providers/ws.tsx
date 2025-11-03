@@ -324,7 +324,12 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
   // Disable periodic auto-reconnect; connections are manual
   // (left intentionally blank)
 
-  useEffect(() => () => { try { wsRef.current?.close(); } catch {} }, []);
+  useEffect(() => {
+    const cleanup = () => {
+      try { wsRef.current?.close(); } catch {}
+    };
+    return cleanup;
+  }, []);
 
   const send = useCallback((payload: string | ArrayBuffer | Blob) => {
     const ws = wsRef.current;
