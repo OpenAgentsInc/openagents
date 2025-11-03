@@ -128,11 +128,27 @@ enum LocalCodexScanner {
 
 enum LocalCodexDiscovery {
     struct Options { var preferEnvOnly: Bool = false }
+    private static let overrideKey = "codex_base_override"
+
+    static func setUserOverride(_ url: URL?) {
+        let d = UserDefaults.standard
+        if let u = url { d.set(u.path, forKey: overrideKey) } else { d.removeObject(forKey: overrideKey) }
+    }
+
+    static func userOverride() -> URL? {
+        if let p = UserDefaults.standard.string(forKey: overrideKey), !p.isEmpty {
+            return URL(fileURLWithPath: p).standardizedFileURL
+        }
+        return nil
+    }
 
     static func discoverBaseDirs(_ opts: Options = .init()) -> [URL] {
         var out: [URL] = []
         let fm = FileManager.default
         let env = ProcessInfo.processInfo.environment
+        if let user = userOverride() {
+            if fm.fileExists(atPath: user.path) { out.append(user) }
+        }
         if let override = env["CODEXD_HISTORY_DIR"], !override.isEmpty {
             let u = URL(fileURLWithPath: override).standardizedFileURL
             if fm.fileExists(atPath: u.path) { out.append(u) }
