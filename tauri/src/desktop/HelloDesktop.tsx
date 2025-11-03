@@ -22,6 +22,83 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar'
 
+function WsEventsPanel() {
+  const wsRef = useRef<HTMLDivElement | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { TinyvexContext } = require('tinyvex/react')
+  const client = TinyvexContext?._currentValue || null
+  const [lines, setLines] = React.useState<string[]>([])
+  useEffect(() => {
+    if (!client) return
+    const off = client.onRaw((evt: unknown) => {
+      try {
+        const line = typeof evt === 'string' ? evt : JSON.stringify(evt)
+        setLines((prev) => {
+          const next = [...prev, line]
+          return next.length > 200 ? next.slice(next.length - 200) : next
+        })
+      } catch {}
+    })
+    return () => { try { off?.() } catch {} }
+  }, [client])
+  useEffect(() => { const el = wsRef.current; if (el) el.scrollTop = el.scrollHeight }, [lines])
+  const copy = async () => { try { await navigator.clipboard.writeText(lines.join('\n')) } catch {} }
+  return (
+    <Card className="flex-1 min-w-0 flex flex-col">
+      <CardHeader>
+        <span>WS events</span>
+        <Button variant="outline" size="sm" onClick={copy}>Copy</Button>
+      </CardHeader>
+      <ScrollArea ref={wsRef as any} className="flex-1 min-h-0 text-xs leading-[18px] p-2.5">
+        {lines.length === 0 ? (
+          <div className="text-[var(--tertiary)]">No events yet.</div>
+        ) : (
+          lines.map((l, i) => (
+            <div key={i} className="whitespace-pre-wrap break-words">{renderJsonSyntax(l) ?? renderAnsi(l)}</div>
+          ))
+        )}
+      </ScrollArea>
+    </Card>
+  )
+}
+
+function BridgeLogsPanel() {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [lines, setLines] = React.useState<string[]>([])
+  useEffect(() => {
+    let mounted = true
+    const id = window.setInterval(async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { invoke } = require('@tauri-apps/api/core')
+        const s = await invoke('bridge_status') as { logs?: string[] }
+        const arr = Array.isArray(s?.logs) ? s.logs.slice().reverse() : []
+        if (mounted) setLines(arr)
+      } catch {}
+    }, 2000)
+    return () => { mounted = false; try { window.clearInterval(id) } catch {} }
+  }, [])
+  useEffect(() => { const el = ref.current; if (el) el.scrollTop = el.scrollHeight }, [lines])
+  const copy = async () => { try { await navigator.clipboard.writeText(lines.join('\n')) } catch {} }
+  return (
+    <Card className="w-[420px] min-w-[300px] flex flex-col">
+      <CardHeader>
+        <span>Bridge logs</span>
+        <Button variant="outline" size="sm" onClick={copy}>Copy</Button>
+      </CardHeader>
+      <ScrollArea ref={ref as any} className="flex-1 min-h-0 text-xs leading-[18px] p-2.5">
+        {lines.length === 0 ? (
+          <div className="text-[var(--tertiary)]">Waiting for bridge…</div>
+        ) : (
+          lines.map((l, i) => (
+            <div key={i} className="whitespace-pre-wrap break-words">{renderAnsi(l)}</div>
+          ))
+        )}
+      </ScrollArea>
+    </Card>
+  )
+}
+
 function ChatThread({ id }: { id: string }) {
   const { history, status } = useTinyvexThread({ idOrAlias: id })
   const chatRef = useRef<HTMLDivElement | null>(null)
@@ -72,27 +149,12 @@ function SidebarThreads({ wsUrl, selectedId, onSelect }: { wsUrl: string; select
 }
 
 export default function HelloDesktop() {
-  const { status, wsUrl, token, logs, sidecarLogs } = useTricoder()
+  const { bridgeRunning, wsUrl, token } = useTricoder()
   const wsRef = useRef<HTMLDivElement | null>(null)
   const bridgeRef = useRef<HTMLDivElement | null>(null)
   const [view, setView] = React.useState<'dev' | 'chat'>('dev')
   const [selected, setSelected] = React.useState<string>('')
-
-  const copyWsEvents = async () => {
-    try { await navigator.clipboard.writeText((logs || []).join('\n')) } catch {}
-  }
-  const copyBridgeLogs = async () => {
-    try { await navigator.clipboard.writeText((sidecarLogs || []).join('\n')) } catch {}
-  }
-
-  useEffect(() => {
-    const el = wsRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [logs])
-  useEffect(() => {
-    const el = bridgeRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [sidecarLogs])
+  // Panels manage their own logs to minimize re-renders
 
   return (
     <div className="h-screen w-full flex flex-col bg-background text-foreground font-mono">
@@ -120,30 +182,14 @@ export default function HelloDesktop() {
                 <Button variant="outline" size="sm" onClick={() => setView('dev')}>Developer</Button>
               )}
               <div className="text-xs text-[var(--tertiary)]">
-                <span className="mr-3">status: <span className="text-[var(--secondary)]">{status}</span></span>
+                <span className="mr-3">bridge: <span className="text-[var(--secondary)]">{bridgeRunning ? 'running' : 'starting'}</span></span>
                 <span>ws: <span className="text-[var(--secondary)]">{wsUrl || '—'}</span></span>
               </div>
             </div>
           </header>
           <div className="flex-1 min-h-0 flex gap-3 p-3">
             {view === 'dev' ? (
-              <Card className="flex-1 min-w-0 flex flex-col">
-                <CardHeader>
-                  <span>WS events</span>
-                  <Button variant="outline" size="sm" onClick={copyWsEvents}>Copy</Button>
-                </CardHeader>
-                <ScrollArea ref={wsRef as any} className="flex-1 min-h-0 text-xs leading-[18px] p-2.5">
-                  {logs.length === 0 ? (
-                    <div className="text-[var(--tertiary)]">No events yet.</div>
-                  ) : (
-                    logs.map((l, i) => (
-                      <div key={i} className="whitespace-pre-wrap break-words">
-                        {renderJsonSyntax(l) ?? renderAnsi(l)}
-                      </div>
-                    ))
-                  )}
-                </ScrollArea>
-              </Card>
+              <WsEventsPanel />
             ) : (
               <Card className="flex-1 min-w-0 flex flex-col">
                 <CardHeader>Thread</CardHeader>
@@ -155,29 +201,13 @@ export default function HelloDesktop() {
               </Card>
             )}
 
-            {view === 'dev' && (
-              <Card className="w-[420px] min-w-[300px] flex flex-col">
-                <CardHeader>
-                  <span>Bridge logs</span>
-                  <Button variant="outline" size="sm" onClick={copyBridgeLogs}>Copy</Button>
-                </CardHeader>
-                <ScrollArea ref={bridgeRef as any} className="flex-1 min-h-0 text-xs leading-[18px] p-2.5">
-                  {sidecarLogs.length === 0 ? (
-                    <div className="text-[var(--tertiary)]">Waiting for bridge…</div>
-                  ) : (
-                    sidecarLogs.map((l, i) => (
-                      <div key={i} className="whitespace-pre-wrap break-words">{renderAnsi(l)}</div>
-                    ))
-                  )}
-                </ScrollArea>
-              </Card>
-            )}
+            {view === 'dev' && <BridgeLogsPanel />}
           </div>
         </SidebarInset>
       </SidebarProvider>
         </TinyvexProvider>
       ) : (
-        <div className="p-3 text-xs text-[var(--tertiary)]">Starting bridge…</div>
+        <div className="p-3 text-xs text-[var(--tertiary)]">{bridgeRunning ? 'Connecting…' : 'Starting bridge…'}</div>
       )}
     </div>
   )
