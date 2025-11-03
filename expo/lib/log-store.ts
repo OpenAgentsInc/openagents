@@ -1,5 +1,5 @@
 import { create } from 'zustand/traditional'
-import { persist } from 'zustand/traditional/middleware'
+import { persist } from 'zustand/middleware'
 import { persistStorage } from './persist-storage'
 
 export type LogKind = 'md' | 'reason' | 'text' | 'json' | 'summary' | 'delta' | 'exec' | 'file' | 'search' | 'mcp' | 'todo' | 'cmd' | 'err' | 'turn' | 'thread' | 'item_lifecycle'
