@@ -72,11 +72,35 @@ export default function ThreadScreen() {
   const insets = useSafeAreaInsets()
   const headerHeight = useHeaderStore((s) => s.height)
   const keyboardOffset = Platform.OS === 'ios' ? headerHeight : 0
+
+  // Auto-scroll to the bottom when opening a thread (once per thread navigation)
+  type Item = { key: string; ts: number; role: 'assistant' | 'user'; text: string }
+  const listRef = React.useRef<FlatList<Item>>(null)
+  const didAutoScrollFor = React.useRef<string | null>(null)
+  const items: Item[] = React.useMemo(() => {
+    const hist: Item[] = (history || []).map((r, i) => ({ key: `h-${r.id}-${i}`, ts: r.ts, role: r.role === 'assistant' ? 'assistant' : 'user', text: String(r.text || '') }))
+    const liveItems: Item[] = live.assistant ? [{ key: 'live-a', ts: Date.now(), role: 'assistant', text: live.assistant }] : []
+    return [...hist, ...liveItems]
+  }, [history, live.assistant])
+
+  React.useEffect(() => {
+    // Reset flag whenever thread changes
+    didAutoScrollFor.current = null
+  }, [threadId])
+
+  React.useEffect(() => {
+    if (!threadId) return
+    if (didAutoScrollFor.current === threadId) return
+    if ((items?.length ?? 0) === 0) return
+    try { listRef.current?.scrollToEnd({ animated: false }) } catch {}
+    didAutoScrollFor.current = threadId
+  }, [threadId, items])
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={keyboardOffset} style={{ flex: 1, backgroundColor: Colors.background }}>
       <View key={`thread-${threadId}`} style={{ flex: 1 }}>
       <FlatList
-        data={[...history.map((r, i) => ({ key: `h-${r.id}-${i}`, ts: r.ts, role: r.role, text: String(r.text || '') })), ...(live.assistant ? [{ key: `live-a`, ts: Date.now(), role: 'assistant' as const, text: live.assistant }] : [])]}
+        ref={listRef}
+        data={items}
         keyExtractor={(it) => it.key}
         renderItem={({ item }) => {
           const role: 'assistant' | 'user' = item.role === 'assistant' ? 'assistant' : 'user'
