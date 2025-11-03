@@ -400,7 +400,7 @@ function DrawerWrapper() {
     <Drawer
       open={open}
       onOpen={() => setOpen(true)}
-      onClose={() => setOpen(false)}
+      onClose={() => { if (isMobile()) setOpen(false) }}
       drawerType="back"
       drawerPosition={isRTL ? 'right' : 'left'}
       drawerStyle={{ backgroundColor: Colors.sidebarBackground }}
@@ -485,3 +485,7 @@ function LinkingBootstrap() {
 }
 
 // Native header removed; title management handled by AppHeader via Zustand store
+  // Debug platform detection for drawer behavior
+  React.useEffect(() => {
+    try { console.log('[platform]', { isMobile: isMobile(), os: (require('react-native') as any).Platform?.OS }) } catch {}
+  }, [])
