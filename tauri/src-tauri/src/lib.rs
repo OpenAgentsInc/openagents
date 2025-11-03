@@ -41,10 +41,8 @@ impl Default for BridgeState {
 }
 
 fn ensure_bridge_token() -> Option<String> {
-    get_bridge_token().or_else(|| {
-        // Generate one via oa-bridge rules? For now return None; oa-bridge will generate if missing
-        None
-    })
+    // oa-bridge will generate and persist a token if missing
+    get_bridge_token()
 }
 
 async fn first_free_port() -> u16 {
@@ -148,6 +146,28 @@ async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<St
         *state.child.lock().await = Some(child);
         *state.starting.lock().await = false;
     }
+    // Monitor child liveness and clear state if it exits
+    let state_for_monitor = state.inner().clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            let mut guard = state_for_monitor.child.lock().await;
+            if let Some(ref mut ch) = *guard {
+                match ch.try_wait() {
+                    Ok(Some(_status)) => {
+                        // Exited — clear and stop monitoring
+                        *guard = None;
+                        *state_for_monitor.bind.lock().await = None;
+                        break;
+                    }
+                    Ok(None) => { /* still running */ }
+                    Err(_) => { /* transient error; leave as is */ }
+                }
+            } else {
+                break;
+            }
+        }
+    });
     Ok(host)
 }
 
@@ -155,8 +175,11 @@ async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<St
 async fn bridge_stop(state: tauri::State<'_, Arc<BridgeState>>) -> Result<bool, String> {
     let mut guard = state.child.lock().await;
     if let Some(mut child) = guard.take() {
-        let _ = child.kill().await; // ignore errors
+        // Kill and wait for exit (best effort)
+        let _ = child.kill().await;
+        let _ = tokio::time::timeout(tokio::time::Duration::from_secs(2), child.wait()).await;
         *state.bind.lock().await = None;
+        state.logs.lock().await.clear();
         return Ok(true);
     }
     Ok(false)
