@@ -14,7 +14,20 @@ final class ClaudeScannerTests: XCTestCase {
         try write(file, ["{\"type\":\"assistant\",\"message\":{\"content\":[],\"ts\": 1000}}"])
         let rows = ClaudeScanner.scan(options: .init(baseDir: dir, maxFiles: 50))
         XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows[0].id, "sess-123")
+        XCTAssertTrue(rows[0].id.hasSuffix("sess-123"))
         XCTAssertEqual(rows[0].source, "claude_code")
+    }
+
+    func testDistinctIdsForSameStemDifferentDirs() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let p1 = base.appendingPathComponent("projA/transcript.jsonl")
+        let p2 = base.appendingPathComponent("projB/transcript.jsonl")
+        try write(p1, ["{\"type\":\"assistant\",\"message\":{\"content\":[],\"ts\": 1000}}"])
+        try write(p2, ["{\"type\":\"assistant\",\"message\":{\"content\":[],\"ts\": 2000}}"])
+        let rows = ClaudeScanner.scan(options: .init(baseDir: base, maxFiles: 50))
+        XCTAssertEqual(rows.count, 2, "rows=\(rows)")
+        let ids = Set(rows.map { $0.id })
+        XCTAssertTrue(ids.contains("projA/transcript"), "ids=\(ids)")
+        XCTAssertTrue(ids.contains("projB/transcript"), "ids=\(ids)")
     }
 }

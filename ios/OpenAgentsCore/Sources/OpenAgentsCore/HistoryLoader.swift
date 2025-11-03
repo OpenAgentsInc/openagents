@@ -33,6 +33,17 @@ public enum HistoryLoader {
             let c = ClaudeScanner.scan(options: .init(baseDir: opts.claudeBase, maxFiles: opts.maxFilesPerProvider))
             rows.append(contentsOf: c)
         }
+        // Deduplicate by (source,id), keeping the most recently updated
+        var uniq: [String: ThreadSummary] = [:]
+        for r in rows {
+            let key = "\(r.source)::\(r.id)"
+            if let prev = uniq[key] {
+                if r.updated_at > prev.updated_at { uniq[key] = r }
+            } else {
+                uniq[key] = r
+            }
+        }
+        rows = Array(uniq.values)
         rows.sort { (a, b) in
             let at = a.updated_at
             let bt = b.updated_at
