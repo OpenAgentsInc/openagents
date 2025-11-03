@@ -138,7 +138,7 @@ function DrawerContent() {
               {/* Tinyvex snapshot loads quickly; spinner optional */}
             </View>
             {Array.isArray(threads) && (
-              (topThreads?.filter((r) => typeof r.message_count === 'number' ? r.message_count > 0 : true).length ?? 0) === 0 ? (
+              (topThreads?.length ?? 0) === 0 ? (
                 <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 14, paddingVertical: 8 }}>No history yet.</Text>
               ) : (
                 <View testID="drawer-threads">

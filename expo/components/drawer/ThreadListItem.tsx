@@ -62,8 +62,7 @@ export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow
     if (!threadId) return
     try { router.push(`/thread/${encodeURIComponent(threadId)}`) } catch {}
   }
-  // Filter out threads that have zero primary chat messages when count is known
-  if (typeof count === 'number' && count <= 0) return null
+  // Do not hide threads based on count; some bridges may not populate message_count.
   // Provider/source indicator (Codex vs Claude Code)
   const source = String(row?.source || '').toLowerCase()
   const providerBadge = (() => {
