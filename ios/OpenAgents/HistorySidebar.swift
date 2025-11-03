@@ -57,7 +57,8 @@ struct HistorySidebar: View {
         guard !isLoading else { return }
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
-            let loaded = HistoryLoader.loadSummaries(.init(includeCodex: true, includeClaude: true, maxFilesPerProvider: 200, maxResults: 100))
+            // Focus on Codex first for reliability
+            let loaded = HistoryLoader.loadSummaries(.init(includeCodex: true, includeClaude: false, maxFilesPerProvider: 400, maxResults: 200))
             DispatchQueue.main.async {
                 withAnimation { self.rows = loaded }
                 self.isLoading = false
@@ -111,4 +112,3 @@ struct HistorySidebar: View {
         Text("Select a thread")
     }
 }
-

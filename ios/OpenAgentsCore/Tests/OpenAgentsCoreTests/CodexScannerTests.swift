@@ -40,4 +40,15 @@ final class CodexScannerTests: XCTestCase {
         XCTAssertEqual(rows[0].source, "codex")
         XCTAssertNotEqual(rows[0].updated_at, 0)
     }
+
+    func testFallbackIdsForFilesWithoutThreadId() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let f1 = base.appendingPathComponent("runA.jsonl")
+        let f2 = base.appendingPathComponent("runB.jsonl")
+        try write(f1, ["{\"type\":\"item.completed\",\"payload\":{}}"])
+        try write(f2, ["{\"type\":\"item.completed\",\"payload\":{}}"])
+        let rows = CodexScanner.scan(options: .init(baseDir: base, maxFiles: 50))
+        XCTAssertEqual(rows.count, 2, "rows=\(rows)")
+        XCTAssertEqual(rows.count, 2)
+    }
 }
