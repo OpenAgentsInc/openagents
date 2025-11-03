@@ -4,8 +4,9 @@ import "./App.css";
 import { TinyvexClient } from 'tinyvex/client'
 import { WsTransport } from 'tinyvex/client/WsTransport'
 import type { ThreadSummaryTs, MessageRowTs } from 'tricoder/types'
-import { ThreadListItemBase } from 'expo/components/drawer/ThreadListItem'
+import { ThreadListItem, ChatMessageBubble } from '@openagentsinc/core'
 import { View, Text } from 'react-native'
+import { Typography } from '@/constants/typography'
 import { Ionicons } from '@expo/vector-icons'
 
 function App() {
@@ -16,7 +17,9 @@ function App() {
   const [connected, setConnected] = useState<boolean>(false)
   const [logs, setLogs] = useState<string[]>([])
   const [threads, setThreads] = useState<ThreadSummaryTs[]>([])
+  const threadsRef = useRef<ThreadSummaryTs[]>([])
   const [selectedThread, setSelectedThread] = useState<string>('')
+  const selectedThreadRef = useRef<string>('')
   const [messages, setMessages] = useState<MessageRowTs[]>([])
   const clientRef = useRef<TinyvexClient | null>(null)
   const unsubRef = useRef<(() => void) | null>(null)
@@ -32,6 +35,9 @@ function App() {
     return host ? `${scheme}://${host}/ws${qp}` : ''
   }, [host, token])
   const wsBase = useMemo(() => (host ? `ws://${host}/ws` : ''), [host])
+
+  // Keep a ref in sync with the selected thread id so event handlers see latest
+  useEffect(() => { selectedThreadRef.current = selectedThread }, [selectedThread])
 
   // Fetch token in the background from ~/.openagents/bridge.json and prefill state
   useEffect(() => {
@@ -126,17 +132,20 @@ function App() {
                 const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.queryThreads(20) }
               } else if (obj.type === 'tinyvex.snapshot' && obj.stream === 'messages' && Array.isArray(obj.rows)) {
                 const rows = obj.rows as MessageRowTs[]
-                const tid = String(obj.thread_id || '')
-                // Only update main chat when rows belong to the selected thread
-                if (tid && tid === selectedThread) setMessages(filterFinalMessages(rows))
-                if (tid) updateLastFromRows(tid, rows)
+                const rawTid = String(obj.thread_id || '')
+                const matchTid = resolveMatchThreadId(rawTid)
+                if (matchTid && matchTid === selectedThreadRef.current) setMessages(filterFinalMessages(rows))
+                if (matchTid) updateLastFromRows(matchTid, rows)
               } else if (obj.type === 'tinyvex.query_result' && obj.name === 'messages.list' && Array.isArray(obj.rows)) {
                 const rows = obj.rows as MessageRowTs[]
-                const tid = String(obj.thread_id || '')
-                if (tid && tid === selectedThread) setMessages(filterFinalMessages(rows))
-                if (tid) updateLastFromRows(tid, rows)
+                // Bridge returns thread_id at top-level; args may also exist in some paths
+                const args = (obj.args || {}) as { thread_id?: string }
+                const rawTid = String((obj.thread_id as string | undefined) || args.thread_id || selectedThreadRef.current || '')
+                const matchTid = resolveMatchThreadId(rawTid)
+                if (matchTid && matchTid === selectedThreadRef.current) setMessages(filterFinalMessages(rows))
+                if (matchTid) updateLastFromRows(matchTid, rows)
               } else if (obj.type === 'tinyvex.update' && obj.stream === 'messages' && selectedThread) {
-                const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.["queryHistory"]?.(selectedThread) }
+                const now = Date.now(); if (now - lastMsgReqRef.current > 300) { lastMsgReqRef.current = now; clientRef.current?.queryMessages(selectedThreadRef.current, 500) }
               }
             }
           } catch {}
@@ -156,7 +165,11 @@ function App() {
   }
 
   function filterFinalMessages(rows: MessageRowTs[]): MessageRowTs[] {
-    const finals = rows.filter((r) => String(r.kind || '') === 'message' && !!r.role)
+    const finals = rows.filter((r) => {
+      const k = String(r.kind || '').toLowerCase()
+      if (k === 'reason') return false
+      return !!r.role // render assistant/user with any non-reason kind
+    })
     const byKey = new Map<string, MessageRowTs>()
     const keyOf = (r: MessageRowTs) => String(r.item_id || `${r.seq ?? ''}:${r.ts}:${String(r.text || '').slice(0, 120)}`)
     for (const r of finals) {
@@ -169,7 +182,11 @@ function App() {
 
   function updateLastFromRows(threadId: string, rows: MessageRowTs[]) {
     try {
-      const finals = rows.filter((r) => String(r.kind || '') === 'message' && !!r.role)
+      const finals = rows.filter((r) => {
+        const k = String(r.kind || '').toLowerCase()
+        if (k === 'reason') return false
+        return !!r.role
+      })
       if (!finals.length) return
       const last = finals[finals.length - 1]
       setLastByThread((prev) => ({ ...prev, [threadId]: String(last.text || '') }))
@@ -178,24 +195,29 @@ function App() {
 
   function handleThreads(rows: ThreadSummaryTs[]) {
     setThreads(rows)
+    threadsRef.current = rows
     // Choose most recent Codex thread, fallback to most recent
     const providerRows = rows.filter((r) => {
       const s = String(r.source || '')
-      return s === 'codex' || s === 'claude_code'
+      const id = String(r.id || '')
+      return (s === 'codex' || s === 'claude_code') && !id.startsWith('ephemeral_')
     })
     const sorted = (xs: ThreadSummaryTs[]) => xs.slice().sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
     const top = sorted(providerRows).slice(0, 10)
-    // Query last message for the top threads
+    // Query last message for the top non-ephemeral threads
     for (const thr of top) {
-      try { clientRef.current?.queryMessages(String(thr.id), 1) } catch {}
+      const id = String(thr.id || '')
+      if (id.startsWith('ephemeral_')) continue
+      try { clientRef.current?.queryMessages(id, 1) } catch {}
     }
-    const pick = (top[0] || sorted(rows)[0]) as ThreadSummaryTs | undefined
+    const nonEphemeralSorted = sorted(rows).filter((r) => !String(r.id || '').startsWith('ephemeral_'))
+    const pick = (top[0] || nonEphemeralSorted[0]) as ThreadSummaryTs | undefined
     const tid = pick?.id ? String(pick.id) : ''
     if (tid && tid !== selectedThread) {
       setSelectedThread(tid)
       try {
         clientRef.current?.subscribeThread(tid)
-        clientRef.current?.["queryHistory"]?.(tid)
+        clientRef.current?.queryMessages(tid, 500)
       } catch {}
     }
   }
@@ -250,6 +272,23 @@ function App() {
     return base.length > maxLen ? `${base.slice(0, maxLen - 1)}…` : base
   }
 
+  function resolveMatchThreadId(rawTid: string): string {
+    const tid = String(rawTid || '')
+    if (!tid) return ''
+    if (tid === selectedThread) return tid
+    try {
+      const list = Array.isArray(threadsRef.current) ? threadsRef.current : []
+      // If selected thread has a resume_id that matches tid, treat as selected
+      const selRow = list.find((r) => String(r.id) === String(selectedThread))
+      const selResume = selRow?.resume_id ? String(selRow.resume_id) : ''
+      if (selResume && selResume === tid) return selectedThread
+      // If an item has resume_id equal to tid, treat its id as the chat thread
+      const aliasRow = list.find((r) => String(r.resume_id ?? '') === tid)
+      if (aliasRow) return String(aliasRow.id)
+    } catch {}
+    return tid
+  }
+
   return (
     <main className="container">
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'stretch', width: '100%', margin: '16px 0 0', flex: 1, minHeight: 0 }}>
@@ -274,7 +313,7 @@ function App() {
             <h3 style={{ margin: 0, marginBottom: 6, textAlign: 'left', flexShrink: 0 }}>Recent chats</h3>
             <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: '0 0 auto', overflowY: 'auto', maxHeight: 200 }}>
               {threads
-                .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')))
+                .filter((r) => ['codex', 'claude_code'].includes(String(r.source || '')) && !String(r.id || '').startsWith('ephemeral_'))
                 .sort((a, b) => Number(b.updated_at ?? 0) - Number(a.updated_at ?? 0))
                 .slice(0, 10)
                 .map((r) => {
@@ -288,7 +327,7 @@ function App() {
                   const providerBadge = provider ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       {provider === 'claude_code' ? <Ionicons name="flash-outline" size={12} color="#62666d" /> : provider === 'codex' ? <Ionicons name="code-slash" size={12} color="#62666d" /> : null}
-                      <Text style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>{provider === 'claude_code' ? 'Claude Code' : provider === 'codex' ? 'Codex' : provider}</Text>
+                      <Text style={{ color: '#62666d', fontFamily: Typography.primary, fontSize: 12 }}>{provider === 'claude_code' ? 'Claude Code' : provider === 'codex' ? 'Codex' : provider}</Text>
                     </View>
                   ) : null
                   const meta = (
@@ -296,13 +335,13 @@ function App() {
                       {!!tsText && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Ionicons name="time-outline" size={12} color="#62666d" />
-                          <Text numberOfLines={1} style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>{tsText}</Text>
+                          <Text numberOfLines={1} style={{ color: '#62666d', fontFamily: Typography.primary, fontSize: 12 }}>{tsText}</Text>
                         </View>
                       )}
                       {providerBadge ? (
                         <>
                           {!!tsText && (
-                            <Text style={{ color: '#62666d', fontFamily: 'Berkeley Mono', fontSize: 12 }}>•</Text>
+                            <Text style={{ color: '#62666d', fontFamily: Typography.primary, fontSize: 12 }}>•</Text>
                           )}
                           {providerBadge}
                         </>
@@ -311,13 +350,13 @@ function App() {
                   )
                   return (
                     <div key={tid} style={{ borderBottom: '1px solid var(--border)', background: active ? '#111216' : 'transparent' }}>
-                      <ThreadListItemBase
+                      <ThreadListItem
                         title={title}
                         meta={meta}
                         timestamp={updatedAt}
                         onPress={() => {
                           setSelectedThread(tid)
-                          try { clientRef.current?.subscribeThread(tid); clientRef.current?.["queryHistory"]?.(tid) } catch {}
+                          try { clientRef.current?.subscribeThread(tid); clientRef.current?.queryMessages(tid, 500) } catch {}
                         }}
                         testID={`drawer-thread-${tid}`}
                       />
@@ -341,24 +380,9 @@ function App() {
         <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
           <div ref={chatContainerRef} style={{ border: '1px solid var(--border)', padding: 12, borderRadius: 4, background: '#0e0f10', flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {selectedThread ? null : <p style={{ color: 'var(--tertiary)' }}>No threads yet…</p>}
-            {messages.map((m, idx) => {
-              const isAssistant = String(m.role || '').toLowerCase() === 'assistant'
-              const label = isAssistant ? 'assistant' : 'you'
-              return (
-              <div key={`${m.id}-${idx}`} style={{ display: 'flex', justifyContent: m.role === 'assistant' ? 'flex-start' : 'flex-end', padding: '6px 0' }}>
-                <div style={{
-                  maxWidth: 680,
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  background: isAssistant ? '#121317' : '#1b1d22',
-                  border: '1px solid var(--border)',
-                  color: 'var(--foreground)'
-                }}>
-                  <div style={{ fontSize: 12, color: 'var(--tertiary)', marginBottom: 4 }}>{label}</div>
-                  <div style={{ whiteSpace: 'pre-wrap' }}>{String(m.text || '')}</div>
-                </div>
-              </div>
-            )})}
+            {messages.map((m, idx) => (
+              <ChatMessageBubble key={`${m.id}-${idx}`} role={String(m.role || '').toLowerCase() === 'assistant' ? 'assistant' : 'user'} text={String(m.text || '')} />
+            ))}
           </div>
         </div>
       </div>

@@ -13,6 +13,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    "types": ["react", "react-dom"],
 
     /* Linting */
     "strict": true,
@@ -25,6 +26,7 @@
       "tinyvex/*": ["../packages/tinyvex/src/*"],
       "tricoder": ["../packages/tricoder/src"],
       "tricoder/*": ["../packages/tricoder/src/*"],
+      "@openagentsinc/core": ["../packages/openagents-core/index.d.ts"],
       "@openagentsinc/theme": ["../packages/openagents-theme"],
       "@openagentsinc/theme/*": ["../packages/openagents-theme/*"],
       "@expo/vector-icons": ["./src/shims/expo-vector-icons.tsx"],

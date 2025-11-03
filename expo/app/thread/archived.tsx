@@ -4,7 +4,7 @@ import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { useTinyvex } from '@/providers/tinyvex'
 import { useArchiveStore } from '@/lib/archive-store'
-import { ThreadListItemBase } from '@/components/drawer/ThreadListItem'
+import { ThreadListItem as ThreadListItemBase } from '@openagentsinc/core'
 import { useHeaderTitle } from '@/lib/header-store'
 import { router } from 'expo-router'
 import { typedRouter } from '@/lib/typed-router'
@@ -56,4 +56,3 @@ export default function ArchivedThreadsScreen() {
     </ScrollView>
   )
 }
-

@@ -6,46 +6,7 @@ import { useRouter } from 'expo-router'
 import { useTinyvex, type ThreadRow } from '@/providers/tinyvex'
 import { Ionicons } from '@expo/vector-icons'
 
-export function ThreadListItemBase({
-  title,
-  meta,
-  timestamp,
-  count,
-  onPress,
-  onLongPress,
-  testID,
-}: {
-  title: string
-  meta?: React.ReactNode
-  timestamp?: number | null
-  count?: number | null
-  onPress?: () => void
-  onLongPress?: () => void
-  testID?: string
-}) {
-  const ts = typeof timestamp === 'number' && timestamp > 0 ? formatRelative(new Date(timestamp).getTime()) : ''
-  return (
-    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300} accessibilityRole="button" testID={testID} style={{ paddingVertical: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text numberOfLines={1} style={{ color: Colors.foreground, fontFamily: Typography.primary, fontSize: 16 }}>{title || 'Thread'}</Text>
-          {meta ? (
-            <View style={{ marginTop: 2 }}>{meta}</View>
-          ) : null}
-          {!!ts && !meta && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-              <Ionicons name="time-outline" size={12} color={Colors.tertiary} />
-              <Text numberOfLines={1} style={{ color: Colors.tertiary, fontFamily: Typography.primary, fontSize: 12 }}>{ts}</Text>
-            </View>
-          )}
-        </View>
-        {typeof count === 'number' ? (
-          <Text style={{ color: Colors.quaternary, fontFamily: Typography.bold, fontSize: 12 }}>{count}</Text>
-        ) : null}
-      </View>
-    </Pressable>
-  )
-}
+import { ThreadListItem as ThreadListItemBase } from '@openagentsinc/core'
 
 export function DrawerThreadItem({ row, onPress, onLongPress }: { row: ThreadRow; onPress?: () => void; onLongPress?: () => void }) {
   const router = useRouter()
