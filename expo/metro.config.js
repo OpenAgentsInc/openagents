@@ -17,6 +17,11 @@ config.watchFolders = Array.from(new Set([
 ]))
 config.resolver = {
   ...config.resolver,
+  // Ensure external packages resolve React and other deps from the app's node_modules
+  nodeModulesPaths: [
+    path.resolve(__dirname, 'node_modules'),
+    path.resolve(__dirname, '..', 'node_modules'),
+  ],
   extraNodeModules: {
     // Map local packages for monorepo-style imports
     tinyvex: path.resolve(__dirname, '..', 'packages', 'tinyvex', 'src'),
