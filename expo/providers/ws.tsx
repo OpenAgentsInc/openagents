@@ -150,6 +150,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
             for (let i = prev; i < newLen; i++) {
               const line = obj.logs[i];
               try { console.log('[bridge.sidecar]', line) } catch {}
+              try { appLog('bridge.sidecar', { line }) } catch {}
             }
             prevLenRef.current = newLen;
           } else if (prev > newLen) {
