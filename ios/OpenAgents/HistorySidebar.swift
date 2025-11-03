@@ -3,6 +3,7 @@ import SwiftUI
 struct HistorySidebar: View {
     @State private var rows: [LocalThreadSummary] = []
     @State private var isLoading = false
+    @State private var debugLines: [String] = []
 
     var body: some View {
         List {
@@ -18,9 +19,20 @@ struct HistorySidebar: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if !isLoading {
-                    Text("No chats found in Codex folders")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No chats found in Codex folders")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if !debugLines.isEmpty {
+                            ForEach(debugLines.prefix(8), id: \.self) { line in
+                                Text(line).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                        #if os(macOS)
+                        Button("Select Codex Folder…", action: selectCodexFolder)
+                            .buttonStyle(.bordered)
+                        #endif
+                    }
                 }
                 ForEach(rows.prefix(10), id: \.uniqueKey) { row in
                     NavigationLink(value: row.id) {
@@ -50,10 +62,18 @@ struct HistorySidebar: View {
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
             // Focus on Codex first: discover all bases and merge
+            let bases = LocalCodexDiscovery.discoverBaseDirs()
+            var dbg: [String] = []
+            if let env = ProcessInfo.processInfo.environment["CODEXD_HISTORY_DIR"], !env.isEmpty { dbg.append("env CODEXD_HISTORY_DIR=\(env)") }
+            dbg.append("bases=\(bases.map{ $0.path })")
+            var counts: [String] = []
+            for b in bases { counts.append("\(b.path): \(LocalCodexScanner.listJSONLFiles(at: b).count) files") }
+            dbg.append(contentsOf: counts)
             let loaded = LocalCodexDiscovery.loadAllSummaries(maxFilesPerBase: 1000, maxResults: 500)
             DispatchQueue.main.async {
                 withAnimation { self.rows = loaded }
                 self.isLoading = false
+                self.debugLines = dbg
             }
         }
     }
@@ -95,6 +115,27 @@ struct HistorySidebar: View {
         return "\(week)w ago"
     }
 }
+
+#if os(macOS)
+import AppKit
+extension HistorySidebar {
+    private func selectCodexFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.title = "Select Codex sessions folder"
+        panel.message = "Pick your .codex/sessions folder (or a parent containing JSONL)."
+        if panel.runModal() == .OK, let url = panel.url {
+            LocalCodexDiscovery.setUserOverride(url)
+            self.isLoading = false
+            self.rows = []
+            self.debugLines = ["override=\(url.path)"]
+            self.load()
+        }
+    }
+}
+#endif
 
 #Preview {
     NavigationSplitView {
