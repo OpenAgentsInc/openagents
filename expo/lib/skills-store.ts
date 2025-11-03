@@ -1,6 +1,6 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { persistStorage } from './persist-storage'
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import { persistStorage } from "./persist-storage"
 
 export type SkillId = string
 
@@ -39,7 +39,7 @@ export const useSkillsStore = create<SkillsState>()(
 )
 
 export async function hydrateSkills(): Promise<void> {
-  try { await useSkillsStore.persist.rehydrate?.() } catch {}
+  try { await useSkillsStore.persist.rehydrate?.() } catch { }
 }
 
 export function listSkills(): Skill[] { return useSkillsStore.getState().list() }

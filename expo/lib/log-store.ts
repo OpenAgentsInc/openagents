@@ -1,6 +1,6 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { persistStorage } from './persist-storage'
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import { persistStorage } from "./persist-storage"
 
 export type LogKind = 'md' | 'reason' | 'text' | 'json' | 'summary' | 'delta' | 'exec' | 'file' | 'search' | 'mcp' | 'todo' | 'cmd' | 'err' | 'turn' | 'thread' | 'item_lifecycle'
 
@@ -28,7 +28,7 @@ export const useLogStore = create<LogState>()(
         try {
           const txt = String(entry.text ?? '')
           if (txt.includes('exec_command_end')) return
-        } catch {}
+        } catch { }
         const cur = get().logs
         const next = [...cur, entry]
         set({ logs: next })
@@ -43,7 +43,7 @@ export const useLogStore = create<LogState>()(
         // Migrate v1: plain array of LogDetail
         try {
           if (Array.isArray(persisted)) return { logs: persisted as LogDetail[] }
-        } catch {}
+        } catch { }
         return persisted
       },
       partialize: (s) => ({ logs: s.logs }),
@@ -72,7 +72,7 @@ export function isHydrated(): boolean {
 }
 
 export async function loadLogs(): Promise<LogDetail[]> {
-  try { await useLogStore.persist.rehydrate?.() } catch {}
+  try { await useLogStore.persist.rehydrate?.() } catch { }
   return useLogStore.getState().logs
 }
 

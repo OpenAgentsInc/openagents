@@ -1,5 +1,6 @@
 // Expo Metro config with optional Storybook integration
 const { getDefaultConfig } = require('expo/metro-config')
+const { resolve: metroResolve } = require('metro-resolver')
 const path = require('path')
 // Storybook wrapper may be ESM-only in some environments; make it optional.
 let withStorybook = (cfg, _opts) => cfg
@@ -15,8 +16,26 @@ const config = getDefaultConfig(__dirname)
 config.watchFolders = Array.from(new Set([
   path.resolve(__dirname, '..', 'packages'),
 ]))
+function resolveRequest(context, moduleName, platform) {
+  try {
+    // Force CJS middleware for Zustand regardless of deep import paths
+    if (
+      moduleName === 'zustand/middleware' ||
+      moduleName === 'zustand/middleware.js' ||
+      moduleName === 'zustand/esm/middleware' ||
+      moduleName === 'zustand/esm/middleware.mjs' ||
+      /\bzustand\/esm\/middleware(\.mjs)?$/.test(moduleName)
+    ) {
+      const filePath = path.resolve(__dirname, 'node_modules', 'zustand', 'middleware.js')
+      return { type: 'sourceFile', filePath }
+    }
+  } catch {}
+  return metroResolve(context, moduleName, platform)
+}
+
 config.resolver = {
   ...config.resolver,
+  resolveRequest,
   // Ensure external packages resolve React and other deps from the app's node_modules
   nodeModulesPaths: [
     path.resolve(__dirname, 'node_modules'),
@@ -27,6 +46,8 @@ config.resolver = {
     tinyvex: path.resolve(__dirname, '..', 'packages', 'tinyvex', 'src'),
     tricoder: path.resolve(__dirname, '..', 'packages', 'tricoder', 'src'),
     '@openagentsinc/core': path.resolve(__dirname, '..', 'packages', 'openagents-core', 'src'),
+    // Ensure Zustand middleware resolves to CJS variant (via shim directory)
+    'zustand/middleware': path.resolve(__dirname, 'shims', 'zustand-middleware'),
   },
 }
 

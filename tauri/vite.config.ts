@@ -14,6 +14,12 @@ export default defineConfig(async () => ({
   plugins: [react()],
   resolve: {
     alias: {
+      // Ensure Zustand middleware is ESM so Vite transforms import.meta.env
+      'zustand/middleware': path.resolve(__dirname, 'node_modules', 'zustand', 'esm', 'middleware.mjs'),
+      react: path.resolve(__dirname, 'node_modules', 'react'),
+      'react-dom': path.resolve(__dirname, 'node_modules', 'react-dom'),
+      zustand: path.resolve(__dirname, 'node_modules', 'zustand'),
+
       // Monorepo alias so CSS import resolves: '@openagentsinc/theme/web/theme.css'
       '@openagentsinc/theme': path.resolve(__dirname, '..', 'packages', 'openagents-theme'),
       '@openagentsinc/core': path.resolve(__dirname, '..', 'packages', 'openagents-core', 'src'),
@@ -30,6 +36,19 @@ export default defineConfig(async () => ({
       // Allow importing Expo component files directly
       'expo': path.resolve(__dirname, '..', 'expo'),
     },
+    dedupe: ['react', 'react-dom', 'zustand'],
+  },
+  optimizeDeps: {
+    include: ['zustand', 'zustand/middleware'],
+    force: true,
+    esbuildOptions: {
+      define: {
+        'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV || 'development'),
+      },
+    },
+  },
+  build: {
+    commonjsOptions: { transformMixedEsModules: true },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

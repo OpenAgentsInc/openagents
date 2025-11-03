@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import { persistStorage } from "./persist-storage"
+import { universalJSONStorage } from "./persist"
 
 export type Approvals = 'never' | 'on-request' | 'on-failure'
 
@@ -16,9 +16,6 @@ type SettingsState = {
   agentProvider: 'codex' | 'claude_code'
   updatesAutoPoll: boolean
   lastRoute: string
-  // Bridge sync preferences (persisted):
-  // - syncEnabled controls the Codex sessions watcher (inbound sync)
-  // - syncTwoWay controls the provider-native writer (outbound sync)
   syncEnabled: boolean
   syncTwoWay: boolean
   setBridgeHost: (v: string) => void
@@ -39,11 +36,9 @@ type SettingsState = {
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
-      // No default host; user must paste a Bridge Code or set host manually
       bridgeHost: '',
       bridgeCode: '',
       bridgeToken: '',
-      // Do not auto-reconnect until the user explicitly presses Connect
       bridgeAutoReconnect: false,
       readOnly: false,
       networkEnabled: true,
@@ -52,7 +47,6 @@ export const useSettings = create<SettingsState>()(
       agentProvider: 'codex',
       updatesAutoPoll: false,
       lastRoute: '',
-      // Default to watcher ON and two-way OFF unless user overrides.
       syncEnabled: true,
       syncTwoWay: false,
       setBridgeHost: (v) => set({ bridgeHost: sanitizeHostInput(v) }),
@@ -72,23 +66,19 @@ export const useSettings = create<SettingsState>()(
     {
       name: '@openagents/settings-v4',
       version: 4,
-      storage: persistStorage(),
-      // Migrate and sanitize legacy values (remove any bore/localhost defaults, clear bad hosts)
+      storage: universalJSONStorage(),
       migrate: (persisted: any, from) => {
         try {
           const obj = (persisted && typeof persisted === 'object') ? { ...persisted } : persisted
           if (!obj || typeof obj !== 'object') return persisted
           const host = String(obj.bridgeHost || '').trim()
-          // Always start with explicit user connect; turn off auto-reconnect on migration
           obj.bridgeAutoReconnect = false
-          // Drop legacy convexUrl and related fields
           if ('convexUrl' in obj) delete obj.convexUrl
           if (/\bbore(\.pub)?\b/.test(host) || host.startsWith('ws://bore') || host.includes('bore.pub') || host.startsWith('localhost:') || host.startsWith('127.0.0.1:')) {
             obj.bridgeHost = ''
             obj.bridgeCode = ''
             obj.bridgeToken = ''
           }
-          // Sanitize any malformed or duplicated host strings stored previously
           if (obj.bridgeHost && typeof obj.bridgeHost === 'string') {
             obj.bridgeHost = sanitizeHostInput(String(obj.bridgeHost))
           }
@@ -101,9 +91,6 @@ export const useSettings = create<SettingsState>()(
   )
 )
 
-// Best-effort sanitize for Bridge Host input to prevent accidental concatenation
-// or protocol fragments. Keeps only the first plausible host:port, strips ws://,
-// http(s)://, trailing / and /ws suffix.
 function sanitizeHostInput(raw: string): string {
   try {
     const val = String(raw || '').trim()

@@ -1,4 +1,4 @@
-import { create } from 'zustand/traditional'
+import { create } from 'zustand'
 
 type UpdateState = {
   updating: boolean;

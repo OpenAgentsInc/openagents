@@ -1,5 +1,5 @@
-import { Platform } from 'react-native'
-import { createJSONStorage } from 'zustand/middleware'
+import { Platform } from "react-native"
+import { createJSONStorage } from "zustand/middleware"
 
 // Provides a persist storage that is safe across native, web, and SSR.
 // - Native: uses AsyncStorage (required lazily)
@@ -12,8 +12,8 @@ export function persistStorage() {
     }
     const memory = {
       getItem: async (_key: string) => null as any,
-      setItem: async (_key: string, _value: string) => {},
-      removeItem: async (_key: string) => {},
+      setItem: async (_key: string, _value: string) => { },
+      removeItem: async (_key: string) => { },
     }
     return createJSONStorage(() => memory as any)
   }

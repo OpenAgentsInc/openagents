@@ -1,7 +1,7 @@
 import React from 'react'
 import { FlatList, Text, View } from 'react-native'
 import { useHeaderTitle } from '@/lib/header-store'
-import { useAppLogStore } from '@/lib/app-log'
+import { useAppLogStore } from '@openagentsinc/core'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 
@@ -35,4 +35,3 @@ export default function AppLogs() {
 function safeStringify(x: any): string {
   try { return typeof x === 'string' ? x : JSON.stringify(x) } catch { return String(x) }
 }
-
