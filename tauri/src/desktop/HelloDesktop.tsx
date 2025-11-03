@@ -5,6 +5,10 @@ import { renderJsonSyntax } from '../lib/jsonSyntax'
 import { useEffect, useRef } from 'react'
 import { TinyvexProvider, useTinyvexThreads, useTinyvexThread } from 'tinyvex/react'
 import { ChatMessageBubble } from '@openagentsinc/core'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
 import type { MessageRowTs } from 'tricoder/types'
 
 // Minimal desktop entrypoint view using our global theme
@@ -13,7 +17,7 @@ import type { MessageRowTs } from 'tricoder/types'
 function ThreadsList({ onSelect, selectedId }: { onSelect: (id: string) => void; selectedId?: string }) {
   const { threads } = useTinyvexThreads(50)
   return (
-    <div className="flex-1 min-h-0 overflow-auto">
+    <ScrollArea className="flex-1 min-h-0">
       {threads.map((t) => (
         <button
           key={t.id}
@@ -30,7 +34,7 @@ function ThreadsList({ onSelect, selectedId }: { onSelect: (id: string) => void;
           <div className="text-[11px] text-[var(--tertiary)]">{new Date(Number(t.updated_at || 0)).toLocaleString()}</div>
         </button>
       ))}
-    </div>
+    </ScrollArea>
   )
 }
 
@@ -43,7 +47,7 @@ function ChatThread({ id }: { id: string }) {
   }, [history])
   const messages = (history || []).filter((m: MessageRowTs) => m.kind === 'message' && !!m.role)
   return (
-    <div className="flex-1 min-h-0 overflow-auto p-3" ref={chatRef}>
+    <ScrollArea className="flex-1 min-h-0 p-3" ref={chatRef as any}>
       {status !== 'ready' && (
         <div className="text-xs text-[var(--tertiary)] mb-2">Loading…</div>
       )}
@@ -52,7 +56,7 @@ function ChatThread({ id }: { id: string }) {
           <ChatMessageBubble role={(m.role as 'assistant' | 'user') ?? 'assistant'} text={String(m.text || '')} />
         </div>
       ))}
-    </div>
+    </ScrollArea>
   )}
 
 export default function HelloDesktop() {
@@ -85,18 +89,10 @@ export default function HelloDesktop() {
         <div className="text-[20px]">Hello world</div>
         <div className="flex items-center gap-3">
           {view === 'chat' && selected && (
-            <div
-              className="max-w-[520px] truncate text-xs font-mono text-[var(--secondary)] bg-white/5 border border-[var(--border)] rounded px-2 py-1"
-              title={selected}
-            >
-              Thread {selected}
-            </div>
+            <Badge className="max-w-[520px] truncate" title={selected}>Thread {selected}</Badge>
           )}
           {view === 'chat' && (
-            <button
-              className="text-xs border border-[var(--border)] rounded px-2 py-1 hover:bg-black/20"
-              onClick={() => setView('dev')}
-            >Developer</button>
+            <Button variant="outline" size="sm" onClick={() => setView('dev')}>Developer</Button>
           )}
           <div className="text-xs text-[var(--tertiary)]">
             <span className="mr-3">status: <span className="text-[var(--secondary)]">{status}</span></span>
@@ -106,8 +102,8 @@ export default function HelloDesktop() {
       </header>
       <main className="flex-1 min-h-0 flex gap-3 p-3">
         {/* Leftmost threads column */}
-        <section className="w-[280px] min-w-[240px] flex flex-col border border-[var(--border)] rounded">
-          <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)]">Recent threads</div>
+        <Card className="w-[280px] min-w-[240px] flex flex-col">
+          <CardHeader>Recent threads</CardHeader>
           {wsUrl ? (
             <TinyvexProvider config={{ url: wsUrl, token }}>
               <ThreadsList selectedId={selected} onSelect={(id) => { setSelected(id); setView('chat') }} />
@@ -115,15 +111,15 @@ export default function HelloDesktop() {
           ) : (
             <div className="p-3 text-[var(--tertiary)] text-xs">Connecting…</div>
           )}
-        </section>
+        </Card>
 
         {view === 'dev' ? (
-          <section className="flex-1 min-w-0 flex flex-col border border-[var(--border)] rounded">
-            <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)] flex items-center justify-between">
+          <Card className="flex-1 min-w-0 flex flex-col">
+            <CardHeader>
               <span>WS events</span>
-              <button onClick={copyWsEvents} className="text-[var(--secondary)] border border-[var(--border)] rounded px-2 py-0.5 hover:bg-black/20">Copy</button>
-            </div>
-            <div ref={wsRef} className="flex-1 min-h-0 overflow-auto text-xs leading-[18px] p-2.5">
+              <Button variant="outline" size="sm" onClick={copyWsEvents}>Copy</Button>
+            </CardHeader>
+            <ScrollArea ref={wsRef as any} className="flex-1 min-h-0 text-xs leading-[18px] p-2.5">
               {logs.length === 0 ? (
                 <div className="text-[var(--tertiary)]">No events yet.</div>
               ) : (
@@ -133,11 +129,11 @@ export default function HelloDesktop() {
                   </div>
                 ))
               )}
-            </div>
-          </section>
+            </ScrollArea>
+          </Card>
         ) : (
-          <section className="flex-1 min-w-0 flex flex-col border border-[var(--border)] rounded">
-            <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)]">Thread</div>
+          <Card className="flex-1 min-w-0 flex flex-col">
+            <CardHeader>Thread</CardHeader>
             {wsUrl ? (
               <TinyvexProvider config={{ url: wsUrl, token }}>
                 {selected ? (
@@ -149,16 +145,16 @@ export default function HelloDesktop() {
             ) : (
               <div className="p-3 text-xs text-[var(--tertiary)]">Connecting…</div>
             )}
-          </section>
+          </Card>
         )}
 
         {view === 'dev' && (
-          <section className="w-[420px] min-w-[300px] flex flex-col border border-[var(--border)] rounded">
-            <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)] flex items-center justify-between">
+          <Card className="w-[420px] min-w-[300px] flex flex-col">
+            <CardHeader>
               <span>Bridge logs</span>
-              <button onClick={copyBridgeLogs} className="text-[var(--secondary)] border border-[var(--border)] rounded px-2 py-0.5 hover:bg-black/20">Copy</button>
-            </div>
-            <div ref={bridgeRef} className="flex-1 min-h-0 overflow-auto text-xs leading-[18px] p-2.5">
+              <Button variant="outline" size="sm" onClick={copyBridgeLogs}>Copy</Button>
+            </CardHeader>
+            <ScrollArea ref={bridgeRef as any} className="flex-1 min-h-0 text-xs leading-[18px] p-2.5">
               {sidecarLogs.length === 0 ? (
                 <div className="text-[var(--tertiary)]">Waiting for bridge…</div>
               ) : (
@@ -166,8 +162,8 @@ export default function HelloDesktop() {
                   <div key={i} className="whitespace-pre-wrap break-words">{renderAnsi(l)}</div>
                 ))
               )}
-            </div>
-          </section>
+            </ScrollArea>
+          </Card>
         )}
       </main>
     </div>

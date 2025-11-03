@@ -22,6 +22,7 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
+      "@/*": ["src/*"],
       "tinyvex": ["../packages/tinyvex/src"],
       "tinyvex/*": ["../packages/tinyvex/src/*"],
       "tricoder": ["../packages/tricoder/src"],

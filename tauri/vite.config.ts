@@ -19,7 +19,6 @@ export default defineConfig(async () => ({
       'zustand/middleware': path.resolve(__dirname, 'node_modules', 'zustand', 'esm', 'middleware.mjs'),
       react: path.resolve(__dirname, 'node_modules', 'react'),
       'react-dom': path.resolve(__dirname, 'node_modules', 'react-dom'),
-      zustand: path.resolve(__dirname, 'node_modules', 'zustand'),
 
       // Monorepo alias so CSS import resolves: '@openagentsinc/theme/web/theme.css'
       '@openagentsinc/theme': path.resolve(__dirname, '..', 'packages', 'openagents-theme'),
@@ -37,6 +36,7 @@ export default defineConfig(async () => ({
       'expo-router': path.resolve(__dirname, 'src', 'shims', 'expo-router.ts'),
       // Allow importing Expo component files directly
       'expo': path.resolve(__dirname, '..', 'expo'),
+      '@': path.resolve(__dirname, 'src'),
     },
     dedupe: ['react', 'react-dom', 'zustand'],
   },
