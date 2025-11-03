@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Text, TextInput } from 'react-native';
+import { Text, TextInput, Platform } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { Colors } from '@/constants/theme';
@@ -29,8 +29,13 @@ export function applyTypographyGlobals() {
 }
 
 export function useTypographySetup() {
+  // On web (Expo web/Metro), skip expo-font to avoid fontfaceobserver 6s timeout
+  if (Platform.OS === 'web') {
+    // No splash management on web; return true to continue rendering
+    return true as const;
+  }
+
   const [fontsLoaded] = useFonts({
-    // Family names used in `fontFamily` must match these keys
     BerkeleyMono: require('../assets/fonts/BerkeleyMono-Regular.ttf'),
     'BerkeleyMono-Bold': require('../assets/fonts/BerkeleyMono-Bold.ttf'),
     'BerkeleyMono-Italic': require('../assets/fonts/BerkeleyMono-Italic.ttf'),
@@ -38,13 +43,11 @@ export function useTypographySetup() {
   });
 
   useEffect(() => {
-    // Keep splash screen up until fonts are ready
     SplashScreen.preventAutoHideAsync().catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!fontsLoaded) return;
-    // Hide splash once fonts are ready
     SplashScreen.hideAsync().catch(() => {});
   }, [fontsLoaded]);
 
