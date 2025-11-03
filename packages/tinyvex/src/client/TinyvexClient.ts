@@ -20,6 +20,10 @@ export class TinyvexClient {
 
   constructor(private t: Transport, private log: Logger = silentLogger) {}
 
+  async connect(): Promise<void> {
+    await this.t.connect();
+  }
+
   async init(idOrAlias: string) {
     await this.t.connect();
     const { thread_id } = await resolveAlias(idOrAlias);
