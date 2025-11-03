@@ -1,2 +1,1 @@
-export { Colors } from '@openagentsinc/theme'
-
+export { Colors, Typography } from '@openagentsinc/theme'

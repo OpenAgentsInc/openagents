@@ -42,8 +42,9 @@ export interface ToolCallRowTs {
 }
 
 export interface SyncWatchedDirTs {
-  path: string;
   provider: string;
+  base: string;
+  files: number;
   last_read?: number | null;
 }
 
@@ -59,12 +60,16 @@ export type TinyvexStreamName = 'threads' | 'messages' | 'toolCalls' | 'plan' | 
 export interface TinyvexSnapshot<T> {
   type: 'tinyvex.snapshot';
   stream: TinyvexStreamName;
+  thread_id?: string;
   rows: T[];
+  rev?: number;
 }
 
 export interface TinyvexQueryResult<T> {
   type: 'tinyvex.query_result';
   name: string;
+  // Some query results include thread context at the top level (e.g., messages.list)
+  thread_id?: string;
   args?: unknown;
   rows: T[];
 }
@@ -88,4 +93,3 @@ export type BridgeEvent<T = unknown> =
   | TinyvexQueryResult<ToolCallRowTs>
   | TinyvexUpdate
   | T;
-

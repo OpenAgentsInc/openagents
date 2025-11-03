@@ -13,8 +13,7 @@ import { useHeaderTitle, useHeaderStore } from '@/lib/header-store'
 import { useAcp, type SessionNotificationWithTs } from '@/providers/acp'
 import { useSettings } from '@/lib/settings-store'
 import { useThreadProviders } from '@/lib/thread-provider-store'
-import { SessionUpdateAgentMessageChunk } from '@/components/acp/SessionUpdateAgentMessageChunk'
-import { SessionUpdateUserMessageChunk } from '@/components/acp/SessionUpdateUserMessageChunk'
+import { ChatMessageBubble } from '@openagentsinc/core'
 import * as Haptics from 'expo-haptics'
 // tinyvex/react provides history + live; no custom timeline hook needed
 
@@ -73,15 +72,14 @@ export default function ThreadScreen() {
       <FlatList
         data={[...history.map((r, i) => ({ key: `h-${r.id}-${i}`, ts: r.ts, role: r.role, text: String(r.text || '') })), ...(live.assistant ? [{ key: `live-a`, ts: Date.now(), role: 'assistant' as const, text: live.assistant }] : [])]}
         keyExtractor={(it) => it.key}
-        renderItem={({ item }) => (
-          <View style={{ paddingVertical: 4 }}>
-            {item.role === 'assistant' ? (
-              <SessionUpdateAgentMessageChunk content={{ type: 'text', text: item.text }} />
-            ) : (
-              <SessionUpdateUserMessageChunk content={{ type: 'text', text: item.text }} />
-            )}
-          </View>
-        )}
+        renderItem={({ item }) => {
+          const role: 'assistant' | 'user' = item.role === 'assistant' ? 'assistant' : 'user'
+          return (
+            <View style={{ paddingVertical: 4 }}>
+              <ChatMessageBubble role={role} text={item.text} />
+            </View>
+          )
+        }}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 80 }}
         keyboardShouldPersistTaps='handled'
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
