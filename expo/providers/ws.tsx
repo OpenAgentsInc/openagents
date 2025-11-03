@@ -205,10 +205,11 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     const secure = port === '443' || /\.(openagents|cloudflare|vercel|netlify|aws|googleapis)\./i.test(host);
     try { wsRef.current?.close(); } catch {}
     try {
-      const tokenPart = (() => {
+      let tokenPart = '';
+      try {
         const t = String(tokenNow || '').trim();
-        return t ? `?token=${encodeURIComponent(t)}` : '';
-      })();
+        tokenPart = t ? `?token=${encodeURIComponent(t)}` : '';
+      } catch {}
       const scheme = secure ? 'wss' : 'ws';
       const httpScheme = secure ? 'https' : 'http';
       const wsUrl = `${scheme}://${host}/ws${tokenPart}`;
@@ -326,12 +327,14 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   const send = useCallback((payload: string | ArrayBuffer | Blob) => {
     const ws = wsRef.current;
-    const preview = (() => {
-      try {
-        const s = typeof payload === 'string' ? payload : (payload instanceof ArrayBuffer ? `[${payload.byteLength} bytes]` : String(payload));
-        return s.length > 160 ? s.slice(0, 160) + '…' : s;
-      } catch { return '' }
-    })();
+    let preview = '';
+    try {
+      let s: string;
+      if (typeof payload === 'string') s = payload;
+      else if (payload instanceof ArrayBuffer) s = `[${payload.byteLength} bytes]`;
+      else s = String(payload);
+      preview = s.length > 160 ? s.slice(0, 160) + '…' : s;
+    } catch {}
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       try { appLog('ws.send.skipped', { preview, reason: 'not_open' }); } catch {}
       return false;
