@@ -1,8 +1,8 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware/persist'
-import { universalJSONStorage } from './persist'
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import { universalJSONStorage } from "./persist"
 
-export type ThreadItem = { ts: number; kind: 'message'|'reason'|'cmd'; role?: 'assistant'|'user'; text: string }
+export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
 export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean; tail?: ThreadItem[] }
 export type ThreadResponse = { title: string; items: ThreadItem[]; instructions?: string; resume_id?: string; partial?: boolean }
 
@@ -36,13 +36,13 @@ export const useThreads = create<ThreadsState>()(
         set({ loadingHistory: true })
         try {
           const existing = (get().history || []).slice(0, MAX_HISTORY_CACHE)
-          const latestMtime = existing.reduce((acc, it)=> Math.max(acc, it.mtime || 0), 0)
+          const latestMtime = existing.reduce((acc, it) => Math.max(acc, it.mtime || 0), 0)
           const params = latestMtime ? { since_mtime: latestMtime, limit: 50 } : { limit: 50 }
           const delta = await requestHistory(params)
           let next = existing.slice()
           if (Array.isArray(delta) && delta.length > 0) {
-            const seen = new Set(next.map(i=>i.id)); for (const it of delta) { if (!seen.has(it.id)) { next.push(it); seen.add(it.id) } }
-            next.sort((a,b)=> (b.mtime - a.mtime))
+            const seen = new Set(next.map(i => i.id)); for (const it of delta) { if (!seen.has(it.id)) { next.push(it); seen.add(it.id) } }
+            next.sort((a, b) => (b.mtime - a.mtime))
           }
           if (next.length > MAX_HISTORY_CACHE) next = next.slice(0, MAX_HISTORY_CACHE)
           if (next.length === 0 && existing.length === 0) {
@@ -69,9 +69,9 @@ export const useThreads = create<ThreadsState>()(
     {
       name: '@openagents/threads-v1', version: 1, skipHydration: true, storage: universalJSONStorage(),
       partialize: (state) => ({ history: (state.history || []).slice(0, MAX_HISTORY_CACHE), historyLoadedAt: state.historyLoadedAt, threadProject: state.threadProject }),
-      onRehydrateStorage: () => () => { try { useThreads.setState({ rehydrated: true }) } catch {} },
+      onRehydrateStorage: () => () => { try { useThreads.setState({ rehydrated: true }) } catch { } },
       migrate: (persisted: unknown) => {
-        try { if (persisted && typeof persisted === 'object') { const next: any = { ...(persisted as any) }; if (Array.isArray(next.items) && !next.history) { next.history = next.items; delete next.items } if (Array.isArray(next.history) && next.history.length > MAX_HISTORY_CACHE) { next.history = next.history.slice(0, MAX_HISTORY_CACHE) } if (next.thread && typeof next.thread === 'object') { next.thread = {} } return next } } catch {}
+        try { if (persisted && typeof persisted === 'object') { const next: any = { ...(persisted as any) }; if (Array.isArray(next.items) && !next.history) { next.history = next.items; delete next.items } if (Array.isArray(next.history) && next.history.length > MAX_HISTORY_CACHE) { next.history = next.history.slice(0, MAX_HISTORY_CACHE) } if (next.thread && typeof next.thread === 'object') { next.thread = {} } return next } } catch { }
         return persisted
       },
     }
@@ -81,7 +81,7 @@ export const useThreads = create<ThreadsState>()(
 let threadsRehydratePromise: Promise<void> | null = null
 export function ensureThreadsRehydrated(): Promise<void> {
   if (!threadsRehydratePromise) {
-    threadsRehydratePromise = (async () => { try { await (useThreads as any).persist?.rehydrate?.() } catch {} ; if (!useThreads.getState().rehydrated) { useThreads.setState({ rehydrated: true }) } })()
+    threadsRehydratePromise = (async () => { try { await (useThreads as any).persist?.rehydrate?.() } catch { }; if (!useThreads.getState().rehydrated) { useThreads.setState({ rehydrated: true }) } })()
   }
   return threadsRehydratePromise
 }

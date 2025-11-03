@@ -1,6 +1,6 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware/persist'
-import { persistStorage } from './persist-storage'
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import { persistStorage } from "./persist-storage"
 
 type DrawerState = {
   open: boolean

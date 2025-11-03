@@ -1,7 +1,7 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware/persist'
-import { persistStorage } from './persist-storage'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+import { persistStorage } from "./persist-storage"
 
 export type ProjectId = string
 
@@ -85,7 +85,7 @@ export const useProjectsStore = create<ProjectsState>()(
             // Try KEY format
             return { items: persisted as Record<ProjectId, Project>, activeId: null }
           }
-        } catch {}
+        } catch { }
         return persisted
       },
     }
@@ -94,7 +94,7 @@ export const useProjectsStore = create<ProjectsState>()(
 
 // Back-compat procedural API used by providers/projects and others
 export async function hydrateProjects(): Promise<void> {
-  try { await useProjectsStore.persist.rehydrate?.() } catch {}
+  try { await useProjectsStore.persist.rehydrate?.() } catch { }
   // Legacy migration path: import from old AsyncStorage keys if current store is empty
   try {
     const cur = useProjectsStore.getState()
@@ -108,7 +108,7 @@ export async function hydrateProjects(): Promise<void> {
         }
       }
     }
-  } catch {}
+  } catch { }
 }
 
 export function listProjects(): Project[] {

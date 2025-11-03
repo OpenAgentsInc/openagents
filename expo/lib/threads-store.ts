@@ -1,8 +1,8 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware/persist'
-import { persistStorage } from './persist-storage'
-import { appLog } from '@/lib/app-log'
-import { useBridge } from '@/providers/ws'
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import { appLog } from "@/lib/app-log"
+import { useBridge } from "@/providers/ws"
+import { persistStorage } from "./persist-storage"
 
 export type ThreadItem = { ts: number; kind: 'message' | 'reason' | 'cmd'; role?: 'assistant' | 'user'; text: string }
 export type HistoryItem = { id: string; path: string; mtime: number; title: string; snippet: string; has_instructions?: boolean; tail?: ThreadItem[] }
@@ -47,19 +47,19 @@ export const useThreads = create<ThreadsState>()(
         set({ thread: { ...get().thread, [id]: { ...preview, partial: true } } })
       },
       loadHistory: async (requestHistory: (params?: { limit?: number; since_mtime?: number }) => Promise<HistoryItem[]>) => {
-    set({ loadingHistory: true })
-    try {
+        set({ loadingHistory: true })
+        try {
           const state = get()
           const existing = (state.history || []).slice(0, MAX_HISTORY_CACHE)
-          const latestMtime = existing.reduce((acc, it)=> Math.max(acc, it.mtime || 0), 0)
+          const latestMtime = existing.reduce((acc, it) => Math.max(acc, it.mtime || 0), 0)
           const params = latestMtime ? { since_mtime: latestMtime, limit: 50 } : { limit: 50 }
           appLog('history.fetch.start', { via: 'ws', params })
           const delta = await requestHistory(params)
           let next = existing.slice()
           if (Array.isArray(delta) && delta.length > 0) {
-            const seen = new Set(next.map(i=>i.id))
+            const seen = new Set(next.map(i => i.id))
             for (const it of delta) { if (!seen.has(it.id)) { next.push(it); seen.add(it.id) } }
-            next.sort((a,b)=> (b.mtime - a.mtime))
+            next.sort((a, b) => (b.mtime - a.mtime))
           }
           if (next.length > MAX_HISTORY_CACHE) {
             next = next.slice(0, MAX_HISTORY_CACHE)
@@ -74,14 +74,14 @@ export const useThreads = create<ThreadsState>()(
           }
           set({ history: next, historyLoadedAt: Date.now(), historyError: null })
           appLog('history.fetch.success', { count: next.length, delta: delta?.length ?? 0 })
-      } catch (e: unknown) {
-      const msg = String((e as Error)?.message ?? e)
-      set({ historyError: msg })
-      appLog('history.fetch.error', { error: msg }, 'error')
-    } finally {
-      set({ loadingHistory: false })
-    }
-  },
+        } catch (e: unknown) {
+          const msg = String((e as Error)?.message ?? e)
+          set({ historyError: msg })
+          appLog('history.fetch.error', { error: msg }, 'error')
+        } finally {
+          set({ loadingHistory: false })
+        }
+      },
       loadThread: async (requestThread: (id: string, path?: string) => Promise<ThreadResponse | undefined>, id: string, path?: string) => {
         const key = id
         const cur = get().thread[key]
@@ -115,7 +115,7 @@ export const useThreads = create<ThreadsState>()(
       onRehydrateStorage: () => (state, error) => {
         try {
           useThreads.setState({ rehydrated: true })
-        } catch {}
+        } catch { }
       },
       migrate: (persisted: unknown) => {
         try {
@@ -136,7 +136,7 @@ export const useThreads = create<ThreadsState>()(
             }
             return next;
           }
-        } catch {}
+        } catch { }
         return persisted;
       },
     }

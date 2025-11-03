@@ -1,6 +1,6 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware/persist'
-import { universalJSONStorage } from './persist'
+import { create } from "zustand"
+import { persist } from "zustand/middleware"
+import { universalJSONStorage } from "./persist"
 
 type DrawerState = { open: boolean; setOpen: (v: boolean) => void }
 
