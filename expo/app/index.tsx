@@ -104,7 +104,7 @@ export default function Index() {
         <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 6 }}>Console</Text>
         <ScrollView
           ref={scrollRef}
-          style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, backgroundColor: '#0e0e0e', maxWidth: '100%', width: '100%' }}
+          style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, backgroundColor: '#0e0e0e', maxWidth: '100%', width: '100%', overflow: 'hidden' }}
           contentContainerStyle={{ padding: 10, gap: 2, width: '100%' }}
         >
           <LogLines lines={lines} />

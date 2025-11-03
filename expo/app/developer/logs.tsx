@@ -53,7 +53,7 @@ export default function DeveloperLogsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background, padding: 12 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.primary, fontSize: 12 }}>Live Console</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable
@@ -76,7 +76,7 @@ export default function DeveloperLogsScreen() {
       </View>
       <ScrollView
         ref={scrollRef}
-        style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, backgroundColor: '#0e0e0e', maxWidth: '100%', width: '100%' }}
+        style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, backgroundColor: '#0e0e0e', maxWidth: '100%', width: '100%', overflow: 'hidden' }}
         contentContainerStyle={{ padding: 10, gap: 2, width: '100%' }}
       >
         {lines.map((l) => (
