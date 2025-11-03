@@ -56,6 +56,13 @@ export default function HelloDesktop() {
   const [view, setView] = React.useState<'dev' | 'chat'>('dev')
   const [selected, setSelected] = React.useState<string>('')
 
+  const copyWsEvents = async () => {
+    try { await navigator.clipboard.writeText((logs || []).join('\n')) } catch {}
+  }
+  const copyBridgeLogs = async () => {
+    try { await navigator.clipboard.writeText((sidecarLogs || []).join('\n')) } catch {}
+  }
+
   // Auto-scroll to bottom when new items arrive
   useEffect(() => {
     const el = wsRef.current
@@ -98,7 +105,10 @@ export default function HelloDesktop() {
 
         {view === 'dev' ? (
           <section className="flex-1 min-w-0 flex flex-col border border-[var(--border)] rounded">
-            <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)]">WS events</div>
+            <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)] flex items-center justify-between">
+              <span>WS events</span>
+              <button onClick={copyWsEvents} className="text-[var(--secondary)] border border-[var(--border)] rounded px-2 py-0.5 hover:bg-black/20">Copy</button>
+            </div>
             <div ref={wsRef} className="flex-1 min-h-0 overflow-auto text-xs leading-[18px] p-2.5">
               {logs.length === 0 ? (
                 <div className="text-[var(--tertiary)]">No events yet.</div>
@@ -130,7 +140,10 @@ export default function HelloDesktop() {
 
         {view === 'dev' && (
           <section className="w-[420px] min-w-[300px] flex flex-col border border-[var(--border)] rounded">
-            <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)]">Bridge logs</div>
+            <div className="px-2.5 py-2 border-b border-[var(--border)] text-xs text-[var(--tertiary)] flex items-center justify-between">
+              <span>Bridge logs</span>
+              <button onClick={copyBridgeLogs} className="text-[var(--secondary)] border border-[var(--border)] rounded px-2 py-0.5 hover:bg-black/20">Copy</button>
+            </div>
             <div ref={bridgeRef} className="flex-1 min-h-0 overflow-auto text-xs leading-[18px] p-2.5">
               {sidecarLogs.length === 0 ? (
                 <div className="text-[var(--tertiary)]">Waiting for bridge…</div>
