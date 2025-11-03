@@ -64,7 +64,14 @@ struct HistorySidebar: View {
             // Focus on Codex first: discover all bases and merge
             let bases = LocalCodexDiscovery.discoverBaseDirs()
             var dbg: [String] = []
-            if let env = ProcessInfo.processInfo.environment["CODEXD_HISTORY_DIR"], !env.isEmpty { dbg.append("env CODEXD_HISTORY_DIR=\(env)") }
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            let home2 = NSHomeDirectory()
+            let def1 = URL(fileURLWithPath: home).appendingPathComponent(".codex/sessions", isDirectory: true).path
+            let def2 = URL(fileURLWithPath: home2).appendingPathComponent(".codex/sessions", isDirectory: true).path
+            let env = ProcessInfo.processInfo.environment["CODEXD_HISTORY_DIR"] ?? ""
+            dbg.append("env CODEXD_HISTORY_DIR=\(env)")
+            dbg.append("home=\(home) home2=\(home2)")
+            dbg.append("defaultBaseCandidates=[\(def1), \(def2)]")
             dbg.append("bases=\(bases.map{ $0.path })")
             var counts: [String] = []
             for b in bases { counts.append("\(b.path): \(LocalCodexScanner.listJSONLFiles(at: b).count) files") }
