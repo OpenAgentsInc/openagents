@@ -1,4 +1,4 @@
-import { create } from 'zustand/traditional'
+import { create } from 'zustand'
 
 export type ToastType = 'info' | 'success' | 'error'
 export type Toast = { id: string; text: string; type: ToastType; duration: number }

@@ -1,6 +1,6 @@
 import React from 'react'
 import { useFocusEffect } from 'expo-router'
-import { create } from 'zustand/traditional'
+import { create } from 'zustand'
 
 type HeaderState = {
   title: string
