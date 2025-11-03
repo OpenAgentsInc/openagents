@@ -59,6 +59,17 @@ public enum CodexScanner {
         return extractUUIDLike(fromFilename: url)
     }
 
+    static func relativeId(for url: URL, base: URL) -> String {
+        let u = url.deletingPathExtension().resolvingSymlinksInPath().standardizedFileURL.path
+        let b = base.resolvingSymlinksInPath().standardizedFileURL.path
+        if u.hasPrefix(b + "/") {
+            let rel = String(u.dropFirst(b.count + 1))
+            return rel
+        }
+        // fallback to filename stem
+        return url.deletingPathExtension().lastPathComponent
+    }
+
     static func extractThreadID(fromJSONLine line: String) -> String? {
         guard let data = line.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         let type = json["type"] as? String ?? ""
@@ -123,7 +134,7 @@ public enum CodexScanner {
         var rows: [ThreadSummary] = []
         rows.reserveCapacity(files.count)
         for url in files {
-            guard let id = scanForThreadID(url) else { continue }
+            let id = scanForThreadID(url) ?? relativeId(for: url, base: base)
             let updated = fileMTime(url)
             let lastTs = tailLastMessageTs(url) ?? updated
             let row = ThreadSummary(
