@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct LocalClaudeDiscovery {
     static func defaultBases() -> [URL] {
@@ -140,7 +141,11 @@ struct LocalClaudeDiscovery {
 
     static func scanExactProjectTopK(topK: Int = 10) -> [LocalThreadSummary] {
         let base = URL(fileURLWithPath: "/Users/christopherdavid/.claude/projects/-Users-christopherdavid-code-openagents", isDirectory: true)
-        var urls = listRecentTopN(at: base, topK: topK)
+        // POSIX direct listing first
+        var urls = posixListFiles(in: base)
+        if urls.isEmpty {
+            urls = listRecentTopN(at: base, topK: topK)
+        }
         if urls.isEmpty {
             // deep fallback
             urls = []
@@ -156,6 +161,34 @@ struct LocalClaudeDiscovery {
             }
         }
         return urls.map { makeSummary(for: $0, base: base) }
+    }
+
+    static func posixListFiles(in base: URL) -> [URL] {
+        var out: [URL] = []
+        let cPath = base.path.cString(using: .utf8)!
+        guard let dir = opendir(cPath) else { return out }
+        defer { closedir(dir) }
+        while let ent = readdir(dir) {
+            let name: String = withUnsafePointer(to: ent.pointee.d_name) { rawPtr in
+                rawPtr.withMemoryRebound(to: CChar.self, capacity: 256) {
+                    String(cString: $0)
+                }
+            }
+            if name == "." || name == ".." { continue }
+            let full = base.appendingPathComponent(name)
+            var st = stat()
+            if lstat(full.path, &st) == 0 {
+                #if os(macOS)
+                if (st.st_mode & S_IFMT) == S_IFREG {
+                    let ext = full.pathExtension.lowercased()
+                    if ext == "jsonl" || ext == "json" { out.append(full) }
+                }
+                #endif
+            }
+        }
+        out.sort { fileMTime($0) > fileMTime($1) }
+        if out.count > 10 { out = Array(out.prefix(10)) }
+        return out
     }
 
     static func relativeId(for url: URL, base: URL) -> String {
