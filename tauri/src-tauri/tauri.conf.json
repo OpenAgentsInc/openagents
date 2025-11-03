@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.openagents.desktop",
   "build": {
-    "beforeDevCommand": "cd ../expo && bunx expo export -p web --output-dir web-dev && bunx http-server web-dev -p 19006 -c-1",
+    "beforeDevCommand": "cd ../expo && bunx expo export -p web --output-dir web-dev && find web-dev -name '*.html' -type f -exec sed -i 's#<script src=\"/_expo/static/js/web/entry-#<script type=\"module\" src=\"/_expo/static/js/web/entry-#g' {} + && bunx http-server web-dev -p 19006 -c-1",
     "devUrl": "http://localhost:19006",
     "beforeBuildCommand": "cd ../expo && bunx expo export -p web --output-dir web-dist",
     "frontendDist": "../../expo/web-dist"
