@@ -26,11 +26,16 @@ fn get_bridge_token() -> Option<String> {
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Default)]
 struct BridgeState {
     child: Mutex<Option<tokio::process::Child>>,
-    bind: Mutex<Option<String>>, // e.g., 127.0.0.1:8787
-    logs: Mutex<Vec<String>>,    // ring buffer (last N)
+    bind: Mutex<Option<String>>,                 // e.g., 127.0.0.1:8787
+    logs: Arc<Mutex<Vec<String>>>,               // ring buffer (last N)
+}
+
+impl Default for BridgeState {
+    fn default() -> Self {
+        Self { child: Mutex::new(None), bind: Mutex::new(None), logs: Arc::new(Mutex::new(Vec::new())) }
+    }
 }
 
 fn ensure_bridge_token() -> Option<String> {
@@ -71,7 +76,7 @@ async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<St
     let mut child = cmd.spawn().map_err(|e| format!("failed to spawn oa-bridge: {e}"))?;
     // Pipe logs
     if let Some(mut out) = child.stdout.take() {
-        let logs = state.logs.clone();
+        let logs = state.inner().logs.clone();
         tokio::spawn(async move {
             use tokio::io::AsyncBufReadExt;
             let mut reader = tokio::io::BufReader::new(&mut out).lines();
@@ -83,7 +88,7 @@ async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<St
         });
     }
     if let Some(mut err) = child.stderr.take() {
-        let logs = state.logs.clone();
+        let logs = state.inner().logs.clone();
         tokio::spawn(async move {
             use tokio::io::AsyncBufReadExt;
             let mut reader = tokio::io::BufReader::new(&mut err).lines();
