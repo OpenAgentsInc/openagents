@@ -62,14 +62,12 @@ function SidebarThreadsInner({ selectedId, onSelect }: { selectedId?: string; on
   )
 }
 
-function SidebarThreads({ wsUrl, token, selectedId, onSelect }: { wsUrl: string; token: string; selectedId?: string; onSelect: (id: string) => void }) {
+function SidebarThreads({ wsUrl, selectedId, onSelect }: { wsUrl: string; selectedId?: string; onSelect: (id: string) => void }) {
   if (!wsUrl) return <div className="px-3 py-2 text-[var(--tertiary)] text-xs">Connecting…</div>
   return (
-    <TinyvexProvider config={{ url: wsUrl, token }}>
-      <SidebarMenu>
-        <SidebarThreadsInner selectedId={selectedId} onSelect={onSelect} />
-      </SidebarMenu>
-    </TinyvexProvider>
+    <SidebarMenu>
+      <SidebarThreadsInner selectedId={selectedId} onSelect={onSelect} />
+    </SidebarMenu>
   )
 }
 
@@ -98,11 +96,13 @@ export default function HelloDesktop() {
 
   return (
     <div className="h-screen w-full flex flex-col bg-background text-foreground font-mono">
+      {wsUrl ? (
+        <TinyvexProvider config={{ url: wsUrl, token }}>
       <SidebarProvider>
         <Sidebar collapsible="icon">
           <SidebarHeader>Recent threads</SidebarHeader>
           <SidebarContent>
-            <SidebarThreads wsUrl={wsUrl} token={token} selectedId={selected} onSelect={(id) => { setSelected(id); setView('chat') }} />
+            <SidebarThreads wsUrl={wsUrl} selectedId={selected} onSelect={(id) => { setSelected(id); setView('chat') }} />
           </SidebarContent>
           <SidebarRail />
         </Sidebar>
@@ -147,16 +147,10 @@ export default function HelloDesktop() {
             ) : (
               <Card className="flex-1 min-w-0 flex flex-col">
                 <CardHeader>Thread</CardHeader>
-                {wsUrl ? (
-                  <TinyvexProvider config={{ url: wsUrl, token }}>
-                    {selected ? (
-                      <ChatThread id={selected} />
-                    ) : (
-                      <div className="p-3 text-xs text-[var(--tertiary)]">Select a thread</div>
-                    )}
-                  </TinyvexProvider>
+                {selected ? (
+                  <ChatThread id={selected} />
                 ) : (
-                  <div className="p-3 text-xs text-[var(--tertiary)]">Connecting…</div>
+                  <div className="p-3 text-xs text-[var(--tertiary)]">Select a thread</div>
                 )}
               </Card>
             )}
@@ -181,7 +175,10 @@ export default function HelloDesktop() {
           </div>
         </SidebarInset>
       </SidebarProvider>
+        </TinyvexProvider>
+      ) : (
+        <div className="p-3 text-xs text-[var(--tertiary)]">Starting bridge…</div>
+      )}
     </div>
   )
 }
-
