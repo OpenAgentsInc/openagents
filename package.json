@@ -13,6 +13,8 @@
     "convex:deploy": "bash ./scripts/convex-cli.sh deploy"
   },
   "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
     "convex": "^1.28.0"
   }
 }
