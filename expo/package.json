@@ -27,6 +27,7 @@
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
+    "@tauri-apps/api": "^2",
     "expo": "54.0.20",
     "expo-camera": "~17.0.8",
     "expo-clipboard": "~8.0.7",

@@ -10,6 +10,7 @@
         "@react-navigation/bottom-tabs": "^7.4.0",
         "@react-navigation/elements": "^2.6.3",
         "@react-navigation/native": "^7.1.8",
+        "@tauri-apps/api": "^2",
         "expo": "54.0.20",
         "expo-camera": "~17.0.8",
         "expo-clipboard": "~8.0.7",
@@ -544,6 +545,8 @@
     "@storybook/react-native-ui": ["@storybook/react-native-ui@10.0.0", "", { "dependencies": { "@storybook/react": "^10.0.0", "@storybook/react-native-theming": "^10.0.0", "@storybook/react-native-ui-common": "^10.0.0", "es-toolkit": "^1.38.0", "fuse.js": "^7.0.0", "memoizerific": "^1.11.3", "polished": "^4.3.1", "store2": "^2.14.3" }, "peerDependencies": { "@gorhom/bottom-sheet": ">=4", "react": "*", "react-native": ">=0.57.0", "react-native-gesture-handler": ">=2", "react-native-reanimated": ">=3", "react-native-safe-area-context": "*", "react-native-svg": ">=14", "storybook": ">=10 || ^10" } }, "sha512-UsNM7kSYjT0CybCvxPFA3KCwsIXbClipv3m4i8ozr7pDwe4242R9NtzgdAEvfk4Y4A+XRjCWn1CW0CqEfbWXRw=="],
 
     "@storybook/react-native-ui-common": ["@storybook/react-native-ui-common@10.0.0", "", { "dependencies": { "@storybook/react": "^10.0.0", "@storybook/react-native-theming": "^10.0.0", "es-toolkit": "^1.38.0", "fuse.js": "^7.0.0", "memoizerific": "^1.11.3", "polished": "^4.3.1", "store2": "^2.14.3", "ts-dedent": "^2.2.0" }, "peerDependencies": { "react": "*", "react-native": ">=0.57.0", "storybook": ">=10 || ^10" } }, "sha512-boqzblpXKiF+tGYhi9ipupUvfwijOF6MV4sKjWdNwl7dAaWY1rKfwAduHsowW3TkHRH8R91s3JkrjTb3FgzQLQ=="],
+
+    "@tauri-apps/api": ["@tauri-apps/api@2.9.0", "", {}, "sha512-qD5tMjh7utwBk9/5PrTA/aGr3i5QaJ/Mlt7p8NilQ45WgbifUNPyKWsA63iQ8YfQq6R8ajMapU+/Q8nMcPRLNw=="],
 
     "@testing-library/dom": ["@testing-library/dom@10.4.1", "", { "dependencies": { "@babel/code-frame": "^7.10.4", "@babel/runtime": "^7.12.5", "@types/aria-query": "^5.0.1", "aria-query": "5.3.0", "dom-accessibility-api": "^0.5.9", "lz-string": "^1.5.0", "picocolors": "1.1.1", "pretty-format": "^27.0.2" } }, "sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg=="],
 

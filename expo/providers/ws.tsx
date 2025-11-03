@@ -106,25 +106,35 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
 
   // Tauri invoker resolver: supports both v2 (core.invoke) and v1 (invoke/tauri.invoke)
   type TauriInvoke = (cmd: string, args?: unknown) => Promise<unknown>;
-  const getTauriInvoke = React.useCallback((): TauriInvoke | null => {
+  type TauriCoreModule = { invoke: TauriInvoke };
+  const getTauriInvoke = React.useCallback(async (): Promise<TauriInvoke | null> => {
     try {
-      const anyWin: any = typeof window !== 'undefined' ? (window as any) : null;
-      const tauri = anyWin && anyWin.__TAURI__ ? anyWin.__TAURI__ : null;
-      if (!tauri) return null;
-      const coreInvoke: TauriInvoke | null = (tauri.core && typeof tauri.core.invoke === 'function') ? (tauri.core.invoke.bind(tauri.core) as unknown as TauriInvoke) : null;
-      // Some builds expose invoke at top-level or under `tauri` namespace
-      const topInvoke: TauriInvoke | null = (typeof tauri.invoke === 'function') ? (tauri.invoke.bind(tauri) as unknown as TauriInvoke) : null;
-      const nsInvoke: TauriInvoke | null = (tauri.tauri && typeof tauri.tauri.invoke === 'function') ? (tauri.tauri.invoke.bind(tauri.tauri) as unknown as TauriInvoke) : null;
-      return coreInvoke || topInvoke || nsInvoke || null;
-    } catch {
-      return null;
-    }
+      const anyWin: unknown = typeof window !== 'undefined' ? (window as unknown) : null;
+      const w = anyWin as { __TAURI__?: any } | null;
+      const tauri = w && w.__TAURI__ ? w.__TAURI__ : null;
+      if (tauri) {
+        const coreInvoke: unknown = tauri.core && typeof tauri.core.invoke === 'function' ? tauri.core.invoke.bind(tauri.core) : null;
+        const topInvoke: unknown = typeof tauri.invoke === 'function' ? tauri.invoke.bind(tauri) : null;
+        const nsInvoke: unknown = tauri.tauri && typeof tauri.tauri.invoke === 'function' ? tauri.tauri.invoke.bind(tauri.tauri) : null;
+        const cand = (coreInvoke || topInvoke || nsInvoke) as TauriInvoke | null;
+        if (cand) return cand;
+      }
+    } catch { /* fall through to dynamic import */ }
+    try {
+      // Dynamic import fallback (works in Tauri web only; ignored on native/web without the package)
+      const mod: unknown = await import('@tauri-apps/api/core');
+      const m = mod as TauriCoreModule;
+      if (m && typeof m.invoke === 'function') return m.invoke;
+    } catch { /* ignore */ }
+    return null;
   }, []);
 
   // When running in Tauri, poll bridge_status logs and print new lines to the console.
   useEffect(() => {
-    const invoke = getTauriInvoke();
-    if (!invoke) return;
+    let cancelled = false;
+    (async () => {
+      const invoke = await getTauriInvoke();
+      if (cancelled || !invoke) return;
     let alive = true;
     const prevLenRef = { current: 0 } as { current: number };
     const tick = async () => {
@@ -152,7 +162,8 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
     const id = setInterval(tick, 1000);
     // Fire once immediately to surface initial status
     tick().catch(() => {});
-    return () => { alive = false; clearInterval(id) };
+    return () => { cancelled = true; alive = false; clearInterval(id) };
+    })();
   }, [getTauriInvoke]);
 
   // Normalize any legacy or malformed host values (e.g., ws://host:port/ws)
@@ -316,7 +327,7 @@ export function BridgeProvider({ children }: { children: React.ReactNode }) {
         if (connected || connecting) return;
         // Avoid repeated starts
         if (autoTriedRef.current) return;
-        const invoke = getTauriInvoke();
+        const invoke = await getTauriInvoke();
         if (!invoke) {
           try { console.info('[bridge.autostart] Tauri API not detected; skipping sidecar start', { origin: typeof window !== 'undefined' ? window.location?.origin : '(no window)' }) } catch {}
           return;
