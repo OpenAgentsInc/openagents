@@ -108,6 +108,22 @@ enum LocalCodexScanner {
         }
         return rows
     }
+
+    static func scanFast(options: Options = .init()) -> [LocalThreadSummary] {
+        let base = options.baseDir ?? defaultBaseDir()
+        guard FileManager.default.fileExists(atPath: base.path) else { return [] }
+        var files = listJSONLFiles(at: base)
+        files.sort { fileMTime($0) > fileMTime($1) }
+        if files.count > options.maxFiles { files = Array(files.prefix(options.maxFiles)) }
+        var rows: [LocalThreadSummary] = []
+        rows.reserveCapacity(files.count)
+        for url in files {
+            let id = scanForThreadID(url) ?? relativeId(for: url, base: base)
+            let updated = fileMTime(url)
+            rows.append(LocalThreadSummary(id: id, title: nil, source: "codex", created_at: nil, updated_at: updated, last_message_ts: nil, message_count: nil))
+        }
+        return rows
+    }
 }
 
 enum LocalCodexDiscovery {
@@ -152,13 +168,15 @@ enum LocalCodexDiscovery {
 
     static func loadAllSummaries(maxFilesPerBase: Int = 1000, maxResults: Int = 500) -> [LocalThreadSummary] {
         var rows: [LocalThreadSummary] = []
-        for base in discoverBaseDirs() {
-            let r = LocalCodexScanner.scan(options: .init(baseDir: base, maxFiles: maxFilesPerBase))
+        let bases = discoverBaseDirs()
+        for base in bases {
+            let r = LocalCodexScanner.scanFast(options: .init(baseDir: base, maxFiles: maxFilesPerBase))
             rows.append(contentsOf: r)
         }
         // sort newest first
         rows.sort { $0.updated_at > $1.updated_at }
         if rows.count > maxResults { rows = Array(rows.prefix(maxResults)) }
+        print("[History] Codex bases=\(bases.map{ $0.path }) items=\(rows.count)")
         return rows
     }
 }
@@ -173,4 +191,3 @@ fileprivate extension FileHandle {
         return data.isEmpty ? nil : String(data: data, encoding: .utf8)
     }
 }
-
