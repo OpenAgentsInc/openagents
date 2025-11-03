@@ -11,10 +11,12 @@ import { Ionicons } from '@expo/vector-icons'
 
 function App() {
   // Bridge connection inputs
-  const [host, setHost] = useState<string>(() => '127.0.0.1:8787')
+  const [host, setHost] = useState<string>(() => '')
   const [token, setToken] = useState<string>('')
   const [status, setStatus] = useState<'idle'|'connecting'|'open'|'closed'|'error'>('idle')
   const [connected, setConnected] = useState<boolean>(false)
+  const [runLocal, setRunLocal] = useState<boolean>(false)
+  const [sidecarLogs, setSidecarLogs] = useState<string[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [threads, setThreads] = useState<ThreadSummaryTs[]>([])
   const threadsRef = useRef<ThreadSummaryTs[]>([])
@@ -51,52 +53,36 @@ function App() {
     return () => { cancelled = true }
   }, [])
 
-  // Auto-detect local bridge port: probe a small range and pick the highest responsive port
+  // Auto-start a local bridge sidecar on first load, then poll status
   useEffect(() => {
-    if (!token) return; // wait until token is loaded to avoid auth failures
-    if (autoDetectedRef.current) return; // only run once
-    // Only auto-detect when host is unset or default
-    const defaultHost = '127.0.0.1:8787'
-    if (host && host !== defaultHost) return
     let cancelled = false
-    const ports = Array.from({ length: 12 }, (_, i) => 8787 + i) // 8787..8798
-    const probe = (port: number) => new Promise<number | null>((resolve) => {
-      try {
-        const url = `ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}`
-        const ws = new WebSocket(url)
-        let done = false
-        const finish = (ok: boolean) => {
-          if (done) return; done = true
-          try { ws.close() } catch {}
-          resolve(ok ? port : null)
-        }
-        const to = setTimeout(() => finish(false), 700)
-        ws.onopen = () => { clearTimeout(to); finish(true) }
-        ws.onerror = () => { clearTimeout(to); finish(false) }
-        ws.onclose = () => {/* no-op */}
-      } catch { resolve(null) }
-    })
     ;(async () => {
-      const results = await Promise.all(ports.map(probe))
-      if (cancelled) return
-      const okPorts = results.filter((p): p is number => typeof p === 'number')
-      if (okPorts.length > 0) {
-        const best = Math.max(...okPorts)
-        autoDetectedRef.current = true
-        setHost(`127.0.0.1:${best}`)
+      try {
+        // Start sidecar regardless; it will bind to the first free port
+        const h = await invoke<string>('bridge_start', { bind: null, token: token || null })
+        if (!cancelled && h) setHost(h)
+      } catch (e) {
+        console.warn('bridge_start failed', e)
       }
+      // Status poll
+      const id = window.setInterval(() => { refreshBridgeStatus().catch(() => {}) }, 1500)
+      ;(window as any).__bridgePoll = id
     })()
-    return () => { cancelled = true }
-  }, [token, host])
+    return () => { cancelled = true; try { window.clearInterval((window as any).__bridgePoll) } catch {} }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
 
-  // Auto-connect once token and host are known and we are not connected
+  // Removed old port-range probing; rely on bridge_start + status to provide host
+
+  // Auto-connect once bridge reports running and host/token are known
   useEffect(() => {
     if (!token || !host) return
+    if (!runLocal && !host) return
     if (connected) return
     connect()
   // intentionally omit connect from deps to avoid recreating
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, host, connected])
+  }, [token, host, runLocal, connected])
 
   const connect = () => {
     try { disconnect() } catch {}
@@ -236,6 +222,30 @@ function App() {
     } catch {}
   }, [logs])
 
+  // Sidecar helpers
+  async function startLocalBridge() {
+    try {
+      const host = await invoke<string>('bridge_start', { bind: null, token: token || null })
+      if (host) { setHost(host); setRunLocal(true) }
+      // fetch initial status/logs
+      await refreshBridgeStatus()
+    } catch (e) {
+      console.warn('bridge_start failed', e)
+    }
+  }
+  async function stopLocalBridge() {
+    try { await invoke<boolean>('bridge_stop'); setRunLocal(false) } catch {}
+    await refreshBridgeStatus()
+  }
+  async function refreshBridgeStatus() {
+    try {
+      const s = await invoke<{ running: boolean; bind?: string; logs: string[] }>('bridge_status')
+      if (s?.bind) setHost(s.bind)
+      setRunLocal(!!s?.running)
+      setSidecarLogs(Array.isArray(s?.logs) ? s.logs.slice().reverse() : [])
+    } catch {}
+  }
+
   function formatRelative(ts: number): string {
     const now = Date.now()
     const diff = Math.max(0, now - ts)
@@ -292,21 +302,17 @@ function App() {
   return (
     <main className="container">
       <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', justifyContent: 'stretch', width: '100%', margin: '16px 0 0', flex: 1, minHeight: 0 }}>
-        {/* Sidebar with recent chats and compact raw feed */}
+        {/* Sidebar with recent chats and compact raw/log feed */}
         <div style={{ width: 320, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0, flexShrink: 0 }}>
-          {/* Connection panel */}
+          {/* Connection / Status panel (no manual controls) */}
           <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', padding: 10 }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input id="host-input" placeholder="host:port" value={host} onChange={(e) => setHost(e.currentTarget.value)} style={{ flex: 1 }} />
-              {!connected ? (
-                <button onClick={connect}>Connect</button>
-              ) : (
-                <button onClick={disconnect}>Disconnect</button>
-              )}
-            </div>
-            <div style={{ textAlign: 'left', marginTop: 6 }}>
+            <div style={{ textAlign: 'left' }}>
               <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>wsUrl: <span style={{ color: 'var(--secondary)' }}>{wsBase || '—'}</span></div>
               <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>Status: <span style={{ color: 'var(--secondary)' }}>{status}</span></div>
+              <div style={{ fontSize: 11, color: 'var(--tertiary)' }}>Bridge: <span style={{ color: 'var(--secondary)' }}>{runLocal ? 'running (local)' : 'external/unknown'}</span></div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+                <button onClick={refreshBridgeStatus}>Refresh</button>
+              </div>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: '0 0 auto' }}>
@@ -373,6 +379,12 @@ function App() {
             <div ref={logsContainerRef} style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: '0 0 auto', maxHeight: 200, overflowY: 'auto', padding: 10 }}>
               <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0, fontSize: 11, lineHeight: '15px' }}>
                 {logs.slice(-10).join('\n')}
+              </pre>
+            </div>
+            <h3 style={{ margin: '10px 0 6px', textAlign: 'left' }}>Bridge logs</h3>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 4, background: '#0e0f10', flex: '0 0 auto', maxHeight: 140, overflowY: 'auto', padding: 10 }}>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#d0d6e0', margin: 0, fontSize: 11, lineHeight: '15px' }}>
+                {sidecarLogs.slice(-8).join('\n')}
               </pre>
             </div>
           </div>

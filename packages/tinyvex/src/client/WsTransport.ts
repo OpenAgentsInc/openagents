@@ -20,7 +20,13 @@ export class WsTransport implements Transport {
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.ws = ws;
+      const to = setTimeout(() => {
+        try { ws.close(); } catch {}
+        this._status = 'error';
+        reject(new Error('ws timeout'));
+      }, 2000);
       ws.onopen = () => {
+        clearTimeout(to);
         this._status = 'open';
         resolve();
       };
@@ -33,10 +39,14 @@ export class WsTransport implements Transport {
         }
       };
       ws.onerror = () => {
+        clearTimeout(to);
         this._status = 'error';
+        reject(new Error('ws error'));
       };
       ws.onclose = () => {
+        clearTimeout(to);
         this._status = 'closed';
+        reject(new Error('ws closed'));
       };
     });
   }
@@ -64,4 +74,3 @@ export class WsTransport implements Transport {
     return this._status;
   }
 }
-
