@@ -74,8 +74,14 @@ export default function DeveloperLogsScreen() {
           </Pressable>
         </View>
       </View>
-      <ScrollView ref={scrollRef} style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, backgroundColor: '#0e0e0e' }} contentContainerStyle={{ padding: 10, gap: 2 }}>
-        {lines.map((l) => <AnsiText key={l.id} line={l.text} />)}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, backgroundColor: '#0e0e0e', maxWidth: '100%', width: '100%' }}
+        contentContainerStyle={{ padding: 10, gap: 2, width: '100%' }}
+      >
+        {lines.map((l) => (
+          <AnsiText key={l.id} line={l.text} />
+        ))}
       </ScrollView>
     </View>
   )
