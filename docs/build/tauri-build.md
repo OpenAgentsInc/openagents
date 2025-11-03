@@ -34,7 +34,7 @@ Edit `tauri/src-tauri/tauri.conf.json` build section to proxy dev and bundle the
 
 ```
 "build": {
-  "beforeDevCommand": "cd ../expo && bunx expo export -p web --output-dir web-dev && find web-dev -name '*.html' -type f -exec sed -i 's#<script src=\"/_expo/static/js/web/entry-#<script type=\"module\" src=\"/_expo/static/js/web/entry-#g' {} + -exec sed -i 's#</head>#<script>(function(){try{var g=globalThis;g.__ExpoImportMetaRegistry=g.__ExpoImportMetaRegistry||{};Object.defineProperty(g.__ExpoImportMetaRegistry,\"url\",{get:function(){try{return window && window.location && window.location.href ? window.location.href : \"http://localhost/\"}catch(e){return \"http://localhost/\"}}, configurable:true});}catch(e){}})();</script></head>#' {} + && bunx http-server web-dev -p 19006 -c-1",
+  "beforeDevCommand": "cd ../expo && bunx expo export -p web --output-dir web-dev && find web-dev -name '*.html' -type f -exec sed -i -e 's#<script src=\"/_expo/static/js/web/entry-#<script type=\"module\" src=\"/_expo/static/js/web/entry-#g' -e 's#</head>#<script>(function(){try{var g=globalThis;g.__ExpoImportMetaRegistry=g.__ExpoImportMetaRegistry||{};Object.defineProperty(g.__ExpoImportMetaRegistry,\"url\",{get:function(){try{return window && window.location && window.location.href ? window.location.href : \"http://localhost/\"}catch(e){return \"http://localhost/\"}}, configurable:true});}catch(e){}})();</script></head>#' {} \\; && bunx http-server web-dev -p 19006 -c-1",
   "devUrl": "http://localhost:19006",
   "beforeBuildCommand": "cd ../expo && bunx expo export -p web --output-dir web-dist",
   "frontendDist": "../../expo/web-dist"
