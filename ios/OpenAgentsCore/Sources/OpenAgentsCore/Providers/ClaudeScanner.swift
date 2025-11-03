@@ -43,9 +43,14 @@ public enum ClaudeScanner {
         return out
     }
 
-    static func sessionID(from url: URL) -> String? {
+    static func sessionID(from url: URL, base: URL) -> String? {
+        // Prefer a stable, unique id relative to the base projects dir
+        // Example: ~/.claude/projects/myproj/sessions/2025-11-03/transcript.jsonl
+        // → id: "myproj/sessions/2025-11-03/transcript"
         let stem = url.deletingPathExtension().lastPathComponent
-        return stem.isEmpty ? nil : stem
+        let parent = url.deletingLastPathComponent().lastPathComponent
+        let combined = parent.isEmpty ? stem : parent + "/" + stem
+        return combined.isEmpty ? nil : combined
     }
 
     static func fileMTime(_ url: URL) -> Int64 {
@@ -80,7 +85,7 @@ public enum ClaudeScanner {
         var rows: [ThreadSummary] = []
         rows.reserveCapacity(files.count)
         for url in files {
-            guard let id = sessionID(from: url) else { continue }
+            guard let id = sessionID(from: url, base: base) else { continue }
             let updated = fileMTime(url)
             let lastTs = tailLastMessageTs(url) ?? updated
             let row = ThreadSummary(
