@@ -14,4 +14,10 @@ export function resetServerContext() {
   // SSR-side hook in expo-font; noop in our web shim
 }
 
-export default { loadAsync, resetServerContext };
+export function getServerResources() {
+  // expo-router injects these <link> elements into <head> during SSR.
+  // We already inject @font-face via CSS elsewhere, so return an empty set.
+  return [];
+}
+
+export default { loadAsync, resetServerContext, getServerResources };
