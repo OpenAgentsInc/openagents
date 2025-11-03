@@ -1,5 +1,6 @@
 import React from 'react'
 import { useTricoder } from '../hooks/useTricoder'
+import { renderAnsi } from '../lib/ansi'
 
 // Minimal desktop entrypoint view using our global theme
 // Theme CSS (fonts, colors) is imported by main.tsx via App.css
@@ -24,7 +25,7 @@ export default function HelloDesktop() {
               <div style={{ color: 'var(--tertiary)' }}>No events yet.</div>
             ) : (
               logs.map((l, i) => (
-                <div key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{l}</div>
+                <div key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderAnsi(l)}</div>
               ))
             )}
           </div>
@@ -36,7 +37,7 @@ export default function HelloDesktop() {
               <div style={{ color: 'var(--tertiary)' }}>Waiting for bridge…</div>
             ) : (
               sidecarLogs.map((l, i) => (
-                <div key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{l}</div>
+                <div key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderAnsi(l)}</div>
               ))
             )}
           </div>
