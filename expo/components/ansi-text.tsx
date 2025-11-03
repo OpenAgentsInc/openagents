@@ -69,6 +69,9 @@ export function AnsiText({ line }: { line: string }) {
         fontFamily: Typography.primary,
         fontSize: 12,
         color: Colors.secondary,
+        maxWidth: '100%',
+        alignSelf: 'stretch',
+        flexShrink: 1,
         // Ensure long tokens don't blow out layout on web
         // web-only styles for React Native Web
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -77,6 +80,9 @@ export function AnsiText({ line }: { line: string }) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         wordBreak: 'break-word',
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        overflowWrap: 'anywhere',
       }}
     >
       {segs.map((s, idx) => (
