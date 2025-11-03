@@ -31,11 +31,12 @@ struct BridgeState {
     child: Mutex<Option<tokio::process::Child>>,
     bind: Mutex<Option<String>>,                 // e.g., 127.0.0.1:8787
     logs: Arc<Mutex<Vec<String>>>,               // ring buffer (last N)
+    starting: Mutex<bool>,                       // guard to avoid double-spawn races
 }
 
 impl Default for BridgeState {
     fn default() -> Self {
-        Self { child: Mutex::new(None), bind: Mutex::new(None), logs: Arc::new(Mutex::new(Vec::new())) }
+        Self { child: Mutex::new(None), bind: Mutex::new(None), logs: Arc::new(Mutex::new(Vec::new())), starting: Mutex::new(false) }
     }
 }
 
@@ -57,16 +58,23 @@ async fn first_free_port() -> u16 {
 
 #[tauri::command]
 async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<String>, token: Option<String>) -> Result<String, String> {
+    // Prevent concurrent spawns (React StrictMode, HMR)
     {
-        let child = state.child.lock().await;
-        if child.is_some() { return Ok(state.bind.lock().await.clone().unwrap_or_default()); }
+        let mut starting = state.starting.lock().await;
+        if *starting {
+            // Another start in progress: return current bind or empty; caller can poll status
+            return Ok(state.bind.lock().await.clone().unwrap_or_default());
+        }
+        if state.child.lock().await.is_some() {
+            return Ok(state.bind.lock().await.clone().unwrap_or_default());
+        }
+        *starting = true;
     }
-    let port = if let Some(b) = &bind {
+
+    let base_port = if let Some(b) = &bind {
         b.split(':').last().and_then(|s| s.parse::<u16>().ok()).unwrap_or(first_free_port().await)
-    } else {
-        first_free_port().await
-    };
-    let host = format!("127.0.0.1:{}", port);
+    } else { first_free_port().await };
+    let mut host = String::new();
     let tok = token.or_else(ensure_bridge_token);
     // Attempt to spawn bridge binary, falling back to `cargo run -p oa-bridge` for dev
     let mut spawn_bridge = |
@@ -80,14 +88,35 @@ async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<St
         c.spawn()
     };
 
-    let mut child = match spawn_bridge("oa-bridge", &["--bind", &host], &tok) {
-        Ok(ch) => ch,
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            // Fallback to cargo (dev). Note: uses workspace context; assumes repo present in dev.
-            spawn_bridge("cargo", &["run", "-p", "oa-bridge", "--", "--bind", &host], &tok)
-                .map_err(|e2| format!("failed to spawn oa-bridge (cargo fallback): {e2}"))?
+    // Try up to 5 successive ports to avoid AddrInUse races
+    let mut child = loop {
+        let mut found: Option<tokio::process::Child> = None;
+        for offset in 0..5u16 {
+            let port = base_port.saturating_add(offset);
+            host = format!("127.0.0.1:{}", port);
+            match spawn_bridge("oa-bridge", &["--bind", &host], &tok) {
+                Ok(mut ch) => {
+                    // If child exits immediately, try next port
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    if let Ok(Some(_st)) = ch.try_wait() { continue; }
+                    found = Some(ch); break;
+                }
+                Err(e) if e.kind() == ErrorKind::NotFound => {
+                    // Fallback to cargo (dev)
+                    match spawn_bridge("cargo", &["run", "-p", "oa-bridge", "--", "--bind", &host], &tok) {
+                        Ok(mut ch) => {
+                            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                            if let Ok(Some(_st)) = ch.try_wait() { continue; }
+                            found = Some(ch); break;
+                        }
+                        Err(_e2) => continue,
+                    }
+                }
+                Err(_e) => continue,
+            }
         }
-        Err(e) => return Err(format!("failed to spawn oa-bridge: {e}")),
+        if let Some(ch) = found { break ch; }
+        else { return Err("failed to start oa-bridge on available ports".into()); }
     };
     // Pipe logs
     if let Some(mut out) = child.stdout.take() {
@@ -117,6 +146,7 @@ async fn bridge_start(state: tauri::State<'_, Arc<BridgeState>>, bind: Option<St
     {
         *state.bind.lock().await = Some(host.clone());
         *state.child.lock().await = Some(child);
+        *state.starting.lock().await = false;
     }
     Ok(host)
 }
@@ -134,7 +164,12 @@ async fn bridge_stop(state: tauri::State<'_, Arc<BridgeState>>) -> Result<bool, 
 
 #[tauri::command]
 async fn bridge_status(state: tauri::State<'_, Arc<BridgeState>>) -> Result<serde_json::Value, String> {
-    let running = state.child.lock().await.is_some();
+    let running = {
+        let mut guard = state.child.lock().await;
+        if let Some(ch) = guard.as_mut() {
+            match ch.try_wait() { Ok(None) => true, Ok(Some(_)) | Err(_) => { *guard = None; false } }
+        } else { false }
+    };
     let bind = state.bind.lock().await.clone();
     let logs = state.logs.lock().await.clone();
     Ok(serde_json::json!({
