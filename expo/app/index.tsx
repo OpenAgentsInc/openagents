@@ -49,15 +49,31 @@ export default function Index() {
     } catch {}
   }, [connected, connecting, connect, setBridgeHost, setBridgeToken])
 
-  // Fallback: if we can't connect or find threads within a short window, start a new thread
-  React.useEffect(() => {
-    const id = setTimeout(() => {
+  // Remove premature redirect; keep loading view (with logs) until threads are available.
+
+  // Build live log lines and keep console scrolled to the bottom
+  const rawLogs = useAppLogStore((s) => s.logs)
+  const lines = React.useMemo(() => {
+    const list = Array.isArray(rawLogs) ? rawLogs.slice(-200) : []
+    return list.map((l, idx) => {
+      let line = ''
       try {
-        if (!connected) router.replace('/thread/new' as any)
-      } catch {}
-    }, 2500)
-    return () => clearTimeout(id)
-  }, [connected, router])
+        const details = l.details != null ? (typeof l.details === 'string' ? l.details : JSON.stringify(l.details)) : ''
+        if (l.event === 'bridge.sidecar' && details) {
+          const obj = l.details as any
+          line = String(obj && obj.line ? obj.line : details)
+        } else {
+          line = `[${l.level}] ${l.event}${details ? ' ' + details : ''}`
+        }
+      } catch {
+        line = `${l.event}`
+      }
+      const anyL: any = l as any
+      return { id: (anyL.id as string | undefined) ?? `${l.ts}-${idx}`, text: line }
+    })
+  }, [rawLogs])
+  const scrollRef = React.useRef<ScrollView>(null)
+  React.useEffect(() => { try { scrollRef.current?.scrollToEnd({ animated: false }) } catch {} }, [lines.length])
 
   return (
     <View style={{ flex: 1, paddingTop: 40, backgroundColor: Colors.background }}>
@@ -73,44 +89,17 @@ export default function Index() {
       <View style={{ flex: 1, paddingHorizontal: 12 }}>
         <Text style={{ color: Colors.secondary, fontFamily: Typography.bold, fontSize: 12, marginBottom: 6 }}>Console</Text>
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, backgroundColor: '#0e0e0e' }}
           contentContainerStyle={{ padding: 10, gap: 2 }}
         >
-          <LogLines />
+          <LogLines lines={lines} />
         </ScrollView>
       </View>
     </View>
   )
 }
 
-function LogLines() {
-  const logs = useAppLogStore((s) => s.logs)
-  // Pick last 120 lines and stringify details when present
-  const items = React.useMemo(() => {
-    const list = Array.isArray(logs) ? logs.slice(-120) : []
-    return list.map((l, idx) => {
-      let line = ''
-      try {
-        const details = l.details != null ? (typeof l.details === 'string' ? l.details : JSON.stringify(l.details)) : ''
-        if (l.event === 'bridge.sidecar' && details) {
-          // details is { line }
-          const obj = l.details as any
-          line = String(obj && obj.line ? obj.line : details)
-        } else {
-          line = `[${l.level}] ${l.event}${details ? ' ' + details : ''}`
-        }
-      } catch {
-        line = `${l.event}`
-      }
-      const anyL: any = l as any
-      return { id: (anyL.id as string | undefined) ?? `${l.ts}-${idx}`, text: line }
-    })
-  }, [logs])
-  return (
-    <>
-      {items.map((it) => (
-        <AnsiText key={it.id} line={it.text} />
-      ))}
-    </>
-  )
+function LogLines({ lines }: { lines: { id: string; text: string }[] }) {
+  return <>{lines.map((it) => (<AnsiText key={it.id} line={it.text} />))}</>
 }
