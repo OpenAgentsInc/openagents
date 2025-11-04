@@ -28,7 +28,8 @@ struct AcpThreadView: View {
             } else if let e = error {
                 ScrollView { Text(e).font(.footnote) }.padding()
             } else {
-                ScrollViewReader { proxy in
+                ZStack(alignment: .bottom) {
+                    ScrollViewReader { proxy in
                     List {
                         if let title = threadTitle, !title.isEmpty {
                             Section { Text(title).font(.headline).foregroundStyle(OATheme.Colors.textPrimary) }
@@ -57,12 +58,28 @@ struct AcpThreadView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .background(OATheme.Colors.background)
+                    .safeAreaPadding(.bottom, 60) // room for composer
                     .onAppear {
                         scrollToBottom(proxy)
                     }
                     .onChange(of: messages) { _, _ in
                         scrollToBottom(proxy)
                     }
+                }
+                    // Composer bar (non-interactive placeholder)
+                    GlassBar {
+                        Image(systemName: "rectangle.and.pencil.and.ellipsis")
+                            .imageScale(.medium)
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                        Text("Compose…")
+                            .foregroundStyle(OATheme.Colors.textTertiary)
+                            .font(.subheadline)
+                        Spacer()
+                        Image(systemName: "arrow.up.circle.fill")
+                            .imageScale(.large)
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                    }
+                    .background(.clear)
                 }
             }
         }
