@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenAgentsCore
 
 struct HistorySidebar: View {
     var selected: LocalThreadSummary? = nil
@@ -6,6 +7,7 @@ struct HistorySidebar: View {
     @State private var items: [(LocalThreadSummary, URL?)] = []
     @State private var isLoading = false
     @State private var debugLines: [String] = []
+    @State private var titles: [String: String] = [:] // key: "source::id" → summary title
 
     var body: some View {
         List {
@@ -39,7 +41,7 @@ struct HistorySidebar: View {
                     let isActive = (selected?.id == row.id && selected?.source == row.source)
                     Button(action: { onSelect?(row, pair.1) }) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(nonEmptyTitle(row) ?? "Thread")
+                            Text(displayTitle(for: row) ?? "Thread")
                                 .font(.body)
                                 .fontWeight(isActive ? .semibold : .regular)
                                 .foregroundStyle(OATheme.Colors.textPrimary)
@@ -111,6 +113,10 @@ struct HistorySidebar: View {
                 withAnimation { self.items = merged }
                 self.isLoading = false
                 self.debugLines = dbg
+                // Start async title generation for visible Codex rows
+                for (row, url) in merged.prefix(20) {
+                    if let u = url { summarizeRow(row, url: u) }
+                }
             }
         }
     }
@@ -118,6 +124,31 @@ struct HistorySidebar: View {
     private func nonEmptyTitle(_ row: LocalThreadSummary) -> String? {
         if let t = row.title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
         return nil
+    }
+
+    private func key(for row: LocalThreadSummary) -> String { "\(row.source)::\(row.id)" }
+
+    private func displayTitle(for row: LocalThreadSummary) -> String? {
+        if let t = nonEmptyTitle(row) { return t }
+        return titles[key(for: row)]
+    }
+
+    private func summarizeRow(_ row: LocalThreadSummary, url: URL) {
+        let rowKey = key(for: row)
+        if titles[rowKey] != nil { return }
+        Task.detached(priority: .utility) {
+            do {
+                let lines = try tailJSONLLines(url: url, maxBytes: 600_000, maxLines: 4000)
+                let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
+                var msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user || $0.role == .assistant }
+                msgs.sort { $0.ts < $1.ts }
+                let title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: true)
+                guard !title.isEmpty else { return }
+                await MainActor.run { self.titles[rowKey] = title }
+            } catch {
+                // ignore errors
+            }
+        }
     }
 
     @ViewBuilder
@@ -173,6 +204,31 @@ extension HistorySidebar {
     }
 }
 #endif
+
+// Efficient JSONL tail reader to avoid reading huge files fully
+nonisolated private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [String] {
+    let fh = try FileHandle(forReadingFrom: url)
+    defer { try? fh.close() }
+    let chunk = 64 * 1024
+    let fileSize = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
+    var offset = fileSize
+    var buffer = Data()
+    var totalRead = 0
+    while offset > 0 && totalRead < maxBytes {
+        let toRead = min(chunk, offset)
+        offset -= toRead
+        try fh.seek(toOffset: UInt64(offset))
+        let data = try fh.read(upToCount: toRead) ?? Data()
+        buffer.insert(contentsOf: data, at: 0) // prepend
+        totalRead += data.count
+        if buffer.count >= maxBytes { break }
+    }
+    var text = String(data: buffer, encoding: .utf8) ?? String(decoding: buffer, as: UTF8.self)
+    if !text.hasSuffix("\n") { text.append("\n") }
+    var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    if lines.count > maxLines { lines = Array(lines.suffix(maxLines)) }
+    return lines
+}
 
 #Preview {
     NavigationSplitView {
