@@ -98,6 +98,13 @@ Update — current state (2025‑11‑04)
 - ACP renderers wired: assistant/user messages, tool calls/results; plan state pending.
 - Stable, clickable composer via `safeAreaInset(edge: .bottom)` (TextField + Send) — currently appends locally; WS wiring next.
 
+Update — bridge pairing (2025‑11‑04)
+- Added a lightweight Apple‑native WS bridge and pairing flow (see ADR‑0014):
+  - macOS auto‑starts `DesktopWebSocketServer` on `ws://0.0.0.0:9099` and advertises `_openagents._tcp`.
+  - iOS auto‑discovers via Bonjour and connects using a token handshake (dev default `OA_DEV_TOKEN`).
+  - Handshake: `Hello { token }` → `HelloAck { token }`; envelopes reserved for future sync.
+  - This path enables Engine B (Bridge Client) for the Swift app without adding HTTP endpoints.
+
 6) Security and configuration
 - Respect the existing token model when connecting to a bridge (`~/.openagents/bridge.json`).
 - No new HTTP endpoints; when local, use process/stdio; when remote, use the existing WS contract.
