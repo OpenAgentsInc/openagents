@@ -9,6 +9,7 @@ struct AcpThreadView: View {
     @State private var error: String? = nil
     @State private var messages: [ACPMessage] = []
     @State private var threadTitle: String? = nil
+    @State private var draft: String = ""
 
     var body: some View {
         Group {
@@ -71,16 +72,21 @@ struct AcpThreadView: View {
                         Image(systemName: "rectangle.and.pencil.and.ellipsis")
                             .imageScale(.medium)
                             .foregroundStyle(OATheme.Colors.textSecondary)
-                        Text("Compose…")
-                            .foregroundStyle(OATheme.Colors.textTertiary)
-                            .font(.subheadline)
-                        Spacer()
-                        Button(action: {}) {
+                        TextField("Compose…", text: $draft, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .font(BerkeleyFont.font(relativeTo: .body, size: 15))
+                            .foregroundStyle(OATheme.Colors.textPrimary)
+                            .lineLimit(1...4)
+                            .submitLabel(.send)
+                            .onSubmit { sendDraft() }
+                        Spacer(minLength: 8)
+                        Button(action: { sendDraft() }) {
                             Image(systemName: "arrow.up.circle.fill")
                                 .imageScale(.large)
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(OATheme.Colors.textSecondary)
+                        .foregroundStyle(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? OATheme.Colors.textTertiary : OATheme.Colors.textSecondary)
+                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     .background(.clear)
                 }
@@ -152,6 +158,20 @@ struct AcpThreadView: View {
         DispatchQueue.main.async {
             withAnimation { proxy.scrollTo(lastId, anchor: .bottom) }
         }
+    }
+
+    func sendDraft() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let msg = ACPMessage(
+            id: UUID().uuidString,
+            thread_id: nil,
+            role: .user,
+            parts: [.text(ACPText(text: text))],
+            ts: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+        messages.append(msg)
+        draft = ""
     }
 }
 
