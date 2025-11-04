@@ -66,7 +66,6 @@ struct HistorySidebar: View {
                                         .font(Font.custom(BerkeleyFont.defaultName(), size: 10, relativeTo: .caption2))
                                         .foregroundStyle(OATheme.Colors.textTertiary)
                                 }
-                                providerBadge(for: row.source)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -192,21 +191,7 @@ struct HistorySidebar: View {
         }
     }
 
-    @ViewBuilder
-    private func providerBadge(for source: String) -> some View {
-        let s = source.lowercased()
-        if s == "codex" {
-            // Hide provider badge for Codex per request
-            EmptyView()
-        } else if s == "claude_code" || s == "claude" {
-            Label("Claude Code", systemImage: "bolt")
-                .symbolRenderingMode(.monochrome)
-                .font(.caption)
-                .foregroundStyle(OATheme.Colors.textTertiary)
-        } else {
-            EmptyView()
-        }
-    }
+    // Provider badges removed per request.
 
     private func relative(_ ms: Int64) -> String {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
