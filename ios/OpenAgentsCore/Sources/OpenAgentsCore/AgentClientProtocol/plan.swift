@@ -4,13 +4,13 @@ import Foundation
  Execution plans mirroring ACP Rust SDK `plan.rs`.
 */
 
-public struct ACPPlan: Codable, Equatable {
+public struct ACPPlan: Codable {
     public var entries: [ACPPlanEntry]
     public var _meta: [String: AnyEncodable]?
     public init(entries: [ACPPlanEntry], _meta: [String: AnyEncodable]? = nil) { self.entries = entries; self._meta = _meta }
 }
 
-public struct ACPPlanEntry: Codable, Equatable {
+public struct ACPPlanEntry: Codable {
     public var content: String
     public var priority: ACPPlanEntryPriority
     public var status: ACPPlanEntryStatus

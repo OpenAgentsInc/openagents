@@ -382,16 +382,20 @@ public class DesktopWebSocketServer {
                         }()
                         if let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p) {
                             var text: String? = nil
+                            var attempted: String? = nil
                             if let req = try? JSONDecoder().decode(ReqPath.self, from: d) {
+                                attempted = req.path
                                 text = DesktopWebSocketServer.readText(fromURI: req.path)
                             } else if let req = try? JSONDecoder().decode(ReqURI.self, from: d) {
+                                attempted = req.uri
                                 text = DesktopWebSocketServer.readText(fromURI: req.uri)
                             }
                             if let text = text, let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: Resp(content: text))), let jtext = String(data: out, encoding: .utf8) {
                                 print("[Bridge][server] send rpc result method=\(ACPRPC.fsReadTextFile) id=\(idVal.value) bytes=\(jtext.utf8.count)")
                                 client.send(text: jtext)
                             } else {
-                                DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32002, message: "Resource not found: \(req.uri)")
+                                let msg = "Resource not found"
+                                DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32002, message: attempted.map { "\(msg): \($0)" } ?? msg)
                             }
                         } else {
                             DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32602, message: "Invalid params")
