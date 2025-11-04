@@ -12,10 +12,6 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Backdrop header provides a blackish glass surface under the toolbar
-            GlassHeader(title: "OpenAgents")
-                .allowsHitTesting(false)
-
             NavigationSplitView {
                 HistorySidebar(selected: selectedRow, onSelect: { row, url in
                     self.selectedRow = row
@@ -31,6 +27,11 @@ struct ContentView: View {
                 } else {
                     AcpThreadView(url: selectedURL)
                 }
+            }
+            // Show our dark glass header ONLY when there is no selected thread
+            if selectedURL == nil {
+                GlassHeader(title: "OpenAgents")
+                    .allowsHitTesting(false)
             }
         }
         .background(OATheme.Colors.background.ignoresSafeArea())
