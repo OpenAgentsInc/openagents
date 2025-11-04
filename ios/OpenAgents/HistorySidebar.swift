@@ -191,10 +191,8 @@ struct HistorySidebar: View {
     private func providerBadge(for source: String) -> some View {
         let s = source.lowercased()
         if s == "codex" {
-            Label("Codex", systemImage: "curlybraces")
-                .symbolRenderingMode(.monochrome)
-                .font(.caption)
-                .foregroundStyle(OATheme.Colors.textTertiary)
+            // Hide provider badge for Codex per request
+            EmptyView()
         } else if s == "claude_code" || s == "claude" {
             Label("Claude Code", systemImage: "bolt")
                 .symbolRenderingMode(.monochrome)
