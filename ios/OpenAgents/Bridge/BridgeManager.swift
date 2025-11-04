@@ -53,12 +53,14 @@ final class BridgeManager: ObservableObject {
         browser = b
         status = .discovering
         log("bonjour", "Searching for \(BridgeConfig.serviceType)")
-        b.start { [weak self] host, port in
+        b.start(onResolved: { [weak self] host, port in
             Task { @MainActor in
                 self?.log("bonjour", "Resolved host=\(host) port=\(port)")
                 self?.connect(host: host, port: port)
             }
-        }
+        }, onLog: { [weak self] msg in
+            Task { @MainActor in self?.log("bonjour", msg) }
+        })
 
         // Simulator fallback: localhost
         #if targetEnvironment(simulator)

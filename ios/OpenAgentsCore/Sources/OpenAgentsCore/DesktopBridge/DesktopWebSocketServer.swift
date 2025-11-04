@@ -78,7 +78,8 @@ public class DesktopWebSocketServer {
         if advertiseService {
             #if os(macOS)
             if #available(macOS 12.0, *) {
-                listener?.service = NWListener.Service(name: serviceName ?? Host.current().localizedName ?? "OpenAgents", type: serviceType)
+                let name = serviceName ?? Host.current().localizedName ?? "OpenAgents"
+                listener?.service = NWListener.Service(name: name, type: serviceType, domain: "local.")
             }
             #endif
         }
