@@ -254,6 +254,52 @@ public class DesktopWebSocketServer {
         } else {
             // Handle envelopes after handshake
             print("[Bridge][server] recv payload text=\(text)")
+            // Support both JSON-RPC (ACP) and legacy envelopes
+            if let data = text.data(using: .utf8),
+               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               (dict["jsonrpc"] as? String) == "2.0" {
+                // JSON-RPC request/notification
+                if let method = dict["method"] as? String {
+                    switch method {
+                    case ACPRPC.sessionNew:
+                        // Generate a new session id
+                        let sid = ACPSessionId(UUID().uuidString)
+                        let idVal: JSONRPC.ID
+                        if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                        else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                        else { idVal = JSONRPC.ID("1") }
+                        let result = ACP.Agent.SessionNewResponse(session_id: sid)
+                        if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
+                        }
+                    case ACPRPC.sessionPrompt:
+                        // Echo a tiny streamed agent message back as a demo
+                        let params = dict["params"] as? [String: Any]
+                        let sidStr = ((params?["session_id"]) as? String) ?? (params?[["session_id"] as Any] as? String) ?? UUID().uuidString
+                        let sid = ACPSessionId(sidStr)
+                        let msg = ACP.Client.SessionUpdate.agentMessageChunk(
+                            ACP.Client.ContentChunk(content: .text("OK — processing your request…"))
+                        )
+                        let note = ACP.Client.SessionNotificationWire(session_id: sid, update: msg)
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
+                        }
+                        // Also respond to the request with an empty object
+                        let idVal: JSONRPC.ID
+                        if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                        else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                        else { idVal = JSONRPC.ID("1") }
+                        struct EmptyResult: Codable {}
+                        if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: EmptyResult())), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
+                        }
+                    default:
+                        break
+                    }
+                }
+                return
+            }
+            // Legacy envelope path
             guard let env = try? WebSocketMessage.Envelope.from(jsonString: text) else {
                 print("[Bridge][server] unparseable message: \(text)")
                 return
@@ -262,14 +308,12 @@ public class DesktopWebSocketServer {
             let etype = env.type.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
             switch etype {
             case "threads.list.request":
-                // Decode request (cap at 10 for lightweight response)
                 let req = (try? env.decodedMessage(as: WebSocketMessage.ThreadsListRequest.self)) ?? .init(topK: 10)
                 let limit = min(10, max(1, req.topK ?? 10))
-                // Single-base, fast top-K scan (lightweight)
                 let base = CodexScanner.defaultBaseDir()
                 let urls = CodexScanner.listRecentTopN(at: base, topK: limit)
                 var items = urls.map { CodexScanner.makeSummary(for: $0, base: base) }
-                items.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
+                items.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.last_message_ts ?? $1.updated_at) }
                 if items.count > limit { items = Array(items.prefix(limit)) }
                 print("[Bridge][server] threads.list.request topK=\(limit) -> count=\(items.count)")
                 let resp = WebSocketMessage.ThreadsListResponse(items: items)

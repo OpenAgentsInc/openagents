@@ -38,6 +38,16 @@ public enum JSONRPC {
         }
     }
 
+    public struct Notification<P: Codable>: Codable {
+        public let jsonrpc: String = "2.0"
+        public let method: String
+        public let params: P
+        public init(method: String, params: P) {
+            self.method = method
+            self.params = params
+        }
+    }
+
     public struct ErrorObject: Codable {
         public let code: Int
         public let message: String
