@@ -151,13 +151,21 @@ public final class MobileWebSocketClient {
             case .success(let message):
                 switch message {
                 case .data(let data):
-                    if let text = String(data: data, encoding: .utf8),
-                       let env = try? BridgeMessage.from(jsonString: text) {
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self = self else { return }
-                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                    if let text = String(data: data, encoding: .utf8) {
+                        // JSON-RPC path (ACP)
+                        if text.contains("\"jsonrpc\":\"2.0\"") {
+                            self.handleJSONRPCText(text)
+                            break
                         }
-                    } else if let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
+                        if let env = try? BridgeMessage.from(jsonString: text) {
+                            DispatchQueue.main.async { [weak self] in
+                                guard let self = self else { return }
+                                self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                            }
+                            break
+                        }
+                    }
+                    if let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
                         DispatchQueue.main.async { [weak self] in
                             guard let self = self else { return }
                             self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
@@ -166,6 +174,10 @@ public final class MobileWebSocketClient {
                         print("[Bridge][client] failed to decode data message")
                     }
                 case .string(let text):
+                    if text.contains("\"jsonrpc\":\"2.0\"") {
+                        self.handleJSONRPCText(text)
+                        break
+                    }
                     if let env = try? BridgeMessage.from(jsonString: text) {
                         DispatchQueue.main.async { [weak self] in
                             guard let self = self else { return }
@@ -186,6 +198,16 @@ public final class MobileWebSocketClient {
 
                 self.receive()
             }
+        }
+    }
+
+    private func handleJSONRPCText(_ text: String) {
+        guard let data = text.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let method = root["method"] as? String else { return }
+        if method == ACPRPC.sessionUpdate {
+            // Minimal log of streamed update; UI wiring to follow
+            print("[Bridge][client] JSONRPC session/update received")
         }
     }
 }
