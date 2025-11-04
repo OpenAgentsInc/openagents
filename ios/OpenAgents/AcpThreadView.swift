@@ -91,7 +91,7 @@ struct AcpThreadView: View {
         .onAppear(perform: load)
     }
 
-    private func roleBadge(_ role: ACPRole) -> some View {
+    func roleBadge(_ role: ACPRole) -> some View {
         let (label, sys) : (String, String) = {
             switch role {
             case .user: return ("User", "person")
@@ -105,7 +105,7 @@ struct AcpThreadView: View {
             .foregroundStyle(OATheme.Colors.textSecondary)
     }
 
-    private func dateLabel(ms: Int64) -> String {
+    func dateLabel(ms: Int64) -> String {
         let s = Date(timeIntervalSince1970: Double(ms) / 1000)
         let fmt = DateFormatter()
         fmt.dateStyle = .none
@@ -113,7 +113,7 @@ struct AcpThreadView: View {
         return fmt.string(from: s)
     }
 
-    private func load() {
+    func load() {
         guard let u = url else { return }
         guard !isLoading else { return }
         isLoading = true
@@ -147,7 +147,7 @@ struct AcpThreadView: View {
             }
         }
     }
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+    func scrollToBottom(_ proxy: ScrollViewProxy) {
         guard let lastId = messages.last?.id else { return }
         DispatchQueue.main.async {
             withAnimation { proxy.scrollTo(lastId, anchor: .bottom) }
