@@ -103,13 +103,13 @@ struct AcpThreadView: View {
                                         }
                                     }
                                 case .toolCall(let call):
-                                    ToolCallView(call: call)
+                                    if Features.showRawJSON { ToolCallView(call: call) }
                                 case .toolResult(let res):
-                                    ToolResultView(result: res)
+                                    if Features.showRawJSON { ToolResultView(result: res) }
                                 case .plan(let ps):
                                     PlanStateView(state: ps)
                                 case .raw(let line):
-                                    RawEventView(line: line)
+                                    if Features.showRawJSON { RawEventView(line: line) }
                                 }
                             }
                             .padding(.vertical, 4)
@@ -248,13 +248,13 @@ struct AcpThreadView: View {
                             continue
                         }
                     } else if let c = t.events.compactMap({ $0.tool_call }).first {
-                        items.append(.toolCall(c))
+                        if Features.showRawJSON { items.append(.toolCall(c)) }
                         continue
                     } else if let r = t.events.compactMap({ $0.tool_result }).first {
-                        items.append(.toolResult(r))
+                        if Features.showRawJSON { items.append(.toolResult(r)) }
                         continue
                     }
-                    items.append(.raw(line))
+                    if Features.showRawJSON { items.append(.raw(line)) }
                 }
                 if items.count > maxMessages { items = Array(items.suffix(maxMessages)) }
                 DispatchQueue.main.async {
