@@ -155,6 +155,10 @@ public class DesktopWebSocketServer {
                     if let data = data, let text = String(data: data, encoding: .utf8) {
                         self.handleTextMessage(text, from: client)
                     }
+                case .binary:
+                    if let data = data, let text = String(data: data, encoding: .utf8) {
+                        self.handleTextMessage(text, from: client)
+                    }
                 case .close:
                     self.clients.remove(client)
                     self.delegate?.webSocketServer(self, didDisconnect: client, reason: nil)
