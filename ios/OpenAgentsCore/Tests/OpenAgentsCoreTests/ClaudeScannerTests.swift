@@ -43,4 +43,12 @@ final class ClaudeScannerTests: XCTestCase {
         let times = rows.map { $0.updated_at }
         XCTAssertEqual(times, times.sorted(by: >))
     }
+
+    func testUserClaudeProjectTopKIfPresent() throws {
+        let userPath = URL(fileURLWithPath: "/Users/christopherdavid/.claude/projects/-Users-christopherdavid-code-openagents")
+        guard FileManager.default.fileExists(atPath: userPath.path) else { return }
+        let rows = ClaudeScanner.scanTopK(options: .init(baseDir: userPath, maxFiles: 1000), topK: 10)
+        // Should find at least one transcript
+        XCTAssertGreaterThan(rows.count, 0)
+    }
 }

@@ -61,57 +61,28 @@ struct HistorySidebar: View {
         guard !isLoading else { return }
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
-            // Discover both providers and load top-10 each
-            let codexBases = LocalCodexDiscovery.discoverBaseDirs()
             var dbg: [String] = []
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            let home2 = NSHomeDirectory()
-            let def1 = URL(fileURLWithPath: home).appendingPathComponent(".codex/sessions", isDirectory: true).path
-            let def2 = URL(fileURLWithPath: home2).appendingPathComponent(".codex/sessions", isDirectory: true).path
-            let env = ProcessInfo.processInfo.environment["CODEXD_HISTORY_DIR"] ?? ""
-            dbg.append("env CODEXD_HISTORY_DIR=\(env)")
-            dbg.append("home=\(home) home2=\(home2)")
-            dbg.append("defaultBaseCandidates=[\(def1), \(def2)]")
-            dbg.append("codexBases=\(codexBases.map{ $0.path })")
+            // Fast path: compute Codex and Claude exact project top-10 only
             let codexRows = LocalCodexDiscovery.loadAllSummaries(topK: 10)
-            let claudeBases = LocalClaudeDiscovery.defaultBases()
-            dbg.append("claudeBases=\(claudeBases.map{ $0.path })")
-            var claudeURLs: [URL] = []
-            let fm = FileManager.default
-            for b in claudeBases {
-                var line = "\(b.path): "
-                do {
-                    let direct = try fm.contentsOfDirectory(at: b, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-                    let n = direct.filter { let e = $0.pathExtension.lowercased(); return e == "jsonl" || e == "json" }.count
-                    line += "direct=\(n)"
-                } catch { line += "directErr=\(error.localizedDescription)" }
-                if let en = fm.enumerator(at: b, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
-                    var visited = 0, found = 0
-                    for case let url as URL in en {
-                        if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { continue }
-                        let e = url.pathExtension.lowercased(); if e == "jsonl" || e == "json" { found += 1 }
-                        visited += 1; if visited > 500 { break }
-                    }
-                    line += " enumFound=\(found)"
-                } else { line += " enumErr=unavailable" }
-                dbg.append(line)
-                claudeURLs.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10))
-            }
-            dbg.append("claudeTopKURLs=\(claudeURLs.map{ $0.lastPathComponent })")
-            var claudeRows: [LocalThreadSummary] = claudeURLs.map { url in
-                let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
-                return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
-            }
+            let claudeExact = LocalClaudeDiscovery.scanExactProjectTopK(topK: 10)
+            dbg.append("claudeExactProjectCount=\(claudeExact.count)")
+            // If Claude still empty, fall back to bases top-10 scan (capped)
+            var claudeRows = claudeExact
             if claudeRows.isEmpty {
-                let exact = LocalClaudeDiscovery.scanExactProjectTopK(topK: 10)
-                dbg.append("claudeExactProjectCount=\(exact.count)")
-                claudeRows = exact
+                let claudeBases = LocalClaudeDiscovery.defaultBases()
+                dbg.append("claudeBases=\(claudeBases.map{ $0.path })")
+                var urls: [URL] = []
+                for b in claudeBases { urls.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10)) }
+                dbg.append("claudeTopKURLs=\(urls.map{ $0.lastPathComponent })")
+                claudeRows = urls.map { url in
+                    let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
+                    return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
+                }
             }
             dbg.append("codexCount=\(codexRows.count) claudeCount=\(claudeRows.count)")
             var merged = codexRows + claudeRows
             merged.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
             if merged.count > 20 { merged = Array(merged.prefix(20)) }
-            print("[History] Claude bases=\(claudeBases.map{ $0.path }) items=\(claudeRows.count)")
             DispatchQueue.main.async {
                 withAnimation { self.rows = merged }
                 self.isLoading = false
