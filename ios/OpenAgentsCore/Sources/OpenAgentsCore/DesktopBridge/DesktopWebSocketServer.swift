@@ -68,12 +68,20 @@ public class DesktopWebSocketServer {
     }
 
     /// Start listening on given port
-    public func start(port: UInt16) throws {
+    public func start(port: UInt16, advertiseService: Bool = true, serviceName: String? = nil, serviceType: String = BridgeConfig.serviceType) throws {
         let params = NWParameters(tls: nil)
         let wsOptions = NWProtocolWebSocket.Options()
         params.defaultProtocolStack.applicationProtocols.insert(wsOptions, at: 0)
         params.acceptLocalOnly = false
         listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
+        // Advertise Bonjour service for discovery when supported
+        if advertiseService {
+            #if os(macOS)
+            if #available(macOS 12.0, *) {
+                listener?.service = NWListener.Service(name: serviceName ?? Host.current().localizedName ?? "OpenAgents", type: serviceType)
+            }
+            #endif
+        }
         listener?.stateUpdateHandler = { [weak self] newState in
             guard let self = self else { return }
             switch newState {
