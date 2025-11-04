@@ -89,13 +89,12 @@ struct HistorySidebar: View {
         .background(OATheme.Colors.sidebarBackground)
         .navigationTitle("")
         .onAppear(perform: load)
-        .onReceive(bridge.objectWillChange) { _ in
-            #if os(iOS)
+        #if os(iOS)
+        .onChange(of: bridge.threads) { newVal in
             self.isLoading = false
-            let newVal = bridge.threads
             self.items = newVal.map { t in (LocalThreadSummary(id: t.id, title: t.title, source: t.source, created_at: t.created_at, updated_at: t.updated_at, last_message_ts: t.last_message_ts, message_count: t.message_count), nil) }
-            #endif
         }
+        #endif
     }
 
     private func load() {

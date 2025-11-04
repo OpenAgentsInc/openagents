@@ -55,7 +55,13 @@ struct BridgeStatusChip: View {
     private var text: String {
         switch bridge.status {
         case .idle: return "Bridge: idle"
-        case .advertising(let port): return "Bridge: advertising :\(port)"
+        case .advertising(let port):
+            #if os(macOS)
+            let suffix = bridge.connectedClientCount > 0 ? " (\(bridge.connectedClientCount) client\(bridge.connectedClientCount == 1 ? "" : "s"))" : ""
+            return "Bridge: advertising :\(port)" + suffix
+            #else
+            return "Bridge: advertising :\(port)"
+            #endif
         case .discovering: return "Bridge: discovering"
         case .connecting(let h, let p): return "Bridge: connecting \(h):\(p)"
         case .handshaking(let h, let p): return "Bridge: handshaking \(h):\(p)"
