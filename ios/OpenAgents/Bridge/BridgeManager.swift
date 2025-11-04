@@ -2,6 +2,9 @@ import Foundation
 import Combine
 import OpenAgentsCore
 import OpenAgentsCore
+#if os(macOS)
+import Network
+#endif
 
 @MainActor
 final class BridgeManager: ObservableObject {
@@ -20,13 +23,15 @@ final class BridgeManager: ObservableObject {
     @Published var logs: [String] = [] // recent logs (ring buffer)
     private var currentHost: String?
     private var currentPort: Int?
-    #if os(macOS)
+#if os(macOS)
     private var server: DesktopWebSocketServer?
+    @Published var connectedClientCount: Int = 0
 
     func start() {
         // Start Desktop WebSocket server automatically on macOS
         let srv = DesktopWebSocketServer(token: BridgeConfig.defaultToken)
         do {
+            srv.delegate = self
             try srv.start(port: BridgeConfig.defaultPort, advertiseService: true, serviceName: Host.current().localizedName, serviceType: BridgeConfig.serviceType)
             server = srv
             log("server", "Started on ws://0.0.0.0:\(BridgeConfig.defaultPort)")
@@ -123,6 +128,7 @@ extension BridgeManager: MobileWebSocketClientDelegate {
     }
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage) {
+        self.log("client", "recv envelope type=\(message.type)")
         if message.type == "threads.list.response" {
             if let resp = try? message.decodedMessage(as: BridgeMessages.ThreadsListResponse.self) {
                 self.threads = resp.items
@@ -131,6 +137,26 @@ extension BridgeManager: MobileWebSocketClientDelegate {
             }
             return
         }
+    }
+}
+#endif
+
+#if os(macOS)
+extension BridgeManager: DesktopWebSocketServerDelegate {
+    func webSocketServer(_ server: DesktopWebSocketServer, didAccept client: DesktopWebSocketServer.Client) {
+        log("server", "client accepted")
+    }
+    func webSocketServer(_ server: DesktopWebSocketServer, didCompleteHandshakeFor client: DesktopWebSocketServer.Client, success: Bool) {
+        if success {
+            connectedClientCount += 1
+            log("server", "client handshake ok; connectedClients=\(connectedClientCount)")
+        } else {
+            log("server", "client handshake failed")
+        }
+    }
+    func webSocketServer(_ server: DesktopWebSocketServer, didDisconnect client: DesktopWebSocketServer.Client, reason: NWError?) {
+        if connectedClientCount > 0 { connectedClientCount -= 1 }
+        log("server", "client disconnected; connectedClients=\(connectedClientCount)")
     }
 }
 #endif

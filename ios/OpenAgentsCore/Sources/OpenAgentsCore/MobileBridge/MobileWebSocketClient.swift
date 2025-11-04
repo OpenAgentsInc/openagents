@@ -70,9 +70,11 @@ public final class MobileWebSocketClient {
         do {
             let env = try BridgeMessage.envelope(for: message, type: type)
             if let json = try? env.jsonString(prettyPrinted: false) {
+                print("[Bridge][client] send text=\(json)")
                 webSocketTask?.send(.string(json)) { _ in }
             } else {
                 let data = try JSONEncoder().encode(env)
+                print("[Bridge][client] send bytes \(type)")
                 webSocketTask?.send(.data(data)) { _ in }
             }
         } catch {
@@ -159,18 +161,34 @@ public final class MobileWebSocketClient {
             case .success(let message):
                 switch message {
                 case .data(let data):
-                    if let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
+                    if let text = String(data: data, encoding: .utf8),
+                       let env = try? BridgeMessage.from(jsonString: text) {
                         DispatchQueue.main.async { [weak self] in
                             guard let self = self else { return }
                             self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
                         }
+                    } else if let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self = self else { return }
+                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                        }
+                    } else {
+                        print("[Bridge][client] failed to decode data message")
                     }
                 case .string(let text):
-                    if let data = text.data(using: .utf8), let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
+                    if let env = try? BridgeMessage.from(jsonString: text) {
                         DispatchQueue.main.async { [weak self] in
                             guard let self = self else { return }
                             self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
                         }
+                    } else if let data = text.data(using: .utf8),
+                              let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self = self else { return }
+                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                        }
+                    } else {
+                        print("[Bridge][client] failed to decode string message: \(text)")
                     }
                 @unknown default:
                     break

@@ -33,21 +33,33 @@ public class DesktopWebSocketServer {
             let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
             let context = NWConnection.ContentContext(identifier: "textContext", metadata: [metadata])
             let data = text.data(using: .utf8) ?? Data()
-            connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { _ in })
+            connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { sendError in
+                if let sendError = sendError {
+                    print("[Bridge][server] send error: \(sendError)")
+                }
+            })
         }
 
         /// Send a Ping frame
         public func sendPing() {
             let metadata = NWProtocolWebSocket.Metadata(opcode: .ping)
             let context = NWConnection.ContentContext(identifier: "pingContext", metadata: [metadata])
-            connection.send(content: nil, contentContext: context, isComplete: true, completion: .contentProcessed { _ in })
+            connection.send(content: nil, contentContext: context, isComplete: true, completion: .contentProcessed { sendError in
+                if let sendError = sendError {
+                    print("[Bridge][server] ping send error: \(sendError)")
+                }
+            })
         }
 
         /// Send a Pong frame
         public func sendPong() {
             let metadata = NWProtocolWebSocket.Metadata(opcode: .pong)
             let context = NWConnection.ContentContext(identifier: "pongContext", metadata: [metadata])
-            connection.send(content: nil, contentContext: context, isComplete: true, completion: .contentProcessed { _ in })
+            connection.send(content: nil, contentContext: context, isComplete: true, completion: .contentProcessed { sendError in
+                if let sendError = sendError {
+                    print("[Bridge][server] pong send error: \(sendError)")
+                }
+            })
         }
 
         /// Close connection with optional NWError
@@ -180,6 +192,7 @@ public class DesktopWebSocketServer {
 
     private func handleTextMessage(_ text: String, from client: Client) {
         if !client.isHandshakeComplete {
+            print("[Bridge][server] recv handshake text=\(text)")
             // Accept either {"type":"Hello","token":"..."} or {"token":"..."}
             guard let data = text.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
@@ -209,21 +222,44 @@ public class DesktopWebSocketServer {
             }
         } else {
             // Handle envelopes after handshake
-            if let env = try? WebSocketMessage.Envelope.from(jsonString: text) {
-                switch env.type {
-                case "threads.list.request":
-                    // Decode request
-                    let req = (try? env.decodedMessage(as: WebSocketMessage.ThreadsListRequest.self)) ?? .init(topK: 20)
-                    let items = CodexDiscovery.loadAllSummaries(maxFilesPerBase: 1000, maxResults: req.topK ?? 20)
-                    print("[Bridge][server] threads.list.request topK=\(req.topK ?? 20) -> count=\(items.count)")
-                    let resp = WebSocketMessage.ThreadsListResponse(items: items)
-                    if let out = try? WebSocketMessage.Envelope.envelope(for: resp, type: "threads.list.response").jsonString(prettyPrinted: false) {
-                        client.send(text: out)
-                    }
-                default:
-                    print("[Bridge][server] unknown envelope type=\(env.type)")
-                    break
+            print("[Bridge][server] recv payload text=\(text)")
+            guard let env = try? WebSocketMessage.Envelope.from(jsonString: text) else {
+                print("[Bridge][server] unparseable message: \(text)")
+                return
+            }
+            print("[Bridge][server] envelope type=\(env.type)")
+            let etype = env.type.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            switch etype {
+            case "threads.list.request":
+                print("[Bridge][server] handling threads.list.request start")
+                // Decode request
+                let req = (try? env.decodedMessage(as: WebSocketMessage.ThreadsListRequest.self)) ?? .init(topK: 20)
+                let limit = max(1, min(200, req.topK ?? 20))
+                // Fast top-K scan across discovered bases
+                let bases = CodexDiscovery.discoverBaseDirs()
+                print("[Bridge][server] discovered bases=\(bases.map{ $0.path })")
+                var rows: [ThreadSummary] = []
+                for base in bases {
+                    let urls = CodexScanner.listRecentTopN(at: base, topK: limit)
+                    print("[Bridge][server] base=\(base.path) urls=\(urls.map{ $0.lastPathComponent })")
+                    rows.append(contentsOf: urls.map { CodexScanner.makeSummary(for: $0, base: base) })
                 }
+                // Dedupe and sort by last_message_ts/updated_at desc
+                var uniq: [String: ThreadSummary] = [:]
+                for r in rows { if let prev = uniq[r.id] { if r.updated_at > prev.updated_at { uniq[r.id] = r } } else { uniq[r.id] = r } }
+                var items = Array(uniq.values)
+                items.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
+                if items.count > limit { items = Array(items.prefix(limit)) }
+                print("[Bridge][server] threads.list.request topK=\(limit) -> count=\(items.count)")
+                let resp = WebSocketMessage.ThreadsListResponse(items: items)
+                if let out = try? WebSocketMessage.Envelope.envelope(for: resp, type: "threads.list.response").jsonString(prettyPrinted: false) {
+                    print("[Bridge][server] sending threads.list.response bytes=\(out.count)")
+                    client.send(text: out)
+                } else {
+                    print("[Bridge][server] failed to encode threads.list.response")
+                }
+            default:
+                print("[Bridge][server] unknown envelope type=\(env.type)")
             }
         }
     }

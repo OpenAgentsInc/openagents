@@ -42,6 +42,57 @@ public enum CodexScanner {
         return out
     }
 
+    /// Fast top-N file finder tailored for Codex sessions shape: base/YYYY/MM/DD/*.jsonl
+    /// Falls back to a shallow enumerator if the shape isn't present.
+    public static func listRecentTopN(at base: URL, topK: Int) -> [URL] {
+        var picked: [URL] = []
+        let fm = FileManager.default
+        // Try shaped walk first
+        let years = (try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true && $0.lastPathComponent.count == 4 } ?? []
+        if !years.isEmpty {
+            let ySorted = years.sorted { $0.lastPathComponent > $1.lastPathComponent }
+            for y in ySorted {
+                let months = (try? fm.contentsOfDirectory(at: y, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
+                let mSorted = months.sorted { $0.lastPathComponent > $1.lastPathComponent }
+                for m in mSorted {
+                    let days = (try? fm.contentsOfDirectory(at: m, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
+                    let dSorted = days.sorted { $0.lastPathComponent > $1.lastPathComponent }
+                    for d in dSorted {
+                        var files = (try? fm.contentsOfDirectory(at: d, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]))?.filter { $0.pathExtension.lowercased() == "jsonl" } ?? []
+                        files.sort { fileMTime($0) > fileMTime($1) }
+                        for f in files { picked.append(f); if picked.count >= topK { return picked } }
+                    }
+                }
+            }
+        }
+        // Fallback: shallow enumerator, collect topK by mtime without content checks
+        var all: [URL] = []
+        if let en = fm.enumerator(at: base, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) {
+            for case let url as URL in en {
+                if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { continue }
+                if url.pathExtension.lowercased() == "jsonl" { all.append(url) }
+            }
+        }
+        all.sort { fileMTime($0) > fileMTime($1) }
+        if all.count > topK { all = Array(all.prefix(topK)) }
+        return all
+    }
+
+    public static func makeSummary(for url: URL, base: URL) -> ThreadSummary {
+        let id = scanForThreadID(url) ?? relativeId(for: url, base: base)
+        let updated = fileMTime(url)
+        let lastTs = tailLastMessageTs(url) ?? updated
+        return ThreadSummary(
+            id: id,
+            title: nil,
+            source: "codex",
+            created_at: nil,
+            updated_at: updated,
+            last_message_ts: lastTs,
+            message_count: nil
+        )
+    }
+
     static func isNewFormatJSONL(_ url: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
         defer { try? handle.close() }
