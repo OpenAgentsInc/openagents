@@ -108,16 +108,15 @@ final class BridgeManager: ObservableObject {
 #if os(iOS)
 extension BridgeManager: MobileWebSocketClientDelegate {
     func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient) {
-        log("client", "Connected; sending threads.list.request")
+        log("client", "Connected; requesting threads/list")
         if let h = currentHost, let p = currentPort { status = .connected(host: h, port: p) }
-        // Request thread summaries upon connect
-        client.send(type: "threads.list.request", message: BridgeMessages.ThreadsListRequest(topK: 20))
-        // Resend once after a short delay if nothing arrives
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self = self else { return }
-            if self.threads.isEmpty {
-                self.log("client", "Resending threads.list.request (no response in 1s)")
-                client.send(type: "threads.list.request", message: BridgeMessages.ThreadsListRequest(topK: 20))
+        struct ThreadsListParams: Codable { let topK: Int? }
+        client.sendJSONRPC(method: "threads/list", params: ThreadsListParams(topK: 10), id: "threads-list-1") { (resp: ThreadsListResult?) in
+            guard let resp = resp else { return }
+            DispatchQueue.main.async { [weak self] in
+                self?.threads = resp.items
+                if let h = self?.currentHost, let p = self?.currentPort { self?.status = .connected(host: h, port: p) }
+                self?.log("client", "Received threads.list count=\(resp.items.count)")
             }
         }
     }
@@ -128,15 +127,7 @@ extension BridgeManager: MobileWebSocketClientDelegate {
     }
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage) {
-        self.log("client", "recv envelope type=\(message.type)")
-        if message.type == "threads.list.response" {
-            if let resp = try? message.decodedMessage(as: BridgeMessages.ThreadsListResponse.self) {
-                self.threads = resp.items
-                if let h = self.currentHost, let p = self.currentPort { self.status = .connected(host: h, port: p) }
-                self.log("client", "Received threads.list.response count=\(resp.items.count)")
-            }
-            return
-        }
+        // Legacy path removed; JSON-RPC used exclusively now.
     }
 }
 #endif
@@ -181,3 +172,6 @@ extension BridgeManager {
         }
     }
 }
+
+// JSON-RPC threads list result shape
+fileprivate struct ThreadsListResult: Codable { let items: [ThreadSummary] }

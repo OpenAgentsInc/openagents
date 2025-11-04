@@ -19,6 +19,7 @@ public final class MobileWebSocketClient {
     private let session: URLSession
 
     private var isConnected: Bool = false
+    private var pending: [String: (Data) -> Void] = [:]
 
     public init(session: URLSession = .shared) {
         self.session = session
@@ -64,6 +65,24 @@ public final class MobileWebSocketClient {
             }
         } catch {
             // ignore
+        }
+    }
+
+    /// Send a JSON-RPC request and capture the response via an id-bound completion closure
+    public func sendJSONRPC<P: Codable, R: Codable>(method: String, params: P, id: String = UUID().uuidString, completion: @escaping (R?) -> Void) {
+        let req = JSONRPC.Request(id: JSONRPC.ID(id), method: method, params: params)
+        guard let data = try? JSONEncoder().encode(req), let text = String(data: data, encoding: .utf8) else {
+            completion(nil); return
+        }
+        // store pending handler
+        pending[id] = { data in
+            if let r = try? JSONDecoder().decode(R.self, from: data) { completion(r) } else { completion(nil) }
+        }
+        webSocketTask?.send(.string(text)) { [weak self] error in
+            if let error = error {
+                _ = self?.pending.removeValue(forKey: id)
+                completion(nil)
+            }
         }
     }
 
@@ -203,11 +222,21 @@ public final class MobileWebSocketClient {
 
     private func handleJSONRPCText(_ text: String) {
         guard let data = text.data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let method = root["method"] as? String else { return }
-        if method == ACPRPC.sessionUpdate {
-            // Minimal log of streamed update; UI wiring to follow
-            print("[Bridge][client] JSONRPC session/update received")
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        if let method = root["method"] as? String {
+            // Notification path
+            if method == ACPRPC.sessionUpdate {
+                print("[Bridge][client] JSONRPC session/update received")
+            }
+            return
+        }
+        // Response path
+        if let idAny = root["id"], let result = root["result"],
+           let idStr: String = (idAny as? String) ?? (idAny as? Int).map { String($0) } {
+            if let handler = pending.removeValue(forKey: idStr),
+               let d = try? JSONSerialization.data(withJSONObject: result) {
+                handler(d)
+            }
         }
     }
 }
