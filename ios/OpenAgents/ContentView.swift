@@ -15,8 +15,10 @@ struct ContentView: View {
         ZStack(alignment: .topLeading) {
             NavigationSplitView {
                 HistorySidebar(selected: selectedRow, onSelect: { row, url in
-                    self.selectedRow = row
-                    self.selectedURL = url
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        self.selectedRow = row
+                        self.selectedURL = url
+                    }
                 })
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260)
             } detail: {
