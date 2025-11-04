@@ -236,6 +236,12 @@ extension BridgeManager {
             client.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
         }
     }
+
+    func cancelCurrentSession() {
+        guard let client = self.client, let sid = currentSessionId else { return }
+        struct CancelReq: Codable { let session_id: ACPSessionId }
+        client.sendJSONRPCNotification(method: ACPRPC.sessionCancel, params: CancelReq(session_id: sid))
+    }
 }
 #endif
 
