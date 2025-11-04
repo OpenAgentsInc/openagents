@@ -67,11 +67,21 @@ struct ContentView: View {
 
     private func selectedRowTitle() -> String {
         if let r = selectedRow {
-            if !toolbarTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return toolbarTitle }
-            if let t = r.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return t }
+            if !toolbarTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return sanitizeTitle(toolbarTitle) }
+            if let t = r.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return sanitizeTitle(t) }
             return "Thread"
         }
         return "OpenAgents"
+    }
+
+    private func sanitizeTitle(_ s: String) -> String {
+        var t = s
+        if let rx = try? NSRegularExpression(pattern: "\\[([^\\]]+)\\]\\([^\\)]+\\)", options: []) {
+            t = rx.stringByReplacingMatches(in: t, range: NSRange(location: 0, length: t.utf16.count), withTemplate: "$1")
+        }
+        for mark in ["**","*","__","_","```,","`"] { t = t.replacingOccurrences(of: mark, with: "") }
+        t = t.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return t.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

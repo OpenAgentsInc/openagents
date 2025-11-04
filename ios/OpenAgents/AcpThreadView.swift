@@ -114,6 +114,8 @@ struct AcpThreadView: View {
                             }
                             .padding(.vertical, 4)
                         }
+                        // Bottom sentinel to ensure we can always scroll truly to the end
+                        Color.clear.frame(height: 1).id("bottom")
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -271,9 +273,13 @@ struct AcpThreadView: View {
         }
     }
     func scrollToBottom(_ proxy: ScrollViewProxy) {
-        guard let last = timeline.last else { return }
+        // Prefer a known bottom sentinel for reliability
         DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(last.id, anchor: .bottom) }
+            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("bottom", anchor: .bottom) }
+        }
+        // Double-fire shortly after to cover layout churn
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo("bottom", anchor: .bottom) }
         }
     }
 

@@ -155,8 +155,22 @@ struct HistorySidebar: View {
     private func key(for row: LocalThreadSummary) -> String { "\(row.source)::\(row.id)" }
 
     private func displayTitle(for row: LocalThreadSummary) -> String? {
-        if let t = nonEmptyTitle(row) { return t }
-        return titles[key(for: row)]
+        if let t = nonEmptyTitle(row) { return sanitizeTitle(t) }
+        if let t = titles[key(for: row)] { return sanitizeTitle(t) }
+        return nil
+    }
+
+    private func sanitizeTitle(_ s: String) -> String {
+        var t = s
+        // Basic markdown removal: links [text](url) → text
+        if let rx = try? NSRegularExpression(pattern: "\\[([^\\]]+)\\]\\([^\\)]+\\)", options: []) {
+            t = rx.stringByReplacingMatches(in: t, range: NSRange(location: 0, length: t.utf16.count), withTemplate: "$1")
+        }
+        // Strip emphasis/code markers
+        for mark in ["**","*","__","_","```,","`"] { t = t.replacingOccurrences(of: mark, with: "") }
+        // Collapse whitespace
+        t = t.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return t.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func summarizeRow(_ row: LocalThreadSummary, url: URL, mtime: Int64) {
