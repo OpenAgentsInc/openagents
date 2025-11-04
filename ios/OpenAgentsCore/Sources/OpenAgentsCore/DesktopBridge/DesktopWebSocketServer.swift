@@ -261,6 +261,26 @@ public class DesktopWebSocketServer {
                 // JSON-RPC request/notification
                 if let method = dict["method"] as? String {
                     switch method {
+                    case "threads/list":
+                        struct Params: Codable { let topK: Int? }
+                        let topK: Int = {
+                            if let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let pr = try? JSONDecoder().decode(Params.self, from: d) { return pr.topK ?? 10 }
+                            return 10
+                        }()
+                        let limit = min(10, max(1, topK))
+                        let base = CodexScanner.defaultBaseDir()
+                        let urls = CodexScanner.listRecentTopN(at: base, topK: limit)
+                        var items = urls.map { CodexScanner.makeSummary(for: $0, base: base) }
+                        items.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
+                        let idVal: JSONRPC.ID
+                        if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                        else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                        else { idVal = JSONRPC.ID("1") }
+                        struct Result: Codable { let items: [ThreadSummary] }
+                        let result = Result(items: items)
+                        if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
+                        }
                     case ACPRPC.sessionNew:
                         // Generate a new session id
                         let sid = ACPSessionId(UUID().uuidString)
@@ -275,7 +295,7 @@ public class DesktopWebSocketServer {
                     case ACPRPC.sessionPrompt:
                         // Echo a tiny streamed agent message back as a demo
                         let params = dict["params"] as? [String: Any]
-                        let sidStr = ((params?["session_id"]) as? String) ?? (params?[["session_id"] as Any] as? String) ?? UUID().uuidString
+                        let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
                         let sid = ACPSessionId(sidStr)
                         let msg = ACP.Client.SessionUpdate.agentMessageChunk(
                             ACP.Client.ContentChunk(content: .text("OK — processing your request…"))
@@ -299,33 +319,7 @@ public class DesktopWebSocketServer {
                 }
                 return
             }
-            // Legacy envelope path
-            guard let env = try? WebSocketMessage.Envelope.from(jsonString: text) else {
-                print("[Bridge][server] unparseable message: \(text)")
-                return
-            }
-            print("[Bridge][server] envelope type=\(env.type)")
-            let etype = env.type.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            switch etype {
-            case "threads.list.request":
-                let req = (try? env.decodedMessage(as: WebSocketMessage.ThreadsListRequest.self)) ?? .init(topK: 10)
-                let limit = min(10, max(1, req.topK ?? 10))
-                let base = CodexScanner.defaultBaseDir()
-                let urls = CodexScanner.listRecentTopN(at: base, topK: limit)
-                var items = urls.map { CodexScanner.makeSummary(for: $0, base: base) }
-                items.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.last_message_ts ?? $1.updated_at) }
-                if items.count > limit { items = Array(items.prefix(limit)) }
-                print("[Bridge][server] threads.list.request topK=\(limit) -> count=\(items.count)")
-                let resp = WebSocketMessage.ThreadsListResponse(items: items)
-                if let out = try? WebSocketMessage.Envelope.envelope(for: resp, type: "threads.list.response").jsonString(prettyPrinted: false) {
-                    print("[Bridge][server] sending threads.list.response bytes=\(out.count)")
-                    client.send(text: out)
-                } else {
-                    print("[Bridge][server] failed to encode threads.list.response")
-                }
-            default:
-                print("[Bridge][server] unknown envelope type=\(env.type)")
-            }
+            print("[Bridge][server] ignoring non JSON-RPC payload")
         }
     }
 }
