@@ -13,6 +13,10 @@ struct HistorySidebar: View {
 
     var body: some View {
         List {
+            // Bridge status chip (desktop + mobile)
+            BridgeStatusChip()
+                .listRowBackground(Color.clear)
+            
             HStack(spacing: 8) {
                 Image(systemName: "clock").imageScale(.small)
                     .foregroundStyle(OATheme.Colors.textTertiary)
@@ -84,6 +88,12 @@ struct HistorySidebar: View {
         .background(OATheme.Colors.sidebarBackground)
         .navigationTitle("")
         .onAppear(perform: load)
+        .onChange(of: bridge.threads) { newVal in
+            #if os(iOS)
+            self.isLoading = false
+            self.items = newVal.map { t in (LocalThreadSummary(id: t.id, title: t.title, source: t.source, created_at: t.created_at, updated_at: t.updated_at, last_message_ts: t.last_message_ts, message_count: t.message_count), nil) }
+            #endif
+        }
     }
 
     private func load() {
@@ -93,10 +103,8 @@ struct HistorySidebar: View {
             var dbg: [String] = []
             // iOS path: if bridge has threads, prefer those and skip FS scanning
             #if os(iOS)
-            DispatchQueue.main.async {
-                self.isLoading = false
-                self.items = bridge.threads.map { ts in (LocalThreadSummary(id: ts.id, title: ts.title, source: ts.source, created_at: ts.created_at, updated_at: ts.updated_at, last_message_ts: ts.last_message_ts, message_count: ts.message_count), nil) }
-            }
+            // On iOS, rely on bridge.threads updates to populate items; keep loading spinner until then.
+            DispatchQueue.main.async { self.isLoading = true }
             return
             #endif
             // macOS path: scan Codex filesystem; Claude behind feature flag

@@ -192,6 +192,7 @@ public class DesktopWebSocketServer {
                 client.close(); clients.remove(client); return
             }
             if receivedToken == token {
+                print("[Bridge][server] Hello received; token ok")
                 client.isHandshakeComplete = true
                 // Reply with HelloAck; include token for clients expecting it
                 let ackObj: [String: Any] = ["type": "HelloAck", "token": token]
@@ -201,6 +202,7 @@ public class DesktopWebSocketServer {
                 }
                 delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
             } else {
+                print("[Bridge][server] Hello token mismatch")
                 delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
                 client.close(); clients.remove(client)
             }
@@ -212,11 +214,13 @@ public class DesktopWebSocketServer {
                     // Decode request
                     let req = (try? env.decodedMessage(as: WebSocketMessage.ThreadsListRequest.self)) ?? .init(topK: 20)
                     let items = CodexDiscovery.loadAllSummaries(maxFilesPerBase: 1000, maxResults: req.topK ?? 20)
+                    print("[Bridge][server] threads.list.request topK=\(req.topK ?? 20) -> count=\(items.count)")
                     let resp = WebSocketMessage.ThreadsListResponse(items: items)
                     if let out = try? WebSocketMessage.Envelope.envelope(for: resp, type: "threads.list.response").jsonString(prettyPrinted: false) {
                         client.send(text: out)
                     }
                 default:
+                    print("[Bridge][server] unknown envelope type=\(env.type)")
                     break
                 }
             }
