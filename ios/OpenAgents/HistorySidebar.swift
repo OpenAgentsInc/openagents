@@ -138,13 +138,26 @@ struct HistorySidebar: View {
         if titles[rowKey] != nil { return }
         Task.detached(priority: .utility) {
             do {
-                let lines = try tailJSONLLines(url: url, maxBytes: 600_000, maxLines: 4000)
-                let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
+                // Prefer head scan to capture the very first user message
+                var strategy = "first_user_5"
+                var lines = try headJSONLLines(url: url, maxBytes: 600_000, maxLines: 4000)
+                var thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
                 var msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user || $0.role == .assistant }
                 msgs.sort { $0.ts < $1.ts }
-                let title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: true)
+                var title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: false)
+                if title.isEmpty {
+                    // Fallback to tail if head chunk didn’t include first user text
+                    strategy = "tail_fallback"
+                    lines = try tailJSONLLines(url: url, maxBytes: 600_000, maxLines: 4000)
+                    thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
+                    msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user || $0.role == .assistant }
+                    msgs.sort { $0.ts < $1.ts }
+                    title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: false)
+                }
+                if !title.isEmpty { print("[Titles] \(row.source)::\(row.id) strategy=\(strategy) title=\(title)") }
                 guard !title.isEmpty else { return }
-                await MainActor.run { self.titles[rowKey] = title }
+                let finalTitle = title
+                await MainActor.run { self.titles[rowKey] = finalTitle }
             } catch {
                 // ignore errors
             }
@@ -227,6 +240,19 @@ nonisolated private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) 
     if !text.hasSuffix("\n") { text.append("\n") }
     var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     if lines.count > maxLines { lines = Array(lines.suffix(maxLines)) }
+    return lines
+}
+
+// Efficient head reader: read the first chunk of a JSONL file
+nonisolated private func headJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [String] {
+    let fh = try FileHandle(forReadingFrom: url)
+    defer { try? fh.close() }
+    let toRead = min(maxBytes, (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? maxBytes)
+    let data = try fh.read(upToCount: toRead) ?? Data()
+    var text = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+    if !text.hasSuffix("\n") { text.append("\n") }
+    var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    if lines.count > maxLines { lines = Array(lines.prefix(maxLines)) }
     return lines
 }
 

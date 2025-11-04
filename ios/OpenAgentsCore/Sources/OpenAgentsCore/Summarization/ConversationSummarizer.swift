@@ -7,30 +7,9 @@ public enum ConversationSummarizer {
     ///   - preferOnDeviceModel: Reserved for future use with FoundationModels. Currently ignored.
     /// - Returns: A short title suitable for a list row.
     public static func summarizeTitle(messages: [ACPMessage], preferOnDeviceModel: Bool = true) async -> String {
-        // Filter to user/assistant, keep chronological order, take last ~10
-        var seq = messages.filter { $0.role == .user || $0.role == .assistant }
-        seq.sort { $0.ts < $1.ts }
-        if seq.count > 10 { seq = Array(seq.suffix(10)) }
-        // Extract plain text content
-        let texts: [String] = seq.compactMap { m in
-            let s = m.parts.compactMap { part -> String? in
-                if case let .text(t) = part { return t.text } else { return nil }
-            }.joined(separator: "\n")
-            return s.nilIfEmpty
-        }
-
-        // Try on-device foundation model if available/allowed.
-        if preferOnDeviceModel && foundationModelsAllowed() {
-            #if canImport(FoundationModels)
-            if #available(iOS 26.0, macOS 26.0, *), let fm = await FoundationModelSummarizer.trySummarizeTitle(messages: seq) {
-                if !fm.isEmpty { return fm }
-            }
-            #endif
-        }
-
-        // Heuristic fallback until FoundationModels is wired.
-        let candidate = heuristicTitle(from: texts)
-        return candidate
+        // Use the first user message (~5 words). This is our dev-default.
+        let title = firstUserFiveWords(messages: messages)
+        return title.isEmpty ? "Conversation" : title
     }
 
     static func heuristicTitle(from texts: [String]) -> String {
@@ -53,6 +32,18 @@ public enum ConversationSummarizer {
         if words.isEmpty { return sentence.prefixWords(5).titleCased }
         let picked = Array(words.prefix(5)).joined(separator: " ")
         return picked.titleCased
+    }
+
+    static func firstUserFiveWords(messages: [ACPMessage]) -> String {
+        let users = messages.filter { $0.role == .user }.sorted { $0.ts < $1.ts }
+        guard let first = users.first else { return "" }
+        let text = first.parts.compactMap { part -> String? in
+            if case let .text(t) = part { return t.text } else { return nil }
+        }.joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return "" }
+        let words = text.split(whereSeparator: { $0.isWhitespace })
+        return words.prefix(5).joined(separator: " ")
     }
 }
 
