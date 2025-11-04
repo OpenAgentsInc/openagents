@@ -26,6 +26,8 @@ struct OpenAgentsApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear { _ = BerkeleyFont.registerAll() }
+                .environment(\.font, BerkeleyFont.font(relativeTo: .body, size: 16))
                 .tint(OATheme.Colors.accent)
         }
         .modelContainer(sharedModelContainer)
