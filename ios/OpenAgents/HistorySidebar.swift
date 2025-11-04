@@ -16,11 +16,7 @@ struct HistorySidebar: View {
                         Text("Loading…")
                     }
                 }
-                if !items.isEmpty {
-                    Text("\(items.count) chats found")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if !isLoading {
+                if items.isEmpty && !isLoading {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("No chats found")
                             .font(.caption)
