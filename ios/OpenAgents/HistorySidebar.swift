@@ -50,7 +50,7 @@ struct HistorySidebar: View {
                                 if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
                                     Label(relative(ts), systemImage: "clock")
                                         .font(.caption)
-                                        .foregroundStyle(OATheme.Colors.textSecondary)
+                                        .foregroundStyle(OATheme.Colors.textTertiary)
                                 }
                                 providerBadge(for: row.source)
                             }
@@ -180,11 +180,11 @@ struct HistorySidebar: View {
         if s == "codex" {
             Label("Codex", systemImage: "curlybraces")
                 .font(.caption)
-                .foregroundStyle(OATheme.Colors.textSecondary)
+                .foregroundStyle(OATheme.Colors.textTertiary)
         } else if s == "claude_code" || s == "claude" {
             Label("Claude Code", systemImage: "bolt")
                 .font(.caption)
-                .foregroundStyle(OATheme.Colors.textSecondary)
+                .foregroundStyle(OATheme.Colors.textTertiary)
         } else {
             EmptyView()
         }
