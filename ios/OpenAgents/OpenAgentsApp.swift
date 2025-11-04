@@ -10,6 +10,7 @@ import SwiftData
 
 @main
 struct OpenAgentsApp: App {
+    @StateObject private var bridge = BridgeManager()
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -29,6 +30,7 @@ struct OpenAgentsApp: App {
                 .onAppear { _ = BerkeleyFont.registerAll() }
                 .environment(\.font, BerkeleyFont.font(relativeTo: .body, size: 16))
                 .tint(OATheme.Colors.accent)
+                .task { bridge.start() }
         }
         .modelContainer(sharedModelContainer)
         #if os(macOS)
