@@ -12,10 +12,7 @@ struct GlassTerminalCard: View {
     var body: some View {
         Group {
             if #available(iOS 26, macOS 15, *) {
-                GlassEffectContainer {
-                    card
-                        .glassEffectID("terminal-card")
-                }
+                GlassEffectContainer { card }
             } else {
                 card
             }
@@ -80,4 +77,3 @@ struct GlassTerminalCard: View {
         GlassTerminalCard()
     }
 }
-
