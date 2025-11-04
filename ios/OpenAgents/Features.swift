@@ -8,5 +8,5 @@ enum Features {
         if ProcessInfo.processInfo.environment["OPENAGENTS_ENABLE_CLAUDE"] == "1" { return true }
         return UserDefaults.standard.bool(forKey: "enable_claude")
     }
-}
 
+}

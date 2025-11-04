@@ -18,7 +18,7 @@ struct ContentView: View {
             })
             .navigationSplitViewColumnWidth(min: 220, ideal: 260)
         } detail: {
-            RawThreadView(url: selectedURL)
+            AcpThreadView(url: selectedURL)
         }
     }
 }
