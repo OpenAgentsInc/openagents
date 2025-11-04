@@ -3,32 +3,38 @@ import OpenAgentsCore
 
 struct AcpThreadView: View {
     let url: URL?
-    let maxMessages: Int = 10
+    let maxMessages: Int = 25
     var onTitleChange: ((String) -> Void)? = nil
 
     @State private var isLoading = false
     @State private var error: String? = nil
+    
     enum TimelineItem: Identifiable {
         case message(ACPMessage)
+        case reasoning(ACPMessage)
         case toolCall(ACPToolCall)
         case toolResult(ACPToolResult)
         case plan(ACPPlanState)
-        // plan state can be added later
+        case raw(String)
 
         var id: String {
             switch self {
             case .message(let m): return "msg_\(m.id)"
+            case .reasoning(let m): return "reason_\(m.id)"
             case .toolCall(let c): return "call_\(c.id)"
             case .toolResult(let r): return "res_\(r.call_id)\(r.ts ?? 0)"
             case .plan(let p): return "plan_\(p.ts ?? 0)"
+            case .raw(let s): return "raw_\(s.hashValue)"
             }
         }
         var ts: Int64 {
             switch self {
             case .message(let m): return m.ts
+            case .reasoning(let m): return m.ts
             case .toolCall(let c): return c.ts ?? 0
             case .toolResult(let r): return r.ts ?? 0
             case .plan(let p): return p.ts ?? 0
+            case .raw: return 0
             }
         }
     }
@@ -80,12 +86,30 @@ struct AcpThreadView: View {
                                                 .foregroundStyle(OATheme.Colors.textPrimary)
                                         }
                                     }
+                                case .reasoning(let msg):
+                                    HStack(spacing: 6) {
+                                        roleBadge(.assistant)
+                                        Text(dateLabel(ms: msg.ts))
+                                            .font(Font.custom(BerkeleyFont.defaultName(), size: 10, relativeTo: .caption2))
+                                            .foregroundStyle(OATheme.Colors.textSecondary)
+                                    }
+                                    ForEach(msg.parts.indices, id: \.self) { idx in
+                                        if case let .text(t) = msg.parts[idx] {
+                                            markdownText(t.text)
+                                                .italic()
+                                                .textSelection(.enabled)
+                                                .font(BerkeleyFont.font(relativeTo: .body, size: 15))
+                                                .foregroundStyle(OATheme.Colors.textPrimary)
+                                        }
+                                    }
                                 case .toolCall(let call):
                                     ToolCallView(call: call)
                                 case .toolResult(let res):
                                     ToolResultView(result: res)
                                 case .plan(let ps):
                                     PlanStateView(state: ps)
+                                case .raw(let line):
+                                    RawEventView(line: line)
                                 }
                             }
                             .padding(.vertical, 4)
@@ -158,8 +182,30 @@ struct AcpThreadView: View {
 
     // Minimal Markdown renderer using AttributedString
     func markdownText(_ text: String) -> Text {
-        if let md = try? AttributedString(markdown: text) { return Text(md) }
+        if let md = try? AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) { return Text(md) }
         return Text(text)
+    }
+
+    // Hide low-signal provider-native events
+    func shouldHideLine(_ line: String) -> Bool {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        if let t = obj["type"] as? String, t == "turn_context" { return true }
+        if let t = obj["type"] as? String, t == "event_msg",
+           let p = obj["payload"] as? [String: Any], (p["type"] as? String) == "token_count" { return true }
+        return false
+    }
+
+    // Detect provider-native reasoning events for italic rendering
+    func isReasoningLine(_ line: String) -> Bool {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        let type = (obj["type"] as? String) ?? (obj["event"] as? String)
+        if type == "event_msg", let p = obj["payload"] as? [String: Any], (p["type"] as? String) == "agent_reasoning" { return true }
+        if let item = (obj["item"] as? [String: Any]) ?? (obj["msg"] as? [String: Any]) ?? (obj["payload"] as? [String: Any]),
+           let itemType = item["type"] as? String, itemType == "agent_reasoning" { return true }
+        if type == "response_item", let p = obj["payload"] as? [String: Any], (p["type"] as? String) == "reasoning" { return true }
+        return false
     }
 
     func load() {
@@ -171,34 +217,39 @@ struct AcpThreadView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let lines = try tailJSONLLines(url: u, maxBytes: 1_000_000, maxLines: 5000)
-                let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: u.path))
-                // Build a unified timeline from messages + tool calls/results
+                // Per-line timeline in file order: show known messages; otherwise raw JSON lines
                 var items: [TimelineItem] = []
-                for ev in thread.events {
-                    if let m = ev.message, (m.role == .user || m.role == .assistant) {
-                        // ignore synthetic preface
+                for line in lines {
+                    // Hide turn_context and token_count lines
+                    if shouldHideLine(line) { continue }
+                    let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: u.path))
+                    if let m = t.events.compactMap({ $0.message }).first, (m.role == .user || m.role == .assistant) {
                         let text = m.parts.compactMap { part -> String? in
                             if case let .text(t) = part { return t.text } else { return nil }
                         }.joined(separator: " ")
                         if !ConversationSummarizer.isSystemPreface(text) {
-                            items.append(.message(m))
+                            if isReasoningLine(line) {
+                                items.append(.reasoning(m))
+                            } else {
+                                items.append(.message(m))
+                            }
+                            continue
                         }
-                    } else if let c = ev.tool_call {
+                    } else if let c = t.events.compactMap({ $0.tool_call }).first {
                         items.append(.toolCall(c))
-                    } else if let r = ev.tool_result {
+                        continue
+                    } else if let r = t.events.compactMap({ $0.tool_result }).first {
                         items.append(.toolResult(r))
-                    } else if let ps = ev.plan_state {
-                        items.append(.plan(ps))
+                        continue
                     }
+                    items.append(.raw(line))
                 }
-                items.sort { $0.ts < $1.ts }
                 if items.count > maxMessages { items = Array(items.suffix(maxMessages)) }
                 DispatchQueue.main.async {
                     withAnimation(.easeInOut(duration: 0.15)) { self.timeline = items }
+                    let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: u.path))
                     self.threadTitle = thread.title
-                    if let t = thread.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        self.onTitleChange?(t)
-                    }
+                    if let t = thread.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
                     self.isLoading = false
                 }
             } catch {
@@ -230,8 +281,6 @@ struct AcpThreadView: View {
         draft = ""
     }
 }
-}
-
 // Close AcpThreadView struct
 
 // MARK: - Efficient JSONL tail reader
@@ -260,6 +309,7 @@ private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [S
     return lines
 }
 
-#Preview {
-    AcpThreadView(url: nil)
+//#Preview {
+//    AcpThreadView(url: nil)
+//}
 }

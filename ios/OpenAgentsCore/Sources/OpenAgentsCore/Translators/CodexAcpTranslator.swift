@@ -53,32 +53,18 @@ public enum CodexAcpTranslator {
             let item = (obj["item"] as? [String: Any]) ?? (obj["msg"] as? [String: Any]) ?? (obj["payload"] as? [String: Any])
             let itemType = item?["type"] as? String ?? ""
 
-            // Blocks fallback: some providers embed tool events within a generic "blocks" array
-            if let blocks = item?["blocks"] as? [[String: Any]] {
-                for b in blocks {
-                    let bType = (b["type"] as? String) ?? ""
-                    if bType == "tool_call" || bType == "function_call" || bType == "toolcall" {
-                        let tool = (b["tool_name"] as? String) ?? (b["tool"] as? String) ?? "tool"
-                        let argsJV = Self.jsonValue(from: b["arguments"]) ?? Self.jsonValue(from: b["args"]) ?? .object([:])
-                        var callId = (b["id"] as? String) ?? (b["call_id"] as? String)
-                        if callId == nil { callId = stableCallId(seed: "\(nextSeq):\(tool)") }
-                        if let cid = callId {
-                            callIdsSeen.insert(cid)
-                            let t = ts ?? Self.int64(b["ts"]) ?? Self.int64(item?["ts"]) ?? 0
-                            touchTs(t)
-                            let call = ACPToolCall(id: cid, tool_name: tool, arguments: argsJV, ts: t)
-                            events.append(ACPEvent(id: nextEventId(), ts: t, tool_call: call))
-                        }
-                    } else if bType == "tool_result" || bType == "function_result" {
-                        let callId = (b["call_id"] as? String) ?? (b["id"] as? String) ?? stableCallId(seed: "\(nextSeq):res")
-                        let ok = (b["ok"] as? Bool) ?? (b["success"] as? Bool) ?? true
-                        let result = Self.jsonValue(from: b["result"]) ?? Self.jsonValue(from: b["output"]) ?? Self.jsonValue(from: b["data"]) ?? Self.jsonValue(from: b["value"])
-                        let err = b["error"] as? String
-                        let t = ts ?? Self.int64(b["ts"]) ?? Self.int64(item?["ts"]) ?? 0
-                        touchTs(t)
-                        let res = ACPToolResult(call_id: callId, ok: ok, result: result, error: err, ts: t)
-                        events.append(ACPEvent(id: nextEventId(), ts: t, tool_result: res))
-                    }
+            // No provider-specific block scanning here. Tool events are detected by explicit type only.
+
+            // Reasoning (provider-native)
+            if itemType == "agent_reasoning" || (type == "event_msg" && ((item?["type"] as? String) == "agent_reasoning")) {
+                if let text = Self.extractText(from: item) {
+                    let parts: [ACPContentPart] = [.text(ACPText(text: text))]
+                    let t = ts ?? Self.int64(item?["ts"]) ?? 0
+                    touchTs(t)
+                    let mid = ACPId.stableId(namespace: "codex-msg:\(options.sourceId)", seed: "agent_reasoning:\(nextSeq)")
+                    let msg = ACPMessage(id: mid, thread_id: threadId, role: .assistant, parts: parts, ts: t)
+                    events.append(ACPEvent(id: nextEventId(), ts: t, message: msg))
+                    continue
                 }
             }
 
@@ -109,7 +95,7 @@ public enum CodexAcpTranslator {
             }
 
             // Tool calls
-            if itemType == "tool_call" || type == "tool_call" || item?["tool_name"] != nil || item?["tool"] != nil {
+            if itemType == "tool_call" || type == "tool_call" {
                 let tool = (item?["tool_name"] as? String) ?? (item?["tool"] as? String) ?? "tool"
                 let argsJV = Self.jsonValue(from: item?["arguments"]) ?? Self.jsonValue(from: item?["args"]) ?? .object([:])
                 var callId = (item?["id"] as? String) ?? (item?["call_id"] as? String)
@@ -125,7 +111,7 @@ public enum CodexAcpTranslator {
             }
 
             // Tool results
-            if itemType == "tool_result" || type == "tool_result" || item?["result"] != nil || item?["output"] != nil || item?["error"] != nil {
+            if itemType == "tool_result" || type == "tool_result" {
                 let callId = (item?["call_id"] as? String) ?? (item?["id"] as? String) ?? stableCallId(seed: "\(nextSeq):res")
                 let ok = (item?["ok"] as? Bool) ?? (item?["success"] as? Bool) ?? true
                 let result = Self.jsonValue(from: item?["result"]) ?? Self.jsonValue(from: item?["output"]) ?? Self.jsonValue(from: item?["data"])
@@ -135,6 +121,52 @@ public enum CodexAcpTranslator {
                 let res = ACPToolResult(call_id: callId, ok: ok, result: result, error: err, ts: t)
                 events.append(ACPEvent(id: nextEventId(), ts: t, tool_result: res))
                 continue
+            }
+
+            // Provider-native function calls/results exposed under response_item payloads
+            if type == "response_item", let payload = obj["payload"] as? [String: Any] {
+                let pType = (payload["type"] as? String) ?? ""
+                if pType == "function_call" {
+                    let tool = (payload["name"] as? String) ?? "tool"
+                    var argsDict = payload
+                    argsDict.removeValue(forKey: "type")
+                    let argsJV = Self.jsonValue(from: argsDict) ?? .object([:])
+                    let callId = (payload["call"] as? String) ?? stableCallId(seed: "\(nextSeq):\(tool)")
+                    let t = ts ?? Self.int64(payload["timestamp"]) ?? 0
+                    touchTs(t)
+                    let call = ACPToolCall(id: callId, tool_name: tool, arguments: argsJV, ts: t)
+                    events.append(ACPEvent(id: nextEventId(), ts: t, tool_call: call))
+                    continue
+                } else if pType == "function_call_output" {
+                    let callId = (payload["call"] as? String) ?? stableCallId(seed: "\(nextSeq):res")
+                    let resultJV = Self.jsonValue(from: payload["output"]) ?? .null
+                    let t = ts ?? Self.int64(payload["timestamp"]) ?? 0
+                    touchTs(t)
+                    let res = ACPToolResult(call_id: callId, ok: true, result: resultJV, error: nil, ts: t)
+                    events.append(ACPEvent(id: nextEventId(), ts: t, tool_result: res))
+                    continue
+                } else if pType == "function_call_error" {
+                    let callId = (payload["call"] as? String) ?? stableCallId(seed: "\(nextSeq):err")
+                    let err = (payload["error"] as? String) ?? (payload["message"] as? String) ?? "error"
+                    let t = ts ?? Self.int64(payload["timestamp"]) ?? 0
+                    touchTs(t)
+                    let res = ACPToolResult(call_id: callId, ok: false, result: nil, error: err, ts: t)
+                    events.append(ACPEvent(id: nextEventId(), ts: t, tool_result: res))
+                    continue
+                } else if pType == "reasoning" {
+                    // Reasoning summary only
+                    if let summary = payload["summary"] as? [String: Any],
+                       let stype = summary["type"] as? String, stype == "summary_text",
+                       let text = summary["content"] as? String {
+                        let parts: [ACPContentPart] = [.text(ACPText(text: text))]
+                        let t = ts ?? Self.int64(payload["timestamp"]) ?? 0
+                        touchTs(t)
+                        let mid = ACPId.stableId(namespace: "codex-msg:\(options.sourceId)", seed: "reasoning:\(nextSeq)")
+                        let msg = ACPMessage(id: mid, thread_id: threadId, role: .assistant, parts: parts, ts: t)
+                        events.append(ACPEvent(id: nextEventId(), ts: t, message: msg))
+                        continue
+                    }
+                }
             }
 
             // Plan state updates
@@ -183,7 +215,7 @@ public enum CodexAcpTranslator {
             if !buf.isEmpty { return buf.joined(separator: "\n") }
         }
         return nil
-    }
+}
     static func jsonValue(from any: Any?) -> JSONValue? {
         guard let any = any else { return nil }
         if let s = any as? String { return .string(s) }
