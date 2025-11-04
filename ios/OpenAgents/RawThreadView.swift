@@ -10,21 +10,23 @@ struct RawThreadView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(u.lastPathComponent)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(OATheme.Colors.textSecondary)
                         Text(truncatedText(from: u))
                             .textSelection(.enabled)
                             .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(OATheme.Colors.textPrimary)
                             .padding(.top, 2)
                         Text("(Truncated to first 1000 characters)")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(OATheme.Colors.textSecondary)
                     }
                     .padding()
+                    .background(OATheme.Colors.background)
                 }
             } else {
                 Text("Select a thread")
                     .font(.headline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OATheme.Colors.textSecondary)
             }
         }
     }

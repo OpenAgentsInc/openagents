@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		E1A1B2C33D4E5F60718293A6 /* OpenAgentsCore in Frameworks */ = {isa = PBXBuildFile; productRef = E1A1B2C33D4E5F60718293A5 /* OpenAgentsCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		2C3A0F032EB930AC00C8CDB0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -197,13 +201,13 @@
 			);
 			mainGroup = 2C3A0EEA2EB930AA00C8CDB0;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E1A1B2C33D4E5F60718293A4 /* XCLocalSwiftPackageReference "OpenAgentsCore" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2C3A0EF42EB930AA00C8CDB0 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			packageReferences = (
-				E1A1B2C33D4E5F60718293A4 /* OpenAgentsCore */,
-			);
 			targets = (
 				2C3A0EF22EB930AA00C8CDB0 /* OpenAgents */,
 				2C3A0F012EB930AC00C8CDB0 /* OpenAgentsTests */,
@@ -211,27 +215,6 @@
 			);
 		};
 /* End PBXProject section */
-
-/* Begin PBXBuildFile section */
-		E1A1B2C33D4E5F60718293A6 /* OpenAgentsCore in Frameworks */ = {isa = PBXBuildFile; productRef = E1A1B2C33D4E5F60718293A5 /* OpenAgentsCore */; };
-/* End PBXBuildFile section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		E1A1B2C33D4E5F60718293A4 /* OpenAgentsCore */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = OpenAgentsCore;
-			name = OpenAgentsCore;
-		};
-/* End XCLocalSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		E1A1B2C33D4E5F60718293A5 /* OpenAgentsCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenAgentsCore;
-			package = E1A1B2C33D4E5F60718293A4 /* OpenAgentsCore */;
-
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXResourcesBuildPhase section */
 		2C3A0EF12EB930AA00C8CDB0 /* Resources */ = {
@@ -643,6 +626,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		E1A1B2C33D4E5F60718293A4 /* XCLocalSwiftPackageReference "OpenAgentsCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OpenAgentsCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E1A1B2C33D4E5F60718293A5 /* OpenAgentsCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1A1B2C33D4E5F60718293A4 /* XCLocalSwiftPackageReference "OpenAgentsCore" */;
+			productName = OpenAgentsCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 2C3A0EEB2EB930AA00C8CDB0 /* Project object */;
 }

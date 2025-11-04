@@ -14,16 +14,18 @@ struct HistorySidebar: View {
                     HStack {
                         ProgressView()
                         Text("Loading…")
+                            .font(.caption)
+                            .foregroundStyle(OATheme.Colors.textSecondary)
                     }
                 }
                 if items.isEmpty && !isLoading {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("No chats found")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(OATheme.Colors.textSecondary)
                         if !debugLines.isEmpty {
                             ForEach(debugLines.prefix(8), id: \.self) { line in
-                                Text(line).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                                Text(line).font(.footnote).foregroundStyle(OATheme.Colors.textSecondary).lineLimit(2)
                             }
                         }
                         #if os(macOS)
@@ -40,22 +42,25 @@ struct HistorySidebar: View {
                             Text(nonEmptyTitle(row) ?? "Thread")
                                 .font(.body)
                                 .fontWeight(isActive ? .semibold : .regular)
+                                .foregroundStyle(OATheme.Colors.textPrimary)
                                 .lineLimit(1)
                             HStack(spacing: 8) {
                                 if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
                                     Label(relative(ts), systemImage: "clock")
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(OATheme.Colors.textSecondary)
                                 }
                                 providerBadge(for: row.source)
                             }
                         }
                     }
-                    .listRowBackground(isActive ? Color.accentColor.opacity(0.12) : Color.clear)
+                    .listRowBackground(isActive ? OATheme.Colors.selection : Color.clear)
                     .contentShape(Rectangle())
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(OATheme.Colors.sidebarBackground)
         .navigationTitle("OpenAgents")
         .onAppear(perform: load)
     }
@@ -121,11 +126,11 @@ struct HistorySidebar: View {
         if s == "codex" {
             Label("Codex", systemImage: "curlybraces")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(OATheme.Colors.textSecondary)
         } else if s == "claude_code" || s == "claude" {
             Label("Claude Code", systemImage: "bolt")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(OATheme.Colors.textSecondary)
         } else {
             EmptyView()
         }

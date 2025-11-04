@@ -26,6 +26,7 @@ struct OpenAgentsApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .tint(OATheme.Colors.accent)
         }
         .modelContainer(sharedModelContainer)
     }

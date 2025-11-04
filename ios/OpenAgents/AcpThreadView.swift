@@ -15,13 +15,13 @@ struct AcpThreadView: View {
             if url == nil {
                 Text("Select a thread")
                     .font(.headline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OATheme.Colors.textSecondary)
             } else if isLoading && messages.isEmpty {
                 VStack(spacing: 8) {
                     ProgressView()
                     Text("Loading…")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(OATheme.Colors.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let e = error {
@@ -30,7 +30,7 @@ struct AcpThreadView: View {
                 ScrollViewReader { proxy in
                     List {
                         if let title = threadTitle, !title.isEmpty {
-                            Section { Text(title).font(.headline) }
+                            Section { Text(title).font(.headline).foregroundStyle(OATheme.Colors.textPrimary) }
                         }
                         ForEach(messages, id: \.id) { msg in
                             VStack(alignment: .leading, spacing: 6) {
@@ -38,13 +38,14 @@ struct AcpThreadView: View {
                                     roleBadge(msg.role)
                                     Text(dateLabel(ms: msg.ts))
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(OATheme.Colors.textSecondary)
                                 }
                                 ForEach(msg.parts.indices, id: \.self) { idx in
                                     if case let .text(t) = msg.parts[idx] {
                                         Text(t.text)
                                             .textSelection(.enabled)
                                             .font(.body)
+                                            .foregroundStyle(OATheme.Colors.textPrimary)
                                     }
                                 }
                             }
@@ -53,6 +54,8 @@ struct AcpThreadView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(OATheme.Colors.background)
                     .onAppear {
                         scrollToBottom(proxy)
                     }
@@ -77,7 +80,7 @@ struct AcpThreadView: View {
         }()
         return Label(label, systemImage: sys)
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(OATheme.Colors.textSecondary)
     }
 
     private func dateLabel(ms: Int64) -> String {

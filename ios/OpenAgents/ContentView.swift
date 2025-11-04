@@ -20,6 +20,7 @@ struct ContentView: View {
         } detail: {
             AcpThreadView(url: selectedURL)
         }
+        .preferredColorScheme(.dark)
     }
 }
 
