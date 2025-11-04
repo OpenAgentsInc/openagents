@@ -120,8 +120,12 @@ extension MyController: MobileWebSocketClientDelegate {
 ```
 
 ## Discovery (future work)
+Bonjour/mDNS discovery is available behind a feature flag. Until the iOS multicast entitlement is approved for the app, discovery is disabled by default and the app uses Manual Connect instead.
 
-Use Bonjour/mDNS to advertise a service like `_codexd._tcp` with a TXT record containing `{version: 1}`. The iOS app can browse for this service and resolve to host:port, then connect via WebSocket.
+- Enable discovery: set `OPENAGENTS_ENABLE_MULTICAST=1` (or `enable_multicast=true` in `UserDefaults`).
+- Otherwise, use Manual Connect from the Bridge status chip and enter the desktop’s LAN IP and port `9099`.
+
+See `docs/ios-bridge/discovery-and-permissions.md` for permissions and the fallback.
 
 ## Security
 
