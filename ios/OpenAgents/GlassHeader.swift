@@ -12,6 +12,9 @@ struct GlassHeader: View {
                         Rectangle()
                             .fill(Color.clear)
                             .glassEffect(.regular, in: Rectangle())
+                        // Darken the glass so it reads as blackish in our theme
+                        Rectangle()
+                            .fill(LinearGradient(colors: [Color.black.opacity(0.55), Color.black.opacity(0.25), Color.clear], startPoint: .top, endPoint: .bottom))
                         HStack(spacing: 8) {
                             Image(systemName: "sparkles")
                                 .imageScale(.medium)
@@ -39,6 +42,9 @@ struct GlassHeader: View {
     private var fallbackHeader: some View {
         ZStack(alignment: .leading) {
             Rectangle().fill(.ultraThinMaterial)
+            // Dark tint overlay to avoid flat gray; matches offblack theme
+            Rectangle()
+                .fill(LinearGradient(colors: [Color.black.opacity(0.55), Color.black.opacity(0.25), Color.clear], startPoint: .top, endPoint: .bottom))
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .imageScale(.medium)
