@@ -5,16 +5,15 @@ struct TopEdgeGradient: View {
     var body: some View {
         LinearGradient(
             colors: [
-                Color.black.opacity(0.55),
-                Color.black.opacity(0.28),
+                Color.black.opacity(0.78),
+                Color.black.opacity(0.48),
                 Color.black.opacity(0.0)
             ],
             startPoint: .top,
             endPoint: .bottom
         )
-        .frame(height: 84)
+        .frame(height: 120)
         .ignoresSafeArea(edges: .top)
         .allowsHitTesting(false)
     }
 }
-
