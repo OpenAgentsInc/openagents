@@ -62,25 +62,30 @@ struct HistorySidebar: View {
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
             var dbg: [String] = []
-            // Fast path: compute Codex and Claude exact project top-10 only
+            // Fast path: Codex only by default; Claude behind feature flag
             let codexRows = LocalCodexDiscovery.loadAllSummaries(topK: 10)
-            let claudeExact = LocalClaudeDiscovery.scanExactProjectTopK(topK: 10)
-            dbg.append("claudeExactProjectCount=\(claudeExact.count)")
-            // If Claude still empty, fall back to bases top-10 scan (capped)
-            var claudeRows = claudeExact
-            if claudeRows.isEmpty {
-                let claudeBases = LocalClaudeDiscovery.defaultBases()
-                dbg.append("claudeBases=\(claudeBases.map{ $0.path })")
-                var urls: [URL] = []
-                for b in claudeBases { urls.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10)) }
-                dbg.append("claudeTopKURLs=\(urls.map{ $0.lastPathComponent })")
-                claudeRows = urls.map { url in
-                    let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
-                    return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
+            var merged = codexRows
+            if Features.claudeEnabled {
+                let claudeExact = LocalClaudeDiscovery.scanExactProjectTopK(topK: 10)
+                dbg.append("claudeExactProjectCount=\(claudeExact.count)")
+                var claudeRows = claudeExact
+                if claudeRows.isEmpty {
+                    let claudeBases = LocalClaudeDiscovery.defaultBases()
+                    dbg.append("claudeBases=\(claudeBases.map{ $0.path })")
+                    var urls: [URL] = []
+                    for b in claudeBases { urls.append(contentsOf: LocalClaudeDiscovery.listRecentTopN(at: b, topK: 10)) }
+                    dbg.append("claudeTopKURLs=\(urls.map{ $0.lastPathComponent })")
+                    claudeRows = urls.map { url in
+                        let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
+                        return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
+                    }
                 }
+                dbg.append("codexCount=\(codexRows.count) claudeCount=\(claudeRows.count)")
+                merged += claudeRows
+            } else {
+                dbg.append("claude=disabled")
+                dbg.append("codexCount=\(codexRows.count) claudeCount=0")
             }
-            dbg.append("codexCount=\(codexRows.count) claudeCount=\(claudeRows.count)")
-            var merged = codexRows + claudeRows
             merged.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
             if merged.count > 20 { merged = Array(merged.prefix(20)) }
             DispatchQueue.main.async {
