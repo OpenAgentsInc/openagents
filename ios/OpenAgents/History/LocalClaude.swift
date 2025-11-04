@@ -20,6 +20,7 @@ struct LocalClaudeDiscovery {
                 out.append(URL(fileURLWithPath: String(seg)).standardizedFileURL)
             }
         }
+        #if os(macOS)
         let home = fm.homeDirectoryForCurrentUser
         let home2 = URL(fileURLWithPath: NSHomeDirectory())
         let realHome = URL(fileURLWithPath: "/Users/\(NSUserName())", isDirectory: true)
@@ -43,19 +44,15 @@ struct LocalClaudeDiscovery {
             realHome.appendingPathComponent(".claude/local", isDirectory: true),
             realHome.appendingPathComponent(".claude", isDirectory: true),
         ]
-        // Always include candidates; sandbox checks can lie on fileExists
         for c in candidates { out.append(c) }
-        // Fallback: any 'projects' dir under ~/.claude
         for root in [home.appendingPathComponent(".claude", isDirectory: true), home2.appendingPathComponent(".claude", isDirectory: true), realHome.appendingPathComponent(".claude", isDirectory: true)] {
           if let en = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
-            for case let p as URL in en {
-                if p.lastPathComponent == "projects" { out.append(p) }
-            }
+            for case let p as URL in en { if p.lastPathComponent == "projects" { out.append(p) } }
           }
         }
-        // Also add exact Claude project folder used for this repo if present
         let exactProject = realHome.appendingPathComponent(".claude/projects/-Users-christopherdavid-code-openagents", isDirectory: true)
         out.append(exactProject)
+        #endif
         // dedupe
         var uniq: [URL] = []
         var seen: Set<String> = []
