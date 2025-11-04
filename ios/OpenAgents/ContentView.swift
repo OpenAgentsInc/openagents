@@ -6,19 +6,19 @@
 //
 
 import SwiftUI
-import SwiftData
-#if canImport(OpenAgentsCore)
-import OpenAgentsCore
-#endif
-
 struct ContentView: View {
+    @State private var selectedRow: LocalThreadSummary? = nil
+    @State private var selectedURL: URL? = nil
+
     var body: some View {
         NavigationSplitView {
-            HistorySidebar()
+            HistorySidebar(onSelect: { row, url in
+                self.selectedRow = row
+                self.selectedURL = url
+            })
+            .navigationSplitViewColumnWidth(min: 220, ideal: 260)
         } detail: {
-            Text("Select a thread")
-                .font(.headline)
-                .foregroundStyle(.secondary)
+            RawThreadView(url: selectedURL)
         }
     }
 }

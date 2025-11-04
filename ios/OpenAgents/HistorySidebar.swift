@@ -1,21 +1,22 @@
 import SwiftUI
 
 struct HistorySidebar: View {
-    @State private var rows: [LocalThreadSummary] = []
+    var onSelect: ((LocalThreadSummary, URL?) -> Void)? = nil
+    @State private var items: [(LocalThreadSummary, URL?)] = []
     @State private var isLoading = false
     @State private var debugLines: [String] = []
 
     var body: some View {
         List {
             Section(header: Label("History", systemImage: "clock")) {
-                if isLoading && rows.isEmpty {
+                if isLoading && items.isEmpty {
                     HStack {
                         ProgressView()
                         Text("Loading…")
-                    }
+                    }.buttonStyle(.plain)
                 }
-                if !rows.isEmpty {
-                    Text("\(rows.count) chats found")
+                if !items.isEmpty {
+                    Text("\(items.count) chats found")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if !isLoading {
@@ -32,10 +33,11 @@ struct HistorySidebar: View {
                         Button("Select Codex Folder…", action: selectCodexFolder)
                             .buttonStyle(.bordered)
                         #endif
-                    }
+                    }.buttonStyle(.plain)
                 }
-                ForEach(rows.prefix(20), id: \.uniqueKey) { row in
-                    NavigationLink(value: row.id) {
+                ForEach(Array(items.prefix(20).enumerated()), id: \.0) { _, pair in
+                    let row = pair.0
+                    Button(action: { onSelect?(row, pair.1) }) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(nonEmptyTitle(row) ?? "Thread")
                                 .font(.body)
@@ -49,7 +51,7 @@ struct HistorySidebar: View {
                                 providerBadge(for: row.source)
                             }
                         }
-                    }
+                    }.buttonStyle(.plain)
                 }
             }
         }
@@ -63,8 +65,18 @@ struct HistorySidebar: View {
         DispatchQueue.global(qos: .userInitiated).async {
             var dbg: [String] = []
             // Fast path: Codex only by default; Claude behind feature flag
-            let codexRows = LocalCodexDiscovery.loadAllSummaries(topK: 10)
-            var merged = codexRows
+            let codexBases = LocalCodexDiscovery.discoverBaseDirs()
+            var codexURLs: [URL] = []
+            for b in codexBases { codexURLs.append(contentsOf: LocalCodexScanner.listRecentTopN(at: b, topK: 10)) }
+            codexURLs.sort { LocalCodexScanner.fileMTime($0) > LocalCodexScanner.fileMTime($1) }
+            if codexURLs.count > 10 { codexURLs = Array(codexURLs.prefix(10)) }
+            var merged: [(LocalThreadSummary, URL?)] = codexURLs.map { url in
+                let base = codexBases.first { url.path.hasPrefix($0.path) } ?? url.deletingLastPathComponent()
+                let id = LocalCodexScanner.scanForThreadID(url) ?? LocalCodexScanner.relativeId(for: url, base: base)
+                let updated = LocalCodexScanner.fileMTime(url)
+                let row = LocalThreadSummary(id: id, title: nil, source: "codex", created_at: nil, updated_at: updated, last_message_ts: nil, message_count: nil)
+                return (row, url)
+            }
             if Features.claudeEnabled {
                 let claudeExact = LocalClaudeDiscovery.scanExactProjectTopK(topK: 10)
                 dbg.append("claudeExactProjectCount=\(claudeExact.count)")
@@ -78,19 +90,19 @@ struct HistorySidebar: View {
                     claudeRows = urls.map { url in
                         let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
                         return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
-                    }
+                    }.buttonStyle(.plain)
                 }
                 dbg.append("codexCount=\(codexRows.count) claudeCount=\(claudeRows.count)")
-                merged += claudeRows
+                merged += claudeRows.map { ($0, nil) }
             } else {
                 dbg.append("claude=disabled")
                 dbg.append("codexCount=\(codexRows.count) claudeCount=0")
             }
             // Sort only what we have; Codex-only is already top-10
-            merged.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
+            merged.sort { ($0.0.last_message_ts ?? $0.0.updated_at) > ($1.0.last_message_ts ?? $1.0.updated_at) }
             if merged.count > 20 { merged = Array(merged.prefix(20)) }
             DispatchQueue.main.async {
-                withAnimation { self.rows = merged }
+                withAnimation { self.items = merged }
                 self.isLoading = false
                 self.debugLines = dbg
             }
@@ -148,7 +160,7 @@ extension HistorySidebar {
         if panel.runModal() == .OK, let url = panel.url {
             LocalCodexDiscovery.setUserOverride(url)
             self.isLoading = false
-            self.rows = []
+            self.items = []
             self.debugLines = ["override=\(url.path)"]
             self.load()
         }
