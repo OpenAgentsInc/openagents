@@ -86,6 +86,7 @@ struct HistorySidebar: View {
                 dbg.append("claude=disabled")
                 dbg.append("codexCount=\(codexRows.count) claudeCount=0")
             }
+            // Sort only what we have; Codex-only is already top-10
             merged.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
             if merged.count > 20 { merged = Array(merged.prefix(20)) }
             DispatchQueue.main.async {
