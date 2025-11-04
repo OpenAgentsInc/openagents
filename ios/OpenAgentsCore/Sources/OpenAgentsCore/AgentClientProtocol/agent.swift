@@ -30,7 +30,7 @@ public extension ACP.Agent {
 
     /// Capabilities supported by the client (placeholder surface).
     /// Mirrors `ClientCapabilities` in Rust `agent.rs`.
-    struct ClientCapabilities: Codable, Equatable {
+    struct ClientCapabilities: Codable {
         public var fs: FileSystemCapability
         public var terminal: Bool
         public var _meta: [String: AnyEncodable]?
@@ -40,7 +40,7 @@ public extension ACP.Agent {
     }
 
     /// File system capabilities supported by the client
-    struct FileSystemCapability: Codable, Equatable {
+    struct FileSystemCapability: Codable {
         public var read_text_file: Bool
         public var write_text_file: Bool
         public var _meta: [String: AnyEncodable]?
@@ -51,7 +51,7 @@ public extension ACP.Agent {
 
     /// Capabilities supported by the agent (placeholder surface).
     /// Mirrors `AgentCapabilities` in Rust `agent.rs`.
-    struct AgentCapabilities: Codable, Equatable {
+    struct AgentCapabilities: Codable {
         public var load_session: Bool
         public var prompt_capabilities: PromptCapabilities
         public var mcp_capabilities: McpCapabilities
@@ -67,7 +67,7 @@ public extension ACP.Agent {
         }
     }
 
-    struct PromptCapabilities: Codable, Equatable {
+    struct PromptCapabilities: Codable {
         public var image: Bool
         public var audio: Bool
         public var embedded_context: Bool
@@ -77,7 +77,7 @@ public extension ACP.Agent {
         }
     }
 
-    struct McpCapabilities: Codable, Equatable {
+    struct McpCapabilities: Codable {
         public var http: Bool
         public var sse: Bool
         public var _meta: [String: AnyEncodable]?
@@ -163,7 +163,7 @@ public extension ACP.Agent {
 
 // MARK: - Env + headers (for MCP / terminal env)
 public extension ACP.Agent {
-    struct EnvVariable: Codable, Equatable {
+    struct EnvVariable: Codable {
         public var name: String
         public var value: String
         public var _meta: [String: AnyEncodable]?
@@ -171,7 +171,7 @@ public extension ACP.Agent {
             self.name = name; self.value = value; self._meta = _meta
         }
     }
-    struct HttpHeader: Codable, Equatable {
+    struct HttpHeader: Codable {
         public var name: String
         public var value: String
         public var _meta: [String: AnyEncodable]?
@@ -212,17 +212,14 @@ public extension ACP.Agent {
         public func encode(to encoder: Encoder) throws {
             switch self {
             case .http(let name, let url, let headers):
-                var d = encoder
                 struct Http: Codable { let type: String; let name: String; let url: String; let headers: [HttpHeader] }
-                try Http(type: "http", name: name, url: url, headers: headers).encode(to: &d)
+                try Http(type: "http", name: name, url: url, headers: headers).encode(to: encoder)
             case .sse(let name, let url, let headers):
-                var d = encoder
                 struct Sse: Codable { let type: String; let name: String; let url: String; let headers: [HttpHeader] }
-                try Sse(type: "sse", name: name, url: url, headers: headers).encode(to: &d)
+                try Sse(type: "sse", name: name, url: url, headers: headers).encode(to: encoder)
             case .stdio(let name, let command, let args, let env):
-                var d = encoder
                 struct Stdio: Codable { let type: String; let name: String; let command: String; let args: [String]; let env: [EnvVariable] }
-                try Stdio(type: "stdio", name: name, command: command, args: args, env: env).encode(to: &d)
+                try Stdio(type: "stdio", name: name, command: command, args: args, env: env).encode(to: encoder)
             }
         }
     }

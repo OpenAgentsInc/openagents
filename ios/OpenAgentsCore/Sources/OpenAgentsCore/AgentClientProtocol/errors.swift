@@ -4,7 +4,7 @@ import Foundation
  JSON-RPC error object and ACP-specific error codes, mirroring Rust `error.rs`.
 */
 
-public struct ACPError: Codable, Equatable, Error {
+public struct ACPError: Codable, Error {
     public var code: Int
     public var message: String
     public var data: AnyEncodable?
@@ -23,4 +23,3 @@ public enum ACPErrorCode {
     public static let authRequired = (-32000, "Authentication required")
     public static let resourceNotFound = (-32002, "Resource not found")
 }
-

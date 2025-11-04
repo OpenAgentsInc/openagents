@@ -13,7 +13,7 @@ public extension ACP.Client {
         public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(value) }
     }
     enum PermissionOptionKind: String, Codable { case allow_once = "allow_once", allow_always = "allow_always", reject_once = "reject_once", reject_always = "reject_always" }
-    struct PermissionOption: Codable, Equatable {
+    struct PermissionOption: Codable {
         public var id: PermissionOptionId
         public var name: String
         public var kind: PermissionOptionKind
@@ -23,7 +23,7 @@ public extension ACP.Client {
             self.id = id; self.name = name; self.kind = kind; self._meta = _meta
         }
     }
-    struct RequestPermissionRequest: Codable, Equatable {
+    struct RequestPermissionRequest: Codable {
         public var session_id: ACPSessionId
         public var tool_call: ACPToolCallUpdateWire
         public var options: [PermissionOption]
@@ -32,7 +32,7 @@ public extension ACP.Client {
             self.session_id = session_id; self.tool_call = tool_call; self.options = options; self._meta = _meta
         }
     }
-    enum RequestPermissionOutcome: Codable, Equatable {
+    enum RequestPermissionOutcome: Codable {
         case cancelled
         case selected(option_id: PermissionOptionId)
         enum CodingKeys: String, CodingKey { case outcome, option_id }
@@ -55,14 +55,14 @@ public extension ACP.Client {
             }
         }
     }
-    struct RequestPermissionResponse: Codable, Equatable {
+    struct RequestPermissionResponse: Codable {
         public var outcome: RequestPermissionOutcome
         public var _meta: [String: AnyEncodable]?
         public init(outcome: RequestPermissionOutcome, _meta: [String: AnyEncodable]? = nil) { self.outcome = outcome; self._meta = _meta }
     }
 
     // MARK: - File system
-    struct ReadTextFileRequest: Codable, Equatable {
+    struct ReadTextFileRequest: Codable {
         public var session_id: ACPSessionId
         public var path: String
         public var line: UInt32?
@@ -72,29 +72,29 @@ public extension ACP.Client {
             self.session_id = session_id; self.path = path; self.line = line; self.limit = limit; self._meta = _meta
         }
     }
-    struct ReadTextFileResponse: Codable, Equatable {
+    struct ReadTextFileResponse: Codable {
         public var content: String
         public var _meta: [String: AnyEncodable]?
         public init(content: String, _meta: [String: AnyEncodable]? = nil) { self.content = content; self._meta = _meta }
     }
-    struct WriteTextFileRequest: Codable, Equatable {
+    struct WriteTextFileRequest: Codable {
         public var session_id: ACPSessionId
         public var path: String
         public var content: String
         public var _meta: [String: AnyEncodable]?
         public init(session_id: ACPSessionId, path: String, content: String, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.path = path; self.content = content; self._meta = _meta }
     }
-    struct WriteTextFileResponse: Codable, Equatable {
+    struct WriteTextFileResponse: Codable {
         public var _meta: [String: AnyEncodable]?
         public init(_meta: [String: AnyEncodable]? = nil) { self._meta = _meta }
     }
 
     // MARK: - Terminal (minimal)
-    struct TerminalId: Codable, Equatable, Hashable { public let value: String; public init(_ v: String) { self.value = v }
+    struct TerminalId: Codable, Hashable { public let value: String; public init(_ v: String) { self.value = v }
         public init(from decoder: Decoder) throws { let c = try decoder.singleValueContainer(); self.value = try c.decode(String.self) }
         public func encode(to encoder: Encoder) throws { var c = encoder.singleValueContainer(); try c.encode(value) }
     }
-    struct CreateTerminalRequest: Codable, Equatable {
+    struct CreateTerminalRequest: Codable {
         public var session_id: ACPSessionId
         public var command: String
         public var args: [String]
@@ -106,34 +106,34 @@ public extension ACP.Client {
             self.session_id = session_id; self.command = command; self.args = args; self.env = env; self.cwd = cwd; self.output_byte_limit = output_byte_limit; self._meta = _meta
         }
     }
-    struct CreateTerminalResponse: Codable, Equatable {
+    struct CreateTerminalResponse: Codable {
         public var terminal_id: TerminalId
         public var _meta: [String: AnyEncodable]?
         public init(terminal_id: TerminalId, _meta: [String: AnyEncodable]? = nil) { self.terminal_id = terminal_id; self._meta = _meta }
     }
-    struct TerminalOutputRequest: Codable, Equatable {
+    struct TerminalOutputRequest: Codable {
         public var session_id: ACPSessionId
         public var terminal_id: TerminalId
         public var _meta: [String: AnyEncodable]?
         public init(session_id: ACPSessionId, terminal_id: TerminalId, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.terminal_id = terminal_id; self._meta = _meta }
     }
-    struct TerminalExitStatus: Codable, Equatable {
+    struct TerminalExitStatus: Codable {
         public var exit_code: UInt32?
         public var signal: String?
         public var _meta: [String: AnyEncodable]?
         public init(exit_code: UInt32? = nil, signal: String? = nil, _meta: [String: AnyEncodable]? = nil) { self.exit_code = exit_code; self.signal = signal; self._meta = _meta }
     }
-    struct TerminalOutputResponse: Codable, Equatable {
+    struct TerminalOutputResponse: Codable {
         public var output: String
         public var truncated: Bool
         public var exit_status: TerminalExitStatus?
         public var _meta: [String: AnyEncodable]?
         public init(output: String, truncated: Bool, exit_status: TerminalExitStatus? = nil, _meta: [String: AnyEncodable]? = nil) { self.output = output; self.truncated = truncated; self.exit_status = exit_status; self._meta = _meta }
     }
-    struct ReleaseTerminalRequest: Codable, Equatable { public var session_id: ACPSessionId; public var terminal_id: TerminalId; public var _meta: [String: AnyEncodable]?; public init(session_id: ACPSessionId, terminal_id: TerminalId, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.terminal_id = terminal_id; self._meta = _meta } }
-    struct ReleaseTerminalResponse: Codable, Equatable { public var _meta: [String: AnyEncodable]?; public init(_meta: [String: AnyEncodable]? = nil) { self._meta = _meta } }
-    struct KillTerminalCommandRequest: Codable, Equatable { public var session_id: ACPSessionId; public var terminal_id: TerminalId; public var _meta: [String: AnyEncodable]?; public init(session_id: ACPSessionId, terminal_id: TerminalId, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.terminal_id = terminal_id; self._meta = _meta } }
-    struct KillTerminalCommandResponse: Codable, Equatable { public var _meta: [String: AnyEncodable]?; public init(_meta: [String: AnyEncodable]? = nil) { self._meta = _meta } }
-    struct WaitForTerminalExitRequest: Codable, Equatable { public var session_id: ACPSessionId; public var terminal_id: TerminalId; public var _meta: [String: AnyEncodable]?; public init(session_id: ACPSessionId, terminal_id: TerminalId, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.terminal_id = terminal_id; self._meta = _meta } }
-    struct WaitForTerminalExitResponse: Codable, Equatable { public var exit_status: TerminalExitStatus; public var _meta: [String: AnyEncodable]?; public init(exit_status: TerminalExitStatus, _meta: [String: AnyEncodable]? = nil) { self.exit_status = exit_status; self._meta = _meta } }
+    struct ReleaseTerminalRequest: Codable { public var session_id: ACPSessionId; public var terminal_id: TerminalId; public var _meta: [String: AnyEncodable]?; public init(session_id: ACPSessionId, terminal_id: TerminalId, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.terminal_id = terminal_id; self._meta = _meta } }
+    struct ReleaseTerminalResponse: Codable { public var _meta: [String: AnyEncodable]?; public init(_meta: [String: AnyEncodable]? = nil) { self._meta = _meta } }
+    struct KillTerminalCommandRequest: Codable { public var session_id: ACPSessionId; public var terminal_id: TerminalId; public var _meta: [String: AnyEncodable]?; public init(session_id: ACPSessionId, terminal_id: TerminalId, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.terminal_id = terminal_id; self._meta = _meta } }
+    struct KillTerminalCommandResponse: Codable { public var _meta: [String: AnyEncodable]?; public init(_meta: [String: AnyEncodable]? = nil) { self._meta = _meta } }
+    struct WaitForTerminalExitRequest: Codable { public var session_id: ACPSessionId; public var terminal_id: TerminalId; public var _meta: [String: AnyEncodable]?; public init(session_id: ACPSessionId, terminal_id: TerminalId, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.terminal_id = terminal_id; self._meta = _meta } }
+    struct WaitForTerminalExitResponse: Codable { public var exit_status: TerminalExitStatus; public var _meta: [String: AnyEncodable]?; public init(exit_status: TerminalExitStatus, _meta: [String: AnyEncodable]? = nil) { self.exit_status = exit_status; self._meta = _meta } }
 }
