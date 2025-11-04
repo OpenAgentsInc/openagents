@@ -1,7 +1,7 @@
 # ADR 0011 — Swift Cross‑Platform App (macOS + iOS) Experiment
 
  - Date: 2025-11-03
- - Status: Proposed — Experiment
+ - Status: In Progress — Desktop‑first implementation
 
 ## Context
 
@@ -92,6 +92,12 @@ Scope and guardrails for the experiment:
 - History list (threads) → detail (thread timeline) using Tinyvex rows; a settings view for connection and engine selection; a composer to submit prompts.
 - Render ACP‑derived content consistently with our Expo renderers (structure, not identical visuals).
 
+Update — current state (2025‑11‑04)
+- Implemented macOS app shell with SwiftUI and Liquid Glass styling per ADR‑0012 (transparent toolbar, top gradient scroll‑edge, off‑black theme).
+- Berkeley Mono is the global app font; Markdown rendering in message bodies.
+- ACP renderers wired: assistant/user messages, tool calls/results; plan state pending.
+- Stable, clickable composer via `safeAreaInset(edge: .bottom)` (TextField + Send) — currently appends locally; WS wiring next.
+
 6) Security and configuration
 - Respect the existing token model when connecting to a bridge (`~/.openagents/bridge.json`).
 - No new HTTP endpoints; when local, use process/stdio; when remote, use the existing WS contract.
@@ -109,6 +115,10 @@ Scope and guardrails for the experiment:
 - No changes required in the Expo app or Rust bridge; both continue to function unchanged.
 - All Swift models are strongly typed (`Codable`), snake_case, and contain no dynamic `Any` usage.
 
+Interim acceptance (in progress)
+- Reads Codex sessions for history; renders ACP messages + tool calls/results; Markdown enabled; composer present.
+- Bridge write path and live session streaming are WIP.
+
 ## Open Questions
 
 - Provider translation: Does the Codex CLI emit ACP directly in our target flows? If not, how much of the Rust ACP translator must be ported to Swift for the experiment? We may temporarily implement a minimal subset or explore linking the Rust translator via FFI if needed.
@@ -123,4 +133,3 @@ Scope and guardrails for the experiment:
 - ADR‑0007 — Agent Client Protocol as Canonical Runtime Contract
 - ADR‑0009 — Desktop‑Managed Bridge (Tauri)
 - ADR‑0010 — Desktop E2E with WebdriverIO (Tauri)
-
