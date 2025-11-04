@@ -51,6 +51,8 @@ final class BridgeManager: ObservableObject {
     private var client: MobileWebSocketClient?
     private var browser: BonjourBrowser?
     @Published var threads: [ThreadSummary] = []
+    @Published var updates: [ACP.Client.SessionNotificationWire] = []
+    @Published var currentSessionId: ACPSessionId? = nil
 
     func start() {
         // Prefer Bonjour discovery when feature flag is enabled
@@ -134,7 +136,12 @@ extension BridgeManager: MobileWebSocketClientDelegate {
         if method == ACPRPC.sessionUpdate {
             if let note = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: payload) {
                 log("client", "session.update for \(note.session_id.value)")
-                // TODO: route to UI timeline; for now, log only
+                // Append to ring buffer for UI to observe
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.updates.append(note)
+                    if self.updates.count > 200 { self.updates.removeFirst(self.updates.count - 200) }
+                }
             }
         } else {
             if let s = String(data: payload, encoding: .utf8) { log("client", "notify \(method): \(s)") }

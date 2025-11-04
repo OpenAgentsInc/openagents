@@ -6,6 +6,7 @@ struct AcpThreadView: View {
     let maxMessages: Int = 25
     var onTitleChange: ((String) -> Void)? = nil
 
+    @EnvironmentObject var bridge: BridgeManager
     @State private var isLoading = false
     @State private var error: String? = nil
     
@@ -158,6 +159,13 @@ struct AcpThreadView: View {
         .background(OATheme.Colors.background)
         .onChange(of: url?.path) { _, _ in load() }
         .onAppear(perform: load)
+        #if os(iOS)
+        .onChange(of: bridge.updates.count) { _, _ in
+            if let last = bridge.updates.last {
+                appendUpdate(last)
+            }
+        }
+        #endif
     }
 
     func roleBadge(_ role: ACPRole) -> some View {
@@ -299,11 +307,38 @@ struct AcpThreadView: View {
             ts: Int64(Date().timeIntervalSince1970 * 1000)
         )
         timeline.append(.message(msg))
+        draft = ""
         #if os(iOS)
         bridge.sendPrompt(text: text)
         #endif
-        draft = ""
     }
+
+    #if os(iOS)
+    func appendUpdate(_ note: ACP.Client.SessionNotificationWire) {
+        switch note.update {
+        case .userMessageChunk(let chunk):
+            if case let .text(s) = chunk.content {
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: s))], ts: nowMs())
+                timeline.append(.message(m))
+            }
+        case .agentMessageChunk(let chunk):
+            if case let .text(s) = chunk.content {
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
+                timeline.append(.message(m))
+            }
+        case .agentThoughtChunk(let chunk):
+            if case let .text(s) = chunk.content {
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
+                timeline.append(.reasoning(m))
+            }
+        case .plan(let p):
+            let ps = ACPPlanState(status: .running, summary: nil, steps: p.steps.map { $0.title }, ts: nowMs())
+            timeline.append(.plan(ps))
+        }
+    }
+    #endif
+
+    func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 }
 // Close AcpThreadView struct
 
