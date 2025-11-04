@@ -62,6 +62,7 @@ struct HistorySidebar: View {
                             HStack(spacing: 8) {
                                 if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
                                     Label(relative(ts), systemImage: "clock")
+                                        .symbolRenderingMode(.monochrome)
                                         .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption))
                                         .foregroundStyle(OATheme.Colors.textTertiary)
                                 }
@@ -191,10 +192,12 @@ struct HistorySidebar: View {
         let s = source.lowercased()
         if s == "codex" {
             Label("Codex", systemImage: "curlybraces")
+                .symbolRenderingMode(.monochrome)
                 .font(.caption)
                 .foregroundStyle(OATheme.Colors.textTertiary)
         } else if s == "claude_code" || s == "claude" {
             Label("Claude Code", systemImage: "bolt")
+                .symbolRenderingMode(.monochrome)
                 .font(.caption)
                 .foregroundStyle(OATheme.Colors.textTertiary)
         } else {
