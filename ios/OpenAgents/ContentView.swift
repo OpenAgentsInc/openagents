@@ -19,29 +19,20 @@ struct ContentView: View {
                 })
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260)
             } detail: {
-                if let row = selectedRow, let u = selectedURL {
-                    VStack(spacing: 0) {
-                        ThreadHeaderView(row: row, url: u)
-                        AcpThreadView(url: selectedURL)
-                    }
-                } else {
-                    AcpThreadView(url: selectedURL)
-                }
-            }
-            // Show our dark glass header ONLY when there is no selected thread
-            if selectedURL == nil {
-                GlassHeader(title: "OpenAgents")
-                    .allowsHitTesting(false)
+                // Remove custom header to avoid duplication under system toolbar
+                AcpThreadView(url: selectedURL)
             }
         }
         .background(OATheme.Colors.background.ignoresSafeArea())
         .task { FMProbe.logAvailability() }
         #if os(iOS)
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         #endif
         #if os(macOS)
-        .toolbar(.hidden, for: .windowToolbar)
+        .toolbar(.visible, for: .windowToolbar)
+        .toolbarBackground(.hidden, for: .windowToolbar)
         #endif
         .preferredColorScheme(.dark)
     }
