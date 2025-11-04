@@ -13,6 +13,10 @@ public protocol MobileWebSocketClientDelegate: AnyObject {
 
     /// Called when a JSON-RPC notification is received (ACP path)
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data)
+
+    /// Called when a JSON-RPC request is received (client-handled services).
+    /// Implementations should synchronously return a JSON-encoded result Data, or nil to send a JSON-RPC error.
+    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCRequest method: String, id: String, params: Data) -> Data?
 }
 
 public final class MobileWebSocketClient {
@@ -235,11 +239,29 @@ public final class MobileWebSocketClient {
                         self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
                     }
                 }
-            } else {
+            } else if root["id"] == nil {
                 if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
+                    }
+                }
+            } else if let idAny = root["id"], let idStr: String = (idAny as? String) ?? (idAny as? Int).map(String.init) {
+                // Request path (client-handled) → delegate for a synchronous result
+                let paramsData = (try? JSONSerialization.data(withJSONObject: root["params"] ?? [:])) ?? Data("{}".utf8)
+                let resultData = delegate?.mobileWebSocketClient(self, didReceiveJSONRPCRequest: method, id: idStr, params: paramsData)
+                if let rd = resultData,
+                   let respJSON = try? JSONSerialization.jsonObject(with: rd) {
+                    let envelope: [String: Any] = ["jsonrpc": "2.0", "id": idStr, "result": respJSON]
+                    if let out = try? JSONSerialization.data(withJSONObject: envelope), let text = String(data: out, encoding: .utf8) {
+                        webSocketTask?.send(.string(text)) { _ in }
+                    }
+                } else {
+                    // Send JSON-RPC error if unsupported
+                    let err: [String: Any] = ["code": -32601, "message": "Method not implemented"]
+                    let envelope: [String: Any] = ["jsonrpc": "2.0", "id": idStr, "error": err]
+                    if let out = try? JSONSerialization.data(withJSONObject: envelope), let text = String(data: out, encoding: .utf8) {
+                        webSocketTask?.send(.string(text)) { _ in }
                     }
                 }
             }

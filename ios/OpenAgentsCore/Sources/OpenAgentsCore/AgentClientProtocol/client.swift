@@ -24,9 +24,11 @@ public extension ACP.Client {
     /// Mirrors `ContentBlock` (full surface TBD).
     enum ContentBlock: Codable {
         case text(String)
+        case resource_link(ResourceLink)
+        case image(Image)
 
-        private enum CodingKeys: String, CodingKey { case type, text }
-        private enum Discriminator: String, Codable { case text }
+        private enum CodingKeys: String, CodingKey { case type, text, url, title, alt }
+        private enum Discriminator: String, Codable { case text, resource_link, image }
 
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -34,6 +36,14 @@ public extension ACP.Client {
             switch t {
             case .text:
                 self = .text(try c.decode(String.self, forKey: .text))
+            case .resource_link:
+                let url = try c.decode(String.self, forKey: .url)
+                let title = try? c.decode(String.self, forKey: .title)
+                self = .resource_link(ResourceLink(url: url, title: title))
+            case .image:
+                let url = try c.decode(String.self, forKey: .url)
+                let alt = try? c.decode(String.self, forKey: .alt)
+                self = .image(Image(url: url, alt: alt))
             }
         }
         public func encode(to encoder: Encoder) throws {
@@ -42,7 +52,26 @@ public extension ACP.Client {
             case .text(let s):
                 try c.encode(Discriminator.text, forKey: .type)
                 try c.encode(s, forKey: .text)
+            case .resource_link(let link):
+                try c.encode(Discriminator.resource_link, forKey: .type)
+                try c.encode(link.url, forKey: .url)
+                if let t = link.title { try c.encode(t, forKey: .title) }
+            case .image(let img):
+                try c.encode(Discriminator.image, forKey: .type)
+                try c.encode(img.url, forKey: .url)
+                if let a = img.alt { try c.encode(a, forKey: .alt) }
             }
+        }
+
+        public struct ResourceLink: Codable, Equatable {
+            public var url: String
+            public var title: String?
+            public init(url: String, title: String? = nil) { self.url = url; self.title = title }
+        }
+        public struct Image: Codable, Equatable {
+            public var url: String
+            public var alt: String?
+            public init(url: String, alt: String? = nil) { self.url = url; self.alt = alt }
         }
     }
 
@@ -105,4 +134,3 @@ public extension ACP.Client {
         public init(steps: [String]) { self.steps = steps }
     }
 }
-
