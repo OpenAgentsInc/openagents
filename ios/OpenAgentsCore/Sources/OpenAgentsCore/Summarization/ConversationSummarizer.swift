@@ -7,9 +7,27 @@ public enum ConversationSummarizer {
     ///   - preferOnDeviceModel: Reserved for future use with FoundationModels. Currently ignored.
     /// - Returns: A short title suitable for a list row.
     public static func summarizeTitle(messages: [ACPMessage], preferOnDeviceModel: Bool = true) async -> String {
-        // Use the first user message (~5 words). This is our dev-default.
+        // Try on-device Foundation Model first when available.
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *), preferOnDeviceModel {
+            let trimmed = messages.filter { $0.role == .user || $0.role == .assistant }
+            if let fm = await FoundationModelSummarizer.trySummarizeTitle(messages: trimmed) {
+                if !fm.isEmpty {
+                    print("[Summary] used=foundation_model title=\(fm)")
+                    return fm
+                } else {
+                    print("[Summary] fm_empty_fallback=true")
+                }
+            } else {
+                print("[Summary] fm_unavailable_or_failed=true")
+            }
+        }
+        #endif
+        // Fallback: first user message (~5 words), skipping preface/system-like tags.
         let title = firstUserFiveWords(messages: messages)
-        return title.isEmpty ? "Conversation" : title
+        let out = title.isEmpty ? "Conversation" : title
+        print("[Summary] used=first_user_5 title=\(out)")
+        return out
     }
 
     static func heuristicTitle(from texts: [String]) -> String {
@@ -42,8 +60,19 @@ public enum ConversationSummarizer {
         }.joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return "" }
+        if isSystemPreface(text) { return "" }
         let words = text.split(whereSeparator: { $0.isWhitespace })
         return words.prefix(5).joined(separator: " ")
+    }
+
+    public static func isSystemPreface(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t.hasPrefix("<user_instructions>") { return true }
+        if t.hasPrefix("<environment_context>") { return true }
+        if t.hasPrefix("<env_context>") { return true }
+        if t.hasPrefix("<system>") { return true }
+        if t.hasPrefix("<attachments>") { return true }
+        return false
     }
 }
 
