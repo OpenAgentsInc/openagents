@@ -23,6 +23,7 @@ Conclusion: The Swift app is ACP‑aligned in data shape for rendering and trans
   - `docs/adr/0014-ios-desktop-websocket-bridge-and-pairing.md`
 - Apple‑native implementation highlights
   - Swift ACP models: `ios/OpenAgentsCore/Sources/OpenAgentsCore/ACP/*`
+  - Swift ACP (Rust parity) module: `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/*`
   - Apple WS server: `ios/OpenAgentsCore/Sources/OpenAgentsCore/DesktopBridge/DesktopWebSocketServer.swift`
   - Apple WS client: `ios/OpenAgentsCore/Sources/OpenAgentsCore/MobileBridge/MobileWebSocketClient.swift`
   - Bridge envelopes: `ios/OpenAgentsCore/Sources/OpenAgentsCore/Bridge/BridgeMessages.swift`
@@ -141,6 +142,7 @@ Recommended pathway (incremental):
 - M1 — Swift ACP transport skeleton (2–3 days)
   - Implement JSON‑RPC framing on the Apple bridge (macOS server + iOS client): `initialize` round‑trip with capability negotiation.
   - Keep existing lightweight `threads.list` only as a temporary helper; mark deprecated.
+  - Add Swift ACP module mirroring Rust SDK (`AgentClientProtocol/*`).
 
 - M2 — Prompt turn over ACP (1 week)
   - Implement `session/new`, `session/prompt`, `session/cancel` on Swift bridge.
