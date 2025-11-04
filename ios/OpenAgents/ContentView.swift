@@ -21,7 +21,9 @@ struct ContentView: View {
             } detail: {
                 AcpThreadView(url: selectedURL)
             }
+            #if os(iOS)
             .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
 
             // Lightweight Liquid Glass header spanning the window (non-interactive)
             GlassHeader(title: "OpenAgents")
