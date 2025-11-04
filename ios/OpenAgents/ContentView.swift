@@ -38,6 +38,8 @@ struct ContentView: View {
                     .font(Font.custom(BerkeleyFont.defaultName(), size: 15, relativeTo: .headline))
                     .foregroundStyle(OATheme.Colors.textPrimary)
                     .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
             }
         }
         #endif
@@ -50,6 +52,8 @@ struct ContentView: View {
                     .font(Font.custom(BerkeleyFont.defaultName(), size: 14, relativeTo: .headline))
                     .foregroundStyle(OATheme.Colors.textPrimary)
                     .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
             }
         }
         #endif
