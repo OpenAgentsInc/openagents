@@ -63,7 +63,7 @@ struct HistorySidebar: View {
         }
         .scrollContentBackground(.hidden)
         .background(OATheme.Colors.sidebarBackground)
-        .navigationTitle("OpenAgents")
+        .navigationTitle("")
         .onAppear(perform: load)
     }
 
