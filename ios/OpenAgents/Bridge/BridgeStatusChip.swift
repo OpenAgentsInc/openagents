@@ -3,6 +3,8 @@ import SwiftUI
 struct BridgeStatusChip: View {
     @EnvironmentObject var bridge: BridgeManager
 
+    @State private var showManual = false
+
     var body: some View {
         HStack(spacing: 8) {
             Circle().fill(color).frame(width: 8, height: 8)
@@ -16,6 +18,11 @@ struct BridgeStatusChip: View {
                     .foregroundStyle(OATheme.Colors.textTertiary)
                     .lineLimit(1)
             }
+            Button(action: { showManual = true }) {
+                Image(systemName: "link.badge.plus")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(OATheme.Colors.textSecondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -23,6 +30,7 @@ struct BridgeStatusChip: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.black.opacity(0.15))
         )
+        .sheet(isPresented: $showManual) { ManualConnectSheet().environmentObject(bridge) }
     }
 
     private var color: Color {
@@ -50,4 +58,3 @@ struct BridgeStatusChip: View {
         return String(s.prefix(max)) + "…"
     }
 }
-

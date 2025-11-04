@@ -79,6 +79,15 @@ final class BridgeManager: ObservableObject {
         client?.connect(url: url, token: BridgeConfig.defaultToken)
     }
 
+    // Manual connection entry point (used by UI)
+    func performManualConnect(host: String, port: Int) {
+        stop() // stop existing client/browser
+        #if os(iOS)
+        browser = nil
+        #endif
+        connect(host: host, port: port)
+    }
+
     func stop() {
         browser?.stop(); browser = nil
         client?.disconnect(); client = nil
