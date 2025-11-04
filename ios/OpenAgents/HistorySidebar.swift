@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HistorySidebar: View {
+    var selected: LocalThreadSummary? = nil
     var onSelect: ((LocalThreadSummary, URL?) -> Void)? = nil
     @State private var items: [(LocalThreadSummary, URL?)] = []
     @State private var isLoading = false
@@ -37,10 +38,12 @@ struct HistorySidebar: View {
                 }
                 ForEach(Array(items.prefix(20).enumerated()), id: \.0) { _, pair in
                     let row = pair.0
+                    let isActive = (selected?.id == row.id && selected?.source == row.source)
                     Button(action: { onSelect?(row, pair.1) }) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(nonEmptyTitle(row) ?? "Thread")
                                 .font(.body)
+                                .fontWeight(isActive ? .semibold : .regular)
                                 .lineLimit(1)
                             HStack(spacing: 8) {
                                 if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
@@ -52,6 +55,8 @@ struct HistorySidebar: View {
                             }
                         }
                     }
+                    .listRowBackground(isActive ? Color.accentColor.opacity(0.12) : Color.clear)
+                    .contentShape(Rectangle())
                 }
             }
         }
@@ -170,7 +175,7 @@ extension HistorySidebar {
 
 #Preview {
     NavigationSplitView {
-        HistorySidebar()
+        HistorySidebar(selected: nil)
     } detail: {
         Text("Select a thread")
     }

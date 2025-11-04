@@ -12,7 +12,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            HistorySidebar(onSelect: { row, url in
+            HistorySidebar(selected: selectedRow, onSelect: { row, url in
                 self.selectedRow = row
                 self.selectedURL = url
             })
