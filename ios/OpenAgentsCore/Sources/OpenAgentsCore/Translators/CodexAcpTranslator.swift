@@ -154,11 +154,23 @@ public enum CodexAcpTranslator {
                     events.append(ACPEvent(id: nextEventId(), ts: t, tool_result: res))
                     continue
                 } else if pType == "reasoning" {
-                    // Reasoning summary only
+                    // Reasoning summaries can be one object or an array of summary_text blocks.
+                    var textBlocks: [String] = []
                     if let summary = payload["summary"] as? [String: Any],
                        let stype = summary["type"] as? String, stype == "summary_text",
                        let text = summary["content"] as? String {
-                        let parts: [ACPContentPart] = [.text(ACPText(text: text))]
+                        textBlocks = [text]
+                    } else if let summaryArr = payload["summary"] as? [[String: Any]] {
+                        for s in summaryArr {
+                            if let stype = s["type"] as? String, stype == "summary_text",
+                               let text = s["content"] as? String, !text.isEmpty {
+                                textBlocks.append(text)
+                            }
+                        }
+                    }
+                    if !textBlocks.isEmpty {
+                        let textJoined = textBlocks.joined(separator: "\n\n")
+                        let parts: [ACPContentPart] = [.text(ACPText(text: textJoined))]
                         let t = ts ?? Self.int64(payload["timestamp"]) ?? 0
                         touchTs(t)
                         let mid = ACPId.stableId(namespace: "codex-msg:\(options.sourceId)", seed: "reasoning:\(nextSeq)")
