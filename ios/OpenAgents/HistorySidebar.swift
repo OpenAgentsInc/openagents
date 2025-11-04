@@ -69,9 +69,14 @@ struct HistorySidebar: View {
                                 providerBadge(for: row.source)
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .listRowBackground(isActive ? OATheme.Colors.selection : Color.clear)
                     .contentShape(Rectangle())
+                    .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                    #if os(iOS)
+                    .listRowSeparator(.hidden)
+                    #endif
                 }
         }
         .scrollContentBackground(.hidden)
