@@ -14,7 +14,7 @@ struct ThreadHeaderView: View {
                 Image(systemName: "text.bubble")
                     .foregroundStyle(OATheme.Colors.textSecondary)
                 Text(title.isEmpty ? "Thread" : title)
-                    .font(.subheadline)
+                    .font(Font.custom(BerkeleyFont.defaultName(), size: 14, relativeTo: .subheadline))
                     .foregroundStyle(OATheme.Colors.textPrimary)
                     .lineLimit(1)
                 Spacer()

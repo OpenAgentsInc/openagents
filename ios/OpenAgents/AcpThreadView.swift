@@ -14,14 +14,14 @@ struct AcpThreadView: View {
         Group {
             if url == nil {
                 Text("Select a thread")
-                    .font(.headline)
+                    .font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline))
                     .foregroundStyle(OATheme.Colors.textSecondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if isLoading && messages.isEmpty {
                 VStack(spacing: 8) {
                     ProgressView()
                     Text("Loading…")
-                        .font(.caption)
+                        .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
                         .foregroundStyle(OATheme.Colors.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -32,21 +32,21 @@ struct AcpThreadView: View {
                     ScrollViewReader { proxy in
                     List {
                         if let title = threadTitle, !title.isEmpty {
-                            Section { Text(title).font(.headline).foregroundStyle(OATheme.Colors.textPrimary) }
+                            Section { Text(title).font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline)).foregroundStyle(OATheme.Colors.textPrimary) }
                         }
                         ForEach(messages, id: \.id) { msg in
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 6) {
                                     roleBadge(msg.role)
                                     Text(dateLabel(ms: msg.ts))
-                                        .font(.caption2)
+                                        .font(Font.custom(BerkeleyFont.defaultName(), size: 10, relativeTo: .caption2))
                                         .foregroundStyle(OATheme.Colors.textSecondary)
                                 }
                                 ForEach(msg.parts.indices, id: \.self) { idx in
                                     if case let .text(t) = msg.parts[idx] {
                                         Text(t.text)
                                             .textSelection(.enabled)
-                                            .font(.body)
+                                            .font(BerkeleyFont.font(relativeTo: .body, size: 15))
                                             .foregroundStyle(OATheme.Colors.textPrimary)
                                     }
                                 }
@@ -98,7 +98,7 @@ struct AcpThreadView: View {
             }
         }()
         return Label(label, systemImage: sys)
-            .font(.caption)
+            .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption))
             .foregroundStyle(OATheme.Colors.textSecondary)
     }
 
