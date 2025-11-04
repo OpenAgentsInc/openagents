@@ -12,6 +12,7 @@ struct AcpThreadView: View {
         case message(ACPMessage)
         case toolCall(ACPToolCall)
         case toolResult(ACPToolResult)
+        case plan(ACPPlanState)
         // plan state can be added later
 
         var id: String {
@@ -19,6 +20,7 @@ struct AcpThreadView: View {
             case .message(let m): return "msg_\(m.id)"
             case .toolCall(let c): return "call_\(c.id)"
             case .toolResult(let r): return "res_\(r.call_id)\(r.ts ?? 0)"
+            case .plan(let p): return "plan_\(p.ts ?? 0)"
             }
         }
         var ts: Int64 {
@@ -26,6 +28,7 @@ struct AcpThreadView: View {
             case .message(let m): return m.ts
             case .toolCall(let c): return c.ts ?? 0
             case .toolResult(let r): return r.ts ?? 0
+            case .plan(let p): return p.ts ?? 0
             }
         }
     }
@@ -81,6 +84,8 @@ struct AcpThreadView: View {
                                     ToolCallView(call: call)
                                 case .toolResult(let res):
                                     ToolResultView(result: res)
+                                case .plan(let ps):
+                                    PlanStateView(state: ps)
                                 }
                             }
                             .padding(.vertical, 4)
@@ -182,6 +187,8 @@ struct AcpThreadView: View {
                         items.append(.toolCall(c))
                     } else if let r = ev.tool_result {
                         items.append(.toolResult(r))
+                    } else if let ps = ev.plan_state {
+                        items.append(.plan(ps))
                     }
                 }
                 items.sort { $0.ts < $1.ts }
