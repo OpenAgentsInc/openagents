@@ -30,14 +30,14 @@ struct HistorySidebar: View {
                     HStack {
                         ProgressView()
                         Text("Loading…")
-                            .font(.caption)
+                            .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                     }
                 }
                 if effectiveItems().isEmpty && !isLoading {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("No chats found")
-                            .font(.caption)
+                            .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         if !debugLines.isEmpty {
                             ForEach(debugLines.prefix(8), id: \.self) { line in

@@ -37,9 +37,6 @@ public final class MobileWebSocketClient {
 
         webSocketTask.resume()
 
-        // Start receive loop
-        receive()
-
         // Send Hello message
         let hello = BridgeMessages.Hello(token: token)
         do {
@@ -109,6 +106,8 @@ public final class MobileWebSocketClient {
                         if helloAck.token == expectedToken || helloAck.token.isEmpty {
                             self.isConnected = true
                             self.delegate?.mobileWebSocketClientDidConnect(self)
+                            // Start general receive loop after handshake
+                            self.receive()
                         } else {
                             self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "HelloAck token mismatch"]))
                         }
@@ -121,6 +120,7 @@ public final class MobileWebSocketClient {
                         if (obj["type"] as? String) == "HelloAck" {
                             self.isConnected = true
                             self.delegate?.mobileWebSocketClientDidConnect(self)
+                            self.receive()
                             return
                         }
                         if let token = obj["token"] as? String, token == expectedToken {
