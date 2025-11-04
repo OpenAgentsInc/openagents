@@ -229,7 +229,16 @@ struct AcpThreadView: View {
                         }.joined(separator: " ")
                         if !ConversationSummarizer.isSystemPreface(text) {
                             if isReasoningLine(line) {
-                                items.append(.reasoning(m))
+                                // De‑dup identical consecutive reasoning messages
+                                let newText = m.parts.compactMap { part -> String? in
+                                    if case let .text(t) = part { return t.text } else { return nil }
+                                }.joined(separator: "\n")
+                                if case let .reasoning(prevMsg)? = items.last,
+                                   prevMsg.parts.compactMap({ if case let .text(t) = $0 { t.text } else { nil } }).joined(separator: "\n") == newText {
+                                    // skip duplicate
+                                } else {
+                                    items.append(.reasoning(m))
+                                }
                             } else {
                                 items.append(.message(m))
                             }
