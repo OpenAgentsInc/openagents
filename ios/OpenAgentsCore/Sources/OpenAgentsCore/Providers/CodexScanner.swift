@@ -94,37 +94,85 @@ public enum CodexScanner {
         )
     }
 
-    /// Quickly derive a short title from the head of a JSONL session by taking the first
-    /// non-preface user message (~5 words). Keeps this very lightweight for responsiveness.
+    /// Quickly derive a short title from a JSONL session by taking the first
+    /// non-preface user message (~5 words). Keeps this lightweight for responsiveness.
+    /// Tries a small head read first, then (if needed) a small tail read fallback.
     public static func quickTitle(for url: URL, maxBytes: Int = 300_000, maxLines: Int = 2000) -> String? {
-        guard let fh = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? fh.close() }
-        var lines: [String] = []
-        lines.reserveCapacity(256)
-        var read = 0
-        var count = 0
-        while let line = fh.readLine() {
-            lines.append(line)
-            read += line.utf8.count + 1
-            count += 1
-            if read >= maxBytes || count >= maxLines { break }
+        // Helper to extract a candidate title from translated messages
+        func firstUserSnippet(from thread: CodexAcpTranslator.Thread) -> String? {
+            var msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user }
+            msgs.sort { $0.ts < $1.ts }
+            for m in msgs {
+                let text = m.parts.compactMap { part -> String? in
+                    if case let .text(t) = part { return t.text } else { return nil }
+                }.joined(separator: " ")
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                if ConversationSummarizer.isSystemPreface(trimmed) { continue }
+                let words = trimmed.split(whereSeparator: { $0.isWhitespace })
+                if words.isEmpty { continue }
+                return words.prefix(5).joined(separator: " ")
+            }
+            return nil
         }
-        if lines.isEmpty { return nil }
-        let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
-        var msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user }
-        msgs.sort { $0.ts < $1.ts }
-        for m in msgs {
-            let text = m.parts.compactMap { part -> String? in
-                if case let .text(t) = part { return t.text } else { return nil }
-            }.joined(separator: " ")
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            if ConversationSummarizer.isSystemPreface(trimmed) { continue }
-            let words = trimmed.split(whereSeparator: { $0.isWhitespace })
-            if words.isEmpty { continue }
-            return words.prefix(5).joined(separator: " ")
+
+        // Head pass (fast path)
+        if let fh = try? FileHandle(forReadingFrom: url) {
+            defer { try? fh.close() }
+            var lines: [String] = []
+            lines.reserveCapacity(256)
+            var read = 0
+            var count = 0
+            while let line = fh.readLine() {
+                lines.append(line)
+                read += line.utf8.count + 1
+                count += 1
+                if read >= maxBytes || count >= maxLines { break }
+            }
+            if !lines.isEmpty {
+                let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
+                if let title = firstUserSnippet(from: thread) { return title }
+            }
+        }
+
+        // Tail fallback (smaller window to stay lightweight)
+        do {
+            let tailBytes = min(200_000, maxBytes)
+            let tailLines = min(1500, maxLines)
+            let lines = try tailJSONLLines(url: url, maxBytes: tailBytes, maxLines: tailLines)
+            if !lines.isEmpty {
+                let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
+                if let title = firstUserSnippet(from: thread) { return title }
+            }
+        } catch {
+            // Ignore tail read errors and fall through
         }
         return nil
+    }
+
+    /// Efficient JSONL tail reader to avoid loading entire files.
+    private static func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [String] {
+        let fh = try FileHandle(forReadingFrom: url)
+        defer { try? fh.close() }
+        let chunk = 64 * 1024
+        let fileSize = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
+        var offset = fileSize
+        var buffer = Data()
+        var totalRead = 0
+        while offset > 0 && totalRead < maxBytes {
+            let toRead = min(chunk, offset)
+            offset -= toRead
+            try fh.seek(toOffset: UInt64(offset))
+            let data = try fh.read(upToCount: toRead) ?? Data()
+            buffer.insert(contentsOf: data, at: 0)
+            totalRead += data.count
+            if buffer.count >= maxBytes { break }
+        }
+        var text = String(data: buffer, encoding: .utf8) ?? String(decoding: buffer, as: UTF8.self)
+        if !text.hasSuffix("\n") { text.append("\n") }
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        if lines.count > maxLines { lines = Array(lines.suffix(maxLines)) }
+        return lines
     }
 
     static func isNewFormatJSONL(_ url: URL) -> Bool {
