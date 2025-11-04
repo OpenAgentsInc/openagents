@@ -338,7 +338,6 @@ function BridgeAwareTinyvexProvider({ children }: { children: React.ReactNode })
   const { wsUrl } = useBridge();
   const token = useSettings((s) => s.bridgeToken);
   const cfg = React.useMemo(() => ({ url: wsUrl, token }), [wsUrl, token]);
-  // @ts-expect-error React 18 vs 19 type mismatch across monorepo packages; runtime is correct.
   return <TinyvexPkgProvider config={cfg}>{children}</TinyvexPkgProvider>;
 }
 
