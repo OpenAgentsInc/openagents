@@ -7,6 +7,7 @@
     "types": ["react", "react-native"],
     "paths": {
       "@/*": ["./*"],
+      "tinyvex/react": ["./types/tinyvex-react"],
       "tinyvex/*": ["../packages/tinyvex/src/*"],
       "tricoder/types": ["../packages/tricoder/src/types/index.ts"],
       "@openagentsinc/theme": ["../packages/openagents-theme"],

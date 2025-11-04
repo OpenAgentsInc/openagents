@@ -5,6 +5,7 @@ import { FlatList, Text, View, KeyboardAvoidingView, Platform, Pressable } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 // import { useTinyvex } from '@/providers/tinyvex'
 import { useTinyvexThread } from 'tinyvex/react'
+import type { MessageRowTs } from '@/types/bridge/MessageRowTs'
 import { Colors } from '@/constants/theme'
 import { Typography } from '@/constants/typography'
 import { Composer } from '@/components/Composer'
@@ -44,12 +45,12 @@ export default function ThreadScreen() {
     const liveText = String(live?.assistant || '').trim()
     if (liveText) return sanitizeTitle(liveText)
     // Otherwise, use the latest message text from history
-    const arr = Array.isArray(history) ? history.slice() : []
+    const arr: MessageRowTs[] = Array.isArray(history) ? (history.slice() as MessageRowTs[]) : []
     if (arr.length > 0) {
       try {
         arr.sort((a, b) => (Number(a.ts || 0) - Number(b.ts || 0)))
-        const last = arr[arr.length - 1]
-        const raw = String((last && (last as any).text) || '')
+        const last = arr[arr.length - 1] as MessageRowTs
+        const raw = String((last && last.text) || '')
         const cleaned = sanitizeTitle(raw)
         if (cleaned) return cleaned
       } catch {}
@@ -97,7 +98,8 @@ export default function ThreadScreen() {
   const didAutoScrollFor = React.useRef<string | null>(null)
   const pendingAutoScroll = React.useRef<boolean>(false)
   const items: Item[] = React.useMemo(() => {
-    const hist: Item[] = (history || []).map((r, i) => ({ key: `h-${r.id}-${i}`, ts: r.ts, role: r.role === 'assistant' ? 'assistant' : 'user', text: String(r.text || '') }))
+    const base: MessageRowTs[] = Array.isArray(history) ? (history as MessageRowTs[]) : []
+    const hist: Item[] = base.map((r, i) => ({ key: `h-${String(r.id)}-${i}`, ts: Number(r.ts as unknown as number || 0), role: (r.role === 'assistant' ? 'assistant' : 'user'), text: String(r.text || '') }))
     const liveItems: Item[] = live.assistant ? [{ key: 'live-a', ts: Date.now(), role: 'assistant', text: live.assistant }] : []
     return [...hist, ...liveItems]
   }, [history, live.assistant])
