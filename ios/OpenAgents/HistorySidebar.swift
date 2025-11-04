@@ -53,9 +53,9 @@ struct HistorySidebar: View {
                     let row = pair.0
                     let isActive = (selected?.id == row.id && selected?.source == row.source)
                     Button(action: { onSelect?(row, pair.1) }) {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(displayTitle(for: row) ?? "Thread")
-                                .font(BerkeleyFont.font(relativeTo: .body, size: 15))
+                                .font(BerkeleyFont.font(relativeTo: .body, size: 13))
                                 .fontWeight(isActive ? .semibold : .regular)
                                 .foregroundStyle(OATheme.Colors.textPrimary)
                                 .lineLimit(1)
@@ -63,7 +63,7 @@ struct HistorySidebar: View {
                                 if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
                                     Label(relative(ts), systemImage: "clock")
                                         .symbolRenderingMode(.monochrome)
-                                        .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption))
+                                        .font(Font.custom(BerkeleyFont.defaultName(), size: 10, relativeTo: .caption2))
                                         .foregroundStyle(OATheme.Colors.textTertiary)
                                 }
                                 providerBadge(for: row.source)
