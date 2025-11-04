@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct ManualConnectSheet: View {
     @EnvironmentObject var bridge: BridgeManager
@@ -16,7 +19,9 @@ struct ManualConnectSheet: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Port", text: $port)
                 .textFieldStyle(.roundedBorder)
+            #if os(iOS)
                 .keyboardType(.numberPad)
+            #endif
 
             HStack {
                 Spacer()
@@ -34,4 +39,3 @@ struct ManualConnectSheet: View {
         .background(OATheme.Colors.sidebarBackground)
     }
 }
-
