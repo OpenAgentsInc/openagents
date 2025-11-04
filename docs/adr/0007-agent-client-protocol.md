@@ -22,6 +22,12 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
   - Tinyvex writer mirrors ACP updates into typed rows (threads, messages, tool calls, plan/state) and emits `tinyvex.update` envelopes for clients.
   - Watchers tail provider stores, translate to ACP, then write to Tinyvex; two‑way writers persist provider‑native artifacts without changing the ACP-facing contract.
 
+- In Apple‑native apps (iOS/macOS)
+  - All ACP usage MUST go through the Swift parity module `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/*` (one‑to‑one mapping with the Rust SDK).
+  - The Apple WebSocket bridge uses JSON‑RPC 2.0 and ACP method names; no legacy or ad‑hoc envelopes are permitted.
+  - Session lifecycle and streamed updates (`session/new`, `session/prompt`, `session/update`, `session/cancel`) are implemented natively in Swift using this module.
+  - Client‑side services (fs.*, terminal.*, `session/request_permission`) are implemented in Swift behind permissions.
+
 - In the database (Tinyvex)
   - Tables remain the minimal, typed projection required by the app (snake_case fields; ADR‑0002).
   - An append‑only `acp_events` log is maintained for traceability of ACP updates (already present in schema).
@@ -41,6 +47,7 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 - Applies to all WS payloads and Tinyvex projections produced by the bridge.
 - Provider‑native persistence (two‑way) is out‑of‑band; it must not leak provider formats to the app WS contract.
 - App renders only ACP‑derived content; library demos and tests refer to ACP types.
+- iOS/macOS apps MUST use the AgentClientProtocol Swift module for all ACP types and JSON‑RPC method names. Do not embed ad‑hoc copies of ACP shapes.
 
 ## Implementation Plan
 
