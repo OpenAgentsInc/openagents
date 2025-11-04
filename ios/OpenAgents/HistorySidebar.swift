@@ -113,9 +113,18 @@ struct HistorySidebar: View {
                 withAnimation { self.items = merged }
                 self.isLoading = false
                 self.debugLines = dbg
-                // Start async title generation for visible Codex rows
+                // Try cache + async generation for visible Codex rows
                 for (row, url) in merged.prefix(20) {
-                    if let u = url { summarizeRow(row, url: u) }
+                    guard let u = url else { continue }
+                    let rowKey = key(for: row)
+                    let mtime = LocalCodexScanner.fileMTime(u)
+                    Task {
+                        if let cached = await TitleCache.shared.get(path: u.path, mtime: mtime) {
+                            await MainActor.run { self.titles[rowKey] = cached }
+                        } else {
+                            summarizeRow(row, url: u, mtime: mtime)
+                        }
+                    }
                 }
             }
         }
@@ -133,7 +142,7 @@ struct HistorySidebar: View {
         return titles[key(for: row)]
     }
 
-    private func summarizeRow(_ row: LocalThreadSummary, url: URL) {
+    private func summarizeRow(_ row: LocalThreadSummary, url: URL, mtime: Int64) {
         let rowKey = key(for: row)
         if titles[rowKey] != nil { return }
         Task.detached(priority: .utility) {
@@ -158,6 +167,7 @@ struct HistorySidebar: View {
                 guard !title.isEmpty else { return }
                 let finalTitle = title
                 await MainActor.run { self.titles[rowKey] = finalTitle }
+                await TitleCache.shared.set(path: url.path, mtime: mtime, title: finalTitle)
             } catch {
                 // ignore errors
             }
