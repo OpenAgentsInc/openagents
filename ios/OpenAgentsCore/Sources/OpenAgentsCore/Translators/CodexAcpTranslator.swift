@@ -30,7 +30,7 @@ public enum CodexAcpTranslator {
             guard let data = line.data(using: .utf8),
                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
 
-            let type = (obj["type"] as? String) ?? (obj["event"] as? String) ?? ""
+            let type = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
             let ts = Self.int64(obj["ts"]) ?? Self.int64((obj["payload"] as? [String: Any])?["ts"]) // optional
 
             // Session/thread metadata
@@ -51,7 +51,7 @@ public enum CodexAcpTranslator {
 
             // Normalized container: many Codex lines carry an `item` or `msg` payload
             let item = (obj["item"] as? [String: Any]) ?? (obj["msg"] as? [String: Any]) ?? (obj["payload"] as? [String: Any])
-            let itemType = item?["type"] as? String ?? ""
+            let itemType = ((item?["type"] as? String) ?? "").lowercased()
 
             // No provider-specific block scanning here. Tool events are detected by explicit type only.
 
@@ -125,7 +125,7 @@ public enum CodexAcpTranslator {
 
             // Provider-native function calls/results exposed under response_item payloads
             if type == "response_item", let payload = obj["payload"] as? [String: Any] {
-                let pType = (payload["type"] as? String) ?? ""
+                let pType = ((payload["type"] as? String) ?? "").lowercased()
                 if pType == "function_call" {
                     let tool = (payload["name"] as? String) ?? "tool"
                     var argsDict = payload
