@@ -48,19 +48,24 @@ final class BridgeManager: ObservableObject {
     @Published var threads: [ThreadSummary] = []
 
     func start() {
-        // Prefer Bonjour discovery
-        let b = BonjourBrowser()
-        browser = b
-        status = .discovering
-        log("bonjour", "Searching for \(BridgeConfig.serviceType)")
-        b.start(onResolved: { [weak self] host, port in
-            Task { @MainActor in
-                self?.log("bonjour", "Resolved host=\(host) port=\(port)")
-                self?.connect(host: host, port: port)
-            }
-        }, onLog: { [weak self] msg in
-            Task { @MainActor in self?.log("bonjour", msg) }
-        })
+        // Prefer Bonjour discovery when feature flag is enabled
+        if Features.multicastEnabled {
+            let b = BonjourBrowser()
+            browser = b
+            status = .discovering
+            log("bonjour", "Searching for \(BridgeConfig.serviceType)")
+            b.start(onResolved: { [weak self] host, port in
+                Task { @MainActor in
+                    self?.log("bonjour", "Resolved host=\(host) port=\(port)")
+                    self?.connect(host: host, port: port)
+                }
+            }, onLog: { [weak self] msg in
+                Task { @MainActor in self?.log("bonjour", msg) }
+            })
+        } else {
+            status = .idle
+            log("bonjour", "Multicast discovery disabled (feature flag). Use Manual Connect.")
+        }
 
         // Simulator fallback: localhost
         #if targetEnvironment(simulator)
@@ -99,9 +104,17 @@ final class BridgeManager: ObservableObject {
 extension BridgeManager: MobileWebSocketClientDelegate {
     func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient) {
         log("client", "Connected; sending threads.list.request")
-        if let h = currentHost, let p = currentPort { status = .handshaking(host: h, port: p) }
+        if let h = currentHost, let p = currentPort { status = .connected(host: h, port: p) }
         // Request thread summaries upon connect
         client.send(type: "threads.list.request", message: BridgeMessages.ThreadsListRequest(topK: 20))
+        // Resend once after a short delay if nothing arrives
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self = self else { return }
+            if self.threads.isEmpty {
+                self.log("client", "Resending threads.list.request (no response in 1s)")
+                client.send(type: "threads.list.request", message: BridgeMessages.ThreadsListRequest(topK: 20))
+            }
+        }
     }
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?) {
@@ -128,8 +141,17 @@ extension BridgeManager {
         let ts = ISO8601DateFormatter().string(from: Date())
         let line = "[\(ts)] [\(tag)] \(message)"
         print("[Bridge] \(line)")
-        lastLog = line
-        logs.append(line)
-        if logs.count > 200 { logs.removeFirst(logs.count - 200) }
+        if Thread.isMainThread {
+            lastLog = line
+            logs.append(line)
+            if logs.count > 200 { logs.removeFirst(logs.count - 200) }
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.lastLog = line
+                self.logs.append(line)
+                if self.logs.count > 200 { self.logs.removeFirst(self.logs.count - 200) }
+            }
+        }
     }
 }

@@ -18,11 +18,13 @@ struct BridgeStatusChip: View {
                     .foregroundStyle(OATheme.Colors.textTertiary)
                     .lineLimit(1)
             }
+            #if os(iOS)
             Button(action: { showManual = true }) {
                 Image(systemName: "link.badge.plus")
             }
             .buttonStyle(.borderless)
             .foregroundStyle(OATheme.Colors.textSecondary)
+            #endif
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -30,7 +32,15 @@ struct BridgeStatusChip: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.black.opacity(0.15))
         )
-        .sheet(isPresented: $showManual) { ManualConnectSheet().environmentObject(bridge) }
+        #if os(iOS)
+        .sheet(isPresented: $showManual) {
+            let mgr = bridge
+            ManualConnectSheet { host, port in
+                mgr.log("manual", "Connecting to \(host):\(port)")
+                mgr.performManualConnect(host: host, port: port)
+            }
+        }
+        #endif
     }
 
     private var color: Color {

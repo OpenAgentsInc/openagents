@@ -16,4 +16,12 @@ enum Features {
         return UserDefaults.standard.bool(forKey: "show_raw_json")
     }
 
+    /// Multicast/Bonjour discovery for the iOS bridge.
+    /// Default: false (to avoid special entitlements); enable with env `OPENAGENTS_ENABLE_MULTICAST=1`
+    /// or UserDefaults `enable_multicast=true`.
+    static var multicastEnabled: Bool {
+        if ProcessInfo.processInfo.environment["OPENAGENTS_ENABLE_MULTICAST"] == "1" { return true }
+        return UserDefaults.standard.bool(forKey: "enable_multicast")
+    }
+
 }
