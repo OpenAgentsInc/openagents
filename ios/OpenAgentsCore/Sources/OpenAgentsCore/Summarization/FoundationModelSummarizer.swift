@@ -22,19 +22,27 @@ enum FoundationModelSummarizer {
         }
         guard !lines.isEmpty else { return nil }
 
+        let model = SystemLanguageModel.default
+        switch model.availability {
+        case .available:
+            break
+        case .unavailable(let reason):
+            print("[FM] unavailable reason=\(String(describing: reason))")
+            return nil
+        }
+
         let instructions = Instructions("""
         You create very short, descriptive conversation titles.
-        Output only 3–5 plain words, no punctuation, no quotes.
+        Output only 3-5 plain words, no punctuation, no quotes.
         """)
 
-        let session = LanguageModelSession(instructions: instructions)
+        let session = LanguageModelSession(model: model, tools: [], instructions: instructions)
+        try? session.prewarm(promptPrefix: nil)
 
-        // You could call prewarm() earlier in app lifecycle to reduce latency.
-        // try? session.prewarm(promptPrefix: nil)
-
-        let prompt = lines.joined(separator: "\n") + "\n\nTitle:"
+        let prompt = lines.joined(separator: "\n") + "\n\nTitle (3-5 words):"
         do {
-            let resp = try await session.respond(to: prompt)
+            let options = GenerationOptions(temperature: 0.1)
+            let resp = try await session.respond(to: prompt, options: options)
             // Response is LanguageModelSession.Response<String>
             #if swift(>=6.0)
             let raw: String = resp.output

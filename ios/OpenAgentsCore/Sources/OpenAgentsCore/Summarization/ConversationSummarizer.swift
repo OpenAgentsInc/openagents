@@ -54,15 +54,17 @@ public enum ConversationSummarizer {
 
     static func firstUserFiveWords(messages: [ACPMessage]) -> String {
         let users = messages.filter { $0.role == .user }.sorted { $0.ts < $1.ts }
-        guard let first = users.first else { return "" }
-        let text = first.parts.compactMap { part -> String? in
-            if case let .text(t) = part { return t.text } else { return nil }
-        }.joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return "" }
-        if isSystemPreface(text) { return "" }
-        let words = text.split(whereSeparator: { $0.isWhitespace })
-        return words.prefix(5).joined(separator: " ")
+        for msg in users {
+            let text = msg.parts.compactMap { part -> String? in
+                if case let .text(t) = part { return t.text } else { return nil }
+            }.joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            if isSystemPreface(text) { continue }
+            let words = text.split(whereSeparator: { $0.isWhitespace })
+            return words.prefix(5).joined(separator: " ")
+        }
+        return ""
     }
 
     public static func isSystemPreface(_ text: String) -> Bool {
