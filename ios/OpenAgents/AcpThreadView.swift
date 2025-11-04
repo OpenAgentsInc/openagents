@@ -3,7 +3,7 @@ import OpenAgentsCore
 
 struct AcpThreadView: View {
     let url: URL?
-    let maxMessages: Int = 50
+    let maxMessages: Int = 10
 
     @State private var isLoading = false
     @State private var error: String? = nil
