@@ -89,7 +89,10 @@ public final class MobileWebSocketClient {
         isConnected = false
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
-        delegate?.mobileWebSocketClient(self, didDisconnect: error)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.delegate?.mobileWebSocketClient(self, didDisconnect: error)
+        }
     }
 
     private func waitForHelloAck(expectedToken: String) {
@@ -106,7 +109,10 @@ public final class MobileWebSocketClient {
                         let helloAck = try JSONDecoder().decode(BridgeMessages.HelloAck.self, from: data)
                         if helloAck.token == expectedToken || helloAck.token.isEmpty {
                             self.isConnected = true
-                            self.delegate?.mobileWebSocketClientDidConnect(self)
+                            DispatchQueue.main.async { [weak self] in
+                                guard let self = self else { return }
+                                self.delegate?.mobileWebSocketClientDidConnect(self)
+                            }
                             // Start general receive loop after handshake
                             self.receive()
                         } else {
@@ -120,13 +126,19 @@ public final class MobileWebSocketClient {
                     if let data = text.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                         if (obj["type"] as? String) == "HelloAck" {
                             self.isConnected = true
-                            self.delegate?.mobileWebSocketClientDidConnect(self)
+                            DispatchQueue.main.async { [weak self] in
+                                guard let self = self else { return }
+                                self.delegate?.mobileWebSocketClientDidConnect(self)
+                            }
                             self.receive()
                             return
                         }
                         if let token = obj["token"] as? String, token == expectedToken {
                             self.isConnected = true
-                            self.delegate?.mobileWebSocketClientDidConnect(self)
+                            DispatchQueue.main.async { [weak self] in
+                                guard let self = self else { return }
+                                self.delegate?.mobileWebSocketClientDidConnect(self)
+                            }
                             return
                         }
                     }
@@ -148,11 +160,17 @@ public final class MobileWebSocketClient {
                 switch message {
                 case .data(let data):
                     if let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
-                        self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self = self else { return }
+                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                        }
                     }
                 case .string(let text):
                     if let data = text.data(using: .utf8), let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
-                        self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self = self else { return }
+                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                        }
                     }
                 @unknown default:
                     break

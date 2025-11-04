@@ -12,6 +12,7 @@ final class BonjourBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDeleg
         self.onResolved = onResolved
         self.onLog = onLog
         browser.delegate = self
+        browser.includesPeerToPeer = true
         browser.searchForServices(ofType: "_openagents._tcp.", inDomain: "local.")
     }
 
@@ -25,6 +26,7 @@ final class BonjourBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDeleg
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
         services.append(service)
         service.delegate = self
+        service.includesPeerToPeer = true
         onLog?("found service name=\(service.name)")
         service.resolve(withTimeout: 5.0)
     }

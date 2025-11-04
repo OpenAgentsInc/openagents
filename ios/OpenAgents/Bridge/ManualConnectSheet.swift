@@ -4,10 +4,10 @@ import UIKit
 #endif
 
 struct ManualConnectSheet: View {
-    @EnvironmentObject var bridge: BridgeManager
     @Environment(\.dismiss) var dismiss
-    @State private var host: String = ""
+    @State private var host: String = "192.168.1.11"
     @State private var port: String = "9099"
+    var onConnect: (String, Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -27,8 +27,7 @@ struct ManualConnectSheet: View {
                 Spacer()
                 Button("Connect") {
                     if let p = Int(port) {
-                        bridge.log("manual", "Connecting to \(host):\(p)")
-                        bridge.performManualConnect(host: host, port: p)
+                        onConnect(host, p)
                         dismiss()
                     }
                 }
