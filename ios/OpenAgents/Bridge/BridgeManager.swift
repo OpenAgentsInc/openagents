@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import OpenAgentsCore
+import OpenAgentsCore
 
 @MainActor
 final class BridgeManager: ObservableObject {
@@ -27,6 +28,7 @@ final class BridgeManager: ObservableObject {
     #if os(iOS)
     private var client: MobileWebSocketClient?
     private var browser: BonjourBrowser?
+    @Published var threads: [ThreadSummary] = []
 
     func start() {
         // Prefer Bonjour discovery
@@ -61,6 +63,8 @@ final class BridgeManager: ObservableObject {
 extension BridgeManager: MobileWebSocketClientDelegate {
     func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient) {
         print("[Bridge] Connected to desktop")
+        // Request thread summaries upon connect
+        client.send(type: "threads.list.request", message: BridgeMessages.ThreadsListRequest(topK: 20))
     }
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?) {
@@ -68,8 +72,12 @@ extension BridgeManager: MobileWebSocketClientDelegate {
     }
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage) {
-        // Placeholder for future envelopes
-        if let json = try? message.jsonString(prettyPrinted: false) { print("[Bridge] recv: \(json)") }
+        if message.type == "threads.list.response" {
+            if let resp = try? message.decodedMessage(as: BridgeMessages.ThreadsListResponse.self) {
+                self.threads = resp.items
+            }
+            return
+        }
     }
 }
 #endif

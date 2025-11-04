@@ -41,12 +41,23 @@ Examples:
 
 ```json
 { "type": "Pong" }
+
+History list (Phase 1):
+
+```json
+{ "type": "threads.list.request", "data": { "topK": 20 } }
+```
+
+```json
+{ "type": "threads.list.response", "data": { "items": [ { "id": "…", "title": "…", "source": "codex", "updated_at": 123, "last_message_ts": 123 } ] } }
+```
 ```
 
 Notes:
 
 - `token` is a pre‑shared secret stored locally on both devices (see Security below).
 - An envelope `{type,data}` is available (`WebSocketMessage.Envelope`) if/when we need to carry structured payloads.
+  - Implemented messages: `threads.list.request/response` (desktop scans Codex history and returns summaries).
 
 ## Desktop Server (macOS)
 

@@ -14,8 +14,13 @@ public enum CodexScanner {
         if let env = ProcessInfo.processInfo.environment["CODEXD_HISTORY_DIR"], !env.isEmpty {
             return URL(fileURLWithPath: env).standardizedFileURL
         }
+        #if os(macOS)
         let home = FileManager.default.homeDirectoryForCurrentUser
         return home.appendingPathComponent(".codex/sessions", isDirectory: true)
+        #else
+        // iOS and other platforms: no direct desktop FS. Return a non-existent placeholder.
+        return URL(fileURLWithPath: "/nonexistent")
+        #endif
     }
 
     public static func listJSONLFiles(at base: URL) -> [URL] {

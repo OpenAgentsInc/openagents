@@ -9,6 +9,8 @@ struct HistorySidebar: View {
     @State private var debugLines: [String] = []
     @State private var titles: [String: String] = [:] // key: "source::id" → summary title
 
+    @EnvironmentObject var bridge: BridgeManager
+
     var body: some View {
         List {
             HStack(spacing: 8) {
@@ -24,7 +26,7 @@ struct HistorySidebar: View {
             #endif
             
             Group {
-                if isLoading && items.isEmpty {
+                if isLoading && effectiveItems().isEmpty {
                     HStack {
                         ProgressView()
                         Text("Loading…")
@@ -32,7 +34,7 @@ struct HistorySidebar: View {
                             .foregroundStyle(OATheme.Colors.textSecondary)
                     }
                 }
-                if items.isEmpty && !isLoading {
+                if effectiveItems().isEmpty && !isLoading {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("No chats found")
                             .font(.caption)
@@ -49,7 +51,7 @@ struct HistorySidebar: View {
                     }
                 }
             }
-                ForEach(Array(items.prefix(20).enumerated()), id: \.0) { _, pair in
+                ForEach(Array(effectiveItems().prefix(20).enumerated()), id: \.0) { _, pair in
                     let row = pair.0
                     let isActive = (selected?.id == row.id && selected?.source == row.source)
                     Button(action: { onSelect?(row, pair.1) }) {
@@ -89,7 +91,15 @@ struct HistorySidebar: View {
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
             var dbg: [String] = []
-            // Fast path: Codex only by default; Claude behind feature flag
+            // iOS path: if bridge has threads, prefer those and skip FS scanning
+            #if os(iOS)
+            DispatchQueue.main.async {
+                self.isLoading = false
+                self.items = bridge.threads.map { ts in (LocalThreadSummary(id: ts.id, title: ts.title, source: ts.source, created_at: ts.created_at, updated_at: ts.updated_at, last_message_ts: ts.last_message_ts, message_count: ts.message_count), nil) }
+            }
+            return
+            #endif
+            // macOS path: scan Codex filesystem; Claude behind feature flag
             let codexBases = LocalCodexDiscovery.discoverBaseDirs()
             var codexURLs: [URL] = []
             for b in codexBases { codexURLs.append(contentsOf: LocalCodexScanner.listRecentTopN(at: b, topK: 10)) }
@@ -145,6 +155,15 @@ struct HistorySidebar: View {
                 }
             }
         }
+    }
+
+    private func effectiveItems() -> [(LocalThreadSummary, URL?)] {
+        #if os(iOS)
+        if !bridge.threads.isEmpty {
+            return bridge.threads.map { ts in (LocalThreadSummary(id: ts.id, title: ts.title, source: ts.source, created_at: ts.created_at, updated_at: ts.updated_at, last_message_ts: ts.last_message_ts, message_count: ts.message_count), nil) }
+        }
+        #endif
+        return items
     }
 
     private func nonEmptyTitle(_ row: LocalThreadSummary) -> String? {
