@@ -52,7 +52,36 @@ public extension ACP.Agent {
     /// Capabilities supported by the agent (placeholder surface).
     /// Mirrors `AgentCapabilities` in Rust `agent.rs`.
     struct AgentCapabilities: Codable, Equatable {
-        public init() {}
+        public var load_session: Bool
+        public var prompt_capabilities: PromptCapabilities
+        public var mcp_capabilities: McpCapabilities
+        public var _meta: [String: AnyEncodable]?
+        public init(load_session: Bool = false,
+                    prompt_capabilities: PromptCapabilities = .init(),
+                    mcp_capabilities: McpCapabilities = .init(),
+                    _meta: [String: AnyEncodable]? = nil) {
+            self.load_session = load_session
+            self.prompt_capabilities = prompt_capabilities
+            self.mcp_capabilities = mcp_capabilities
+            self._meta = _meta
+        }
+    }
+
+    struct PromptCapabilities: Codable, Equatable {
+        public var image: Bool
+        public var audio: Bool
+        public var embedded_context: Bool
+        public var _meta: [String: AnyEncodable]?
+        public init(image: Bool = false, audio: Bool = false, embedded_context: Bool = false, _meta: [String: AnyEncodable]? = nil) {
+            self.image = image; self.audio = audio; self.embedded_context = embedded_context; self._meta = _meta
+        }
+    }
+
+    struct McpCapabilities: Codable, Equatable {
+        public var http: Bool
+        public var sse: Bool
+        public var _meta: [String: AnyEncodable]?
+        public init(http: Bool = false, sse: Bool = false, _meta: [String: AnyEncodable]? = nil) { self.http = http; self.sse = sse; self._meta = _meta }
     }
 
     /// Request parameters for the `initialize` method.
@@ -148,6 +177,53 @@ public extension ACP.Agent {
         public var _meta: [String: AnyEncodable]?
         public init(name: String, value: String, _meta: [String: AnyEncodable]? = nil) {
             self.name = name; self.value = value; self._meta = _meta
+        }
+    }
+}
+// MARK: - MCP Servers (parity with Rust agent.rs)
+public extension ACP.Agent {
+    enum McpServer: Codable, Equatable {
+        case http(name: String, url: String, headers: [HttpHeader])
+        case sse(name: String, url: String, headers: [HttpHeader])
+        case stdio(name: String, command: String, args: [String], env: [EnvVariable])
+
+        private enum CodingKeys: String, CodingKey { case type }
+        private enum Kind: String, Codable { case http, sse, stdio }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let kind = try c.decode(Kind.self, forKey: .type)
+            switch kind {
+            case .http:
+                struct Http: Codable { let name: String; let url: String; let headers: [HttpHeader] }
+                let v = try Http(from: decoder)
+                self = .http(name: v.name, url: v.url, headers: v.headers)
+            case .sse:
+                struct Sse: Codable { let name: String; let url: String; let headers: [HttpHeader] }
+                let v = try Sse(from: decoder)
+                self = .sse(name: v.name, url: v.url, headers: v.headers)
+            case .stdio:
+                struct Stdio: Codable { let name: String; let command: String; let args: [String]; let env: [EnvVariable] }
+                let v = try Stdio(from: decoder)
+                self = .stdio(name: v.name, command: v.command, args: v.args, env: v.env)
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            switch self {
+            case .http(let name, let url, let headers):
+                var d = encoder
+                struct Http: Codable { let type: String; let name: String; let url: String; let headers: [HttpHeader] }
+                try Http(type: "http", name: name, url: url, headers: headers).encode(to: &d)
+            case .sse(let name, let url, let headers):
+                var d = encoder
+                struct Sse: Codable { let type: String; let name: String; let url: String; let headers: [HttpHeader] }
+                try Sse(type: "sse", name: name, url: url, headers: headers).encode(to: &d)
+            case .stdio(let name, let command, let args, let env):
+                var d = encoder
+                struct Stdio: Codable { let type: String; let name: String; let command: String; let args: [String]; let env: [EnvVariable] }
+                try Stdio(type: "stdio", name: name, command: command, args: args, env: env).encode(to: &d)
+            }
         }
     }
 }

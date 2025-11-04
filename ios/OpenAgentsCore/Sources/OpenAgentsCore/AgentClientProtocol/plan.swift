@@ -1,20 +1,24 @@
 import Foundation
 
 /*!
- Agent planning mirroring ACP Rust SDK `plan.rs` (simplified stub; extend as needed).
+ Execution plans mirroring ACP Rust SDK `plan.rs`.
 */
 
-public struct ACPPlanWire: Codable {
-    public var steps: [Step]
-    public var _meta: [String: AnyEncodable]? = nil
-    public init(steps: [Step], _meta: [String: AnyEncodable]? = nil) {
-        self.steps = steps; self._meta = _meta
-    }
+public struct ACPPlan: Codable, Equatable {
+    public var entries: [ACPPlanEntry]
+    public var _meta: [String: AnyEncodable]?
+    public init(entries: [ACPPlanEntry], _meta: [String: AnyEncodable]? = nil) { self.entries = entries; self._meta = _meta }
+}
 
-    public struct Step: Codable {
-        public var title: String
-        public var status: String? // e.g., pending/in_progress/completed
-        public init(title: String, status: String? = nil) { self.title = title; self.status = status }
+public struct ACPPlanEntry: Codable, Equatable {
+    public var content: String
+    public var priority: ACPPlanEntryPriority
+    public var status: ACPPlanEntryStatus
+    public var _meta: [String: AnyEncodable]?
+    public init(content: String, priority: ACPPlanEntryPriority, status: ACPPlanEntryStatus, _meta: [String: AnyEncodable]? = nil) {
+        self.content = content; self.priority = priority; self.status = status; self._meta = _meta
     }
 }
 
+public enum ACPPlanEntryPriority: String, Codable { case high = "high", medium = "medium", low = "low" }
+public enum ACPPlanEntryStatus: String, Codable { case pending = "pending", in_progress = "in_progress", completed = "completed" }

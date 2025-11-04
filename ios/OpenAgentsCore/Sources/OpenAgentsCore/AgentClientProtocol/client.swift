@@ -332,11 +332,8 @@ public extension ACP.Client {
         }
     }
 
-    /// Minimal `Plan` placeholder to support plan updates and UI.
-    struct Plan: Codable, Equatable {
-        var steps: [String]
-        public init(steps: [String]) { self.steps = steps }
-    }
+    // Plan type now mirrors ACP Rust Plan via ACPPlan
+    typealias Plan = ACPPlan
 
     struct AvailableCommandsUpdate: Codable, Equatable {
         var available_commands: [AvailableCommand]

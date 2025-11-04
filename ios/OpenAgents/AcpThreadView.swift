@@ -359,7 +359,7 @@ struct AcpThreadView: View {
                 timeline.append(.reasoning(m))
             }
         case .plan(let p):
-            let ps = ACPPlanState(status: .running, summary: nil, steps: p.steps.map { $0.title }, ts: nowMs())
+            let ps = ACPPlanState(status: .running, summary: nil, steps: p.entries.map { $0.content }, ts: nowMs())
             timeline.append(.plan(ps))
         case .toolCall(let call):
             let args = call.arguments?.map { "\($0.key)=\($0.value)" }.joined(separator: ", ") ?? ""
