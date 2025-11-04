@@ -20,7 +20,11 @@ enum LocalCodexScanner {
         if let env = ProcessInfo.processInfo.environment["CODEXD_HISTORY_DIR"], !env.isEmpty {
             return URL(fileURLWithPath: env).standardizedFileURL
         }
+        #if os(macOS)
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions", isDirectory: true)
+        #else
+        return URL(fileURLWithPath: "/nonexistent")
+        #endif
     }
 
     static func isNewFormatJSONL(_ url: URL) -> Bool {
@@ -172,17 +176,22 @@ enum LocalCodexDiscovery {
         if let u = url {
             d.set(u.path, forKey: overrideKey)
             // Persist security-scoped bookmark for sandbox access (macOS sandboxed builds)
+            #if os(macOS)
             if let data = try? u.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
                 d.set(data, forKey: overrideBookmarkKey)
             }
+            #endif
         } else {
             d.removeObject(forKey: overrideKey)
+            #if os(macOS)
             d.removeObject(forKey: overrideBookmarkKey)
+            #endif
         }
     }
 
     static func userOverride() -> URL? {
         let d = UserDefaults.standard
+        #if os(macOS)
         if let data = d.data(forKey: overrideBookmarkKey) {
             var isStale = false
             if let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale) {
@@ -190,6 +199,7 @@ enum LocalCodexDiscovery {
                 return url
             }
         }
+        #endif
         if let p = d.string(forKey: overrideKey), !p.isEmpty {
             return URL(fileURLWithPath: p).standardizedFileURL
         }
@@ -209,6 +219,7 @@ enum LocalCodexDiscovery {
         }
         if !opts.preferEnvOnly {
             // Derive three home bases only; avoid recursive enumeration for speed
+            #if os(macOS)
             let home = fm.homeDirectoryForCurrentUser
             let home2 = URL(fileURLWithPath: NSHomeDirectory())
             let realHome = URL(fileURLWithPath: "/Users/\(NSUserName())", isDirectory: true)
@@ -218,6 +229,7 @@ enum LocalCodexDiscovery {
             out.append(defaultBase)
             if !out.contains(where: { $0.path == defaultBase2.path }) { out.append(defaultBase2) }
             if !out.contains(where: { $0.path == defaultBase3.path }) { out.append(defaultBase3) }
+            #endif
         }
         if let extra = env["CODEX_EXTRA_DIRS"], !extra.isEmpty {
             for seg in extra.split(separator: ":") {
