@@ -15,7 +15,7 @@ struct HistorySidebar: View {
                 Image(systemName: "clock").imageScale(.small)
                     .foregroundStyle(OATheme.Colors.textTertiary)
                 Text("History")
-                    .font(.caption)
+                    .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
                     .foregroundStyle(OATheme.Colors.textTertiary)
             }
             .listRowBackground(Color.clear)
@@ -53,14 +53,14 @@ struct HistorySidebar: View {
                     Button(action: { onSelect?(row, pair.1) }) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(displayTitle(for: row) ?? "Thread")
-                                .font(.body)
+                                .font(BerkeleyFont.font(relativeTo: .body, size: 15))
                                 .fontWeight(isActive ? .semibold : .regular)
                                 .foregroundStyle(OATheme.Colors.textPrimary)
                                 .lineLimit(1)
                             HStack(spacing: 8) {
                                 if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
                                     Label(relative(ts), systemImage: "clock")
-                                        .font(.caption)
+                                        .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption))
                                         .foregroundStyle(OATheme.Colors.textTertiary)
                                 }
                                 providerBadge(for: row.source)

@@ -12,6 +12,9 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            // Gradient behind the transparent toolbar to create a soft scroll edge.
+            TopEdgeGradient()
+
             NavigationSplitView {
                 HistorySidebar(selected: selectedRow, onSelect: { row, url in
                     self.selectedRow = row
