@@ -28,6 +28,7 @@ struct ContentView: View {
             }
         }
         .background(OATheme.Colors.background.ignoresSafeArea())
+        .task { FMProbe.logAvailability() }
         .preferredColorScheme(.dark)
     }
 }
