@@ -19,8 +19,9 @@ struct ContentView: View {
                 })
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260)
             } detail: {
-                // Remove custom header to avoid duplication under system toolbar
+                // Keep detail title empty; we draw our own leading toolbar title
                 AcpThreadView(url: selectedURL)
+                    .navigationTitle("")
             }
             // Gradient sits above content but under the toolbar, creating a soft edge behind the title
             TopEdgeGradient()
@@ -32,7 +33,7 @@ struct ContentView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
+            ToolbarItem(placement: .navigationBarLeading) {
                 Text(selectedRowTitle())
                     .font(Font.custom(BerkeleyFont.defaultName(), size: 15, relativeTo: .headline))
                     .foregroundStyle(OATheme.Colors.textPrimary)
@@ -44,7 +45,7 @@ struct ContentView: View {
         .toolbar(.visible, for: .windowToolbar)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
+            ToolbarItem(placement: .navigation) {
                 Text(selectedRowTitle())
                     .font(Font.custom(BerkeleyFont.defaultName(), size: 14, relativeTo: .headline))
                     .foregroundStyle(OATheme.Colors.textPrimary)
@@ -58,10 +59,7 @@ struct ContentView: View {
     private func selectedRowTitle() -> String {
         if let r = selectedRow {
             if let t = r.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return t }
-            // Fallback to id tail if title missing
-            let s = r.id
-            if s.count > 16 { return "…" + String(s.suffix(16)) }
-            return s.isEmpty ? "Thread" : s
+            return "Thread"
         }
         return "OpenAgents"
     }
