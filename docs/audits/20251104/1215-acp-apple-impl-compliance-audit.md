@@ -1,14 +1,14 @@
 # Audit — ACP Compliance for macOS/iOS (Apple‑Native Surfaces)
 
 - Date: 2025‑11‑04
-- Scope: Apple‑native Swift app targets under `ios/` (macOS + iOS), the Apple‑native WebSocket pairing bridge, and their interaction with the Rust `oa-bridge` and ACP.
+- Scope: Apple‑native Swift app targets under `ios/` (macOS + iOS), and the Apple‑native WebSocket pairing bridge. We will not rely on the Rust `oa-bridge`; ACP will be implemented natively in Swift.
 - Goal: Assess how closely current implementations adhere to the Agent Client Protocol (ACP), identify deviations, and outline a concrete path to full compliance.
 
 ## Summary
 
 The Apple‑native surfaces implement ACP concepts in local data models and UI renderers, and partially translate provider outputs into ACP‑like events for read‑only history. However, on‑wire protocol usage is not ACP: the macOS/iOS bridge currently speaks a custom WebSocket envelope with a minimal handshake (`Hello`/`HelloAck`) and an application‑specific message (`threads.list.request/response`). JSON‑RPC method names and lifecycles defined by ACP (e.g., `initialize`, `session/new`, `session/prompt`, `session/update`) are not yet present on Apple‑native transport. Tool permission requests, file system/terminal methods, and capability negotiation are also not implemented on Apple platforms.
 
-Conclusion: The Swift app is ACP‑aligned in data shape for rendering and translation, but not ACP‑compliant on the wire. Full compliance requires adopting ACP’s JSON‑RPC transport (or faithfully bridging to the Rust `oa-bridge` that already implements ACP/Tinyvex), implementing session lifecycle and streaming updates, and supporting client‑side request handlers defined in ACP.
+Conclusion: The Swift app is ACP‑aligned in data shape for rendering and translation, but not ACP‑compliant on the wire. Full compliance requires adopting ACP’s JSON‑RPC transport in Swift (no Rust bridge), implementing session lifecycle and streaming updates, and supporting client‑side request handlers defined in ACP.
 
 ## Sources Reviewed
 
@@ -43,7 +43,7 @@ Conclusion: The Swift app is ACP‑aligned in data shape for rendering and trans
 
 - Bridge integration
   - ADR‑0007 makes ACP the canonical on‑wire contract; ADR‑0011/0014 acknowledge the Apple bridge as an experiment/pairing path.
-  - Rust `oa-bridge` remains the single source of truth for `/ws` and typed Tinyvex updates, but the Apple‑native surfaces currently do not consume ACP or Tinyvex over that socket.
+  - Direction change: the Apple‑native bridge will implement ACP directly in Swift (JSON‑RPC) and expose session lifecycle and streaming updates. We will not depend on the Rust `oa-bridge` for `/ws`.
 
 ## ACP Compliance Matrix (key areas)
 
@@ -130,33 +130,31 @@ Recommended pathway (incremental):
 7) Tests and conformance
 - Add unit tests for Swift ACP encode/decode and for client service handlers.
 - Add integration tests that drive a prompt turn over ACP and assert streamed updates render as expected.
-- Reuse existing Rust bridge tests; add a smoke test that drives the Apple app against a local bridge.
+- Add a smoke test that drives the iOS app against the macOS Swift ACP server.
 
 8) Migration and compatibility
 - Keep the Swift provider‑JSONL translator for local/offline history only.
-- For live sessions, prefer ACP over the bridge to ensure uniform behavior across platforms.
+- For live sessions, speak ACP over the Swift bridge to ensure uniform behavior across platforms.
 
 ## Milestones & Acceptance
 
-- M1 — Bridge Client parity (2–3 days)
-  - iOS/macOS connect to `oa-bridge` `/ws`; history and live updates come via Tinyvex and ACP `session/update`.
-  - Apple socket limited to discovery/token handoff only.
+- M1 — Swift ACP transport skeleton (2–3 days)
+  - Implement JSON‑RPC framing on the Apple bridge (macOS server + iOS client): `initialize` round‑trip with capability negotiation.
+  - Keep existing lightweight `threads.list` only as a temporary helper; mark deprecated.
 
 - M2 — Prompt turn over ACP (1 week)
-  - Implement `session/prompt` with streamed `session/update` handling (text, reasoning, tool call/result, plan).
-  - Implement `session/cancel` and reflect `StopReason`.
+  - Implement `session/new`, `session/prompt`, `session/cancel` on Swift bridge.
+  - Stream `session/update` variants (text, reasoning, tool call/result, plan, available commands, current mode) to the iOS UI.
 
 - M3 — Client services on macOS (1–2 weeks)
-  - File system read/write and terminal lifecycle implemented behind opt‑in permissions.
-  - `session/request_permission` surfaced with remembered choices.
+  - Implement `fs.*` and `terminal/run` handlers with permission prompts (`session/request_permission`).
+  - Remember decisions; add settings to reset.
 
 - M4 — Full content + modes (1 week)
-  - Add remaining content variants and `AvailableCommandsUpdate`/`CurrentModeUpdate` handling.
-  - Implement `session/set_mode` and (optionally) `session/load` if the bridge/agent supports it.
+  - Add remaining content variants and implement `session/set_mode`.
 
 - M5 — Codegen + tests (ongoing)
-  - Introduce codegen for Swift ACP types from schema to avoid drift.
-  - Add integration tests that run a complete ACP prompt turn against a local bridge.
+  - Generate Swift ACP types from schemas; add encode/decode tests and a full prompt‑turn integration test (iOS ↔ macOS Swift ACP server).
 
 ## Notes & References
 
