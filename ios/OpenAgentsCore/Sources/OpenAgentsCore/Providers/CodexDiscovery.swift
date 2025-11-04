@@ -12,6 +12,7 @@ public enum CodexDiscovery {
     /// - any subdirectory under `~/.codex` that contains new-format `*.jsonl`
     /// - extra dirs from `CODEX_EXTRA_DIRS` (":" separated), if they exist
     public static func discoverBaseDirs(options: Options = .init()) -> [URL] {
+        #if os(macOS)
         var out: [URL] = []
         let fm = FileManager.default
         let env = ProcessInfo.processInfo.environment
@@ -55,6 +56,25 @@ public enum CodexDiscovery {
             }
         }
         return dedupe(out)
+        #else
+        // iOS and other platforms: avoid using homeDirectoryForCurrentUser.
+        // Respect environment overrides if present (useful for simulators/tests),
+        // otherwise return an empty list to prevent desktop-specific scanning.
+        var out: [URL] = []
+        let fm = FileManager.default
+        let env = ProcessInfo.processInfo.environment
+        if let override = env["CODEXD_HISTORY_DIR"], !override.isEmpty {
+            let u = URL(fileURLWithPath: override).standardizedFileURL
+            if fm.fileExists(atPath: u.path) { out.append(u) }
+        }
+        if let extra = env["CODEX_EXTRA_DIRS"], !extra.isEmpty {
+            for seg in extra.split(separator: ":") {
+                let u = URL(fileURLWithPath: String(seg)).standardizedFileURL
+                if fm.fileExists(atPath: u.path) { out.append(u) }
+            }
+        }
+        return dedupe(out)
+        #endif
     }
 
     private static func dedupe(_ urls: [URL]) -> [URL] {
@@ -112,3 +132,4 @@ public enum CodexDiscovery {
         return merged
     }
 }
+
