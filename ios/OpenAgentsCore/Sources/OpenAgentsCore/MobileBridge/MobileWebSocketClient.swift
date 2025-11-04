@@ -37,11 +37,12 @@ public final class MobileWebSocketClient {
 
         webSocketTask.resume()
 
-        // Send Hello message
+        // Send Hello message as text JSON for compatibility with server
         let hello = BridgeMessages.Hello(token: token)
         do {
             let data = try JSONEncoder().encode(hello)
-            let message = URLSessionWebSocketTask.Message.data(data)
+            let text = String(data: data, encoding: .utf8) ?? "{\"token\":\"\(token)\"}"
+            let message = URLSessionWebSocketTask.Message.string(text)
             webSocketTask.send(message) { [weak self] error in
                 if let error = error {
                     self?.disconnect(error: error)
