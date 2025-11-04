@@ -12,6 +12,10 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            // Backdrop header provides a blackish glass surface under the toolbar
+            GlassHeader(title: "OpenAgents")
+                .allowsHitTesting(false)
+
             NavigationSplitView {
                 HistorySidebar(selected: selectedRow, onSelect: { row, url in
                     self.selectedRow = row
@@ -19,12 +23,14 @@ struct ContentView: View {
                 })
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260)
             } detail: {
-                AcpThreadView(url: selectedURL)
-            }
-            // Only overlay our darker glass header when no thread is selected
-            if selectedURL == nil {
-                GlassHeader(title: "OpenAgents")
-                    .allowsHitTesting(false)
+                if let row = selectedRow, let u = selectedURL {
+                    VStack(spacing: 0) {
+                        ThreadHeaderView(row: row, url: u)
+                        AcpThreadView(url: selectedURL)
+                    }
+                } else {
+                    AcpThreadView(url: selectedURL)
+                }
             }
         }
         .background(OATheme.Colors.background.ignoresSafeArea())
