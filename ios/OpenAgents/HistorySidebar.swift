@@ -11,7 +11,17 @@ struct HistorySidebar: View {
 
     var body: some View {
         List {
-            Section(header: Label("History", systemImage: "clock")) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock").imageScale(.small)
+                    .foregroundStyle(OATheme.Colors.textTertiary)
+                Text("History")
+                    .font(.caption)
+                    .foregroundStyle(OATheme.Colors.textTertiary)
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            
+            Group {
                 if isLoading && items.isEmpty {
                     HStack {
                         ProgressView()
@@ -36,6 +46,7 @@ struct HistorySidebar: View {
                         #endif
                     }
                 }
+            }
                 ForEach(Array(items.prefix(20).enumerated()), id: \.0) { _, pair in
                     let row = pair.0
                     let isActive = (selected?.id == row.id && selected?.source == row.source)
