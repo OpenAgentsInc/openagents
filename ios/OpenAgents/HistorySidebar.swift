@@ -13,7 +13,7 @@ struct HistorySidebar: View {
                     HStack {
                         ProgressView()
                         Text("Loading…")
-                    }.buttonStyle(.plain)
+                    }
                 }
                 if !items.isEmpty {
                     Text("\(items.count) chats found")
@@ -33,7 +33,7 @@ struct HistorySidebar: View {
                         Button("Select Codex Folder…", action: selectCodexFolder)
                             .buttonStyle(.bordered)
                         #endif
-                    }.buttonStyle(.plain)
+                    }
                 }
                 ForEach(Array(items.prefix(20).enumerated()), id: \.0) { _, pair in
                     let row = pair.0
@@ -51,7 +51,7 @@ struct HistorySidebar: View {
                                 providerBadge(for: row.source)
                             }
                         }
-                    }.buttonStyle(.plain)
+                    }
                 }
             }
         }
@@ -90,13 +90,13 @@ struct HistorySidebar: View {
                     claudeRows = urls.map { url in
                         let baseFor = claudeBases.first { url.path.hasPrefix($0.path) }
                         return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
-                    }.buttonStyle(.plain)
+                    }
                 }
-                dbg.append("codexCount=\(codexRows.count) claudeCount=\(claudeRows.count)")
+                dbg.append("codexCount=\(codexURLs.count) claudeCount=\(claudeRows.count)")
                 merged += claudeRows.map { ($0, nil) }
             } else {
                 dbg.append("claude=disabled")
-                dbg.append("codexCount=\(codexRows.count) claudeCount=0")
+                dbg.append("codexCount=\(codexURLs.count) claudeCount=0")
             }
             // Sort only what we have; Codex-only is already top-10
             merged.sort { ($0.0.last_message_ts ?? $0.0.updated_at) > ($1.0.last_message_ts ?? $1.0.updated_at) }

@@ -62,6 +62,11 @@
 - Submit iOS build: `bun run submit:ios`.
 - Run bridge (Rust): from repo root `cargo bridge`.
 
+## Build Discipline (Mandatory)
+- Before handing off work for review, always ensure the app builds locally without compile errors.
+- For changes under `ios/`, perform a Debug build in Xcode and fix any compiler errors before stopping work.
+- If a change breaks the build, fix forward or revert the breaking fragment immediately, then re‑run the build to confirm a clean state.
+
 ## Projects and Skills (Desktop‑side Source of Truth)
 
 - Home folder: `OPENAGENTS_HOME` (defaults to `~/.openagents`).
