@@ -313,7 +313,7 @@ public class DesktopWebSocketServer {
                         let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
                         let sid = ACPSessionId(sidStr)
                         let msg = ACP.Client.SessionUpdate.agentMessageChunk(
-                            ACP.Client.ContentChunk(content: .text("OK — processing your request…"))
+                            ACP.Client.ContentChunk(content: .text(.init(text: "OK — processing your request…")))
                         )
                         let note = ACP.Client.SessionNotificationWire(session_id: sid, update: msg)
                         if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
@@ -492,7 +492,8 @@ extension DesktopWebSocketServer {
                 if !chunk.isEmpty { data.append(chunk) }
                 if data.count > limitBytes { break }
             }
-            if let more = try? pipe.fileHandleForReading.readToEnd(), let more = more { data.append(more) }
+            let more = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
+            if !more.isEmpty { data.append(more) }
             p.waitUntilExit()
         } catch {
             return ("", false, nil)

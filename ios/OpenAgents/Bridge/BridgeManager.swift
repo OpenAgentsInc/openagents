@@ -220,7 +220,7 @@ extension BridgeManager {
     struct EmptyResult: Codable {}
     func sendPrompt(text: String) {
         guard let client = self.client else { return }
-        let parts: [ACP.Client.ContentBlock] = [.text(text)]
+        let parts: [ACP.Client.ContentBlock] = [.text(.init(text: text))]
         if currentSessionId == nil {
             client.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-\(UUID().uuidString)") { (resp: ACP.Agent.SessionNewResponse?) in
                 guard let resp = resp else { return }

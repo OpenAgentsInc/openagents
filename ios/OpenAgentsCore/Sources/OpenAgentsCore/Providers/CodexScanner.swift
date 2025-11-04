@@ -99,7 +99,7 @@ public enum CodexScanner {
     /// Tries a small head read first, then (if needed) a small tail read fallback.
     public static func quickTitle(for url: URL, maxBytes: Int = 300_000, maxLines: Int = 2000) -> String? {
         // Helper to extract a candidate title from translated messages
-        func firstUserSnippet(from thread: CodexAcpTranslator.Thread) -> String? {
+        func firstUserSnippet(from thread: ACPThread) -> String? {
             var msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user }
             msgs.sort { $0.ts < $1.ts }
             for m in msgs {

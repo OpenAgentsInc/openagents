@@ -12,16 +12,16 @@ import Foundation
 public extension ACP.Client {
     /// A streamed item of content (text/tool/etc.) used by update chunks.
     /// Mirrors `ContentChunk` in Rust `client.rs`.
-    struct ContentChunk: Codable {
-        var content: ContentBlock
-        var _meta: [String: AnyEncodable]? = nil
+    public struct ContentChunk: Codable {
+        public var content: ContentBlock
+        public var _meta: [String: AnyEncodable]? = nil
         public init(content: ContentBlock, _meta: [String: AnyEncodable]? = nil) {
             self.content = content; self._meta = _meta
         }
     }
 
     /// Content block variants mirroring Rust `content.rs`.
-    enum ContentBlock: Codable {
+    public enum ContentBlock: Codable {
         case text(TextContent)
         case image(ImageContent)
         case audio(AudioContent)
@@ -251,7 +251,7 @@ public extension ACP.Client {
 
     /// Different types of updates that can be sent during session processing.
     /// Mirrors `SessionUpdate` in Rust `client.rs` (subset variants for now).
-    enum SessionUpdate: Codable {
+    public enum SessionUpdate: Codable {
         case userMessageChunk(ContentChunk)
         case agentMessageChunk(ContentChunk)
         case agentThoughtChunk(ContentChunk)
@@ -333,25 +333,25 @@ public extension ACP.Client {
     }
 
     // Plan type now mirrors ACP Rust Plan via ACPPlan
-    typealias Plan = ACPPlan
+    public typealias Plan = ACPPlan
 
-    struct AvailableCommandsUpdate: Codable, Equatable {
-        var available_commands: [AvailableCommand]
+    public struct AvailableCommandsUpdate: Codable, Equatable {
+        public var available_commands: [AvailableCommand]
         public init(available_commands: [AvailableCommand]) { self.available_commands = available_commands }
     }
-    struct CurrentModeUpdate: Codable, Equatable {
-        var current_mode_id: ACPSessionModeId
+    public struct CurrentModeUpdate: Codable, Equatable {
+        public var current_mode_id: ACPSessionModeId
         public init(current_mode_id: ACPSessionModeId) { self.current_mode_id = current_mode_id }
     }
-    struct AvailableCommand: Codable, Equatable {
-        var name: String
-        var description: String
-        var input: AvailableCommandInput?
+    public struct AvailableCommand: Codable, Equatable {
+        public var name: String
+        public var description: String
+        public var input: AvailableCommandInput?
         public init(name: String, description: String, input: AvailableCommandInput? = nil) {
             self.name = name; self.description = description; self.input = input
         }
     }
-    enum AvailableCommandInput: Codable, Equatable {
+    public enum AvailableCommandInput: Codable, Equatable {
         case unstructured(hint: String)
 
         private enum CodingKeys: String, CodingKey { case kind = "type", hint }

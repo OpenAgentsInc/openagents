@@ -147,7 +147,7 @@ public struct AnyEncodable: Codable {
 // MARK: - Session Mode and Cancel (parity with Rust agent.rs)
 
 public extension ACP.Agent {
-    struct SetSessionModeRequest: Codable, Equatable {
+    struct SetSessionModeRequest: Codable {
         public var session_id: ACPSessionId
         public var mode_id: ACPSessionModeId
         public var _meta: [String: AnyEncodable]? = nil
@@ -155,7 +155,7 @@ public extension ACP.Agent {
             self.session_id = session_id; self.mode_id = mode_id; self._meta = _meta
         }
     }
-    struct SetSessionModeResponse: Codable, Equatable {
+    struct SetSessionModeResponse: Codable {
         public var _meta: [String: AnyEncodable]? = nil
         public init(_meta: [String: AnyEncodable]? = nil) { self._meta = _meta }
     }
@@ -182,7 +182,7 @@ public extension ACP.Agent {
 }
 // MARK: - MCP Servers (parity with Rust agent.rs)
 public extension ACP.Agent {
-    enum McpServer: Codable, Equatable {
+    enum McpServer: Codable {
         case http(name: String, url: String, headers: [HttpHeader])
         case sse(name: String, url: String, headers: [HttpHeader])
         case stdio(name: String, command: String, args: [String], env: [EnvVariable])
