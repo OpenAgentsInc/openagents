@@ -167,35 +167,33 @@ public class DesktopWebSocketServer {
 
     private func handleTextMessage(_ text: String, from client: Client) {
         if !client.isHandshakeComplete {
-            // Expecting Hello message in form: {"type":"Hello","token":"..."}
-            if let data = text.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-               let type = json["type"] as? String,
-               type == "Hello",
-               let receivedToken = json["token"] as? String {
-                if receivedToken == token {
-                    client.isHandshakeComplete = true
-                    // Reply with HelloAck
-                    let ack = ["type": "HelloAck"]
-                    if let ackData = try? JSONSerialization.data(withJSONObject: ack, options: []),
-                       let ackText = String(data: ackData, encoding: .utf8) {
-                        client.send(text: ackText)
-                    }
-                    delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
-                } else {
-                    // Token mismatch, close connection
-                    delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
-                    client.close()
-                    clients.remove(client)
-                }
-            } else {
-                // Invalid handshake message, close
+            // Accept either {"type":"Hello","token":"..."} or {"token":"..."}
+            guard let data = text.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
                 delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
-                client.close()
-                clients.remove(client)
+                client.close(); clients.remove(client); return
+            }
+            let type = (json["type"] as? String) ?? ""
+            let receivedToken = (json["token"] as? String) ?? ""
+            guard type == "Hello" || (!receivedToken.isEmpty) else {
+                delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
+                client.close(); clients.remove(client); return
+            }
+            if receivedToken == token {
+                client.isHandshakeComplete = true
+                // Reply with HelloAck; include token for clients expecting it
+                let ackObj: [String: Any] = ["type": "HelloAck", "token": token]
+                if let ackData = try? JSONSerialization.data(withJSONObject: ackObj, options: []),
+                   let ackText = String(data: ackData, encoding: .utf8) {
+                    client.send(text: ackText)
+                }
+                delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
+            } else {
+                delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
+                client.close(); clients.remove(client)
             }
         } else {
-            // For now ignoring messages after handshake
+            // TODO: handle subsequent bridge messages (envelopes)
         }
     }
 }

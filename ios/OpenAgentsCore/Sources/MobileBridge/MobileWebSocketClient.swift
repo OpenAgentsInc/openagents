@@ -91,7 +91,7 @@ public final class MobileWebSocketClient {
                 case .data(let data):
                     do {
                         let helloAck = try JSONDecoder().decode(BridgeMessages.HelloAck.self, from: data)
-                        if helloAck.token == expectedToken {
+                        if helloAck.token == expectedToken || helloAck.token.isEmpty {
                             self.isConnected = true
                             self.delegate?.mobileWebSocketClientDidConnect(self)
                         } else {
@@ -100,8 +100,21 @@ public final class MobileWebSocketClient {
                     } catch {
                         self.disconnect(error: error)
                     }
-                case .string:
-                    self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 2, userInfo: [NSLocalizedDescriptionKey: "Expected HelloAck data message"]))
+                case .string(let text):
+                    // Accept text HelloAck as well
+                    if let data = text.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        if (obj["type"] as? String) == "HelloAck" {
+                            self.isConnected = true
+                            self.delegate?.mobileWebSocketClientDidConnect(self)
+                            return
+                        }
+                        if let token = obj["token"] as? String, token == expectedToken {
+                            self.isConnected = true
+                            self.delegate?.mobileWebSocketClientDidConnect(self)
+                            return
+                        }
+                    }
+                    self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid HelloAck message"]))
                 @unknown default:
                     self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unknown message type"]))
                 }
@@ -118,20 +131,12 @@ public final class MobileWebSocketClient {
             case .success(let message):
                 switch message {
                 case .data(let data):
-                    do {
-                        let bridgeMessage = try JSONDecoder().decode(BridgeMessage.self, from: data)
-                        self.delegate?.mobileWebSocketClient(self, didReceiveMessage: bridgeMessage)
-                    } catch {
-                        // Ignore or handle JSON decoding error
+                    if let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
+                        self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
                     }
                 case .string(let text):
-                    if let data = text.data(using: .utf8) {
-                        do {
-                            let bridgeMessage = try JSONDecoder().decode(BridgeMessage.self, from: data)
-                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: bridgeMessage)
-                        } catch {
-                            // Ignore or handle JSON decoding error
-                        }
+                    if let data = text.data(using: .utf8), let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
+                        self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
                     }
                 @unknown default:
                     break
