@@ -5,13 +5,13 @@ This document describes how the iOS app finds and pairs with the desktop WebSock
 ## TL;DR
 
 - Desktop app (macOS) automatically starts a WebSocket bridge on launch at `ws://0.0.0.0:9099`.
-- It advertises a Bonjour service `_openagents._tcp` on the LAN.
-- iOS app browses for `_openagents._tcp` and connects to the first match.
+- Discovery is behind a feature flag; by default, iOS uses Manual Connect (enter the desktop LAN IP + `9099`).
+- When multicast is approved and enabled, the app advertises `_openagents._tcp` and the iOS app browses and connects automatically.
 - Handshake uses a pre‑shared token (dev default: `OA_DEV_TOKEN`).
 
 ## Why Bonjour
 
-We want a zero‑config, LAN‑first pairing story. Bonjour (mDNS) lets iOS discover the desktop without manual IP entry. In constrained or remote setups, we’ll support Tailscale (VPN) or manual host entry later.
+We want a zero‑config, LAN‑first pairing story. Bonjour (mDNS) lets iOS discover the desktop without manual IP entry. Until Apple approves the multicast entitlement for the app, discovery is disabled by default and Manual Connect is the recommended path. In constrained or remote setups, we’ll also support Tailscale (VPN) or manual host entry.
 
 ## Handshake
 
