@@ -371,6 +371,59 @@ public class DesktopWebSocketServer {
                         // Notification: log and optionally send a status note
                         print("[Bridge][server] session/cancel received")
                         // No response required
+                    case ACPRPC.fsReadTextFile:
+                        struct Req: Codable { let session_id: ACPSessionId; let uri: String }
+                        struct Resp: Codable { let text: String }
+                        let idVal: JSONRPC.ID = {
+                            if let idNum = dict["id"] as? Int { return JSONRPC.ID(String(idNum)) }
+                            if let idStr = dict["id"] as? String { return JSONRPC.ID(idStr) }
+                            return JSONRPC.ID("1")
+                        }()
+                        if let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let req = try? JSONDecoder().decode(Req.self, from: d) {
+                            let text: String? = DesktopWebSocketServer.readText(fromURI: req.uri)
+                            if let text = text, let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: Resp(text: text))), let jtext = String(data: out, encoding: .utf8) {
+                                print("[Bridge][server] send rpc result method=\(ACPRPC.fsReadTextFile) id=\(idVal.value) bytes=\(jtext.utf8.count)")
+                                client.send(text: jtext)
+                            } else {
+                                DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32002, message: "Resource not found: \(req.uri)")
+                            }
+                        } else {
+                            DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32602, message: "Invalid params")
+                        }
+                    case ACPRPC.fsWriteTextFile:
+                        struct Req: Codable { let session_id: ACPSessionId; let uri: String; let text: String }
+                        struct Resp: Codable { let ok: Bool }
+                        let idVal: JSONRPC.ID = {
+                            if let idNum = dict["id"] as? Int { return JSONRPC.ID(String(idNum)) }
+                            if let idStr = dict["id"] as? String { return JSONRPC.ID(idStr) }
+                            return JSONRPC.ID("1")
+                        }()
+                        if let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let req = try? JSONDecoder().decode(Req.self, from: d) {
+                            if DesktopWebSocketServer.writeText(toURI: req.uri, text: req.text), let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: Resp(ok: true))), let jtext = String(data: out, encoding: .utf8) {
+                                print("[Bridge][server] send rpc result method=\(ACPRPC.fsWriteTextFile) id=\(idVal.value) bytes=\(jtext.utf8.count)")
+                                client.send(text: jtext)
+                            } else {
+                                DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32603, message: "Write failed")
+                            }
+                        } else {
+                            DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32602, message: "Invalid params")
+                        }
+                    case ACPRPC.terminalRun:
+                        struct Req: Codable { let session_id: ACPSessionId; let command: [String]; let cwd: String?; let env: [String:String]?; let output_byte_limit: Int? }
+                        struct Resp: Codable { let output: String; let truncated: Bool; let exit_status: Int32? }
+                        let idVal: JSONRPC.ID = {
+                            if let idNum = dict["id"] as? Int { return JSONRPC.ID(String(idNum)) }
+                            if let idStr = dict["id"] as? String { return JSONRPC.ID(idStr) }
+                            return JSONRPC.ID("1")
+                        }()
+                        guard let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let req = try? JSONDecoder().decode(Req.self, from: d) else {
+                            DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32602, message: "Invalid params"); break
+                        }
+                        let result = DesktopWebSocketServer.runCommand(req.command, cwd: req.cwd, env: req.env, limit: req.output_byte_limit)
+                        if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: Resp(output: result.output, truncated: result.truncated, exit_status: result.exitStatus))), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc result method=\(ACPRPC.terminalRun) id=\(idVal.value) bytes=\(jtext.utf8.count)")
+                            client.send(text: jtext)
+                        }
                     default:
                         break
                     }
@@ -378,6 +431,69 @@ public class DesktopWebSocketServer {
                 return
             }
             print("[Bridge][server] ignoring non JSON-RPC payload")
+        }
+    }
+}
+
+// MARK: - Service helpers & error sender
+extension DesktopWebSocketServer {
+    fileprivate static func urlFromURI(_ uri: String) -> URL? {
+        if let u = URL(string: uri), u.scheme != nil { return u }
+        return URL(fileURLWithPath: uri)
+    }
+    fileprivate static func readText(fromURI uri: String) -> String? {
+        guard let url = urlFromURI(uri) else { return nil }
+        if url.isFileURL {
+            return try? String(contentsOf: url, encoding: .utf8)
+        }
+        return nil
+    }
+    fileprivate static func writeText(toURI uri: String, text: String) -> Bool {
+        guard let url = urlFromURI(uri) else { return false }
+        if url.isFileURL {
+            do { try text.data(using: .utf8)!.write(to: url); return true } catch { return false }
+        }
+        return false
+    }
+    fileprivate static func runCommand(_ cmd: [String], cwd: String?, env: [String:String]?, limit: Int?) -> (output: String, truncated: Bool, exitStatus: Int32?) {
+        guard let prog = cmd.first else { return ("", false, nil) }
+        let args = Array(cmd.dropFirst())
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: prog)
+        p.arguments = args
+        if let cwd = cwd { p.currentDirectoryURL = URL(fileURLWithPath: cwd) }
+        var environment = ProcessInfo.processInfo.environment
+        if let env = env { for (k,v) in env { environment[k] = v } }
+        p.environment = environment
+        let pipe = Pipe(); p.standardOutput = pipe; p.standardError = pipe
+        var data = Data()
+        do {
+            try p.run()
+            let limitBytes = max(0, limit ?? Int.max)
+            while p.isRunning {
+                let chunk = try pipe.fileHandleForReading.read(upToCount: 8192) ?? Data()
+                if !chunk.isEmpty { data.append(chunk) }
+                if data.count > limitBytes { break }
+            }
+            if let more = try? pipe.fileHandleForReading.readToEnd(), let more = more { data.append(more) }
+            p.waitUntilExit()
+        } catch {
+            return ("", false, nil)
+        }
+        let outStr = String(decoding: data.prefix((limit ?? Int.max)), as: UTF8.self)
+        let truncated = data.count > (limit ?? Int.max)
+        return (outStr, truncated, p.terminationStatus)
+    }
+    fileprivate static func sendJSONRPCError(client: DesktopWebSocketServer.Client, id: JSONRPC.ID, code: Int, message: String) {
+        let idAny: Any = Int(id.value) ?? id.value
+        let envelope: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": idAny,
+            "error": ["code": code, "message": message]
+        ]
+        if let out = try? JSONSerialization.data(withJSONObject: envelope), let text = String(data: out, encoding: .utf8) {
+            print("[Bridge][server] send rpc error id=\(id.value) code=\(code) bytes=\(text.utf8.count)")
+            client.send(text: text)
         }
     }
 }
