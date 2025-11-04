@@ -190,9 +190,10 @@ struct AcpThreadView: View {
     func shouldHideLine(_ line: String) -> Bool {
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-        if let t = obj["type"] as? String, t == "turn_context" { return true }
-        if let t = obj["type"] as? String, t == "event_msg",
-           let p = obj["payload"] as? [String: Any], (p["type"] as? String) == "token_count" { return true }
+        let t = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
+        if t == "turn_context" { return true }
+        if t == "event_msg",
+           let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "token_count" { return true }
         return false
     }
 
@@ -200,11 +201,11 @@ struct AcpThreadView: View {
     func isReasoningLine(_ line: String) -> Bool {
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-        let type = (obj["type"] as? String) ?? (obj["event"] as? String)
-        if type == "event_msg", let p = obj["payload"] as? [String: Any], (p["type"] as? String) == "agent_reasoning" { return true }
+        let type = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
+        if type == "event_msg", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "agent_reasoning" { return true }
         if let item = (obj["item"] as? [String: Any]) ?? (obj["msg"] as? [String: Any]) ?? (obj["payload"] as? [String: Any]),
-           let itemType = item["type"] as? String, itemType == "agent_reasoning" { return true }
-        if type == "response_item", let p = obj["payload"] as? [String: Any], (p["type"] as? String) == "reasoning" { return true }
+           ((item["type"] as? String) ?? "").lowercased() == "agent_reasoning" { return true }
+        if type == "response_item", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "reasoning" { return true }
         return false
     }
 
