@@ -345,11 +345,11 @@ struct AcpThreadView: View {
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
                 timeline.append(.message(m))
             case let .resource_link(link):
-                let s = "\(link.title ?? "Link") — \(link.url)"
+                let s = "\(link.title ?? "Link") — \(link.uri ?? "")"
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
                 timeline.append(.message(m))
             case let .image(img):
-                let s = "[image] \(img.alt ?? "") \(img.url)"
+                let s = "[image] \(img.uri ?? "") \(img.mimeType)"
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
                 timeline.append(.message(m))
             }

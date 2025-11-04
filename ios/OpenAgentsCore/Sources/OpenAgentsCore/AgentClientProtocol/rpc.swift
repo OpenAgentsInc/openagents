@@ -26,5 +26,10 @@ public enum ACPRPC {
 
     // Terminal (client-handled)
     public static let terminalRun = "terminal/run"
+    public static let terminalCreate = "terminal/create"
+    public static let terminalWrite = "terminal/write"
+    public static let terminalOutput = "terminal/output"
+    public static let terminalRelease = "terminal/release"
+    public static let terminalKill = "terminal/kill"
+    public static let terminalWaitForExit = "terminal/wait_for_exit"
 }
-

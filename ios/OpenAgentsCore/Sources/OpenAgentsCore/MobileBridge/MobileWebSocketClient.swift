@@ -94,6 +94,14 @@ public final class MobileWebSocketClient {
         }
     }
 
+    /// Send a JSON-RPC notification (no response expected)
+    public func sendJSONRPCNotification<P: Codable>(method: String, params: P) {
+        let note = JSONRPC.Notification(method: method, params: params)
+        guard let data = try? JSONEncoder().encode(note), let text = String(data: data, encoding: .utf8) else { return }
+        print("[Bridge][client] send rpc notify method=\(method) bytes=\(text.utf8.count)")
+        webSocketTask?.send(.string(text)) { _ in }
+    }
+
     /// Disconnect the WebSocket connection
     public func disconnect() {
         disconnect(error: nil)

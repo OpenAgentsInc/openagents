@@ -100,3 +100,20 @@ public struct AnyEncodable: Codable {
     public func encode(to encoder: Encoder) throws { try _encode(encoder) }
 }
 
+// MARK: - Session Mode and Cancel (parity with Rust agent.rs)
+
+public extension ACP.Agent {
+    struct SetSessionModeRequest: Codable, Equatable {
+        public var session_id: ACPSessionId
+        public var mode_id: ACPSessionModeId
+        public var _meta: [String: AnyEncodable]? = nil
+        public init(session_id: ACPSessionId, mode_id: ACPSessionModeId, _meta: [String: AnyEncodable]? = nil) {
+            self.session_id = session_id; self.mode_id = mode_id; self._meta = _meta
+        }
+    }
+    struct SetSessionModeResponse: Codable, Equatable {
+        public var _meta: [String: AnyEncodable]? = nil
+        public init(_meta: [String: AnyEncodable]? = nil) { self._meta = _meta }
+    }
+}
+

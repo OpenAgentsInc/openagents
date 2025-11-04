@@ -344,6 +344,33 @@ public class DesktopWebSocketServer {
                             print("[Bridge][server] send rpc result method=\(ACPRPC.sessionPrompt) id=\(idVal.value) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
+                    case ACPRPC.sessionSetMode:
+                        // Update current mode and broadcast a current_mode_update
+                        let params = dict["params"] as? [String: Any]
+                        let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
+                        let sid = ACPSessionId(sidStr)
+                        // Echo a current_mode_update
+                        let modeStr = (params?["mode_id"] as? String) ?? ACPSessionModeId.default_mode.rawValue
+                        let update = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: ACPSessionModeId(rawValue: modeStr) ?? .default_mode))
+                        let note = ACP.Client.SessionNotificationWire(session_id: sid, update: update)
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) update=current_mode_update session_id=\(sid.value) bytes=\(jtext.utf8.count)")
+                            client.send(text: jtext)
+                        }
+                        // Respond with an empty SetSessionModeResponse
+                        let idVal: JSONRPC.ID
+                        if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                        else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                        else { idVal = JSONRPC.ID("1") }
+                        let result = ACP.Agent.SetSessionModeResponse()
+                        if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc result method=\(ACPRPC.sessionSetMode) id=\(idVal.value) bytes=\(jtext.utf8.count)")
+                            client.send(text: jtext)
+                        }
+                    case ACPRPC.sessionCancel:
+                        // Notification: log and optionally send a status note
+                        print("[Bridge][server] session/cancel received")
+                        // No response required
                     default:
                         break
                     }
