@@ -187,7 +187,7 @@ struct AcpThreadView: View {
                 items.sort { $0.ts < $1.ts }
                 if items.count > maxMessages { items = Array(items.suffix(maxMessages)) }
                 DispatchQueue.main.async {
-                    withAnimation { self.timeline = items }
+                    withAnimation(.easeInOut(duration: 0.15)) { self.timeline = items }
                     self.threadTitle = thread.title
                     if let t = thread.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         self.onTitleChange?(t)
@@ -205,7 +205,7 @@ struct AcpThreadView: View {
     func scrollToBottom(_ proxy: ScrollViewProxy) {
         guard let last = timeline.last else { return }
         DispatchQueue.main.async {
-            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(last.id, anchor: .bottom) }
         }
     }
 
