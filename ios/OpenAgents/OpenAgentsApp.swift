@@ -31,5 +31,8 @@ struct OpenAgentsApp: App {
                 .tint(OATheme.Colors.accent)
         }
         .modelContainer(sharedModelContainer)
+        #if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+        #endif
     }
 }
