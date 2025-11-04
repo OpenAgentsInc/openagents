@@ -336,13 +336,13 @@ struct AcpThreadView: View {
         switch note.update {
         case .userMessageChunk(let chunk):
             if case let .text(s) = chunk.content {
-                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: s))], ts: nowMs())
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: s.text))], ts: nowMs())
                 timeline.append(.message(m))
             }
         case .agentMessageChunk(let chunk):
             switch chunk.content {
             case let .text(s):
-                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s.text))], ts: nowMs())
                 timeline.append(.message(m))
             case let .resource_link(link):
                 let s = "\(link.title ?? "Link") — \(link.uri ?? "")"
@@ -352,10 +352,12 @@ struct AcpThreadView: View {
                 let s = "[image] \(img.uri ?? "") \(img.mimeType)"
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
                 timeline.append(.message(m))
+            default:
+                break
             }
         case .agentThoughtChunk(let chunk):
             if case let .text(s) = chunk.content {
-                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s.text))], ts: nowMs())
                 timeline.append(.reasoning(m))
             }
         case .plan(let p):
@@ -372,6 +374,12 @@ struct AcpThreadView: View {
             let txt = "[tool \(status)] call_id=\(upd.call_id) \(msg)"
             let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: txt))], ts: nowMs())
             timeline.append(.message(m))
+        case .availableCommandsUpdate(_):
+            // No-op in this view; header observes from BridgeManager
+            break
+        case .currentModeUpdate(_):
+            // No-op in this view; header observes from BridgeManager
+            break
         }
     }
     #endif
