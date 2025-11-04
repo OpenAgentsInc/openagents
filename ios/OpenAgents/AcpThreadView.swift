@@ -27,33 +27,42 @@ struct AcpThreadView: View {
             } else if let e = error {
                 ScrollView { Text(e).font(.footnote) }.padding()
             } else {
-                List {
-                    if let title = threadTitle, !title.isEmpty {
-                        Section { Text(title).font(.headline) }
-                    }
-                    ForEach(messages, id: \.id) { msg in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 6) {
-                                roleBadge(msg.role)
-                                Text(dateLabel(ms: msg.ts))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            ForEach(msg.parts.indices, id: \.self) { idx in
-                                if case let .text(t) = msg.parts[idx] {
-                                    Text(t.text)
-                                        .textSelection(.enabled)
-                                        .font(.body)
+                ScrollViewReader { proxy in
+                    List {
+                        if let title = threadTitle, !title.isEmpty {
+                            Section { Text(title).font(.headline) }
+                        }
+                        ForEach(messages, id: \.id) { msg in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
+                                    roleBadge(msg.role)
+                                    Text(dateLabel(ms: msg.ts))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                ForEach(msg.parts.indices, id: \.self) { idx in
+                                    if case let .text(t) = msg.parts[idx] {
+                                        Text(t.text)
+                                            .textSelection(.enabled)
+                                            .font(.body)
+                                    }
                                 }
                             }
+                            .padding(.vertical, 4)
+                            .id(msg.id)
                         }
-                        .padding(.vertical, 4)
+                    }
+                    .listStyle(.plain)
+                    .onAppear {
+                        scrollToBottom(proxy)
+                    }
+                    .onChange(of: messages) { _, _ in
+                        scrollToBottom(proxy)
                     }
                 }
-                .listStyle(.plain)
             }
         }
-        .onChange(of: url?.path) { _ in load() }
+        .onChange(of: url?.path) { _, _ in load() }
         .onAppear(perform: load)
     }
 
@@ -106,6 +115,12 @@ struct AcpThreadView: View {
             }
         }
     }
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        guard let lastId = messages.last?.id else { return }
+        DispatchQueue.main.async {
+            withAnimation { proxy.scrollTo(lastId, anchor: .bottom) }
+        }
+    }
 }
 
 // MARK: - Efficient JSONL tail reader
@@ -137,4 +152,3 @@ private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [S
 #Preview {
     AcpThreadView(url: nil)
 }
-
