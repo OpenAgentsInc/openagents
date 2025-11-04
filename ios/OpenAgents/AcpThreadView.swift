@@ -58,7 +58,7 @@ struct AcpThreadView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .background(OATheme.Colors.background)
-                    .safeAreaPadding(.bottom, 60) // room for composer
+                    // Room for composer is handled by safeAreaInset below
                     .onAppear {
                         scrollToBottom(proxy)
                     }
@@ -66,7 +66,7 @@ struct AcpThreadView: View {
                         scrollToBottom(proxy)
                     }
                 }
-                    // Composer bar (non-interactive placeholder)
+                .safeAreaInset(edge: .bottom) {
                     GlassBar {
                         Image(systemName: "rectangle.and.pencil.and.ellipsis")
                             .imageScale(.medium)
@@ -75,9 +75,12 @@ struct AcpThreadView: View {
                             .foregroundStyle(OATheme.Colors.textTertiary)
                             .font(.subheadline)
                         Spacer()
-                        Image(systemName: "arrow.up.circle.fill")
-                            .imageScale(.large)
-                            .foregroundStyle(OATheme.Colors.textSecondary)
+                        Button(action: {}) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .imageScale(.large)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(OATheme.Colors.textSecondary)
                     }
                     .background(.clear)
                 }
