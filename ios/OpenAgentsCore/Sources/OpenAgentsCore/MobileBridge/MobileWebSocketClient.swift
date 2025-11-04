@@ -10,6 +10,9 @@ public protocol MobileWebSocketClientDelegate: AnyObject {
 
     /// Called when the client receives a message
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage)
+
+    /// Called when a JSON-RPC notification is received (ACP path)
+    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data)
 }
 
 public final class MobileWebSocketClient {
@@ -226,7 +229,19 @@ public final class MobileWebSocketClient {
         if let method = root["method"] as? String {
             // Notification path
             if method == ACPRPC.sessionUpdate {
-                print("[Bridge][client] JSONRPC session/update received")
+                if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
+                    }
+                }
+            } else {
+                if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
+                    }
+                }
             }
             return
         }

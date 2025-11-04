@@ -299,6 +299,9 @@ struct AcpThreadView: View {
             ts: Int64(Date().timeIntervalSince1970 * 1000)
         )
         timeline.append(.message(msg))
+        #if os(iOS)
+        bridge.sendPrompt(text: text)
+        #endif
         draft = ""
     }
 }

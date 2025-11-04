@@ -129,6 +129,17 @@ extension BridgeManager: MobileWebSocketClientDelegate {
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage) {
         // Legacy path removed; JSON-RPC used exclusively now.
     }
+
+    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data) {
+        if method == ACPRPC.sessionUpdate {
+            if let note = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: payload) {
+                log("client", "session.update for \(note.session_id.value)")
+                // TODO: route to UI timeline; for now, log only
+            }
+        } else {
+            if let s = String(data: payload, encoding: .utf8) { log("client", "notify \(method): \(s)") }
+        }
+    }
 }
 #endif
 
@@ -172,6 +183,28 @@ extension BridgeManager {
         }
     }
 }
+
+#if os(iOS)
+// MARK: - Prompt helpers
+extension BridgeManager {
+    struct EmptyResult: Codable {}
+    func sendPrompt(text: String) {
+        guard let client = self.client else { return }
+        let parts: [ACP.Client.ContentBlock] = [.text(text)]
+        if currentSessionId == nil {
+            client.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-\(UUID().uuidString)") { (resp: ACP.Agent.SessionNewResponse?) in
+                guard let resp = resp else { return }
+                DispatchQueue.main.async { [weak self] in self?.currentSessionId = resp.session_id }
+                let req = ACP.Agent.SessionPromptRequest(session_id: resp.session_id, content: parts)
+                client.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)" ) { (_: EmptyResult?) in }
+            }
+        } else if let sid = currentSessionId {
+            let req = ACP.Agent.SessionPromptRequest(session_id: sid, content: parts)
+            client.sendJSONRPC(method: ACPRPC.sessionPrompt, params: req, id: "session-prompt-\(UUID().uuidString)") { (_: EmptyResult?) in }
+        }
+    }
+}
+#endif
 
 // JSON-RPC threads list result shape
 fileprivate struct ThreadsListResult: Codable { let items: [ThreadSummary] }
