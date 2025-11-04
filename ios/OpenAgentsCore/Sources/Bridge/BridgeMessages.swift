@@ -80,3 +80,7 @@ public enum WebSocketMessage {
         public init() {}
     }
 }
+
+// Compatibility aliases for earlier code and client delegate APIs
+public typealias BridgeMessages = WebSocketMessage
+public typealias BridgeMessage = WebSocketMessage.Envelope
