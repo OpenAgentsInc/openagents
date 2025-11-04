@@ -82,6 +82,8 @@ public extension ACP.Client {
         case agentMessageChunk(ContentChunk)
         case agentThoughtChunk(ContentChunk)
         case plan(Plan)
+        case availableCommandsUpdate(AvailableCommandsUpdate)
+        case currentModeUpdate(CurrentModeUpdate)
         // The rest (ToolCall, ToolCallUpdate, AvailableCommandsUpdate, CurrentModeUpdate) can be added next.
 
         private enum CodingKeys: String, CodingKey { case sessionUpdate }
@@ -90,8 +92,10 @@ public extension ACP.Client {
             case agent_message_chunk
             case agent_thought_chunk
             case plan
+            case available_commands_update
+            case current_mode_update
         }
-        private enum PayloadKeys: String, CodingKey { case content, plan }
+        private enum PayloadKeys: String, CodingKey { case content, plan, available_commands, current_mode_id }
 
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -106,6 +110,12 @@ public extension ACP.Client {
                 self = .agentThoughtChunk(try p.decode(ContentChunk.self, forKey: .content))
             case .plan:
                 self = .plan(try p.decode(Plan.self, forKey: .plan))
+            case .available_commands_update:
+                let ac = try p.decode([AvailableCommand].self, forKey: .available_commands)
+                self = .availableCommandsUpdate(AvailableCommandsUpdate(available_commands: ac))
+            case .current_mode_update:
+                let mode = try p.decode(ACPSessionModeId.self, forKey: .current_mode_id)
+                self = .currentModeUpdate(CurrentModeUpdate(current_mode_id: mode))
             }
         }
         public func encode(to encoder: Encoder) throws {
@@ -124,6 +134,12 @@ public extension ACP.Client {
             case .plan(let plan):
                 try c.encode(Discriminator.plan, forKey: .sessionUpdate)
                 try p.encode(plan, forKey: .plan)
+            case .availableCommandsUpdate(let ac):
+                try c.encode(Discriminator.available_commands_update, forKey: .sessionUpdate)
+                try p.encode(ac.available_commands, forKey: .available_commands)
+            case .currentModeUpdate(let cur):
+                try c.encode(Discriminator.current_mode_update, forKey: .sessionUpdate)
+                try p.encode(cur.current_mode_id, forKey: .current_mode_id)
             }
         }
     }
@@ -132,5 +148,44 @@ public extension ACP.Client {
     struct Plan: Codable, Equatable {
         var steps: [String]
         public init(steps: [String]) { self.steps = steps }
+    }
+
+    struct AvailableCommandsUpdate: Codable, Equatable {
+        var available_commands: [AvailableCommand]
+        public init(available_commands: [AvailableCommand]) { self.available_commands = available_commands }
+    }
+    struct CurrentModeUpdate: Codable, Equatable {
+        var current_mode_id: ACPSessionModeId
+        public init(current_mode_id: ACPSessionModeId) { self.current_mode_id = current_mode_id }
+    }
+    struct AvailableCommand: Codable, Equatable {
+        var name: String
+        var description: String
+        var input: AvailableCommandInput?
+        public init(name: String, description: String, input: AvailableCommandInput? = nil) {
+            self.name = name; self.description = description; self.input = input
+        }
+    }
+    enum AvailableCommandInput: Codable, Equatable {
+        case unstructured(hint: String)
+
+        private enum CodingKeys: String, CodingKey { case kind = "type", hint }
+        private enum Discriminator: String, Codable { case unstructured }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let kind = try c.decode(Discriminator.self, forKey: .kind)
+            switch kind {
+            case .unstructured:
+                self = .unstructured(hint: (try? c.decode(String.self, forKey: .hint)) ?? "")
+            }
+        }
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            switch self {
+            case .unstructured(let hint):
+                try c.encode(Discriminator.unstructured, forKey: .kind)
+                try c.encode(hint, forKey: .hint)
+            }
+        }
     }
 }
