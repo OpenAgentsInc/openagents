@@ -322,7 +322,16 @@ struct AcpThreadView: View {
                 timeline.append(.message(m))
             }
         case .agentMessageChunk(let chunk):
-            if case let .text(s) = chunk.content {
+            switch chunk.content {
+            case let .text(s):
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
+                timeline.append(.message(m))
+            case let .resource_link(link):
+                let s = "\(link.title ?? "Link") — \(link.url)"
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
+                timeline.append(.message(m))
+            case let .image(img):
+                let s = "[image] \(img.alt ?? "") \(img.url)"
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
                 timeline.append(.message(m))
             }

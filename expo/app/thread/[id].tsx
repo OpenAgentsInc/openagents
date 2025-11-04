@@ -38,8 +38,26 @@ export default function ThreadScreen() {
   const setAgentProvider = useSettings((s) => s.setAgentProvider)
   const providerByThread = useThreadProviders((s) => s.byThread)
   const setThreadProvider = useThreadProviders((s) => s.setProvider)
-  // Title for thread screen
-  useHeaderTitle('New Thread')
+  // Title for thread screen: mirror drawer snippet/title logic
+  const headerTitle = React.useMemo(() => {
+    // If a live assistant message is present, prefer that as it's the most recent context
+    const liveText = String(live?.assistant || '').trim()
+    if (liveText) return sanitizeTitle(liveText)
+    // Otherwise, use the latest message text from history
+    const arr = Array.isArray(history) ? history.slice() : []
+    if (arr.length > 0) {
+      try {
+        arr.sort((a, b) => (Number(a.ts || 0) - Number(b.ts || 0)))
+        const last = arr[arr.length - 1]
+        const raw = String((last && (last as any).text) || '')
+        const cleaned = sanitizeTitle(raw)
+        if (cleaned) return cleaned
+      } catch {}
+    }
+    // Fall back based on thread state
+    return (initialId === 'new' || !threadId) ? 'New Thread' : 'Thread'
+  }, [history, live?.assistant, threadId, initialId])
+  useHeaderTitle(headerTitle)
   const acpUpdates = React.useMemo(() => eventsForThread(threadId), [eventsForThread, threadId])
 
   // Ensure we are subscribed to Tinyvex messages for this thread and have a recent snapshot
@@ -156,4 +174,20 @@ export default function ThreadScreen() {
       </View>
     </KeyboardAvoidingView>
   )
+}
+
+function sanitizeTitle(input: string): string {
+  try {
+    return input
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`([^`]*)`/g, '$1')
+      .replace(/^#+\s*/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/\[(.*?)\]\([^)]*\)/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim()
+  } catch {
+    return input
+  }
 }
