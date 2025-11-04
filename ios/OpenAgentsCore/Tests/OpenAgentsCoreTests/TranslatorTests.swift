@@ -47,5 +47,25 @@ final class TranslatorTests: XCTestCase {
         XCTAssertEqual(ps?.summary, "Working")
         XCTAssertEqual(ps?.steps ?? [], ["fetch","analyze"])
     }
-}
+    func testTranslateReasoningResponseItem() throws {
+        let lines: [String] = [
+            #"{\"type\":\"response_item\",\"payload\":{\"type\":\"reasoning\",\"summary\":{\"type\":\"summary_text\",\"content\":\"Thinking about steps…\"}},\"ts\": 30}"#
+        ]
+        let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: "reasoning"))
+        let msgs = thread.events.compactMap { $0.message }
+        XCTAssertEqual(msgs.count, 1)
+        XCTAssertEqual(msgs.first?.role, .assistant)
+        if case let .text(t)? = msgs.first?.parts.first { XCTAssertTrue(t.text.contains("Thinking")) } else { XCTFail("Expected text part") }
+    }
 
+    func testTranslateAgentReasoningEventMsg() throws {
+        let lines: [String] = [
+            #"{\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_reasoning\",\"text\":\"Let me reason…\"},\"ts\": 40}"#
+        ]
+        let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: "agent_reasoning"))
+        let msgs = thread.events.compactMap { $0.message }
+        XCTAssertEqual(msgs.count, 1)
+        XCTAssertEqual(msgs.first?.role, .assistant)
+        if case let .text(t)? = msgs.first?.parts.first { XCTAssertTrue(t.text.contains("reason")) } else { XCTFail("Expected text part") }
+    }
+}
