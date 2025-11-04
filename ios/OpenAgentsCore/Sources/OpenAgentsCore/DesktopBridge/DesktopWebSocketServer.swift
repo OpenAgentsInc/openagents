@@ -201,7 +201,21 @@ public class DesktopWebSocketServer {
                 client.close(); clients.remove(client)
             }
         } else {
-            // TODO: handle subsequent bridge messages (envelopes)
+            // Handle envelopes after handshake
+            if let env = try? WebSocketMessage.Envelope.from(jsonString: text) {
+                switch env.type {
+                case "threads.list.request":
+                    // Decode request
+                    let req = (try? env.decodedMessage(as: WebSocketMessage.ThreadsListRequest.self)) ?? .init(topK: 20)
+                    let items = CodexDiscovery.loadAllSummaries(maxFilesPerBase: 1000, maxResults: req.topK ?? 20)
+                    let resp = WebSocketMessage.ThreadsListResponse(items: items)
+                    if let out = try? WebSocketMessage.Envelope.envelope(for: resp, type: "threads.list.response").jsonString(prettyPrinted: false) {
+                        client.send(text: out)
+                    }
+                default:
+                    break
+                }
+            }
         }
     }
 }

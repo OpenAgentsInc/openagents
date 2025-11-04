@@ -79,6 +79,17 @@ public enum WebSocketMessage {
     public struct Pong: Codable {
         public init() {}
     }
+
+    // MARK: - Threads list messages
+    public struct ThreadsListRequest: Codable {
+        public let topK: Int?
+        public init(topK: Int? = nil) { self.topK = topK }
+    }
+
+    public struct ThreadsListResponse: Codable {
+        public let items: [ThreadSummary]
+        public init(items: [ThreadSummary]) { self.items = items }
+    }
 }
 
 // Compatibility aliases for earlier code and client delegate APIs

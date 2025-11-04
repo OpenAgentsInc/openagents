@@ -67,6 +67,21 @@ public final class MobileWebSocketClient {
         }
     }
 
+    /// Send an envelope with a typed message
+    public func send<T: Codable>(type: String, message: T) {
+        do {
+            let env = try BridgeMessage.envelope(for: message, type: type)
+            if let json = try? env.jsonString(prettyPrinted: false) {
+                webSocketTask?.send(.string(json)) { _ in }
+            } else {
+                let data = try JSONEncoder().encode(env)
+                webSocketTask?.send(.data(data)) { _ in }
+            }
+        } catch {
+            // ignore
+        }
+    }
+
     /// Disconnect the WebSocket connection
     public func disconnect() {
         disconnect(error: nil)
