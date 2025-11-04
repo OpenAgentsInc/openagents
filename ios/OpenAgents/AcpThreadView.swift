@@ -16,6 +16,7 @@ struct AcpThreadView: View {
                 Text("Select a thread")
                     .font(.headline)
                     .foregroundStyle(OATheme.Colors.textSecondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if isLoading && messages.isEmpty {
                 VStack(spacing: 8) {
                     ProgressView()
@@ -65,6 +66,7 @@ struct AcpThreadView: View {
                 }
             }
         }
+        .background(OATheme.Colors.background)
         .onChange(of: url?.path) { _, _ in load() }
         .onAppear(perform: load)
     }
