@@ -372,16 +372,22 @@ public class DesktopWebSocketServer {
                         print("[Bridge][server] session/cancel received")
                         // No response required
                     case ACPRPC.fsReadTextFile:
-                        struct Req: Codable { let session_id: ACPSessionId; let uri: String }
-                        struct Resp: Codable { let text: String }
+                        struct ReqURI: Codable { let session_id: ACPSessionId; let uri: String }
+                        struct ReqPath: Codable { let session_id: ACPSessionId; let path: String; let line: UInt32?; let limit: UInt32? }
+                        struct Resp: Codable { let content: String }
                         let idVal: JSONRPC.ID = {
                             if let idNum = dict["id"] as? Int { return JSONRPC.ID(String(idNum)) }
                             if let idStr = dict["id"] as? String { return JSONRPC.ID(idStr) }
                             return JSONRPC.ID("1")
                         }()
-                        if let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let req = try? JSONDecoder().decode(Req.self, from: d) {
-                            let text: String? = DesktopWebSocketServer.readText(fromURI: req.uri)
-                            if let text = text, let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: Resp(text: text))), let jtext = String(data: out, encoding: .utf8) {
+                        if let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p) {
+                            var text: String? = nil
+                            if let req = try? JSONDecoder().decode(ReqPath.self, from: d) {
+                                text = DesktopWebSocketServer.readText(fromURI: req.path)
+                            } else if let req = try? JSONDecoder().decode(ReqURI.self, from: d) {
+                                text = DesktopWebSocketServer.readText(fromURI: req.uri)
+                            }
+                            if let text = text, let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: Resp(content: text))), let jtext = String(data: out, encoding: .utf8) {
                                 print("[Bridge][server] send rpc result method=\(ACPRPC.fsReadTextFile) id=\(idVal.value) bytes=\(jtext.utf8.count)")
                                 client.send(text: jtext)
                             } else {
@@ -391,15 +397,22 @@ public class DesktopWebSocketServer {
                             DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32602, message: "Invalid params")
                         }
                     case ACPRPC.fsWriteTextFile:
-                        struct Req: Codable { let session_id: ACPSessionId; let uri: String; let text: String }
-                        struct Resp: Codable { let ok: Bool }
+                        struct ReqPath: Codable { let session_id: ACPSessionId; let path: String; let content: String }
+                        struct ReqURI: Codable { let session_id: ACPSessionId; let uri: String; let text: String }
+                        struct Resp: Codable { let _meta: [String:String]? }
                         let idVal: JSONRPC.ID = {
                             if let idNum = dict["id"] as? Int { return JSONRPC.ID(String(idNum)) }
                             if let idStr = dict["id"] as? String { return JSONRPC.ID(idStr) }
                             return JSONRPC.ID("1")
                         }()
-                        if let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let req = try? JSONDecoder().decode(Req.self, from: d) {
-                            if DesktopWebSocketServer.writeText(toURI: req.uri, text: req.text), let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: Resp(ok: true))), let jtext = String(data: out, encoding: .utf8) {
+                        if let p = dict["params"], let d = try? JSONSerialization.data(withJSONObject: p) {
+                            var ok = false
+                            if let req = try? JSONDecoder().decode(ReqPath.self, from: d) {
+                                ok = DesktopWebSocketServer.writeText(toURI: req.path, text: req.content)
+                            } else if let req = try? JSONDecoder().decode(ReqURI.self, from: d) {
+                                ok = DesktopWebSocketServer.writeText(toURI: req.uri, text: req.text)
+                            }
+                            if ok, let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: Resp(_meta: nil))), let jtext = String(data: out, encoding: .utf8) {
                                 print("[Bridge][server] send rpc result method=\(ACPRPC.fsWriteTextFile) id=\(idVal.value) bytes=\(jtext.utf8.count)")
                                 client.send(text: jtext)
                             } else {

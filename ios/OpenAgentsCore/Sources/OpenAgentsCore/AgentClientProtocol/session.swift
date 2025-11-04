@@ -43,7 +43,7 @@ public extension ACP.Client {
     struct SessionNotificationWire: Codable {
         public var session_id: ACPSessionId
         public var update: SessionUpdate
-        public init(session_id: ACPSessionId, update: SessionUpdate) { self.session_id = session_id; self.update = update }
+        public var _meta: [String: AnyEncodable]?
+        public init(session_id: ACPSessionId, update: SessionUpdate, _meta: [String: AnyEncodable]? = nil) { self.session_id = session_id; self.update = update; self._meta = _meta }
     }
 }
-

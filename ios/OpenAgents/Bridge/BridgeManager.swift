@@ -160,12 +160,9 @@ extension BridgeManager: MobileWebSocketClientDelegate {
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCRequest method: String, id: String, params: Data) -> Data? {
         // Client-handled services stubs. iOS returns not-implemented for fs/terminal; session/request_permission returns Cancelled.
-        struct ErrorOut: Codable { let _meta: [String: String]? }
         switch method {
         case ACPRPC.sessionRequestPermission:
-            struct PermissionOutcome: Codable { let outcome: String }
-            struct PermissionResponse: Codable { let outcome: PermissionOutcome }
-            let resp = PermissionResponse(outcome: .init(outcome: "cancelled"))
+            let resp = ACP.Client.RequestPermissionResponse(outcome: .cancelled)
             return try? JSONEncoder().encode(resp)
         case ACPRPC.fsReadTextFile, ACPRPC.fsWriteTextFile, ACPRPC.terminalRun:
             return nil // triggers JSON-RPC error -32601 (not implemented)

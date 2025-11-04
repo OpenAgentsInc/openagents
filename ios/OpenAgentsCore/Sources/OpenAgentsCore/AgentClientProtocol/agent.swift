@@ -31,7 +31,22 @@ public extension ACP.Agent {
     /// Capabilities supported by the client (placeholder surface).
     /// Mirrors `ClientCapabilities` in Rust `agent.rs`.
     struct ClientCapabilities: Codable, Equatable {
-        public init() {}
+        public var fs: FileSystemCapability
+        public var terminal: Bool
+        public var _meta: [String: AnyEncodable]?
+        public init(fs: FileSystemCapability = .init(), terminal: Bool = false, _meta: [String: AnyEncodable]? = nil) {
+            self.fs = fs; self.terminal = terminal; self._meta = _meta
+        }
+    }
+
+    /// File system capabilities supported by the client
+    struct FileSystemCapability: Codable, Equatable {
+        public var read_text_file: Bool
+        public var write_text_file: Bool
+        public var _meta: [String: AnyEncodable]?
+        public init(read_text_file: Bool = false, write_text_file: Bool = false, _meta: [String: AnyEncodable]? = nil) {
+            self.read_text_file = read_text_file; self.write_text_file = write_text_file; self._meta = _meta
+        }
     }
 
     /// Capabilities supported by the agent (placeholder surface).
@@ -117,3 +132,22 @@ public extension ACP.Agent {
     }
 }
 
+// MARK: - Env + headers (for MCP / terminal env)
+public extension ACP.Agent {
+    struct EnvVariable: Codable, Equatable {
+        public var name: String
+        public var value: String
+        public var _meta: [String: AnyEncodable]?
+        public init(name: String, value: String, _meta: [String: AnyEncodable]? = nil) {
+            self.name = name; self.value = value; self._meta = _meta
+        }
+    }
+    struct HttpHeader: Codable, Equatable {
+        public var name: String
+        public var value: String
+        public var _meta: [String: AnyEncodable]?
+        public init(name: String, value: String, _meta: [String: AnyEncodable]? = nil) {
+            self.name = name; self.value = value; self._meta = _meta
+        }
+    }
+}
