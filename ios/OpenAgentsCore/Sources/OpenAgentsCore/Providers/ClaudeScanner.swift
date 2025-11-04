@@ -14,6 +14,7 @@ public enum ClaudeScanner {
         if let env = ProcessInfo.processInfo.environment["CLAUDE_PROJECTS_DIR"], !env.isEmpty {
             return URL(fileURLWithPath: env).standardizedFileURL
         }
+        #if os(macOS)
         let home = FileManager.default.homeDirectoryForCurrentUser
         let candidates: [URL] = [
             home.appendingPathComponent(".claude/projects", isDirectory: true),
@@ -31,6 +32,10 @@ public enum ClaudeScanner {
             }
         }
         return home.appendingPathComponent(".claude/projects", isDirectory: true)
+        #else
+        // iOS and other platforms: no direct access to desktop FS
+        return URL(fileURLWithPath: "/nonexistent")
+        #endif
     }
 
     public static func listJSONLFiles(at base: URL) -> [URL] {
