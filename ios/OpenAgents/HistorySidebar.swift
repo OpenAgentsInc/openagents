@@ -70,7 +70,6 @@ struct HistorySidebar: View {
                     .listRowBackground(isActive ? OATheme.Colors.selection : Color.clear)
                     .contentShape(Rectangle())
                 }
-            }
         }
         .scrollContentBackground(.hidden)
         .background(OATheme.Colors.sidebarBackground)
