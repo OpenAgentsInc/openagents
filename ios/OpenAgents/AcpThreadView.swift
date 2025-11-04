@@ -258,7 +258,8 @@ struct AcpThreadView: View {
                 }
                 if items.count > maxMessages { items = Array(items.suffix(maxMessages)) }
                 DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 0.15)) { self.timeline = items }
+                    // Set timeline without animation so initial appearance doesn't jump
+                    self.timeline = items
                     let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: u.path))
                     self.threadTitle = thread.title
                     if let t = thread.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
@@ -273,13 +274,17 @@ struct AcpThreadView: View {
         }
     }
     func scrollToBottom(_ proxy: ScrollViewProxy) {
-        // Prefer a known bottom sentinel for reliability
+        // Scroll without animation so the thread appears already at the bottom
         DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("bottom", anchor: .bottom) }
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) { proxy.scrollTo("bottom", anchor: .bottom) }
         }
-        // Double-fire shortly after to cover layout churn
+        // Double-fire shortly after to cover any layout churn, still without animation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo("bottom", anchor: .bottom) }
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) { proxy.scrollTo("bottom", anchor: .bottom) }
         }
     }
 
