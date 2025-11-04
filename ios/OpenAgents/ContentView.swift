@@ -36,6 +36,13 @@ struct ContentView: View {
         }
         .background(OATheme.Colors.background.ignoresSafeArea())
         .task { FMProbe.logAvailability() }
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        #endif
+        #if os(macOS)
+        .toolbar(.hidden, for: .windowToolbar)
+        #endif
         .preferredColorScheme(.dark)
     }
 }
