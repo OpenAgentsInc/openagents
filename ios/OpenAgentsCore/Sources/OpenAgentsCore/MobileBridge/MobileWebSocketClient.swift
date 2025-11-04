@@ -85,6 +85,7 @@ public final class MobileWebSocketClient {
         pending[id] = { data in
             if let r = try? JSONDecoder().decode(R.self, from: data) { completion(r) } else { completion(nil) }
         }
+        print("[Bridge][client] send rpc method=\(method) id=\(id) bytes=\(text.utf8.count)")
         webSocketTask?.send(.string(text)) { [weak self] error in
             if let error = error {
                 _ = self?.pending.removeValue(forKey: id)
@@ -120,6 +121,7 @@ public final class MobileWebSocketClient {
             disconnect(error: NSError(domain: "MobileWebSocketClient", code: 4, userInfo: [NSLocalizedDescriptionKey: "Encode initialize failed"]))
             return
         }
+        print("[Bridge][client] send rpc method=initialize id=1 bytes=\(text.utf8.count)")
         webSocketTask?.send(.string(text)) { [weak self] error in
             if let error = error { self?.disconnect(error: error); return }
             self?.waitForInitializeResponse()
@@ -234,6 +236,7 @@ public final class MobileWebSocketClient {
             // Notification path
             if method == ACPRPC.sessionUpdate {
                 if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
+                    print("[Bridge][client] recv rpc notify method=\(method) bytes=\(payload.count)")
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
@@ -241,6 +244,7 @@ public final class MobileWebSocketClient {
                 }
             } else if root["id"] == nil {
                 if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
+                    print("[Bridge][client] recv rpc notify method=\(method) bytes=\(payload.count)")
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
@@ -248,12 +252,14 @@ public final class MobileWebSocketClient {
                 }
             } else if let idAny = root["id"], let idStr: String = (idAny as? String) ?? (idAny as? Int).map(String.init) {
                 // Request path (client-handled) → delegate for a synchronous result
+                print("[Bridge][client] recv rpc request method=\(method) id=\(idStr)")
                 let paramsData = (try? JSONSerialization.data(withJSONObject: root["params"] ?? [:])) ?? Data("{}".utf8)
                 let resultData = delegate?.mobileWebSocketClient(self, didReceiveJSONRPCRequest: method, id: idStr, params: paramsData)
                 if let rd = resultData,
                    let respJSON = try? JSONSerialization.jsonObject(with: rd) {
                     let envelope: [String: Any] = ["jsonrpc": "2.0", "id": idStr, "result": respJSON]
                     if let out = try? JSONSerialization.data(withJSONObject: envelope), let text = String(data: out, encoding: .utf8) {
+                        print("[Bridge][client] send rpc result method=\(method) id=\(idStr) bytes=\(text.utf8.count)")
                         webSocketTask?.send(.string(text)) { _ in }
                     }
                 } else {
@@ -261,6 +267,7 @@ public final class MobileWebSocketClient {
                     let err: [String: Any] = ["code": -32601, "message": "Method not implemented"]
                     let envelope: [String: Any] = ["jsonrpc": "2.0", "id": idStr, "error": err]
                     if let out = try? JSONSerialization.data(withJSONObject: envelope), let text = String(data: out, encoding: .utf8) {
+                        print("[Bridge][client] send rpc error method=\(method) id=\(idStr) bytes=\(text.utf8.count)")
                         webSocketTask?.send(.string(text)) { _ in }
                     }
                 }
@@ -270,6 +277,7 @@ public final class MobileWebSocketClient {
         // Response path
         if let idAny = root["id"], let result = root["result"],
            let idStr: String = (idAny as? String) ?? (idAny as? Int).map { String($0) } {
+            print("[Bridge][client] recv rpc result id=\(idStr)")
             if let handler = pending.removeValue(forKey: idStr),
                let d = try? JSONSerialization.data(withJSONObject: result) {
                 handler(d)

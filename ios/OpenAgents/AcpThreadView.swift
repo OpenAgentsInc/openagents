@@ -361,6 +361,17 @@ struct AcpThreadView: View {
         case .plan(let p):
             let ps = ACPPlanState(status: .running, summary: nil, steps: p.steps.map { $0.title }, ts: nowMs())
             timeline.append(.plan(ps))
+        case .toolCall(let call):
+            let args = call.arguments?.map { "\($0.key)=\($0.value)" }.joined(separator: ", ") ?? ""
+            let txt = "[tool call] \(call.name)(\(args))"
+            let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: txt))], ts: nowMs())
+            timeline.append(.message(m))
+        case .toolCallUpdate(let upd):
+            let status = upd.status.rawValue
+            let msg = upd.error != nil ? "error: \(upd.error!)" : "ok"
+            let txt = "[tool \(status)] call_id=\(upd.call_id) \(msg)"
+            let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: txt))], ts: nowMs())
+            timeline.append(.message(m))
         }
     }
     #endif

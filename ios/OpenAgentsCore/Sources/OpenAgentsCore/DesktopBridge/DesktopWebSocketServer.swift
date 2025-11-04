@@ -207,12 +207,19 @@ public class DesktopWebSocketServer {
             print("[Bridge][server] recv handshake text=\(text)")
             // Try ACP JSON-RPC initialize first
             if let data = text.data(using: .utf8), let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any], (dict["jsonrpc"] as? String) == "2.0", let method = dict["method"] as? String, method == "initialize" {
+                let inIdStr: String = {
+                    if let idNum = dict["id"] as? Int { return String(idNum) }
+                    if let idStr = dict["id"] as? String { return idStr }
+                    return "1"
+                }()
+                print("[Bridge][server] recv rpc request method=initialize id=\(inIdStr)")
                 let idVal: JSONRPC.ID
                 if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
                 else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                 else { idVal = JSONRPC.ID("1") }
                 let resp = ACP.Agent.InitializeResponse(protocol_version: "0.7.0", agent_capabilities: .init(), auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: nil)
                 if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: resp)), let jtext = String(data: out, encoding: .utf8) {
+                    print("[Bridge][server] send rpc result method=initialize id=\(inIdStr) bytes=\(jtext.utf8.count)")
                     client.send(text: jtext)
                 }
                 client.isHandshakeComplete = true
@@ -260,6 +267,12 @@ public class DesktopWebSocketServer {
                (dict["jsonrpc"] as? String) == "2.0" {
                 // JSON-RPC request/notification
                 if let method = dict["method"] as? String {
+                    if let idAny = dict["id"] {
+                        let idStr = (idAny as? String) ?? (idAny as? Int).map(String.init) ?? "1"
+                        print("[Bridge][server] recv rpc request method=\(method) id=\(idStr)")
+                    } else {
+                        print("[Bridge][server] recv rpc notify method=\(method)")
+                    }
                     switch method {
                     case "threads/list":
                         struct Params: Codable { let topK: Int? }
@@ -279,6 +292,7 @@ public class DesktopWebSocketServer {
                         struct Result: Codable { let items: [ThreadSummary] }
                         let result = Result(items: items)
                         if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc result method=threads/list id=\(idVal.value) count=\(items.count) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
                     case ACPRPC.sessionNew:
@@ -290,6 +304,7 @@ public class DesktopWebSocketServer {
                         else { idVal = JSONRPC.ID("1") }
                         let result = ACP.Agent.SessionNewResponse(session_id: sid)
                         if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc result method=\(ACPRPC.sessionNew) id=\(idVal.value) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
                     case ACPRPC.sessionPrompt:
@@ -302,6 +317,7 @@ public class DesktopWebSocketServer {
                         )
                         let note = ACP.Client.SessionNotificationWire(session_id: sid, update: msg)
                         if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) update=agent_message_chunk session_id=\(sid.value) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
                         // Also send AvailableCommandsUpdate and CurrentModeUpdate
@@ -309,11 +325,13 @@ public class DesktopWebSocketServer {
                         let ac = ACP.Client.SessionUpdate.availableCommandsUpdate(.init(available_commands: cmds))
                         let acNote = ACP.Client.SessionNotificationWire(session_id: sid, update: ac)
                         if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: acNote)), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) update=available_commands_update session_id=\(sid.value) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
                         let cm = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: .default_mode))
                         let cmNote = ACP.Client.SessionNotificationWire(session_id: sid, update: cm)
                         if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: cmNote)), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) update=current_mode_update session_id=\(sid.value) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
                         // Also respond to the request with an empty object
@@ -323,6 +341,7 @@ public class DesktopWebSocketServer {
                         else { idVal = JSONRPC.ID("1") }
                         struct EmptyResult: Codable {}
                         if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: EmptyResult())), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc result method=\(ACPRPC.sessionPrompt) id=\(idVal.value) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
                     default:
