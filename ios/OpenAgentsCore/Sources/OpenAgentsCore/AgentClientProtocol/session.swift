@@ -69,7 +69,7 @@ public extension ACP.Agent {
 }
 
 public extension ACP.Client {
-    struct SessionNotificationWire: Codable {
+    public struct SessionNotificationWire: Codable {
         public var session_id: ACPSessionId
         public var update: SessionUpdate
         public var _meta: [String: AnyEncodable]?
