@@ -19,7 +19,9 @@ struct HistorySidebar: View {
                     .foregroundStyle(OATheme.Colors.textTertiary)
             }
             .listRowBackground(Color.clear)
+            #if os(iOS)
             .listRowSeparator(.hidden)
+            #endif
             
             Group {
                 if isLoading && items.isEmpty {

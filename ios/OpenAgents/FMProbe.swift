@@ -6,7 +6,7 @@ import FoundationModels
 enum FMProbe {
     static func logAvailability() {
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, macOS 26.0, * ) {
+        if #available(iOS 26.0, macOS 15.0, * ) {
             let model = SystemLanguageModel.default
             print("[FM] availability=\(String(describing: model.availability))")
         } else {
@@ -17,4 +17,3 @@ enum FMProbe {
         #endif
     }
 }
-
