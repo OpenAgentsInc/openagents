@@ -122,6 +122,13 @@ struct AcpThreadView: View {
                 let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: u.path))
                 // Filter to user/assistant messages, most recent ~maxMessages
                 var msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user || $0.role == .assistant }
+                // Filter out synthetic preface messages (e.g., <user_instructions>, <environment_context>)
+                msgs = msgs.filter { m in
+                    let text = m.parts.compactMap { part -> String? in
+                        if case let .text(t) = part { return t.text } else { return nil }
+                    }.joined(separator: " ")
+                    return !ConversationSummarizer.isSystemPreface(text)
+                }
                 msgs.sort { $0.ts < $1.ts }
                 if msgs.count > maxMessages { msgs = Array(msgs.suffix(maxMessages)) }
                 DispatchQueue.main.async {
