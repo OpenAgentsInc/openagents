@@ -9,6 +9,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedRow: LocalThreadSummary? = nil
     @State private var selectedURL: URL? = nil
+    @State private var toolbarTitle: String = ""
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -20,8 +21,10 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260)
             } detail: {
                 // Keep detail title empty; we draw our own leading toolbar title
-                AcpThreadView(url: selectedURL)
-                    .navigationTitle("")
+                AcpThreadView(url: selectedURL, onTitleChange: { t in
+                    self.toolbarTitle = t
+                })
+                .navigationTitle("")
             }
             // Gradient sits above content but under the toolbar, creating a soft edge behind the title
             TopEdgeGradient()
@@ -62,6 +65,7 @@ struct ContentView: View {
 
     private func selectedRowTitle() -> String {
         if let r = selectedRow {
+            if !toolbarTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return toolbarTitle }
             if let t = r.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return t }
             return "Thread"
         }

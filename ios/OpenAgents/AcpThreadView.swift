@@ -4,6 +4,7 @@ import OpenAgentsCore
 struct AcpThreadView: View {
     let url: URL?
     let maxMessages: Int = 10
+    var onTitleChange: ((String) -> Void)? = nil
 
     @State private var isLoading = false
     @State private var error: String? = nil
@@ -12,6 +13,7 @@ struct AcpThreadView: View {
     @State private var draft: String = ""
 
     var body: some View {
+        return ZStack {
         Group {
             if url == nil {
                 Text("Select a thread")
@@ -32,9 +34,9 @@ struct AcpThreadView: View {
                 ZStack(alignment: .bottom) {
                     ScrollViewReader { proxy in
                     List {
-                        if let title = threadTitle, !title.isEmpty {
-                            Section { Text(title).font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline)).foregroundStyle(OATheme.Colors.textPrimary) }
-                        }
+                if let title = threadTitle, !title.isEmpty {
+                    Section { Text(title).font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline)).foregroundStyle(OATheme.Colors.textPrimary) }
+                }
                         ForEach(messages, id: \.id) { msg in
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 6) {
@@ -45,10 +47,14 @@ struct AcpThreadView: View {
                                 }
                                 ForEach(msg.parts.indices, id: \.self) { idx in
                                     if case let .text(t) = msg.parts[idx] {
-                                        Text(t.text)
+                                        markdownText(t.text)
                                             .textSelection(.enabled)
                                             .font(BerkeleyFont.font(relativeTo: .body, size: 15))
                                             .foregroundStyle(OATheme.Colors.textPrimary)
+                                    } else if case let .toolCall(call) = msg.parts[idx] {
+                                        ToolCallView(call: call)
+                                    } else if case let .toolResult(res) = msg.parts[idx] {
+                                        ToolResultView(result: res)
                                     }
                                 }
                             }
@@ -89,8 +95,10 @@ struct AcpThreadView: View {
                         .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     .background(.clear)
+                    .zIndex(100)
                 }
             }
+        }
         }
         .background(OATheme.Colors.background)
         .onChange(of: url?.path) { _, _ in load() }
@@ -119,6 +127,12 @@ struct AcpThreadView: View {
         return fmt.string(from: s)
     }
 
+    // Minimal Markdown renderer using AttributedString
+    func markdownText(_ text: String) -> Text {
+        if let md = try? AttributedString(markdown: text) { return Text(md) }
+        return Text(text)
+    }
+
     func load() {
         guard let u = url else { return }
         guard !isLoading else { return }
@@ -143,6 +157,9 @@ struct AcpThreadView: View {
                 DispatchQueue.main.async {
                     withAnimation { self.messages = msgs }
                     self.threadTitle = thread.title
+                    if let t = thread.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.onTitleChange?(t)
+                    }
                     self.isLoading = false
                 }
             } catch {
@@ -174,6 +191,9 @@ struct AcpThreadView: View {
         draft = ""
     }
 }
+}
+
+// Close AcpThreadView struct
 
 // MARK: - Efficient JSONL tail reader
 private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [String] {
