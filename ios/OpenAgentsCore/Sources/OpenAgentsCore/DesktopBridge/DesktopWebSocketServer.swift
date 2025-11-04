@@ -126,7 +126,10 @@ public class DesktopWebSocketServer {
     private func handleNewConnection(_ connection: NWConnection) {
         let client = Client(connection: connection)
         clients.insert(client)
-        delegate?.webSocketServer(self, didAccept: client)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.delegate?.webSocketServer(self, didAccept: client)
+        }
 
         connection.stateUpdateHandler = { [weak self, weak client] state in
             guard let self = self, let client = client else { return }
@@ -135,7 +138,10 @@ public class DesktopWebSocketServer {
                 self.receiveNextMessage(client)
             case .failed(_), .cancelled:
                 self.clients.remove(client)
-                self.delegate?.webSocketServer(self, didDisconnect: client, reason: nil)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.delegate?.webSocketServer(self, didDisconnect: client, reason: nil)
+                }
             default:
                 break
             }
@@ -149,7 +155,10 @@ public class DesktopWebSocketServer {
             guard let self = self, let client = client else { return }
             if let error = error {
                 self.clients.remove(client)
-                self.delegate?.webSocketServer(self, didDisconnect: client, reason: error)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.delegate?.webSocketServer(self, didDisconnect: client, reason: error)
+                }
                 client.connection.cancel()
                 return
             }
@@ -157,7 +166,10 @@ public class DesktopWebSocketServer {
             guard let ctx = context else {
                 // No context means connection closed
                 self.clients.remove(client)
-                self.delegate?.webSocketServer(self, didDisconnect: client, reason: nil)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.delegate?.webSocketServer(self, didDisconnect: client, reason: nil)
+                }
                 client.connection.cancel()
                 return
             }
@@ -193,32 +205,51 @@ public class DesktopWebSocketServer {
     private func handleTextMessage(_ text: String, from client: Client) {
         if !client.isHandshakeComplete {
             print("[Bridge][server] recv handshake text=\(text)")
-            // Accept either {"type":"Hello","token":"..."} or {"token":"..."}
-            guard let data = text.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-                delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
-                client.close(); clients.remove(client); return
-            }
-            let type = (json["type"] as? String) ?? ""
-            let receivedToken = (json["token"] as? String) ?? ""
-            guard type == "Hello" || (!receivedToken.isEmpty) else {
-                delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
-                client.close(); clients.remove(client); return
-            }
-            if receivedToken == token {
-                print("[Bridge][server] Hello received; token ok")
-                client.isHandshakeComplete = true
-                // Reply with HelloAck; include token for clients expecting it
-                let ackObj: [String: Any] = ["type": "HelloAck", "token": token]
-                if let ackData = try? JSONSerialization.data(withJSONObject: ackObj, options: []),
-                   let ackText = String(data: ackData, encoding: .utf8) {
-                    client.send(text: ackText)
+            // Try ACP JSON-RPC initialize first
+            if let data = text.data(using: .utf8), let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any], (dict["jsonrpc"] as? String) == "2.0", let method = dict["method"] as? String, method == "initialize" {
+                let idVal: JSONRPC.ID
+                if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                else { idVal = JSONRPC.ID("1") }
+                let resp = ACP.Agent.InitializeResponse(protocol_version: "0.7.0", agent_capabilities: .init(), auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: nil)
+                if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: resp)), let jtext = String(data: out, encoding: .utf8) {
+                    client.send(text: jtext)
                 }
-                delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
-            } else {
-                print("[Bridge][server] Hello token mismatch")
-                delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
-                client.close(); clients.remove(client)
+                client.isHandshakeComplete = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
+                }
+            } else if let data = text.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                // Legacy token Hello fallback
+                let type = (json["type"] as? String) ?? ""
+                let receivedToken = (json["token"] as? String) ?? ""
+                guard type == "Hello" || (!receivedToken.isEmpty) else {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
+                    }
+                    client.close(); clients.remove(client); return
+                }
+                if receivedToken == token {
+                    print("[Bridge][server] Hello received; token ok")
+                    client.isHandshakeComplete = true
+                    let ackObj: [String: Any] = ["type": "HelloAck", "token": token]
+                    if let ackData = try? JSONSerialization.data(withJSONObject: ackObj, options: []), let ackText = String(data: ackData, encoding: .utf8) {
+                        client.send(text: ackText)
+                    }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
+                    }
+                } else {
+                    print("[Bridge][server] Hello token mismatch")
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
+                    }
+                    client.close(); clients.remove(client)
+                }
             }
         } else {
             // Handle envelopes after handshake
@@ -231,23 +262,13 @@ public class DesktopWebSocketServer {
             let etype = env.type.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
             switch etype {
             case "threads.list.request":
-                print("[Bridge][server] handling threads.list.request start")
-                // Decode request
-                let req = (try? env.decodedMessage(as: WebSocketMessage.ThreadsListRequest.self)) ?? .init(topK: 20)
-                let limit = max(1, min(200, req.topK ?? 20))
-                // Fast top-K scan across discovered bases
-                let bases = CodexDiscovery.discoverBaseDirs()
-                print("[Bridge][server] discovered bases=\(bases.map{ $0.path })")
-                var rows: [ThreadSummary] = []
-                for base in bases {
-                    let urls = CodexScanner.listRecentTopN(at: base, topK: limit)
-                    print("[Bridge][server] base=\(base.path) urls=\(urls.map{ $0.lastPathComponent })")
-                    rows.append(contentsOf: urls.map { CodexScanner.makeSummary(for: $0, base: base) })
-                }
-                // Dedupe and sort by last_message_ts/updated_at desc
-                var uniq: [String: ThreadSummary] = [:]
-                for r in rows { if let prev = uniq[r.id] { if r.updated_at > prev.updated_at { uniq[r.id] = r } } else { uniq[r.id] = r } }
-                var items = Array(uniq.values)
+                // Decode request (cap at 10 for lightweight response)
+                let req = (try? env.decodedMessage(as: WebSocketMessage.ThreadsListRequest.self)) ?? .init(topK: 10)
+                let limit = min(10, max(1, req.topK ?? 10))
+                // Single-base, fast top-K scan (lightweight)
+                let base = CodexScanner.defaultBaseDir()
+                let urls = CodexScanner.listRecentTopN(at: base, topK: limit)
+                var items = urls.map { CodexScanner.makeSummary(for: $0, base: base) }
                 items.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
                 if items.count > limit { items = Array(items.prefix(limit)) }
                 print("[Bridge][server] threads.list.request topK=\(limit) -> count=\(items.count)")

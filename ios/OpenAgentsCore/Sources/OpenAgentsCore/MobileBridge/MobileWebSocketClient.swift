@@ -37,23 +37,8 @@ public final class MobileWebSocketClient {
 
         webSocketTask.resume()
 
-        // Send Hello message as text JSON for compatibility with server
-        let hello = BridgeMessages.Hello(token: token)
-        do {
-            let data = try JSONEncoder().encode(hello)
-            let text = String(data: data, encoding: .utf8) ?? "{\"token\":\"\(token)\"}"
-            let message = URLSessionWebSocketTask.Message.string(text)
-            webSocketTask.send(message) { [weak self] error in
-                if let error = error {
-                    self?.disconnect(error: error)
-                    return
-                }
-                // Wait for HelloAck
-                self?.waitForHelloAck(expectedToken: token)
-            }
-        } catch {
-            disconnect(error: error)
-        }
+        // Send ACP initialize via JSON-RPC
+        sendInitialize(expectedToken: token)
     }
 
     /// Send ping to keep connection alive
@@ -97,7 +82,25 @@ public final class MobileWebSocketClient {
         }
     }
 
-    private func waitForHelloAck(expectedToken: String) {
+    private func sendInitialize(expectedToken: String) {
+        // Build request
+        let initReq = ACP.Agent.InitializeRequest(
+            protocol_version: "0.7.0",
+            client_capabilities: .init(),
+            client_info: ACP.Agent.Implementation(name: "openagents-ios", title: "OpenAgents iOS", version: "0.1.0")
+        )
+        let req = JSONRPC.Request(id: JSONRPC.ID("1"), method: "initialize", params: initReq)
+        guard let data = try? JSONEncoder().encode(req), let text = String(data: data, encoding: .utf8) else {
+            disconnect(error: NSError(domain: "MobileWebSocketClient", code: 4, userInfo: [NSLocalizedDescriptionKey: "Encode initialize failed"]))
+            return
+        }
+        webSocketTask?.send(.string(text)) { [weak self] error in
+            if let error = error { self?.disconnect(error: error); return }
+            self?.waitForInitializeResponse()
+        }
+    }
+
+    private func waitForInitializeResponse() {
         webSocketTask?.receive { [weak self] result in
             guard let self = self else { return }
 
@@ -107,49 +110,36 @@ public final class MobileWebSocketClient {
             case .success(let message):
                 switch message {
                 case .data(let data):
-                    do {
-                        let helloAck = try JSONDecoder().decode(BridgeMessages.HelloAck.self, from: data)
-                        if helloAck.token == expectedToken || helloAck.token.isEmpty {
-                            self.isConnected = true
-                            DispatchQueue.main.async { [weak self] in
-                                guard let self = self else { return }
-                                self.delegate?.mobileWebSocketClientDidConnect(self)
-                            }
-                            // Start general receive loop after handshake
-                            self.receive()
-                        } else {
-                            self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "HelloAck token mismatch"]))
-                        }
-                    } catch {
-                        self.disconnect(error: error)
+                    if let text = String(data: data, encoding: .utf8) {
+                        self.handleInitializeResponseText(text)
+                    } else {
+                        self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 5, userInfo: [NSLocalizedDescriptionKey: "Invalid initialize response"]))
                     }
                 case .string(let text):
-                    // Accept text HelloAck as well
-                    if let data = text.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        if (obj["type"] as? String) == "HelloAck" {
-                            self.isConnected = true
-                            DispatchQueue.main.async { [weak self] in
-                                guard let self = self else { return }
-                                self.delegate?.mobileWebSocketClientDidConnect(self)
-                            }
-                            self.receive()
-                            return
-                        }
-                        if let token = obj["token"] as? String, token == expectedToken {
-                            self.isConnected = true
-                            DispatchQueue.main.async { [weak self] in
-                                guard let self = self else { return }
-                                self.delegate?.mobileWebSocketClientDidConnect(self)
-                            }
-                            return
-                        }
-                    }
-                    self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid HelloAck message"]))
+                    self.handleInitializeResponseText(text)
                 @unknown default:
                     self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unknown message type"]))
                 }
             }
         }
+    }
+
+    private func handleInitializeResponseText(_ text: String) {
+        if let data = text.data(using: .utf8) {
+            // Try JSON-RPC success response for initialize
+            if let resp = try? JSONDecoder().decode(JSONRPC.Response<ACP.Agent.InitializeResponse>.self, from: data), resp.result.protocol_version.hasPrefix("0.7") {
+                self.isConnected = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.delegate?.mobileWebSocketClientDidConnect(self)
+                }
+                // Start general receive loop after handshake
+                self.receive()
+                return
+            }
+        }
+        // If not JSON-RPC initialize response, disconnect (strict ACP handshake)
+        self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 6, userInfo: [NSLocalizedDescriptionKey: "Initialize failed: unexpected response"]))
     }
 
     private func receive() {

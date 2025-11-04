@@ -82,15 +82,49 @@ public enum CodexScanner {
         let id = scanForThreadID(url) ?? relativeId(for: url, base: base)
         let updated = fileMTime(url)
         let lastTs = tailLastMessageTs(url) ?? updated
+        let title = quickTitle(for: url)
         return ThreadSummary(
             id: id,
-            title: nil,
+            title: title,
             source: "codex",
             created_at: nil,
             updated_at: updated,
             last_message_ts: lastTs,
             message_count: nil
         )
+    }
+
+    /// Quickly derive a short title from the head of a JSONL session by taking the first
+    /// non-preface user message (~5 words). Keeps this very lightweight for responsiveness.
+    public static func quickTitle(for url: URL, maxBytes: Int = 300_000, maxLines: Int = 2000) -> String? {
+        guard let fh = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? fh.close() }
+        var lines: [String] = []
+        lines.reserveCapacity(256)
+        var read = 0
+        var count = 0
+        while let line = fh.readLine() {
+            lines.append(line)
+            read += line.utf8.count + 1
+            count += 1
+            if read >= maxBytes || count >= maxLines { break }
+        }
+        if lines.isEmpty { return nil }
+        let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
+        var msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user }
+        msgs.sort { $0.ts < $1.ts }
+        for m in msgs {
+            let text = m.parts.compactMap { part -> String? in
+                if case let .text(t) = part { return t.text } else { return nil }
+            }.joined(separator: " ")
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if ConversationSummarizer.isSystemPreface(trimmed) { continue }
+            let words = trimmed.split(whereSeparator: { $0.isWhitespace })
+            if words.isEmpty { continue }
+            return words.prefix(5).joined(separator: " ")
+        }
+        return nil
     }
 
     static func isNewFormatJSONL(_ url: URL) -> Bool {

@@ -56,7 +56,7 @@ struct HistorySidebar: View {
                     }
                 }
             }
-                ForEach(Array(effectiveItems().prefix(20).enumerated()), id: \.0) { _, pair in
+                ForEach(Array(effectiveItems().prefix(10).enumerated()), id: \.0) { _, pair in
                     let row = pair.0
                     let isActive = (selected?.id == row.id && selected?.source == row.source)
                     Button(action: { onSelect?(row, pair.1) }) {
