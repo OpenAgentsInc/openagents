@@ -53,6 +53,8 @@ final class BridgeManager: ObservableObject {
     @Published var threads: [ThreadSummary] = []
     @Published var updates: [ACP.Client.SessionNotificationWire] = []
     @Published var currentSessionId: ACPSessionId? = nil
+    @Published var availableCommands: [ACP.Client.AvailableCommand] = []
+    @Published var currentMode: ACPSessionModeId = .default_mode
 
     func start() {
         // Prefer Bonjour discovery when feature flag is enabled
@@ -141,6 +143,14 @@ extension BridgeManager: MobileWebSocketClientDelegate {
                     guard let self = self else { return }
                     self.updates.append(note)
                     if self.updates.count > 200 { self.updates.removeFirst(self.updates.count - 200) }
+                    switch note.update {
+                    case .availableCommandsUpdate(let ac):
+                        self.availableCommands = ac.available_commands
+                    case .currentModeUpdate(let cur):
+                        self.currentMode = cur.current_mode_id
+                    default:
+                        break
+                    }
                 }
             }
         } else {

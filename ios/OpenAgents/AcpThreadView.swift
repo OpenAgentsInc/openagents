@@ -66,6 +66,24 @@ struct AcpThreadView: View {
                 ZStack(alignment: .bottom) {
                     ScrollViewReader { proxy in
                     List {
+                #if os(iOS)
+                // Mode and commands summary header
+                HStack(spacing: 8) {
+                    Text("Mode:")
+                        .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption2))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+                    Text("\(bridge.currentMode.rawValue)")
+                        .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption2))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                    Spacer()
+                    if !bridge.availableCommands.isEmpty {
+                        Text("Commands: \(bridge.availableCommands.count)")
+                            .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption2))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                    }
+                }
+                .listRowBackground(Color.clear)
+                #endif
                 if let title = threadTitle, !title.isEmpty {
                     Section { Text(title).font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline)).foregroundStyle(OATheme.Colors.textPrimary) }
                 }

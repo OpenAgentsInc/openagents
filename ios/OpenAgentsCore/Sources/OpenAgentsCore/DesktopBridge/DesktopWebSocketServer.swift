@@ -304,6 +304,18 @@ public class DesktopWebSocketServer {
                         if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
                             client.send(text: jtext)
                         }
+                        // Also send AvailableCommandsUpdate and CurrentModeUpdate
+                        let cmds = [ACP.Client.AvailableCommand(name: "create_plan", description: "Propose a plan", input: .unstructured(hint: "What should we plan?"))]
+                        let ac = ACP.Client.SessionUpdate.availableCommandsUpdate(.init(available_commands: cmds))
+                        let acNote = ACP.Client.SessionNotificationWire(session_id: sid, update: ac)
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: acNote)), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
+                        }
+                        let cm = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: .default_mode))
+                        let cmNote = ACP.Client.SessionNotificationWire(session_id: sid, update: cm)
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: cmNote)), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
+                        }
                         // Also respond to the request with an empty object
                         let idVal: JSONRPC.ID
                         if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
