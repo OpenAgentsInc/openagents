@@ -16,6 +16,16 @@ packages/tricoder/tmp.ts
 docs/logs/claude
 .maestro/
 
+# Xcode/macOS build/user state (iOS Swift app)
+ios/OpenAgentsCore/.build/
+ios/OpenAgentsCore/.swiftpm/
+**/*.xcuserstate
+**/*.xcuserdatad/
+**/*.xcscmblueprint
+ios/DerivedData/
+ios/OpenAgents.xcodeproj/project.xcworkspace/xcuserdata/
+ios/OpenAgents.xcworkspace/xcuserdata/
+
 # Claude Code local configuration
 settings.local.json
 .claude/settings.local.json
