@@ -10,6 +10,7 @@ Unofficial working notes for the new Apple design system centered on Liquid Glas
 - structure-and-navigation.md — functional layer, bars, tabs, scroll edge effects, sidebars
 - continuity-and-components.md — cross‑device continuity, symbols/labels, menus, component anatomy/behavior
 - adoption-checklist.md — practical steps for designers and engineers
+ - apis-and-implementation.md — SwiftUI/UIKit APIs (glassEffect, GlassEffectContainer, UIGlassEffect), availability, fallbacks, and tips
 
 ## Big ideas (at a glance)
 
@@ -17,4 +18,3 @@ Unofficial working notes for the new Apple design system centered on Liquid Glas
 - Concentric geometry: Fixed, capsule, and concentric shapes create rhythm and visual balance, aligning UI with hardware curvature and margins.
 - Structure with focus: A functional layer floats above content, clarifying hierarchy, anchoring interactions to their source, and keeping focus grounded.
 - Continuity: Shared anatomy and behaviors let designs scale across iPhone, iPad, and Mac without “starting over”.
-
