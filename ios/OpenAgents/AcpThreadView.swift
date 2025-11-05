@@ -571,18 +571,11 @@ struct AcpThreadView: View {
         .onTapGesture { rawDetail = line }
     }
 
-    // Hide low-signal provider-native events
+    // Hide low-signal provider-native events (turn_context, token counts, session meta, provider init blobs)
     func shouldHideLine(_ line: String) -> Bool {
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-        let t = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
-        if t == "turn_context" { return true }
-        if t == "event_msg", let p = obj["payload"] as? [String: Any] {
-            let pt = ((p["type"] as? String) ?? "").lowercased()
-            if pt == "token_count" { return true }
-            if pt == "session_meta" { return true }
-        }
-        return false
+        return isMetaLikeEvent(obj)
     }
 
     // Detect provider-native reasoning events for italic rendering
@@ -853,12 +846,34 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 private func AcpThreadView_shouldHideLine(_ line: String) -> Bool {
     guard let data = line.data(using: .utf8),
           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+    return isMetaLikeEvent(obj)
+}
+
+// Heuristic metadata detection for provider/session init blobs.
+// Treat as metadata if:
+// - type is turn_context
+// - event_msg with payload.type in { token_count, session_meta }
+// - event_msg payload has recognizably meta keys (cwd/git/cli_version) or any nested "instructions" field
+private func isMetaLikeEvent(_ obj: [String: Any]) -> Bool {
     let t = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
     if t == "turn_context" { return true }
-    if t == "event_msg", let p = obj["payload"] as? [String: Any] {
-        let pt = ((p["type"] as? String) ?? "").lowercased()
-        if pt == "token_count" { return true }
-        if pt == "session_meta" { return true }
+    guard t == "event_msg" else { return false }
+    guard let p = obj["payload"] as? [String: Any] else { return false }
+    let pt = ((p["type"] as? String) ?? "").lowercased()
+    if pt == "token_count" || pt == "session_meta" { return true }
+    if p["cwd"] != nil || p["git"] != nil || p["cli_version"] != nil { return true }
+    if containsKeyDeep(p, key: "instructions") { return true }
+    return false
+}
+
+private func containsKeyDeep(_ any: Any, key: String) -> Bool {
+    if let d = any as? [String: Any] {
+        if d[key] != nil { return true }
+        for (_, v) in d { if containsKeyDeep(v, key: key) { return true } }
+        return false
+    } else if let arr = any as? [Any] {
+        for v in arr { if containsKeyDeep(v, key: key) { return true } }
+        return false
     }
     return false
 }
