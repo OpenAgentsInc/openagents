@@ -395,20 +395,56 @@ public class DesktopWebSocketServer {
                         }
                     case "thread/load_latest_typed":
                         struct LatestTypedResult: Codable { let id: String; let updates: [ACP.Client.SessionUpdate] }
-                        let base = CodexScanner.defaultBaseDir()
-                        let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
-                        if let file = urls.first {
-                            let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
-                            // Read a generous window then map to ACP updates
+
+                        // Check both Codex and Claude Code for most recent session
+                        let codexBase = CodexScanner.defaultBaseDir()
+                        let claudeBase = ClaudeCodeScanner.defaultBaseDir()
+                        let codexFiles = CodexScanner.listRecentTopN(at: codexBase, topK: 1)
+                        let claudeFiles = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: 1)
+
+                        // Pick most recent by mtime
+                        var file: URL?
+                        var provider: String = "codex"
+                        var base: URL = codexBase
+
+                        if let cf = codexFiles.first, let clf = claudeFiles.first {
+                            // Compare mtimes
+                            let codexTime = (try? cf.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate?.timeIntervalSince1970) ?? 0
+                            let claudeTime = (try? clf.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate?.timeIntervalSince1970) ?? 0
+                            if claudeTime > codexTime {
+                                file = clf
+                                provider = "claude-code"
+                                base = claudeBase
+                            } else {
+                                file = cf
+                            }
+                        } else if let cf = codexFiles.first {
+                            file = cf
+                        } else if let clf = claudeFiles.first {
+                            file = clf
+                            provider = "claude-code"
+                            base = claudeBase
+                        }
+
+                        if let file = file {
+                            let tid: String
+                            if provider == "codex" {
+                                tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
+                            } else {
+                                tid = ClaudeCodeScanner.scanForSessionID(file) ?? ClaudeCodeScanner.relativeId(for: file, base: base)
+                            }
+
+                            // Read and translate to ACP
                             let lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 16000)
-                            let updates = DesktopWebSocketServer.makeTypedUpdates(from: lines)
+                            let updates = DesktopWebSocketServer.makeTypedUpdates(from: lines, provider: provider)
+
                             let idVal: JSONRPC.ID
                             if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
                             else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                             else { idVal = JSONRPC.ID("1") }
                             let result = LatestTypedResult(id: tid, updates: updates)
                             if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
-                                print("[Bridge][server] send rpc result method=thread/load_latest_typed id=\(idVal.value) bytes=\(jtext.utf8.count)")
+                                print("[Bridge][server] send rpc result method=thread/load_latest_typed id=\(idVal.value) provider=\(provider) bytes=\(jtext.utf8.count)")
                                 client.send(text: jtext)
                             }
                         } else {
@@ -741,9 +777,52 @@ extension DesktopWebSocketServer {
         return out
     }
 
-    // MARK: - Typed updates assembly (Codex JSONL -> ACP SessionUpdate)
-    fileprivate static func makeTypedUpdates(from lines: [String]) -> [ACP.Client.SessionUpdate] {
+    // MARK: - Typed updates assembly (Provider JSONL -> ACP SessionUpdate)
+    fileprivate static func makeTypedUpdates(from lines: [String], provider: String = "codex") -> [ACP.Client.SessionUpdate] {
         var updates: [ACP.Client.SessionUpdate] = []
+
+        // Claude Code uses a different structure - translate full conversation at once
+        if provider == "claude-code" {
+            let thread = ClaudeAcpTranslator.translateLines(lines, options: .init(sourceId: "desktop"))
+            for event in thread.events {
+                // Map ACPEvent to SessionUpdate
+                if let m = event.message {
+                    let text = m.parts.compactMap { part -> String? in
+                        if case let .text(tt) = part { return tt.text } else { return nil }
+                    }.joined(separator: "\n")
+                    guard !text.isEmpty else { continue }
+                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
+                    if m.role == .user {
+                        updates.append(.userMessageChunk(chunk))
+                    } else if m.role == .assistant {
+                        // Check if this is reasoning (thinking block)
+                        // Claude Code thinking blocks are mapped to assistant messages
+                        // For now, treat all assistant messages as regular messages
+                        // TODO: Add metadata to distinguish thinking from regular response
+                        updates.append(.agentMessageChunk(chunk))
+                    }
+                }
+                if let call = event.tool_call {
+                    let args = jsonValueToAnyDict(call.arguments)
+                    let wire = ACPToolCallWire(call_id: call.id, name: call.tool_name, arguments: args, _meta: nil)
+                    updates.append(.toolCall(wire))
+                }
+                if let res = event.tool_result {
+                    let status: ACPToolCallUpdateWire.Status = res.ok ? .completed : .error
+                    let output = res.result.map { jsonValueToAnyEncodable($0) }
+                    let wire = ACPToolCallUpdateWire(call_id: res.call_id, status: status, output: output, error: res.error, _meta: nil)
+                    updates.append(.toolCallUpdate(wire))
+                }
+                if let ps = event.plan_state {
+                    let entries = (ps.steps ?? []).map { ACPPlanEntry(content: $0, priority: .medium, status: .in_progress, _meta: nil) }
+                    let plan = ACPPlan(entries: entries, _meta: nil)
+                    updates.append(.plan(plan))
+                }
+            }
+            return updates
+        }
+
+        // Codex: translate line-by-line (original logic)
         for line in lines {
             guard let data = line.data(using: .utf8),
                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
