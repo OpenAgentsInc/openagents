@@ -184,14 +184,61 @@ struct AcpThreadView: View {
         ForEach(Array(msg.parts.enumerated()), id: \.0) { pair in
             let idx = pair.0
             if case let .text(t) = msg.parts[idx] {
-                markdownText(t.text)
-                    .textSelection(.enabled)
-                    .font(InterFont.font(relativeTo: .body, size: 14))
-                    .lineLimit(isUser ? 5 : nil)
-                    .truncationMode(.tail)
-                    .foregroundStyle(isUser ? Color(hex: "#7A7A7A") : OATheme.Colors.textPrimary)
+                renderMessageMarkdown(t.text, isUser: isUser)
             }
         }
+    }
+
+    // Customized Markdown renderer for messages: bullet styling + paragraph spacing
+    @ViewBuilder
+    private func renderMessageMarkdown(_ text: String, isUser: Bool) -> some View {
+        let color: Color = isUser ? Color(hex: "#7A7A7A") : OATheme.Colors.textPrimary
+        let paras = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n\n")
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(paras.enumerated()), id: \.0) { p in
+                let para = paras[p.0]
+                if isBulletBlock(para) {
+                    let lines = para.split(separator: "\n").map(String.init)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(lines.enumerated()), id: \.0) { i in
+                            let raw = lines[i.0].trimmingCharacters(in: .whitespaces)
+                            let content = dropBulletPrefix(raw)
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
+                                markdownText(content)
+                                    .font(OAFonts.ui(.body, 14))
+                                    .lineLimit(isUser ? 5 : nil)
+                                    .truncationMode(.tail)
+                                    .foregroundStyle(color)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                } else {
+                    markdownText(para)
+                        .font(OAFonts.ui(.body, 14))
+                        .lineLimit(isUser ? 5 : nil)
+                        .truncationMode(.tail)
+                        .foregroundStyle(color)
+                        .textSelection(.enabled)
+                        .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private func isBulletBlock(_ para: String) -> Bool {
+        let lines = para.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard !lines.isEmpty else { return false }
+        let bulletCount = lines.filter { $0.hasPrefix("- ") || $0.hasPrefix("* ") }.count
+        return bulletCount >= max(1, lines.count - 1)
+    }
+
+    private func dropBulletPrefix(_ s: String) -> String {
+        if s.hasPrefix("- ") { return String(s.dropFirst(2)) }
+        if s.hasPrefix("* ") { return String(s.dropFirst(2)) }
+        return s
     }
 
     // Reasoning detail sheet
