@@ -4,7 +4,7 @@ import OpenAgentsCore
 struct AcpThreadView: View {
     let url: URL?
     var initialLines: [String]? = nil
-    let maxMessages: Int = 200
+    let maxMessages: Int = 400
     var onTitleChange: ((String) -> Void)? = nil
 
     @EnvironmentObject var bridge: BridgeManager
@@ -57,6 +57,23 @@ struct AcpThreadView: View {
         let messages: [ACPMessage]
     }
 
+    // Markdown render item used by renderMessageMarkdown; must live outside
+    // of a @ViewBuilder closure to avoid result-builder restrictions
+    enum MDBulletKind {
+        case none
+        case unordered
+        case ordered(number: Int, separator: Character)
+    }
+
+    struct MDItem: Identifiable {
+        let id = UUID()
+        let level: Int
+        let bullet: Bool
+        let kind: MDBulletKind
+        let marker: String // e.g., "1." or "•"
+        let content: String
+    }
+
     @State private var timeline: [TimelineItem] = []
     @State private var threadTitle: String? = nil
     // Track recent texts to avoid duplicates across non-consecutive items
@@ -66,6 +83,7 @@ struct AcpThreadView: View {
     @State private var pendingReasoning: [ACPMessage] = []
     @State private var pendingReasoningStart: Int64? = nil
     @State private var reasoningSheet: [ACPMessage]? = nil
+    @State private var rawDetail: String? = nil
 
     var body: some View {
         ZStack {
@@ -87,7 +105,7 @@ struct AcpThreadView: View {
         // When latestLines arrive from the bridge, build the initial timeline and scroll to bottom.
         .onChange(of: bridge.latestLines.count) { _, _ in
             if timeline.isEmpty, !bridge.latestLines.isEmpty {
-                let (items, title) = AcpThreadView_computeTimeline(lines: bridge.latestLines, sourceId: "remote", cap: 100)
+                let (items, title) = AcpThreadView_computeTimeline(lines: bridge.latestLines, sourceId: "remote", cap: maxMessages)
                 timeline = items
                 threadTitle = title
                 if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onTitleChange?(t) }
@@ -148,6 +166,9 @@ struct AcpThreadView: View {
                 .sheet(isPresented: Binding(get: { reasoningSheet != nil }, set: { v in if !v { reasoningSheet = nil } })) {
                     reasoningDetailSheet
                 }
+                .sheet(isPresented: Binding(get: { rawDetail != nil }, set: { v in if !v { rawDetail = nil } })) {
+                    rawDetailSheet
+                }
             }
         }
     }
@@ -200,7 +221,7 @@ struct AcpThreadView: View {
         case .plan(let ps):
             PlanStateView(state: ps)
         case .raw(let line):
-            if Features.showRawJSON { RawEventView(line: line) }
+            rawInlinePreview(line)
         }
     }
 
@@ -216,43 +237,22 @@ struct AcpThreadView: View {
     }
 
     // Customized Markdown renderer for messages: bullet styling + paragraph spacing
-    @ViewBuilder
     private func renderMessageMarkdown(_ text: String, isUser: Bool) -> some View {
         let color: Color = isUser ? Color(hex: "#7A7A7A") : OATheme.Colors.textPrimary
-        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
-        let paras = normalized.components(separatedBy: "\n\n")
-        struct Item: Identifiable { let id = UUID(); let level: Int; let bullet: Bool; let content: String }
-        var items: [Item] = []
-        var lastWasPara = false
-        for para in paras {
-            if isBulletBlock(para) {
-                let lines = para.split(separator: "\n").map(String.init)
-                // Compute baseline indent across this block
-                var minIndent = Int.max
-                var infos: [(indent:Int, content:String)] = []
-                for l in lines {
-                    let (isB, ind, content) = bulletInfo(l)
-                    if isB { minIndent = min(minIndent, ind); infos.append((ind, content)) }
-                }
-                if minIndent == Int.max { minIndent = 0 }
-                let basePad = lastWasPara ? 1 : 0
-                for inf in infos {
-                    let lvl = max(0, (inf.indent - minIndent)/2) + basePad
-                    items.append(Item(level: lvl, bullet: true, content: inf.content))
-                }
-                lastWasPara = false
-            } else {
-                // Paragraph; indent one level if following a bullet section
-                let lvl = lastWasPara ? 0 : 0
-                items.append(Item(level: lvl, bullet: false, content: para))
-                lastWasPara = true
-            }
-        }
-        VStack(alignment: .leading, spacing: 10) {
+        let items = parseMarkdownItems(text)
+        return VStack(alignment: .leading, spacing: 10) {
             ForEach(items) { it in
                 if it.bullet {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
+                        switch it.kind {
+                        case .ordered:
+                            Text(it.marker)
+                                .font(OAFonts.ui(.body, 14).weight(.semibold))
+                                .foregroundStyle(color)
+                                .padding(.top, 1)
+                        case .unordered, .none:
+                            Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
+                        }
                         markdownText(it.content)
                             .font(OAFonts.ui(.body, 14))
                             .lineLimit(isUser ? 5 : nil)
@@ -275,32 +275,95 @@ struct AcpThreadView: View {
         }
     }
 
+    // Pure parser for simple markdown-ish bullets/paragraphs -> render items
+    private func parseMarkdownItems(_ text: String) -> [MDItem] {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let paras = normalized.components(separatedBy: "\n\n")
+        var items: [MDItem] = []
+        var lastWasPara = false
+        var lastBlockWasBulletOrdered: Bool? = nil
+        for para in paras {
+            if isBulletBlock(para) {
+                let lines = para.split(separator: "\n").map(String.init)
+                // Compute baseline indent across this block
+                var minIndent = Int.max
+                var infos: [(indent:Int, kind: MDBulletKind, marker: String, content:String)] = []
+                for l in lines {
+                    let info = bulletInfo(l)
+                    if info.isBullet {
+                        minIndent = min(minIndent, info.indent)
+                        infos.append((info.indent, info.kind, info.marker, info.content))
+                    }
+                }
+                if minIndent == Int.max { minIndent = 0 }
+                // If a bullet block (unordered) immediately follows an ordered block, indent it one level
+                let isOrderedGroup = infos.allSatisfy({ if case .ordered = $0.kind { return true } else { return false } })
+                let basePad = (lastBlockWasBulletOrdered == true && isOrderedGroup == false) ? 1 : 0
+                for inf in infos {
+                    let lvl = max(0, (inf.indent - minIndent)/2) + basePad
+                    items.append(MDItem(level: lvl, bullet: true, kind: inf.kind, marker: inf.marker, content: inf.content))
+                }
+                lastWasPara = false
+                lastBlockWasBulletOrdered = isOrderedGroup
+            } else {
+                // Paragraph; indent one level if following a bullet section
+                let lvl = lastWasPara ? 0 : 0
+                items.append(MDItem(level: lvl, bullet: false, kind: .none, marker: "", content: para))
+                lastWasPara = true
+            }
+        }
+        return items
+    }
+
     private func isBulletBlock(_ para: String) -> Bool {
         let lines = para.split(separator: "\n").map(String.init)
         guard !lines.isEmpty else { return false }
         for l in lines {
-            let (isB, _, _) = bulletInfo(l)
-            if !isB { return false }
+            let info = bulletInfo(l)
+            if !info.isBullet { return false }
         }
         return true
     }
 
-    private func bulletInfo(_ s: String) -> (isBullet: Bool, indent: Int, content: String) {
+    private func bulletInfo(_ s: String) -> (isBullet: Bool, indent: Int, kind: MDBulletKind, marker: String, content: String) {
         var indent = 0
         var idx = s.startIndex
-        while idx < s.endIndex && s[idx] == " " { indent += 1; idx = s.index(after: idx) }
+        // Count leading spaces/tabs as indent (tab ~ 2 spaces)
+        while idx < s.endIndex {
+            let ch = s[idx]
+            if ch == " " { indent += 1 }
+            else if ch == "\t" { indent += 2 }
+            else { break }
+            idx = s.index(after: idx)
+        }
         let trimmed = String(s[idx...])
-        if trimmed.hasPrefix("- ") { return (true, indent, String(trimmed.dropFirst(2))) }
-        if trimmed.hasPrefix("* ") { return (true, indent, String(trimmed.dropFirst(2))) }
-        // numeric bullets like "1. " or "2) "
+        // Hyphen/asterisk/•/en-dash bullets with flexible spacing
+        if !trimmed.isEmpty, ["-","*","•","–"].contains(String(trimmed.first!)) {
+            var k = trimmed.index(after: trimmed.startIndex)
+            while k < trimmed.endIndex && (trimmed[k] == " " || trimmed[k] == "\t") { k = trimmed.index(after: k) }
+            if k < trimmed.endIndex {
+                let content = String(trimmed[k...])
+                return (true, indent, .unordered, "•", content)
+            }
+        }
+        // numeric bullets like "1. text", "2) text", allow optional space after separator
         var j = trimmed.startIndex
         var hadDigit = false
-        while j < trimmed.endIndex, trimmed[j].isNumber { hadDigit = true; j = trimmed.index(after: j) }
-        if hadDigit, j < trimmed.endIndex, (trimmed[j] == "." || trimmed[j] == ")"), trimmed.index(after: j) < trimmed.endIndex, trimmed[trimmed.index(after: j)] == " " {
-            let content = String(trimmed[trimmed.index(j, offsetBy: 2)...])
-            return (true, indent, content)
+        var number = 0
+        while j < trimmed.endIndex, let d = trimmed[j].wholeNumberValue {
+            hadDigit = true
+            number = number * 10 + d
+            j = trimmed.index(after: j)
         }
-        return (false, indent, trimmed)
+        if hadDigit, j < trimmed.endIndex, (trimmed[j] == "." || trimmed[j] == ")") {
+            let sep = trimmed[j]
+            var k = trimmed.index(after: j)
+            while k < trimmed.endIndex, (trimmed[k] == " " || trimmed[k] == "\t") { k = trimmed.index(after: k) }
+            let content = String(trimmed[k...])
+            let marker = "\(number)\(sep)"
+            return (true, indent, .ordered(number: number, separator: sep), marker, content)
+        }
+        return (false, indent, .none, "", trimmed)
     }
 
     // Reasoning detail sheet
@@ -333,6 +396,27 @@ struct AcpThreadView: View {
                     ToolbarItem(placement: .topBarLeading) { Button("Back") { reasoningSheet = nil } }
                     #else
                     ToolbarItem(placement: .navigation) { Button("Back") { reasoningSheet = nil } }
+                    #endif
+                }
+            }
+        }
+    }
+
+    // Raw JSON detail sheet
+    @ViewBuilder
+    private var rawDetailSheet: some View {
+        if let json = rawDetail {
+            NavigationStack {
+                ScrollView {
+                    RawEventView(line: json)
+                        .padding(14)
+                }
+                .navigationTitle("Event JSON")
+                .toolbar {
+                    #if os(iOS)
+                    ToolbarItem(placement: .topBarLeading) { Button("Close") { rawDetail = nil } }
+                    #else
+                    ToolbarItem(placement: .navigation) { Button("Close") { rawDetail = nil } }
                     #endif
                 }
             }
@@ -379,6 +463,41 @@ struct AcpThreadView: View {
         return Text(text)
     }
 
+    // Pretty-print a JSON line; fall back to raw string on failure
+    func prettyJSON(_ line: String) -> String {
+        if let data = line.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data),
+           let pd = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
+           let s = String(data: pd, encoding: .utf8) {
+            return s
+        }
+        return line
+    }
+
+    // Inline, truncated preview of a raw JSON event
+    @ViewBuilder
+    private func rawInlinePreview(_ line: String) -> some View {
+        let preview = prettyJSON(line)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(preview)
+                .font(OAFonts.mono(.footnote, 12))
+                .foregroundStyle(OATheme.Colors.textTertiary)
+                .textSelection(.enabled)
+                .lineLimit(5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.black.opacity(0.20))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(OATheme.Colors.border.opacity(0.6), lineWidth: 1)
+        )
+        .onTapGesture { rawDetail = line }
+    }
+
     // Hide low-signal provider-native events
     func shouldHideLine(_ line: String) -> Bool {
         guard let data = line.data(using: .utf8),
@@ -407,7 +526,7 @@ struct AcpThreadView: View {
         if let lines = initialLines, !lines.isEmpty, timeline.isEmpty {
             isLoading = true; error = nil; timeline = []
             DispatchQueue.global(qos: .userInitiated).async {
-                let (items, title) = AcpThreadView_computeTimeline(lines: lines, sourceId: "remote", cap: 100)
+                let (items, title) = AcpThreadView_computeTimeline(lines: lines, sourceId: "remote", cap: maxMessages)
                 DispatchQueue.main.async {
                     self.timeline = items
                     self.threadTitle = title
@@ -607,8 +726,8 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
                 continue
             }
 
-            // Non-reasoning message
-            if !ConversationSummarizer.isSystemPreface(text) {
+            // Non-reasoning message (only show user/assistant roles)
+            if m.role == .user || m.role == .assistant {
                 // Any pending reasoning attaches before this message
                 var ts = m.ts
                 if ts == 0 { ts = resolveTsMs(fromLine: line) ?? monoMs }
@@ -619,14 +738,17 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
                 items.append(.message(m))
                 continue
             }
-        } else if let c = t.events.compactMap({ $0.tool_call }).first {
-            if Features.showRawJSON { items.append(.toolCall(c)) }
+        } else if let _ = t.events.compactMap({ $0.tool_call }).first {
+            // Show raw JSON for tool calls
+            items.append(.raw(line))
             continue
-        } else if let r = t.events.compactMap({ $0.tool_result }).first {
-            if Features.showRawJSON { items.append(.toolResult(r)) }
+        } else if let _ = t.events.compactMap({ $0.tool_result }).first {
+            // Show raw JSON for tool results
+            items.append(.raw(line))
             continue
         }
-        if Features.showRawJSON { items.append(.raw(line)) }
+        // For any other events that aren't messages, include their raw JSON
+        items.append(.raw(line))
 
         // At end of input, if last lines were reasoning, flush using lastMessageTs (or own ts)
         if idx == lines.count - 1 && !reasoningBuffer.isEmpty {
@@ -663,7 +785,8 @@ private func AcpThreadView_isReasoningLine(_ line: String) -> Bool {
 private func resolveTsMs(fromLine line: String) -> Int64? {
     guard let data = line.data(using: .utf8),
           let root = try? JSONSerialization.jsonObject(with: data) else { return nil }
-
+    return scanForTimestamp(root)
+}
 
 // Human-readable duration like "2m 4s" or "1h 2m" or "45s"
 func formatDuration(seconds: Int) -> String {
@@ -675,10 +798,8 @@ func formatDuration(seconds: Int) -> String {
     var parts: [String] = []
     if h > 0 { parts.append("\(h)h") }
     if m > 0 { parts.append("\(m)m") }
-    if sec > 0 or parts.isEmpty { parts.append("\(sec)s") }
+    if sec > 0 || parts.isEmpty { parts.append("\(sec)s") }
     return parts.joined(separator: " ")
-}
-    return scanForTimestamp(root)
 }
 
 private func extractISO(_ any: Any?) -> Int64? {
