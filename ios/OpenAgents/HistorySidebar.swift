@@ -109,19 +109,10 @@ struct HistorySidebar: View {
             return
             #endif
             #if os(macOS)
-            // macOS path: scan Codex filesystem; Claude behind feature flag
-            let codexBases = LocalCodexDiscovery.discoverBaseDirs()
-            var codexURLs: [URL] = []
-            for b in codexBases { codexURLs.append(contentsOf: LocalCodexScanner.listRecentTopN(at: b, topK: 10)) }
-            codexURLs.sort { LocalCodexScanner.fileMTime($0) > LocalCodexScanner.fileMTime($1) }
-            if codexURLs.count > 10 { codexURLs = Array(codexURLs.prefix(10)) }
-            var merged: [(LocalThreadSummary, URL?)] = codexURLs.map { url in
-                let base = codexBases.first { url.path.hasPrefix($0.path) } ?? url.deletingLastPathComponent()
-                let id = LocalCodexScanner.scanForThreadID(url) ?? LocalCodexScanner.relativeId(for: url, base: base)
-                let updated = LocalCodexScanner.fileMTime(url)
-                let row = LocalThreadSummary(id: id, title: nil, source: "codex", created_at: nil, updated_at: updated, last_message_ts: nil, message_count: nil)
-                return (row, url)
-            }
+            // macOS path: prioritize Claude Code, optionally include Codex
+            var merged: [(LocalThreadSummary, URL?)] = []
+
+            // Load Claude Code first (now default)
             if Features.claudeEnabled {
                 let claudeExact = LocalClaudeDiscovery.scanExactProjectTopK(topK: 10)
                 dbg.append("claudeExactProjectCount=\(claudeExact.count)")
@@ -137,14 +128,36 @@ struct HistorySidebar: View {
                         return LocalClaudeDiscovery.makeSummary(for: url, base: baseFor)
                     }
                 }
-                dbg.append("codexCount=\(codexURLs.count) claudeCount=\(claudeRows.count)")
-                merged += claudeRows.map { ($0, nil) }
-            } else {
-                dbg.append("claude=disabled")
-                dbg.append("codexCount=\(codexURLs.count) claudeCount=0")
+                merged = claudeRows.map { ($0, nil) }
+                dbg.append("claudeCount=\(claudeRows.count)")
             }
-            // Sort only what we have; Codex-only is already top-10
-            merged.sort { ($0.0.last_message_ts ?? $0.0.updated_at) > ($1.0.last_message_ts ?? $1.0.updated_at) }
+
+            // Optionally include Codex
+            let codexBases = LocalCodexDiscovery.discoverBaseDirs()
+            var codexURLs: [URL] = []
+            for b in codexBases { codexURLs.append(contentsOf: LocalCodexScanner.listRecentTopN(at: b, topK: 10)) }
+            codexURLs.sort { LocalCodexScanner.fileMTime($0) > LocalCodexScanner.fileMTime($1) }
+            if codexURLs.count > 10 { codexURLs = Array(codexURLs.prefix(10)) }
+            let codexRows = codexURLs.map { url -> (LocalThreadSummary, URL?) in
+                let base = codexBases.first { url.path.hasPrefix($0.path) } ?? url.deletingLastPathComponent()
+                let id = LocalCodexScanner.scanForThreadID(url) ?? LocalCodexScanner.relativeId(for: url, base: base)
+                let updated = LocalCodexScanner.fileMTime(url)
+                let row = LocalThreadSummary(id: id, title: nil, source: "codex", created_at: nil, updated_at: updated, last_message_ts: nil, message_count: nil)
+                return (row, url)
+            }
+            merged += codexRows
+            dbg.append("codexCount=\(codexURLs.count)")
+
+            // Sort by most recent, prioritizing Claude Code when timestamps are equal
+            merged.sort { a, b in
+                let aTs = a.0.last_message_ts ?? a.0.updated_at
+                let bTs = b.0.last_message_ts ?? b.0.updated_at
+                if aTs == bTs {
+                    // Prioritize Claude Code when timestamps match
+                    return a.0.source == "claude_code" && b.0.source != "claude_code"
+                }
+                return aTs > bTs
+            }
             if merged.count > 20 { merged = Array(merged.prefix(20)) }
             DispatchQueue.main.async {
                 withAnimation { self.items = merged }
