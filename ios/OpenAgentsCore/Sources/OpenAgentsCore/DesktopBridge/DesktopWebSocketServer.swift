@@ -347,12 +347,17 @@ public class DesktopWebSocketServer {
                         }
                     case "thread/load_latest":
                         struct LatestResult: Codable { let id: String; let lines: [String] }
+                        let params = dict["params"] as? [String: Any]
+                        let paramLimit = (params?["limit_lines"] as? NSNumber)?.intValue
+                        let paramBytes = (params?["max_bytes"] as? NSNumber)?.intValue
                         let base = CodexScanner.defaultBaseDir()
                         let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
                         if let file = urls.first {
                             let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
                             // Read a larger window of lines before pruning/capping to fit mobile limits
-                            var lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 16000)
+                            let maxLines = paramLimit ?? 16000
+                            let maxBytes = paramBytes ?? 1_000_000
+                            var lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: maxBytes, maxLines: maxLines)
                             // Prune heavy payloads (e.g., tool results and large strings) to fit mobile WS limits
                             lines = DesktopWebSocketServer.pruneHeavyPayloads(in: lines)
                             // Keep total payload comfortably under 1MB (account for envelope overhead)
