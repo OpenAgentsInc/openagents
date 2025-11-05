@@ -43,3 +43,8 @@ Multi-action capsule
 
 - You can place multiple icon buttons inside the same capsule by increasing the HStack spacing slightly (e.g., 6) and keeping each icon framed to a square hit area (e.g., 36×36). The foreground stays on top of the glass background.
 - Example adds a second `mic` button next to the compose button while keeping the same glass background sizing.
+
+Related: Tab bar bottom accessory
+
+- For a demo `TabView` with a bottom accessory, see `ios/OpenAgents/Examples/ChatTabsDemo.swift`.
+- It uses `tabViewBottomAccessory { ... }` that adapts to `@Environment(\.tabViewBottomAccessoryPlacement)` — rendering an expanded inline composer above the tab bar and a compact control set when collapsed into the bar.
