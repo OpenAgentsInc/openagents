@@ -47,12 +47,12 @@ struct ContentView: View {
         .overlay(alignment: .bottomTrailing) {
             FloatingToolbar()
         }
-        .overlay(alignment: .bottomTrailing) {
-            FloatingMicButton()
-        }
-        .overlay(alignment: .topTrailing) {
-            FloatingMenuButton(onTap: { showTabsDemo = true })
-        }
+        // .overlay(alignment: .bottomTrailing) {
+        //     FloatingMicButton()
+        // }
+        // .overlay(alignment: .topTrailing) {
+        //     FloatingMenuButton(onTap: { showTabsDemo = true })
+        // }
         #endif
         // Present Chat Tabs demo from menu button
         #if os(iOS)
