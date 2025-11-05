@@ -1,0 +1,256 @@
+================================================================================
+iOS OPENAGENTS TEST COVERAGE SUMMARY
+================================================================================
+
+CODEBASE METRICS:
+  Total Swift Files:        87
+  Total Test Files:         20 (23% ratio)
+  OpenAgentsCore Code:      ~20,000 lines
+  OpenAgents App Code:      ~4,000 lines
+  
+BREAKDOWN BY LAYER:
+
+1. OpenAgentsCore (Protocol/Bridge/Data)
+   ├─ Test Files: 14
+   ├─ Status: WELL TESTED
+   ├─ Coverage:
+   │  ├─ ACP Data Models:        TESTED ✓
+   │  ├─ Translators:            TESTED ✓
+   │  ├─ Providers:              TESTED ✓
+   │  ├─ ACP Protocol Types:      PARTIAL ✓
+   │  ├─ WebSocket Bridge:        MINIMAL ✗
+   │  └─ Bridge Configuration:    NONE ✗
+
+2. OpenAgents App (UI/Bridge Manager)
+   ├─ Test Files: 2 (1 functional + 1 empty)
+   ├─ Status: CRITICALLY UNDER-TESTED
+   ├─ Coverage:
+   │  ├─ AcpThreadView:          MINIMAL (1 function only) ✗
+   │  ├─ BridgeManager:          NONE ✗
+   │  ├─ UI Components (15 views): NONE ✗
+   │  ├─ Integration Flow:       NONE ✗
+   │  └─ Markdown Rendering:     NONE ✗
+
+3. UI Tests
+   ├─ Test Files: 2
+   ├─ Status: EMPTY
+   ├─ Content: Launch performance only
+
+================================================================================
+CRITICAL TEST GAPS (Priority 1)
+================================================================================
+
+1. WebSocket Communication (Impact: HIGH)
+   ├─ File: MobileWebSocketClient.swift (300 lines)
+   │  ├─ Current: 1 happy-path test (BridgeServerClientTests)
+   │  ├─ Missing: reconnection, timeout, malformed messages, state machine
+   │  └─ Risk: Connection failures in production
+   │
+   └─ File: DesktopWebSocketServer.swift (400 lines)
+      ├─ Current: 1 happy-path test (BridgeServerClientTests)
+      ├─ Missing: client lifecycle, error handling, broadcast logic
+      └─ Risk: Server crashes, client disconnects not handled
+
+2. Bridge Manager State Machine (Impact: HIGH)
+   ├─ File: BridgeManager.swift (255 lines)
+   ├─ Current: ZERO tests
+   ├─ Missing: state transitions, update buffering, Bonjour discovery
+   └─ Risk: Race conditions, memory leaks, connection loss
+
+3. Largest View Component (Impact: CRITICAL)
+   ├─ File: AcpThreadView.swift (1,550 lines - 23% of app code!)
+   ├─ Current: 1 test for computeTimeline() only
+   ├─ Missing: rendering, markdown parsing, scroll behavior, updates
+   └─ Risk: Visual bugs, performance issues, message loss
+
+4. Message Pipeline (Impact: HIGH)
+   ├─ Flow: Bridge → BridgeManager → AcpThreadView
+   ├─ Current: ZERO integration tests
+   ├─ Missing: end-to-end message flow, ordering, deduplication
+   └─ Risk: Lost/duplicate messages, display corruption
+
+5. ACP Protocol Compliance (Impact: MEDIUM-HIGH)
+   ├─ Files: /AgentClientProtocol/ (11 files)
+   ├─ Current: PARTIAL coverage
+   ├─ Missing: all variant paths, error cases, version negotiation
+   └─ Risk: Protocol incompatibility, version mismatch failures
+
+================================================================================
+FILE ORGANIZATION & RECOMMENDATIONS
+================================================================================
+
+CORE ACP PROTOCOL IMPLEMENTATION:
+/OpenAgentsCore/Sources/OpenAgentsCore/
+
+├─ AgentClientProtocol/ (11 files, ~4,000 lines)
+│  ├─ acp.swift ............................ No tests
+│  ├─ agent.swift .......................... Partial
+│  ├─ client.swift ......................... Partial
+│  ├─ errors.swift ......................... Partial
+│  ├─ ext.swift ............................ No tests
+│  ├─ plan.swift ........................... No tests
+│  ├─ rpc.swift ............................ No tests
+│  ├─ services.swift ....................... No tests
+│  ├─ session.swift ........................ No tests
+│  ├─ tool_call.swift ...................... No tests
+│  └─ version.swift ........................ No tests
+│
+├─ ACP/ (7 files - ACP Data Models)
+│  ├─ ACPCommon.swift ...................... No tests
+│  ├─ ACPContent.swift ..................... No tests
+│  ├─ ACPEvent.swift ....................... TESTED ✓
+│  ├─ ACPMessage.swift ..................... TESTED ✓
+│  ├─ ACPPlanState.swift ................... TESTED ✓
+│  ├─ ACPThread.swift ...................... TESTED ✓
+│  └─ ACPTool.swift ........................ TESTED ✓
+│
+├─ Bridge/ (3 files)
+│  ├─ BridgeConfig.swift ................... No tests
+│  ├─ BridgeMessages.swift ................. No tests
+│  └─ JSONRPC.swift ........................ Partial
+│
+├─ DesktopBridge/ (1 file - ~400 lines)
+│  └─ DesktopWebSocketServer.swift ......... Minimal (1 test)
+│
+├─ MobileBridge/ (1 file - ~300 lines)
+│  └─ MobileWebSocketClient.swift .......... Minimal (1 test)
+│
+├─ Providers/ (4 files)
+│  ├─ ClaudeCodeScanner.swift .............. No tests [NEW!]
+│  ├─ ClaudeScanner.swift .................. TESTED ✓
+│  ├─ CodexDiscovery.swift ................. TESTED ✓
+│  └─ CodexScanner.swift ................... TESTED ✓
+│
+├─ Translators/ (2 files)
+│  ├─ ClaudeAcpTranslator.swift ............ TESTED ✓
+│  └─ CodexAcpTranslator.swift ............. TESTED ✓
+│
+└─ Summarization/ (2 files)
+   ├─ ConversationSummarizer.swift ......... TESTED ✓
+   └─ FoundationModelSummarizer.swift ...... TESTED ✓
+
+UI APPLICATION LAYER:
+/OpenAgents/
+
+├─ Bridge/ (4 files)
+│  ├─ BridgeManager.swift (255 lines) ..... No tests [CRITICAL]
+│  ├─ BonjourBrowser.swift ................ No tests
+│  ├─ BridgeStatusChip.swift .............. No tests
+│  └─ ManualConnectSheet.swift ............ No tests
+│
+├─ ACP/Renderers/ (4 files)
+│  ├─ ToolCallView.swift (100 lines) ...... No tests [HIGH PRIORITY]
+│  ├─ ToolResultView.swift ................ No tests
+│  ├─ PlanStateView.swift ................. No tests
+│  └─ RawEventView.swift .................. No tests
+│
+├─ History/ (3 files)
+│  ├─ LocalClaude.swift ................... No tests
+│  ├─ LocalCodex.swift .................... No tests
+│  └─ HistorySidebar.swift ................ No tests
+│
+├─ AcpThreadView.swift (1,550 lines) ..... Minimal (1 function) [CRITICAL]
+├─ ContentView.swift (142 lines) ......... No tests
+├─ OpenAgentsApp.swift (40 lines) ........ No tests
+│
+├─ Floating UI/ (5 files)
+│  ├─ FloatingMenuButton.swift ............ No tests
+│  ├─ FloatingMicButton.swift ............. No tests
+│  ├─ FloatingScrollButtons.swift ......... No tests
+│  ├─ FloatingToolbar.swift ............... No tests
+│  └─ FloatingToolbar.swift ............... No tests
+│
+└─ Other Components/ (9 files)
+   ├─ Theme.swift, Fonts.swift, Features.swift ... No tests
+   ├─ GlassBar.swift, GlassHeader.swift, TopEdgeGradient.swift
+   ├─ ThreadHeaderView.swift, RawThreadView.swift
+   └─ FontLoader.swift, TitleCache.swift, FMProbe.swift
+
+================================================================================
+EXISTING TESTS BY CATEGORY
+================================================================================
+
+Protocol & Data Layer:
+✓ ACPModelsTests.swift ................... Message/event/tool encoding
+✓ ACPTypesTests.swift .................... ContentBlock variants
+✓ SessionUpdateTests.swift ............... Session updates
+✓ ErrorsJSONRPCTests.swift ............... Error codes
+✓ BridgeEnvelopeTests.swift .............. Message serialization
+
+Provider & Translation:
+✓ ClaudeAcpTranslatorTests.swift ......... Claude JSONL → ACP
+✓ CodexAcpTranslatorTests.swift .......... Codex JSONL → ACP
+✓ TranslatorTests.swift .................. Utility functions
+✓ ClaudeScannerTests.swift ............... Claude discovery
+✓ CodexScannerTests.swift ................ Codex discovery
+✓ CodexDiscoveryTests.swift .............. Binary lookup
+✓ CodexUserDirsTests.swift ............... Directory handling
+
+Summarization:
+✓ ConversationSummarizerTests.swift ...... Conversation summary
+✓ FoundationSummarizerParsingTests.swift . Model parsing
+
+Bridge & Connection:
+✓ BridgeServerClientTests.swift .......... WebSocket handshake (macOS)
+✓ BridgeHandshakeTests.swift ............. TCP handshake validation
+
+App Layer:
+✓ TimelineTests.swift .................... Timeline computation (AcpThreadView)
+
+Placeholders (Empty):
+○ OpenAgentsTests.swift .................. Empty (Testing framework)
+○ OpenAgentsUITests.swift ................ Empty (XCTest)
+○ OpenAgentsUITestsLaunchTests.swift ...... Launch metrics only
+
+================================================================================
+RECOMMENDED PHASED APPROACH
+================================================================================
+
+PHASE 1: Critical Infrastructure (Week 1-2)
+┌─ Create mocking framework
+├─ BridgeManager state machine tests
+├─ MobileWebSocketClient lifecycle tests
+└─ DesktopWebSocketServer client management tests
+
+PHASE 2: Protocol Compliance (Week 2-3)
+┌─ Comprehensive ACP protocol variant tests
+├─ JSONValue codec tests
+├─ ToolCallView shell/JSON parsing tests
+└─ New ClaudeCodeScanner provider tests
+
+PHASE 3: Integration & UI (Week 3-4)
+┌─ Full connection flow integration tests
+├─ Message pipeline end-to-end tests
+├─ AcpThreadView rendering snapshot tests
+└─ Markdown rendering tests
+
+PHASE 4: Performance & UX (Week 4+)
+┌─ Large timeline rendering performance
+├─ Memory profiling during long sessions
+├─ Scroll behavior validation
+└─ Accessibility testing
+
+================================================================================
+KEY STATISTICS
+================================================================================
+
+Component Sizes (Lines of Code):
+  AcpThreadView.swift ............. 1,550 lines (LARGEST)
+  DesktopWebSocketServer.swift .... 400 lines
+  MobileWebSocketClient.swift ..... 300 lines
+  BridgeManager.swift ............. 255 lines
+  ContentView.swift ............... 142 lines
+  ToolCallView.swift .............. 100 lines
+  
+Test Coverage by Layer:
+  OpenAgentsCore ................... ~70% (14 test files)
+  OpenAgents App ................... ~5% (2 functional tests)
+  Overall .......................... ~23% (20 test files / 87 total)
+
+Critical Components Without Tests:
+  AcpThreadView.swift (1,550 lines) ... 99% untested
+  BridgeManager.swift (255 lines) ..... 100% untested
+  MobileWebSocketClient.swift (300 lines) ... 95% untested
+  DesktopWebSocketServer.swift (400 lines) .. 95% untested
+
+================================================================================

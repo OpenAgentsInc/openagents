@@ -7,7 +7,7 @@ final class TimelineTests: XCTestCase {
         let user = #"{"item":{"role":"user","type":"message","text":"Q"},"ts":1000}"#
         let think = #"{"type":"event_msg","payload":{"type":"agent_reasoning","text":"**Title**\nthinking..."},"ts":2000}"#
         let assistant = #"{"item":{"role":"assistant","type":"message","text":"A"},"ts":6000}"#
-        let (items, _) = AcpThreadView_computeTimeline(lines: [user, think, assistant], sourceId: "test", cap: 100)
+        let (items, _, _) = AcpThreadView_computeTimeline(lines: [user, think, assistant], sourceId: "test", cap: 100)
 
         // Expect a reasoningSummary followed by a message
         var found = false
@@ -29,7 +29,7 @@ final class TimelineTests: XCTestCase {
         let user = #"{"timestamp":"2025-11-05T07:09:00Z","item":{"role":"user","type":"message","text":"Q"}}"#
         let think = #"{"timestamp":"2025-11-05T07:09:10Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Title**\nthinking..."}}"#
         let assistant = #"{"timestamp":"2025-11-05T07:09:20Z","item":{"role":"assistant","type":"message","text":"A"}}"#
-        let (items, _) = AcpThreadView_computeTimeline(lines: [user, think, assistant], sourceId: "test", cap: 100)
+        let (items, _, _) = AcpThreadView_computeTimeline(lines: [user, think, assistant], sourceId: "test", cap: 100)
         var secsFound: Int? = nil
         for item in items {
             if case .reasoningSummary(let rs) = item {
