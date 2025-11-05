@@ -46,6 +46,9 @@ struct ContentView: View {
         .overlay(alignment: .bottomTrailing) {
             FloatingToolbar()
         }
+        .overlay(alignment: .bottomTrailing) {
+            FloatingMicButton()
+        }
         .overlay(alignment: .topTrailing) {
             FloatingMenuButton()
         }
