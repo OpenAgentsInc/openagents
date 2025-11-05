@@ -160,7 +160,7 @@ struct AcpThreadView: View {
         case .reasoningSummary(let rs):
             let secs = max(0, Int((rs.endTs - rs.startTs) / 1000))
             Button(action: { reasoningSheet = rs.messages }) {
-                Text("Thought for \(secs)s").font(.footnote)
+                Text("Thought for \(formatDuration(seconds: secs))").font(.footnote)
                 .foregroundStyle(OATheme.Colors.textSecondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -663,6 +663,21 @@ private func AcpThreadView_isReasoningLine(_ line: String) -> Bool {
 private func resolveTsMs(fromLine line: String) -> Int64? {
     guard let data = line.data(using: .utf8),
           let root = try? JSONSerialization.jsonObject(with: data) else { return nil }
+
+
+// Human-readable duration like "2m 4s" or "1h 2m" or "45s"
+func formatDuration(seconds: Int) -> String {
+    var s = max(0, seconds)
+    let h = s / 3600
+    s = s % 3600
+    let m = s / 60
+    let sec = s % 60
+    var parts: [String] = []
+    if h > 0 { parts.append("\(h)h") }
+    if m > 0 { parts.append("\(m)m") }
+    if sec > 0 or parts.isEmpty { parts.append("\(sec)s") }
+    return parts.joined(separator: " ")
+}
     return scanForTimestamp(root)
 }
 
