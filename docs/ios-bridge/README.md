@@ -92,6 +92,7 @@ Responsibilities:
 - Send `Hello { token }` immediately.
 - Wait for `HelloAck` and only then mark the connection as established.
 - Maintain a receive loop for updates.
+- Composer: The iOS UI currently defaults to a messages‑only view (no input bar) when connected to a desktop bridge. Prompt entry is disabled by design for this workflow.
 
 Minimal usage:
 
