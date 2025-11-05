@@ -523,6 +523,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
     var reasoningBuffer: [ACPMessage] = []
     var lastMessageTs: Int64 = 0
     var lastNonReasoningTs: Int64? = nil
+    var fallbackClock: Int64 = 0 // approximate ms, +1000 per line when ts missing
 
     func flushReasoningBuffer(nextTs: Int64, prevTs: Int64?) {
         guard !reasoningBuffer.isEmpty else { return }
@@ -537,6 +538,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
     }
 
     for (idx, line) in lines.enumerated() {
+        fallbackClock += 1000
         // Hide low-signal provider-native events
         if AcpThreadView_shouldHideLine(line) { continue }
         let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: sourceId))
@@ -547,9 +549,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 
             if AcpThreadView_isReasoningLine(line) {
                 var msg = m
-                if msg.ts == 0 {
-                    msg.ts = resolveTsMs(fromLine: line) ?? 0
-                }
+                if msg.ts == 0 { msg.ts = resolveTsMs(fromLine: line) ?? fallbackClock }
                 reasoningBuffer.append(msg)
                 continue
             }
@@ -558,7 +558,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
             if !ConversationSummarizer.isSystemPreface(text) {
                 // Any pending reasoning attaches before this message
                 var ts = m.ts
-                if ts == 0 { ts = resolveTsMs(fromLine: line) ?? 0 }
+                if ts == 0 { ts = resolveTsMs(fromLine: line) ?? fallbackClock }
                 flushReasoningBuffer(nextTs: ts, prevTs: lastNonReasoningTs)
                 lastMessageTs = ts
                 lastNonReasoningTs = ts
@@ -582,7 +582,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 
         // At end of input, if last lines were reasoning, flush using lastMessageTs (or own ts)
         if idx == lines.count - 1 && !reasoningBuffer.isEmpty {
-            let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? (resolveTsMs(fromLine: line) ?? lastMessageTs))
+            let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? (resolveTsMs(fromLine: line) ?? fallbackClock))
             flushReasoningBuffer(nextTs: endTs, prevTs: lastNonReasoningTs)
         }
     }
