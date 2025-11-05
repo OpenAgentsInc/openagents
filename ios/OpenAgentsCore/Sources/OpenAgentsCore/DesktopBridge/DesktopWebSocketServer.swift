@@ -75,6 +75,13 @@ public class DesktopWebSocketServer {
     private let token: String
     public weak var delegate: DesktopWebSocketServerDelegate?
 
+    // Live tailer state
+    private var tailTimer: DispatchSourceTimer?
+    private var tailURL: URL?
+    private var tailSessionId: ACPSessionId?
+    private var tailOffset: UInt64 = 0
+    private var tailBuffer = Data()
+
     /// Initialize server with a token to validate Hello messages
     public init(token: String) {
         self.token = token
@@ -161,6 +168,7 @@ public class DesktopWebSocketServer {
                     self.delegate?.webSocketServer(self, didDisconnect: client, reason: error)
                 }
                 client.connection.cancel()
+                if self.clients.isEmpty { self.stopLiveTailer() }
                 return
             }
 
@@ -172,6 +180,7 @@ public class DesktopWebSocketServer {
                     self.delegate?.webSocketServer(self, didDisconnect: client, reason: nil)
                 }
                 client.connection.cancel()
+                if self.clients.isEmpty { self.stopLiveTailer() }
                 return
             }
 
@@ -189,6 +198,7 @@ public class DesktopWebSocketServer {
                     self.clients.remove(client)
                     self.delegate?.webSocketServer(self, didDisconnect: client, reason: nil)
                     client.connection.cancel()
+                    if self.clients.isEmpty { self.stopLiveTailer() }
                     return
                 case .ping:
                     client.sendPong()
@@ -228,6 +238,8 @@ public class DesktopWebSocketServer {
                     guard let self = self else { return }
                     self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
                 }
+                // Start live tailer after first handshake
+                self.startLiveTailerIfNeeded()
             } else if let data = text.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
                 // Legacy token Hello fallback
                 let type = (json["type"] as? String) ?? ""
@@ -250,6 +262,8 @@ public class DesktopWebSocketServer {
                         guard let self = self else { return }
                         self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
                     }
+                    // Start live tailer after first handshake
+                    self.startLiveTailerIfNeeded()
                 } else {
                     print("[Bridge][server] Hello token mismatch")
                     DispatchQueue.main.async { [weak self] in
@@ -346,6 +360,7 @@ public class DesktopWebSocketServer {
                             client.send(text: jtext)
                         }
                     case "thread/load_latest":
+                        // Deprecated raw JSONL hydrate; prefer thread/load_latest_typed
                         struct LatestResult: Codable { let id: String; let lines: [String] }
                         let params = dict["params"] as? [String: Any]
                         let paramLimit = (params?["limit_lines"] as? NSNumber)?.intValue
@@ -369,6 +384,31 @@ public class DesktopWebSocketServer {
                             let result = LatestResult(id: tid, lines: lines)
                             if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
                                 print("[Bridge][server] send rpc result method=thread/load_latest id=\(idVal.value) bytes=\(jtext.utf8.count)")
+                                client.send(text: jtext)
+                            }
+                        } else {
+                            let idVal: JSONRPC.ID
+                            if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                            else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                            else { idVal = JSONRPC.ID("1") }
+                            DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32002, message: "No threads found")
+                        }
+                    case "thread/load_latest_typed":
+                        struct LatestTypedResult: Codable { let id: String; let updates: [ACP.Client.SessionUpdate] }
+                        let base = CodexScanner.defaultBaseDir()
+                        let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
+                        if let file = urls.first {
+                            let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
+                            // Read a generous window then map to ACP updates
+                            let lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 16000)
+                            let updates = DesktopWebSocketServer.makeTypedUpdates(from: lines)
+                            let idVal: JSONRPC.ID
+                            if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                            else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                            else { idVal = JSONRPC.ID("1") }
+                            let result = LatestTypedResult(id: tid, updates: updates)
+                            if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
+                                print("[Bridge][server] send rpc result method=thread/load_latest_typed id=\(idVal.value) bytes=\(jtext.utf8.count)")
                                 client.send(text: jtext)
                             }
                         } else {
@@ -699,6 +739,155 @@ extension DesktopWebSocketServer {
         var out = a
         for (k,v) in b { out[k] = v }
         return out
+    }
+
+    // MARK: - Typed updates assembly (Codex JSONL -> ACP SessionUpdate)
+    fileprivate static func makeTypedUpdates(from lines: [String]) -> [ACP.Client.SessionUpdate] {
+        var updates: [ACP.Client.SessionUpdate] = []
+        for line in lines {
+            guard let data = line.data(using: .utf8),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
+            // Reasoning first: emit agent_thought_chunk instead of assistant message
+            if isReasoningLine(obj) {
+                if let text = textFromTranslatedLine(line) {
+                    let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
+                    updates.append(.agentThoughtChunk(chunk))
+                }
+                continue
+            }
+            // For everything else, use translator then map to updates
+            let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: "desktop"))
+            if let m = t.events.compactMap({ $0.message }).first {
+                let text = m.parts.compactMap { part -> String? in
+                    if case let .text(tt) = part { return tt.text } else { return nil }
+                }.joined(separator: "\n")
+                guard !text.isEmpty else { continue }
+                let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
+                updates.append(m.role == .user ? .userMessageChunk(chunk) : .agentMessageChunk(chunk))
+                continue
+            }
+            if let call = t.events.compactMap({ $0.tool_call }).first {
+                let args = jsonValueToAnyDict(call.arguments)
+                let wire = ACPToolCallWire(call_id: call.id, name: call.tool_name, arguments: args, _meta: nil)
+                updates.append(.toolCall(wire))
+                continue
+            }
+            if let res = t.events.compactMap({ $0.tool_result }).first {
+                let status: ACPToolCallUpdateWire.Status = res.ok ? .completed : .error
+                let output = res.result.map { jsonValueToAnyEncodable($0) }
+                let wire = ACPToolCallUpdateWire(call_id: res.call_id, status: status, output: output, error: res.error, _meta: nil)
+                updates.append(.toolCallUpdate(wire))
+                continue
+            }
+            if let ps = t.events.compactMap({ $0.plan_state }).first {
+                // Represent plan state as a full plan update (simplified): convert steps to ACPPlan
+                let entries = (ps.steps ?? []).map { ACPPlanEntry(content: $0, priority: .medium, status: .in_progress, _meta: nil) }
+                let plan = ACPPlan(entries: entries, _meta: nil)
+                updates.append(.plan(plan))
+                continue
+            }
+        }
+        return updates
+    }
+
+    private static func isReasoningLine(_ obj: [String: Any]) -> Bool {
+        let t = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
+        if t == "event_msg", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "agent_reasoning" { return true }
+        if let item = (obj["item"] as? [String: Any]) ?? (obj["msg"] as? [String: Any]) ?? (obj["payload"] as? [String: Any]),
+           ((item["type"] as? String) ?? "").lowercased() == "agent_reasoning" { return true }
+        if t == "response_item", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "reasoning" { return true }
+        return false
+    }
+
+    private static func textFromTranslatedLine(_ line: String) -> String? {
+        let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: "desktop"))
+        guard let m = t.events.compactMap({ $0.message }).first else { return nil }
+        let text = m.parts.compactMap { part -> String? in
+            if case let .text(tt) = part { return tt.text } else { return nil }
+        }.joined(separator: "\n")
+        return text.isEmpty ? nil : text
+    }
+
+    private static func jsonValueToAnyEncodable(_ v: JSONValue) -> AnyEncodable {
+        switch v {
+        case .string(let s): return AnyEncodable(s)
+        case .number(let n): return AnyEncodable(n)
+        case .bool(let b): return AnyEncodable(b)
+        case .null: return AnyEncodable(Optional<String>.none as String?)
+        case .array(let arr):
+            let encArr: [AnyEncodable] = arr.map { jsonValueToAnyEncodable($0) }
+            return AnyEncodable(encArr)
+        case .object(let obj):
+            var encDict: [String: AnyEncodable] = [:]
+            for (k, vv) in obj { encDict[k] = jsonValueToAnyEncodable(vv) }
+            return AnyEncodable(encDict)
+        }
+    }
+
+    // MARK: - Live tailer
+    private func startLiveTailerIfNeeded() {
+        guard tailTimer == nil else { return }
+        let base = CodexScanner.defaultBaseDir()
+        let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
+        guard let file = urls.first else { return }
+        let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
+        tailURL = file
+        tailSessionId = ACPSessionId(tid)
+        let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.uint64Value ?? 0
+        tailOffset = size
+        tailBuffer.removeAll(keepingCapacity: true)
+
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
+        timer.setEventHandler { [weak self] in self?.pollTail() }
+        tailTimer = timer
+        timer.resume()
+        print("[Bridge][server] tailer started file=\(file.path) session=\(tid)")
+    }
+    private func stopLiveTailer() {
+        tailTimer?.cancel(); tailTimer = nil
+        tailURL = nil; tailSessionId = nil; tailOffset = 0; tailBuffer.removeAll()
+        print("[Bridge][server] tailer stopped")
+    }
+    private func pollTail() {
+        guard let url = tailURL, let sid = tailSessionId else { return }
+        guard let fh = try? FileHandle(forReadingFrom: url) else { return }
+        defer { try? fh.close() }
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
+        if fileSize <= tailOffset { return }
+        let toRead = Int(fileSize - tailOffset)
+        do {
+            try fh.seek(toOffset: tailOffset)
+            let data = try fh.read(upToCount: toRead) ?? Data()
+            tailOffset = fileSize
+            if !data.isEmpty { tailBuffer.append(data) }
+        } catch { return }
+        var text = String(data: tailBuffer, encoding: .utf8) ?? String(decoding: tailBuffer, as: UTF8.self)
+        var keepRemainder = Data()
+        if !text.hasSuffix("\n"), let lastNewline = text.lastIndex(of: "\n") {
+            let remainder = String(text[text.index(after: lastNewline)..<text.endIndex])
+            keepRemainder = remainder.data(using: .utf8) ?? Data()
+            text = String(text[..<text.index(after: lastNewline)])
+        }
+        let newLines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        tailBuffer = keepRemainder
+        if newLines.isEmpty { return }
+        let updates = DesktopWebSocketServer.makeTypedUpdates(from: newLines)
+        guard !updates.isEmpty else { return }
+        for u in updates {
+            let note = ACP.Client.SessionNotificationWire(session_id: sid, update: u)
+            if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
+                for c in clients where c.isHandshakeComplete { c.send(text: jtext) }
+            }
+        }
+    }
+    private static func jsonValueToAnyDict(_ v: JSONValue) -> [String: AnyEncodable]? {
+        if case .object(let obj) = v {
+            var out: [String: AnyEncodable] = [:]
+            for (k, vv) in obj { out[k] = jsonValueToAnyEncodable(vv) }
+            return out
+        }
+        return nil
     }
 }
 #endif

@@ -37,7 +37,7 @@ struct AcpThreadView: View {
                     if case let .text(t) = part { return t.text } else { return nil }
                 }.joined()
                 return "reason_\(m.id)_\(m.ts)_\(text.hashValue)"
-            case .toolCall(let c): return "call_\(c.id)"
+            case .toolCall(let c): return "call_\(c.id)_\(c.ts ?? 0)"
             case .toolResult(let r): return "res_\(r.call_id)\(r.ts ?? 0)"
             case .reasoningSummary(let rs): return "rs_\(rs.startTs)_\(rs.endTs)\(rs.messages.count)"
             case .plan(let p): return "plan_\(p.ts ?? 0)"
@@ -87,6 +87,8 @@ struct AcpThreadView: View {
     @State private var seenReasoningTexts: Set<String> = []
     @State private var pendingReasoning: [ACPMessage] = []
     @State private var pendingReasoningStart: Int64? = nil
+    @State private var seenToolCallIds: Set<String> = []
+    @State private var seenToolResultKeys: Set<String> = []
     @State private var reasoningSheet: [ACPMessage]? = nil
     @State private var rawDetail: String? = nil
     @State private var initialMetaLines: [String] = []
@@ -105,31 +107,39 @@ struct AcpThreadView: View {
         }
         .background(OATheme.Colors.background)
         #if os(iOS)
-        .onAppear { /* no-op; List removed */ }
-        #endif
-        .onChange(of: url?.path) { _, _ in load() }
-        .onAppear(perform: load)
-        #if os(iOS)
-        // When latestLines arrive from the bridge, build the initial timeline and scroll to bottom.
-        .onChange(of: bridge.latestLines.count) { _, _ in
-            if timeline.isEmpty, !bridge.latestLines.isEmpty {
-                // Offload heavy timeline compute from the main thread to avoid startup jank/black frame
-                let snapshot = bridge.latestLines
+        .onAppear {
+            if timeline.isEmpty, !bridge.updates.isEmpty {
+                let snapshot = bridge.updates
                 isLoading = true
                 DispatchQueue.global(qos: .userInitiated).async {
-                    let (items, title, meta) = AcpThreadView_computeTimeline(lines: snapshot, sourceId: "remote", cap: maxMessages)
+                    let (items, title) = AcpThreadView_computeTimelineFromUpdates(updates: snapshot, cap: maxMessages)
                     DispatchQueue.main.async {
                         self.timeline = items
                         self.threadTitle = title
-                        self.initialMetaLines = meta
                         if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
                         self.isLoading = false
                     }
                 }
             }
         }
+        #endif
+        .onChange(of: url?.path) { _, _ in load() }
+        .onAppear(perform: load)
+        #if os(iOS)
         .onChange(of: bridge.updates.count) { _, _ in
-            if let last = bridge.updates.last {
+            if timeline.isEmpty, !bridge.updates.isEmpty {
+                let snapshot = bridge.updates
+                isLoading = true
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let (items, title) = AcpThreadView_computeTimelineFromUpdates(updates: snapshot, cap: maxMessages)
+                    DispatchQueue.main.async {
+                        self.timeline = items
+                        self.threadTitle = title
+                        if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
+                        self.isLoading = false
+                    }
+                }
+            } else if let last = bridge.updates.last {
                 appendUpdate(last)
             }
         }
@@ -283,9 +293,9 @@ struct AcpThreadView: View {
         case .reasoning:
             EmptyView()
         case .toolCall(let call):
-            if Features.showRawJSON { ToolCallView(call: call) }
+            ToolCallView(call: call)
         case .toolResult(let res):
-            if Features.showRawJSON { ToolResultView(result: res) }
+            ToolResultView(result: res)
         case .plan(let ps):
             PlanStateView(state: ps)
         case .raw(let line):
@@ -315,43 +325,66 @@ struct AcpThreadView: View {
         }
     }
 
-    // Customized Markdown renderer for messages: bullet styling + paragraph spacing
+    // Customized Markdown renderer for messages
+    @ViewBuilder
     private func renderMessageMarkdown(_ text: String, isUser: Bool, truncated: Bool = true) -> some View {
         let color: Color = isUser ? Color(hex: "#7A7A7A") : OATheme.Colors.textPrimary
-        let items = parseMarkdownItems(text)
-        return VStack(alignment: .leading, spacing: 10) {
-            ForEach(items) { it in
-                if it.bullet {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        switch it.kind {
-                        case .ordered:
-                            Text(it.marker)
-                                .font(OAFonts.ui(.body, 14).weight(.semibold))
+        // For user messages in the main feed, enforce a global 5-line cap
+        if isUser && truncated {
+            let preview = firstLines(text, maxLines: 5)
+            markdownText(preview)
+                .font(OAFonts.ui(.body, 14))
+                .lineLimit(5)
+                .truncationMode(.tail)
+                .foregroundStyle(color)
+                .textSelection(.enabled)
+        } else {
+            let items = parseMarkdownItems(text)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(items) { it in
+                    if it.bullet {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            switch it.kind {
+                            case .ordered:
+                                Text(it.marker)
+                                    .font(OAFonts.ui(.body, 14).weight(.semibold))
+                                    .foregroundStyle(color)
+                                    .padding(.top, 1)
+                            case .unordered, .none:
+                                Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
+                            }
+                            markdownText(it.content)
+                                .font(OAFonts.ui(.body, 14))
                                 .foregroundStyle(color)
-                                .padding(.top, 1)
-                        case .unordered, .none:
-                            Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
+                                .textSelection(.enabled)
                         }
+                        .padding(.leading, CGFloat(it.level) * 14)
+                    } else {
                         markdownText(it.content)
                             .font(OAFonts.ui(.body, 14))
-                            .lineLimit((isUser && truncated) ? 5 : nil)
-                            .truncationMode(.tail)
                             .foregroundStyle(color)
                             .textSelection(.enabled)
+                            .padding(.leading, CGFloat(it.level) * 14)
+                            .padding(.vertical, 2)
                     }
-                    .padding(.leading, CGFloat(it.level) * 14)
-                } else {
-                    markdownText(it.content)
-                        .font(OAFonts.ui(.body, 14))
-                        .lineLimit((isUser && truncated) ? 5 : nil)
-                        .truncationMode(.tail)
-                        .foregroundStyle(color)
-                        .textSelection(.enabled)
-                        .padding(.leading, CGFloat(it.level) * 14)
-                        .padding(.vertical, 2)
                 }
             }
         }
+    }
+
+    private func firstLines(_ text: String, maxLines: Int) -> String {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        var lines: [Substring] = []
+        lines.reserveCapacity(maxLines)
+        var count = 0
+        for line in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
+            lines.append(line)
+            count += 1
+            if count >= maxLines { break }
+        }
+        var out = lines.joined(separator: "\n")
+        if out.count < normalized.count { out.append("\n…") }
+        return out
     }
 
     // Pure parser for simple markdown-ish bullets/paragraphs -> render items
@@ -804,9 +837,15 @@ struct AcpThreadView: View {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if AcpThreadView_shouldHideMessageText(newText) { break }
                 let now = nowMs()
-                flushPendingReasoning(endMs: now)
-                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
-                timeline.append(.message(m))
+                if isLikelyThoughtText(newText) {
+                    if pendingReasoningStart == nil { pendingReasoningStart = now }
+                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
+                    pendingReasoning.append(m)
+                } else {
+                    flushPendingReasoning(endMs: now)
+                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
+                    timeline.append(.message(m))
+                }
             case let .resource_link(link):
                 let s = "\(link.title ?? "Link") — \(link.uri)"
                 let now = nowMs()
@@ -831,25 +870,32 @@ struct AcpThreadView: View {
                 pendingReasoning.append(m)
             }
         case .plan(let p):
-            let ps = ACPPlanState(status: .running, summary: nil, steps: p.entries.map { $0.content }, ts: nowMs())
+            let now = nowMs()
+            flushPendingReasoning(endMs: now)
+            let ps = ACPPlanState(status: .running, summary: nil, steps: p.entries.map { $0.content }, ts: now)
             timeline.append(.plan(ps))
         case .toolCall(let call):
-            let args = call.arguments?.map { "\($0.key)=\($0.value)" }.joined(separator: ", ") ?? ""
-            let txt = "[tool call] \(call.name)(\(args))"
-            let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: txt))], ts: nowMs())
-            timeline.append(.message(m))
+            let now = nowMs()
+            // Dedup repeated tool call begins
+            if seenToolCallIds.contains(call.call_id) { break }
+            seenToolCallIds.insert(call.call_id)
+            flushPendingReasoning(endMs: now)
+            let argsJV = jsonFromAnyEncodableObject(call.arguments)
+            let c = ACPToolCall(id: call.call_id, tool_name: call.name, arguments: argsJV, ts: now)
+            timeline.append(.toolCall(c))
         case .toolCallUpdate(let upd):
-            let status = upd.status.rawValue
-            let msg = upd.error != nil ? "error: \(upd.error!)" : "ok"
-            let txt = "[tool \(status)] call_id=\(upd.call_id) \(msg)"
-            let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: txt))], ts: nowMs())
-            timeline.append(.message(m))
+            let now = nowMs()
+            let key = "\(upd.call_id)|\(upd.status.rawValue)"
+            if seenToolResultKeys.contains(key) { break }
+            seenToolResultKeys.insert(key)
+            flushPendingReasoning(endMs: now)
+            let r = ACPToolResult(call_id: upd.call_id, ok: upd.status == .completed, result: upd.output.map { jsonFromAnyEncodable($0) }, error: upd.error, ts: now)
+            timeline.append(.toolResult(r))
         case .availableCommandsUpdate(_):
-            // No-op in this view; header observes from BridgeManager
-            break
+            // Show raw representation for unhandled UI events
+            timeline.append(.raw(encodeJSONPretty(note)))
         case .currentModeUpdate(_):
-            // No-op in this view; header observes from BridgeManager
-            break
+            timeline.append(.raw(encodeJSONPretty(note)))
         }
     }
     #endif
@@ -959,14 +1005,12 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
                 hasAnyVisibleItem = true
                 continue
             }
-        } else if let _ = t.events.compactMap({ $0.tool_call }).first {
-            // Show raw JSON for tool calls
-            items.append(.raw(line))
+        } else if let call = t.events.compactMap({ $0.tool_call }).first {
+            items.append(.toolCall(call))
             hasAnyVisibleItem = true
             continue
-        } else if let _ = t.events.compactMap({ $0.tool_result }).first {
-            // Show raw JSON for tool results
-            items.append(.raw(line))
+        } else if let res = t.events.compactMap({ $0.tool_result }).first {
+            items.append(.toolResult(res))
             hasAnyVisibleItem = true
             continue
         }
@@ -983,6 +1027,390 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
     if items.count > cap { items = Array(items.suffix(cap)) }
     let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: sourceId))
     return (items, thread.title, initialMeta)
+}
+
+// Build a timeline from typed ACP updates (initial hydrate on iOS)
+func AcpThreadView_computeTimelineFromUpdates(updates: [ACP.Client.SessionNotificationWire], cap: Int) -> ([AcpThreadView.TimelineItem], String?) {
+    var items: [AcpThreadView.TimelineItem] = []
+    var reasoning: [ACPMessage] = []
+    var reasoningStart: Int64? = nil
+    var monoMs: Int64 = 0 // fallback ms; +1000 per update
+    var seenCalls: Set<String> = []
+    var seenResults: Set<String> = []
+
+    func flushReasoning(nextTs: Int64?) {
+        guard !reasoning.isEmpty else { return }
+        let start = reasoningStart ?? (monoMs > 0 ? monoMs - 1000 : 0)
+        let end = nextTs ?? monoMs
+        let rs = AcpThreadView.ReasoningSummary(startTs: start, endTs: end, messages: reasoning)
+        items.append(.reasoningSummary(rs))
+        reasoning.removeAll(); reasoningStart = nil
+    }
+
+    for note in updates {
+        monoMs += 1000
+        switch note.update {
+        case .userMessageChunk(let chunk):
+            if case let .text(t) = chunk.content {
+                flushReasoning(nextTs: monoMs)
+                let m = ACPMessage(id: UUID().uuidString, thread_id: note.session_id.value, role: .user, parts: [.text(.init(text: t.text))], ts: monoMs)
+                items.append(.message(m))
+            }
+        case .agentMessageChunk(let chunk):
+            if case let .text(t) = chunk.content {
+                let text = t.text
+                if isLikelyThoughtText(text) {
+                    if reasoningStart == nil { reasoningStart = monoMs }
+                    let m = ACPMessage(id: UUID().uuidString, thread_id: note.session_id.value, role: .assistant, parts: [.text(.init(text: text))], ts: monoMs)
+                    reasoning.append(m)
+                } else {
+                    flushReasoning(nextTs: monoMs)
+                    let m = ACPMessage(id: UUID().uuidString, thread_id: note.session_id.value, role: .assistant, parts: [.text(.init(text: text))], ts: monoMs)
+                    items.append(.message(m))
+                }
+            }
+        case .agentThoughtChunk(let chunk):
+            if case let .text(t) = chunk.content {
+                if reasoningStart == nil { reasoningStart = monoMs }
+                let m = ACPMessage(id: UUID().uuidString, thread_id: note.session_id.value, role: .assistant, parts: [.text(.init(text: t.text))], ts: monoMs)
+                reasoning.append(m)
+            }
+        case .toolCall(let wire):
+            flushReasoning(nextTs: monoMs)
+            if !seenCalls.contains(wire.call_id) {
+                seenCalls.insert(wire.call_id)
+                let argsJV: JSONValue = jsonFromAnyEncodableObject(wire.arguments)
+                let c = ACPToolCall(id: wire.call_id, tool_name: wire.name, arguments: argsJV, ts: monoMs)
+                items.append(.toolCall(c))
+            }
+        case .toolCallUpdate(let upd):
+            flushReasoning(nextTs: monoMs)
+            let key = "\(upd.call_id)|\(upd.status.rawValue)"
+            if !seenResults.contains(key) {
+                seenResults.insert(key)
+                let r = ACPToolResult(call_id: upd.call_id, ok: upd.status == .completed, result: upd.output.map { jsonFromAnyEncodable($0) }, error: upd.error, ts: monoMs)
+                items.append(.toolResult(r))
+            }
+        case .plan(let p):
+            flushReasoning(nextTs: monoMs)
+            let ps = ACPPlanState(status: .running, summary: nil, steps: p.entries.map { $0.content }, ts: monoMs)
+            items.append(.plan(ps))
+        case .availableCommandsUpdate:
+            items.append(.raw(AcpThreadView_encodeJSONPretty(note)))
+        case .currentModeUpdate:
+            items.append(.raw(AcpThreadView_encodeJSONPretty(note)))
+        }
+    }
+    flushReasoning(nextTs: monoMs)
+    let merged = mergeAdjacentThoughts(items, windowMs: 2500)
+    let capped = merged.count > cap ? Array(merged.suffix(cap)) : merged
+    return (capped, nil)
+}
+
+// Heuristic: detect thought-like assistant text (bulleted lists, internal monologue hints)
+private func isLikelyThoughtText(_ text: String) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return false }
+    // Count lines that look like bullets or numbered lists
+    let lines = trimmed.split(separator: "\n").map(String.init)
+    var bulletish = 0
+    for l in lines.prefix(8) { // inspect first few lines
+        let s = l.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("•") || s.hasPrefix("-") || s.hasPrefix("*") { bulletish += 1; continue }
+        // numeric like "1." or "2)"
+        var j = s.startIndex
+        var hadDigit = false
+        while j < s.endIndex, let _ = s[j].wholeNumberValue { hadDigit = true; j = s.index(after: j) }
+        if hadDigit && j < s.endIndex && (s[j] == "." || s[j] == ")") { bulletish += 1; continue }
+    }
+    if bulletish >= 2 { return true }
+    // Keywords often present in internal thoughts
+    let lower = trimmed.lowercased()
+    if lower.contains("internal monologue") || lower.contains("reasoning:") || lower.contains("thought:") { return true }
+    return false
+}
+
+// Pretty-encode any Encodable value (top-level helper for pure functions)
+private func AcpThreadView_encodeJSONPretty<T: Encodable>(_ value: T) -> String {
+    let enc = JSONEncoder()
+    enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+    if let d = try? enc.encode(value), let s = String(data: d, encoding: .utf8) { return s }
+    return "{}"
+}
+
+// Merge adjacent ReasoningSummary blocks that are near each other in time.
+private func mergeAdjacentThoughts(_ items: [AcpThreadView.TimelineItem], windowMs: Int64) -> [AcpThreadView.TimelineItem] {
+    var out: [AcpThreadView.TimelineItem] = []
+    var buffer: AcpThreadView.ReasoningSummary? = nil
+    func flush() {
+        if let b = buffer { out.append(.reasoningSummary(b)); buffer = nil }
+    }
+    for it in items {
+        switch it {
+        case .reasoningSummary(let rs):
+            if var b = buffer {
+                // If this group starts soon after the buffered group ends, merge
+                if (rs.startTs - b.endTs) <= windowMs {
+                    let merged = AcpThreadView.ReasoningSummary(startTs: min(b.startTs, rs.startTs), endTs: max(b.endTs, rs.endTs), messages: b.messages + rs.messages)
+                    buffer = merged
+                } else {
+                    flush(); buffer = rs
+                }
+            } else {
+                buffer = rs
+            }
+        default:
+            flush(); out.append(it)
+        }
+    }
+    flush()
+    return out
+}
+
+private func jsonFromAnyEncodableObject(_ obj: [String: AnyEncodable]?) -> JSONValue {
+    guard let obj = obj else { return .object([:]) }
+    var out: [String: JSONValue] = [:]
+    for (k, v) in obj {
+        out[k] = jsonFromAnyEncodable(v)
+    }
+    return .object(out)
+}
+private func jsonFromAnyEncodable(_ a: AnyEncodable) -> JSONValue {
+    // Encode then decode to Foundation and map to JSONValue
+    guard let data = try? JSONEncoder().encode(a) else { return .null }
+    let any = try? JSONSerialization.jsonObject(with: data)
+    return jsonValueFromFoundation(any)
+}
+private func jsonValueFromFoundation(_ any: Any?) -> JSONValue {
+    if any == nil { return .null }
+    switch any {
+    case let s as String: return .string(s)
+    case let n as NSNumber: return .number(n.doubleValue)
+    case let b as Bool: return .bool(b)
+    case let arr as [Any]:
+        return .array(arr.map { jsonValueFromFoundation($0) })
+    case let dict as [String: Any]:
+        var obj: [String: JSONValue] = [:]
+        for (k, v) in dict { obj[k] = jsonValueFromFoundation(v) }
+        return .object(obj)
+    default:
+        return .null
+    }
+}
+
+// MARK: - Tool Call Aggregation + Rendering
+extension AcpThreadView {
+    struct ToolCallRecord: Identifiable, Equatable {
+        enum State { case inProgress, succeeded, failed }
+        let call: ACPToolCall
+        let result: ACPToolResult?
+        var id: String { call.id }
+        var state: State { if let r = result { return r.ok ? .succeeded : .failed } else { return .inProgress } }
+        var tsStart: Int64 { call.ts ?? 0 }
+        var tsEnd: Int64? { result?.ts }
+    }
+
+    func buildToolCallRecord(for call: ACPToolCall) -> ToolCallRecord {
+        // Find the first matching result later in the timeline
+        if let res = findResult(for: call.id, afterTs: call.ts ?? 0) {
+            return ToolCallRecord(call: call, result: res)
+        }
+        return ToolCallRecord(call: call, result: nil)
+    }
+
+    private func findResult(for callId: String, afterTs: Int64) -> ACPToolResult? {
+        // Scan the current timeline for the first matching toolResult with same call_id
+        for item in timeline {
+            if case let .toolResult(r) = item, r.call_id == callId { return r }
+        }
+        return nil
+    }
+}
+
+// MARK: - ToolCallCell (inline, to avoid Xcode project edits)
+extension AcpThreadView {
+    struct ToolCallCell: View {
+        let record: ToolCallRecord
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                header
+                if isExecShell(record.call) {
+                    execInvocation(record.call)
+                } else if let (server, tool) = mcpParts(record.call.tool_name) {
+                    mcpInvocation(server: server, tool: tool, args: record.call.arguments)
+                } else {
+                    genericInvocation(name: record.call.tool_name, args: record.call.arguments)
+                }
+                if let res = record.result {
+                    resultBlock(res)
+                }
+            }
+        }
+
+        @ViewBuilder private var header: some View {
+            HStack(spacing: 6) {
+                statusBullet(record.state)
+                Text(titleFor(record.state))
+                    .font(OAFonts.ui(.subheadline, 13))
+                    .foregroundStyle(OATheme.Colors.textPrimary)
+            }
+        }
+
+        private func titleFor(_ s: ToolCallRecord.State) -> String {
+            switch s {
+            case .inProgress: return isExecShell(record.call) ? "Running" : "Calling"
+            case .succeeded: return isExecShell(record.call) ? "Ran" : "Called"
+            case .failed: return isExecShell(record.call) ? "Ran" : "Called"
+            }
+        }
+
+        @ViewBuilder private func statusBullet(_ s: ToolCallRecord.State) -> some View {
+            switch s {
+            case .inProgress:
+                ProgressView().scaleEffect(0.6)
+            case .succeeded:
+                Circle().fill(OATheme.Colors.success).frame(width: 8, height: 8)
+            case .failed:
+                Circle().fill(OATheme.Colors.danger).frame(width: 8, height: 8)
+            }
+        }
+
+        @ViewBuilder private func execInvocation(_ call: ACPToolCall) -> some View {
+            if let cmd = prettyShellCommand(call: call) {
+                Text(cmd)
+                    .font(OAFonts.mono(.footnote, 12))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+                    .textSelection(.enabled)
+                    .lineLimit(2)
+            } else {
+                genericInvocation(name: call.tool_name, args: call.arguments)
+            }
+        }
+
+        @ViewBuilder private func mcpInvocation(server: String, tool: String, args: JSONValue) -> some View {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\(server).\(tool)")
+                    .font(OAFonts.ui(.footnote, 12))
+                    .foregroundStyle(Color.cyan)
+                Text("(\(compactJSON(args)))")
+                    .font(OAFonts.ui(.footnote, 12))
+                    .foregroundStyle(OATheme.Colors.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+
+        @ViewBuilder private func genericInvocation(name: String, args: JSONValue) -> some View {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(name)
+                    .font(OAFonts.ui(.footnote, 12))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+                Text("(\(compactJSON(args)))")
+                    .font(OAFonts.ui(.footnote, 12))
+                    .foregroundStyle(OATheme.Colors.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+
+        @ViewBuilder private func resultBlock(_ res: ACPToolResult) -> some View {
+            VStack(alignment: .leading, spacing: 4) {
+                if let err = res.error, !err.isEmpty {
+                    Text("Error: \(err)")
+                        .font(OAFonts.ui(.footnote, 12))
+                        .foregroundStyle(OATheme.Colors.danger)
+                }
+                if let v = res.result {
+                    let text = compactJSONString(v)
+                    if !text.isEmpty {
+                        Text(text)
+                            .font(OAFonts.mono(.footnote, 12))
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                            .textSelection(.enabled)
+                            .lineLimit(5)
+                    }
+                }
+            }
+        }
+
+        // MARK: - Helpers
+        private func isExecShell(_ call: ACPToolCall) -> Bool {
+            let n = call.tool_name.lowercased()
+            return n == "shell" || n.hasSuffix(".shell")
+        }
+        private func mcpParts(_ name: String) -> (String, String)? {
+            let parts = name.split(separator: ".").map(String.init)
+            if parts.count >= 2 { return (parts[0], parts[1]) }
+            return nil
+        }
+        private func compactJSON(_ v: JSONValue) -> String {
+            switch v {
+            case .string(let s): return s
+            case .number(let n): return String(n)
+            case .bool(let b): return b ? "true" : "false"
+            case .null: return "null"
+            case .array(let arr):
+                let items = arr.map { compactJSON($0) }.joined(separator: ",")
+                return "[\(items)]"
+            case .object(let obj):
+                let items = obj.keys.sorted().map { key in
+                    let val = obj[key]!
+                    return "\(key): \(compactJSON(val))"
+                }.joined(separator: ", ")
+                return "{\(items)}"
+            }
+        }
+        private func compactJSONString(_ v: JSONValue) -> String {
+            if case .string(let s) = v { return s }
+            if let data = try? JSONEncoder().encode(v),
+               let obj = try? JSONSerialization.jsonObject(with: data),
+               let out = try? JSONSerialization.data(withJSONObject: obj, options: []) {
+                return String(data: out, encoding: .utf8) ?? ""
+            }
+            return ""
+        }
+
+        private func prettyShellCommand(call: ACPToolCall) -> String? {
+            let name = call.tool_name.lowercased()
+            guard name == "shell" || name.hasSuffix(".shell") else { return nil }
+            guard let parts = parseCommandArray(from: call.arguments) else { return nil }
+            if parts.count >= 3 && parts[0] == "bash" && parts[1] == "-lc" {
+                return parts[2]
+            }
+            let joined = parts.map { p in
+                if p.contains(" ") || p.contains("\t") { return "\"\(p)\"" } else { return p }
+            }.joined(separator: " ")
+            return joined
+        }
+        private func parseCommandArray(from args: JSONValue) -> [String]? {
+            switch args {
+            case .object(let obj):
+                if case let .array(arr)? = obj["command"] {
+                    return arr.compactMap { v in
+                        switch v {
+                        case .string(let s): return s
+                        case .number(let n): return String(n)
+                        case .bool(let b): return b ? "true" : "false"
+                        default: return nil
+                        }
+                    }
+                }
+                return nil
+            case .string(let s):
+                if let data = s.data(using: .utf8),
+                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let arr = dict["command"] as? [Any] {
+                    return arr.compactMap { a in
+                        if let s = a as? String { return s }
+                        if let n = a as? NSNumber { return n.stringValue }
+                        return nil
+                    }
+                }
+                return nil
+            default:
+                return nil
+            }
+        }
+    }
 }
 
 // These thin wrappers allow the pure function to reuse the same logic as the view without capturing self.
