@@ -21,6 +21,10 @@ final class BridgeManager: ObservableObject {
     @Published var status: Status = .idle
     @Published var lastLog: String = ""
     @Published var logs: [String] = [] // recent logs (ring buffer)
+    #if os(iOS)
+    // Latest thread JSONL lines (mobile-only initial hydrate)
+    @Published var latestLines: [String] = []
+    #endif
     private var currentHost: String?
     private var currentPort: Int?
 #if os(macOS)
@@ -57,7 +61,14 @@ final class BridgeManager: ObservableObject {
     @Published var currentMode: ACPSessionModeId = .default_mode
 
     func start() {
-        // Prefer Bonjour discovery when feature flag is enabled
+        // Immediately attempt manual connect to the default host on iOS.
+        #if targetEnvironment(simulator)
+        connect(host: "127.0.0.1", port: Int(BridgeConfig.defaultPort))
+        #else
+        connect(host: BridgeConfig.defaultHost, port: Int(BridgeConfig.defaultPort))
+        #endif
+
+        // Optionally also start Bonjour discovery in parallel if enabled.
         if Features.multicastEnabled {
             let b = BonjourBrowser()
             browser = b
@@ -71,15 +82,7 @@ final class BridgeManager: ObservableObject {
             }, onLog: { [weak self] msg in
                 Task { @MainActor in self?.log("bonjour", msg) }
             })
-        } else {
-            status = .idle
-            log("bonjour", "Multicast discovery disabled (feature flag). Use Manual Connect.")
         }
-
-        // Simulator fallback: localhost
-        #if targetEnvironment(simulator)
-        connect(host: "127.0.0.1", port: Int(BridgeConfig.defaultPort))
-        #endif
     }
 
     private func connect(host: String, port: Int) {
@@ -112,15 +115,15 @@ final class BridgeManager: ObservableObject {
 #if os(iOS)
 extension BridgeManager: MobileWebSocketClientDelegate {
     func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient) {
-        log("client", "Connected; requesting threads/list")
+        log("client", "Connected; requesting latest thread")
         if let h = currentHost, let p = currentPort { status = .connected(host: h, port: p) }
-        struct ThreadsListParams: Codable { let topK: Int? }
-        client.sendJSONRPC(method: "threads/list", params: ThreadsListParams(topK: 10), id: "threads-list-1") { (resp: ThreadsListResult?) in
+        // Load the latest thread lines for mobile
+        client.sendJSONRPC(method: "thread/load_latest", params: Empty(), id: "thread-load-latest-1") { (resp: LatestThreadResult?) in
             guard let resp = resp else { return }
             DispatchQueue.main.async { [weak self] in
-                self?.threads = resp.items
+                self?.latestLines = resp.lines
                 if let h = self?.currentHost, let p = self?.currentPort { self?.status = .connected(host: h, port: p) }
-                self?.log("client", "Received threads.list count=\(resp.items.count)")
+                self?.log("client", "Loaded latest thread id=\(resp.id) lines=\(resp.lines.count)")
             }
         }
     }
@@ -218,6 +221,8 @@ extension BridgeManager {
 // MARK: - Prompt helpers
 extension BridgeManager {
     struct EmptyResult: Codable {}
+    struct Empty: Codable {}
+    struct LatestThreadResult: Codable { let id: String; let lines: [String] }
     func sendPrompt(text: String) {
         guard let client = self.client else { return }
         let parts: [ACP.Client.ContentBlock] = [.text(.init(text: text))]
