@@ -1,5 +1,10 @@
 import SwiftUI
 import OpenAgentsCore
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct AcpThreadView: View {
     let url: URL?
@@ -533,7 +538,7 @@ struct AcpThreadView: View {
                         messageFullBody(for: msg)
                         Divider().opacity(0.15)
                         // Raw JSON of the ACPMessage
-                        RawEventView(line: ((try? JSONEncoder().encode(msg)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"))
+                        RawEventView(line: encodeJSONPretty(msg))
                     }
                     .padding(14)
                 }
@@ -541,8 +546,32 @@ struct AcpThreadView: View {
                 .toolbar {
                     #if os(iOS)
                     ToolbarItem(placement: .topBarLeading) { Button("Close") { messageDetail = nil } }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        HStack(spacing: 12) {
+                            Button("Copy as Markdown") {
+                                let text = messageMarkdownString(msg)
+                                setClipboard(text)
+                            }
+                            Button("Copy raw JSON") {
+                                let json = encodeJSONPretty(msg)
+                                setClipboard(json)
+                            }
+                        }
+                    }
                     #else
                     ToolbarItem(placement: .navigation) { Button("Close") { messageDetail = nil } }
+                    ToolbarItem {
+                        HStack(spacing: 12) {
+                            Button("Copy as Markdown") {
+                                let text = messageMarkdownString(msg)
+                                setClipboard(text)
+                            }
+                            Button("Copy raw JSON") {
+                                let json = encodeJSONPretty(msg)
+                                setClipboard(json)
+                            }
+                        }
+                    }
                     #endif
                 }
             }
@@ -598,6 +627,32 @@ struct AcpThreadView: View {
             return s
         }
         return line
+    }
+
+    // Encode Encodable as pretty JSON string
+    func encodeJSONPretty<T: Encodable>(_ value: T) -> String {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let d = try? enc.encode(value), let s = String(data: d, encoding: .utf8) { return s }
+        return "{}"
+    }
+
+    // Compose a markdown-ish string from a message's text parts
+    func messageMarkdownString(_ msg: ACPMessage) -> String {
+        return msg.parts.compactMap { part -> String? in
+            if case let .text(t) = part { return t.text } else { return nil }
+        }.joined(separator: "\n\n")
+    }
+
+    // Cross-platform clipboard setter
+    func setClipboard(_ s: String) {
+        #if os(iOS)
+        UIPasteboard.general.string = s
+        #elseif os(macOS)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(s, forType: .string)
+        #endif
     }
 
 
