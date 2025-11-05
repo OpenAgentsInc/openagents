@@ -95,8 +95,8 @@ struct AcpThreadView: View {
     private var loadingView: some View {
         VStack(spacing: 10) {
             ProgressView()
-            Text(statusText())
-                .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
+                    Text(statusText())
+                        .font(InterFont.font(relativeTo: .caption, size: 12))
                 .foregroundStyle(OATheme.Colors.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -116,11 +116,11 @@ struct AcpThreadView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        if let title = threadTitle, !title.isEmpty {
-                            Text(title)
-                                .font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline))
-                                .foregroundStyle(OATheme.Colors.textPrimary)
-                        }
+                if let title = threadTitle, !title.isEmpty {
+                    Text(title)
+                        .font(InterFont.font(relativeTo: .headline, size: 17))
+                        .foregroundStyle(OATheme.Colors.textPrimary)
+                }
                         ForEach(timeline) { item in
                             messageRow(for: item)
                                 .padding(.vertical, 4)
@@ -194,7 +194,7 @@ struct AcpThreadView: View {
             }
         }()
         return Label(label, systemImage: sys)
-            .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption))
+            .font(InterFont.font(relativeTo: .caption, size: 11))
             .foregroundStyle(OATheme.Colors.textSecondary)
     }
 

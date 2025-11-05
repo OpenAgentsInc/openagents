@@ -10,12 +10,12 @@ struct PlanStateView: View {
                     .fill(colorFor(state.status))
                     .frame(width: 8, height: 8)
                 Text(titleFor(state.status))
-                    .font(BerkeleyFont.font(relativeTo: .subheadline, size: 13))
+                    .font(InterFont.font(relativeTo: .subheadline, size: 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
             }
             if let summary = state.summary, !summary.isEmpty {
                 Text(summary)
-                    .font(BerkeleyFont.font(relativeTo: .footnote, size: 12))
+                    .font(InterFont.font(relativeTo: .footnote, size: 12))
                     .foregroundStyle(OATheme.Colors.textSecondary)
             }
             if let steps = state.steps, !steps.isEmpty {
@@ -23,10 +23,10 @@ struct PlanStateView: View {
                     ForEach(steps.indices, id: \.self) { idx in
                         HStack(alignment: .top, spacing: 6) {
                             Text("\(idx+1).")
-                                .font(BerkeleyFont.font(relativeTo: .footnote, size: 12))
+                                .font(InterFont.font(relativeTo: .footnote, size: 12))
                                 .foregroundStyle(OATheme.Colors.textTertiary)
                             Text(steps[idx])
-                                .font(BerkeleyFont.font(relativeTo: .footnote, size: 12))
+                                .font(InterFont.font(relativeTo: .footnote, size: 12))
                                 .foregroundStyle(OATheme.Colors.textSecondary)
                                 .textSelection(.enabled)
                         }

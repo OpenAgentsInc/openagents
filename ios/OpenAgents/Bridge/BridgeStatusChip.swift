@@ -9,12 +9,12 @@ struct BridgeStatusChip: View {
         HStack(spacing: 8) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(text)
-                .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption2))
+                .font(InterFont.font(relativeTo: .caption2, size: 11))
                 .foregroundStyle(OATheme.Colors.textSecondary)
             Spacer()
             if !bridge.lastLog.isEmpty {
                 Text(truncate(bridge.lastLog))
-                    .font(Font.custom(BerkeleyFont.defaultName(), size: 10, relativeTo: .caption2))
+                    .font(InterFont.font(relativeTo: .caption2, size: 10))
                     .foregroundStyle(OATheme.Colors.textTertiary)
                     .lineLimit(1)
             }
