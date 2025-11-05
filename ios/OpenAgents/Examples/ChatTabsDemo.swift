@@ -18,7 +18,6 @@ struct ChatTabsDemo: View {
                 .tabItem { Label("Settings", systemImage: "gear") }
                 .tag(2)
         }
-        .tabViewMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory { ChatBottomAccessory() }
     }
 }
@@ -97,4 +96,3 @@ private struct SettingsTab: View {
     ChatTabsDemo()
 }
 #endif
-
