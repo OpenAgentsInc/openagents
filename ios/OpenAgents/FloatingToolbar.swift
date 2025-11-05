@@ -23,6 +23,8 @@ struct FloatingToolbar: View {
     private var content: some View {
         // Foreground content (intrinsic size)
         let fg = HStack(spacing: 0) {
+            // New message pencil temporarily disabled
+            /*
             Button(action: {}, label: {
                 Image(systemName: "pencil")
                     .renderingMode(.template)
@@ -34,6 +36,7 @@ struct FloatingToolbar: View {
                     .frame(width: 36, height: 36)
             })
             .buttonStyle(.plain)
+            */
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)

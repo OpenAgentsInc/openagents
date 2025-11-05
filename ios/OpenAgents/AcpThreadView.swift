@@ -86,6 +86,7 @@ struct AcpThreadView: View {
     @State private var rawDetail: String? = nil
     @State private var initialMetaLines: [String] = []
     @State private var infoSheet: [String]? = nil
+    @State private var messageDetail: ACPMessage? = nil
 
     var body: some View {
         ZStack {
@@ -226,6 +227,9 @@ struct AcpThreadView: View {
                 .sheet(isPresented: Binding(get: { rawDetail != nil }, set: { v in if !v { rawDetail = nil } })) {
                     rawDetailSheet
                 }
+                .sheet(isPresented: Binding(get: { messageDetail != nil }, set: { v in if !v { messageDetail = nil } })) {
+                    messageDetailSheet
+                }
             }
         }
     }
@@ -235,6 +239,8 @@ struct AcpThreadView: View {
         switch item {
         case .message(let msg):
             messageBody(for: msg)
+                .contentShape(Rectangle())
+                .onTapGesture { messageDetail = msg }
         case .reasoningSummary(let rs):
             let secs = max(0, Int((rs.endTs - rs.startTs) / 1000))
             Button(action: { reasoningSheet = rs.messages }) {
@@ -293,8 +299,19 @@ struct AcpThreadView: View {
         }
     }
 
+    @ViewBuilder
+    private func messageFullBody(for msg: ACPMessage) -> some View {
+        let isUser = (msg.role == .user)
+        ForEach(Array(msg.parts.enumerated()), id: \.0) { pair in
+            let idx = pair.0
+            if case let .text(t) = msg.parts[idx] {
+                renderMessageMarkdown(t.text, isUser: isUser, truncated: false)
+            }
+        }
+    }
+
     // Customized Markdown renderer for messages: bullet styling + paragraph spacing
-    private func renderMessageMarkdown(_ text: String, isUser: Bool) -> some View {
+    private func renderMessageMarkdown(_ text: String, isUser: Bool, truncated: Bool = true) -> some View {
         let color: Color = isUser ? Color(hex: "#7A7A7A") : OATheme.Colors.textPrimary
         let items = parseMarkdownItems(text)
         return VStack(alignment: .leading, spacing: 10) {
@@ -312,7 +329,7 @@ struct AcpThreadView: View {
                         }
                         markdownText(it.content)
                             .font(OAFonts.ui(.body, 14))
-                            .lineLimit(isUser ? 5 : nil)
+                            .lineLimit((isUser && truncated) ? 5 : nil)
                             .truncationMode(.tail)
                             .foregroundStyle(color)
                             .textSelection(.enabled)
@@ -321,7 +338,7 @@ struct AcpThreadView: View {
                 } else {
                     markdownText(it.content)
                         .font(OAFonts.ui(.body, 14))
-                        .lineLimit(isUser ? 5 : nil)
+                        .lineLimit((isUser && truncated) ? 5 : nil)
                         .truncationMode(.tail)
                         .foregroundStyle(color)
                         .textSelection(.enabled)
@@ -505,6 +522,33 @@ struct AcpThreadView: View {
         }
     }
 
+    // Message detail sheet: full content + raw JSON dump
+    @ViewBuilder
+    private var messageDetailSheet: some View {
+        if let msg = messageDetail {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Full message rendering (no truncation)
+                        messageFullBody(for: msg)
+                        Divider().opacity(0.15)
+                        // Raw JSON of the ACPMessage
+                        RawEventView(line: ((try? JSONEncoder().encode(msg)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"))
+                    }
+                    .padding(14)
+                }
+                .navigationTitle("Message")
+                .toolbar {
+                    #if os(iOS)
+                    ToolbarItem(placement: .topBarLeading) { Button("Close") { messageDetail = nil } }
+                    #else
+                    ToolbarItem(placement: .navigation) { Button("Close") { messageDetail = nil } }
+                    #endif
+                }
+            }
+        }
+    }
+
     func statusText() -> String {
         switch bridge.status {
         case .connecting(let h, let p): return "Connecting to \(h):\(p)…"
@@ -555,6 +599,7 @@ struct AcpThreadView: View {
         }
         return line
     }
+
 
     // Inline, truncated preview of a raw JSON event
     @ViewBuilder
