@@ -13,7 +13,8 @@ struct AcpThreadView: View {
     
     enum TimelineItem: Identifiable {
         case message(ACPMessage)
-        case reasoning(ACPMessage)
+        case reasoning(ACPMessage) // legacy, not used in render
+        case reasoningSummary(ReasoningSummary)
         case toolCall(ACPToolCall)
         case toolResult(ACPToolResult)
         case plan(ACPPlanState)
@@ -33,6 +34,7 @@ struct AcpThreadView: View {
                 return "reason_\(m.id)_\(m.ts)_\(text.hashValue)"
             case .toolCall(let c): return "call_\(c.id)"
             case .toolResult(let r): return "res_\(r.call_id)\(r.ts ?? 0)"
+            case .reasoningSummary(let rs): return "rs_\(rs.startTs)_\(rs.endTs)\(rs.messages.count)"
             case .plan(let p): return "plan_\(p.ts ?? 0)"
             case .raw(let s): return "raw_\(s.hashValue)"
             }
@@ -48,6 +50,11 @@ struct AcpThreadView: View {
             }
         }
     }
+    struct ReasoningSummary: Hashable {
+        let startTs: Int64
+        let endTs: Int64
+        let messages: [ACPMessage]
+    }
 
     @State private var timeline: [TimelineItem] = []
     @State private var threadTitle: String? = nil
@@ -55,6 +62,8 @@ struct AcpThreadView: View {
     @State private var seenAssistantMessageTexts: Set<String> = []
     @State private var seenUserMessageTexts: Set<String> = []
     @State private var seenReasoningTexts: Set<String> = []
+    @State private var pendingReasoning: [ACPMessage] = []
+    @State private var reasoningSheet: [ACPMessage]? = nil
 
     var body: some View {
         ZStack {
@@ -134,6 +143,9 @@ struct AcpThreadView: View {
                 .background(OATheme.Colors.background)
                 .onAppear { scrollToBottom(proxy) }
                 .onChange(of: timeline.count) { _, _ in scrollToBottom(proxy) }
+                .sheet(isPresented: Binding(get: { reasoningSheet != nil }, set: { v in if !v { reasoningSheet = nil } })) {
+                    reasoningDetailSheet
+                }
             }
         }
     }
@@ -143,6 +155,14 @@ struct AcpThreadView: View {
         switch item {
         case .message(let msg):
             messageBody(for: msg)
+        case .reasoningSummary(let rs):
+            let secs = max(0, Int((rs.endTs - rs.startTs) / 1000))
+            Button(action: { reasoningSheet = rs.messages }) {
+                Text("Thought for \(secs)s")
+                    .font(.footnote)
+                    .foregroundStyle(OATheme.Colors.textSecondary.opacity(0.8))
+                    .padding(.vertical, 2)
+            }
         case .reasoning:
             EmptyView()
         case .toolCall(let call):
@@ -168,6 +188,34 @@ struct AcpThreadView: View {
                     .lineLimit(isUser ? 5 : nil)
                     .truncationMode(.tail)
                     .foregroundStyle(isUser ? OATheme.Colors.textPrimary : Color(hex: "#7A7A7A"))
+            }
+        }
+    }
+
+    // Reasoning detail sheet
+    @ViewBuilder
+    private var reasoningDetailSheet: some View {
+        if let messages = reasoningSheet {
+            NavigationStack {
+                List {
+                    ForEach(Array(messages.enumerated()), id: \.0) { pair in
+                        let idx = pair.0
+                        let m = messages[idx]
+                        ForEach(Array(m.parts.enumerated()), id: \.0) { p in
+                            if case let .text(t) = m.parts[p.0] {
+                                Text(t.text)
+                                    .font(InterFont.font(relativeTo: .body, size: 14))
+                                    .foregroundStyle(OATheme.Colors.textPrimary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .navigationTitle("Thoughts")
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) { Button("Back") { reasoningSheet = nil } }
+                }
             }
         }
     }
@@ -300,7 +348,14 @@ struct AcpThreadView: View {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !seenUserMessageTexts.contains(newText) {
                     seenUserMessageTexts.insert(newText)
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: newText))], ts: nowMs())
+                    let now = nowMs()
+                    if !pendingReasoning.isEmpty {
+                        let start = pendingReasoning.first?.ts ?? now
+                        let rs = ReasoningSummary(startTs: start, endTs: now, messages: pendingReasoning)
+                        timeline.append(.reasoningSummary(rs))
+                        pendingReasoning.removeAll()
+                    }
+                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: newText))], ts: now)
                     timeline.append(.message(m))
                 }
             }
@@ -310,23 +365,47 @@ struct AcpThreadView: View {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !seenAssistantMessageTexts.contains(newText) {
                     seenAssistantMessageTexts.insert(newText)
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: nowMs())
+                    let now = nowMs()
+                    if !pendingReasoning.isEmpty {
+                        let start = pendingReasoning.first?.ts ?? now
+                        let rs = ReasoningSummary(startTs: start, endTs: now, messages: pendingReasoning)
+                        timeline.append(.reasoningSummary(rs))
+                    pendingReasoning.removeAll()
+                    }
+                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
                     timeline.append(.message(m))
                 }
             case let .resource_link(link):
                 let s = "\(link.title ?? "Link") — \(link.uri)"
-                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
+                let now = nowMs()
+                if !pendingReasoning.isEmpty {
+                    let start = pendingReasoning.first?.ts ?? now
+                    let rs = ReasoningSummary(startTs: start, endTs: now, messages: pendingReasoning)
+                    timeline.append(.reasoningSummary(rs))
+                    pendingReasoning.removeAll()
+                }
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: now)
                 timeline.append(.message(m))
             case let .image(img):
                 let s = "[image] \(img.uri ?? "") \(img.mimeType)"
-                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
+                let now = nowMs()
+                if !pendingReasoning.isEmpty {
+                    let start = pendingReasoning.first?.ts ?? now
+                    let rs = ReasoningSummary(startTs: start, endTs: now, messages: pendingReasoning)
+                    timeline.append(.reasoningSummary(rs))
+                    pendingReasoning.removeAll()
+                }
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: now)
                 timeline.append(.message(m))
             default:
                 break
             }
-        case .agentThoughtChunk(_):
-            // Hide reasoning traces: ignore agentThoughtChunk updates
-            break
+        case .agentThoughtChunk(let chunk):
+            if case let .text(s) = chunk.content {
+                let text = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: text))], ts: nowMs())
+                pendingReasoning.append(m)
+            }
         case .plan(let p):
             let ps = ACPPlanState(status: .running, summary: nil, steps: p.entries.map { $0.content }, ts: nowMs())
             timeline.append(.plan(ps))
@@ -387,27 +466,42 @@ private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, ca
     var items: [AcpThreadView.TimelineItem] = []
     var seenAssistant: Set<String> = []
     var seenUser: Set<String> = []
-    var seenReasoning: Set<String> = []
-    for line in lines {
+    var reasoningBuffer: [ACPMessage] = []
+    var lastMessageTs: Int64 = 0
+
+    func flushReasoningBuffer(nextTs: Int64) {
+        guard !reasoningBuffer.isEmpty else { return }
+        let start = reasoningBuffer.first?.ts ?? nextTs
+        let rs = ReasoningSummary(startTs: start, endTs: nextTs, messages: reasoningBuffer)
+        items.append(.reasoningSummary(rs))
+        reasoningBuffer.removeAll()
+    }
+
+    for (idx, line) in lines.enumerated() {
         // Hide low-signal provider-native events
         if AcpThreadView_shouldHideLine(line) { continue }
         let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: sourceId))
-        if let m = t.events.compactMap({ $0.message }).first, (m.role == .user || m.role == .assistant) {
+        if let m = t.events.compactMap({ $0.message }).first {
             let text = m.parts.compactMap { part -> String? in
                 if case let .text(t) = part { return t.text } else { return nil }
             }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if AcpThreadView_isReasoningLine(line) {
+                reasoningBuffer.append(m)
+                continue
+            }
+
+            // Non-reasoning message
             if !ConversationSummarizer.isSystemPreface(text) {
-                if AcpThreadView_isReasoningLine(line) {
-                    // Hide reasoning traces entirely
-                    continue
+                // Any pending reasoning attaches before this message
+                flushReasoningBuffer(nextTs: m.ts)
+                lastMessageTs = m.ts
+                if m.role == .assistant {
+                    if !seenAssistant.contains(text) { seenAssistant.insert(text); items.append(.message(m)) }
+                } else if m.role == .user {
+                    if !seenUser.contains(text) { seenUser.insert(text); items.append(.message(m)) }
                 } else {
-                    if m.role == .assistant {
-                        if !seenAssistant.contains(text) { seenAssistant.insert(text); items.append(.message(m)) }
-                    } else if m.role == .user {
-                        if !seenUser.contains(text) { seenUser.insert(text); items.append(.message(m)) }
-                    } else {
-                        items.append(.message(m))
-                    }
+                    items.append(.message(m))
                 }
                 continue
             }
@@ -419,6 +513,12 @@ private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, ca
             continue
         }
         if Features.showRawJSON { items.append(.raw(line)) }
+
+        // At end of input, if last lines were reasoning, flush using lastMessageTs (or own ts)
+        if idx == lines.count - 1 && !reasoningBuffer.isEmpty {
+            let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? lastMessageTs)
+            flushReasoningBuffer(nextTs: endTs)
+        }
     }
     if items.count > cap { items = Array(items.suffix(cap)) }
     let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: sourceId))
