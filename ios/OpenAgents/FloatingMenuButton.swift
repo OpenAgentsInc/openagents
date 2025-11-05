@@ -5,6 +5,7 @@ import UIKit
 
 /// Compact top-left navigation menu button styled with Liquid Glass.
 struct FloatingMenuButton: View {
+    var onTap: () -> Void = {}
     var body: some View {
         #if os(iOS)
         Group {
@@ -19,7 +20,7 @@ struct FloatingMenuButton: View {
 
     private var content: some View {
         let fg = HStack(spacing: 0) {
-            Button(action: { /* TODO: open nav */ }, label: {
+            Button(action: { onTap() }, label: {
                 Image(systemName: "line.3.horizontal")
                     .renderingMode(.template)
                     .symbolRenderingMode(.monochrome)
