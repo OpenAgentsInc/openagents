@@ -84,6 +84,8 @@ struct AcpThreadView: View {
     @State private var pendingReasoningStart: Int64? = nil
     @State private var reasoningSheet: [ACPMessage]? = nil
     @State private var rawDetail: String? = nil
+    @State private var initialMetaLines: [String] = []
+    @State private var infoSheet: [String]? = nil
 
     var body: some View {
         ZStack {
@@ -105,9 +107,10 @@ struct AcpThreadView: View {
         // When latestLines arrive from the bridge, build the initial timeline and scroll to bottom.
         .onChange(of: bridge.latestLines.count) { _, _ in
             if timeline.isEmpty, !bridge.latestLines.isEmpty {
-                let (items, title) = AcpThreadView_computeTimeline(lines: bridge.latestLines, sourceId: "remote", cap: maxMessages)
+                let (items, title, meta) = AcpThreadView_computeTimeline(lines: bridge.latestLines, sourceId: "remote", cap: maxMessages)
                 timeline = items
                 threadTitle = title
+                initialMetaLines = meta
                 if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onTitleChange?(t) }
                 isLoading = false
             }
@@ -150,6 +153,41 @@ struct AcpThreadView: View {
                         .font(OAFonts.ui(.headline, 17))
                         .foregroundStyle(OATheme.Colors.textPrimary)
                 }
+                if !initialMetaLines.isEmpty {
+                    Button(action: { infoSheet = initialMetaLines }) {
+                        Text("Info")
+                            .font(.footnote)
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Group {
+                                    #if os(iOS)
+                                    if #available(iOS 26, *) {
+                                        GlassEffectContainer {
+                                            Capsule(style: .continuous)
+                                                .fill(Color.clear)
+                                                .glassEffect(.regular, in: Capsule(style: .continuous))
+                                        }
+                                    } else {
+                                        Capsule(style: .continuous).fill(.ultraThinMaterial)
+                                    }
+                                    #else
+                                    Capsule(style: .continuous).fill(.regularMaterial)
+                                    #endif
+                                }
+                            )
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(LinearGradient(colors: [Color.black.opacity(0.14), Color.black.opacity(0.05)], startPoint: .top, endPoint: .bottom))
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .strokeBorder(OATheme.Colors.border.opacity(0.6), lineWidth: 1)
+                            )
+                            .clipShape(Capsule(style: .continuous))
+                    }
+                }
                         ForEach(timeline) { item in
                             messageRow(for: item)
                                 .padding(.vertical, 4)
@@ -165,6 +203,9 @@ struct AcpThreadView: View {
                 .onChange(of: timeline.count) { _, _ in scrollToBottom(proxy) }
                 .sheet(isPresented: Binding(get: { reasoningSheet != nil }, set: { v in if !v { reasoningSheet = nil } })) {
                     reasoningDetailSheet
+                }
+                .sheet(isPresented: Binding(get: { infoSheet != nil }, set: { v in if !v { infoSheet = nil } })) {
+                    infoDetailSheet
                 }
                 .sheet(isPresented: Binding(get: { rawDetail != nil }, set: { v in if !v { rawDetail = nil } })) {
                     rawDetailSheet
@@ -402,6 +443,31 @@ struct AcpThreadView: View {
         }
     }
 
+    // Initial metadata sheet
+    @ViewBuilder
+    private var infoDetailSheet: some View {
+        if let lines = infoSheet {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(Array(lines.enumerated()), id: \.0) { p in
+                            RawEventView(line: lines[p.0])
+                        }
+                    }
+                    .padding(14)
+                }
+                .navigationTitle("Session Info")
+                .toolbar {
+                    #if os(iOS)
+                    ToolbarItem(placement: .topBarLeading) { Button("Close") { infoSheet = nil } }
+                    #else
+                    ToolbarItem(placement: .navigation) { Button("Close") { infoSheet = nil } }
+                    #endif
+                }
+            }
+        }
+    }
+
     // Raw JSON detail sheet
     @ViewBuilder
     private var rawDetailSheet: some View {
@@ -526,10 +592,11 @@ struct AcpThreadView: View {
         if let lines = initialLines, !lines.isEmpty, timeline.isEmpty {
             isLoading = true; error = nil; timeline = []
             DispatchQueue.global(qos: .userInitiated).async {
-                let (items, title) = AcpThreadView_computeTimeline(lines: lines, sourceId: "remote", cap: maxMessages)
+                let (items, title, meta) = AcpThreadView_computeTimeline(lines: lines, sourceId: "remote", cap: maxMessages)
                 DispatchQueue.main.async {
                     self.timeline = items
                     self.threadTitle = title
+                    self.initialMetaLines = meta
                     if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
                     self.isLoading = false
                 }
@@ -543,10 +610,11 @@ struct AcpThreadView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let lines = try tailJSONLLines(url: u, maxBytes: 1_000_000, maxLines: 5000)
-                let (items, title) = AcpThreadView_computeTimeline(lines: lines, sourceId: u.path, cap: maxMessages)
+                let (items, title, meta) = AcpThreadView_computeTimeline(lines: lines, sourceId: u.path, cap: maxMessages)
                 DispatchQueue.main.async {
                     self.timeline = items
                     self.threadTitle = title
+                    self.initialMetaLines = meta
                     if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
                     self.isLoading = false
                 }
@@ -684,8 +752,9 @@ private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [S
 }
 
 // MARK: - Timeline compute (pure function)
-// Returns computed items and a derived thread title. Runs on any queue.
-func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) -> ([AcpThreadView.TimelineItem], String?) {
+// Returns computed items, a derived thread title, and initial metadata lines.
+// Runs on any queue.
+func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) -> ([AcpThreadView.TimelineItem], String?, [String]) {
     var items: [AcpThreadView.TimelineItem] = []
     var seenAssistant: Set<String> = []
     var seenUser: Set<String> = []
@@ -694,6 +763,8 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
     var lastNonReasoningTs: Int64? = nil
     var fallbackClock: Int64 = 0 // approximate ms, +1000 per line when ts missing
     var monoMs: Int64 = 0        // monotonic ms fallback for all items
+    var initialMeta: [String] = []
+    var hasAnyVisibleItem = false
 
     func flushReasoningBuffer(nextTs: Int64, prevTs: Int64?) {
         guard !reasoningBuffer.isEmpty else { return }
@@ -710,8 +781,11 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
     for (idx, line) in lines.enumerated() {
         fallbackClock += 1000
         monoMs += 1000
-        // Hide low-signal provider-native events
-        if AcpThreadView_shouldHideLine(line) { continue }
+        // Hide low-signal provider-native events; capture them as initial metadata until first visible item
+        if AcpThreadView_shouldHideLine(line) {
+            if !hasAnyVisibleItem { initialMeta.append(line) }
+            continue
+        }
         let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: sourceId))
         if let m = t.events.compactMap({ $0.message }).first {
             let text = m.parts.compactMap { part -> String? in
@@ -736,19 +810,23 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
                 lastMessageTs = ts
                 lastNonReasoningTs = ts
                 items.append(.message(m))
+                hasAnyVisibleItem = true
                 continue
             }
         } else if let _ = t.events.compactMap({ $0.tool_call }).first {
             // Show raw JSON for tool calls
             items.append(.raw(line))
+            hasAnyVisibleItem = true
             continue
         } else if let _ = t.events.compactMap({ $0.tool_result }).first {
             // Show raw JSON for tool results
             items.append(.raw(line))
+            hasAnyVisibleItem = true
             continue
         }
         // For any other events that aren't messages, include their raw JSON
         items.append(.raw(line))
+        hasAnyVisibleItem = true
 
         // At end of input, if last lines were reasoning, flush using lastMessageTs (or own ts)
         if idx == lines.count - 1 && !reasoningBuffer.isEmpty {
@@ -758,7 +836,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
     }
     if items.count > cap { items = Array(items.suffix(cap)) }
     let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: sourceId))
-    return (items, thread.title)
+    return (items, thread.title, initialMeta)
 }
 
 // These thin wrappers allow the pure function to reuse the same logic as the view without capturing self.
