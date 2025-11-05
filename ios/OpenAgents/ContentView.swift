@@ -54,25 +54,25 @@ struct ContentView: View {
         //     FloatingMenuButton(onTap: { showTabsDemo = true })
         // }
         #endif
-        // Present Chat Tabs demo from menu button
-        #if os(iOS)
-        .sheet(isPresented: $showTabsDemo) {
-            if #available(iOS 26, *) {
-                ChatTabsDemo()
-                    .preferredColorScheme(.dark)
-            } else {
-                VStack(spacing: 12) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 28, weight: .regular))
-                    Text("Tabs demo requires iOS 26+")
-                        .font(.headline)
-                    Button("Close") { showTabsDemo = false }
-                        .padding(.top, 8)
-                }
-                .padding(24)
-            }
-        }
-        #endif
+        // Present Chat Tabs demo from menu button (temporarily disabled)
+        // #if os(iOS)
+        // .sheet(isPresented: $showTabsDemo) {
+        //     if #available(iOS 26, *) {
+        //         ChatTabsDemo()
+        //             .preferredColorScheme(.dark)
+        //     } else {
+        //         VStack(spacing: 12) {
+        //             Image(systemName: "info.circle")
+        //                 .font(.system(size: 28, weight: .regular))
+        //             Text("Tabs demo requires iOS 26+")
+        //                 .font(.headline)
+        //             Button("Close") { showTabsDemo = false }
+        //                 .padding(.top, 8)
+        //         }
+        //         .padding(24)
+        //     }
+        // }
+        // #endif
         #if os(iOS)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -80,7 +80,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Text(selectedRowTitle())
-                    .font(Font.custom(BerkeleyFont.defaultName(), size: 15, relativeTo: .headline))
+                    .font(InterFont.font(relativeTo: .headline, size: 15))
                     .foregroundStyle(OATheme.Colors.textPrimary)
                     .lineLimit(1)
                     .padding(.horizontal, 12)
@@ -94,7 +94,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Text(selectedRowTitle())
-                    .font(Font.custom(BerkeleyFont.defaultName(), size: 14, relativeTo: .headline))
+                    .font(InterFont.font(relativeTo: .headline, size: 14))
                     .foregroundStyle(OATheme.Colors.textPrimary)
                     .lineLimit(1)
                     .padding(.horizontal, 12)

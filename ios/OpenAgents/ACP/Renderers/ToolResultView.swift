@@ -10,18 +10,18 @@ struct ToolResultView: View {
                     .imageScale(.small)
                     .foregroundStyle(result.ok ? OATheme.Colors.success : OATheme.Colors.danger)
                 Text(result.ok ? "Result" : "Error")
-                    .font(BerkeleyFont.font(relativeTo: .subheadline, size: 13))
+                    .font(InterFont.font(relativeTo: .subheadline, size: 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
             }
             if let err = result.error, !err.isEmpty {
                 Text(err)
-                    .font(BerkeleyFont.font(relativeTo: .footnote, size: 12))
+                    .font(InterFont.font(relativeTo: .footnote, size: 12))
                     .foregroundStyle(OATheme.Colors.danger)
             }
             if let v = result.result, let pretty = try? prettyJSON(v) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(pretty)
-                        .font(BerkeleyFont.font(relativeTo: .footnote, size: 12))
+                        .font(InterFont.font(relativeTo: .footnote, size: 12))
                         .foregroundStyle(OATheme.Colors.textSecondary)
                         .textSelection(.enabled)
                 }
@@ -36,4 +36,3 @@ private func prettyJSON(_ v: JSONValue) throws -> String {
     let pd = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])
     return String(data: pd, encoding: .utf8) ?? String(decoding: pd, as: UTF8.self)
 }
-
