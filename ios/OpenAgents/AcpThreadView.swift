@@ -200,8 +200,8 @@ struct AcpThreadView: View {
                 if isBulletBlock(para) {
                     let lines = para.split(separator: "\n").map(String.init)
                     VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(lines.enumerated()), id: \.0) { i in
-                            let rawLine = lines[i.0]
+                        ForEach(lines.indices, id: \.self) { idx in
+                            let rawLine = lines[idx]
                             let (level, content) = parseBulletLine(rawLine)
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
@@ -232,8 +232,11 @@ struct AcpThreadView: View {
     private func isBulletBlock(_ para: String) -> Bool {
         let lines = para.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         guard !lines.isEmpty else { return false }
-        let bulletCount = lines.filter { $0.hasPrefix("- ") || $0.hasPrefix("* ") }.count
-        return bulletCount >= max(1, lines.count - 1)
+        // Treat as bullet block only if all non-empty lines begin with a bullet marker
+        for l in lines where !l.isEmpty {
+            if !(l.hasPrefix("- ") || l.hasPrefix("* ")) { return false }
+        }
+        return true
     }
 
     private func parseBulletLine(_ s: String) -> (level: Int, content: String) {
@@ -524,6 +527,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
     var lastMessageTs: Int64 = 0
     var lastNonReasoningTs: Int64? = nil
     var fallbackClock: Int64 = 0 // approximate ms, +1000 per line when ts missing
+    var monoMs: Int64 = 0        // monotonic ms fallback for all items
 
     func flushReasoningBuffer(nextTs: Int64, prevTs: Int64?) {
         guard !reasoningBuffer.isEmpty else { return }
@@ -539,6 +543,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 
     for (idx, line) in lines.enumerated() {
         fallbackClock += 1000
+        monoMs += 1000
         // Hide low-signal provider-native events
         if AcpThreadView_shouldHideLine(line) { continue }
         let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: sourceId))
@@ -549,7 +554,8 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 
             if AcpThreadView_isReasoningLine(line) {
                 var msg = m
-                if msg.ts == 0 { msg.ts = resolveTsMs(fromLine: line) ?? fallbackClock }
+                if msg.ts == 0 { msg.ts = resolveTsMs(fromLine: line) ?? monoMs }
+                monoMs = max(monoMs, msg.ts)
                 reasoningBuffer.append(msg)
                 continue
             }
@@ -558,7 +564,8 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
             if !ConversationSummarizer.isSystemPreface(text) {
                 // Any pending reasoning attaches before this message
                 var ts = m.ts
-                if ts == 0 { ts = resolveTsMs(fromLine: line) ?? fallbackClock }
+                if ts == 0 { ts = resolveTsMs(fromLine: line) ?? monoMs }
+                monoMs = max(monoMs, ts)
                 flushReasoningBuffer(nextTs: ts, prevTs: lastNonReasoningTs)
                 lastMessageTs = ts
                 lastNonReasoningTs = ts
@@ -582,7 +589,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 
         // At end of input, if last lines were reasoning, flush using lastMessageTs (or own ts)
         if idx == lines.count - 1 && !reasoningBuffer.isEmpty {
-            let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? (resolveTsMs(fromLine: line) ?? fallbackClock))
+            let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? (resolveTsMs(fromLine: line) ?? monoMs))
             flushReasoningBuffer(nextTs: endTs, prevTs: lastNonReasoningTs)
         }
     }
