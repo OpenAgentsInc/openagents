@@ -4,7 +4,7 @@ import OpenAgentsCore
 struct AcpThreadView: View {
     let url: URL?
     var initialLines: [String]? = nil
-    let maxMessages: Int = 25
+    let maxMessages: Int = 200
     var onTitleChange: ((String) -> Void)? = nil
 
     @EnvironmentObject var bridge: BridgeManager
@@ -219,36 +219,56 @@ struct AcpThreadView: View {
     @ViewBuilder
     private func renderMessageMarkdown(_ text: String, isUser: Bool) -> some View {
         let color: Color = isUser ? Color(hex: "#7A7A7A") : OATheme.Colors.textPrimary
-        let paras = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n\n")
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let paras = normalized.components(separatedBy: "\n\n")
+        struct Item: Identifiable { let id = UUID(); let level: Int; let bullet: Bool; let content: String }
+        var items: [Item] = []
+        var lastWasPara = false
+        for para in paras {
+            if isBulletBlock(para) {
+                let lines = para.split(separator: "\n").map(String.init)
+                // Compute baseline indent across this block
+                var minIndent = Int.max
+                var infos: [(indent:Int, content:String)] = []
+                for l in lines {
+                    let (isB, ind, content) = bulletInfo(l)
+                    if isB { minIndent = min(minIndent, ind); infos.append((ind, content)) }
+                }
+                if minIndent == Int.max { minIndent = 0 }
+                let basePad = lastWasPara ? 1 : 0
+                for inf in infos {
+                    let lvl = max(0, (inf.indent - minIndent)/2) + basePad
+                    items.append(Item(level: lvl, bullet: true, content: inf.content))
+                }
+                lastWasPara = false
+            } else {
+                // Paragraph; indent one level if following a bullet section
+                let lvl = lastWasPara ? 0 : 0
+                items.append(Item(level: lvl, bullet: false, content: para))
+                lastWasPara = true
+            }
+        }
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(paras.enumerated()), id: \.0) { p in
-                let para = paras[p.0]
-                if isBulletBlock(para) {
-                    let lines = para.split(separator: "\n").map(String.init)
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(lines.indices, id: \.self) { idx in
-                            let rawLine = lines[idx]
-                            let (level, content) = parseBulletLine(rawLine)
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
-                                markdownText(content)
-                                    .font(OAFonts.ui(.body, 14))
-                                    .lineLimit(isUser ? 5 : nil)
-                                    .truncationMode(.tail)
-                                    .foregroundStyle(color)
-                                    .textSelection(.enabled)
-                            }
-                            .padding(.leading, CGFloat(level) * 14)
-                        }
+            ForEach(items) { it in
+                if it.bullet {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
+                        markdownText(it.content)
+                            .font(OAFonts.ui(.body, 14))
+                            .lineLimit(isUser ? 5 : nil)
+                            .truncationMode(.tail)
+                            .foregroundStyle(color)
+                            .textSelection(.enabled)
                     }
-                    .padding(.vertical, 2)
+                    .padding(.leading, CGFloat(it.level) * 14)
                 } else {
-                    markdownText(para)
+                    markdownText(it.content)
                         .font(OAFonts.ui(.body, 14))
                         .lineLimit(isUser ? 5 : nil)
                         .truncationMode(.tail)
                         .foregroundStyle(color)
                         .textSelection(.enabled)
+                        .padding(.leading, CGFloat(it.level) * 14)
                         .padding(.vertical, 2)
                 }
             }
@@ -256,24 +276,31 @@ struct AcpThreadView: View {
     }
 
     private func isBulletBlock(_ para: String) -> Bool {
-        let lines = para.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let lines = para.split(separator: "\n").map(String.init)
         guard !lines.isEmpty else { return false }
-        // Treat as bullet block only if all non-empty lines begin with a bullet marker
-        for l in lines where !l.isEmpty {
-            if !(l.hasPrefix("- ") || l.hasPrefix("* ")) { return false }
+        for l in lines {
+            let (isB, _, _) = bulletInfo(l)
+            if !isB { return false }
         }
         return true
     }
 
-    private func parseBulletLine(_ s: String) -> (level: Int, content: String) {
-        // Count leading spaces to infer nesting (2 or 4 spaces per level)
-        var i = 0
-        for ch in s { if ch == " " { i += 1 } else { break } }
-        let level = max(0, i / 2)
-        let trimmed = s.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("- ") { return (level, String(trimmed.dropFirst(2))) }
-        if trimmed.hasPrefix("* ") { return (level, String(trimmed.dropFirst(2))) }
-        return (level, trimmed)
+    private func bulletInfo(_ s: String) -> (isBullet: Bool, indent: Int, content: String) {
+        var indent = 0
+        var idx = s.startIndex
+        while idx < s.endIndex && s[idx] == " " { indent += 1; idx = s.index(after: idx) }
+        let trimmed = String(s[idx...])
+        if trimmed.hasPrefix("- ") { return (true, indent, String(trimmed.dropFirst(2))) }
+        if trimmed.hasPrefix("* ") { return (true, indent, String(trimmed.dropFirst(2))) }
+        // numeric bullets like "1. " or "2) "
+        var j = trimmed.startIndex
+        var hadDigit = false
+        while j < trimmed.endIndex, trimmed[j].isNumber { hadDigit = true; j = trimmed.index(after: j) }
+        if hadDigit, j < trimmed.endIndex, (trimmed[j] == "." || trimmed[j] == ")"), trimmed.index(after: j) < trimmed.endIndex, trimmed[trimmed.index(after: j)] == " " {
+            let content = String(trimmed[trimmed.index(j, offsetBy: 2)...])
+            return (true, indent, content)
+        }
+        return (false, indent, trimmed)
     }
 
     // Reasoning detail sheet
