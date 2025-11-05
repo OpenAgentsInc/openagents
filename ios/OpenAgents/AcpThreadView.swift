@@ -50,7 +50,7 @@ struct AcpThreadView: View {
             }
         }
     }
-    struct ReasoningSummary: Hashable {
+    struct ReasoningSummary {
         let startTs: Int64
         let endTs: Int64
         let messages: [ACPMessage]
