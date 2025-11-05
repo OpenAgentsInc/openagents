@@ -128,7 +128,7 @@ struct AcpThreadView: View {
                         // Bottom sentinel
                         Color.clear.frame(height: 1).id("bottom")
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 22)
                     .background(OATheme.Colors.background)
                 }
                 .background(OATheme.Colors.background)
