@@ -677,6 +677,20 @@ struct AcpThreadView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(OATheme.Colors.border.opacity(0.6), lineWidth: 1)
         )
+        .overlay(alignment: .topTrailing) {
+            Button(action: { setClipboard(prettyJSON(line)) }) {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OATheme.Colors.textSecondary)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.black.opacity(0.25))
+                    )
+            }
+            .buttonStyle(.plain)
+            .padding(6)
+        }
         .onTapGesture { rawDetail = line }
     }
 
@@ -698,6 +712,9 @@ struct AcpThreadView: View {
         if type == "response_item", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "reasoning" { return true }
         return false
     }
+
+    // Hide certain user/assistant messages not meant for display (e.g., boot preface)
+    func shouldHideMessageText(_ text: String) -> Bool { AcpThreadView_shouldHideMessageText(text) }
 
     func load() {
         guard !isLoading else { return }
@@ -775,6 +792,7 @@ struct AcpThreadView: View {
         case .userMessageChunk(let chunk):
             if case let .text(s) = chunk.content {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if AcpThreadView_shouldHideMessageText(newText) { break }
                 let now = nowMs()
                 flushPendingReasoning(endMs: now)
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: newText))], ts: now)
@@ -784,6 +802,7 @@ struct AcpThreadView: View {
             switch chunk.content {
             case let .text(s):
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if AcpThreadView_shouldHideMessageText(newText) { break }
                 let now = nowMs()
                 flushPendingReasoning(endMs: now)
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
@@ -925,6 +944,10 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 
             // Non-reasoning message (only show user/assistant roles)
             if m.role == .user || m.role == .assistant {
+                if AcpThreadView_shouldHideMessageText(text) {
+                    if !hasAnyVisibleItem { initialMeta.append(line) }
+                    continue
+                }
                 // Any pending reasoning attaches before this message
                 var ts = m.ts
                 if ts == 0 { ts = resolveTsMs(fromLine: line) ?? monoMs }
@@ -1005,6 +1028,14 @@ private func AcpThreadView_isReasoningLine(_ line: String) -> Bool {
     if let item = (obj["item"] as? [String: Any]) ?? (obj["msg"] as? [String: Any]) ?? (obj["payload"] as? [String: Any]),
        ((item["type"] as? String) ?? "").lowercased() == "agent_reasoning" { return true }
     if type == "response_item", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "reasoning" { return true }
+    return false
+}
+
+// Hide certain user/assistant messages not meant for display (e.g., boot preface)
+private func AcpThreadView_shouldHideMessageText(_ text: String) -> Bool {
+    let lx = text.lowercased()
+    if lx.contains("<environment_context>") { return true }
+    if lx.contains("<user_instructions>") { return true }
     return false
 }
 
