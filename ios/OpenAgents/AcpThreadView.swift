@@ -64,6 +64,7 @@ struct AcpThreadView: View {
     @State private var seenUserMessageTexts: Set<String> = []
     @State private var seenReasoningTexts: Set<String> = []
     @State private var pendingReasoning: [ACPMessage] = []
+    @State private var pendingReasoningStart: Int64? = nil
     @State private var reasoningSheet: [ACPMessage]? = nil
 
     var body: some View {
@@ -350,12 +351,7 @@ struct AcpThreadView: View {
                 if !seenUserMessageTexts.contains(newText) {
                     seenUserMessageTexts.insert(newText)
                     let now = nowMs()
-                    if !pendingReasoning.isEmpty {
-                        let start = pendingReasoning.first?.ts ?? now
-                        let rs = ReasoningSummary(startTs: start, endTs: now, messages: pendingReasoning)
-                        timeline.append(.reasoningSummary(rs))
-                        pendingReasoning.removeAll()
-                    }
+                    flushPendingReasoning(endMs: now)
                     let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: newText))], ts: now)
                     timeline.append(.message(m))
                 }
@@ -367,35 +363,20 @@ struct AcpThreadView: View {
                 if !seenAssistantMessageTexts.contains(newText) {
                     seenAssistantMessageTexts.insert(newText)
                     let now = nowMs()
-                    if !pendingReasoning.isEmpty {
-                        let start = pendingReasoning.first?.ts ?? now
-                        let rs = ReasoningSummary(startTs: start, endTs: now, messages: pendingReasoning)
-                        timeline.append(.reasoningSummary(rs))
-                    pendingReasoning.removeAll()
-                    }
+                    flushPendingReasoning(endMs: now)
                     let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
                     timeline.append(.message(m))
                 }
             case let .resource_link(link):
                 let s = "\(link.title ?? "Link") — \(link.uri)"
                 let now = nowMs()
-                if !pendingReasoning.isEmpty {
-                    let start = pendingReasoning.first?.ts ?? now
-                    let rs = ReasoningSummary(startTs: start, endTs: now, messages: pendingReasoning)
-                    timeline.append(.reasoningSummary(rs))
-                    pendingReasoning.removeAll()
-                }
+                flushPendingReasoning(endMs: now)
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: now)
                 timeline.append(.message(m))
             case let .image(img):
                 let s = "[image] \(img.uri ?? "") \(img.mimeType)"
                 let now = nowMs()
-                if !pendingReasoning.isEmpty {
-                    let start = pendingReasoning.first?.ts ?? now
-                    let rs = ReasoningSummary(startTs: start, endTs: now, messages: pendingReasoning)
-                    timeline.append(.reasoningSummary(rs))
-                    pendingReasoning.removeAll()
-                }
+                flushPendingReasoning(endMs: now)
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: now)
                 timeline.append(.message(m))
             default:
@@ -404,7 +385,9 @@ struct AcpThreadView: View {
         case .agentThoughtChunk(let chunk):
             if case let .text(s) = chunk.content {
                 let text = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: text))], ts: nowMs())
+                let now = nowMs()
+                if pendingReasoningStart == nil { pendingReasoningStart = now }
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: text))], ts: now)
                 pendingReasoning.append(m)
             }
         case .plan(let p):
@@ -432,6 +415,15 @@ struct AcpThreadView: View {
     #endif
 
     func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+
+    private func flushPendingReasoning(endMs: Int64) {
+        guard !pendingReasoning.isEmpty else { return }
+        let start = pendingReasoningStart ?? pendingReasoning.first?.ts ?? endMs
+        let rs = ReasoningSummary(startTs: start, endTs: endMs, messages: pendingReasoning)
+        timeline.append(.reasoningSummary(rs))
+        pendingReasoning.removeAll()
+        pendingReasoningStart = nil
+    }
 }
 // Close AcpThreadView struct
 
