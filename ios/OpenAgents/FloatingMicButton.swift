@@ -58,7 +58,9 @@ struct FloatingMicButton: View {
             .contentShape(Capsule(style: .continuous))
             .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 8)
             .padding(.trailing, 14)
-            .padding(.bottom, 68) // place above the compose button (which uses 18)
+            .padding(
+                .bottom,
+                76 // small extra gap above compose (compose uses 18)
+            )
     }
 }
-
