@@ -107,12 +107,19 @@ struct AcpThreadView: View {
         // When latestLines arrive from the bridge, build the initial timeline and scroll to bottom.
         .onChange(of: bridge.latestLines.count) { _, _ in
             if timeline.isEmpty, !bridge.latestLines.isEmpty {
-                let (items, title, meta) = AcpThreadView_computeTimeline(lines: bridge.latestLines, sourceId: "remote", cap: maxMessages)
-                timeline = items
-                threadTitle = title
-                initialMetaLines = meta
-                if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onTitleChange?(t) }
-                isLoading = false
+                // Offload heavy timeline compute from the main thread to avoid startup jank/black frame
+                let snapshot = bridge.latestLines
+                isLoading = true
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let (items, title, meta) = AcpThreadView_computeTimeline(lines: snapshot, sourceId: "remote", cap: maxMessages)
+                    DispatchQueue.main.async {
+                        self.timeline = items
+                        self.threadTitle = title
+                        self.initialMetaLines = meta
+                        if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
+                        self.isLoading = false
+                    }
+                }
             }
         }
         .onChange(of: bridge.updates.count) { _, _ in
