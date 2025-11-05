@@ -155,6 +155,8 @@ struct AcpThreadView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
+                        // Top sentinel for programmatic scroll
+                        Color.clear.frame(height: 1).id("top")
                 if let title = threadTitle, !title.isEmpty {
                     Text(title)
                         .font(OAFonts.ui(.headline, 17))
@@ -208,6 +210,13 @@ struct AcpThreadView: View {
                 .background(OATheme.Colors.background)
                 .onAppear { scrollToBottom(proxy) }
                 .onChange(of: timeline.count) { _, _ in scrollToBottom(proxy) }
+                // External scroll commands (from floating scroll buttons)
+                .onReceive(NotificationCenter.default.publisher(for: .acpScrollToTop)) { _ in
+                    scrollToTop(proxy)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .acpScrollToBottom)) { _ in
+                    scrollToBottom(proxy)
+                }
                 .sheet(isPresented: Binding(get: { reasoningSheet != nil }, set: { v in if !v { reasoningSheet = nil } })) {
                     reasoningDetailSheet
                 }
@@ -641,6 +650,17 @@ struct AcpThreadView: View {
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) { proxy.scrollTo("bottom", anchor: .bottom) }
+        }
+    }
+
+    func scrollToTop(_ proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            var tx = Transaction(); tx.disablesAnimations = true
+            withTransaction(tx) { proxy.scrollTo("top", anchor: .top) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            var tx = Transaction(); tx.disablesAnimations = true
+            withTransaction(tx) { proxy.scrollTo("top", anchor: .top) }
         }
     }
 
