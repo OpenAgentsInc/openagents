@@ -3,17 +3,12 @@ import SwiftUI
 import UIKit
 #endif
 
-/// A small floating toolbar anchored above the bottom-right corner on iPhone.
-/// - Uses Liquid Glass on supported OS versions; falls back to thin material.
-struct FloatingToolbar: View {
+/// A floating microphone button, positioned above the bottom-right compose button.
+struct FloatingMicButton: View {
     var body: some View {
         #if os(iOS)
         Group {
-            if UIDevice.current.userInterfaceIdiom == .phone {
-                content
-            } else {
-                EmptyView()
-            }
+            if UIDevice.current.userInterfaceIdiom == .phone { content } else { EmptyView() }
         }
         #else
         EmptyView()
@@ -21,16 +16,15 @@ struct FloatingToolbar: View {
     }
 
     private var content: some View {
-        // Foreground content (intrinsic size)
         let fg = HStack(spacing: 0) {
-            Button(action: {}, label: {
-                Image(systemName: "pencil")
+            Button(action: { /* TODO: voice input */ }, label: {
+                Image(systemName: "mic")
                     .renderingMode(.template)
                     .symbolRenderingMode(.monochrome)
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(Color.white)
                     .shadow(color: Color.black.opacity(0.25), radius: 0.5, x: 0, y: 0)
-                    .accessibilityLabel("New message")
+                    .accessibilityLabel("Voice input")
                     .frame(width: 36, height: 36)
             })
             .buttonStyle(.plain)
@@ -38,7 +32,6 @@ struct FloatingToolbar: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
 
-        // Apply background sized to the foreground, so it never expands to full screen
         return fg
             .background(
                 Group {
@@ -46,7 +39,7 @@ struct FloatingToolbar: View {
                         GlassEffectContainer {
                             Capsule(style: .continuous)
                                 .fill(Color.clear)
-                                .glassEffect(.clear, in: Capsule(style: .continuous))
+                                .glassEffect(.regular, in: Capsule(style: .continuous))
                         }
                     } else {
                         Capsule(style: .continuous).fill(.ultraThinMaterial)
@@ -65,13 +58,7 @@ struct FloatingToolbar: View {
             .contentShape(Capsule(style: .continuous))
             .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 8)
             .padding(.trailing, 14)
-            .padding(.bottom, 18)
+            .padding(.bottom, 68) // place above the compose button (which uses 18)
     }
 }
 
-#Preview {
-    ZStack(alignment: .bottomTrailing) {
-        OATheme.Colors.background.ignoresSafeArea()
-        FloatingToolbar()
-    }
-}
