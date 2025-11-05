@@ -2,11 +2,14 @@ import Foundation
 
 enum Features {
     /// Enable Claude Code history loading
-    /// - Defaults to false.
-    /// - Can be enabled by setting env `OPENAGENTS_ENABLE_CLAUDE=1` or `UserDefaults` key `enable_claude = true`.
+    /// - Defaults to true.
+    /// - Can be disabled by setting env `OPENAGENTS_ENABLE_CLAUDE=0` or `UserDefaults` key `enable_claude = false`.
     static var claudeEnabled: Bool {
-        if ProcessInfo.processInfo.environment["OPENAGENTS_ENABLE_CLAUDE"] == "1" { return true }
-        return UserDefaults.standard.bool(forKey: "enable_claude")
+        if ProcessInfo.processInfo.environment["OPENAGENTS_ENABLE_CLAUDE"] == "0" { return false }
+        if UserDefaults.standard.object(forKey: "enable_claude") != nil {
+            return UserDefaults.standard.bool(forKey: "enable_claude")
+        }
+        return true // Default to enabled
     }
 
     /// Show raw provider JSON/event blobs (including tool args/results pretty JSON).
