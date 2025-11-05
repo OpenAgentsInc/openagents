@@ -250,6 +250,10 @@ public final class MobileWebSocketClient {
                     let s = String(data: payload, encoding: .utf8) ?? ""
                     let preview = Self.truncatePreview(s)
                     print("[Bridge][client] <- notify method=\(method) bytes=\(payload.count) preview=\(preview)")
+                    // Pretty-print small JSON payloads for Xcode logs
+                    if payload.count <= 12_000, let obj = try? JSONSerialization.jsonObject(with: payload), let pp = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]), let pps = String(data: pp, encoding: .utf8) {
+                        print("[Bridge][client] pretty params:\n\(pps)")
+                    }
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
@@ -260,6 +264,9 @@ public final class MobileWebSocketClient {
                     let s = String(data: payload, encoding: .utf8) ?? ""
                     let preview = Self.truncatePreview(s)
                     print("[Bridge][client] <- notify method=\(method) bytes=\(payload.count) preview=\(preview)")
+                    if payload.count <= 12_000, let obj = try? JSONSerialization.jsonObject(with: payload), let pp = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]), let pps = String(data: pp, encoding: .utf8) {
+                        print("[Bridge][client] pretty params:\n\(pps)")
+                    }
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
@@ -295,6 +302,9 @@ public final class MobileWebSocketClient {
             let bytes = text.utf8.count
             let preview = Self.truncatePreview(text)
             print("[Bridge][client] <- result id=\(idStr) bytes=\(bytes) preview=\(preview)")
+            if let pp = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]), pp.count <= 20_000, let pps = String(data: pp, encoding: .utf8) {
+                print("[Bridge][client] pretty result:\n\(pps)")
+            }
             if let handler = pending.removeValue(forKey: idStr),
                let d = try? JSONSerialization.data(withJSONObject: result) {
                 handler(d)

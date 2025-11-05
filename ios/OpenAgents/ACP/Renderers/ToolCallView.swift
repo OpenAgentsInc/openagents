@@ -42,7 +42,8 @@ private func prettyJSON(_ v: JSONValue) throws -> String {
 private func prettyShellCommand(call: ACPToolCall) -> String? {
     let name = call.tool_name.lowercased()
     guard name == "shell" || name.hasSuffix(".shell") else { return nil }
-    guard let parts = parseCommandArray(from: call.arguments) else { return nil }
+    let args = unwrapArgumentsJSON(call.arguments)
+    guard let parts = parseCommandArray(from: args) else { return nil }
     if parts.count >= 3 && parts[0] == "bash" && parts[1] == "-lc" {
         return parts[2]
     }
@@ -65,6 +66,16 @@ private func parseCommandArray(from args: JSONValue) -> [String]? {
                 default: return nil
                 }
             }
+        } else if case let .string(s)? = obj["arguments"],
+                  let data = s.data(using: .utf8),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let arr = dict["command"] as? [Any] {
+            return arr.compactMap { a in
+                if let s = a as? String { return s }
+                if let n = a as? NSNumber { return n.stringValue }
+                if let b = a as? Bool { return b ? "true" : "false" }
+                return nil
+            }
         }
         return nil
     case .string(let s):
@@ -81,4 +92,20 @@ private func parseCommandArray(from args: JSONValue) -> [String]? {
     default:
         return nil
     }
+}
+
+private func unwrapArgumentsJSON(_ v: JSONValue) -> JSONValue {
+    if case .object(let obj) = v, let inner = obj["arguments"], case .string(let s) = inner {
+        if let data = s.data(using: .utf8),
+           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            var out: [String: JSONValue] = [:]
+            for (k, val) in dict {
+                if let sv = val as? String { out[k] = .string(sv) }
+                else if let n = val as? NSNumber { out[k] = .number(n.doubleValue) }
+                else if let b = val as? Bool { out[k] = .bool(b) }
+            }
+            return .object(out)
+        }
+    }
+    return v
 }
