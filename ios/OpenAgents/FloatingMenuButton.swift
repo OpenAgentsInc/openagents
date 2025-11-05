@@ -40,7 +40,7 @@ struct FloatingMenuButton: View {
                         GlassEffectContainer {
                             Capsule(style: .continuous)
                                 .fill(Color.clear)
-                                .glassEffect(.regular, in: Capsule(style: .continuous))
+                                .glassEffect(.clear, in: Capsule(style: .continuous))
                         }
                     } else {
                         Capsule(style: .continuous).fill(.ultraThinMaterial)
@@ -58,8 +58,7 @@ struct FloatingMenuButton: View {
             .clipShape(Capsule(style: .continuous))
             .contentShape(Capsule(style: .continuous))
             .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
-            .padding(.leading, 14)
+            .padding(.trailing, 14)
             .padding(.top, 14)
     }
 }
-

@@ -39,3 +39,7 @@ Why this works
 
 See `ios/OpenAgents/FloatingToolbar.swift` and `FloatingMenuButton.swift` for full implementations.
 
+Multi-action capsule
+
+- You can place multiple icon buttons inside the same capsule by increasing the HStack spacing slightly (e.g., 6) and keeping each icon framed to a square hit area (e.g., 36×36). The foreground stays on top of the glass background.
+- Example adds a second `mic` button next to the compose button while keeping the same glass background sizing.
