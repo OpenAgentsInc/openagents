@@ -43,6 +43,10 @@ struct AcpThreadView: View {
 
     @State private var timeline: [TimelineItem] = []
     @State private var threadTitle: String? = nil
+    // Track recent texts to avoid duplicates across non-consecutive items
+    @State private var seenAssistantMessageTexts: Set<String> = []
+    @State private var seenUserMessageTexts: Set<String> = []
+    @State private var seenReasoningTexts: Set<String> = []
 
     var body: some View {
         return ZStack {
@@ -299,11 +303,8 @@ struct AcpThreadView: View {
         case .userMessageChunk(let chunk):
             if case let .text(s) = chunk.content {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if case let .message(prevMsg)? = timeline.last,
-                   prevMsg.role == .user,
-                   prevMsg.parts.compactMap({ if case let .text(t) = $0 { t.text } else { nil } }).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) == newText {
-                    // skip duplicate
-                } else {
+                if !seenUserMessageTexts.contains(newText) {
+                    seenUserMessageTexts.insert(newText)
                     let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: newText))], ts: nowMs())
                     timeline.append(.message(m))
                 }
@@ -312,11 +313,8 @@ struct AcpThreadView: View {
             switch chunk.content {
             case let .text(s):
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if case let .message(prevMsg)? = timeline.last,
-                   prevMsg.role == .assistant,
-                   prevMsg.parts.compactMap({ if case let .text(t) = $0 { t.text } else { nil } }).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) == newText {
-                    // skip duplicate
-                } else {
+                if !seenAssistantMessageTexts.contains(newText) {
+                    seenAssistantMessageTexts.insert(newText)
                     let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: nowMs())
                     timeline.append(.message(m))
                 }
@@ -334,10 +332,8 @@ struct AcpThreadView: View {
         case .agentThoughtChunk(let chunk):
             if case let .text(s) = chunk.content {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if case let .reasoning(prevMsg)? = timeline.last,
-                   prevMsg.parts.compactMap({ if case let .text(t) = $0 { t.text } else { nil } }).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) == newText {
-                    // skip duplicate
-                } else {
+                if !seenReasoningTexts.contains(newText) {
+                    seenReasoningTexts.insert(newText)
                     let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: nowMs())
                     timeline.append(.reasoning(m))
                 }
@@ -400,6 +396,9 @@ private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [S
 // Returns computed items and a derived thread title. Runs on any queue.
 private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) -> ([AcpThreadView.TimelineItem], String?) {
     var items: [AcpThreadView.TimelineItem] = []
+    var seenAssistant: Set<String> = []
+    var seenUser: Set<String> = []
+    var seenReasoning: Set<String> = []
     for line in lines {
         // Hide low-signal provider-native events
         if AcpThreadView_shouldHideLine(line) { continue }
@@ -411,17 +410,15 @@ private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, ca
             if !ConversationSummarizer.isSystemPreface(text) {
                 if AcpThreadView_isReasoningLine(line) {
                     let newText = text
-                    if case let .reasoning(prevMsg)? = items.last,
-                       prevMsg.parts.compactMap({ if case let .text(t) = $0 { t.text } else { nil } }).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) == newText {
-                        // skip duplicate
-                    } else {
+                    if !seenReasoning.contains(newText) {
+                        seenReasoning.insert(newText)
                         items.append(.reasoning(m))
                     }
                 } else {
-                    // De-dup exact consecutive assistant/user messages by text
-                    if case let .message(prevMsg)? = items.last,
-                       prevMsg.parts.compactMap({ if case let .text(t) = $0 { t.text } else { nil } }).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) == text {
-                        // skip duplicate
+                    if m.role == .assistant {
+                        if !seenAssistant.contains(text) { seenAssistant.insert(text); items.append(.message(m)) }
+                    } else if m.role == .user {
+                        if !seenUser.contains(text) { seenUser.insert(text); items.append(.message(m)) }
                     } else {
                         items.append(.message(m))
                     }
