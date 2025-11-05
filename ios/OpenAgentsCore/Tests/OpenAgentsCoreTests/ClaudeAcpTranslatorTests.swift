@@ -12,7 +12,7 @@ final class ClaudeAcpTranslatorTests: XCTestCase {
             """
         ]
 
-        let thread = ClaudeAcpTranslator.translateLines(lines, options: .init(sourceId": "test"))
+        let thread = ClaudeAcpTranslator.translateLines(lines, options: .init(sourceId: "test"))
 
         XCTAssertEqual(thread.id, "test-123")
         XCTAssertEqual(thread.source, "claude-code")
