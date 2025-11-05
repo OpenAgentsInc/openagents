@@ -22,7 +22,11 @@ struct AcpThreadView: View {
         var id: String {
             switch self {
             case .message(let m): return "msg_\(m.id)"
-            case .reasoning(let m): return "reason_\(m.id)"
+            case .reasoning(let m):
+                let text = m.parts.compactMap { part -> String? in
+                    if case let .text(t) = part { return t.text } else { return nil }
+                }.joined()
+                return "reason_\(m.id)_\(m.ts)_\(text.hashValue)"
             case .toolCall(let c): return "call_\(c.id)"
             case .toolResult(let r): return "res_\(r.call_id)\(r.ts ?? 0)"
             case .plan(let p): return "plan_\(p.ts ?? 0)"
@@ -332,11 +336,8 @@ struct AcpThreadView: View {
         case .agentThoughtChunk(let chunk):
             if case let .text(s) = chunk.content {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !seenReasoningTexts.contains(newText) {
-                    seenReasoningTexts.insert(newText)
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: nowMs())
-                    timeline.append(.reasoning(m))
-                }
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: nowMs())
+                timeline.append(.reasoning(m))
             }
         case .plan(let p):
             let ps = ACPPlanState(status: .running, summary: nil, steps: p.entries.map { $0.content }, ts: nowMs())
@@ -409,9 +410,11 @@ private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, ca
             }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
             if !ConversationSummarizer.isSystemPreface(text) {
                 if AcpThreadView_isReasoningLine(line) {
-                    let newText = text
-                    if !seenReasoning.contains(newText) {
-                        seenReasoning.insert(newText)
+                    // Avoid collapsing distinct reasoning chunks that share similar text
+                    // Use a composite key of text and message timestamp
+                    let key = "\(text)|\(m.ts)"
+                    if !seenReasoning.contains(key) {
+                        seenReasoning.insert(key)
                         items.append(.reasoning(m))
                     }
                 } else {
