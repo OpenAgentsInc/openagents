@@ -23,5 +23,20 @@ final class TimelineTests: XCTestCase {
         }
         XCTAssertTrue(found, "Did not find reasoning summary in timeline")
     }
-}
 
+    func testISOTimeFallbackForZeroTs() throws {
+        // user with ISO timestamp, reasoning with ISO, assistant with ISO
+        let user = #"{"timestamp":"2025-11-05T07:09:00Z","item":{"role":"user","type":"message","text":"Q"}}"#
+        let think = #"{"timestamp":"2025-11-05T07:09:10Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Title**\nthinking..."}}"#
+        let assistant = #"{"timestamp":"2025-11-05T07:09:20Z","item":{"role":"assistant","type":"message","text":"A"}}"#
+        let (items, _) = AcpThreadView_computeTimeline(lines: [user, think, assistant], sourceId: "test", cap: 100)
+        var secsFound: Int? = nil
+        for item in items {
+            if case .reasoningSummary(let rs) = item {
+                secsFound = Int((rs.endTs - rs.startTs) / 1000)
+                break
+            }
+        }
+        XCTAssertEqual(secsFound, 20, "Expected 20s using ISO timestamps fallback")
+    }
+}

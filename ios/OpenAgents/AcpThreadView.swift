@@ -468,6 +468,10 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
         let start = prevTs ?? reasoningBuffer.first?.ts ?? nextTs
         let rs = AcpThreadView.ReasoningSummary(startTs: start, endTs: nextTs, messages: reasoningBuffer)
         items.append(.reasoningSummary(rs))
+#if DEBUG
+        let secs = max(0, Int((nextTs - start) / 1000))
+        print("[timeline] reasoning summary start=\(start) end=\(nextTs) secs=\(secs) count=\(reasoningBuffer.count)")
+#endif
         reasoningBuffer.removeAll()
     }
 
@@ -481,16 +485,22 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
             }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 
             if AcpThreadView_isReasoningLine(line) {
-                reasoningBuffer.append(m)
+                var msg = m
+                if msg.ts == 0 {
+                    msg.ts = resolveTsMs(fromLine: line) ?? 0
+                }
+                reasoningBuffer.append(msg)
                 continue
             }
 
             // Non-reasoning message
             if !ConversationSummarizer.isSystemPreface(text) {
                 // Any pending reasoning attaches before this message
-                flushReasoningBuffer(nextTs: m.ts, prevTs: lastNonReasoningTs)
-                lastMessageTs = m.ts
-                lastNonReasoningTs = m.ts
+                var ts = m.ts
+                if ts == 0 { ts = resolveTsMs(fromLine: line) ?? 0 }
+                flushReasoningBuffer(nextTs: ts, prevTs: lastNonReasoningTs)
+                lastMessageTs = ts
+                lastNonReasoningTs = ts
                 if m.role == .assistant {
                     if !seenAssistant.contains(text) { seenAssistant.insert(text); items.append(.message(m)) }
                 } else if m.role == .user {
@@ -511,7 +521,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 
         // At end of input, if last lines were reasoning, flush using lastMessageTs (or own ts)
         if idx == lines.count - 1 && !reasoningBuffer.isEmpty {
-            let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? lastMessageTs)
+            let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? (resolveTsMs(fromLine: line) ?? lastMessageTs))
             flushReasoningBuffer(nextTs: endTs, prevTs: lastNonReasoningTs)
         }
     }
@@ -539,6 +549,27 @@ private func AcpThreadView_isReasoningLine(_ line: String) -> Bool {
        ((item["type"] as? String) ?? "").lowercased() == "agent_reasoning" { return true }
     if type == "response_item", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "reasoning" { return true }
     return false
+}
+
+private func resolveTsMs(fromLine line: String) -> Int64? {
+    guard let data = line.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+    // numeric ts at root
+    if let n = obj["ts"] as? NSNumber { return n.int64Value }
+    if let d = extractISO(obj["timestamp"]) { return d }
+    // nested payload
+    if let p = obj["payload"] as? [String: Any] {
+        if let n = p["ts"] as? NSNumber { return n.int64Value }
+        if let d = extractISO(p["timestamp"]) { return d }
+    }
+    return nil
+}
+
+private func extractISO(_ any: Any?) -> Int64? {
+    guard let s = any as? String else { return nil }
+    let fmt = ISO8601DateFormatter()
+    if let date = fmt.date(from: s) { return Int64(date.timeIntervalSince1970 * 1000) }
+    return nil
 }
 
 //#Preview {
