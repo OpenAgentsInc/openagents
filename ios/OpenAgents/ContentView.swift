@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var selectedRow: LocalThreadSummary? = nil
     @State private var selectedURL: URL? = nil
     @State private var toolbarTitle: String = ""
+    @State private var showTabsDemo: Bool = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -50,7 +51,26 @@ struct ContentView: View {
             FloatingMicButton()
         }
         .overlay(alignment: .topTrailing) {
-            FloatingMenuButton()
+            FloatingMenuButton(onTap: { showTabsDemo = true })
+        }
+        #endif
+        // Present Chat Tabs demo from menu button
+        #if os(iOS)
+        .sheet(isPresented: $showTabsDemo) {
+            if #available(iOS 26, *) {
+                ChatTabsDemo()
+                    .preferredColorScheme(.dark)
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 28, weight: .regular))
+                    Text("Tabs demo requires iOS 26+")
+                        .font(.headline)
+                    Button("Close") { showTabsDemo = false }
+                        .padding(.top, 8)
+                }
+                .padding(24)
+            }
         }
         #endif
         #if os(iOS)
