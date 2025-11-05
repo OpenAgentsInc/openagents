@@ -160,10 +160,7 @@ struct AcpThreadView: View {
         case .reasoningSummary(let rs):
             let secs = max(0, Int((rs.endTs - rs.startTs) / 1000))
             Button(action: { reasoningSheet = rs.messages }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "brain.head.profile").font(.footnote)
-                    Text("Thought for \(secs)s").font(.footnote)
-                }
+                Text("Thought for \(secs)s").font(.footnote)
                 .foregroundStyle(OATheme.Colors.textSecondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -441,25 +438,19 @@ struct AcpThreadView: View {
         case .userMessageChunk(let chunk):
             if case let .text(s) = chunk.content {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !seenUserMessageTexts.contains(newText) {
-                    seenUserMessageTexts.insert(newText)
-                    let now = nowMs()
-                    flushPendingReasoning(endMs: now)
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: newText))], ts: now)
-                    timeline.append(.message(m))
-                }
+                let now = nowMs()
+                flushPendingReasoning(endMs: now)
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .user, parts: [.text(ACPText(text: newText))], ts: now)
+                timeline.append(.message(m))
             }
         case .agentMessageChunk(let chunk):
             switch chunk.content {
             case let .text(s):
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !seenAssistantMessageTexts.contains(newText) {
-                    seenAssistantMessageTexts.insert(newText)
-                    let now = nowMs()
-                    flushPendingReasoning(endMs: now)
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
-                    timeline.append(.message(m))
-                }
+                let now = nowMs()
+                flushPendingReasoning(endMs: now)
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
+                timeline.append(.message(m))
             case let .resource_link(link):
                 let s = "\(link.title ?? "Link") — \(link.uri)"
                 let now = nowMs()
@@ -598,13 +589,7 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
                 flushReasoningBuffer(nextTs: ts, prevTs: lastNonReasoningTs)
                 lastMessageTs = ts
                 lastNonReasoningTs = ts
-                if m.role == .assistant {
-                    if !seenAssistant.contains(text) { seenAssistant.insert(text); items.append(.message(m)) }
-                } else if m.role == .user {
-                    if !seenUser.contains(text) { seenUser.insert(text); items.append(.message(m)) }
-                } else {
-                    items.append(.message(m))
-                }
+                items.append(.message(m))
                 continue
             }
         } else if let c = t.events.compactMap({ $0.tool_call }).first {
