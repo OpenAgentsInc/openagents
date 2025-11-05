@@ -101,7 +101,7 @@ public enum ClaudeAcpTranslator {
                             touchTs(ts)
                             let mid = ACPId.stableId(namespace: "claude-msg:\(options.sourceId)", seed: "think:\(nextSeq)")
                             let msg = ACPMessage(id: mid, thread_id: threadId, role: .assistant, parts: parts, ts: ts)
-                            events.append(ACPEvent(id: nextEventId(), ts: ts, message: msg, isReasoning: true))
+                            events.append(ACPEvent(id: nextEventId(), ts: ts, message: msg))
                         }
 
                     case "text":
@@ -143,7 +143,6 @@ public enum ClaudeAcpTranslator {
         return ACPThread(
             id: tid,
             title: threadTitle,
-            source: "claude-code",
             created_at: created,
             updated_at: updated,
             events: events
@@ -177,18 +176,5 @@ public enum ClaudeAcpTranslator {
 private extension NSNumber {
     var isBool: Bool {
         return String(cString: self.objCType) == "c"
-    }
-}
-
-// Extension to ACPEvent to track reasoning
-extension ACPEvent {
-    init(id: String, ts: Int64, message: ACPMessage? = nil, tool_call: ACPToolCall? = nil, tool_result: ACPToolResult? = nil, plan_state: ACPPlanState? = nil, isReasoning: Bool = false) {
-        self.id = id
-        self.ts = ts
-        self.message = message
-        self.tool_call = tool_call
-        self.tool_result = tool_result
-        self.plan_state = plan_state
-        // Note: isReasoning flag could be added to ACPEvent if needed for UI filtering
     }
 }

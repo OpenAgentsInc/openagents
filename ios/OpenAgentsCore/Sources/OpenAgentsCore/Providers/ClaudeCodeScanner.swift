@@ -60,7 +60,6 @@ public enum ClaudeCodeScanner {
         let updated = fileMTime(url)
         let lastTs = tailLastMessageTs(url) ?? updated
         let title = quickTitle(for: url)
-        let projectPath = extractProjectPath(url, base: base)
 
         return ThreadSummary(
             id: id,
@@ -69,8 +68,7 @@ public enum ClaudeCodeScanner {
             created_at: nil,
             updated_at: updated,
             last_message_ts: lastTs,
-            message_count: nil,
-            project_path: projectPath
+            message_count: nil
         )
     }
 
@@ -147,8 +145,8 @@ public enum ClaudeCodeScanner {
         return nil
     }
 
-    /// Get timestamp of last message
-    private static func tailLastMessageTs(_ url: URL) -> TimeInterval? {
+    /// Get timestamp of last message (milliseconds since epoch)
+    private static func tailLastMessageTs(_ url: URL) -> Int64? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
 
@@ -168,7 +166,7 @@ public enum ClaudeCodeScanner {
             if let data = line.data(using: .utf8),
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let timestamp = obj["timestamp"] as? Double {
-                return timestamp / 1000.0 // Convert ms to seconds
+                return Int64(timestamp) // Claude Code timestamps are already in ms
             }
         }
         return nil
@@ -184,17 +182,10 @@ public enum ClaudeCodeScanner {
         return rel
     }
 
-    /// Get file modification time as TimeInterval (seconds since epoch)
-    private static func fileMTime(_ url: URL) -> TimeInterval {
+    /// Get file modification time as Int64 (milliseconds since epoch)
+    private static func fileMTime(_ url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-        return values?.contentModificationDate?.timeIntervalSince1970 ?? 0
-    }
-}
-
-// Extension to ThreadSummary for project path
-extension ThreadSummary {
-    var project_path: String? {
-        get { return nil } // placeholder
-        set { }
+        let timeInterval = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+        return Int64(timeInterval * 1000) // Convert seconds to milliseconds
     }
 }
