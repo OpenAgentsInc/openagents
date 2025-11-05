@@ -160,10 +160,39 @@ struct AcpThreadView: View {
         case .reasoningSummary(let rs):
             let secs = max(0, Int((rs.endTs - rs.startTs) / 1000))
             Button(action: { reasoningSheet = rs.messages }) {
-                Text("Thought for \(secs)s")
-                    .font(.footnote)
-                    .foregroundStyle(OATheme.Colors.textSecondary.opacity(0.8))
-                    .padding(.vertical, 2)
+                HStack(spacing: 6) {
+                    Image(systemName: "brain.head.profile").font(.footnote)
+                    Text("Thought for \(secs)s").font(.footnote)
+                }
+                .foregroundStyle(OATheme.Colors.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Group {
+                        #if os(iOS)
+                        if #available(iOS 26, *) {
+                            GlassEffectContainer {
+                                Capsule(style: .continuous)
+                                    .fill(Color.clear)
+                                    .glassEffect(.regular, in: Capsule(style: .continuous))
+                            }
+                        } else {
+                            Capsule(style: .continuous).fill(.ultraThinMaterial)
+                        }
+                        #else
+                        Capsule(style: .continuous).fill(.regularMaterial)
+                        #endif
+                    }
+                )
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(LinearGradient(colors: [Color.black.opacity(0.14), Color.black.opacity(0.05)], startPoint: .top, endPoint: .bottom))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(OATheme.Colors.border.opacity(0.6), lineWidth: 1)
+                )
+                .clipShape(Capsule(style: .continuous))
             }
         case .reasoning:
             EmptyView()
