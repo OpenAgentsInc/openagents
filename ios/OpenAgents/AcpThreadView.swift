@@ -204,7 +204,7 @@ struct AcpThreadView: View {
                         let m = messages[idx]
                         ForEach(Array(m.parts.enumerated()), id: \.0) { p in
                             if case let .text(t) = m.parts[p.0] {
-                                Text(t.text)
+                                markdownText(t.text)
                                     .font(OAFonts.ui(.body, 14))
                                     .foregroundStyle(OATheme.Colors.textPrimary)
                                     .textSelection(.enabled)
