@@ -118,7 +118,8 @@ extension BridgeManager: MobileWebSocketClientDelegate {
         log("client", "Connected; requesting latest thread")
         if let h = currentHost, let p = currentPort { status = .connected(host: h, port: p) }
         // Load the latest thread lines for mobile
-        client.sendJSONRPC(method: "thread/load_latest", params: Empty(), id: "thread-load-latest-1") { (resp: LatestThreadResult?) in
+        struct LatestThreadParams: Codable { let limit_lines: Int?; let max_bytes: Int? }
+        client.sendJSONRPC(method: "thread/load_latest", params: LatestThreadParams(limit_lines: 16000, max_bytes: 1500000), id: "thread-load-latest-1") { (resp: LatestThreadResult?) in
             guard let resp = resp else { return }
             DispatchQueue.main.async { [weak self] in
                 self?.latestLines = resp.lines

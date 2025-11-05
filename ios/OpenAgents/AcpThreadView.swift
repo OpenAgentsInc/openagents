@@ -570,8 +570,11 @@ struct AcpThreadView: View {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
         let t = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
         if t == "turn_context" { return true }
-        if t == "event_msg",
-           let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "token_count" { return true }
+        if t == "event_msg", let p = obj["payload"] as? [String: Any] {
+            let pt = ((p["type"] as? String) ?? "").lowercased()
+            if pt == "token_count" { return true }
+            if pt == "session_meta" { return true }
+        }
         return false
     }
 
@@ -845,8 +848,11 @@ private func AcpThreadView_shouldHideLine(_ line: String) -> Bool {
           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
     let t = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
     if t == "turn_context" { return true }
-    if t == "event_msg",
-       let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "token_count" { return true }
+    if t == "event_msg", let p = obj["payload"] as? [String: Any] {
+        let pt = ((p["type"] as? String) ?? "").lowercased()
+        if pt == "token_count" { return true }
+        if pt == "session_meta" { return true }
+    }
     return false
 }
 private func AcpThreadView_isReasoningLine(_ line: String) -> Bool {
