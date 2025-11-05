@@ -94,6 +94,7 @@ struct AcpThreadView: View {
     @State private var initialMetaLines: [String] = []
     @State private var infoSheet: [String]? = nil
     @State private var messageDetail: ACPMessage? = nil
+    @State private var processedUpdateIds: Set<String> = []
 
     var body: some View {
         ZStack {
@@ -130,6 +131,10 @@ struct AcpThreadView: View {
             if timeline.isEmpty, !bridge.updates.isEmpty {
                 let snapshot = bridge.updates
                 isLoading = true
+                processedUpdateIds.removeAll()
+                for note in snapshot {
+                    processedUpdateIds.insert(updateId(note))
+                }
                 DispatchQueue.global(qos: .userInitiated).async {
                     let (items, title) = AcpThreadView_computeTimelineFromUpdates(updates: snapshot, cap: maxMessages)
                     DispatchQueue.main.async {
@@ -139,8 +144,22 @@ struct AcpThreadView: View {
                         self.isLoading = false
                     }
                 }
-            } else if let last = bridge.updates.last {
-                appendUpdate(last)
+            } else {
+                // Process new updates, skipping ones we've already seen
+                for note in bridge.updates {
+                    let id = updateId(note)
+                    if !processedUpdateIds.contains(id) {
+                        appendUpdate(note)
+                        processedUpdateIds.insert(id)
+                        // Keep set bounded to avoid unbounded growth
+                        if processedUpdateIds.count > 500 {
+                            processedUpdateIds.removeAll()
+                            for n in bridge.updates {
+                                processedUpdateIds.insert(updateId(n))
+                            }
+                        }
+                    }
+                }
             }
         }
         #endif
@@ -901,6 +920,17 @@ struct AcpThreadView: View {
     #endif
 
     func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+
+    // Generate a unique ID for an update by hashing its key properties
+    private func updateId(_ note: ACP.Client.SessionNotificationWire) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        if let data = try? encoder.encode(note), let json = String(data: data, encoding: .utf8) {
+            return String(json.hashValue)
+        }
+        // Fallback: use timestamp + update type
+        return "\(nowMs())_\(String(describing: note.update))"
+    }
 
     private func flushPendingReasoning(endMs: Int64) {
         guard !pendingReasoning.isEmpty else { return }
