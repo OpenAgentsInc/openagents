@@ -455,16 +455,17 @@ private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [S
 
 // MARK: - Timeline compute (pure function)
 // Returns computed items and a derived thread title. Runs on any queue.
-private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) -> ([AcpThreadView.TimelineItem], String?) {
+func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) -> ([AcpThreadView.TimelineItem], String?) {
     var items: [AcpThreadView.TimelineItem] = []
     var seenAssistant: Set<String> = []
     var seenUser: Set<String> = []
     var reasoningBuffer: [ACPMessage] = []
     var lastMessageTs: Int64 = 0
+    var lastNonReasoningTs: Int64? = nil
 
-    func flushReasoningBuffer(nextTs: Int64) {
+    func flushReasoningBuffer(nextTs: Int64, prevTs: Int64?) {
         guard !reasoningBuffer.isEmpty else { return }
-        let start = reasoningBuffer.first?.ts ?? nextTs
+        let start = prevTs ?? reasoningBuffer.first?.ts ?? nextTs
         let rs = AcpThreadView.ReasoningSummary(startTs: start, endTs: nextTs, messages: reasoningBuffer)
         items.append(.reasoningSummary(rs))
         reasoningBuffer.removeAll()
@@ -487,8 +488,9 @@ private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, ca
             // Non-reasoning message
             if !ConversationSummarizer.isSystemPreface(text) {
                 // Any pending reasoning attaches before this message
-                flushReasoningBuffer(nextTs: m.ts)
+                flushReasoningBuffer(nextTs: m.ts, prevTs: lastNonReasoningTs)
                 lastMessageTs = m.ts
+                lastNonReasoningTs = m.ts
                 if m.role == .assistant {
                     if !seenAssistant.contains(text) { seenAssistant.insert(text); items.append(.message(m)) }
                 } else if m.role == .user {
@@ -510,7 +512,7 @@ private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, ca
         // At end of input, if last lines were reasoning, flush using lastMessageTs (or own ts)
         if idx == lines.count - 1 && !reasoningBuffer.isEmpty {
             let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? lastMessageTs)
-            flushReasoningBuffer(nextTs: endTs)
+            flushReasoningBuffer(nextTs: endTs, prevTs: lastNonReasoningTs)
         }
     }
     if items.count > cap { items = Array(items.suffix(cap)) }
