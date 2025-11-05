@@ -43,6 +43,7 @@ struct AcpThreadView: View {
             switch self {
             case .message(let m): return m.ts
             case .reasoning(let m): return m.ts
+            case .reasoningSummary(let rs): return rs.endTs
             case .toolCall(let c): return c.ts ?? 0
             case .toolResult(let r): return r.ts ?? 0
             case .plan(let p): return p.ts ?? 0
@@ -472,7 +473,7 @@ private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, ca
     func flushReasoningBuffer(nextTs: Int64) {
         guard !reasoningBuffer.isEmpty else { return }
         let start = reasoningBuffer.first?.ts ?? nextTs
-        let rs = ReasoningSummary(startTs: start, endTs: nextTs, messages: reasoningBuffer)
+        let rs = AcpThreadView.ReasoningSummary(startTs: start, endTs: nextTs, messages: reasoningBuffer)
         items.append(.reasoningSummary(rs))
         reasoningBuffer.removeAll()
     }
