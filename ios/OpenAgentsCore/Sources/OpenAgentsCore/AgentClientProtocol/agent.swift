@@ -138,10 +138,77 @@ public extension ACP.Agent {
 // MARK: - Lightweight AnyEncodable for metadata
 
 public struct AnyEncodable: Codable {
-    private let _encode: (Encoder) throws -> Void
-    public init<T: Encodable>(_ value: T) { self._encode = value.encode }
-    public init(from decoder: Decoder) throws { self._encode = { _ in } }
-    public func encode(to encoder: Encoder) throws { try _encode(encoder) }
+    private enum Storage {
+        case null
+        case bool(Bool)
+        case int(Int)
+        case double(Double)
+        case string(String)
+        case array([AnyEncodable])
+        case object([String: AnyEncodable])
+    }
+
+    private let storage: Storage
+
+    public init<T: Encodable>(_ value: T) {
+        // Try to unwrap common types for efficient storage
+        if let v = value as? Bool { self.storage = .bool(v) }
+        else if let v = value as? Int { self.storage = .int(v) }
+        else if let v = value as? Double { self.storage = .double(v) }
+        else if let v = value as? String { self.storage = .string(v) }
+        else if let v = value as? [AnyEncodable] { self.storage = .array(v) }
+        else if let v = value as? [String: AnyEncodable] { self.storage = .object(v) }
+        else {
+            // Fallback: encode/decode through JSON for other types
+            if let data = try? JSONEncoder().encode(value),
+               let decoded = try? JSONDecoder().decode(AnyEncodable.self, from: data) {
+                self.storage = decoded.storage
+            } else {
+                self.storage = .null
+            }
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self.storage = .null
+        } else if let v = try? container.decode(Bool.self) {
+            self.storage = .bool(v)
+        } else if let v = try? container.decode(Int.self) {
+            self.storage = .int(v)
+        } else if let v = try? container.decode(Double.self) {
+            self.storage = .double(v)
+        } else if let v = try? container.decode(String.self) {
+            self.storage = .string(v)
+        } else if let v = try? container.decode([AnyEncodable].self) {
+            self.storage = .array(v)
+        } else if let v = try? container.decode([String: AnyEncodable].self) {
+            self.storage = .object(v)
+        } else {
+            self.storage = .null
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch storage {
+        case .null:
+            try container.encodeNil()
+        case .bool(let v):
+            try container.encode(v)
+        case .int(let v):
+            try container.encode(v)
+        case .double(let v):
+            try container.encode(v)
+        case .string(let v):
+            try container.encode(v)
+        case .array(let v):
+            try container.encode(v)
+        case .object(let v):
+            try container.encode(v)
+        }
+    }
 }
 
 // MARK: - Session Mode and Cancel (parity with Rust agent.rs)
