@@ -10,19 +10,19 @@ struct ToolCallView: View {
                     .imageScale(.small)
                     .foregroundStyle(OATheme.Colors.textSecondary)
                 Text("Tool: \(call.tool_name)")
-                    .font(InterFont.font(relativeTo: .subheadline, size: 13))
+                    .font(OAFonts.ui(.subheadline, 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
             }
             if let cmd = prettyShellCommand(call: call) {
                 Text(cmd)
-                    .font(InterFont.font(relativeTo: .footnote, size: 12))
+                    .font(OAFonts.ui(.footnote, 12))
                     .foregroundStyle(OATheme.Colors.textSecondary)
                     .lineLimit(1)
                     .textSelection(.enabled)
             } else if let pretty = try? prettyJSON(call.arguments) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(pretty)
-                        .font(InterFont.font(relativeTo: .footnote, size: 12))
+                        .font(OAFonts.ui(.footnote, 12))
                         .foregroundStyle(OATheme.Colors.textSecondary)
                         .textSelection(.enabled)
                 }

@@ -13,7 +13,7 @@ struct ManualConnectSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Manual Connect")
-                .font(InterFont.font(relativeTo: .headline, size: 16))
+                .font(OAFonts.ui(.headline, 16))
                 .foregroundStyle(OATheme.Colors.textPrimary)
 
             TextField("Host (e.g. 192.168.1.10)", text: $host)

@@ -105,7 +105,7 @@ struct AcpThreadView: View {
         VStack(spacing: 10) {
             ProgressView()
                     Text(statusText())
-                        .font(InterFont.font(relativeTo: .caption, size: 12))
+                        .font(OAFonts.ui(.caption, 12))
                 .foregroundStyle(OATheme.Colors.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -127,7 +127,7 @@ struct AcpThreadView: View {
                     LazyVStack(alignment: .leading, spacing: 8) {
                 if let title = threadTitle, !title.isEmpty {
                     Text(title)
-                        .font(InterFont.font(relativeTo: .headline, size: 17))
+                        .font(OAFonts.ui(.headline, 17))
                         .foregroundStyle(OATheme.Colors.textPrimary)
                 }
                         ForEach(timeline) { item in
@@ -204,7 +204,7 @@ struct AcpThreadView: View {
                         ForEach(Array(m.parts.enumerated()), id: \.0) { p in
                             if case let .text(t) = m.parts[p.0] {
                                 Text(t.text)
-                                    .font(InterFont.font(relativeTo: .body, size: 14))
+                                    .font(OAFonts.ui(.body, 14))
                                     .foregroundStyle(OATheme.Colors.textPrimary)
                                     .textSelection(.enabled)
                             }

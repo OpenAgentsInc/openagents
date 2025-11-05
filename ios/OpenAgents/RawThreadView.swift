@@ -9,15 +9,15 @@ struct RawThreadView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(u.lastPathComponent)
-                            .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
+                            .font(OAFonts.mono(.caption, 12))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         Text(truncatedText(from: u))
                             .textSelection(.enabled)
-                            .font(BerkeleyFont.font(relativeTo: .body, size: 14))
+                            .font(OAFonts.mono(.body, 14))
                             .foregroundStyle(OATheme.Colors.textPrimary)
                             .padding(.top, 2)
                         Text("(Truncated to first 1000 characters)")
-                            .font(Font.custom(BerkeleyFont.defaultName(), size: 10, relativeTo: .caption2))
+                            .font(OAFonts.mono(.caption2, 10))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                     }
                     .padding()

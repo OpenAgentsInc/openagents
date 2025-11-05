@@ -28,7 +28,7 @@ struct OpenAgentsApp: App {
         WindowGroup {
             ContentView()
                 .onAppear { _ = BerkeleyFont.registerAll(); _ = InterFont.registerAll() }
-                .environment(\.font, InterFont.font(relativeTo: .body, size: 16))
+                .environment(\.font, OAFonts.ui(.body, 16))
                 .tint(OATheme.Colors.accent)
                 .task { bridge.start() }
                 .environmentObject(bridge)

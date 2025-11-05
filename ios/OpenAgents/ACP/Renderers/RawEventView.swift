@@ -16,7 +16,7 @@ struct RawEventView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(pretty)
-                .font(BerkeleyFont.font(relativeTo: .footnote, size: 12))
+                .font(OAFonts.mono(.footnote, 12))
                 .foregroundStyle(OATheme.Colors.textTertiary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -32,4 +32,3 @@ struct RawEventView: View {
         )
     }
 }
-

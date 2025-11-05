@@ -53,14 +53,14 @@ struct GlassTerminalCard: View {
                         .imageScale(.small)
                         .foregroundStyle(OATheme.Colors.textSecondary)
                     Text(title)
-                        .font(Font.custom(BerkeleyFont.defaultName(), size: 13, relativeTo: .caption))
+                        .font(OAFonts.mono(.caption, 13))
                         .foregroundStyle(OATheme.Colors.textSecondary)
                 }
                 .padding(.bottom, 2)
 
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     Text(line)
-                        .font(Font.custom(BerkeleyFont.defaultName(), size: 14, relativeTo: .body))
+                        .font(OAFonts.mono(.body, 14))
                         .foregroundStyle(OATheme.Colors.textPrimary)
                         .textSelection(.enabled)
                 }

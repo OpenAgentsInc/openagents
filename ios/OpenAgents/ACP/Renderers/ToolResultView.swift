@@ -10,18 +10,18 @@ struct ToolResultView: View {
                     .imageScale(.small)
                     .foregroundStyle(result.ok ? OATheme.Colors.success : OATheme.Colors.danger)
                 Text(result.ok ? "Result" : "Error")
-                    .font(InterFont.font(relativeTo: .subheadline, size: 13))
+                    .font(OAFonts.ui(.subheadline, 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
             }
             if let err = result.error, !err.isEmpty {
                 Text(err)
-                    .font(InterFont.font(relativeTo: .footnote, size: 12))
+                    .font(OAFonts.ui(.footnote, 12))
                     .foregroundStyle(OATheme.Colors.danger)
             }
             if let v = result.result, let pretty = try? prettyJSON(v) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(pretty)
-                        .font(InterFont.font(relativeTo: .footnote, size: 12))
+                        .font(OAFonts.ui(.footnote, 12))
                         .foregroundStyle(OATheme.Colors.textSecondary)
                         .textSelection(.enabled)
                 }
