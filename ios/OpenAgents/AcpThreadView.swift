@@ -189,7 +189,7 @@ struct AcpThreadView: View {
                     .font(InterFont.font(relativeTo: .body, size: 14))
                     .lineLimit(isUser ? 5 : nil)
                     .truncationMode(.tail)
-                    .foregroundStyle(isUser ? OATheme.Colors.textPrimary : Color(hex: "#7A7A7A"))
+                    .foregroundStyle(isUser ? Color(hex: "#7A7A7A") : OATheme.Colors.textPrimary)
             }
         }
     }
