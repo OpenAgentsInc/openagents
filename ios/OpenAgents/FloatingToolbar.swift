@@ -22,7 +22,7 @@ struct FloatingToolbar: View {
 
     private var content: some View {
         // Foreground content (intrinsic size)
-        let fg = HStack(spacing: 0) {
+        let fg = HStack(spacing: 6) {
             Button(action: {}, label: {
                 Image(systemName: "pencil")
                     .renderingMode(.template)
@@ -31,6 +31,18 @@ struct FloatingToolbar: View {
                     .foregroundStyle(Color.white)
                     .shadow(color: Color.black.opacity(0.25), radius: 0.5, x: 0, y: 0)
                     .accessibilityLabel("New message")
+                    .frame(width: 36, height: 36)
+            })
+            .buttonStyle(.plain)
+
+            Button(action: {}, label: {
+                Image(systemName: "mic")
+                    .renderingMode(.template)
+                    .symbolRenderingMode(.monochrome)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .shadow(color: Color.black.opacity(0.25), radius: 0.5, x: 0, y: 0)
+                    .accessibilityLabel("Voice input")
                     .frame(width: 36, height: 36)
             })
             .buttonStyle(.plain)
@@ -46,7 +58,7 @@ struct FloatingToolbar: View {
                         GlassEffectContainer {
                             Capsule(style: .continuous)
                                 .fill(Color.clear)
-                                .glassEffect(.regular, in: Capsule(style: .continuous))
+                                .glassEffect(.clear, in: Capsule(style: .continuous))
                         }
                     } else {
                         Capsule(style: .continuous).fill(.ultraThinMaterial)
