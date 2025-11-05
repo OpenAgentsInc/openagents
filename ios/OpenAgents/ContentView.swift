@@ -80,7 +80,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Text(selectedRowTitle())
-                    .font(InterFont.font(relativeTo: .headline, size: 15))
+                    .font(OAFonts.ui(.headline, 15))
                     .foregroundStyle(OATheme.Colors.textPrimary)
                     .lineLimit(1)
                     .padding(.horizontal, 12)
@@ -94,7 +94,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Text(selectedRowTitle())
-                    .font(InterFont.font(relativeTo: .headline, size: 14))
+                    .font(OAFonts.ui(.headline, 14))
                     .foregroundStyle(OATheme.Colors.textPrimary)
                     .lineLimit(1)
                     .padding(.horizontal, 12)

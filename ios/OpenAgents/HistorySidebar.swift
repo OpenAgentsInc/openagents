@@ -22,7 +22,7 @@ struct HistorySidebar: View {
                 Image(systemName: "clock").imageScale(.small)
                     .foregroundStyle(OATheme.Colors.textTertiary)
                 Text("History")
-                    .font(InterFont.font(relativeTo: .caption, size: 12))
+                    .font(OAFonts.ui(.caption, 12))
                     .foregroundStyle(OATheme.Colors.textTertiary)
             }
             .listRowBackground(Color.clear)
@@ -35,14 +35,14 @@ struct HistorySidebar: View {
                     HStack {
                         ProgressView()
                         Text("Loading…")
-                            .font(InterFont.font(relativeTo: .caption, size: 12))
+                            .font(OAFonts.ui(.caption, 12))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                     }
                 }
                 if effectiveItems().isEmpty && !isLoading {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("No chats found")
-                            .font(InterFont.font(relativeTo: .caption, size: 12))
+                            .font(OAFonts.ui(.caption, 12))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         if !debugLines.isEmpty {
                             ForEach(debugLines.prefix(8), id: \.self) { line in
@@ -62,7 +62,7 @@ struct HistorySidebar: View {
                     Button(action: { onSelect?(row, pair.1) }) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(displayTitle(for: row) ?? "Thread")
-                                .font(InterFont.font(relativeTo: .body, size: 13))
+                                .font(OAFonts.ui(.body, 13))
                                 .fontWeight(isActive ? .semibold : .regular)
                                 .foregroundStyle(OATheme.Colors.textPrimary)
                                 .lineLimit(1)
@@ -70,7 +70,7 @@ struct HistorySidebar: View {
                                 if let ts = (row.last_message_ts ?? row.updated_at) as Int64? {
                                     Label(relative(ts), systemImage: "clock")
                                         .symbolRenderingMode(.monochrome)
-                                        .font(InterFont.font(relativeTo: .caption2, size: 10))
+                                        .font(OAFonts.ui(.caption2, 10))
                                         .foregroundStyle(OATheme.Colors.textTertiary)
                                 }
                             }
