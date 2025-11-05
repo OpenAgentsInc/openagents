@@ -266,10 +266,18 @@ struct AcpThreadView: View {
                         }
                     }
                 }
+                #if os(iOS)
                 .listStyle(.insetGrouped)
+                #else
+                .listStyle(.inset)
+                #endif
                 .navigationTitle("Thoughts")
                 .toolbar {
+                    #if os(iOS)
                     ToolbarItem(placement: .topBarLeading) { Button("Back") { reasoningSheet = nil } }
+                    #else
+                    ToolbarItem(placement: .navigation) { Button("Back") { reasoningSheet = nil } }
+                    #endif
                 }
             }
         }

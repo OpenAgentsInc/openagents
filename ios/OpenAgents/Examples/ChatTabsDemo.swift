@@ -1,4 +1,5 @@
 import SwiftUI
+#if os(iOS)
 
 @available(iOS 26, *)
 struct ChatTabsDemo: View {
@@ -96,3 +97,4 @@ private struct SettingsTab: View {
     ChatTabsDemo()
 }
 #endif
+ #endif // os(iOS)
