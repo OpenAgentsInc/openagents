@@ -226,7 +226,9 @@ public final class MobileWebSocketClient {
                             self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
                         }
                     } else {
-                        print("[Bridge][client] failed to decode string message: \(text)")
+                        let bytes = text.utf8.count
+                        let preview = Self.truncatePreview(text)
+                        print("[Bridge][client] failed to decode string message bytes=\(bytes) preview=\(preview)")
                     }
                 @unknown default:
                     break
@@ -238,15 +240,16 @@ public final class MobileWebSocketClient {
     }
 
     private func handleJSONRPCText(_ text: String) {
-        // Log full payload received from server
-        print("[Bridge][client] recv rpc text=\(text)")
+        // Avoid logging full payloads; summarize in per-branch handlers below
         guard let data = text.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         if let method = root["method"] as? String {
             // Notification path
             if method == ACPRPC.sessionUpdate {
                 if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
-                    if let s = String(data: payload, encoding: .utf8) { print("[Bridge][client] recv rpc notify method=\(method) text=\(s)") } else { print("[Bridge][client] recv rpc notify method=\(method) bytes=\(payload.count)") }
+                    let s = String(data: payload, encoding: .utf8) ?? ""
+                    let preview = Self.truncatePreview(s)
+                    print("[Bridge][client] <- notify method=\(method) bytes=\(payload.count) preview=\(preview)")
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
@@ -254,7 +257,9 @@ public final class MobileWebSocketClient {
                 }
             } else if root["id"] == nil {
                 if let payload = try? JSONSerialization.data(withJSONObject: root["params"] ?? [:]) {
-                    if let s = String(data: payload, encoding: .utf8) { print("[Bridge][client] recv rpc notify method=\(method) text=\(s)") } else { print("[Bridge][client] recv rpc notify method=\(method) bytes=\(payload.count)") }
+                    let s = String(data: payload, encoding: .utf8) ?? ""
+                    let preview = Self.truncatePreview(s)
+                    print("[Bridge][client] <- notify method=\(method) bytes=\(payload.count) preview=\(preview)")
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         self.delegate?.mobileWebSocketClient(self, didReceiveJSONRPCNotification: method, payload: payload)
@@ -287,12 +292,22 @@ public final class MobileWebSocketClient {
         // Response path
         if let idAny = root["id"], let result = root["result"],
            let idStr: String = (idAny as? String) ?? (idAny as? Int).map { String($0) } {
-            print("[Bridge][client] recv rpc result id=\(idStr) text=\(text)")
+            let bytes = text.utf8.count
+            let preview = Self.truncatePreview(text)
+            print("[Bridge][client] <- result id=\(idStr) bytes=\(bytes) preview=\(preview)")
             if let handler = pending.removeValue(forKey: idStr),
                let d = try? JSONSerialization.data(withJSONObject: result) {
                 handler(d)
             }
         }
+    }
+
+    private static func truncatePreview(_ s: String, limit: Int = 160) -> String {
+        if s.isEmpty { return "" }
+        let compact = s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        if compact.count <= limit { return compact }
+        let idx = compact.index(compact.startIndex, offsetBy: limit)
+        return String(compact[..<idx]) + "…"
     }
 }
 
