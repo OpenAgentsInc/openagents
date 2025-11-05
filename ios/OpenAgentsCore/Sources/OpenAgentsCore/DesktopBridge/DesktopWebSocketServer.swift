@@ -351,7 +351,8 @@ public class DesktopWebSocketServer {
                         let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
                         if let file = urls.first {
                             let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
-                            var lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 8000)
+                            // Read a larger window of lines before pruning/capping to fit mobile limits
+                            var lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 16000)
                             // Prune heavy payloads (e.g., tool results and large strings) to fit mobile WS limits
                             lines = DesktopWebSocketServer.pruneHeavyPayloads(in: lines)
                             // Keep total payload comfortably under 1MB (account for envelope overhead)
