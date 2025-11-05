@@ -79,6 +79,7 @@ public class DesktopWebSocketServer {
     private var tailTimer: DispatchSourceTimer?
     private var tailURL: URL?
     private var tailSessionId: ACPSessionId?
+    private var tailProvider: String?
     private var tailOffset: UInt64 = 0
     private var tailBuffer = Data()
 
@@ -396,34 +397,28 @@ public class DesktopWebSocketServer {
                     case "thread/load_latest_typed":
                         struct LatestTypedResult: Codable { let id: String; let updates: [ACP.Client.SessionUpdate] }
 
-                        // Check both Codex and Claude Code for most recent session
-                        let codexBase = CodexScanner.defaultBaseDir()
+                        // Load Claude Code sessions ONLY (fall back to Codex if none found)
                         let claudeBase = ClaudeCodeScanner.defaultBaseDir()
-                        let codexFiles = CodexScanner.listRecentTopN(at: codexBase, topK: 1)
                         let claudeFiles = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: 1)
 
-                        // Pick most recent by mtime
                         var file: URL?
-                        var provider: String = "codex"
-                        var base: URL = codexBase
+                        var provider: String = "claude-code"
+                        var base: URL = claudeBase
 
-                        if let cf = codexFiles.first, let clf = claudeFiles.first {
-                            // Compare mtimes
-                            let codexTime = (try? cf.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate?.timeIntervalSince1970) ?? 0
-                            let claudeTime = (try? clf.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate?.timeIntervalSince1970) ?? 0
-                            if claudeTime > codexTime {
-                                file = clf
-                                provider = "claude-code"
-                                base = claudeBase
-                            } else {
-                                file = cf
-                            }
-                        } else if let cf = codexFiles.first {
-                            file = cf
-                        } else if let clf = claudeFiles.first {
+                        if let clf = claudeFiles.first {
+                            // Use Claude Code session
                             file = clf
                             provider = "claude-code"
                             base = claudeBase
+                        } else {
+                            // Fallback to Codex only if no Claude Code sessions exist
+                            let codexBase = CodexScanner.defaultBaseDir()
+                            let codexFiles = CodexScanner.listRecentTopN(at: codexBase, topK: 1)
+                            if let cf = codexFiles.first {
+                                file = cf
+                                provider = "codex"
+                                base = codexBase
+                            }
                         }
 
                         if let file = file {
@@ -906,12 +901,39 @@ extension DesktopWebSocketServer {
     // MARK: - Live tailer
     private func startLiveTailerIfNeeded() {
         guard tailTimer == nil else { return }
-        let base = CodexScanner.defaultBaseDir()
-        let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
-        guard let file = urls.first else { return }
-        let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
+
+        // Prioritize Claude Code sessions, fall back to Codex only if none exist
+        let claudeBase = ClaudeCodeScanner.defaultBaseDir()
+        let claudeFiles = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: 1)
+
+        var file: URL?
+        var provider: String = "claude-code"
+        var base: URL = claudeBase
+        var tid: String?
+
+        if let clf = claudeFiles.first {
+            // Use Claude Code session
+            file = clf
+            provider = "claude-code"
+            base = claudeBase
+            tid = ClaudeCodeScanner.scanForSessionID(clf) ?? ClaudeCodeScanner.relativeId(for: clf, base: claudeBase)
+        } else {
+            // Fallback to Codex only if no Claude Code sessions exist
+            let codexBase = CodexScanner.defaultBaseDir()
+            let codexFiles = CodexScanner.listRecentTopN(at: codexBase, topK: 1)
+            if let cf = codexFiles.first {
+                file = cf
+                provider = "codex"
+                base = codexBase
+                tid = CodexScanner.scanForThreadID(cf) ?? CodexScanner.relativeId(for: cf, base: codexBase)
+            }
+        }
+
+        guard let file = file, let tid = tid else { return }
+
         tailURL = file
         tailSessionId = ACPSessionId(tid)
+        tailProvider = provider
         let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.uint64Value ?? 0
         tailOffset = size
         tailBuffer.removeAll(keepingCapacity: true)
@@ -921,11 +943,11 @@ extension DesktopWebSocketServer {
         timer.setEventHandler { [weak self] in self?.pollTail() }
         tailTimer = timer
         timer.resume()
-        print("[Bridge][server] tailer started file=\(file.path) session=\(tid)")
+        print("[Bridge][server] tailer started file=\(file.path) session=\(tid) provider=\(provider)")
     }
     private func stopLiveTailer() {
         tailTimer?.cancel(); tailTimer = nil
-        tailURL = nil; tailSessionId = nil; tailOffset = 0; tailBuffer.removeAll()
+        tailURL = nil; tailSessionId = nil; tailProvider = nil; tailOffset = 0; tailBuffer.removeAll()
         print("[Bridge][server] tailer stopped")
     }
     private func pollTail() {
@@ -951,7 +973,7 @@ extension DesktopWebSocketServer {
         let newLines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         tailBuffer = keepRemainder
         if newLines.isEmpty { return }
-        let updates = DesktopWebSocketServer.makeTypedUpdates(from: newLines)
+        let updates = DesktopWebSocketServer.makeTypedUpdates(from: newLines, provider: tailProvider ?? "codex")
         guard !updates.isEmpty else { return }
         for u in updates {
             let note = ACP.Client.SessionNotificationWire(session_id: sid, update: u)
