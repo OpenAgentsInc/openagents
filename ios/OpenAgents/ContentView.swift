@@ -46,6 +46,9 @@ struct ContentView: View {
         .overlay(alignment: .bottomTrailing) {
             FloatingToolbar()
         }
+        .overlay(alignment: .topLeading) {
+            FloatingMenuButton()
+        }
         #endif
         #if os(iOS)
         .toolbar(.visible, for: .navigationBar)
