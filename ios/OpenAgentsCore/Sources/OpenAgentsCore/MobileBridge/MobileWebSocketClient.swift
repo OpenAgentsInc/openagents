@@ -28,6 +28,20 @@ public final class MobileWebSocketClient {
     private var isConnected: Bool = false
     private var pending: [String: (Data) -> Void] = [:]
 
+    // Retry/reconnect configuration
+    public var maxRetryAttempts: Int = 5
+    public var initialRetryDelay: TimeInterval = 1.0
+    public var maxRetryDelay: TimeInterval = 30.0
+    public var handshakeTimeout: TimeInterval = 10.0
+    public var autoReconnect: Bool = true
+
+    // Retry state
+    private var retryCount: Int = 0
+    private var lastConnectURL: URL?
+    private var lastConnectToken: String?
+    private var handshakeTimer: Timer?
+    private var isManualDisconnect: Bool = false
+
     public init(session: URLSession = .shared) {
         self.session = session
     }
@@ -37,13 +51,28 @@ public final class MobileWebSocketClient {
     ///   - url: The WebSocket URL to connect to
     ///   - token: The authentication token to send in Hello message
     public func connect(url: URL, token: String) {
-        disconnect()
+        // Save connection parameters for retry
+        lastConnectURL = url
+        lastConnectToken = token
+        isManualDisconnect = false
+
+        // Reset retry count on new explicit connect
+        retryCount = 0
+
+        performConnect(url: url, token: token)
+    }
+
+    private func performConnect(url: URL, token: String) {
+        disconnect(error: nil, notifyDelegate: false)
 
         let request = URLRequest(url: url)
         let webSocketTask = session.webSocketTask(with: request)
         self.webSocketTask = webSocketTask
 
         webSocketTask.resume()
+
+        // Start handshake timeout
+        startHandshakeTimeout()
 
         // Send ACP initialize via JSON-RPC
         sendInitialize(expectedToken: token)
@@ -53,7 +82,7 @@ public final class MobileWebSocketClient {
     public func sendPing() {
         webSocketTask?.sendPing { [weak self] error in
             if let error = error {
-                self?.disconnect(error: error)
+                self?.disconnect(error: error, notifyDelegate: true)
             }
         }
     }
@@ -104,17 +133,70 @@ public final class MobileWebSocketClient {
 
     /// Disconnect the WebSocket connection
     public func disconnect() {
-        disconnect(error: nil)
+        isManualDisconnect = true
+        disconnect(error: nil, notifyDelegate: true)
     }
 
-    private func disconnect(error: Error?) {
+    private func disconnect(error: Error?, notifyDelegate: Bool = true) {
         isConnected = false
+        handshakeTimer?.invalidate()
+        handshakeTimer = nil
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.delegate?.mobileWebSocketClient(self, didDisconnect: error)
+
+        if notifyDelegate {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.mobileWebSocketClient(self, didDisconnect: error)
+            }
+
+            // Attempt retry if not manual disconnect and retry is enabled
+            if !isManualDisconnect && autoReconnect && error != nil {
+                scheduleReconnect()
+            }
         }
+    }
+
+    private func startHandshakeTimeout() {
+        handshakeTimer?.invalidate()
+        handshakeTimer = Timer.scheduledTimer(withTimeInterval: handshakeTimeout, repeats: false) { [weak self] _ in
+            self?.handleHandshakeTimeout()
+        }
+    }
+
+    private func handleHandshakeTimeout() {
+        guard !isConnected else { return }
+        let error = NSError(domain: "MobileWebSocketClient", code: 7, userInfo: [NSLocalizedDescriptionKey: "Handshake timeout"])
+        disconnect(error: error, notifyDelegate: true)
+    }
+
+    private func scheduleReconnect() {
+        guard let url = lastConnectURL, let token = lastConnectToken else { return }
+        guard retryCount < maxRetryAttempts else {
+            let error = NSError(domain: "MobileWebSocketClient", code: 8, userInfo: [NSLocalizedDescriptionKey: "Max retry attempts reached"])
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.mobileWebSocketClient(self, didDisconnect: error)
+            }
+            return
+        }
+
+        retryCount += 1
+        let delay = calculateBackoff(retryCount: retryCount)
+
+        print("[Bridge][client] Scheduling reconnect attempt \(retryCount)/\(maxRetryAttempts) in \(String(format: "%.1f", delay))s")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self else { return }
+            guard !self.isManualDisconnect else { return }
+            self.performConnect(url: url, token: token)
+        }
+    }
+
+    private func calculateBackoff(retryCount: Int) -> TimeInterval {
+        // Exponential backoff: initialDelay * 2^(retryCount - 1), capped at maxDelay
+        let exponential = initialRetryDelay * pow(2.0, Double(retryCount - 1))
+        return min(exponential, maxRetryDelay)
     }
 
     private func sendInitialize(expectedToken: String) {
@@ -126,12 +208,12 @@ public final class MobileWebSocketClient {
         )
         let req = JSONRPC.Request(id: JSONRPC.ID("1"), method: "initialize", params: initReq)
         guard let data = try? JSONEncoder().encode(req), let text = String(data: data, encoding: .utf8) else {
-            disconnect(error: NSError(domain: "MobileWebSocketClient", code: 4, userInfo: [NSLocalizedDescriptionKey: "Encode initialize failed"]))
+            disconnect(error: NSError(domain: "MobileWebSocketClient", code: 4, userInfo: [NSLocalizedDescriptionKey: "Encode initialize failed"]), notifyDelegate: true)
             return
         }
         print("[Bridge][client] send rpc method=initialize id=1 bytes=\(text.utf8.count)")
         webSocketTask?.send(.string(text)) { [weak self] error in
-            if let error = error { self?.disconnect(error: error); return }
+            if let error = error { self?.disconnect(error: error, notifyDelegate: true); return }
             self?.waitForInitializeResponse()
         }
     }
@@ -142,19 +224,19 @@ public final class MobileWebSocketClient {
 
             switch result {
             case .failure(let error):
-                self.disconnect(error: error)
+                self.disconnect(error: error, notifyDelegate: true)
             case .success(let message):
                 switch message {
                 case .data(let data):
                     if let text = String(data: data, encoding: .utf8) {
                         self.handleInitializeResponseText(text)
                     } else {
-                        self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 5, userInfo: [NSLocalizedDescriptionKey: "Invalid initialize response"]))
+                        self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 5, userInfo: [NSLocalizedDescriptionKey: "Invalid initialize response"]), notifyDelegate: true)
                     }
                 case .string(let text):
                     self.handleInitializeResponseText(text)
                 @unknown default:
-                    self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unknown message type"]))
+                    self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unknown message type"]), notifyDelegate: true)
                 }
             }
         }
@@ -164,6 +246,13 @@ public final class MobileWebSocketClient {
         if let data = text.data(using: .utf8) {
             // Try JSON-RPC success response for initialize
             if let resp = try? JSONDecoder().decode(JSONRPC.Response<ACP.Agent.InitializeResponse>.self, from: data), resp.result.protocol_version.hasPrefix("0.7") {
+                // Cancel handshake timeout on success
+                handshakeTimer?.invalidate()
+                handshakeTimer = nil
+
+                // Reset retry count on successful connection
+                retryCount = 0
+
                 self.isConnected = true
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
@@ -175,7 +264,7 @@ public final class MobileWebSocketClient {
             }
         }
         // If not JSON-RPC initialize response, disconnect (strict ACP handshake)
-        self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 6, userInfo: [NSLocalizedDescriptionKey: "Initialize failed: unexpected response"]))
+        self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 6, userInfo: [NSLocalizedDescriptionKey: "Initialize failed: unexpected response"]), notifyDelegate: true)
     }
 
     private func receive() {
@@ -183,7 +272,7 @@ public final class MobileWebSocketClient {
             guard let self = self else { return }
             switch result {
             case .failure(let error):
-                self.disconnect(error: error)
+                self.disconnect(error: error, notifyDelegate: true)
             case .success(let message):
                 switch message {
                 case .data(let data):
