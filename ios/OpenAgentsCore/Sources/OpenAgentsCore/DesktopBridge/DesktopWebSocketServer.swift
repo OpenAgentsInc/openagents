@@ -351,14 +351,18 @@ public class DesktopWebSocketServer {
                         let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
                         if let file = urls.first {
                             let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
-                            let lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 8000)
+                            var lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 8000)
+                            // Prune heavy payloads (e.g., tool results and large strings) to fit mobile WS limits
+                            lines = DesktopWebSocketServer.pruneHeavyPayloads(in: lines)
+                            // Keep total payload comfortably under 1MB (account for envelope overhead)
+                            lines = DesktopWebSocketServer.capTotalBytes(lines, limit: 900_000)
                             let idVal: JSONRPC.ID
                             if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
                             else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                             else { idVal = JSONRPC.ID("1") }
                             let result = LatestResult(id: tid, lines: lines)
                             if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
-                                print("[Bridge][server] send rpc result method=thread/load_latest id=\(idVal.value) text=\(jtext)")
+                                print("[Bridge][server] send rpc result method=thread/load_latest id=\(idVal.value) bytes=\(jtext.utf8.count)")
                                 client.send(text: jtext)
                             }
                         } else {
@@ -560,6 +564,135 @@ extension DesktopWebSocketServer {
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         if lines.count > maxLines { lines = Array(lines.suffix(maxLines)) }
         return lines
+    }
+
+    /// Prune oversized payloads from Codex JSONL lines before sending to mobile clients.
+    /// - Strategy:
+    ///   - For ACP `tool_result` objects, strip or summarize the `result`/`output` fields.
+    ///   - For `session/update` with `tool_call_update`, replace `output` with a short summary.
+    ///   - Cap any single string value to a reasonable length to avoid overflows.
+    ///   - Operates best‑effort; if parsing fails, returns the original line.
+    fileprivate static func pruneHeavyPayloads(in lines: [String]) -> [String] {
+        return lines.map { line in
+            guard let data = line.data(using: .utf8),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return line }
+
+            let pruned = pruneObject(obj)
+            if let out = try? JSONSerialization.data(withJSONObject: pruned, options: []),
+               let text = String(data: out, encoding: .utf8) {
+                return text
+            }
+            return line
+        }
+    }
+
+    /// Reduce the list of lines so that the total UTF‑8 byte count stays under `limit`.
+    /// Keeps the most recent lines by taking from the end.
+    fileprivate static func capTotalBytes(_ lines: [String], limit: Int) -> [String] {
+        var total = 0
+        var kept: [String] = []
+        for line in lines.reversed() {
+            let bytes = line.utf8.count + 1 // include newline/commas overhead
+            if total + bytes > limit { break }
+            total += bytes
+            kept.append(line)
+        }
+        return kept.reversed()
+    }
+
+    private static func pruneObject(_ obj: [String: Any]) -> [String: Any] {
+        var out = obj
+
+        // Handle JSON‑RPC session/update envelopes containing tool_call_update
+        if let method = out["method"] as? String, method == ACPRPC.sessionUpdate,
+           let params = out["params"] as? [String: Any] {
+            var p = params
+            if let upd = p["update"] as? [String: Any],
+               let kind = upd["sessionUpdate"] as? String, kind == "tool_call_update" {
+                if var tc = upd["tool_call_update"] as? [String: Any] {
+                    if let output = tc["output"], let s = summarize(value: output) { tc["output"] = s }
+                    p["update"] = merge(upd, ["tool_call_update": tc])
+                }
+            }
+            out["params"] = pruneRecursive(p)
+            return capStrings(out)
+        }
+
+        // Generic Codex item payloads under `item`, `msg`, or `payload`
+        let keys = ["item", "msg", "payload"]
+        for k in keys {
+            if var inner = out[k] as? [String: Any] {
+                inner = pruneToolShapes(inner)
+                out[k] = pruneRecursive(inner)
+            }
+        }
+
+        return capStrings(out)
+    }
+
+    private static func pruneToolShapes(_ obj: [String: Any]) -> [String: Any] {
+        var o = obj
+        let type = (o["type"] as? String)?.lowercased()
+        if type == "tool_result" {
+            // Remove heavy result payload; keep ok/error/call_id
+            if let r = o["result"], let s = summarize(value: r) { o["result"] = s } else { o.removeValue(forKey: "result") }
+            if let outp = o["output"], let s = summarize(value: outp) { o["output"] = s }
+        }
+        if type == "tool_call_update" {
+            if var tc = o["tool_call_update"] as? [String: Any] {
+                if let outv = tc["output"], let s = summarize(value: outv) { tc["output"] = s }
+                o["tool_call_update"] = tc
+            }
+        }
+        return o
+    }
+
+    private static func pruneRecursive(_ any: Any) -> Any {
+        switch any {
+        case let dict as [String: Any]:
+            var out: [String: Any] = [:]
+            for (k, v) in dict { out[k] = pruneRecursive(v) }
+            return capStrings(out)
+        case let arr as [Any]:
+            return arr.map { pruneRecursive($0) }
+        case let s as String:
+            return capString(s)
+        default:
+            return any
+        }
+    }
+
+    private static func summarize(value: Any) -> String? {
+        // Produce a small placeholder indicating that content was omitted
+        if let s = value as? String { return s.count > 256 ? "(omitted \(s.count) chars)" : s }
+        if let d = try? JSONSerialization.data(withJSONObject: value, options: []), d.count > 256 {
+            return "(omitted \(d.count) bytes)"
+        }
+        return nil
+    }
+
+    private static func capStrings(_ dict: [String: Any]) -> [String: Any] {
+        var out = dict
+        for (k, v) in dict {
+            if let s = v as? String { out[k] = capString(s) }
+            else if let d = v as? [String: Any] { out[k] = capStrings(d) }
+            else if let a = v as? [Any] { out[k] = a.map { pruneRecursive($0) } }
+        }
+        return out
+    }
+
+    private static func capString(_ s: String) -> String {
+        let limit = 4096
+        if s.utf8.count <= limit { return s }
+        let idx = s.index(s.startIndex, offsetBy: min(s.count, 3000))
+        let prefix = String(s[..<idx])
+        return prefix + "… (truncated)"
+    }
+
+    private static func merge(_ a: [String: Any], _ b: [String: Any]) -> [String: Any] {
+        var out = a
+        for (k,v) in b { out[k] = v }
+        return out
     }
 }
 #endif

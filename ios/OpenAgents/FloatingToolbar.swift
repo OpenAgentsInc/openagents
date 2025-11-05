@@ -26,8 +26,9 @@ struct FloatingToolbar: View {
                 GlassEffectContainer {
                     HStack(spacing: 0) {
                         Button(action: {}, label: {
-                            Image(systemName: "square.and.pencil")
-                                .imageScale(.medium)
+                            Image(systemName: "pencil")
+                                .symbolRenderingMode(.monochrome)
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(OATheme.Colors.textPrimary)
                                 .accessibilityLabel("New message")
                                 .frame(width: 36, height: 36)
@@ -51,13 +52,15 @@ struct FloatingToolbar: View {
                             .strokeBorder(OATheme.Colors.border.opacity(0.6), lineWidth: 1)
                     )
                     .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 8)
+                    .tint(.primary)
                 }
             } else {
                 // Fallback for earlier iOS versions without Liquid Glass
                 HStack(spacing: 0) {
                     Button(action: {}, label: {
-                        Image(systemName: "square.and.pencil")
-                            .imageScale(.medium)
+                        Image(systemName: "pencil")
+                            .symbolRenderingMode(.monochrome)
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(OATheme.Colors.textPrimary)
                             .accessibilityLabel("New message")
                             .frame(width: 36, height: 36)
@@ -79,6 +82,7 @@ struct FloatingToolbar: View {
                         .strokeBorder(OATheme.Colors.border.opacity(0.6), lineWidth: 1)
                 )
                 .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 8)
+                .tint(.primary)
             }
         }
         // Place a little above the home indicator; parent should use .overlay(alignment: .bottomTrailing)
@@ -93,4 +97,3 @@ struct FloatingToolbar: View {
         FloatingToolbar()
     }
 }
-

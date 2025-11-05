@@ -31,5 +31,26 @@ public struct ACPToolCallUpdateWire: Codable {
         self.error = error
         self._meta = _meta
     }
-}
 
+    private enum CodingKeys: String, CodingKey { case call_id, status, output, error, _meta }
+
+    /// Custom encoder to prune very large `output` payloads.
+    /// If `output` encodes beyond a threshold, we replace it with a short summary string.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(call_id, forKey: .call_id)
+        try c.encode(status, forKey: .status)
+        if let e = error { try c.encode(e, forKey: .error) }
+        if let m = _meta { try c.encode(m, forKey: ._meta) }
+
+        if let out = output {
+            let threshold = 16 * 1024 // 16KB
+            if let data = try? JSONEncoder().encode(out), data.count > threshold {
+                let summary = "(omitted \(data.count) bytes)"
+                try c.encode(summary, forKey: .output)
+            } else {
+                try c.encode(out, forKey: .output)
+            }
+        }
+    }
+}

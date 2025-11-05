@@ -21,7 +21,11 @@ struct AcpThreadView: View {
 
         var id: String {
             switch self {
-            case .message(let m): return "msg_\(m.id)"
+            case .message(let m):
+                let text = m.parts.compactMap { part -> String? in
+                    if case let .text(t) = part { return t.text } else { return nil }
+                }.joined()
+                return "msg_\(m.id)_\(m.ts)_\(text.hashValue)"
             case .reasoning(let m):
                 let text = m.parts.compactMap { part -> String? in
                     if case let .text(t) = part { return t.text } else { return nil }
@@ -53,113 +57,19 @@ struct AcpThreadView: View {
     @State private var seenReasoningTexts: Set<String> = []
 
     var body: some View {
-        return ZStack {
-        Group {
+        ZStack {
             if (url == nil && timeline.isEmpty) || (isLoading && timeline.isEmpty) {
-                VStack(spacing: 10) {
-                    ProgressView()
-                    Text(statusText())
-                        .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
-                        .foregroundStyle(OATheme.Colors.textSecondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                loadingView
             } else if let e = error, timeline.isEmpty {
-                VStack(spacing: 8) {
-                    Text(e)
-                        .font(.footnote)
-                        .foregroundStyle(OATheme.Colors.textSecondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                errorView(e)
             } else {
-                ZStack(alignment: .bottom) {
-                    ScrollViewReader { proxy in
-                    List {
-                #if os(iOS)
-                // Mode and commands summary header
-                HStack(spacing: 8) {
-                    Text("Mode:")
-                        .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption2))
-                        .foregroundStyle(OATheme.Colors.textSecondary)
-                    Text("\(bridge.currentMode.rawValue)")
-                        .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption2))
-                        .foregroundStyle(OATheme.Colors.textPrimary)
-                    Spacer()
-                    if !bridge.availableCommands.isEmpty {
-                        Text("Commands: \(bridge.availableCommands.count)")
-                            .font(Font.custom(BerkeleyFont.defaultName(), size: 11, relativeTo: .caption2))
-                            .foregroundStyle(OATheme.Colors.textSecondary)
-                    }
-                }
-                .listRowBackground(Color.clear)
-                #endif
-                if let title = threadTitle, !title.isEmpty {
-                    Section { Text(title).font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline)).foregroundStyle(OATheme.Colors.textPrimary) }
-                }
-                        ForEach(timeline) { item in
-                            VStack(alignment: .leading, spacing: 6) {
-                                switch item {
-                                case .message(let msg):
-                                    HStack(spacing: 6) {
-                                        roleBadge(msg.role)
-                                        Text(dateLabel(ms: msg.ts))
-                                            .font(Font.custom(BerkeleyFont.defaultName(), size: 10, relativeTo: .caption2))
-                                            .foregroundStyle(OATheme.Colors.textSecondary)
-                                    }
-                                    ForEach(msg.parts.indices, id: \.self) { idx in
-                                        if case let .text(t) = msg.parts[idx] {
-                                            markdownText(t.text)
-                                                .textSelection(.enabled)
-                                                .font(BerkeleyFont.font(relativeTo: .body, size: 15))
-                                                .foregroundStyle(OATheme.Colors.textPrimary)
-                                        }
-                                    }
-                                case .reasoning(let msg):
-                                    HStack(spacing: 6) {
-                                        roleBadge(.assistant)
-                                        Text(dateLabel(ms: msg.ts))
-                                            .font(Font.custom(BerkeleyFont.defaultName(), size: 10, relativeTo: .caption2))
-                                            .foregroundStyle(OATheme.Colors.textSecondary)
-                                    }
-                                    ForEach(msg.parts.indices, id: \.self) { idx in
-                                        if case let .text(t) = msg.parts[idx] {
-                                            markdownText(t.text)
-                                                .italic()
-                                                .textSelection(.enabled)
-                                                .font(BerkeleyFont.font(relativeTo: .body, size: 15))
-                                                .foregroundStyle(OATheme.Colors.textPrimary)
-                                        }
-                                    }
-                                case .toolCall(let call):
-                                    if Features.showRawJSON { ToolCallView(call: call) }
-                                case .toolResult(let res):
-                                    if Features.showRawJSON { ToolResultView(result: res) }
-                                case .plan(let ps):
-                                    PlanStateView(state: ps)
-                                case .raw(let line):
-                                    if Features.showRawJSON { RawEventView(line: line) }
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        // Bottom sentinel to ensure we can always scroll truly to the end
-                        Color.clear.frame(height: 1).id("bottom")
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .background(OATheme.Colors.background)
-                    // Room for composer is handled by safeAreaInset below
-                    .onAppear {
-                        scrollToBottom(proxy)
-                    }
-                     .onChange(of: timeline.count) { _, _ in
-                        scrollToBottom(proxy)
-                    }
-                }
-                // Composer removed: messages-only view per request
+                messagesView
             }
         }
-        }
         .background(OATheme.Colors.background)
+        #if os(iOS)
+        .onAppear { /* no-op; List removed */ }
+        #endif
         .onChange(of: url?.path) { _, _ in load() }
         .onAppear(perform: load)
         #if os(iOS)
@@ -179,6 +89,87 @@ struct AcpThreadView: View {
             }
         }
         #endif
+    }
+
+    // MARK: - Subviews to reduce type-check complexity
+    private var loadingView: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+            Text(statusText())
+                .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
+                .foregroundStyle(OATheme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func errorView(_ e: String) -> some View {
+        VStack(spacing: 8) {
+            Text(e)
+                .font(.footnote)
+                .foregroundStyle(OATheme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var messagesView: some View {
+        ZStack(alignment: .bottom) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        if let title = threadTitle, !title.isEmpty {
+                            Text(title)
+                                .font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline))
+                                .foregroundStyle(OATheme.Colors.textPrimary)
+                        }
+                        ForEach(timeline) { item in
+                            messageRow(for: item)
+                                .padding(.vertical, 4)
+                        }
+                        // Bottom sentinel
+                        Color.clear.frame(height: 1).id("bottom")
+                    }
+                    .padding(.horizontal, 16)
+                    .background(OATheme.Colors.background)
+                }
+                .background(OATheme.Colors.background)
+                .onAppear { scrollToBottom(proxy) }
+                .onChange(of: timeline.count) { _, _ in scrollToBottom(proxy) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func messageRow(for item: TimelineItem) -> some View {
+        switch item {
+        case .message(let msg):
+            messageBody(for: msg)
+        case .reasoning:
+            EmptyView()
+        case .toolCall(let call):
+            if Features.showRawJSON { ToolCallView(call: call) }
+        case .toolResult(let res):
+            if Features.showRawJSON { ToolResultView(result: res) }
+        case .plan(let ps):
+            PlanStateView(state: ps)
+        case .raw(let line):
+            if Features.showRawJSON { RawEventView(line: line) }
+        }
+    }
+
+    @ViewBuilder
+    private func messageBody(for msg: ACPMessage) -> some View {
+        let isUser = (msg.role == .user)
+        ForEach(Array(msg.parts.enumerated()), id: \.0) { pair in
+            let idx = pair.0
+            if case let .text(t) = msg.parts[idx] {
+                markdownText(t.text)
+                    .textSelection(.enabled)
+                    .font(InterFont.font(relativeTo: .body, size: 14))
+                    .lineLimit(isUser ? 5 : nil)
+                    .truncationMode(.tail)
+                    .foregroundStyle(isUser ? OATheme.Colors.textPrimary : Color(hex: "#7A7A7A"))
+            }
+        }
     }
 
     func statusText() -> String {
@@ -333,12 +324,9 @@ struct AcpThreadView: View {
             default:
                 break
             }
-        case .agentThoughtChunk(let chunk):
-            if case let .text(s) = chunk.content {
-                let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: nowMs())
-                timeline.append(.reasoning(m))
-            }
+        case .agentThoughtChunk(_):
+            // Hide reasoning traces: ignore agentThoughtChunk updates
+            break
         case .plan(let p):
             let ps = ACPPlanState(status: .running, summary: nil, steps: p.entries.map { $0.content }, ts: nowMs())
             timeline.append(.plan(ps))
@@ -410,13 +398,8 @@ private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, ca
             }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
             if !ConversationSummarizer.isSystemPreface(text) {
                 if AcpThreadView_isReasoningLine(line) {
-                    // Avoid collapsing distinct reasoning chunks that share similar text
-                    // Use a composite key of text and message timestamp
-                    let key = "\(text)|\(m.ts)"
-                    if !seenReasoning.contains(key) {
-                        seenReasoning.insert(key)
-                        items.append(.reasoning(m))
-                    }
+                    // Hide reasoning traces entirely
+                    continue
                 } else {
                     if m.role == .assistant {
                         if !seenAssistant.contains(text) { seenAssistant.insert(text); items.append(.message(m)) }
@@ -466,4 +449,3 @@ private func AcpThreadView_isReasoningLine(_ line: String) -> Bool {
 //#Preview {
 //    AcpThreadView(url: nil)
 //}
-}
