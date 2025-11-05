@@ -82,8 +82,8 @@ enum InterFont {
             return n
             #endif
         }
-        // Fallback to system body font
-        return UIFont.systemFont(ofSize: 17).fontName
+        // Fallback: prefer declared family name; SwiftUI will fall back to system if missing
+        return candidates.first ?? "Inter"
     }
 
     static func font(relativeTo style: Font.TextStyle = .body, size: CGFloat = 16) -> Font {
