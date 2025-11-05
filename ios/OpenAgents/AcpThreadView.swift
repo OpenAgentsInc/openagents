@@ -201,8 +201,8 @@ struct AcpThreadView: View {
                     let lines = para.split(separator: "\n").map(String.init)
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(lines.enumerated()), id: \.0) { i in
-                            let raw = lines[i.0].trimmingCharacters(in: .whitespaces)
-                            let content = dropBulletPrefix(raw)
+                            let rawLine = lines[i.0]
+                            let (level, content) = parseBulletLine(rawLine)
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
                                 markdownText(content)
@@ -212,6 +212,7 @@ struct AcpThreadView: View {
                                     .foregroundStyle(color)
                                     .textSelection(.enabled)
                             }
+                            .padding(.leading, CGFloat(level) * 14)
                         }
                     }
                     .padding(.vertical, 2)
@@ -235,10 +236,15 @@ struct AcpThreadView: View {
         return bulletCount >= max(1, lines.count - 1)
     }
 
-    private func dropBulletPrefix(_ s: String) -> String {
-        if s.hasPrefix("- ") { return String(s.dropFirst(2)) }
-        if s.hasPrefix("* ") { return String(s.dropFirst(2)) }
-        return s
+    private func parseBulletLine(_ s: String) -> (level: Int, content: String) {
+        // Count leading spaces to infer nesting (2 or 4 spaces per level)
+        var i = 0
+        for ch in s { if ch == " " { i += 1 } else { break } }
+        let level = max(0, i / 2)
+        let trimmed = s.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("- ") { return (level, String(trimmed.dropFirst(2))) }
+        if trimmed.hasPrefix("* ") { return (level, String(trimmed.dropFirst(2))) }
+        return (level, trimmed)
     }
 
     // Reasoning detail sheet
@@ -600,22 +606,35 @@ private func AcpThreadView_isReasoningLine(_ line: String) -> Bool {
 
 private func resolveTsMs(fromLine line: String) -> Int64? {
     guard let data = line.data(using: .utf8),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-    // numeric ts at root
-    if let n = obj["ts"] as? NSNumber { return n.int64Value }
-    if let d = extractISO(obj["timestamp"]) { return d }
-    // nested payload
-    if let p = obj["payload"] as? [String: Any] {
-        if let n = p["ts"] as? NSNumber { return n.int64Value }
-        if let d = extractISO(p["timestamp"]) { return d }
-    }
-    return nil
+          let root = try? JSONSerialization.jsonObject(with: data) else { return nil }
+    return scanForTimestamp(root)
 }
 
 private func extractISO(_ any: Any?) -> Int64? {
     guard let s = any as? String else { return nil }
     let fmt = ISO8601DateFormatter()
     if let date = fmt.date(from: s) { return Int64(date.timeIntervalSince1970 * 1000) }
+    return nil
+}
+
+private func scanForTimestamp(_ any: Any?, depth: Int = 0) -> Int64? {
+    if depth > 6 { return nil }
+    if let n = any as? NSNumber { return n.int64Value }
+    if let d = extractISO(any) { return d }
+    if let dict = any as? [String: Any] {
+        // direct keys
+        let numericKeys = ["ts", "time_ms", "timestamp_ms", "created_at_ms", "updated_at_ms"]
+        for k in numericKeys { if let v = dict[k] as? NSNumber { return v.int64Value } }
+        let isoKeys = ["timestamp", "time", "created_at", "updated_at", "date"]
+        for k in isoKeys { if let v = extractISO(dict[k]) { return v } }
+        // nested common containers
+        let nestedKeys = ["payload", "item", "msg", "event", "meta"]
+        for k in nestedKeys { if let v = dict[k] { if let found = scanForTimestamp(v, depth: depth + 1) { return found } } }
+        // scan all values as fallback
+        for (_, v) in dict { if let found = scanForTimestamp(v, depth: depth + 1) { return found } }
+    } else if let arr = any as? [Any] {
+        for v in arr { if let found = scanForTimestamp(v, depth: depth + 1) { return found } }
+    }
     return nil
 }
 
