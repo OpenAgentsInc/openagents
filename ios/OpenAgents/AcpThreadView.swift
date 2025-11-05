@@ -3,6 +3,7 @@ import OpenAgentsCore
 
 struct AcpThreadView: View {
     let url: URL?
+    var initialLines: [String]? = nil
     let maxMessages: Int = 25
     var onTitleChange: ((String) -> Void)? = nil
 
@@ -42,26 +43,25 @@ struct AcpThreadView: View {
 
     @State private var timeline: [TimelineItem] = []
     @State private var threadTitle: String? = nil
-    @State private var draft: String = ""
 
     var body: some View {
         return ZStack {
         Group {
-            if url == nil {
-                Text("Select a thread")
-                    .font(Font.custom(BerkeleyFont.defaultName(), size: 17, relativeTo: .headline))
-                    .foregroundStyle(OATheme.Colors.textSecondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if isLoading && timeline.isEmpty {
-                VStack(spacing: 8) {
+            if (url == nil && timeline.isEmpty) || (isLoading && timeline.isEmpty) {
+                VStack(spacing: 10) {
                     ProgressView()
-                    Text("Loading…")
+                    Text(statusText())
                         .font(Font.custom(BerkeleyFont.defaultName(), size: 12, relativeTo: .caption))
                         .foregroundStyle(OATheme.Colors.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let e = error {
-                ScrollView { Text(e).font(.footnote) }.padding()
+            } else if let e = error, timeline.isEmpty {
+                VStack(spacing: 8) {
+                    Text(e)
+                        .font(.footnote)
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ZStack(alignment: .bottom) {
                     ScrollViewReader { proxy in
@@ -143,34 +143,11 @@ struct AcpThreadView: View {
                     .onAppear {
                         scrollToBottom(proxy)
                     }
-                    .onChange(of: timeline.count) { _ in
+                     .onChange(of: timeline.count) { _, _ in
                         scrollToBottom(proxy)
                     }
                 }
-                .safeAreaInset(edge: .bottom) {
-                    GlassBar {
-                        Image(systemName: "rectangle.and.pencil.and.ellipsis")
-                            .imageScale(.medium)
-                            .foregroundStyle(OATheme.Colors.textSecondary)
-                        TextField("Compose…", text: $draft, axis: .vertical)
-                            .textFieldStyle(.plain)
-                            .font(BerkeleyFont.font(relativeTo: .body, size: 15))
-                            .foregroundStyle(OATheme.Colors.textPrimary)
-                            .lineLimit(1...4)
-                            .submitLabel(.send)
-                            .onSubmit { sendDraft() }
-                        Spacer(minLength: 8)
-                        Button(action: { sendDraft() }) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .imageScale(.large)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? OATheme.Colors.textTertiary : OATheme.Colors.textSecondary)
-                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    .background(.clear)
-                    .zIndex(100)
-                }
+                // Composer removed: messages-only view per request
             }
         }
         }
@@ -178,12 +155,34 @@ struct AcpThreadView: View {
         .onChange(of: url?.path) { _, _ in load() }
         .onAppear(perform: load)
         #if os(iOS)
+        // When latestLines arrive from the bridge, build the initial timeline and scroll to bottom.
+        .onChange(of: bridge.latestLines.count) { _, _ in
+            if timeline.isEmpty, !bridge.latestLines.isEmpty {
+                let (items, title) = AcpThreadView_computeTimeline(lines: bridge.latestLines, sourceId: "remote", cap: 100)
+                timeline = items
+                threadTitle = title
+                if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onTitleChange?(t) }
+                isLoading = false
+            }
+        }
         .onChange(of: bridge.updates.count) { _, _ in
             if let last = bridge.updates.last {
                 appendUpdate(last)
             }
         }
         #endif
+    }
+
+    func statusText() -> String {
+        switch bridge.status {
+        case .connecting(let h, let p): return "Connecting to \(h):\(p)…"
+        case .handshaking(let h, let p): return "Handshaking \(h):\(p)…"
+        case .connected: return timeline.isEmpty ? "Loading latest thread…" : ""
+        case .discovering: return "Discovering bridge…"
+        case .advertising(let port): return "Advertising :\(port)"
+        case .error(let e): return "Bridge error: \(e)"
+        case .idle: return "Connecting…"
+        }
     }
 
     func roleBadge(_ role: ACPRole) -> some View {
@@ -238,57 +237,32 @@ struct AcpThreadView: View {
     }
 
     func load() {
-        guard let u = url else { return }
         guard !isLoading else { return }
+        if let lines = initialLines, !lines.isEmpty, timeline.isEmpty {
+            isLoading = true; error = nil; timeline = []
+            DispatchQueue.global(qos: .userInitiated).async {
+                let (items, title) = AcpThreadView_computeTimeline(lines: lines, sourceId: "remote", cap: 100)
+                DispatchQueue.main.async {
+                    self.timeline = items
+                    self.threadTitle = title
+                    if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
+                    self.isLoading = false
+                }
+            }
+            return
+        }
+        guard let u = url else { return }
         isLoading = true
         error = nil
         timeline = []
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let lines = try tailJSONLLines(url: u, maxBytes: 1_000_000, maxLines: 5000)
-                // Per-line timeline in file order: show known messages; otherwise raw JSON lines
-                var items: [TimelineItem] = []
-                for line in lines {
-                    // Hide turn_context and token_count lines
-                    if shouldHideLine(line) { continue }
-                    let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: u.path))
-                    if let m = t.events.compactMap({ $0.message }).first, (m.role == .user || m.role == .assistant) {
-                        let text = m.parts.compactMap { part -> String? in
-                            if case let .text(t) = part { return t.text } else { return nil }
-                        }.joined(separator: " ")
-                        if !ConversationSummarizer.isSystemPreface(text) {
-                            if isReasoningLine(line) {
-                                // De‑dup identical consecutive reasoning messages
-                                let newText = m.parts.compactMap { part -> String? in
-                                    if case let .text(t) = part { return t.text } else { return nil }
-                                }.joined(separator: "\n")
-                                if case let .reasoning(prevMsg)? = items.last,
-                                   prevMsg.parts.compactMap({ if case let .text(t) = $0 { t.text } else { nil } }).joined(separator: "\n") == newText {
-                                    // skip duplicate
-                                } else {
-                                    items.append(.reasoning(m))
-                                }
-                            } else {
-                                items.append(.message(m))
-                            }
-                            continue
-                        }
-                    } else if let c = t.events.compactMap({ $0.tool_call }).first {
-                        if Features.showRawJSON { items.append(.toolCall(c)) }
-                        continue
-                    } else if let r = t.events.compactMap({ $0.tool_result }).first {
-                        if Features.showRawJSON { items.append(.toolResult(r)) }
-                        continue
-                    }
-                    if Features.showRawJSON { items.append(.raw(line)) }
-                }
-                if items.count > maxMessages { items = Array(items.suffix(maxMessages)) }
+                let (items, title) = AcpThreadView_computeTimeline(lines: lines, sourceId: u.path, cap: maxMessages)
                 DispatchQueue.main.async {
-                    // Set timeline without animation so initial appearance doesn't jump
                     self.timeline = items
-                    let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: u.path))
-                    self.threadTitle = thread.title
-                    if let t = thread.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
+                    self.threadTitle = title
+                    if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
                     self.isLoading = false
                 }
             } catch {
@@ -314,22 +288,10 @@ struct AcpThreadView: View {
         }
     }
 
-    func sendDraft() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        let msg = ACPMessage(
-            id: UUID().uuidString,
-            thread_id: nil,
-            role: .user,
-            parts: [.text(ACPText(text: text))],
-            ts: Int64(Date().timeIntervalSince1970 * 1000)
-        )
-        timeline.append(.message(msg))
-        draft = ""
-        #if os(iOS)
-        bridge.sendPrompt(text: text)
-        #endif
-    }
+    // Intentionally not @MainActor: heavy compute can run off-main; caller updates UI on main.
+    
+
+    // Composer removed
 
     #if os(iOS)
     func appendUpdate(_ note: ACP.Client.SessionNotificationWire) {
@@ -345,7 +307,7 @@ struct AcpThreadView: View {
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s.text))], ts: nowMs())
                 timeline.append(.message(m))
             case let .resource_link(link):
-                let s = "\(link.title ?? "Link") — \(link.uri ?? "")"
+                let s = "\(link.title ?? "Link") — \(link.uri)"
                 let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: s))], ts: nowMs())
                 timeline.append(.message(m))
             case let .image(img):
@@ -412,6 +374,69 @@ private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [S
     var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     if lines.count > maxLines { lines = Array(lines.suffix(maxLines)) }
     return lines
+}
+
+// MARK: - Timeline compute (pure function)
+// Returns computed items and a derived thread title. Runs on any queue.
+private func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) -> ([AcpThreadView.TimelineItem], String?) {
+    var items: [AcpThreadView.TimelineItem] = []
+    for line in lines {
+        // Hide low-signal provider-native events
+        if AcpThreadView_shouldHideLine(line) { continue }
+        let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: sourceId))
+        if let m = t.events.compactMap({ $0.message }).first, (m.role == .user || m.role == .assistant) {
+            let text = m.parts.compactMap { part -> String? in
+                if case let .text(t) = part { return t.text } else { return nil }
+            }.joined(separator: " ")
+            if !ConversationSummarizer.isSystemPreface(text) {
+                if AcpThreadView_isReasoningLine(line) {
+                    let newText = m.parts.compactMap { part -> String? in
+                        if case let .text(t) = part { return t.text } else { return nil }
+                    }.joined(separator: "\n")
+                    if case let .reasoning(prevMsg)? = items.last,
+                       prevMsg.parts.compactMap({ if case let .text(t) = $0 { t.text } else { nil } }).joined(separator: "\n") == newText {
+                        // skip duplicate
+                    } else {
+                        items.append(.reasoning(m))
+                    }
+                } else {
+                    items.append(.message(m))
+                }
+                continue
+            }
+        } else if let c = t.events.compactMap({ $0.tool_call }).first {
+            if Features.showRawJSON { items.append(.toolCall(c)) }
+            continue
+        } else if let r = t.events.compactMap({ $0.tool_result }).first {
+            if Features.showRawJSON { items.append(.toolResult(r)) }
+            continue
+        }
+        if Features.showRawJSON { items.append(.raw(line)) }
+    }
+    if items.count > cap { items = Array(items.suffix(cap)) }
+    let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: sourceId))
+    return (items, thread.title)
+}
+
+// These thin wrappers allow the pure function to reuse the same logic as the view without capturing self.
+private func AcpThreadView_shouldHideLine(_ line: String) -> Bool {
+    guard let data = line.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+    let t = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
+    if t == "turn_context" { return true }
+    if t == "event_msg",
+       let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "token_count" { return true }
+    return false
+}
+private func AcpThreadView_isReasoningLine(_ line: String) -> Bool {
+    guard let data = line.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+    let type = ((obj["type"] as? String) ?? (obj["event"] as? String) ?? "").lowercased()
+    if type == "event_msg", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "agent_reasoning" { return true }
+    if let item = (obj["item"] as? [String: Any]) ?? (obj["msg"] as? [String: Any]) ?? (obj["payload"] as? [String: Any]),
+       ((item["type"] as? String) ?? "").lowercased() == "agent_reasoning" { return true }
+    if type == "response_item", let p = obj["payload"] as? [String: Any], ((p["type"] as? String) ?? "").lowercased() == "reasoning" { return true }
+    return false
 }
 
 //#Preview {

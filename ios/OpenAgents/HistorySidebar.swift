@@ -90,7 +90,7 @@ struct HistorySidebar: View {
         .navigationTitle("")
         .onAppear(perform: load)
         #if os(iOS)
-        .onChange(of: bridge.threads) { newVal in
+        .onChange(of: bridge.threads) { _, newVal in
             self.isLoading = false
             self.items = newVal.map { t in (LocalThreadSummary(id: t.id, title: t.title, source: t.source, created_at: t.created_at, updated_at: t.updated_at, last_message_ts: t.last_message_ts, message_count: t.message_count), nil) }
         }
@@ -108,6 +108,7 @@ struct HistorySidebar: View {
             DispatchQueue.main.async { self.isLoading = true }
             return
             #endif
+            #if os(macOS)
             // macOS path: scan Codex filesystem; Claude behind feature flag
             let codexBases = LocalCodexDiscovery.discoverBaseDirs()
             var codexURLs: [URL] = []
@@ -163,6 +164,7 @@ struct HistorySidebar: View {
                     }
                 }
             }
+            #endif
         }
     }
 

@@ -13,6 +13,13 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            #if os(iOS)
+            // Mobile: hide the sidebar for now; show only the latest thread
+            AcpThreadView(url: nil, initialLines: awaitLatestLines(), onTitleChange: { t in
+                self.toolbarTitle = t
+            })
+            .navigationTitle("")
+            #else
             NavigationSplitView {
                 HistorySidebar(selected: selectedRow, onSelect: { row, url in
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -28,6 +35,7 @@ struct ContentView: View {
                 })
                 .navigationTitle("")
             }
+            #endif
             // Gradient sits above content but under the toolbar, creating a soft edge behind the title
             TopEdgeGradient()
         }
@@ -64,6 +72,14 @@ struct ContentView: View {
         #endif
         .preferredColorScheme(.dark)
     }
+
+    #if os(iOS)
+    @EnvironmentObject private var bridge: BridgeManager
+    private func awaitLatestLines() -> [String] {
+        // BridgeManager publishes latestLines; read current snapshot for initial render
+        return bridge.latestLines
+    }
+    #endif
 
     private func selectedRowTitle() -> String {
         if let r = selectedRow {

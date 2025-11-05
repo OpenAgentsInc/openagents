@@ -344,6 +344,29 @@ public class DesktopWebSocketServer {
                             print("[Bridge][server] send rpc result method=\(ACPRPC.sessionPrompt) id=\(idVal.value) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
+                    case "thread/load_latest":
+                        struct LatestResult: Codable { let id: String; let lines: [String] }
+                        let base = CodexScanner.defaultBaseDir()
+                        let urls = CodexScanner.listRecentTopN(at: base, topK: 1)
+                        if let file = urls.first {
+                            let tid = CodexScanner.scanForThreadID(file) ?? CodexScanner.relativeId(for: file, base: base)
+                            let lines = DesktopWebSocketServer.tailJSONLLines(at: file, maxBytes: 1_000_000, maxLines: 8000)
+                            let idVal: JSONRPC.ID
+                            if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                            else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                            else { idVal = JSONRPC.ID("1") }
+                            let result = LatestResult(id: tid, lines: lines)
+                            if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
+                                print("[Bridge][server] send rpc result method=thread/load_latest id=\(idVal.value) lines=\(lines.count) bytes=\(jtext.utf8.count)")
+                                client.send(text: jtext)
+                            }
+                        } else {
+                            let idVal: JSONRPC.ID
+                            if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                            else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                            else { idVal = JSONRPC.ID("1") }
+                            DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32002, message: "No threads found")
+                        }
                     case ACPRPC.sessionSetMode:
                         // Update current mode and broadcast a current_mode_update
                         let params = dict["params"] as? [String: Any]
@@ -513,6 +536,29 @@ extension DesktopWebSocketServer {
             print("[Bridge][server] send rpc error id=\(id.value) code=\(code) bytes=\(text.utf8.count)")
             client.send(text: text)
         }
+    }
+    fileprivate static func tailJSONLLines(at url: URL, maxBytes: Int, maxLines: Int) -> [String] {
+        guard let fh = try? FileHandle(forReadingFrom: url) else { return [] }
+        defer { try? fh.close() }
+        let chunk = 64 * 1024
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
+        var offset = fileSize
+        var buffer = Data()
+        var totalRead = 0
+        while offset > 0 && totalRead < maxBytes {
+            let toRead = min(chunk, offset)
+            offset -= toRead
+            try? fh.seek(toOffset: UInt64(offset))
+            let data = (try? fh.read(upToCount: toRead)) ?? Data()
+            buffer.insert(contentsOf: data, at: 0)
+            totalRead += data.count
+            if buffer.count >= maxBytes { break }
+        }
+        var text = String(data: buffer, encoding: .utf8) ?? String(decoding: buffer, as: UTF8.self)
+        if !text.hasSuffix("\n") { text.append("\n") }
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        if lines.count > maxLines { lines = Array(lines.suffix(maxLines)) }
+        return lines
     }
 }
 #endif

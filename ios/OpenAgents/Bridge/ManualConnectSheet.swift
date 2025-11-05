@@ -1,12 +1,13 @@
 import SwiftUI
+import OpenAgentsCore
 #if os(iOS)
 import UIKit
 #endif
 
 struct ManualConnectSheet: View {
     @Environment(\.dismiss) var dismiss
-    @State private var host: String = "192.168.1.11"
-    @State private var port: String = "9099"
+    @State private var host: String = BridgeConfig.defaultHost
+    @State private var port: String = String(BridgeConfig.defaultPort)
     var onConnect: (String, Int) -> Void
 
     var body: some View {
