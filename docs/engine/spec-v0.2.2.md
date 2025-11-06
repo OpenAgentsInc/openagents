@@ -1,4 +1,4 @@
-# Agent Search Primitives & Orchestrator — Swift‑Only (macOS + iOS) — v0.2
+# Agent Search Primitives & Orchestrator — Swift‑Only (macOS + iOS) — v0.2.2
 
 **Status:** Draft (proposed)
 
@@ -240,7 +240,7 @@ public struct ExploreSummary: Equatable {
 **Lexical (FTS5)** — BM25 over `chunk_fts` with highlight offsets.
 **Semantic** — on‑device Core ML embedder; brute‑force dot product (vDSP) for ≤100k chunks.
 **Hybrid** — Reciprocal Rank Fusion; optional MMR diversity (top‑K).
-**Span Reads** — bounded range via `contentGetSpan` to avoid large payloads.
+**Span Reads** — bounded range via `content.get_span` to avoid large payloads.
 
 ---
 
