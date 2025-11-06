@@ -164,7 +164,7 @@ public final class MobileWebSocketClient {
     }
 
     private func scheduleReconnect() {
-        guard let url = lastConnectURL, let token = lastConnectToken else { return }
+        guard let url = lastConnectURL else { return }
         guard retryCount < maxRetryAttempts else {
             let error = NSError(domain: "MobileWebSocketClient", code: 8, userInfo: [NSLocalizedDescriptionKey: "Max retry attempts reached"])
             DispatchQueue.main.async { [weak self] in
@@ -185,7 +185,7 @@ public final class MobileWebSocketClient {
             if let url = self.lastConnectURL {
                 print("[Bridge][client] reconnecting attempt=\(self.retryCount + 1) url=\(url.absoluteString)")
             }
-            self.performConnect(url: url, token: token)
+            self.performConnect(url: url)
         }
     }
 

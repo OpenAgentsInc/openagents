@@ -802,20 +802,7 @@ struct AcpThreadView: View {
 
     func load() {
         guard !isLoading else { return }
-        if let lines = initialLines, !lines.isEmpty, timeline.isEmpty {
-            isLoading = true; error = nil; timeline = []
-            DispatchQueue.global(qos: .userInitiated).async {
-                let (items, title, meta) = AcpThreadView_computeTimeline(lines: lines, sourceId: "remote", cap: maxMessages)
-                DispatchQueue.main.async {
-                    self.timeline = items
-                    self.threadTitle = title
-                    self.initialMetaLines = meta
-                    if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
-                    self.isLoading = false
-                }
-            }
-            return
-        }
+        // InitialLines path removed; load only from file URL when provided.
         guard let u = url else { return }
         isLoading = true
         error = nil
@@ -950,12 +937,12 @@ struct AcpThreadView: View {
             flushPendingReasoning(endMs: now)
 
             // Check if this is TodoWrite - convert to plan update
-            if let toolCall = timeline.first(where: {
+            if timeline.first(where: {
                 if case .toolCall(let c) = $0, c.id == upd.call_id {
                     return c.tool_name.lowercased() == "todowrite"
                 }
                 return false
-            }) {
+            }) != nil {
                 // Convert TodoWrite result to plan
                 if upd.status == .completed, let output = upd.output {
                     if let plan = convertTodoWriteToPlan(output, ts: now) {
@@ -1032,8 +1019,7 @@ private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [S
 // Runs on any queue.
 func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) -> ([AcpThreadView.TimelineItem], String?, [String]) {
     var items: [AcpThreadView.TimelineItem] = []
-    var seenAssistant: Set<String> = []
-    var seenUser: Set<String> = []
+    // Deprecated: unused placeholders removed
     var reasoningBuffer: [ACPMessage] = []
     var lastMessageTs: Int64 = 0
     var lastNonReasoningTs: Int64? = nil
@@ -1235,7 +1221,7 @@ private func mergeAdjacentThoughts(_ items: [AcpThreadView.TimelineItem], window
     for it in items {
         switch it {
         case .reasoningSummary(let rs):
-            if var b = buffer {
+            if let b = buffer {
                 // If this group starts soon after the buffered group ends, merge
                 if (rs.startTs - b.endTs) <= windowMs {
                     let merged = AcpThreadView.ReasoningSummary(startTs: min(b.startTs, rs.startTs), endTs: max(b.endTs, rs.endTs), messages: b.messages + rs.messages)
