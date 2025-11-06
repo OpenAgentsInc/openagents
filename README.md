@@ -4,12 +4,6 @@ A native iOS and macOS app for managing your coding agents on the go.
 
 <img width="1000" height="470" alt="OpenAgents" src="https://github.com/user-attachments/assets/0569c202-e7d8-43a7-b6ad-829fe761d31b" />
 
-## Version 0.3 - Swift Native
-
-**v0.3+** is a complete rewrite using native Swift for iOS and macOS.
-
-Previous versions (v0.2 and earlier) were proof-of-concept implementations using Expo/React Native, Tauri, and Rust. Those versions are **deprecated** and no longer maintained.
-
 ## Why
 
 There is no good mobile app for managing coding agents while AFK.
@@ -21,6 +15,12 @@ Remote terminals are clunky. The labs' bolted-on "Code" features are underpowere
 We want coding agents running async, keeping us just updated enough to nudge them along when needed.
 
 A good agent frees you from your computer, doesn't tie you to it.
+
+## Version 0.3 - Swift Native
+
+**v0.3+** is a complete rewrite using native Swift for iOS and macOS.
+
+Previous versions (v0.2 and earlier) were proof-of-concept implementations using Expo/React Native, Tauri, and Rust. Those versions are **deprecated** and no longer maintained.
 
 ## Platforms
 
