@@ -100,7 +100,7 @@ public enum ClaudeAcpTranslator {
                             let parts: [ACPContentPart] = [.text(ACPText(text: thinkingText))]
                             touchTs(ts)
                             let mid = ACPId.stableId(namespace: "claude-msg:\(options.sourceId)", seed: "think:\(nextSeq)")
-                            let msg = ACPMessage(id: mid, thread_id: threadId, role: .assistant, parts: parts, ts: ts)
+                            let msg = ACPMessage(id: mid, thread_id: threadId, role: .assistant, parts: parts, ts: ts, isThinking: true)
                             events.append(ACPEvent(id: nextEventId(), ts: ts, message: msg))
                         }
 
