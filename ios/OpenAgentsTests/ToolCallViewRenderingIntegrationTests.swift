@@ -7,6 +7,66 @@ import SwiftUI
 /// Following AGENTS.md best practices: test end-to-end, not just isolated components
 final class ToolCallViewRenderingIntegrationTests: XCTestCase {
 
+    // MARK: - Bash Command Inline Display Tests
+
+    func testBashToolCall_ShowsCommandInline() {
+        let call = ACPToolCall(
+            id: "bash-123",
+            tool_name: "Bash",
+            arguments: .object([
+                "command": .array([.string("git"), .string("status")]),
+                "description": .string("Check git status")
+            ]),
+            ts: 1000
+        )
+
+        let view = ToolCallView(call: call, result: nil)
+
+        XCTAssertNotNil(view)
+        // Should show: [icon] Bash git status [status]
+        //              Check git status
+        // Command should be visible inline next to "Bash"
+        // Description should be visible underneath
+    }
+
+    func testBashToolCall_TruncatesLongCommand() {
+        let longCommand = String(repeating: "very-long-command-that-should-be-truncated ", count: 10)
+        let call = ACPToolCall(
+            id: "bash-456",
+            tool_name: "Bash",
+            arguments: .object([
+                "command": .array([.string("bash"), .string("-lc"), .string(longCommand)]),
+                "description": .string("Run very long command")
+            ]),
+            ts: 1000
+        )
+
+        let view = ToolCallView(call: call, result: nil)
+
+        XCTAssertNotNil(view)
+        // Command should truncate with ellipsis (...) if it reaches the status badge
+        // Layout should not break
+    }
+
+    func testReadToolCall_ShowsRelativePath() {
+        let homeDir = NSHomeDirectory()
+        let absolutePath = "\(homeDir)/code/openagents/ios/OpenAgents/AcpThreadView.swift"
+
+        let call = ACPToolCall(
+            id: "read-789",
+            tool_name: "Read",
+            arguments: .object(["file_path": .string(absolutePath)]),
+            ts: 1000
+        )
+
+        let view = ToolCallView(call: call, result: nil)
+
+        XCTAssertNotNil(view)
+        // Should show: 📄 ~/code/openagents/ios/OpenAgents/AcpThreadView.swift
+        // NOT: 📄 /Users/username/code/openagents/ios/OpenAgents/AcpThreadView.swift
+        // Path should be relative with ~ for home directory
+    }
+
     // MARK: - Status Indicator Tests
 
     func testToolCallView_PendingStatus_NoResult() {

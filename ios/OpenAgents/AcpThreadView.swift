@@ -372,33 +372,36 @@ struct AcpThreadView: View {
                 .textSelection(.enabled)
         } else {
             let items = parseMarkdownItems(text)
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(items) { it in
-                    if it.bullet {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            switch it.kind {
-                            case .ordered:
-                                Text(it.marker)
-                                    .font(OAFonts.ui(.body, 14).weight(.semibold))
+                    Group {
+                        if it.bullet {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                switch it.kind {
+                                case .ordered:
+                                    Text(it.marker)
+                                        .font(OAFonts.ui(.body, 14).weight(.semibold))
+                                        .foregroundStyle(color)
+                                        .padding(.top, 1)
+                                case .unordered, .none:
+                                    Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
+                                }
+                                markdownText(it.content)
+                                    .font(OAFonts.ui(.body, 14))
                                     .foregroundStyle(color)
-                                    .padding(.top, 1)
-                            case .unordered, .none:
-                                Circle().fill(color).frame(width: 5, height: 5).padding(.top, 3)
+                                    .textSelection(.enabled)
                             }
+                            .padding(.leading, CGFloat(it.level) * 14)
+                        } else {
                             markdownText(it.content)
                                 .font(OAFonts.ui(.body, 14))
                                 .foregroundStyle(color)
                                 .textSelection(.enabled)
+                                .padding(.leading, CGFloat(it.level) * 14)
+                                .padding(.vertical, 2)
                         }
-                        .padding(.leading, CGFloat(it.level) * 14)
-                    } else {
-                        markdownText(it.content)
-                            .font(OAFonts.ui(.body, 14))
-                            .foregroundStyle(color)
-                            .textSelection(.enabled)
-                            .padding(.leading, CGFloat(it.level) * 14)
-                            .padding(.vertical, 2)
                     }
+                    .padding(.bottom, it.bullet ? 12 : 16)
                 }
             }
         }
