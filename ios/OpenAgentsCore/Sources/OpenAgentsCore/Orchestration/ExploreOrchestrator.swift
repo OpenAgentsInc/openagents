@@ -178,9 +178,13 @@ public actor ExploreOrchestrator {
 
             // Parse response to extract operations
             let desc = String(describing: resp)
-            let ops = parseOperationsFromResponse(desc)
+            let ops = try parseOperationsFromResponse(desc)
 
             print("[Orchestrator] Generated plan with \(ops.count) operations")
+
+            guard !ops.isEmpty else {
+                throw OrchestrationError.executionFailed("FM generated empty plan - parsing failed or FM did not follow instructions")
+            }
 
             return ExplorePlan(
                 goals: goals,
@@ -188,18 +192,19 @@ public actor ExploreOrchestrator {
             )
         } catch {
             print("[Orchestrator] Error generating plan: \(error)")
-            // Fallback to basic plan
-            return createFallbackPlan()
+            throw OrchestrationError.executionFailed("Failed to generate exploration plan: \(error.localizedDescription)")
         }
     }
     #endif
 
     /// Parse operations from FM response
-    private func parseOperationsFromResponse(_ response: String) -> [AgentOp] {
+    private func parseOperationsFromResponse(_ response: String) throws -> [AgentOp] {
         var ops: [AgentOp] = []
 
         // Extract content from response description
         let content = extractContent(from: response) ?? response
+
+        print("[Orchestrator] Parsing FM response (first 500 chars): \(String(content.prefix(500)))")
 
         // Simple parsing: look for operation patterns
         let lines = content.components(separatedBy: "\n")
@@ -248,38 +253,12 @@ public actor ExploreOrchestrator {
             }
         }
 
-        // If parsing failed, return fallback operations
+        // No fallback - if parsing failed, throw an error with the response for debugging
         if ops.isEmpty {
-            ops = createFallbackPlan().nextOps
+            throw OrchestrationError.executionFailed("Failed to parse any operations from FM response. Response was: \(String(content.prefix(1000)))")
         }
 
         return Array(ops.prefix(5)) // Limit to 5 operations
-    }
-
-    /// Create fallback plan when FM is unavailable or fails
-    private func createFallbackPlan() -> ExplorePlan {
-        let goalsStr = goals.joined(separator: " ").lowercased()
-
-        // If goals mention conversations or history, use session tools
-        if goalsStr.contains("conversation") || goalsStr.contains("session") || goalsStr.contains("history") {
-            return ExplorePlan(
-                goals: goals.isEmpty ? ["Understand workspace structure"] : goals,
-                nextOps: [
-                    AgentOp(kind: .sessionList(SessionListParams(provider: "claude-code", topK: 20))),
-                    AgentOp(kind: .sessionList(SessionListParams(provider: "codex", topK: 20))),
-                    AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], metrics: ["files", "tools"])))
-                ]
-            )
-        }
-
-        // Default: basic file exploration
-        return ExplorePlan(
-            goals: goals.isEmpty ? ["Understand workspace structure"] : goals,
-            nextOps: [
-                AgentOp(kind: .readSpan(ReadSpanParams(path: "README.md", startLine: 1, endLine: 50))),
-                AgentOp(kind: .listDir(ListDirParams(path: ".", depth: 0)))
-            ]
-        )
     }
 
     // MARK: - Operation Execution
@@ -416,14 +395,10 @@ public actor ExploreOrchestrator {
             followups.insert("Most modified files: \(top3.joined(separator: ", "))", at: 0)
         }
 
-        // Add default followups if we don't have any
-        if followups.isEmpty {
-            followups = ["No session data found - explore code structure", "Run session.search to find relevant conversations"]
-        }
-
+        // Return actual data - no placeholders
         return ExploreSummary(
             repo_name: workspaceName,
-            languages: [:], // Phase 3 will add language detection
+            languages: [:],
             entrypoints: [],
             top_files: Array(uniqueTopFiles),
             followups: Array(followups.prefix(5))
