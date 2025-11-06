@@ -16,6 +16,15 @@ struct ToolCallView: View {
                     .font(OAFonts.ui(.subheadline, 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
 
+                // For Bash: show command inline, truncated if needed
+                if let cmd = inlineCommand {
+                    Text(cmd)
+                        .font(OAFonts.ui(.footnote, 12))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
                 Spacer()
 
                 statusBadge
@@ -89,38 +98,50 @@ struct ToolCallView: View {
         }
     }
 
-    // MARK: - Inline Params
+    // MARK: - Inline Display
 
+    /// Command shown inline next to tool name (Bash only)
+    private var inlineCommand: String? {
+        let toolName = call.tool_name.lowercased()
+        guard toolName == "bash" || toolName == "shell" || toolName.hasSuffix(".shell") else { return nil }
+        return prettyShellCommand(call: call)
+    }
+
+    /// Details shown below tool name
     private var inlineParams: String? {
         let toolName = call.tool_name.lowercased()
         let args = unwrapArgumentsJSON(call.arguments)
 
-        // Bash/Shell - show command
+        // Bash/Shell - show description
         if toolName == "bash" || toolName == "shell" || toolName.hasSuffix(".shell") {
-            return prettyShellCommand(call: call)
+            if case .object(let obj) = args,
+               case .string(let desc)? = obj["description"] {
+                return desc
+            }
+            return nil
         }
 
-        // Read - show file_path
+        // Read - show relative file_path
         if toolName == "read" || toolName.hasSuffix(".read") {
             if case .object(let obj) = args,
                case .string(let path)? = obj["file_path"] {
-                return "📄 \(path)"
+                return "📄 \(makeRelativePath(path))"
             }
         }
 
-        // Write - show file_path
+        // Write - show relative file_path
         if toolName == "write" || toolName.hasSuffix(".write") {
             if case .object(let obj) = args,
                case .string(let path)? = obj["file_path"] {
-                return "✏️ \(path)"
+                return "✏️ \(makeRelativePath(path))"
             }
         }
 
-        // Edit - show file_path
+        // Edit - show relative file_path
         if toolName == "edit" || toolName.hasSuffix(".edit") {
             if case .object(let obj) = args,
                case .string(let path)? = obj["file_path"] {
-                return "✏️ \(path)"
+                return "✏️ \(makeRelativePath(path))"
             }
         }
 
@@ -142,6 +163,17 @@ struct ToolCallView: View {
 
         return nil
     }
+
+    /// Convert absolute path to relative (using ~ for home directory)
+    private func makeRelativePath(_ absolutePath: String) -> String {
+        // Replace home directory with ~
+        let homeDir = NSHomeDirectory()
+        if absolutePath.hasPrefix(homeDir) {
+            let relativePart = String(absolutePath.dropFirst(homeDir.count))
+            return "~\(relativePart)"
+        }
+        return absolutePath
+    }
 }
 
 private func prettyJSON(_ v: JSONValue) throws -> String {
@@ -154,7 +186,7 @@ private func prettyJSON(_ v: JSONValue) throws -> String {
 // MARK: - Shell command prettifier
 private func prettyShellCommand(call: ACPToolCall) -> String? {
     let name = call.tool_name.lowercased()
-    guard name == "shell" || name.hasSuffix(".shell") else { return nil }
+    guard name == "bash" || name == "shell" || name.hasSuffix(".shell") else { return nil }
     let args = unwrapArgumentsJSON(call.arguments)
     guard let parts = parseCommandArray(from: args) else { return nil }
     if parts.count >= 3 && parts[0] == "bash" && parts[1] == "-lc" {
