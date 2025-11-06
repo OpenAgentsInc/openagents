@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenAgentsCore
 
 #if os(iOS)
 /// Fresh screen showcasing the new top toolbar header for iOS 26+.
@@ -73,14 +74,16 @@ struct ChatHomeView: View {
     private func startFlow() {
         // Phase 1: ensure a session exists then request index.status
         Task { @MainActor in
+            // Reset stream so user sees only new events for this flow
+            bridge.updates.removeAll()
             // Create new session
             struct NewResp: Codable { let session_id: ACPSessionId }
-            bridge.sendRPC(method: ACPRPC.sessionNew, params: Empty()) { (resp: NewResp?) in
+            bridge.sendRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest()) { (resp: NewResp?) in
                 guard let sid = resp?.session_id else { return }
                 bridge.currentSessionId = sid
                 // Minimal control-plane request to trigger a visible stream
                 struct StatusParams: Codable { let session_id: ACPSessionId }
-                bridge.sendRPC(method: "index.status", params: StatusParams(session_id: sid)) { (_: Empty?) in }
+                bridge.sendRPC(method: "index.status", params: StatusParams(session_id: sid)) { (_: BridgeManager.EmptyResult?) in }
             }
         }
     }

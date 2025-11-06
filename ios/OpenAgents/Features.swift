@@ -33,4 +33,11 @@ enum Features {
         if ProcessInfo.processInfo.environment["OPENAGENTS_ENABLE_FM"] == "1" { return true }
         return UserDefaults.standard.bool(forKey: "enable_foundation_models")
     }
+
+    /// Autoload latest provider thread on connect (legacy behavior). Default: false.
+    /// Enable with env `OPENAGENTS_AUTOLOAD_LATEST=1` or UserDefaults `autoload_latest=true`.
+    static var autoloadLatestOnConnect: Bool {
+        if ProcessInfo.processInfo.environment["OPENAGENTS_AUTOLOAD_LATEST"] == "1" { return true }
+        return UserDefaults.standard.bool(forKey: "autoload_latest")
+    }
 }
