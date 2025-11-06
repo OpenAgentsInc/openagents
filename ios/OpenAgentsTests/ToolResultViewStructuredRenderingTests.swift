@@ -69,7 +69,7 @@ final class ToolResultViewStructuredRenderingTests: XCTestCase {
                 ]),
                 .object([
                     "content": .string("Missing status")
-                    // Missing status and activeForm
+                    // Missing status and activeForm (intentionally incomplete)
                 ]),
                 .object([
                     "content": .string("Another valid"),
@@ -320,7 +320,7 @@ final class ToolResultViewStructuredRenderingTests: XCTestCase {
                         "activeForm": .string("Pending"),
                         "content": .string("Commit and push all changes"),
                         "status": .string("pending")
-                    })
+                    ])
                 ])
             ]),
             error: nil,
