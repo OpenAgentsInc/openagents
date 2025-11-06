@@ -237,7 +237,22 @@ public class DesktopWebSocketServer {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: claudePath)
         process.arguments = [prompt]  // Pass prompt as argument
-        process.environment = ProcessInfo.processInfo.environment
+
+        // Set up environment with node in PATH
+        var environment = ProcessInfo.processInfo.environment
+
+        // Add fnm node to PATH
+        let claudeDir = (claudePath as NSString).deletingLastPathComponent
+        let fnmNodePath = (claudeDir as NSString).deletingLastPathComponent
+
+        if let existingPath = environment["PATH"] {
+            environment["PATH"] = "\(claudeDir):\(fnmNodePath):\(existingPath)"
+        } else {
+            environment["PATH"] = "\(claudeDir):\(fnmNodePath):/usr/local/bin:/usr/bin:/bin"
+        }
+
+        print("[Bridge][server] PATH for process: \(environment["PATH"] ?? "none")")
+        process.environment = environment
 
         // Set up output/error pipes (for logging)
         let stdoutPipe = Pipe()
