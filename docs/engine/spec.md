@@ -1,21 +1,24 @@
-# Semantic + Lexical Search System — Swift‑Only (macOS + iOS) — v0.1
+# Semantic + Lexical Search Primitives — Swift‑Only (macOS + iOS) — v0.1
 
 **Status:** Draft (proposed)
 
 **Owner:** OpenAgents — Search Working Group
 
-**Scope:** End‑to‑end system for local code/document search that combines lexical (FTS/grep‑class) and semantic (embeddings + ANN) retrieval, with fusion ranking and optional reranking. macOS hosts the engine; iOS acts as a paired controller/companion UI. Swift‑only implementation; no Rust/Tauri/Expo.
+**Scope:** End‑to‑end, headless system for local code/document search that combines lexical (FTS/grep‑class) and semantic (embeddings + ANN) retrieval, with fusion ranking and optional reranking. macOS hosts the engine; clients (AI agents, desktop components, optional iOS companion) invoke it programmatically via RPC/SDK. No end‑user search UI is required. Swift‑only implementation; no Rust/Tauri/Expo.
+
+> Update — 2025‑11‑06
+> Refocused from an end‑user search UI to agent‑facing search primitives. UI components are optional diagnostics only. Added `includeText` support in search APIs and a `content.getSpan` RPC for precise snippet retrieval.
 
 ---
 
 ## 1. Goals
 
-1. **High‑recall developer search** on local repos and docs with <300ms p95 for lexical results and <700ms p95 for hybrid (semantic+lexical) on medium repos (~50k–150k lines).
-2. **Offline‑first, private**: all indexing & inference runs locally on macOS; iOS is a remote controller.
+1. **High‑recall developer search primitives** on local repos/docs with <300ms p95 for lexical and <700ms p95 for hybrid (semantic+lexical) on medium repos (~50k–150k lines).
+2. **Offline‑first, private**: all indexing & inference runs locally on macOS; clients invoke searches programmatically; iOS companion is optional for diagnostics.
 3. **Hybrid retrieval**: semantic + lexical **fusion** beats either alone.
 4. **Agent‑aware**: capture traces (queries, openings, accepted edits) to improve ranking over time.
 5. **Single‑language developer flow**: Swift for engine, service, client, and tests.
-6. **Simple install/upgrade**: single macOS app (with launch agent) and paired iOS app.
+6. **Simple install/upgrade**: single macOS service (LaunchAgent capable); iOS companion optional.
 
 ### Non‑Goals
 
@@ -35,22 +38,19 @@
   * Hosts a **WebSocket + HTTP** interface (SwiftNIO) for control and queries.
   * Exposes a pairing flow (local network) for the iOS app.
   * Manages the on‑disk index directory.
-* **SearchKitUI (SwiftUI)** — Shared UI components:
-
-  * macOS: full search panel, results list, previews, file open integration.
-  * iOS: remote controller UI (search bar, filters, results mirrored, tap‑to‑open on Mac).
+* **SearchKitClient (Swift package)** — Lightweight, typed client SDK for invoking the service (JSON‑RPC/WebSocket) from agents and apps. Provides request/response models and helpers. No end‑user UI.
 
 ### Process Model
 
 * Single macOS process (app) running the **service** (foreground or as a LaunchAgent for background availability).
-* iOS connects over local network (Bonjour discovery → WebSocket).
-* All search and indexing happens on macOS. iOS sends queries and renders streamed results.
+* Clients (agent runtimes, desktop app components, optional iOS companion) connect over local network (Bonjour discovery → WebSocket).
+* All search and indexing happens on macOS. Clients send queries and consume streamed results; no end‑user search UI is required.
 
 ### Data Flow (Happy Path)
 
 1. User adds a folder to index in macOS app.
 2. Indexer walks files → chunker produces chunks → store text in SQLite FTS and vectors in SQLite (BLOB) or vec‑table.
-3. User types a query on macOS/iOS.
+3. An AI agent (or client) issues a query via RPC/SDK.
 4. Engine executes **lexical** and **semantic** sub‑queries → **Fusion** → optional **Rerank** → stream top‑K.
 5. User clicks a result → macOS opens file at span; telemetry logged.
 
@@ -178,7 +178,7 @@ CREATE TABLE trace_event (
 
 ### 4.6 Backpressure & Scheduling
 
-* Indexer runs with a small worker queue; pause/resume from UI. Avoid starving UI threads; use `Task` + cooperative cancellation.
+* Indexer runs with a small worker queue; pause/resume via API. Avoid starving UI threads; use `Task` + cooperative cancellation.
 
 ---
 
@@ -190,7 +190,7 @@ CREATE TABLE trace_event (
 
   * **Free text** (semantic + lexical by default)
   * **Operators**: `path:`, `lang:`, `symbol:` (when symbol table exists), `type:code|doc`, `since:` (recency bias)
-  * **Mode chips** in UI: `All | Code | Docs | Symbols | Recent`
+  * **Mode selectors** (client‑provided hints): `All | Code | Docs | Symbols | Recent`
 
 ### 5.2 Sub‑Queries
 
@@ -238,21 +238,24 @@ CREATE TABLE trace_event (
 **Requests**
 
 ```json
-{ "id":"uuid", "method":"search.lexical",  "params": {"query":"...","k":50, "filters":{}} }
-{ "id":"uuid", "method":"search.semantic", "params": {"query":"...","k":50, "filters":{}} }
-{ "id":"uuid", "method":"search.hybrid",  "params": {"query":"...","k":50, "filters":{}} }
+{ "id":"uuid", "method":"search.lexical",  "params": {"query":"...","k":50, "filters":{}, "includeText":false, "contextLines":0} }
+{ "id":"uuid", "method":"search.semantic", "params": {"query":"...","k":50, "filters":{}, "includeText":false, "contextLines":0} }
+{ "id":"uuid", "method":"search.hybrid",  "params": {"query":"...","k":50, "filters":{}, "includeText":true,  "contextLines":2} }
 { "id":"uuid", "method":"index.addRoot",  "params": {"path":"/Users/…/repo"} }
 { "id":"uuid", "method":"index.status",  "params": {} }
 { "id":"uuid", "method":"open.atSpan",     "params": {"path":"…","start":123,"end":145} }
+{ "id":"uuid", "method":"content.getSpan",  "params": {"path":"…","start":123,"end":145, "context":2} }
 ```
 
 **Responses**
 
 ```json
 { "id":"uuid", "result": { "status":"ok" } }
-{ "id":"uuid", "result": { "items":[ {"path":"…","start":12,"end":24,"preview":"…","score":0.83,"kind":"lex"}, … ] } }
+{ "id":"uuid", "result": { "items":[ {"path":"…","start":12,"end":24,"preview":"…","text":"…","score":0.83,"kind":"lex"}, … ] } }
 { "id":"uuid", "error": { "code": 400, "message":"…" } }
 ```
+
+`includeText` returns bounded snippet text (span ± `contextLines`), subject to size limits. For larger or precise ranges, use `content.getSpan` which returns `{ text: "…", start: n, end: m }`.
 
 **Events** (server → client)
 
@@ -267,20 +270,11 @@ CREATE TABLE trace_event (
 
 ---
 
-## 7. iOS & macOS UI (SwiftUI)
+## 7. Client Integrations (No End‑User UI Required)
 
-### 7.1 macOS
-
-* **Top search bar** with chips: All | Code | Docs | Symbols | Recent.
-* **Results list** with source badges, line spans, and inline preview.
-* **Diff‑style preview** (optional) highlighting query terms.
-* **A/B toggle**: Hybrid vs Lexical‑only (diagnostics).
-* **Index Manager**: add/remove roots, see status, pause/resume, reindex.
-
-### 7.2 iOS
-
-* **Remote Search**: same chips and list; tapping opens file on Mac via `open.atSpan` RPC.
-* **Pairing Screen**: QR scan + device chooser.
+- **Agent orchestration**: Coding agents call `search.*` RPCs to retrieve ranked snippets. Use `includeText=true` to inline snippet text or `content.getSpan` for precise ranges/context.
+- **Desktop integration**: The OpenAgents desktop app may call the same primitives to enrich flows; a dedicated search UI is not required.
+- **Optional diagnostics UIs**: macOS/iOS may include debug/status panels (index status, progress). These are optional and not part of the runtime contract.
 
 ---
 
@@ -322,9 +316,9 @@ CREATE TABLE trace_event (
 * **Integration tests (SearchKitService)**
 
   * Spin up the WebSocket server; issue queries; assert streamed batches and final fused order.
-* **UI tests (XCUITest)**
+* **Client integration tests**
 
-  * macOS panel interactions; iOS remote search; pairing flow.
+  * Validate `search.*` and `content.getSpan` RPCs and streamed partials against a golden corpus.
 * **Bench harness** (separate target)
 
   * Measures p50/p95/p99 for lexical/semantic/hybrid across corpora; exports JSON.
@@ -348,7 +342,7 @@ CREATE TABLE trace_event (
 
 ---
 
-## 13. Configuration (User‑Visible)
+## 13. Configuration
 
 * Index roots (paths)
 * Exclusions (glob patterns)
@@ -362,16 +356,16 @@ CREATE TABLE trace_event (
 
 **M0 — Scaffolding (1–2 days)**
 
-* Create Swift packages: SearchKitCore, SearchKitService, SearchKitUI.
+* Create Swift packages: SearchKitCore, SearchKitService, SearchKitClient.
 * SQLite schema migrations; basic file walker; add/remove roots.
 
 **M1 — Lexical Search (3–5 days)**
 
-* Chunker (heuristic) + FTS5; macOS UI; basic iOS remote controller; streaming results.
+* Chunker (heuristic) + FTS5; JSON‑RPC `search.lexical`; streaming results; typed client SDK.
 
 **M2 — Semantic Search (5–7 days)**
 
-* Core ML embedding provider; vector storage (BLOB); brute‑force ANN via vDSP; fusion (RRF).
+* Core ML embedding provider; vector storage (BLOB); brute‑force ANN via vDSP; fusion (RRF); `includeText` results.
 
 **M3 — Pairing & Security (3–5 days)**
 
@@ -383,7 +377,7 @@ CREATE TABLE trace_event (
 
 **M5 — Polish & Symbol Awareness (5–7 days)**
 
-* SwiftSyntax chunker; path/lang filters; basic symbol table; rerank switch (stub).
+* SwiftSyntax chunker; path/lang filters; basic symbol table; rerank switch (stub); `content.getSpan` ergonomics.
 
 ---
 
@@ -409,6 +403,7 @@ public struct SearchResult: Codable, Sendable {
   public var startLine: Int
   public var endLine: Int
   public var preview: String
+  public var text: String? // optional inlined snippet when requested
   public var score: Double
   public var kind: String // "lex" | "sem" | "fused"
 }
@@ -417,6 +412,12 @@ public protocol SearchEngine {
   func searchLexical(_ query: String, k: Int, filters: SearchFilters?) async throws -> [SearchResult]
   func searchSemantic(_ query: String, k: Int, filters: SearchFilters?) async throws -> [SearchResult]
   func searchHybrid(_ query: String, k: Int, filters: SearchFilters?) async throws -> [SearchResult]
+}
+
+// MARK: Content retrieval
+public protocol ContentReader {
+  /// Returns the file text covering [startLine, endLine], optionally expanded by context lines.
+  func getSpan(path: String, startLine: Int, endLine: Int, context: Int?) throws -> String
 }
 ```
 
