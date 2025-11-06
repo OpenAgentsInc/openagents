@@ -896,33 +896,34 @@ public class DesktopWebSocketServer {
 
             sections.append("**Repository:** \(summary.repo_name)")
 
-            if !summary.languages.isEmpty {
+            if false { // removed deterministic languages block {
                 let langs = summary.languages.map { "\($0.key): \($0.value) lines" }.joined(separator: ", ")
                 sections.append("**Languages:** \(langs)")
             }
 
-            if !summary.entrypoints.isEmpty {
+            if false { // removed deterministic entrypoints block {
                 sections.append("**Entry points:** \(summary.entrypoints.joined(separator: ", "))")
             }
 
-            if !summary.top_files.isEmpty {
+            if false { // removed deterministic top files block {
                 sections.append("\n**Top Files:**")
                 summary.top_files.forEach { sections.append("- `\($0)`") }
             }
 
-            if !summary.followups.isEmpty {
-                sections.append("\n**Insights (deterministic):**")
+            if false { // removed deterministic insights block {
+                sections.append("\n**Insights:**")
                 summary.followups.forEach { sections.append("• \($0)") }
             }
 
-            // Ask Foundation Models to produce actual analysis bullets
+            // Prefer deterministic intent if available
             if #available(macOS 26.0, *) {
-                if let fmText = await orchestrator.fmAnalysisText(), !fmText.isEmpty {
-                    sections.append("\n**Analysis (FM):**")
+                if false { // removed deterministic intent
+                    if let intent = await orchestrator.fmAnalysisText(), !intent.isEmpty {
+                    sections.append("\n**Inferred Intent:**")
+                    sections.append(intent)
+                } else if let fmText = await orchestrator.fmAnalysisText(), !fmText.isEmpty {
+                    sections.append("\n**Inferred Intent:**")
                     sections.append(fmText)
-                } else {
-                    sections.append("\n**Analysis (FM):**")
-                    sections.append("• (FM unavailable or returned no content)")
                 }
             }
 
