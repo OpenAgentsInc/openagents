@@ -21,12 +21,12 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     // MARK: - Initialization Tests
 
     func testInitWithToken() {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         XCTAssertNotNil(sut)
     }
 
     func testDelegateIsWeak() {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         var delegate: MockDesktopWebSocketServerDelegate? = MockDesktopWebSocketServerDelegate()
         sut.delegate = delegate
         weak var weakDelegate = delegate
@@ -37,28 +37,28 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     // MARK: - Server Lifecycle Tests
 
     func testServerStart() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         // Use a high port number to avoid conflicts
         let port: UInt16 = 9999
         XCTAssertNoThrow(try sut.start(port: port, advertiseService: false))
     }
 
     func testServerStartOnOccupiedPortThrows() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         let port: UInt16 = 9998
 
         // Start first server
         try sut.start(port: port, advertiseService: false)
 
         // Try to start second server on same port
-        let sut2 = DesktopWebSocketServer(token: "test-token-2")
+        let sut2 = DesktopWebSocketServer()
         XCTAssertThrowsError(try sut2.start(port: port, advertiseService: false))
 
         sut2.stop()
     }
 
     func testServerStop() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         let port: UInt16 = 9997
         try sut.start(port: port, advertiseService: false)
         sut.stop()
@@ -67,13 +67,13 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     }
 
     func testStopBeforeStartDoesNotCrash() {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         sut.stop()
         XCTAssertNotNil(sut)
     }
 
     func testMultipleStopsDoNotCrash() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         let port: UInt16 = 9996
         try sut.start(port: port, advertiseService: false)
         sut.stop()
@@ -85,7 +85,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     // MARK: - Client Connection Integration Tests
 
     func testClientConnectionAndHandshake() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         sut.delegate = mockDelegate
         let port: UInt16 = 9995
 
@@ -97,7 +97,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
         client.delegate = clientDelegate
 
         let url = URL(string: "ws://127.0.0.1:\(port)")!
-        client.connect(url: url, token: "test-token")
+        client.connect(url: url)
 
         // Wait for handshake to complete
         let expectation = self.expectation(description: "handshake complete")
@@ -130,7 +130,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     }
 
     func testMultipleClientsCanConnect() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         sut.delegate = mockDelegate
         let port: UInt16 = 9994
 
@@ -171,7 +171,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     // MARK: - Client Disconnection Tests
 
     func testClientDisconnectionNotifiesDelegate() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         sut.delegate = mockDelegate
         let port: UInt16 = 9993
 
@@ -211,7 +211,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     // MARK: - Message Handling Tests
 
     func testServerHandlesThreadsListRequest() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         sut.delegate = mockDelegate
         let port: UInt16 = 9992
 
@@ -222,7 +222,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
         client.delegate = clientDelegate
 
         let url = URL(string: "ws://127.0.0.1:\(port)")!
-        client.connect(url: url, token: "test-token")
+        client.connect(url: url)
 
         // Wait for connection
         let connectExpectation = expectation(description: "connected")
@@ -259,7 +259,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     }
 
     func testServerHandlesSessionNewRequest() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         sut.delegate = mockDelegate
         let port: UInt16 = 9991
 
@@ -270,7 +270,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
         client.delegate = clientDelegate
 
         let url = URL(string: "ws://127.0.0.1:\(port)")!
-        client.connect(url: url, token: "test-token")
+        client.connect(url: url)
 
         // Wait for connection
         let connectExpectation = expectation(description: "connected")
@@ -317,7 +317,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     // MARK: - Broadcast Tests
 
     func testServerCanBroadcastToMultipleClients() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         sut.delegate = mockDelegate
         let port: UInt16 = 9990
 
@@ -333,8 +333,8 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
 
         let url = URL(string: "ws://127.0.0.1:\(port)")!
 
-        client1.connect(url: url, token: "test-token")
-        client2.connect(url: url, token: "test-token")
+        client1.connect(url: url)
+        client2.connect(url: url)
 
         // Wait for both to connect
         let connectExpectation = expectation(description: "both connected")
@@ -356,7 +356,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
     // MARK: - Stress Tests
 
     func testServerHandlesRapidConnectDisconnect() throws {
-        sut = DesktopWebSocketServer(token: "test-token")
+        sut = DesktopWebSocketServer()
         sut.delegate = mockDelegate
         let port: UInt16 = 9989
 
@@ -368,7 +368,7 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
             client.delegate = delegate
 
             let url = URL(string: "ws://127.0.0.1:\(port)")!
-            client.connect(url: url, token: "test-token")
+            client.connect(url: url)
 
             // Brief wait
             usleep(100000) // 0.1 seconds

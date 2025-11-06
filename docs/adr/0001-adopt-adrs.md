@@ -5,12 +5,12 @@
 
 ## Context
 
-As the project grows across a mobile app (Expo/React Native) and a Rust bridge (Tricoder), we make high‑impact choices that affect APIs, tooling, testing, and operations. Those decisions need to be:
+As the project grows across a mobile app (Expo/React Native), a Swift iOS/macOS app, and a Rust bridge, we make high‑impact choices that affect APIs, tooling, testing, and operations. Those decisions need to be:
 - Easy to discover and cite in PRs and issues.
 - Stable over time, with a clear history of alternatives and trade‑offs.
 - Co‑located with the code, versioned, and reviewable.
 
-The industry‑standard practice for this is Architectural Decision Records (ADRs). See https://adr.github.io/. Internal discussion in PR #1345 and comments converged on adopting ADRs to capture decisions like ADR‑0002 (Rust→TS types) and ADR‑0003 (Tinyvex local sync).
+The industry‑standard practice for this is Architectural Decision Records (ADRs). See https://adr.github.io/. Internal discussion in PR #1345 and comments converged on adopting ADRs to capture decisions like ADR‑0002 (Agent Client Protocol) and ADR‑0006 (iOS ↔ Desktop bridge).
 
 ## Decision
 
@@ -51,7 +51,7 @@ Minor refactors or isolated UI tweaks do not require an ADR.
 
 ## Backfilling
 
-We will backfill ADRs for already‑made, high‑impact decisions as time permits (e.g., ADR‑0002, ADR‑0003, ADR‑0004, ADR‑0005). New decisions should include an ADR as part of their PR.
+We will backfill ADRs for already‑made, high‑impact decisions as time permits (e.g., ADR‑0002, ADR‑0003, ADR‑0004, ADR‑0005, ADR‑0006). New decisions should include an ADR as part of their PR.
 
 ## Consequences
 

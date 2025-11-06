@@ -1,3 +1,49 @@
+# ⚠️ DEPRECATED - NO LONGER SUPPORTED ⚠️
+
+**This package is deprecated and no longer maintained.**
+
+## OpenAgents v0.3+ is Swift-only
+
+As of version 0.3, OpenAgents has moved to a **native Swift architecture** for iOS and macOS. This npm package (`tricoder`) and the Rust bridge it depends on are **no longer supported**.
+
+### What happened?
+
+- **v0.2.x and earlier**: Expo/React Native mobile app + Rust bridge (this package)
+- **v0.3+**: Native Swift iOS/macOS apps only
+
+### Migration
+
+If you were using `tricoder` with v0.2.x:
+
+1. **Download the new native app**:
+   - iOS: [TestFlight](https://testflight.apple.com/join/dvQdns5B) (coming soon for v0.3)
+   - macOS: Build from source at [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents)
+
+2. **No data migration**: v0.3 is a fresh start with a new architecture
+
+3. **Uninstall this package**: `npm uninstall -g tricoder`
+
+### Why deprecate?
+
+The v0.2 architecture (Expo + Rust) was a proof-of-concept. v0.3 provides:
+- Better performance with native Swift
+- Deeper iOS/macOS integration
+- Liquid Glass UI (iOS 26+, macOS 15+)
+- On-device Foundation Models
+
+### Last working version
+
+**v0.2.5** was the last functional release of this package. It will continue to work with the v0.2 Expo mobile app, but both are no longer maintained.
+
+### Questions?
+
+- GitHub: [github.com/OpenAgentsInc/openagents/issues](https://github.com/OpenAgentsInc/openagents/issues)
+- Repo: [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents)
+
+---
+
+# Original README (v0.2.5 and earlier)
+
 OpenAgents Tricoder (CLI)
 
 Desktop bridge for the OpenAgents mobile app. Currently iOS only via TestFlight — join here: https://testflight.apple.com/join/dvQdns5B

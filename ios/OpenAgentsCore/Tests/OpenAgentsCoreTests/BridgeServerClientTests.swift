@@ -17,8 +17,7 @@ final class BridgeServerClientTests: XCTestCase {
 
     func testThreadsListRoundTrip() throws {
         let port: UInt16 = 9911
-        let token = "unit-test-token"
-        let srv = DesktopWebSocketServer(token: token)
+        let srv = DesktopWebSocketServer()
         server = srv
         try srv.start(port: port, advertiseService: false)
 
@@ -30,16 +29,19 @@ final class BridgeServerClientTests: XCTestCase {
         cli.delegate = self
 
         let url = URL(string: "ws://127.0.0.1:\(port)")!
-        cli.connect(url: url, token: token)
+        cli.connect(url: url)
 
         wait(for: [exp], timeout: 5.0)
     }
 }
 
 extension BridgeServerClientTests: MobileWebSocketClientDelegate {
+    struct ThreadsListParams: Codable { let topK: Int? }
+    struct ThreadsListResult: Codable { let items: [ThreadSummary] }
     func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient) {
-        let request = BridgeMessages.ThreadsListRequest(topK: 5)
-        client.send(type: "threads.list.request", message: request)
+        client.sendJSONRPC(method: "threads/list", params: ThreadsListParams(topK: 5), id: "test-threads-list") { (resp: ThreadsListResult?) in
+            if let _ = resp { self.responseExpectation?.fulfill() }
+        }
     }
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?) {
@@ -48,10 +50,6 @@ extension BridgeServerClientTests: MobileWebSocketClientDelegate {
         }
     }
 
-    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage) {
-        if message.type == "threads.list.response" {
-            responseExpectation?.fulfill()
-        }
-    }
+    // JSON-RPC response is handled via completion in sendJSONRPC; no-op here.
 }
 #endif
