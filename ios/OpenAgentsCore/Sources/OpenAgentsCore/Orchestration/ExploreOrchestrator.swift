@@ -196,8 +196,29 @@ public actor ExploreOrchestrator {
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
+            // Parse session operations (Phase 2.5)
+            if trimmed.contains("sessionList") || (trimmed.contains("session") && trimmed.contains("list")) {
+                if let op = parseSessionList(from: trimmed) {
+                    ops.append(op)
+                }
+            }
+            else if trimmed.contains("sessionSearch") || (trimmed.contains("session") && trimmed.contains("search")) {
+                if let op = parseSessionSearch(from: trimmed) {
+                    ops.append(op)
+                }
+            }
+            else if trimmed.contains("sessionRead") || (trimmed.contains("session") && trimmed.contains("read")) {
+                if let op = parseSessionRead(from: trimmed) {
+                    ops.append(op)
+                }
+            }
+            else if trimmed.contains("sessionAnalyze") || (trimmed.contains("session") && trimmed.contains("analyze")) {
+                if let op = parseSessionAnalyze(from: trimmed) {
+                    ops.append(op)
+                }
+            }
             // Parse readSpan operations
-            if trimmed.contains("readSpan") || trimmed.contains("Read") {
+            else if trimmed.contains("readSpan") || trimmed.contains("Read") {
                 if let op = parseReadSpan(from: trimmed) {
                     ops.append(op)
                 }
@@ -433,6 +454,73 @@ public actor ExploreOrchestrator {
     private func extractPathAfterIn(from line: String) -> String? {
         // Extract path after "in"
         if let m = match(line, pattern: #"in\s+([a-zA-Z0-9_\-./]+)"#) {
+            return m
+        }
+        return nil
+    }
+
+    // MARK: - Session Operation Parsers (Phase 2.5)
+
+    private func parseSessionList(from line: String) -> AgentOp? {
+        // Example: "sessionList: top 10 claude-code sessions"
+        let provider = extractProvider(from: line)
+        let topK = extractNumber(from: line)
+        return AgentOp(kind: .sessionList(SessionListParams(provider: provider, topK: topK)))
+    }
+
+    private func parseSessionSearch(from line: String) -> AgentOp? {
+        // Example: "sessionSearch: \"authentication\" in all sessions"
+        if let pattern = extractQuotedString(from: line) {
+            let provider = extractProvider(from: line)
+            return AgentOp(kind: .sessionSearch(SessionSearchParams(pattern: pattern, provider: provider)))
+        }
+        return nil
+    }
+
+    private func parseSessionRead(from line: String) -> AgentOp? {
+        // Example: "sessionRead: session abc123"
+        if let sessionId = extractSessionId(from: line) {
+            let provider = extractProvider(from: line) ?? "claude-code"
+            return AgentOp(kind: .sessionRead(SessionReadParams(sessionId: sessionId, provider: provider)))
+        }
+        return nil
+    }
+
+    private func parseSessionAnalyze(from line: String) -> AgentOp? {
+        // Example: "sessionAnalyze: sessions [id1, id2] for file frequency"
+        // Simplified: just create with empty session IDs, will be populated by FM context
+        let provider = extractProvider(from: line)
+        // For now, return a basic analyze op - FM should provide session IDs from prior sessionList/sessionSearch
+        return AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: provider)))
+    }
+
+    // MARK: - Session Extraction Helpers
+
+    private func extractProvider(from line: String) -> String? {
+        // Extract "claude-code" or "codex"
+        if line.localizedCaseInsensitiveContains("claude-code") || line.localizedCaseInsensitiveContains("claude code") {
+            return "claude-code"
+        }
+        if line.localizedCaseInsensitiveContains("codex") {
+            return "codex"
+        }
+        return nil
+    }
+
+    private func extractNumber(from line: String) -> Int? {
+        // Extract number like "10" from "top 10"
+        if let m = match(line, pattern: #"top\s+(\d+)"#) {
+            return Int(m)
+        }
+        if let m = match(line, pattern: #"(\d+)\s+sessions?"#) {
+            return Int(m)
+        }
+        return nil
+    }
+
+    private func extractSessionId(from line: String) -> String? {
+        // Extract session ID (alphanumeric + dashes)
+        if let m = match(line, pattern: #"session\s+([a-zA-Z0-9\-_]+)"#) {
             return m
         }
         return nil
