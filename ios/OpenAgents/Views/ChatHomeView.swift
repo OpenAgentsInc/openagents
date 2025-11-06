@@ -59,9 +59,9 @@ struct ChatHomeView: View {
                     onNewChat: { /* hook up compose/present flow here */ }
                 )
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Start") { startFlow() }
+                    Button("Start") { startExploreFlow() }
                         .buttonStyle(.glass)
-                        .accessibilityLabel("Start Explore Flow")
+                        .accessibilityLabel("Start Workspace Exploration")
                 }
             }
             // iOS 26+ only: let the system render the Liquid Glass toolbar background
@@ -71,19 +71,31 @@ struct ChatHomeView: View {
         }
     }
 
-    private func startFlow() {
-        // Phase 1: ensure a session exists then request index.status
+    private func startExploreFlow() {
+        // Phase 2: Start workspace exploration using on-device FM orchestrator
         Task { @MainActor in
             // Reset stream so user sees only new events for this flow
             bridge.updates.removeAll()
-            // Create new session
-            struct NewResp: Codable { let session_id: ACPSessionId }
-            bridge.sendRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest()) { (resp: NewResp?) in
-                guard let sid = resp?.session_id else { return }
-                bridge.currentSessionId = sid
-                // Minimal control-plane request to trigger a visible stream
-                struct StatusParams: Codable { let session_id: ACPSessionId }
-                bridge.sendRPC(method: "index.status", params: StatusParams(session_id: sid)) { (_: BridgeManager.EmptyResult?) in }
+
+            // IMPORTANT: The orchestrator runs on macOS, not iOS!
+            // We need to send the macOS workspace path, not an iOS sandbox path.
+            // Default to the user's home directory on macOS.
+            let workspacePath = ProcessInfo.processInfo.environment["TEST_WORKSPACE_ROOT"] ?? "/Users/christopherdavid/code/openagents"
+
+            // Goals for exploration - triggers session history analysis
+            let goals = [
+                "Find recent conversations about this project",
+                "Identify most frequently modified files from conversation history"
+            ]
+
+            // Start orchestration
+            print("[ChatHome] Starting workspace exploration: \(workspacePath)")
+            bridge.orchestrateExploreStart(root: workspacePath, goals: goals) { response in
+                if let response = response {
+                    print("[ChatHome] Orchestration started: \(response.plan_id)")
+                } else {
+                    print("[ChatHome] Orchestration failed to start")
+                }
             }
         }
     }
@@ -136,14 +148,38 @@ private struct UpdateRow: View {
                     .font(.footnote)
                     .foregroundStyle(upd.status == .error ? .red : .secondary)
             }
-        case .agentMessageChunk:
-            Text("Agent message")
-        case .userMessageChunk:
-            Text("User message")
-        case .agentThoughtChunk:
-            Text("…thinking…")
-                .italic()
-                .foregroundStyle(.secondary)
+        case .agentMessageChunk(let chunk):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(.blue)
+                    Text("Agent")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text(extractText(from: chunk))
+                    .font(.body)
+            }
+        case .userMessageChunk(let chunk):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "person")
+                        .foregroundStyle(.green)
+                    Text("User")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text(extractText(from: chunk))
+                    .font(.body)
+            }
+        case .agentThoughtChunk(let chunk):
+            HStack {
+                Image(systemName: "brain")
+                    .foregroundStyle(.purple)
+                Text(extractText(from: chunk))
+                    .italic()
+                    .foregroundStyle(.secondary)
+            }
         case .plan(let plan):
             Text("Plan: \(plan.entries.count) items")
                 .foregroundStyle(.secondary)
@@ -153,6 +189,28 @@ private struct UpdateRow: View {
         case .currentModeUpdate(let cur):
             Text("Mode: \(cur.current_mode_id.rawValue)")
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Extract text content from a ContentChunk
+    private func extractText(from chunk: ACP.Client.ContentChunk) -> String {
+        switch chunk.content {
+        case .text(let textContent):
+            return textContent.text
+        case .image:
+            return "[Image]"
+        case .audio:
+            return "[Audio]"
+        case .resource_link(let link):
+            return "Resource: \(link.uri)"
+        case .resource(let embeddedResource):
+            // EmbeddedResource has a nested resource field which is an enum
+            switch embeddedResource.resource {
+            case .text(let textResource):
+                return "Embedded text: \(textResource.uri)"
+            case .blob(let blobResource):
+                return "Embedded blob: \(blobResource.uri)"
+            }
         }
     }
 }
