@@ -159,7 +159,16 @@ public actor ExploreOrchestrator {
         - readSpan ALWAYS uses line range 1-100
         """)
 
-        let session = LanguageModelSession(model: model, tools: [], instructions: instructions)
+        let tools: [any Tool] = {
+            var t: [any Tool] = []
+            #if canImport(FoundationModels)
+            if #available(iOS 26.0, macOS 26.0, *) {
+                t = FMToolsRegistry.defaultTools(workspaceRoot: workspaceRoot)
+            }
+            #endif
+            return t
+        }()
+        let session = LanguageModelSession(model: model, tools: tools, instructions: instructions)
         try? session.prewarm(promptPrefix: nil)
 
         let workspaceName = (workspaceRoot as NSString).lastPathComponent
@@ -669,7 +678,16 @@ public actor ExploreOrchestrator {
         """)
 
         let model = SystemLanguageModel.default
-        let session = LanguageModelSession(model: model, tools: [], instructions: instructions)
+        let tools: [any Tool] = {
+            var t: [any Tool] = []
+            #if canImport(FoundationModels)
+            if #available(iOS 26.0, macOS 26.0, *) {
+                t = FMToolsRegistry.defaultTools(workspaceRoot: workspaceRoot)
+            }
+            #endif
+            return t
+        }()
+        let session = LanguageModelSession(model: model, tools: tools, instructions: instructions)
 
         let prompt = """
         Metrics JSON:
