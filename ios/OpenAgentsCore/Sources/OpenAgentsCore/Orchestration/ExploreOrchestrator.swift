@@ -639,18 +639,40 @@ public actor ExploreOrchestrator {
 
         // Deterministic summary when we already have explicit userIntent/goalPatterns
         if let intent = analyze.userIntent?.trimmingCharacters(in: .whitespacesAndNewlines), !intent.isEmpty {
-            // Clean bullet-y intent into readable markdown
+            // Normalize newlines and trim items
             let lines = intent
                 .replacingOccurrences(of: "\r", with: "\n")
                 .components(separatedBy: "\n")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
-            var out: [String] = []
-            // If intent starts with a label like "Read:", keep it and bullet the rest
+
+            // If intent starts with a label like "Read:", convert bullets into a clear sentence.
             if let first = lines.first, first.hasSuffix(":") {
-                out.append(first)
-                lines.dropFirst().forEach { l in out.append("- " + l.replacingOccurrences(of: "^-\\s*[-*]\\s*", with: "", options: .regularExpression)) }
-                return FMAnalysisResult(text: out.joined(separator: "\n"), source: .sessionAnalyze)
+                let label = first.dropLast().trimmingCharacters(in: .whitespaces) // e.g., "Read"
+                let items = lines.dropFirst().map { raw -> String in
+                    // Strip any leading bullet markers and extra dashes
+                    let stripped = raw.replacingOccurrences(of: "^[\\s]*[-*•]+\\s*", with: "", options: .regularExpression)
+                    // If item looks like an absolute path under the workspace, make it repo-relative
+                    let rel = PathUtils.normalizeToWorkspaceRelative(workspaceRoot: workspaceRoot, inputPath: stripped)
+                    // Prefer short display for paths
+                    if rel != "." && rel != stripped { return rel }
+                    return stripped
+                }
+                let nonEmpty = items.filter { !$0.isEmpty }
+                if nonEmpty.isEmpty {
+                    // Fall back to raw intent if we somehow stripped everything
+                    return FMAnalysisResult(text: String(label), source: .sessionAnalyze)
+                }
+                // Join items succinctly (max 4)
+                let maxItems = Array(nonEmpty.prefix(4))
+                let joined: String = {
+                    if maxItems.count == 1 { return maxItems[0] }
+                    if maxItems.count == 2 { return "\(maxItems[0]) and \(maxItems[1])" }
+                    let head = maxItems.dropLast().joined(separator: ", ")
+                    return "\(head), and \(maxItems.last!)"
+                }()
+                let sentence = "User intends to \(label.lowercased()) \(joined)."
+                return FMAnalysisResult(text: sentence, source: .sessionAnalyze)
             }
             // Otherwise join as a compact sentence
             return FMAnalysisResult(text: lines.joined(separator: " "), source: .sessionAnalyze)
