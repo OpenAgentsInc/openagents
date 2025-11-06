@@ -368,7 +368,7 @@ public actor ExploreOrchestrator {
     }
 
     private func executeOperation(_ op: AgentOp) async throws {
-        print("[Orchestrator] Executing: \(op.description)")
+        print("[Orchestrator] Executing: \(op.description) [tool=\(op.toolName) id=\(op.opId)]")
 
         // Stream tool call (started)
         await streamToolCall(op, status: .started)
@@ -382,6 +382,7 @@ public actor ExploreOrchestrator {
 
             // Stream tool call update (completed)
             await streamToolCallUpdate(op, status: .completed, output: result)
+            print("[Orchestrator] Completed: \(op.toolName) [id=\(op.opId)]")
         } catch {
             print("[Orchestrator] Operation failed: \(error)")
 
@@ -565,6 +566,19 @@ public actor ExploreOrchestrator {
         )
         let update = ACP.Client.SessionUpdate.toolCall(toolCall)
         await streamHandler(update)
+
+        // Also emit a started update for clearer progress in UI
+        if status == .started {
+            let started = ACPToolCallUpdateWire(
+                call_id: op.opId.uuidString,
+                status: .started,
+                output: nil,
+                error: nil,
+                _meta: ["progress": AnyEncodable(0.0)]
+            )
+            let startedUpdate = ACP.Client.SessionUpdate.toolCallUpdate(started)
+            await streamHandler(startedUpdate)
+        }
     }
 
     private func streamToolCallUpdate(

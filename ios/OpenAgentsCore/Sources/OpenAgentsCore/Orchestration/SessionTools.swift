@@ -288,6 +288,7 @@ public struct SessionAnalyzeTool: Sendable {
         provider: String? = nil,
         metrics: [String]? = nil
     ) async throws -> SessionAnalyzeResult {
+        print("[SessionAnalyze] start provider=\(provider ?? "<any>") explicit_ids=\(sessionIds.count) metrics=\(metrics ?? ["files","tools","goals"]))")
         let computeAll = metrics == nil
         let computeFiles = computeAll || metrics?.contains("files") == true
         let computeTools = computeAll || metrics?.contains("tools") == true
@@ -316,27 +317,36 @@ public struct SessionAnalyzeTool: Sendable {
             // Caller provided explicit session IDs. Respect provided provider if present; otherwise, we'll auto-detect per session.
             targets = sessionIds.map { ($0, provider) }
         }
+        print("[SessionAnalyze] targets=\(targets.count) (limit=10)")
 
         // Read each session (limit to 10 for now)
         let readTool = SessionReadTool()
-        for target in targets.prefix(10) {
+        for (idx, target) in targets.prefix(10).enumerated() {
             do {
                 // Determine provider for this session; if unknown, try both providers.
                 let result: SessionReadResult
                 if let prov = target.provider {
+                    print("[SessionAnalyze] read session id=\(target.id) provider=\(prov) …")
                     result = try await readTool.read(sessionId: target.id, provider: prov, maxEvents: 200)
                 } else {
                     // Try claude-code first, then codex
+                    print("[SessionAnalyze] read session id=\(target.id) provider=<auto> try claude-code …")
                     if let r1 = try? await readTool.read(sessionId: target.id, provider: "claude-code", maxEvents: 200) {
                         result = r1
+                        print("[SessionAnalyze] id=\(target.id) resolved provider=claude-code events=\(r1.events.count)")
                     } else if let r2 = try? await readTool.read(sessionId: target.id, provider: "codex", maxEvents: 200) {
                         result = r2
+                        print("[SessionAnalyze] id=\(target.id) resolved provider=codex events=\(r2.events.count)")
                     } else {
+                        print("[SessionAnalyze] skip id=\(target.id) not found in either provider")
                         continue // Skip if not found under either provider
                     }
                 }
                 sessionCount += 1
                 totalEvents += result.events.count
+                if (idx + 1) % 1 == 0 { // log every session
+                    print("[SessionAnalyze] progress \(idx+1)/\(min(targets.count, 10)) sessions, totalEvents=\(totalEvents)")
+                }
 
                 // Count file references
                 if computeFiles {
@@ -361,17 +371,20 @@ public struct SessionAnalyzeTool: Sendable {
                 }
             } catch {
                 // Skip sessions that can't be read
+                print("[SessionAnalyze] error reading id=\(target.id): \(error.localizedDescription)")
                 continue
             }
         }
 
         let avgLength = sessionCount > 0 ? Double(totalEvents) / Double(sessionCount) : 0.0
 
-        return SessionAnalyzeResult(
+        let result = SessionAnalyzeResult(
             fileFrequency: computeFiles ? fileFreq : nil,
             toolFrequency: computeTools ? toolFreq : nil,
             goalPatterns: computeGoals ? goalPatterns : nil,
             avgConversationLength: avgLength
         )
+        print("[SessionAnalyze] done sessions=\(sessionCount) avgLen=\(Int(avgLength)) files=\(fileFreq.count) tools=\(toolFreq.count) goals=\(goalPatterns.count)")
+        return result
     }
 }
