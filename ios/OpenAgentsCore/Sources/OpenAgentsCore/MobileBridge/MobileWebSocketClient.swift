@@ -204,7 +204,7 @@ public final class MobileWebSocketClient {
     private func sendInitialize() {
         // Build request
         let initReq = ACP.Agent.InitializeRequest(
-            protocol_version: "0.7.0",
+            protocol_version: "0.2.2",
             client_capabilities: .init(),
             client_info: ACP.Agent.Implementation(name: "openagents-ios", title: "OpenAgents iOS", version: "0.1.0")
         )
@@ -248,7 +248,7 @@ public final class MobileWebSocketClient {
     private func handleInitializeResponseText(_ text: String) {
         if let data = text.data(using: .utf8) {
             // Try JSON-RPC success response for initialize
-            if let resp = try? JSONDecoder().decode(JSONRPC.Response<ACP.Agent.InitializeResponse>.self, from: data), resp.result.protocol_version.hasPrefix("0.7") {
+            if let resp = try? JSONDecoder().decode(JSONRPC.Response<ACP.Agent.InitializeResponse>.self, from: data), resp.result.protocol_version.hasPrefix("0.2") {
                 // Cancel handshake timeout on success
                 handshakeTimer?.invalidate()
                 handshakeTimer = nil
