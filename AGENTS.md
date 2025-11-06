@@ -1,324 +1,467 @@
 # Repository Guidelines
 
 ## Codebase Summary
-- Purpose: mobile command center for coding agents. Expo app drives agent sessions over a local WebSocket bridge to a Rust service that manages ACP sessions and streams typed Tinyvex data to the app.
-- Architecture: two layers
-  - App (`expo/`): Expo Router screens — Session (live feed + input), History (in Drawer; fetched from bridge), Library (UI component samples), Settings (bridge URL + permissions). Consumes ACP-compliant updates and Tinyvex typed rows over WebSocket; no JSONL parsing in the app.
-- Bridge (`crates/oa-bridge/`): Axum WebSocket server on `--bind` (default `0.0.0.0:8787`) that launches `codex exec --json` (auto‑adds `resume --last` when supported) and forwards stdout/stderr lines to all clients; each prompt is written to the child’s stdin then closed to signal EOF.
-- Key App Modules:
-  - Routing: `expo/app/` with routes: `/session`, `/session/[id]`, `/projects`, `/project/[id]`, `/library`, `/settings`; message detail at `expo/app/message/[id].tsx`.
-  - Session UI: streaming feed renders ACP updates and Tinyvex data using typed components under `expo/components/acp/*`.
-  - Components: UI renderers in `expo/components/acp/*` and `expo/components/jsonl/*` (used by ACP content renderers and library samples). A `HapticTab` adds iOS haptics for the tab bar.
-  - State & storage: lightweight log store in `expo/lib/log-store.ts` (AsyncStorage backed) powers History and Message detail views.
-- Connection/permissions: `expo/providers/ws.tsx` manages the WebSocket connection, exposes `readOnly`, `networkEnabled`, `approvals`, and `attachPreface` toggles (persisted). The header shows a green/red dot for connection.
-- Rule: No HTTP calls to the bridge. All bridge control is via WebSocket control messages (e.g., `{ "control": "run.submit", ... }`) or via Convex queries/mutations. Do not add REST endpoints.
-- For the `packages/tricoder` CLI: do not implement your own Node WebSocket server. The Rust bridge (`crates/oa-bridge`) is the single source of truth for `/ws`.
- - Bridge releases: see `docs/bridge-release.md` for how tags trigger prebuilt binaries and how to update/publish tricoder to point at the new bridge.
-  - Theming/typography: Dark theme in `expo/constants/theme.ts`; global mono font + defaults via `expo/constants/typography.ts` (Berkeley Mono; splash hidden after fonts load).
-  - OTA: `expo/hooks/use-auto-update.ts` checks for `expo-updates` when not in dev; EAS configured for channel `v0.3.0` with runtimeVersion `appVersion` in `expo/app.json` and `expo/eas.json`.
-- Bridge Details:
-  - Entry: `crates/oa-bridge/src/main.rs`. Dependencies: `axum` (ws), `tokio`, `clap`, `tracing`.
-  - CLI flags injected (unless provided): `--dangerously-bypass-approvals-and-sandbox`, `-s danger-full-access`, and config `sandbox_permissions=["disk-full-access"]`, `sandbox_mode="danger-full-access"`, `approval_policy="never"`, plus `-m gpt-5` and `-c model_reasoning_effort="high"`.
-  - Resilience: if stdin is consumed after one prompt, the bridge respawns the child process for the next message. Large `exec_command_output_delta` payloads are summarized for console logs.
-  - Repo root detection: runs Codex from the repository root (heuristic checks for both `expo/` and `crates/`).
-- Docs:
-  - Permissions model and recommended setups: `docs/permissions.md`.
-  - Projects & Skills schema: `docs/projects-and-skills-schema.md`.
-- Repository Layout:
-  - `expo/`: app sources, assets, config (`app.json`, `eas.json`, `eslint.config.js`).
-  - `crates/oa-bridge/`: Rust WebSocket bridge crate.
-  - `docs/`: developer docs and logs.
-  - Root `Cargo.toml` and `Cargo.lock`: Cargo workspace anchor (lockfile at root by design).
-- Development Flow:
-  - App: `cd expo && bun install && bun run start` (then `bun run ios|android|web`). Type‑check with `bun run typecheck`; lint with `bun run lint`.
-  - Bridge: from repo root `cargo bridge` (alias for `run -p oa-bridge -- --bind 0.0.0.0:8787`). App default WS URL is `ws://localhost:8787/ws` (configurable in Settings).
-  - Agent prompts: Session screen optionally prefixes a one‑line JSON config indicating sandbox/approvals to match the bridge.
-- Conventions & Policies (highlights):
-  - TypeScript strict, 2‑space indent, imports grouped React/external → internal. Expo Router filename conventions.
-- Expo installs: use `bunx expo install` for RN/Expo packages; `bun add` for generic libs. Don’t pin versions manually; commit `bun.lock`.
- - Always prefer the package manager to manage versions. Do NOT hand-edit `package.json` to set specific versions or guess from memory. Use `bun add <pkg>` (or `bunx expo install <pkg>` for Expo/RN) so compatible latest versions are resolved and written to `bun.lock`.
-  - OTA iOS default: prefer `bun run update:ios -- "<msg>"` unless Android explicitly requested.
-  - Rust deps: add via `cargo add` without versions; let Cargo lock at root.
-  - Security: no secrets; iOS bundle id `com.openagents.app`.
-  - Gotchas: none specific to paths with parentheses now; the `(tabs)` group has been removed.
-  - Type safety (MANDATORY): Never cast to `any` in this repo. Always use real types from ADR‑0002’s sources of truth:
-    - ACP and update/content types from `@agentclientprotocol/sdk` re‑exported via `@/types/acp`.
-    - Bridge/Tinyvex transport types generated under `expo/types/bridge/*`.
-    - If a correct type cannot be identified, STOP and flag in your PR or task comments. Do not land code that uses `any`.
-    - Stories and UI examples must also be fully typed — no `as any` shims. Prefer explicit type annotations for props and sample data.
 
-## Project Structure & Module Organization
-- Mobile app: `expo/` (Expo Router in `expo/app/`, assets in `expo/assets/`).
-- Rust (planned): `crates/` (e.g., `crates/oa-bridge/`; workspace config will be added as crates mature).
-- Docs: `docs/` (build/run notes in `docs/logs/`).
+**OpenAgents v0.3+** is a native Swift application for iOS and macOS that enables mobile/desktop management of coding agents.
 
-## Build, Test, and Development Commands
-- Install deps: `cd expo && bun install` (aka `bun i`).
-- Run locally (Metro): `bun run start`.
-  - Platform targets: `bun run ios`, `bun run android`, `bun run web`.
-- Type-check TypeScript: `bun run typecheck`.
-- Lint TypeScript/TSX: `bun run lint`.
-- iOS production build: `bun run build:ios:prod`.
-- Submit iOS build: `bun run submit:ios`.
-- Run bridge (Rust): from repo root `cargo bridge`.
+- **Purpose**: Mobile and desktop command center for coding agents (OpenAI Codex, Claude Code CLI). Run agent sessions from your iPhone or Mac, stay updated on progress, and nudge agents along when needed.
+- **Architecture**: Native Swift using SwiftUI for UI, Foundation Models for on-device intelligence, and WebSocket-based bridge for iOS ↔ macOS connectivity
+- **Platforms**: iOS 16.0+, macOS 13.0+
+- **Previous versions**: v0.2 and earlier (Expo/React Native + Rust + Tauri) are deprecated and no longer maintained
+
+### Key Components
+
+- **iOS App** (`ios/OpenAgents/`)
+  - Native Swift iOS app with SwiftUI views
+  - Agent Client Protocol (ACP) implementation for agent communication
+  - WebSocket client for connecting to macOS companion app
+  - Foundation Models integration for conversation titles and summaries
+  - Liquid Glass UI for Apple's new translucent material system
+
+- **macOS App** (`ios/OpenAgents/`)
+  - Native Swift macOS app (same Xcode project, different targets)
+  - WebSocket server for iOS pairing and bridge communication
+  - Desktop agent session management (Codex/Claude Code CLI integration)
+  - Bonjour/mDNS discovery for zero-config LAN pairing
+
+- **Shared Core** (`ios/OpenAgentsCore/`)
+  - SwiftPM package with shared logic for both platforms
+  - ACP protocol implementation (`AgentClientProtocol/`)
+  - WebSocket bridge components (`DesktopWebSocketServer`, `MobileWebSocketClient`)
+  - JSON-RPC 2.0 transport layer
+  - Bridge messages and configuration
+
+### Repository Layout
+
+```
+ios/                              # Xcode project root
+├── OpenAgents/                   # Main app target
+│   ├── Views/                    # SwiftUI views
+│   ├── Bridge/                   # Bridge integration
+│   └── ACP/                      # ACP renderers and components
+├── OpenAgentsCore/               # Shared SwiftPM package
+│   ├── Sources/
+│   │   └── OpenAgentsCore/
+│   │       ├── AgentClientProtocol/
+│   │       ├── DesktopBridge/
+│   │       ├── MobileBridge/
+│   │       └── Bridge/
+│   └── Tests/
+│       └── OpenAgentsCoreTests/
+├── OpenAgents.xcodeproj          # Xcode project file
+└── OpenAgents.xcworkspace        # Xcode workspace
+
+docs/                             # Documentation
+├── adr/                          # Architecture Decision Records
+├── liquid-glass/                 # Liquid Glass UI documentation
+├── ios-bridge/                   # Bridge protocol documentation
+└── logs/                         # Development logs
+
+packages/tricoder/                # DEPRECATED npm package (kept for responsible deprecation)
+```
+
+## Architecture
+
+### v0.3 Swift-Only Architecture
+
+**No Expo. No Rust. No Tauri. No TypeScript.** All application code is native Swift.
+
+- **Native Swift**: iOS 16.0+ and macOS 13.0+ using SwiftUI and UIKit where needed
+- **Agent Client Protocol (ACP)**: Swift implementation of ACP for agent communication
+- **WebSocket Bridge**: JSON-RPC 2.0 over WebSocket for iOS ↔ macOS connectivity
+- **Bonjour Discovery**: Zero-config LAN pairing via mDNS (`_openagents._tcp`)
+- **Foundation Models**: On-device Apple Intelligence for conversation titles and summaries
+- **Liquid Glass UI**: Apple's translucent material system for structural UI (iOS 26+, macOS 15+)
+
+### ACP Implementation
+
+The Swift ACP implementation is the canonical contract for agent communication:
+
+- All agent updates use ACP `SessionUpdate` messages
+- Tool calls, text content, thinking blocks all follow ACP schema
+- No custom JSONL or proprietary formats
+- See `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/` for implementation
+- Reference: ADR-0002 (Agent Client Protocol)
+
+### Bridge Protocol
+
+iOS and macOS communicate via WebSocket with JSON-RPC 2.0:
+
+- **Desktop (macOS)**: Runs `DesktopWebSocketServer`, advertises via Bonjour, accepts JSON-RPC methods
+- **Mobile (iOS)**: Runs `MobileWebSocketClient`, discovers via `NetServiceBrowser`, sends JSON-RPC requests
+- **Protocol**: `initialize`, `session/new`, `session/prompt`, `session/cancel`, `session/update` (notification)
+- **Discovery**: Automatic via `_openagents._tcp` Bonjour service
+- See `docs/ios-bridge/` for detailed protocol documentation
+- Reference: ADR-0004 (iOS ↔ Desktop WebSocket Bridge)
+
+## Development
+
+### Prerequisites
+
+- **Xcode 16.0+** (required for Swift 5.9+ and iOS 16.0/macOS 13.0 SDKs)
+- **macOS 13.0+** (for Xcode and macOS target development)
+- **OpenAI Codex or Claude Code CLI** (for desktop agent integration)
+
+### Opening the Project
+
+```bash
+cd ios
+open OpenAgents.xcworkspace  # Use workspace (includes SwiftPM packages)
+```
+
+**Important**: Always use `OpenAgents.xcworkspace`, not `OpenAgents.xcodeproj` directly, to ensure SwiftPM packages are loaded.
+
+### Building
+
+#### iOS
+
+```bash
+# Command line (simulator)
+cd ios
+xcodebuild -workspace OpenAgents.xcworkspace -scheme OpenAgents -sdk iphonesimulator -configuration Debug
+
+# Or use Xcode UI: Product > Build (⌘B)
+# Select iOS simulator or device from scheme picker
+```
+
+#### macOS
+
+```bash
+# Command line
+cd ios
+xcodebuild -workspace OpenAgents.xcworkspace -scheme OpenAgents -sdk macosx -configuration Debug
+
+# Or use Xcode UI: Product > Build (⌘B)
+# Select "My Mac" from scheme picker
+```
+
+### Running
+
+- **iOS**: Select an iOS simulator or connected device, then press ⌘R
+- **macOS**: Select "My Mac" scheme, then press ⌘R
+- **TestFlight**: iOS builds available at https://testflight.apple.com/join/dvQdns5B
+
+### Testing
+
+```bash
+# Run tests in Xcode
+# Product > Test (⌘U)
+
+# Or command line
+cd ios
+xcodebuild test -workspace OpenAgents.xcworkspace -scheme OpenAgents -sdk iphonesimulator
+```
+
+Key test suites:
+- `BridgeServerClientTests.swift` - WebSocket bridge integration tests
+- `DesktopWebSocketServerComprehensiveTests.swift` - Server-side bridge tests
+- `MessageClassificationRegressionTests.swift` - ACP message classification
+- `ToolCallViewRenderingIntegrationTests.swift` - UI rendering tests
+
+## Coding Style & Conventions
+
+### Swift Style
+
+- **Language**: Swift 5.9+ (strict mode)
+- **Formatting**: Follow Swift standard conventions (SwiftFormat/SwiftLint configs if present)
+- **Indentation**: 4 spaces (Xcode default for Swift)
+- **Naming**:
+  - Types: `PascalCase` (e.g., `BridgeManager`, `DesktopWebSocketServer`)
+  - Functions/properties: `camelCase` (e.g., `connectToServer()`, `isConnected`)
+  - Constants: `camelCase` (e.g., `defaultPort`, `serviceType`)
+  - Files: Match primary type name (e.g., `BridgeManager.swift`)
+
+### SwiftUI Conventions
+
+- Use `@State`, `@StateObject`, `@ObservedObject`, `@EnvironmentObject` appropriately
+- Prefer composition over inheritance
+- Extract view components when views exceed ~100 lines
+- Use `PreviewProvider` for Xcode Previews
+
+### Architecture Patterns
+
+- **MVVM-ish**: Views consume `ObservableObject` view models or managers
+- **Dependency Injection**: Pass dependencies explicitly (e.g., `BridgeManager` via environment)
+- **Async/Await**: Use Swift concurrency for async operations
+- **Actors**: Use for thread-safe state management where appropriate
+
+### Type Safety
+
+- **Never use `Any` or force casts** unless absolutely necessary
+- Prefer protocol conformance over type erasure
+- Use generics for reusable, type-safe code
+- ACP types are defined in `OpenAgentsCore` - import and use them directly
 
 ## Build Discipline (Mandatory)
-- Before handing off work for review, always ensure the app builds locally without compile errors.
-- For changes under `ios/`, perform a Debug build in Xcode and fix any compiler errors before stopping work.
-- If a change breaks the build, fix forward or revert the breaking fragment immediately, then re‑run the build to confirm a clean state.
 
-## Projects and Skills (Desktop‑side Source of Truth)
+### Before Committing
 
-- Home folder: `OPENAGENTS_HOME` (defaults to `~/.openagents`).
-  - Projects dir: `~/.openagents/projects/`
-  - Skills dir: `~/.openagents/skills/`
-- Format: Markdown with YAML frontmatter (see `docs/projects-and-skills-schema.md`).
-  - Project files: `{id}.project.md`
-  - Skill files: `{id}.skill.md`
-- Validation: frontmatter is validated against JSON Schemas on the bridge.
-  - Schemas: `crates/oa-bridge/schemas/project.schema.json` and `skill.schema.json`.
-  - The bridge rejects invalid saves and skips invalid files when listing.
-- WebSocket controls (Projects):
-  - List: `{ "control": "projects" }` → `{ type: "bridge.projects", items }`
-  - Save: `{ "control": "project.save", project }` (writes `{id}.project.md`)
-  - Delete: `{ "control": "project.delete", id }`
-- App behavior:
-  - On mount, the app fetches projects over WS and seeds the local store for instant rehydrate; the Projects screen and drawer read from this store.
+1. **Build succeeds**: Press ⌘B in Xcode for both iOS and macOS schemes
+2. **Tests pass**: Press ⌘U to run full test suite
+3. **No warnings**: Fix or suppress warnings appropriately (don't leave them)
+4. **SwiftLint passes**: If configured, ensure no linter errors
 
-### Add a Project (example)
-1. Create file `~/.openagents/projects/tricoder.project.md` with:
+### Build Breakage Policy
+
+- If you break the build, **fix forward immediately** or revert the breaking change
+- Never leave the main branch in a broken state
+- Run a full build before pushing to shared branches
+- For large changes, test on a clean clone to catch missing files
+
+### iOS/macOS Testing
+
+- **Always test on both platforms** if you touch shared code (`OpenAgentsCore`)
+- Use iOS Simulator for quick iteration
+- Test on real devices periodically (especially for bridge/networking features)
+- macOS app must build and run without errors
+
+## Git Workflow
+
+### Branching Policy
+
+- **Main branch**: `main` (production-ready code)
+- **Default branch for work**: Commit directly to `main` unless instructed otherwise
+- **Feature branches**: Only create when explicitly requested by user
+- **No destructive operations**: Never use `git reset --hard`, `git clean -fdx`, `git stash`, or force pushes unless explicitly requested
+
+### Commit Guidelines
+
+- **Imperative mood**: "Add feature" not "Added feature" or "Adds feature"
+- **Concise subject**: ≤50 characters
+- **Body when needed**: Explain why, not what (the diff shows what)
+- **Commit often**: Small, focused commits with immediate pushes
+- **No stashing**: Always commit work in progress, never stash
+
+### Staging Discipline
+
+- **Only stage files you changed**: Never use `git add .` or `git add -A` unless you changed all those files
+- **Use explicit paths**: `git add path/to/file.swift` not `git add .`
+- **Review before committing**: `git status` and `git diff --staged` to verify staged changes
+- **Leave unrelated changes untouched**: If you see unstaged changes you didn't make, leave them alone
+
+### Multi-Agent Safety
+
+- **Assume concurrent work**: Other agents may be working on the same branch
+- **Never delete untracked files**: They may be in-progress work by another agent
+- **No history rewriting**: No rebases, amended commits, or force pushes without explicit permission
+- **Respect local changes**: Don't revert or restore files you didn't modify
+
+## Architecture Decision Records (ADRs)
+
+This project uses ADRs to document significant architectural decisions.
+
+### Reading ADRs
+
+- **Location**: `docs/adr/`
+- **Current ADRs**:
+  - ADR-0001: Adopt Architectural Decision Records
+  - ADR-0002: Agent Client Protocol (ACP) as Canonical Runtime Contract
+  - ADR-0003: Swift Cross-Platform App (macOS + iOS)
+  - ADR-0004: iOS ↔ Desktop WebSocket Bridge and Pairing
+  - ADR-0005: Adopt Liquid Glass for Apple Platforms
+  - ADR-0006: Use Apple Foundation Models for On-Device Intelligence
+
+### Creating ADRs
+
+Use the provided script for consistency:
+
+```bash
+cd docs/adr
+./new.sh "Your ADR Title Here"
 ```
----
-name: Tricoder
-workingDir: /Users/you/code/openagents
-repo:
-  provider: github
-  remote: OpenAgentsInc/openagents
-  url: https://github.com/OpenAgentsInc/openagents
-  branch: main
-instructions: |
-  A mobile command center for coding agents. Manage and talk to your coding
-  agents on the go. Fully open source.
----
 
-# Overview
-...free‑form Markdown body...
-```
-2. Start the bridge: `cargo bridge`
-3. Open the app — projects load via WS.
+**For AI Agents**: Read `docs/adr/AGENTS.md` before creating or modifying ADRs. It contains important guidelines on tone, voice, and content principles.
 
-### Validate a Project
-- The bridge auto‑validates on save/list. To check manually:
-  - Ensure required fields: `name`, `workingDir`.
-  - Optional fields may be present (see schema docs). If a save fails or an item doesn't show up in the list, validate frontmatter against the JSON schema (`crates/oa-bridge/schemas/project.schema.json`).
+### ADR Guidelines
 
-## Coding Style & Naming Conventions
-- Language: TypeScript (strict mode) for app code.
-- Linting: ESLint with `eslint-config-expo` (see `expo/eslint.config.js`). Fix warnings before PRs.
-- Indentation: 2 spaces; keep imports sorted logically (react/external → internal).
-- Files: kebab-case for components (e.g., `themed-text.tsx`); Expo Router uses `index.tsx`, `_layout.tsx`.
-- Rust (when added): crates kebab-case; modules snake_case; prefer `clippy` defaults.
+- Focus on **why**, not just what
+- Document alternatives considered and why they were rejected
+- Include consequences (both positive and negative)
+- Be direct and honest about trade-offs
+- Use specific examples from the OpenAgents codebase
+- See `docs/adr/AGENTS.md` for detailed AI agent guidelines
 
-## Rust Workspace & Dependencies
-- Workspace: root `Cargo.toml` manages members (e.g., `crates/oa-bridge`). This is intentional so Rust builds run from the repo root.
-- Lockfile: `Cargo.lock` lives at the workspace root by Cargo design. It will be regenerated at the root whenever building a workspace; do not move it into `crates/`.
-- Dependencies: always use `cargo add` to modify dependencies; do not edit `Cargo.toml` by hand (except workspace structure/members).
-- Versions: when adding, do not pass version constraints (`@x.y`, `@*`, or explicit ranges). Let `cargo add` select and pin the latest compatible version.
+## Key Technologies
 
-## JS/Expo Dependencies
-- Use Expo-aware installs so versions match the SDK:
-  - React Native libs: `cd expo && bunx expo install <package>` (no versions).
-  - Generic libs: `cd expo && bun add <package>` (no versions).
-- Do not hand-pin versions in `package.json`. Let the installer choose compatible versions and commit the updated `bun.lock`.
-- If Expo warns about mismatches, run: `cd expo && bunx expo install` to align to expected versions.
+### Liquid Glass
 
-## OTA Updates (iOS)
-- EAS Update is configured with channel `v0.3.0` (see `expo/eas.json`). Runtime version comes from remote app version.
-- Scripts (see `expo/package.json`):
-  - `update:ios`: `eas update --channel v0.3.0 --environment production --platform ios --message`
-  - `update:android`: same for Android; `update:both`: both platforms.
-- To publish an iOS OTA update:
-  - `cd expo && bun run update:ios -- "<short message>"`
-  - Keep messages concise (what changed). Assets are deduped; make sure fonts/images are committed.
-  - When bumping native runtime (breaking changes), increment the app version in `expo/app.json` and coordinate store builds; otherwise OTA won’t apply across runtimes.
+Apple's new translucent material system for iOS 26+, iPadOS 26+, macOS 15+ (Sequoia).
 
-### OTA Policy
-- Default to iOS-only updates. Do not run Android or both-platform updates unless the user explicitly requests Android or both.
-- When the user says “push an OTA update” without specifying a platform, run: `cd expo && bun run update:ios -- "<short message>"`.
-- Avoid `update:both` and `update:android` unless specifically directed; Android builds/updates are not in scope right now.
+- **Usage**: Structural UI (bars, sidebars, sheets, toolbars, cards)
+- **APIs**: `glassEffect(_:in:)`, `GlassEffectContainer`, `UIGlassEffect`
+- **Fallback**: Standard materials (`Material.regular`, `Material.ultraThin`) on older OS versions
+- **Docs**: `docs/liquid-glass/`
+- **Reference**: ADR-0005
+
+### Foundation Models
+
+Apple's on-device language models for local intelligence tasks.
+
+- **Usage**: Conversation titles, summaries, tags/classification
+- **APIs**: `SystemLanguageModel`, `LanguageModelSession`, `GenerationOptions`
+- **Availability**: iOS 26+, macOS 15+ with Apple Intelligence enabled
+- **Fallback**: Deterministic local logic when unavailable
+- **Privacy**: All processing on-device, no network calls
+- **Reference**: ADR-0006
+
+### Agent Client Protocol (ACP)
+
+Open standard for agent communication.
+
+- **Implementation**: `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/`
+- **Message Types**: `SessionUpdate`, `ToolCall`, `ContentBlock`, `ThinkingBlock`
+- **Transport**: JSON over WebSocket
+- **Spec**: https://agentclientprotocol.com/
+- **Reference**: ADR-0002
+
+## Security & Privacy
+
+- **No secrets in code**: Use Xcode's secret management or environment variables
+- **iOS Bundle ID**: `com.openagents.app`
+- **TestFlight**: Managed via App Store Connect
+- **On-device processing**: Foundation Models run entirely on-device
+- **WebSocket security**: LAN-only by default; future: TLS + pairing tokens
+
+## Common Tasks
+
+### Adding a New SwiftUI View
+
+1. Create `MyNewView.swift` in appropriate directory under `ios/OpenAgents/Views/`
+2. Define view conforming to `View` protocol
+3. Add Xcode Preview for development
+4. Import necessary dependencies (e.g., `OpenAgentsCore`)
+5. Build (⌘B) and preview in Xcode Canvas
+
+### Modifying Bridge Protocol
+
+1. Update message definitions in `ios/OpenAgentsCore/Sources/OpenAgentsCore/Bridge/BridgeMessages.swift`
+2. Update server/client handlers in `DesktopWebSocketServer.swift` or `MobileWebSocketClient.swift`
+3. Update `docs/ios-bridge/` documentation
+4. Add/update tests in `OpenAgentsCoreTests/`
+5. Consider creating an ADR if it's a significant protocol change
+
+### Adding Foundation Models Usage
+
+1. Check availability: `SystemLanguageModel.default.availability`
+2. Create session with instructions
+3. Implement fallback for unavailable/unsupported devices
+4. Cache results to avoid recomputation
+5. Add logging for diagnostics (development builds)
+6. Reference ADR-0006 for guidelines
+
+### Updating ADRs
+
+1. For new decisions: `cd docs/adr && ./new.sh "Your Title"`
+2. For updates to existing ADRs: Edit the markdown file directly
+3. Change status as appropriate (Proposed → In Review → Accepted)
+4. Update references in related ADRs
+5. Commit with clear message explaining the architectural change
+
+## Troubleshooting
+
+### "No such module 'OpenAgentsCore'"
+
+- Make sure you opened `OpenAgents.xcworkspace` not `OpenAgents.xcodeproj`
+- Clean build folder: Product > Clean Build Folder (⌘⇧K)
+- Close Xcode, delete `~/Library/Developer/Xcode/DerivedData/OpenAgents-*`, reopen
+
+### Bridge Connection Issues
+
+- Check macOS app is running and Bonjour service is advertised
+- Check iOS app can browse `_openagents._tcp` services
+- Use simulator: ensure both simulator and Mac are on same network
+- Check logs: Server logs in Console.app, client logs in Xcode debug console
+
+### Foundation Models Not Available
+
+- Requires iOS 26+ or macOS 15+ with Apple Intelligence enabled
+- Check device support: Settings > Apple Intelligence
+- Models may be downloading: wait and retry
+- Fallback logic should handle gracefully (see ADR-0006)
+
+### Xcode Build Errors
+
+- **"Command SwiftCompile failed"**: Check for syntax errors in Swift files
+- **"Cycle in dependencies"**: Check framework/target dependencies in Xcode project settings
+- **"Failed to build module"**: Clean build folder (⌘⇧K) and rebuild
 
 ## Testing Guidelines
-- Currently no test suite. When adding tests:
-  - Frameworks: Jest + `@testing-library/react-native`.
-  - Naming: colocate as `*.test.tsx`/`*.test.ts` next to source.
-  - Targets: aim for 80%+ statement coverage on new code.
-  - Run with a `test` script (to be added in `expo/package.json`).
 
-### Testing Best Practices (CRITICAL - Read This)
+### Unit Tests
 
-**The Problem**: Testing components in isolation without verifying the full integration pipeline leads to bugs that compile but don't work.
+- **Location**: `ios/OpenAgentsCore/Tests/OpenAgentsCoreTests/`
+- **Naming**: `*Tests.swift` (e.g., `BridgeMessageTests.swift`)
+- **Target**: Test shared core logic (ACP parsing, bridge messages, protocols)
+- **Run**: Press ⌘U in Xcode
 
-**Real Example**: Created `PlanStateView` and `ACPPlanState` with perfect tests ✅, but `ToolResultView` was still rendering raw JSON because the components were never wired together ❌.
+### Integration Tests
 
-**MANDATORY Testing Requirements**:
+- Test WebSocket bridge end-to-end (server + client)
+- Test ACP message flow through the system
+- Test UI rendering with sample data
+- Examples: `BridgeServerClientTests.swift`, `ToolCallViewRenderingIntegrationTests.swift`
 
-1. **Test the Full Flow, Not Just Isolation**
-   - ❌ BAD: Test `ComponentA` works, test `ComponentB` works, assume A→B works
-   - ✅ GOOD: Test that data flows from A through B to the user-visible output
-   - Example: Don't just test `PlanStateView` renders - test that plan_state data in a tool result actually renders PlanStateView
+### UI Tests
 
-2. **Verify Your Fix Actually Works End-to-End**
-   - ❌ BAD: "Build succeeded" = done
-   - ✅ GOOD: Trace the data path from source to UI and verify each connection
-   - Steps:
-     1. Identify WHERE the data enters (e.g., tool result JSON)
-     2. Identify ALL components that touch it (e.g., ToolResultView → PlanStateView)
-     3. Test EVERY connection point, not just the leaf component
-     4. Verify the final user-visible behavior
+- **Framework**: XCTest UI Testing
+- **Target**: `OpenAgentsUITests` (if configured)
+- **Scope**: Critical user flows (session creation, agent prompting, message rendering)
 
-3. **Don't Assume Components Are Wired Together**
-   - ❌ BAD: "PlanStateView exists and works, so plan states will render correctly"
-   - ✅ GOOD: "Verified that ToolResultView.parse() detects plan_state and calls PlanStateView"
-   - Check: grep for actual usage of your component, don't assume it's being called
+### Test Coverage
 
-4. **Test What the User Sees, Not What Compiles**
-   - ❌ BAD: Unit test ComponentX renders correctly (in isolation)
-   - ✅ GOOD: Integration test that ComponentX appears in the UI when triggered by real data
-   - Rule: If a user reported "I see JSON not UI", your tests should have caught that
+- Aim for 70%+ coverage on new code
+- Critical paths (ACP parsing, bridge protocol) should have 90%+ coverage
+- Use Xcode's coverage reports: Product > Test (⌘U), then coverage tab
 
-5. **Add Integration Tests for Every Fix**
-   - Unit tests verify individual pieces work
-   - Integration tests verify pieces work TOGETHER
-   - For UI bugs: test the rendering pipeline from data → component → display
-   - Example: `ToolResultViewStructuredRenderingTests` - tests that tool results with `{"todos":[...]}` actually render TodoListView
+## Deprecation Notes
 
-6. **Checklist Before Claiming "Fixed"**
-   - [ ] Unit tests pass (component works in isolation)
-   - [ ] Integration tests pass (component is called correctly)
-   - [ ] Traced data flow from source to UI
-   - [ ] Verified ALL connection points between components
-   - [ ] Tested with realistic data (not just minimal examples)
-   - [ ] If fixing a visual bug: manually verified or added screenshot/UI test
+### v0.2 and Earlier (Deprecated)
 
-**Example of Proper Testing**:
+The following are **NO LONGER SUPPORTED** as of v0.3:
 
-```swift
-// ❌ INSUFFICIENT - only tests component in isolation
-func testPlanStateView_RendersCorrectly() {
-    let state = ACPPlanState(status: .running)
-    let view = PlanStateView(state: state)
-    XCTAssertNotNil(view) // This passed, but bug still existed!
-}
+- ❌ Expo/React Native mobile app (`expo/` - deleted)
+- ❌ Rust WebSocket bridge (`crates/oa-bridge/` - deleted)
+- ❌ Tauri desktop app (`tauri/` - deleted)
+- ❌ TypeScript packages (`packages/openagents-core`, `packages/openagents-theme`, `packages/tinyvex` - deleted)
+- ❌ npm package `tricoder` (v0.3.0 published as deprecated, last working version v0.2.5)
+- ❌ Bun/npm build system (replaced with Xcode/SwiftPM)
+- ❌ Maestro E2E tests (`.maestro/` - deleted)
 
-// ✅ CORRECT - tests full integration
-func testToolResultView_RendersPlanStateAsComponent() {
-    // Create tool result with plan_state data (realistic source)
-    let result = ACPToolResult(
-        result: JSONValue.object(["type": "plan_state", ...])
-    )
+### Migration from v0.2
 
-    // Verify parsing detects it
-    let view = ToolResultView(result: result)
-    let parsed = view.parsePlanState(from: result.result!)
-    XCTAssertNotNil(parsed, "Should parse plan_state from result")
+If you were familiar with v0.2:
 
-    // Verify it renders component not JSON
-    let todos = TodoListView.parse(from: result.result!)
-    XCTAssertNil(todos, "Should NOT parse as todos")
-}
-```
+- **No more Expo**: All UI is now SwiftUI
+- **No more Rust bridge**: Bridge is now Swift WebSocket server/client with JSON-RPC
+- **No more TypeScript**: All application code is Swift
+- **No more Tauri**: macOS app is native Swift
+- **No more bun/npm**: Use Xcode and SwiftPM
+- **No data migration**: v0.3 is a fresh start
 
-**When You Break This Rule**: User reports "your fix didn't work" and you have to debug why your perfectly-tested component isn't being called.
+The repository was cleaned up in PR #1414. See that PR and issue #1413 for the full deletion list and rationale.
 
-## Commit & Pull Request Guidelines
-- Commits: imperative, concise subject (≤50 chars), e.g., "Add splash screen asset"; include a brief body when needed.
-- PRs: clear description, link issues, note scope, and include screenshots/GIFs for UI changes.
-- Checks: lint passes, app boots via `bun run start`, docs updated when behavior changes.
-- Commit and push as you go: make small, focused commits and push immediately after each commit. Do not leave local, unpushed changes — keep the shared branch updated to minimize merge conflicts and visibility gaps.
+## Additional Documentation
 
-## Multi‑Agent Git Etiquette
-- Do not stage everything: avoid commands like `git add -A`, `git add .`, or `git commit -a`. Explicitly add only the files you changed for the current task.
+- **ADRs**: `docs/adr/` - All architectural decisions
+- **Liquid Glass**: `docs/liquid-glass/` - Visual design, APIs, examples
+- **iOS Bridge**: `docs/ios-bridge/` - WebSocket protocol specification
+- **Logs**: `docs/logs/` - Historical development logs and decisions
 
-## GitHub CLI comment hygiene
+## Getting Help
 
-- For multi‑line GitHub comments, always write the body to a file and pass it with `-F` to avoid shell parsing issues:
-  - Example: `gh issue comment <num> -F /tmp/body.md`
-  - Avoid `-b` for multi‑line content. Do not include unescaped CLI flags (e.g., lines starting with `--`) directly in `-b`.
-  - Keep content as plain Markdown. Do not paste terminal prompts or interleave running command output.
-- Never stash: do not run `git stash` (including variants like `git stash -u`). Stashing can hide or discard work in progress from other agents operating on the same branch.
-- Respect concurrent work: assume other agents may be active on this branch. Do not run destructive or history‑rewriting commands (e.g., `git reset --hard`, `git clean -fdx`, force pushes, or rebases) unless explicitly instructed.
-- Keep commits focused: limit diffs to the smallest set of files necessary; avoid touching unrelated files.
-- Review before committing: use `git status` and `git diff --staged` to confirm only intended paths are included.
-- Branching policy: do not create branches unless the user explicitly directs you to. Default to committing on `main` and opening PRs only when requested.
+- **GitHub Issues**: https://github.com/OpenAgentsInc/openagents/issues
+- **ADRs**: Check `docs/adr/` for architectural context
+- **TestFlight**: https://testflight.apple.com/join/dvQdns5B
 
-## GitHub Issues/PRs — Formatting (MANDATORY)
+## Summary for AI Agents
 
-When creating or updating GitHub issues/comments/PR descriptions, you MUST follow these rules to ensure clean Markdown rendering:
+**This is a native Swift iOS/macOS project. Use Xcode, not Expo/npm/Rust tooling.**
 
-- Use Markdown headings starting with `##` (e.g., `## Summary`, `## Acceptance`) for major sections.
-- Use `-` hyphen bullets (one level only). Avoid nested lists unless absolutely necessary.
-- Wrap literal commands, JSON, control messages, and code identifiers in backticks. Examples:
-  - `tvx.subscribe` with stream `"threads"`
-  - `{"stream":"threads","op":"upsert"}`
-  - `control: "tvx.query"`, `name: "threads.list"`
-- Do NOT paste literal `\n` sequences. Use real newlines. Never rely on smart quotes; use plain ASCII quotes.
-- Keep lines short and readable. Prefer one sentence per line for bullets.
-- Avoid decorative punctuation or Unicode symbols that can break rendering.
-- Before posting, sanity‑check formatting with a preview or by posting a separate comment and editing if needed.
-
-CLI tips when using `gh`:
-- Bash treats backticks as command substitution. Do NOT wrap Markdown with backticks inside double quotes.
-- Prefer single-quoted heredocs to avoid expansion:
-  
-  ```bash
-  gh issue edit <num> -b "$(cat <<'MD'
-  ## Title
-  Backticks like `code` are safe inside this block.
-  MD
-  )"
-  ```
-
-Failure to comply often produces unreadable issues/comments. Always fix formatting immediately if misrendered.
- - Never change branches: always stay on `main` unless the user explicitly instructs you to switch or create a branch.
-
-### Absolutely No Destructive Local Ops (must‑follow)
-- Never delete untracked files or folders in the working tree (e.g., `rm -rf docs/convex/`) — even if they look unrelated. Untracked work may be in progress by another agent.
-- Never reset or clean the working tree to drop local changes without explicit user approval. Do not run: `git reset --hard`, `git checkout -- <path>`, `git clean -fdx`, or tooling that implies those operations.
-- Never “restore to HEAD” unrelated files to make a commit look clean. Instead, only stage the files you intentionally changed.
-- If you see unrelated local changes:
-  1) Leave them untouched.
-  2) Stage only your intended files (path‑spec add).
-  3) Ask the user before attempting any local cleanup.
-- When moving docs or code across folders, prefer Git moves in a focused commit and update all references in the same commit.
-- Do not add trivial provenance comments to files (e.g., `<!-- Moved from ... -->`). Use meaningful, persistent documentation and rely on Git history for move provenance.
-
-### Staging and committing checklist
-- Before commit: `git status` shows only intended files under “Changes to be committed”.
-- If you modified files in `expo/`, run `cd expo && bun run typecheck` and ensure it passes.
-- Do not include unrelated reformats or mass renames in the same commit as functional changes.
-
-### Local Working Tree Safety (STRICT)
-- Do not modify, revert, or delete files you did not touch for the current task — even locally. Avoid commands like `git checkout -- <path>`, `git restore --source=HEAD <path>`, or editor auto-reverts on unrelated paths.
-- Never delete untracked files or directories (e.g., `rm -rf docs/...`). Untracked content may be in-progress work by another agent.
-- Do not use destructive commands: `git reset --hard`, `git clean -fdx`, `git stash*` (already disallowed), or any history rewriting.
-- If the working tree contains unrelated changes, proceed by staging only your intended files (explicit paths). Leave unrelated changes untouched and unmodified.
-- If your work would collide with those local changes or you suspect name collisions (e.g., a new folder vs. an existing tracked file), STOP and ask for guidance instead of attempting “local cleanup”.
-- Before committing, verify your staged set does not include or revert other agents’ files. Use `git status --porcelain` and `git diff --staged` to double-check.
-
-## GitHub CLI Notes
-- When posting comments via `gh issue comment -b`, avoid shell backticks and command substitution in the body. Prefer plain text or use `--body-file` to prevent the shell from interpreting backticks.
-
-## Agent Workflow Requirements (Expo TypeScript)
-- If you touch TypeScript/TSX under `expo/`, run the type checker via `bun run typecheck`.
-- Do not finish work until the typecheck passes with no warnings.
-
-## Security & Configuration Tips
-- Do not commit credentials or secrets. Use EAS for managed credentials (see `expo/eas.json`).
-- iOS bundle identifier: `com.openagents.app` (see `expo/app.json`).
-- Review assets and third‑party licenses before release.
-
-## CLI (Tricoder) Notes
-- Do not run `npm run dev` in `packages/tricoder`. It launches a long‑lived process and will block your shell/session.
-- For local testing, prefer one of:
-  - `npx tricoder` (published package)
-  - `npm run build` then run `node dist/index.js`
+- Build with Xcode (⌘B)
+- Test with Xcode (⌘U)
+- All code is Swift (no TypeScript, no Rust)
+- Read ADRs in `docs/adr/` before making architectural changes
+- Read `docs/adr/AGENTS.md` before creating/modifying ADRs
+- Always build and test before committing
+- Commit frequently with explicit file staging
+- Never use destructive git operations unless explicitly requested

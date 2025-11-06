@@ -47,7 +47,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
 
     func testConnectCreatesWebSocketTask() {
         let url = URL(string: "ws://localhost:8787")!
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         XCTAssertTrue(mockSession.webSocketTaskCalled)
         XCTAssertEqual(mockSession.lastRequest?.url, url)
@@ -55,11 +55,11 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
 
     func testConnectDisconnectsExistingConnection() {
         let url1 = URL(string: "ws://localhost:8787")!
-        sut.connect(url: url1, token: "token1")
+        sut.connect(url: url1)
 
         mockSession.webSocketTaskCalled = false
         let url2 = URL(string: "ws://localhost:8888")!
-        sut.connect(url: url2, token: "token2")
+        sut.connect(url: url2)
 
         XCTAssertTrue(mockSession.webSocketTaskCalled)
         XCTAssertEqual(mockSession.lastRequest?.url, url2)
@@ -70,7 +70,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         XCTAssertTrue(mockTask.sendCalled)
         XCTAssertFalse(mockTask.sentMessages.isEmpty)
@@ -91,7 +91,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
         sut.disconnect()
 
         XCTAssertTrue(mockTask.cancelCalled)
@@ -99,7 +99,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
 
     func testDisconnectCallsDelegate() {
         let url = URL(string: "ws://localhost:8787")!
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         let expectation = self.expectation(description: "disconnect called")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
