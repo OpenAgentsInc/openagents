@@ -721,8 +721,15 @@ struct AcpThreadView: View {
     }
 
     // Minimal Markdown renderer using AttributedString
+    // Use `.full` so block-level syntax like headings (e.g., "# Title")
+    // renders properly in assistant messages.
     func markdownText(_ text: String) -> Text {
-        if let md = try? AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) { return Text(md) }
+        if let md = try? AttributedString(
+            markdown: text,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+        ) {
+            return Text(md)
+        }
         return Text(text)
     }
 
