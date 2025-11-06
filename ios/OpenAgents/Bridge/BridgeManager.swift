@@ -142,7 +142,6 @@ extension BridgeManager: MobileWebSocketClientDelegate {
         else { log("client", "Disconnected"); status = .idle }
     }
 
-    // Legacy envelopes removed; JSON‑RPC used exclusively.
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data) {
         if method == ACPRPC.sessionUpdate {

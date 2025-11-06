@@ -213,7 +213,6 @@ public class DesktopWebSocketServer {
     private func handleTextMessage(_ text: String, from client: Client) {
         if !client.isHandshakeComplete {
             print("[Bridge][server] recv handshake text=\(text)")
-            // Strict ACP JSON-RPC initialize handshake only
             if let data = text.data(using: .utf8), let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any], (dict["jsonrpc"] as? String) == "2.0", let method = dict["method"] as? String, method == "initialize" {
                 let inIdStr: String = {
                     if let idNum = dict["id"] as? Int { return String(idNum) }
@@ -241,7 +240,6 @@ public class DesktopWebSocketServer {
         } else {
             // Handle envelopes after handshake
             print("[Bridge][server] recv payload text=\(text)")
-            // Support both JSON-RPC (ACP) and legacy envelopes
             if let data = text.data(using: .utf8),
                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                (dict["jsonrpc"] as? String) == "2.0" {

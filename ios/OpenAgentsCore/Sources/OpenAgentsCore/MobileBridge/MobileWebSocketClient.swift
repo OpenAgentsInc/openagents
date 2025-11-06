@@ -8,7 +8,6 @@ public protocol MobileWebSocketClientDelegate: AnyObject {
     /// Called when the client disconnects or fails to connect
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?)
 
-    /// Legacy envelopes are removed. JSON‑RPC notifications/requests are delivered via the callbacks below.
 
     /// Called when a JSON-RPC notification is received (ACP path)
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data)
@@ -286,7 +285,6 @@ public final class MobileWebSocketClient {
                 return
             }
         }
-        // If not JSON-RPC initialize response, disconnect (strict ACP handshake)
         let preview = Self.truncatePreview(text)
         print("[Bridge][client] initialize unexpected response preview=\(preview)")
         self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 6, userInfo: [NSLocalizedDescriptionKey: "Initialize failed: unexpected response"]), notifyDelegate: true)

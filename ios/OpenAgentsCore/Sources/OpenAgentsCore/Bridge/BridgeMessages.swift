@@ -56,7 +56,6 @@ public enum WebSocketMessage {
         }
     }
 
-    // Legacy Hello/HelloAck removed.
 
     public struct Ping: Codable {
         public init() {}
