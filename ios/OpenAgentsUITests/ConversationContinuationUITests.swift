@@ -1,5 +1,6 @@
 import XCTest
 
+#if os(iOS)
 /// UI Tests for conversation continuation and message flow
 @MainActor
 final class ConversationContinuationUITests: XCTestCase {
@@ -356,6 +357,7 @@ final class ConversationContinuationUITests: XCTestCase {
         sendButton.tap()
 
         // Brief wait for UI to settle
-        sleep(0.5)
+        Thread.sleep(forTimeInterval: 0.5)
     }
 }
+#endif
