@@ -939,10 +939,14 @@ public class DesktopWebSocketServer {
                     let heading = (analysis.source == .sessionAnalyze) ? "\n**Intent From Session History:**" : "\n**Inferred Intent (FM):**"
                     sections.append(heading)
                     sections.append(analysis.text)
+                    let outPayload: [String: AnyEncodable] = [
+                        "summary_bytes": AnyEncodable(analysis.text.utf8.count),
+                        "source": AnyEncodable(analysis.source.rawValue)
+                    ]
                     let completed = ACPToolCallUpdateWire(
                         call_id: callId,
                         status: .completed,
-                        output: AnyEncodable(["summary_bytes": analysis.text.utf8.count, "source": analysis.source.rawValue]),
+                        output: AnyEncodable(outPayload),
                         error: nil,
                         _meta: nil
                     )
