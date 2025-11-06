@@ -417,13 +417,26 @@ pub fn translate_claude_event_to_acp_update(v: &JsonValue) -> Option<SessionUpda
     if let Some(ch) = chunk {
         let ctype = ch.get("type").and_then(|x| x.as_str()).unwrap_or("");
         match ctype {
-            // Text or text delta → assistant message chunk
+            // Text or text delta → check if internal thought or user-facing message
             "text" | "text_delta" => {
                 let text = ch
                     .get("text")
                     .and_then(|x| x.as_str())
                     .unwrap_or("")
                     .to_string();
+
+                // Detect internal planning/thinking patterns
+                if is_internal_thought(&text) {
+                    return Some(SessionUpdate::AgentThoughtChunk(ContentChunk {
+                        content: ContentBlock::Text(TextContent {
+                            annotations: None,
+                            text,
+                            meta: None,
+                        }),
+                        meta: None,
+                    }));
+                }
+
                 return Some(SessionUpdate::AgentMessageChunk(ContentChunk {
                     content: ContentBlock::Text(TextContent {
                         annotations: None,
@@ -715,6 +728,59 @@ fn markdown_escape(text: &str) -> String {
 pub fn translate_opencode_event_to_acp_update(_v: &JsonValue) -> Option<SessionUpdate> {
     // TODO: implement once OpenCode event schema is finalized in this repo
     None
+}
+
+/// Detect if a message is internal planning/thinking rather than user-facing
+///
+/// Patterns that indicate internal thought:
+/// - "Let me <verb>" (but NOT "Let me know")
+/// - "I see the actual code..."
+/// - "Looking at..."
+/// - "Now let me..."
+/// - "Good! Now let me..."
+///
+/// These should be classified as AgentThoughtChunk, not AgentMessageChunk.
+fn is_internal_thought(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let lower = trimmed.to_lowercase();
+
+    // "Let me <verb>" pattern (but not "let me know" which is user-facing)
+    if lower.starts_with("let me ") && !lower.contains("let me know") && !lower.contains("let you know") {
+        return true;
+    }
+
+    // Meta-narration about code inspection
+    if lower.starts_with("i see the") || lower.starts_with("i see that") {
+        return true;
+    }
+
+    if lower.starts_with("looking at") {
+        return true;
+    }
+
+    // Transitional phrases for internal workflow
+    if lower.starts_with("now let me") || lower.starts_with("good! now let me") {
+        return true;
+    }
+
+    // Checking/verifying patterns
+    if lower.starts_with("let me check") || lower.starts_with("let me verify") {
+        return true;
+    }
+
+    if lower.starts_with("let me read") || lower.starts_with("let me search") {
+        return true;
+    }
+
+    if lower.starts_with("let me find") || lower.starts_with("let me look") {
+        return true;
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -1046,6 +1112,69 @@ mod tests {
                 assert_eq!(up.fields.status, Some(ToolCallStatus::Completed));
             }
             _ => panic!("expected ToolCallUpdate"),
+        }
+    }
+
+    #[test]
+    fn detects_internal_thought_let_me_patterns() {
+        assert!(is_internal_thought("Let me check the implementation."));
+        assert!(is_internal_thought("Let me read the file first."));
+        assert!(is_internal_thought("Let me search for this pattern."));
+        assert!(is_internal_thought("Let me fix this issue."));
+        assert!(is_internal_thought("Let me verify the changes compile."));
+
+        // "Let me know" is user-facing, not internal
+        assert!(!is_internal_thought("Let me know if you need anything else."));
+        assert!(!is_internal_thought("Let you know when it's done."));
+    }
+
+    #[test]
+    fn detects_internal_thought_meta_narration() {
+        assert!(is_internal_thought("I see the actual code is slightly different."));
+        assert!(is_internal_thought("I see that the file has changed."));
+        assert!(is_internal_thought("Looking at the code, I can see..."));
+        assert!(is_internal_thought("Now let me build to verify."));
+        assert!(is_internal_thought("Good! Now let me check the tests."));
+    }
+
+    #[test]
+    fn does_not_misclassify_user_facing_messages() {
+        assert!(!is_internal_thought("Here's what I found in the codebase:"));
+        assert!(!is_internal_thought("The issue is in this file:"));
+        assert!(!is_internal_thought("I've made the following changes:"));
+        assert!(!is_internal_thought("## ✅ Fixed: Tool Call Display"));
+        assert!(!is_internal_thought("The changes have been committed and pushed."));
+    }
+
+    #[test]
+    fn claude_text_delta_with_internal_thought_maps_to_agent_thought() {
+        let v = json!({
+            "type": "content_block_delta",
+            "delta": { "type": "text_delta", "text": "Let me check the implementation first." }
+        });
+        let upd = translate_claude_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::AgentThoughtChunk(chunk) => match chunk.content {
+                ContentBlock::Text(t) => assert_eq!(t.text, "Let me check the implementation first."),
+                _ => panic!("expected text"),
+            },
+            _ => panic!("expected AgentThoughtChunk, got {:?}", upd),
+        }
+    }
+
+    #[test]
+    fn claude_text_delta_with_user_facing_content_maps_to_agent_message() {
+        let v = json!({
+            "type": "content_block_delta",
+            "delta": { "type": "text_delta", "text": "Here's what I found:" }
+        });
+        let upd = translate_claude_event_to_acp_update(&v).expect("mapped");
+        match upd {
+            SessionUpdate::AgentMessageChunk(chunk) => match chunk.content {
+                ContentBlock::Text(t) => assert_eq!(t.text, "Here's what I found:"),
+                _ => panic!("expected text"),
+            },
+            _ => panic!("expected AgentMessageChunk"),
         }
     }
 }
