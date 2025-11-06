@@ -313,8 +313,11 @@ struct AcpThreadView: View {
             EmptyView()
         case .toolCall(let call):
             ToolCallView(call: call, result: findResult(for: call))
-        case .toolResult(let res):
-            ToolResultView(result: res)
+        case .toolResult:
+            // Don't render tool results as separate items
+            // Results are shown via status indicator on the tool call itself
+            // and in the detail sheet when tapping the tool call
+            EmptyView()
         case .plan(let ps):
             PlanStateView(state: ps)
         case .raw(let line):
@@ -447,13 +450,39 @@ struct AcpThreadView: View {
                 lastWasPara = false
                 lastBlockWasBulletOrdered = isOrderedGroup
             } else {
-                // Paragraph; indent one level if following a bullet section
+                // Paragraph; strip markdown headers (##, ###, etc.)
                 let lvl = lastWasPara ? 0 : 0
-                items.append(MDItem(level: lvl, bullet: false, kind: .none, marker: "", content: para))
+                let cleanedContent = stripMarkdownHeaders(para)
+                items.append(MDItem(level: lvl, bullet: false, kind: .none, marker: "", content: cleanedContent))
                 lastWasPara = true
             }
         }
         return items
+    }
+
+    private func stripMarkdownHeaders(_ text: String) -> String {
+        // Remove markdown headers (##, ###, etc.) from each line
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let cleanedLines = lines.map { line -> String in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // Match ## Header, ### Header, etc.
+            if trimmed.hasPrefix("#") {
+                // Find the end of the hash marks
+                var hashCount = 0
+                for char in trimmed {
+                    if char == "#" {
+                        hashCount += 1
+                    } else {
+                        break
+                    }
+                }
+                // Remove the hashes and any following whitespace
+                let afterHashes = trimmed.dropFirst(hashCount).trimmingCharacters(in: .whitespaces)
+                return afterHashes
+            }
+            return line
+        }
+        return cleanedLines.joined(separator: "\n")
     }
 
     private func isBulletBlock(_ para: String) -> Bool {
