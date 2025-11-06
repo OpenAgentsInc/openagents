@@ -38,19 +38,25 @@ struct OpenAgentsApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .onAppear { _ = BerkeleyFont.registerAll(); _ = InterFont.registerAll() }
-                .environment(\.font, OAFonts.ui(.body, 16))
-                .tint(OATheme.Colors.accent)
-                .task {
-                    let ts = ISO8601DateFormatter().string(from: Date())
-                    print("[Bridge][app] OpenAgentsApp appear; starting bridge")
-                    if #available(iOS 16.0, macOS 13.0, *) {
-                        Logger(subsystem: "com.openagents.app", category: "app").log("appear start bridge at \(ts, privacy: .public)")
-                    }
-                    bridge.start()
+            Group {
+                #if os(iOS)
+                ChatHomeView()
+                #else
+                ContentView()
+                #endif
+            }
+            .onAppear { _ = BerkeleyFont.registerAll(); _ = InterFont.registerAll() }
+            .environment(\.font, OAFonts.ui(.body, 16))
+            .tint(OATheme.Colors.accent)
+            .task {
+                let ts = ISO8601DateFormatter().string(from: Date())
+                print("[Bridge][app] OpenAgentsApp appear; starting bridge")
+                if #available(iOS 16.0, macOS 13.0, *) {
+                    Logger(subsystem: "com.openagents.app", category: "app").log("appear start bridge at \(ts, privacy: .public)")
                 }
-                .environmentObject(bridge)
+                bridge.start()
+            }
+            .environmentObject(bridge)
         }
         .modelContainer(sharedModelContainer)
         #if os(macOS)
