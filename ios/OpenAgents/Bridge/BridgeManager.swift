@@ -235,6 +235,21 @@ extension BridgeManager {
     func sendPrompt(text: String) {
         guard let client = self.client else { return }
         let parts: [ACP.Client.ContentBlock] = [.text(.init(text: text))]
+
+        // Optimistic UI: Add user message immediately to timeline
+        let userChunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
+        let userUpdate = ACP.Client.SessionUpdate.userMessageChunk(userChunk)
+        let sessionId = currentSessionId ?? ACPSessionId("pending")
+        let optimisticNotification = ACP.Client.SessionNotificationWire(
+            session_id: sessionId,
+            update: userUpdate
+        )
+
+        // Add to updates ring buffer (same logic as WebSocket delegate)
+        if updates.count >= 200 { updates.removeFirst() }
+        updates.append(optimisticNotification)
+        objectWillChange.send()
+
         if currentSessionId == nil {
             client.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-\(UUID().uuidString)") { (resp: ACP.Agent.SessionNewResponse?) in
                 guard let resp = resp else { return }
