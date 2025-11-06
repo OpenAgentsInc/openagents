@@ -82,6 +82,10 @@ public class DesktopWebSocketServer {
     private var tailOffset: UInt64 = 0
     private var tailBuffer = Data()
 
+    // Active agent sessions
+    private var activeProcesses: [String: Process] = [:]  // session_id -> Process
+    private var sessionFiles: [String: URL] = [:]  // session_id -> JSONL file URL
+
     public init() {}
 
     /// Start listening on given port
@@ -210,6 +214,155 @@ public class DesktopWebSocketServer {
         }
     }
 
+    private func launchAgentProcess(sessionId: ACPSessionId, prompt: String, client: Client) {
+        let sidStr = sessionId.value
+
+        // Check if we already have a process for this session
+        if let existing = activeProcesses[sidStr], existing.isRunning {
+            print("[Bridge][server] session \(sidStr) already has running process")
+            return
+        }
+
+        // Find claude CLI
+        let claudePath = findClaudeCLI()
+        guard let claudePath = claudePath else {
+            print("[Bridge][server] ERROR: claude CLI not found")
+            sendErrorMessage(sessionId: sessionId, message: "Claude CLI not found. Please install Claude Code CLI.", client: client)
+            return
+        }
+
+        print("[Bridge][server] launching agent: \(claudePath)")
+
+        // Create process
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: claudePath)
+        process.arguments = [prompt]  // Pass prompt as argument
+        process.environment = ProcessInfo.processInfo.environment
+
+        // Set up output/error pipes (for logging)
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        // Store process
+        activeProcesses[sidStr] = process
+
+        // Start process
+        do {
+            try process.run()
+            print("[Bridge][server] agent process started pid=\(process.processIdentifier)")
+
+            // Monitor stdout/stderr for debugging
+            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
+                    print("[Bridge][agent stdout] \(text)")
+                }
+            }
+
+            stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
+                    print("[Bridge][agent stderr] \(text)")
+                }
+            }
+
+            // Find the session file for this session
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.findAndTailSessionFile(sessionId: sessionId, client: client)
+            }
+
+        } catch {
+            print("[Bridge][server] ERROR: failed to launch agent: \(error)")
+            activeProcesses.removeValue(forKey: sidStr)
+            sendErrorMessage(sessionId: sessionId, message: "Failed to launch agent: \(error.localizedDescription)", client: client)
+        }
+    }
+
+    private func findClaudeCLI() -> String? {
+        // Try common locations for claude CLI
+        let paths = [
+            "/usr/local/bin/claude",
+            "/opt/homebrew/bin/claude",
+            "\(NSHomeDirectory())/bin/claude",
+            "\(NSHomeDirectory())/.local/bin/claude"
+        ]
+
+        for path in paths {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+
+        // Try using 'which claude'
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = ["claude"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try? process.run()
+        process.waitUntilExit()
+
+        if process.terminationStatus == 0 {
+            let data = try? pipe.fileHandleForReading.readToEnd()
+            if let data = data, let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+                return path
+            }
+        }
+
+        return nil
+    }
+
+    private func findAndTailSessionFile(sessionId: ACPSessionId, client: Client) {
+        // Look for the latest session file from Claude Code
+        let claudeBase = ClaudeCodeScanner.defaultBaseDir()
+        let files = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: 1)
+
+        guard let file = files.first else {
+            print("[Bridge][server] WARNING: no session file found for \(sessionId.value)")
+            return
+        }
+
+        let sidStr = sessionId.value
+        sessionFiles[sidStr] = file
+
+        print("[Bridge][server] tailing session file: \(file.path)")
+
+        // Update the live tailer to watch this file
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.tailURL = file
+            self.tailSessionId = sessionId
+            self.tailProvider = "claude-code"
+            let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.uint64Value ?? 0
+            self.tailOffset = size
+            self.tailBuffer.removeAll(keepingCapacity: true)
+
+            // Start tailer if not already running
+            if self.tailTimer == nil {
+                let timer = DispatchSource.makeTimerSource(queue: self.queue)
+                timer.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100))
+                timer.setEventHandler { [weak self] in self?.pollTail() }
+                self.tailTimer = timer
+                timer.resume()
+                print("[Bridge][server] tailer started for session \(sidStr)")
+            }
+        }
+    }
+
+    private func sendErrorMessage(sessionId: ACPSessionId, message: String, client: Client) {
+        let errorChunk = ACP.Client.ContentChunk(content: .text(.init(text: "❌ Error: \(message)")))
+        let errorUpdate = ACP.Client.SessionUpdate.agentMessageChunk(errorChunk)
+        let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: errorUpdate)
+
+        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)),
+           let jtext = String(data: out, encoding: .utf8) {
+            print("[Bridge][server] send error message: \(message)")
+            client.send(text: jtext)
+        }
+    }
+
     private func handleTextMessage(_ text: String, from client: Client) {
         if !client.isHandshakeComplete {
             print("[Bridge][server] recv handshake text=\(text)")
@@ -286,33 +439,33 @@ public class DesktopWebSocketServer {
                             client.send(text: jtext)
                         }
                     case ACPRPC.sessionPrompt:
-                        // Echo a tiny streamed agent message back as a demo
+                        // Launch agent process with the prompt
                         let params = dict["params"] as? [String: Any]
                         let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
                         let sid = ACPSessionId(sidStr)
-                        let msg = ACP.Client.SessionUpdate.agentMessageChunk(
-                            ACP.Client.ContentChunk(content: .text(.init(text: "OK — processing your request…")))
-                        )
-                        let note = ACP.Client.SessionNotificationWire(session_id: sid, update: msg)
-                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
-                            print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) text=\(jtext)")
-                            client.send(text: jtext)
+
+                        // Extract prompt content
+                        var promptText = ""
+                        if let content = params?["content"] as? [[String: Any]] {
+                            for block in content {
+                                if let text = block["text"] as? String {
+                                    promptText += text
+                                }
+                            }
+                        } else if let prompt = params?["prompt"] as? [[String: Any]] {
+                            for block in prompt {
+                                if let text = block["text"] as? String {
+                                    promptText += text
+                                }
+                            }
                         }
-                        // Also send AvailableCommandsUpdate and CurrentModeUpdate
-                        let cmds = [ACP.Client.AvailableCommand(name: "create_plan", description: "Propose a plan", input: .unstructured(hint: "What should we plan?"))]
-                        let ac = ACP.Client.SessionUpdate.availableCommandsUpdate(.init(available_commands: cmds))
-                        let acNote = ACP.Client.SessionNotificationWire(session_id: sid, update: ac)
-                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: acNote)), let jtext = String(data: out, encoding: .utf8) {
-                            print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) text=\(jtext)")
-                            client.send(text: jtext)
-                        }
-                        let cm = ACP.Client.SessionUpdate.currentModeUpdate(.init(current_mode_id: .default_mode))
-                        let cmNote = ACP.Client.SessionNotificationWire(session_id: sid, update: cm)
-                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: cmNote)), let jtext = String(data: out, encoding: .utf8) {
-                            print("[Bridge][server] send rpc notify method=\(ACPRPC.sessionUpdate) text=\(jtext)")
-                            client.send(text: jtext)
-                        }
-                        // Also respond to the request with an empty object
+
+                        print("[Bridge][server] session/prompt sid=\(sidStr) prompt_length=\(promptText.count)")
+
+                        // Launch agent process
+                        self.launchAgentProcess(sessionId: sid, prompt: promptText, client: client)
+
+                        // Respond to the request with empty result immediately
                         let idVal: JSONRPC.ID
                         if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
                         else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
