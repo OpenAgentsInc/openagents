@@ -15,6 +15,7 @@ struct ToolCallView: View {
                 Text(call.tool_name)
                     .font(OAFonts.ui(.subheadline, 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
+                    .fixedSize()
 
                 // For Bash: show command inline, truncated if needed
                 if let cmd = inlineCommand {
@@ -23,11 +24,13 @@ struct ToolCallView: View {
                         .foregroundStyle(OATheme.Colors.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .layoutPriority(1)
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 statusBadge
+                    .fixedSize()
             }
 
             if let inline = inlineParams {
