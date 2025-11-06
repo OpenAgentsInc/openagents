@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import OpenAgentsCore
 #if os(iOS)
 import UIKit
@@ -119,8 +120,9 @@ struct AcpThreadView: View {
         .onChange(of: url?.path) { _, _ in load() }
         .onAppear(perform: load)
         #if os(iOS)
-        .onChange(of: bridge.updates) { oldUpdates, newUpdates in
-            print("[AcpThreadView] onChange fired: \(oldUpdates.count) -> \(newUpdates.count) updates, timeline.count=\(timeline.count)")
+        .onReceive(bridge.objectWillChange) { _ in
+            let newUpdates = bridge.updates
+            print("[AcpThreadView] objectWillChange fired: \(newUpdates.count) updates, timeline.count=\(timeline.count)")
             if timeline.isEmpty, !newUpdates.isEmpty {
                 print("[AcpThreadView] Full recompute path - timeline empty, loading \(newUpdates.count) updates")
                 let snapshot = newUpdates
