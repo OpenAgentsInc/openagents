@@ -239,7 +239,7 @@ final class ToolCallViewRenderingIntegrationTests: XCTestCase {
 
     func testToolCallView_ToolNameWithSuffix_ParsesCorrectly() {
         // Tools might come with suffixes like "acp.Read" or "custom.read"
-        let suffixedTools = [
+        let suffixedTools: [(String, String, Any)] = [
             ("acp.Read", "file_path", "/path/to/file"),
             ("custom.write", "file_path", "/output.txt"),
             ("namespace.edit", "file_path", "/config.json"),
@@ -251,7 +251,7 @@ final class ToolCallViewRenderingIntegrationTests: XCTestCase {
         for (toolName, key, value) in suffixedTools {
             let args: JSONValue
             if let arr = value as? [String] {
-                args = .object([key: .array(arr.map { .string($0) })])
+                args = .object([key: .array(arr.map { JSONValue.string($0) })])
             } else if let str = value as? String {
                 args = .object([key: .string(str)])
             } else {

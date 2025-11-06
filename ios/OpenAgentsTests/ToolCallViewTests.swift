@@ -9,7 +9,7 @@ final class ToolCallViewTests: XCTestCase {
 
     func makeToolCall(name: String, arguments: JSONValue) -> ACPToolCall {
         return ACPToolCall(
-            id: ACP.ToolUseId("test-id"),
+            id: "test-id",
             tool_name: name,
             arguments: arguments
         )
@@ -28,7 +28,7 @@ final class ToolCallViewTests: XCTestCase {
         let call = makeToolCall(name: "shell", arguments: args)
 
         // Test via view rendering (indirect test of prettyShellCommand)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -41,7 +41,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -53,7 +53,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -65,7 +65,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -77,7 +77,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -89,7 +89,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -102,7 +102,7 @@ final class ToolCallViewTests: XCTestCase {
             "arguments": .string(innerJSON)
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -112,7 +112,7 @@ final class ToolCallViewTests: XCTestCase {
         """
         let args = JSONValue.string(innerJSON)
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -125,7 +125,7 @@ final class ToolCallViewTests: XCTestCase {
             "limit": .number(100)
         ])
         let call = makeToolCall(name: "Read", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -135,7 +135,7 @@ final class ToolCallViewTests: XCTestCase {
             "content": .string("Hello, world!")
         ])
         let call = makeToolCall(name: "Write", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -146,7 +146,7 @@ final class ToolCallViewTests: XCTestCase {
             "new_string": .string("bar")
         ])
         let call = makeToolCall(name: "Edit", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -156,14 +156,14 @@ final class ToolCallViewTests: XCTestCase {
             "description": .string("List files")
         ])
         let call = makeToolCall(name: "Bash", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
     func testNonShellTool_EmptyArguments() throws {
         let args = JSONValue.object([:])
         let call = makeToolCall(name: "NoArgs", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -174,7 +174,7 @@ final class ToolCallViewTests: XCTestCase {
             "command": .array([.string("echo"), .string("test")])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -183,7 +183,7 @@ final class ToolCallViewTests: XCTestCase {
             "command": .array([.string("echo"), .string("test")])
         ])
         let call = makeToolCall(name: "SHELL", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -192,7 +192,7 @@ final class ToolCallViewTests: XCTestCase {
             "command": .array([.string("echo"), .string("test")])
         ])
         let call = makeToolCall(name: "mcp.shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -203,7 +203,7 @@ final class ToolCallViewTests: XCTestCase {
             "command": .array([])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -212,7 +212,7 @@ final class ToolCallViewTests: XCTestCase {
             "command": .array([.string("pwd")])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -221,7 +221,7 @@ final class ToolCallViewTests: XCTestCase {
             "command": .array([.string("bash"), .string("-lc")])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -230,7 +230,7 @@ final class ToolCallViewTests: XCTestCase {
             "command": .string("not a valid command array")
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -239,7 +239,7 @@ final class ToolCallViewTests: XCTestCase {
             "foo": .string("bar")
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -248,7 +248,7 @@ final class ToolCallViewTests: XCTestCase {
             "command": .null
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -259,7 +259,7 @@ final class ToolCallViewTests: XCTestCase {
             "key": .string("value")
         ])
         let call = makeToolCall(name: "Test", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -270,7 +270,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "Test", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -283,7 +283,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "Test", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -295,7 +295,7 @@ final class ToolCallViewTests: XCTestCase {
             "null": .null
         ])
         let call = makeToolCall(name: "Test", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -306,7 +306,7 @@ final class ToolCallViewTests: XCTestCase {
         }
         let args = JSONValue.object(largeObject)
         let call = makeToolCall(name: "Test", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -316,7 +316,7 @@ final class ToolCallViewTests: XCTestCase {
             "quote": .string("She said \"hello\"")
         ])
         let call = makeToolCall(name: "Test", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -327,7 +327,7 @@ final class ToolCallViewTests: XCTestCase {
             "arabic": .string("مرحبا")
         ])
         let call = makeToolCall(name: "Test", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -336,7 +336,7 @@ final class ToolCallViewTests: XCTestCase {
     func testView_RendersToolName() throws {
         let args = JSONValue.object([:])
         let call = makeToolCall(name: "TestTool", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
 
         // Verify view can be created and contains expected elements
         XCTAssertNotNil(view)
@@ -355,7 +355,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "ComplexTool", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -370,7 +370,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -382,7 +382,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 
@@ -395,7 +395,7 @@ final class ToolCallViewTests: XCTestCase {
             ])
         ])
         let call = makeToolCall(name: "shell", arguments: args)
-        let view = ToolCallView(call: call)
+        let view = ToolCallView(call: call, result: nil)
         XCTAssertNotNil(view)
     }
 }
