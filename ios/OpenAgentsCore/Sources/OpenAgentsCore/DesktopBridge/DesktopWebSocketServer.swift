@@ -939,6 +939,25 @@ public class DesktopWebSocketServer {
                     let heading = (analysis.source == .sessionAnalyze) ? "\n**Intent From Session History:**" : "\n**Inferred Intent (FM):**"
                     sections.append(heading)
                     sections.append(analysis.text)
+
+                    // Deeper context block
+                    var contextLines: [String] = []
+                    if let avg = analysis.avgConversationLength {
+                        contextLines.append("- Average conversation length: \(Int(avg)) events")
+                    }
+                    if !analysis.topFiles.isEmpty {
+                        let files = analysis.topFiles.prefix(3).map { "`\($0)`" }.joined(separator: ", ")
+                        contextLines.append("- Top referenced files: \(files)")
+                    }
+                    if let gp = analysis.goalPatterns.first {
+                        // Compress multi-line pattern into one line
+                        let single = gp.replacingOccurrences(of: "\n", with: " ")
+                        contextLines.append("- Recent goals: \(single)")
+                    }
+                    if !contextLines.isEmpty {
+                        sections.append("\n**Context:**")
+                        contextLines.forEach { sections.append($0) }
+                    }
                     let outPayload: [String: AnyEncodable] = [
                         "summary_bytes": AnyEncodable(analysis.text.utf8.count),
                         "source": AnyEncodable(analysis.source.rawValue)

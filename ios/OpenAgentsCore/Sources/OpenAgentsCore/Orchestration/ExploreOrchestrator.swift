@@ -672,10 +672,30 @@ public actor ExploreOrchestrator {
                     return "\(head), and \(maxItems.last!)"
                 }()
                 let sentence = "User intends to \(label.lowercased()) \(joined)."
-                return FMAnalysisResult(text: sentence, source: .sessionAnalyze)
+                // Build context from session.analyze metrics
+                let topFilesFromAnalyze: [String] = {
+                    let pairs = (analyze.fileFrequency ?? [:]).sorted { $0.value > $1.value }
+                    return pairs.prefix(5).map { k, _ in
+                        let rel = PathUtils.normalizeToWorkspaceRelative(workspaceRoot: workspaceRoot, inputPath: k)
+                        return rel
+                    }
+                }()
+                let goals: [String] = (analyze.goalPatterns ?? []).prefix(3).map { $0 }
+                let avg = analyze.avgConversationLength
+                return FMAnalysisResult(text: sentence, source: .sessionAnalyze, topFiles: topFilesFromAnalyze, goalPatterns: goals, avgConversationLength: avg)
             }
             // Otherwise join as a compact sentence
-            return FMAnalysisResult(text: lines.joined(separator: " "), source: .sessionAnalyze)
+            let sentence = lines.joined(separator: " ")
+            let topFilesFromAnalyze: [String] = {
+                let pairs = (analyze.fileFrequency ?? [:]).sorted { $0.value > $1.value }
+                return pairs.prefix(5).map { k, _ in
+                    let rel = PathUtils.normalizeToWorkspaceRelative(workspaceRoot: workspaceRoot, inputPath: k)
+                    return rel
+                }
+            }()
+            let goals: [String] = (analyze.goalPatterns ?? []).prefix(3).map { $0 }
+            let avg = analyze.avgConversationLength
+            return FMAnalysisResult(text: sentence, source: .sessionAnalyze, topFiles: topFilesFromAnalyze, goalPatterns: goals, avgConversationLength: avg)
         }
 
         // Build compact JSON context
@@ -748,7 +768,16 @@ public actor ExploreOrchestrator {
             print("[FM] analysis response in \(String(format: "%.2f", dt))s, text=\(resp.content.count) chars")
             let analysis = resp.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !analysis.isEmpty else { return nil }
-            return FMAnalysisResult(text: analysis, source: .fm)
+            // Provide context from analyze metrics and grep hints
+            let topFilesFromAnalyze: [String] = {
+                let pairs = (analyze.fileFrequency ?? [:]).sorted { $0.value > $1.value }
+                let top = pairs.prefix(3).map { k, _ in k }
+                let merged = Array((top + topFilesHint).prefix(5))
+                return merged.map { PathUtils.normalizeToWorkspaceRelative(workspaceRoot: workspaceRoot, inputPath: $0) }
+            }()
+            let goals: [String] = (analyze.goalPatterns ?? []).prefix(3).map { $0 }
+            let avg = analyze.avgConversationLength
+            return FMAnalysisResult(text: analysis, source: .fm, topFiles: topFilesFromAnalyze, goalPatterns: goals, avgConversationLength: avg)
         } catch {
             print("[FM] analysis error: \(error)")
             return nil
@@ -763,7 +792,16 @@ public actor ExploreOrchestrator {
         public enum Source: String, Sendable { case sessionAnalyze = "session.analyze", fm = "fm" }
         public let text: String
         public let source: Source
-        public init(text: String, source: Source) { self.text = text; self.source = source }
+        public let topFiles: [String]
+        public let goalPatterns: [String]
+        public let avgConversationLength: Double?
+        public init(text: String, source: Source, topFiles: [String] = [], goalPatterns: [String] = [], avgConversationLength: Double? = nil) {
+            self.text = text
+            self.source = source
+            self.topFiles = topFiles
+            self.goalPatterns = goalPatterns
+            self.avgConversationLength = avgConversationLength
+        }
     }
 
     /// Public accessor to compute FM analysis for the last run
