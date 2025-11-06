@@ -1,25 +1,33 @@
 import Foundation
 #if os(iOS)
 import UIKit
+import OSLog
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        print("[Bridge][app] willFinishLaunching at \(ISO8601DateFormatter().string(from: Date()))")
+        let ts = ISO8601DateFormatter().string(from: Date())
+        print("[Bridge][app] willFinishLaunching at \(ts)")
+        if #available(iOS 16.0, *) { Logger(subsystem: "com.openagents.app", category: "app").log("willFinishLaunching at \(ts, privacy: .public)") }
         return true
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        print("[Bridge][app] didFinishLaunching at \(ISO8601DateFormatter().string(from: Date()))")
+        let ts = ISO8601DateFormatter().string(from: Date())
+        print("[Bridge][app] didFinishLaunching at \(ts)")
+        if #available(iOS 16.0, *) { Logger(subsystem: "com.openagents.app", category: "app").log("didFinishLaunching at \(ts, privacy: .public)") }
         return true
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        print("[Bridge][app] applicationDidBecomeActive at \(ISO8601DateFormatter().string(from: Date()))")
+        let ts = ISO8601DateFormatter().string(from: Date())
+        print("[Bridge][app] applicationDidBecomeActive at \(ts)")
+        if #available(iOS 16.0, *) { Logger(subsystem: "com.openagents.app", category: "app").log("applicationDidBecomeActive at \(ts, privacy: .public)") }
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        print("[Bridge][app] applicationWillEnterForeground at \(ISO8601DateFormatter().string(from: Date()))")
+        let ts = ISO8601DateFormatter().string(from: Date())
+        print("[Bridge][app] applicationWillEnterForeground at \(ts)")
+        if #available(iOS 16.0, *) { Logger(subsystem: "com.openagents.app", category: "app").log("applicationWillEnterForeground at \(ts, privacy: .public)") }
     }
 }
 #endif
-

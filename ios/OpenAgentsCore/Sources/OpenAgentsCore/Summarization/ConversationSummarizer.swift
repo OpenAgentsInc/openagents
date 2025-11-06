@@ -9,7 +9,7 @@ public enum ConversationSummarizer {
     public static func summarizeTitle(messages: [ACPMessage], preferOnDeviceModel: Bool = true) async -> String {
         // Try on-device Foundation Model first when available.
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, macOS 26.0, *), preferOnDeviceModel {
+        if #available(iOS 26.0, macOS 26.0, *), preferOnDeviceModel, foundationModelsAllowed() {
             let trimmed = messages.filter { $0.role == .user || $0.role == .assistant }
             if let fm = await FoundationModelSummarizer.trySummarizeTitle(messages: trimmed) {
                 if !fm.isEmpty {

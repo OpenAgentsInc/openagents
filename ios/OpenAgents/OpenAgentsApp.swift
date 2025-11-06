@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import OSLog
 import SwiftData
 
 @main
@@ -28,7 +29,11 @@ struct OpenAgentsApp: App {
     }()
 
     init() {
-        print("[Bridge][app] OpenAgentsApp init at \(ISO8601DateFormatter().string(from: Date()))")
+        let ts = ISO8601DateFormatter().string(from: Date())
+        print("[Bridge][app] OpenAgentsApp init at \(ts)")
+        if #available(iOS 16.0, macOS 13.0, *) {
+            Logger(subsystem: "com.openagents.app", category: "app").log("OpenAgentsApp init at \(ts, privacy: .public)")
+        }
     }
 
     var body: some Scene {
@@ -38,7 +43,11 @@ struct OpenAgentsApp: App {
                 .environment(\.font, OAFonts.ui(.body, 16))
                 .tint(OATheme.Colors.accent)
                 .task {
+                    let ts = ISO8601DateFormatter().string(from: Date())
                     print("[Bridge][app] OpenAgentsApp appear; starting bridge")
+                    if #available(iOS 16.0, macOS 13.0, *) {
+                        Logger(subsystem: "com.openagents.app", category: "app").log("appear start bridge at \(ts, privacy: .public)")
+                    }
                     bridge.start()
                 }
                 .environmentObject(bridge)

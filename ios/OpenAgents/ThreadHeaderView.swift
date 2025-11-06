@@ -60,7 +60,7 @@ struct ThreadHeaderView: View {
                     return !ConversationSummarizer.isSystemPreface(text)
                 }
                 msgs.sort { $0.ts < $1.ts }
-                var newTitle = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: true)
+                var newTitle = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: Features.foundationModelsEnabled)
                 if newTitle.isEmpty {
                     lines = try tailJSONLLines(url: url, maxBytes: 600_000, maxLines: 4000)
                     thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
@@ -72,7 +72,7 @@ struct ThreadHeaderView: View {
                         return !ConversationSummarizer.isSystemPreface(text)
                     }
                     msgs.sort { $0.ts < $1.ts }
-                    newTitle = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: true)
+                    newTitle = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: Features.foundationModelsEnabled)
                 }
                 let mtime = fileMTime(url)
                 if !newTitle.isEmpty {
