@@ -171,21 +171,21 @@ public struct LLMCall: Codable, Sendable {
 public enum AgentEvt: Codable, Sendable {
   case started(Started)
   case progress(Progress)
-  case result(ResultAny)
+  case result(TypedResult)
   case planSnapshot(ExplorePlan.PartiallyGenerated) // see §7
   case completed(ExploreSummary)
   case error(AgentError)
 }
 
-public struct Started: Codable, Sendable { let op: String; let details: String? }
-public struct Progress: Codable, Sendable { let op: String; let percent: Double }
-public struct ResultAny: Codable, Sendable { let op: String; let data: Data; let mime: String }
-public struct AgentError: Codable, Sendable { let op: String; let message: String; let retryable: Bool }
+public struct Started: Codable, Sendable { let opId: UUID; let op: String; let details: String? }
+public struct Progress: Codable, Sendable { let opId: UUID; let op: String; let percent: Double }
+public struct TypedResult: Codable, Sendable { let opId: UUID; let type: String; let schemaVersion: Int; let payload: Data; let checksum: UInt32 }
+public struct AgentError: Codable, Sendable { let opId: UUID?; let op: String?; let code: String; let message: String; let retryable: Bool }
 ```
 
 **Notes**
 
-* `ResultAny` carries typed payloads (e.g., `SearchResult[]`) serialized with type tags.
+* `TypedResult` carries typed payloads (e.g., `SearchResult[]`) serialized with type tags.
 * All file content results are **bounded**; use `contentGetSpan` for larger ranges.
 
 ---
@@ -252,7 +252,7 @@ public struct ExploreSummary: Equatable {
 search.lexical   { query, k, filters, includeText, contextLines }
 search.semantic  { query, k, filters, includeText, contextLines }
 search.hybrid    { query, k, filters, includeText, contextLines }
-content.getSpan  { path, start, end, context }
+content.getSpan  { path, startLine, endLine, context }
 index.addRoot    { path }
 index.status     {}
 ```
@@ -422,8 +422,7 @@ Clients must gate usage on `features`. The orchestrator adapts plans to availabl
 
 * **Inline text limits**: `MAX_INLINE_BYTES=8192`, `MAX_INLINE_LINES=120`; truncated with `…` and `truncated=true` flag.
 * **Default context**: `contextLines=2` unless overridden.
-* **Encoding**: normalize to UTF‑8, EOL to `
-  `. For unknown encodings, attempt lossy decode and mark `encoding="unknown-lossy"`.
+* **Encoding**: normalize to UTF‑8, EOL to `\n`. For unknown encodings, attempt lossy decode and mark `encoding="unknown-lossy"`.
 * **Binary skip**: files detected as binary or >5 MB are skipped from inlining (span reads still allowed with warning if small range).
 
 ---
@@ -519,6 +518,72 @@ Clients must gate usage on `features`. The orchestrator adapts plans to availabl
 
 ---
 
+## 29. Additional Considerations & Follow‑Ups
+
+The following items tighten semantics, improve safety, and aid operability. Where useful, these can be promoted to normative text in a subsequent revision.
+
+**Session & Multi‑Client Concurrency**
+- Max concurrent sessions per server (default 4); per‑client quota (default 2). Expose `admin.limits.get/set`.
+- Handshake should include a stable `clientId` (UUID) to enforce fairness, attribution, and logging.
+- Define a `sessionTimeout` (idle) and `opTimeout` defaults; map timeouts to `ERR_TIMEOUT` with `retryAfterMs` when appropriate.
+
+**Line/Span Semantics**
+- Line numbering is 1‑based; `startLine`/`endLine` are inclusive. Out‑of‑range values clamp to file bounds and return `truncated=true` if adjusted.
+- CRLF handling: stored text may contain `\r\n`, but API returns normalized `\n`; line numbers are computed against the normalized representation.
+- Spans must not cross file boundaries; if `startLine > endLine`, return `ERR_BAD_REQUEST`.
+
+**Path Canonicalization & Case Rules**
+- On APFS (case‑insensitive by default), index identity should use a canonical path key (e.g., lowercased, NFC‑normalized) while preserving original casing for display.
+- Store and compare NFC‑normalized paths; reject paths that resolve outside workspace after symlink resolution.
+
+**Default Exclusions & Size Caps**
+- Extend default exclude globs: `.git/`, `node_modules/`, `Pods/`, `build/`, `DerivedData/`, `dist/`, `target/`, `.next/`, `out/`, `venv/`, `.gradle/`, `.idea/`, `.vscode/`, `vendor/`.
+- Skip files larger than `MAX_FILE_BYTES=5_000_000` from indexing; allow override per workspace with hard cap of 20 MB.
+- Exclude common lock/minified artifacts from indexing: `*.min.js`, `*.map`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`.
+
+**Filter Semantics**
+- `filters.since` compares against file `mtime_ns` (not VCS time) unless `gitAware=true`, in which case use commit time for the working tree path when available.
+- `filters.language` uses extension+shebang detection; unknowns reported as `"unknown"` and included unless explicitly filtered out.
+
+**ANN Roadmap (Pluggable)**
+- Reserve `vectorIndexVersion` and `annKind` fields in state. Define on‑disk layout for HNSW/IVF in v1 with memory‑mapped read path and background build.
+- Announce ANN availability in `helloAck.features` and fall back to brute‑force on absence.
+
+**LLM Provider Policy & Circuit Breakers**
+- Add per‑provider limits: `maxTokens`, `maxRequestsPerMinute`, `maxConcurrent`, `timeoutMs`, `budgetPerHour`.
+- Implement exponential backoff and a rolling‑window circuit breaker; surface `ERR_RATE_LIMIT` vs `ERR_EXTERNAL_LLM_DISABLED` distinctly.
+- Secrets management: load from Keychain; never emit secrets; redact known patterns in traces/logs.
+
+**Observability & Health**
+- Add `metrics.get` RPC returning basic counters (requests, errors by code, latencies p50/p95), and current queue depth/in‑flight.
+- Add `health.check` RPC with dependency probes (SQLite, Bonjour, FM availability) and version/build hash.
+
+**Network Bind & Discovery Safety**
+- Bind to loopback by default; LAN advertising via Bonjour requires explicit `allowLan=true` setting and successful pairing.
+- Include server public key fingerprint in `helloAck` and expose `pairing.revoke`.
+
+**Transport Limits & Compression**
+- Enforce `MAX_FRAME_BYTES=1_000_000` on WS frames; reject larger payloads with `ERR_TOO_LARGE`.
+- Enable per‑message deflate where available; stream long results in smaller batches rather than single large frames.
+
+**Trace Retention & Privacy**
+- Configurable retention (size/time). Provide `trace.export` that scrubs/redsacts content; include a privacy mode that logs metadata only.
+
+**Error Model Extensions**
+- Add `ERR_FEATURE_DISABLED`, `ERR_QUOTA_EXCEEDED`, `ERR_BAD_REQUEST` with `details` field for machine‑actionable hints.
+
+**Determinism & Tie‑Breakers**
+- Define a stable tie‑break order for identical scores (path lexicographic, then startLine) to ensure reproducible top‑K.
+- Record `dimension` and `embedderVersion` with vectors; reject mismatches.
+
+**Runtime Sandboxing**
+- If App Sandbox is enabled, document required entitlements (network server, file bookmarks) and fallbacks for local development.
+
+**Test Harness Controls**
+- Respect `TEST_WORKSPACE_ROOT` env var to override default workspace path; skip E2E tests when unset.
+- Provide fixture builders to generate 100k‑chunk corpora deterministically.
+
+
 ## 29. Milestones (Amended)
 
 * **M2.5 — Handshake & Typed Streaming**: implement hello/ack, `planId/snapshotId/opId`, `TypedResult`, and de‑dupe/cancel semantics.
@@ -528,3 +593,6 @@ Clients must gate usage on `features`. The orchestrator adapts plans to availabl
 ---
 
 **End of Spec v0.2.1**
+- **Grep Semantics**
+- Default regex engine is `NSRegularExpression` with ICU syntax; `flags` may include `i` (case‑insensitive), `m` (multiline), `s` (dot matches newline). When `isRegex=false`, treat `pattern` as a literal substring with optional `i` for case.
+- Results return matched line spans; previews include highlight offsets when available.
