@@ -298,10 +298,25 @@ public actor ExploreOrchestrator {
                 if let listResult = result as? SessionListResult {
                     followups.append("Found \(listResult.sessions.count) recent sessions (provider: \(params.provider ?? "all"))")
 
-                    // Extract session titles as insights
+                    // Extract and format recent session titles
                     let sessionTitles = listResult.sessions.prefix(5).compactMap { $0.title }
                     if !sessionTitles.isEmpty {
-                        followups.append("Recent topics: \(sessionTitles.joined(separator: "; "))")
+                        followups.append("**Recent work:**")
+                        for title in sessionTitles {
+                            // Clean up title: remove newlines, trim, truncate if too long
+                            let cleanTitle = title
+                                .replacingOccurrences(of: "\n", with: " ")
+                                .replacingOccurrences(of: "\r", with: " ")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                                .components(separatedBy: .whitespacesAndNewlines)
+                                .filter { !$0.isEmpty }
+                                .joined(separator: " ")
+
+                            let truncated = cleanTitle.count > 80
+                                ? cleanTitle.prefix(80) + "..."
+                                : cleanTitle
+                            followups.append("- \(truncated)")
+                        }
                     }
                 }
 
