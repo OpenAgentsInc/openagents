@@ -12,7 +12,7 @@ struct ToolCallView: View {
                 statusIcon
                     .imageScale(.small)
 
-                Text("Tool: \(call.tool_name)")
+                Text(call.tool_name)
                     .font(OAFonts.ui(.subheadline, 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
 
