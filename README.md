@@ -110,6 +110,7 @@ If you used previous versions (Expo/Rust/Tauri):
 - **Data**: No automatic migration available. v0.3 is a clean start.
 - **Pairing**: Use new WebSocket-based pairing in v0.3
 - **Desktop**: Install new macOS companion app (not Rust bridge)
+- **npm package**: The `tricoder` npm package ([npmjs.com/package/tricoder](https://www.npmjs.com/package/tricoder)) is deprecated. Last working version was v0.2.5.
 
 The v0.2 codebase is archived but no longer maintained.
 
