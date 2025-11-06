@@ -3,6 +3,7 @@ import Combine
 @testable import OpenAgents
 @testable import OpenAgentsCore
 
+#if os(iOS)
 /// Integration tests for sending prompts and verifying user messages appear in timeline
 @MainActor
 final class PromptSendingIntegrationTests: XCTestCase {
@@ -318,3 +319,4 @@ final class PromptSendingIntegrationTests: XCTestCase {
         }
     }
 }
+#endif
