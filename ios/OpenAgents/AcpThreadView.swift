@@ -904,15 +904,11 @@ struct AcpThreadView: View {
                 let newText = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if AcpThreadView_shouldHideMessageText(newText) { break }
                 let now = nowMs()
-                if isLikelyThoughtText(newText) {
-                    if pendingReasoningStart == nil { pendingReasoningStart = now }
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
-                    pendingReasoning.append(m)
-                } else {
-                    flushPendingReasoning(endMs: now)
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
-                    timeline.append(.message(m))
-                }
+                // CRITICAL: agentMessageChunk is ALWAYS a user-facing message per ACP protocol
+                // Do NOT apply heuristics - trust the protocol type
+                flushPendingReasoning(endMs: now)
+                let m = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: newText))], ts: now)
+                timeline.append(.message(m))
             case let .resource_link(link):
                 let s = "\(link.title ?? "Link") — \(link.uri)"
                 let now = nowMs()
