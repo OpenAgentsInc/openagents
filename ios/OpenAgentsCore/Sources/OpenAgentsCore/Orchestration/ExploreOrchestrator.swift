@@ -5,6 +5,38 @@ import Foundation
 
 #if canImport(FoundationModels)
 import FoundationModels
+
+// MARK: - Guided Generation Types for Plan Creation
+
+@available(iOS 26.0, macOS 26.0, *)
+@Generable
+struct ExplorationPlanResponse {
+    @Guide(description: "List of 3-5 operations to explore the workspace. Each operation should be a different type of exploration.")
+    let operations: [OperationSpec]
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+@Generable
+struct OperationSpec {
+    @Guide(description: "Operation type: sessionList, sessionSearch, sessionRead, sessionAnalyze, readSpan, grep, or listDir")
+    let type: String
+
+    @Guide(description: "Description of what this operation does")
+    let description: String
+
+    @Guide(description: "Provider for session operations: claude-code, codex, or all")
+    let provider: String?
+
+    @Guide(description: "Number of results for session operations (e.g., 20)")
+    let count: Int?
+
+    @Guide(description: "Search pattern for grep or sessionSearch operations")
+    let pattern: String?
+
+    @Guide(description: "File path for readSpan or listDir operations")
+    let path: String?
+}
+
 #endif
 
 /// Stream handler for ACP updates during orchestration
@@ -116,30 +148,38 @@ public actor ExploreOrchestrator {
     // MARK: - Plan Generation
 
     #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
     private func generateInitialPlan(using model: SystemLanguageModel) async throws -> ExplorePlan {
         // Minimal instructions to stay under 4096 token context limit
         let instructions = Instructions("""
-        Workspace exploration assistant. Operations: readSpan, grep, listDir, sessionList, sessionSearch, sessionRead, sessionAnalyze.
-        Generate 3-5 operations per plan.
+        You are a workspace exploration assistant. Your job is to create a plan of 3-5 operations to explore a codebase or conversation history.
+
+        Available operations:
+        - sessionList: List recent sessions from claude-code or codex
+        - sessionSearch: Search for patterns across session history
+        - sessionRead: Read a specific session file
+        - sessionAnalyze: Analyze sessions for file frequency and patterns
+        - readSpan: Read lines from a file
+        - grep: Search for patterns in files
+        - listDir: List directory contents
+
+        For session-focused goals, prioritize session operations. For code-focused goals, prioritize file operations.
         """)
 
         let session = LanguageModelSession(model: model, tools: [], instructions: instructions)
         try? session.prewarm(promptPrefix: nil)
 
         let workspaceName = (workspaceRoot as NSString).lastPathComponent
-        let goalsStr = goals.isEmpty ? "Explore repository" : goals.joined(separator: ", ")
+        let goalsStr = goals.isEmpty ? "Explore repository" : goals.joined(separator: "\n- ")
 
         // Minimal prompt - MUST stay well under 4096 tokens total (instructions + prompt)
         let prompt = """
         Workspace: \(workspaceName)
-        Goals: \(goalsStr)
 
-        Generate 3+ operations:
-        1. sessionList: top 20 claude-code sessions
-        2. sessionList: top 20 codex sessions
-        3. sessionAnalyze: sessions for file frequency
+        Goals:
+        - \(goalsStr)
 
-        Your turn (3+ lines):
+        Create an exploration plan with 3-5 operations that will help achieve these goals.
         """
 
         // Validate context size before sending
@@ -152,25 +192,70 @@ public actor ExploreOrchestrator {
 
         do {
             let options = GenerationOptions(temperature: 0.5)
-            let resp = try await session.respond(to: prompt, options: options)
+            let response = try await session.respond(to: prompt, generating: ExplorationPlanResponse.self, options: options)
+            let planResponse = response.content
 
-            // Parse response to extract operations
-            let desc = String(describing: resp)
-            let ops = try parseOperationsFromResponse(desc)
+            // Convert OperationSpec to AgentOp
+            let ops = planResponse.operations.compactMap { spec in
+                convertSpecToOperation(spec)
+            }
 
             print("[Orchestrator] Generated plan with \(ops.count) operations")
 
             guard !ops.isEmpty else {
-                throw OrchestrationError.executionFailed("FM generated empty plan - parsing failed or FM did not follow instructions")
+                throw OrchestrationError.executionFailed("FM generated empty plan")
             }
+
+            // Apply expansion logic
+            let expandedOps = expandOperations(ops)
 
             return ExplorePlan(
                 goals: goals,
-                nextOps: ops
+                nextOps: expandedOps
             )
         } catch {
             print("[Orchestrator] Error generating plan: \(error)")
             throw OrchestrationError.executionFailed("Failed to generate exploration plan: \(error.localizedDescription)")
+        }
+    }
+
+    /// Convert OperationSpec (from guided generation) to AgentOp
+    @available(iOS 26.0, macOS 26.0, *)
+    private func convertSpecToOperation(_ spec: OperationSpec) -> AgentOp? {
+        let type = spec.type.lowercased()
+
+        switch type {
+        case "sessionlist", "session.list":
+            let provider = spec.provider?.lowercased()
+            let finalProvider = (provider == "all") ? nil : provider
+            return AgentOp(kind: .sessionList(SessionListParams(provider: finalProvider, topK: spec.count ?? 20)))
+
+        case "sessionsearch", "session.search":
+            guard let pattern = spec.pattern else { return nil }
+            return AgentOp(kind: .sessionSearch(SessionSearchParams(pattern: pattern, provider: spec.provider)))
+
+        case "sessionread", "session.read":
+            // Would need session ID - skip for now
+            return nil
+
+        case "sessionanalyze", "session.analyze":
+            return AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: spec.provider)))
+
+        case "readspan", "read":
+            guard let path = spec.path else { return nil }
+            return AgentOp(kind: .readSpan(ReadSpanParams(path: path, startLine: 1, endLine: 100)))
+
+        case "grep", "search":
+            guard let pattern = spec.pattern else { return nil }
+            return AgentOp(kind: .grep(GrepParams(pattern: pattern, pathPrefix: spec.path)))
+
+        case "listdir", "list":
+            let path = spec.path ?? "."
+            return AgentOp(kind: .listDir(ListDirParams(path: path, depth: 0)))
+
+        default:
+            print("[Orchestrator] Unknown operation type: \(type)")
+            return nil
         }
     }
     #endif
