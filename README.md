@@ -39,7 +39,7 @@ A good agent frees you from your computer, doesn't tie you to it.
 - Swift & SwiftUI
 - Agent Client Protocol (ACP)
 - WebSocket bridge for desktop connectivity
-- Claude Code CLI integration
+- OpenAI Codex and Claude Code CLI integration
 - Native Apple technologies:
   - Liquid Glass UI (iOS 26+, macOS 15+)
   - Foundation Models (on-device intelligence)
@@ -78,7 +78,7 @@ All ACP translation and processing happens in Swift. No Rust, no TypeScript, no 
 - Xcode 16.0+
 - Swift 5.9+
 - iOS 16.0+ / macOS 13.0+
-- Claude Code CLI (installed on macOS)
+- OpenAI Codex or Claude Code CLI (installed on macOS)
 
 ## Development
 
