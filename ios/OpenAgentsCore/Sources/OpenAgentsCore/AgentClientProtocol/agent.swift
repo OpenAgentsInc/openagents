@@ -209,6 +209,31 @@ public struct AnyEncodable: Codable {
             try container.encode(v)
         }
     }
+
+    /// Convert directly to JSONValue without encode/decode round-trip
+    /// This preserves the full structure of the data
+    public func toJSONValue() -> JSONValue {
+        switch storage {
+        case .null:
+            return .null
+        case .bool(let v):
+            return .bool(v)
+        case .int(let v):
+            return .number(Double(v))
+        case .double(let v):
+            return .number(v)
+        case .string(let v):
+            return .string(v)
+        case .array(let arr):
+            return .array(arr.map { $0.toJSONValue() })
+        case .object(let dict):
+            var result: [String: JSONValue] = [:]
+            for (k, v) in dict {
+                result[k] = v.toJSONValue()
+            }
+            return .object(result)
+        }
+    }
 }
 
 // MARK: - Session Mode and Cancel (parity with Rust agent.rs)
