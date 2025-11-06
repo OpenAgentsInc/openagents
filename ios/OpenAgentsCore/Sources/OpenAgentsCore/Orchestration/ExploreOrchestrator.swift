@@ -236,7 +236,51 @@ public actor ExploreOrchestrator {
             throw OrchestrationError.executionFailed("Failed to parse any operations from FM response. Response was: \(String(content.prefix(1000)))")
         }
 
-        return Array(ops.prefix(5)) // Limit to 5 operations
+        // EXPANSION: If FM generated a single session operation, expand it into multi-step agentic exploration
+        let expandedOps = expandOperations(ops)
+
+        return Array(expandedOps.prefix(5)) // Limit to 5 operations
+    }
+
+    /// Expand single operations into multi-step agentic exploration
+    /// Foundation Models on-device tends to generate single "combined" operations.
+    /// We expand these into separate steps for proper agentic behavior.
+    private func expandOperations(_ ops: [AgentOp]) -> [AgentOp] {
+        var expanded: [AgentOp] = []
+
+        for op in ops {
+            switch op.kind {
+            case .sessionList(let params):
+                // If provider is nil (means all providers), expand into separate queries per provider
+                if params.provider == nil {
+                    // Check if goals mention "conversation" or "session" - if so, do deep analysis
+                    let isSessionFocused = goals.contains { goal in
+                        goal.localizedCaseInsensitiveContains("conversation") ||
+                        goal.localizedCaseInsensitiveContains("session") ||
+                        goal.localizedCaseInsensitiveContains("history")
+                    }
+
+                    if isSessionFocused {
+                        // Multi-step exploration: list sessions, then analyze them
+                        let topK = params.topK ?? 20
+                        expanded.append(AgentOp(kind: .sessionList(SessionListParams(provider: "claude-code", topK: topK))))
+                        expanded.append(AgentOp(kind: .sessionList(SessionListParams(provider: "codex", topK: topK))))
+                        expanded.append(AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: nil))))
+                    } else {
+                        // Just add the original operation
+                        expanded.append(op)
+                    }
+                } else {
+                    // Provider specified - add as-is
+                    expanded.append(op)
+                }
+            default:
+                // All other operations pass through unchanged
+                expanded.append(op)
+            }
+        }
+
+        return expanded
     }
 
     // MARK: - Operation Execution
