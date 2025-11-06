@@ -915,13 +915,9 @@ public class DesktopWebSocketServer {
                 summary.followups.forEach { sections.append("• \($0)") }
             }
 
-            // Prefer deterministic intent if available
+            // FM-only: inferred intent
             if #available(macOS 26.0, *) {
-                if false { // removed deterministic intent
-                    if let intent = await orchestrator.fmAnalysisText(), !intent.isEmpty {
-                    sections.append("\n**Inferred Intent:**")
-                    sections.append(intent)
-                } else if let fmText = await orchestrator.fmAnalysisText(), !fmText.isEmpty {
+                if let fmText = await orchestrator.fmAnalysisText(), !fmText.isEmpty {
                     sections.append("\n**Inferred Intent:**")
                     sections.append(fmText)
                 }
