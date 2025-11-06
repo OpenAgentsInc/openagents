@@ -1,4 +1,4 @@
-# ADR 0005 — Use Apple Foundation Models for On‑Device Intelligence
+# ADR 0006 — Use Apple Foundation Models for On‑Device Intelligence
 
 - Date: 2025-11-04
 - Status: Accepted — Standardization (Phase 1)

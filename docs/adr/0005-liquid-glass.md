@@ -1,4 +1,4 @@
-# ADR 0004 — Adopt Liquid Glass for Apple Platforms
+# ADR 0005 — Adopt Liquid Glass for Apple Platforms
 
 - Date: 2025-11-04
 - Status: Accepted — Standardization

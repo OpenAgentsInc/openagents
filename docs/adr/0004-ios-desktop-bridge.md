@@ -1,4 +1,4 @@
-# ADR 0006 — iOS ↔ Desktop WebSocket Bridge and Pairing
+# ADR 0004 — iOS ↔ Desktop WebSocket Bridge and Pairing
 
 - Date: 2025-11-04
 - Status: Accepted — Implemented (Phase 1)
