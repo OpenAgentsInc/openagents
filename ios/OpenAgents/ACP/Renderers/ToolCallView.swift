@@ -3,31 +3,144 @@ import OpenAgentsCore
 
 struct ToolCallView: View {
     let call: ACPToolCall
+    let result: ACPToolResult? // Optional result for status determination
+    @State private var showingDetail = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: "wrench.and.screwdriver")
+                statusIcon
                     .imageScale(.small)
-                    .foregroundStyle(OATheme.Colors.textSecondary)
+
                 Text("Tool: \(call.tool_name)")
                     .font(OAFonts.ui(.subheadline, 13))
                     .foregroundStyle(OATheme.Colors.textPrimary)
+
+                Spacer()
+
+                statusBadge
             }
-            if let cmd = prettyShellCommand(call: call) {
-                Text(cmd)
+
+            if let inline = inlineParams {
+                Text(inline)
                     .font(OAFonts.ui(.footnote, 12))
                     .foregroundStyle(OATheme.Colors.textSecondary)
                     .lineLimit(1)
                     .textSelection(.enabled)
-            } else if let pretty = try? prettyJSON(call.arguments) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(pretty)
-                        .font(OAFonts.ui(.footnote, 12))
-                        .foregroundStyle(OATheme.Colors.textSecondary)
-                        .textSelection(.enabled)
-                }
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showingDetail = true
+        }
+        .sheet(isPresented: $showingDetail) {
+            ToolCallDetailSheet(call: call, result: result)
+        }
+    }
+
+    // MARK: - Status UI
+
+    private var statusIcon: some View {
+        Group {
+            if let result = result {
+                if result.ok {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(OATheme.Colors.success)
+                } else {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(OATheme.Colors.danger)
+                }
+            } else {
+                Image(systemName: "clock.circle")
+                    .foregroundStyle(.yellow)
+            }
+        }
+    }
+
+    private var statusBadge: some View {
+        Group {
+            if let result = result {
+                if result.ok {
+                    Text("completed")
+                        .font(OAFonts.ui(.caption, 10))
+                        .foregroundStyle(OATheme.Colors.success)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(OATheme.Colors.success.opacity(0.1))
+                        .cornerRadius(4)
+                } else {
+                    Text("error")
+                        .font(OAFonts.ui(.caption, 10))
+                        .foregroundStyle(OATheme.Colors.danger)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(OATheme.Colors.danger.opacity(0.1))
+                        .cornerRadius(4)
+                }
+            } else {
+                Text("pending")
+                    .font(OAFonts.ui(.caption, 10))
+                    .foregroundStyle(.yellow)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.yellow.opacity(0.1))
+                    .cornerRadius(4)
+            }
+        }
+    }
+
+    // MARK: - Inline Params
+
+    private var inlineParams: String? {
+        let toolName = call.tool_name.lowercased()
+        let args = unwrapArgumentsJSON(call.arguments)
+
+        // Bash/Shell - show command
+        if toolName == "bash" || toolName == "shell" || toolName.hasSuffix(".shell") {
+            return prettyShellCommand(call: call)
+        }
+
+        // Read - show file_path
+        if toolName == "read" || toolName.hasSuffix(".read") {
+            if case .object(let obj) = args,
+               case .string(let path)? = obj["file_path"] {
+                return "📄 \(path)"
+            }
+        }
+
+        // Write - show file_path
+        if toolName == "write" || toolName.hasSuffix(".write") {
+            if case .object(let obj) = args,
+               case .string(let path)? = obj["file_path"] {
+                return "✏️ \(path)"
+            }
+        }
+
+        // Edit - show file_path
+        if toolName == "edit" || toolName.hasSuffix(".edit") {
+            if case .object(let obj) = args,
+               case .string(let path)? = obj["file_path"] {
+                return "✏️ \(path)"
+            }
+        }
+
+        // Glob - show pattern
+        if toolName == "glob" || toolName.hasSuffix(".glob") {
+            if case .object(let obj) = args,
+               case .string(let pattern)? = obj["pattern"] {
+                return "🔍 \(pattern)"
+            }
+        }
+
+        // Grep - show pattern
+        if toolName == "grep" || toolName.hasSuffix(".grep") {
+            if case .object(let obj) = args,
+               case .string(let pattern)? = obj["pattern"] {
+                return "🔍 \(pattern)"
+            }
+        }
+
+        return nil
     }
 }
 
