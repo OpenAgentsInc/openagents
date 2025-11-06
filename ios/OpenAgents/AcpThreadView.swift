@@ -940,15 +940,36 @@ struct AcpThreadView: View {
             flushPendingReasoning(endMs: now)
             let argsJV = jsonFromAnyEncodableObject(call.arguments)
             let c = ACPToolCall(id: call.call_id, tool_name: call.name, arguments: argsJV, ts: now)
-            timeline.append(.toolCall(c))
+            // Don't show TodoWrite as a tool call - it will be converted to a plan
+            if call.name.lowercased() != "todowrite" {
+                timeline.append(.toolCall(c))
+            }
         case .toolCallUpdate(let upd):
             let now = nowMs()
             let key = "\(upd.call_id)|\(upd.status.rawValue)"
             if seenToolResultKeys.contains(key) { break }
             seenToolResultKeys.insert(key)
             flushPendingReasoning(endMs: now)
-            let r = ACPToolResult(call_id: upd.call_id, ok: upd.status == .completed, result: upd.output.map { jsonFromAnyEncodable($0) }, error: upd.error, ts: now)
-            timeline.append(.toolResult(r))
+
+            // Check if this is TodoWrite - convert to plan update
+            if let toolCall = timeline.first(where: {
+                if case .toolCall(let c) = $0, c.id == upd.call_id {
+                    return c.tool_name.lowercased() == "todowrite"
+                }
+                return false
+            }) {
+                // Convert TodoWrite result to plan
+                if upd.status == .completed, let output = upd.output {
+                    if let plan = convertTodoWriteToPlan(output, ts: now) {
+                        timeline.append(.plan(plan))
+                    }
+                }
+                // Don't add tool result for TodoWrite
+            } else {
+                // Regular tool result
+                let r = ACPToolResult(call_id: upd.call_id, ok: upd.status == .completed, result: upd.output.map { jsonFromAnyEncodable($0) }, error: upd.error, ts: now)
+                timeline.append(.toolResult(r))
+            }
         case .availableCommandsUpdate(_):
             // Show raw representation for unhandled UI events
             timeline.append(.raw(encodeJSONPretty(note)))
@@ -1147,15 +1168,38 @@ func AcpThreadView_computeTimelineFromUpdates(updates: [ACP.Client.SessionNotifi
                 seenCalls.insert(wire.call_id)
                 let argsJV: JSONValue = jsonFromAnyEncodableObject(wire.arguments)
                 let c = ACPToolCall(id: wire.call_id, tool_name: wire.name, arguments: argsJV, ts: monoMs)
-                items.append(.toolCall(c))
+                // Don't show TodoWrite as a tool call - it will be converted to a plan
+                if wire.name.lowercased() != "todowrite" {
+                    items.append(.toolCall(c))
+                }
             }
         case .toolCallUpdate(let upd):
             flushReasoning(nextTs: monoMs)
             let key = "\(upd.call_id)|\(upd.status.rawValue)"
             if !seenResults.contains(key) {
                 seenResults.insert(key)
-                let r = ACPToolResult(call_id: upd.call_id, ok: upd.status == .completed, result: upd.output.map { jsonFromAnyEncodable($0) }, error: upd.error, ts: monoMs)
-                items.append(.toolResult(r))
+
+                // Check if this is TodoWrite - convert to plan update
+                let isTodoWrite = items.contains(where: {
+                    if case .toolCall(let c) = $0, c.id == upd.call_id {
+                        return c.tool_name.lowercased() == "todowrite"
+                    }
+                    return false
+                })
+
+                if isTodoWrite {
+                    // Convert TodoWrite result to plan
+                    if upd.status == .completed, let output = upd.output {
+                        if let plan = convertTodoWriteToPlan(output, ts: monoMs) {
+                            items.append(.plan(plan))
+                        }
+                    }
+                    // Don't add tool result for TodoWrite
+                } else {
+                    // Regular tool result
+                    let r = ACPToolResult(call_id: upd.call_id, ok: upd.status == .completed, result: upd.output.map { jsonFromAnyEncodable($0) }, error: upd.error, ts: monoMs)
+                    items.append(.toolResult(r))
+                }
             }
         case .plan(let p):
             flushReasoning(nextTs: monoMs)
@@ -1234,6 +1278,48 @@ private func mergeAdjacentThoughts(_ items: [AcpThreadView.TimelineItem], window
     }
     flush()
     return out
+}
+
+/// Convert TodoWrite tool output to ACPPlanState
+private func convertTodoWriteToPlan(_ output: AnyEncodable, ts: Int64) -> ACPPlanState? {
+    let jsonValue = output.toJSONValue()
+    guard case .object(let dict) = jsonValue,
+          case .array(let todosArray)? = dict["todos"] else {
+        return nil
+    }
+
+    var entries: [ACPPlanEntry] = []
+    for item in todosArray {
+        guard case .object(let todoDict) = item,
+              case .string(let content)? = todoDict["content"],
+              case .string(let statusStr)? = todoDict["status"] else {
+            continue
+        }
+
+        // Map TodoWrite status to ACPPlanEntryStatus
+        let status: ACPPlanEntryStatus
+        switch statusStr {
+        case "completed":
+            status = .completed
+        case "in_progress":
+            status = .in_progress
+        case "pending":
+            status = .pending
+        default:
+            status = .pending
+        }
+
+        entries.append(ACPPlanEntry(content: content, priority: .medium, status: status))
+    }
+
+    guard !entries.isEmpty else { return nil }
+
+    // Determine overall plan status
+    let hasInProgress = entries.contains(where: { $0.status == .in_progress })
+    let allCompleted = entries.allSatisfy({ $0.status == .completed })
+    let planStatus: ACPPlanStatus = allCompleted ? .completed : (hasInProgress ? .running : .idle)
+
+    return ACPPlanState(status: planStatus, summary: nil, steps: entries.map { $0.content }, ts: ts)
 }
 
 private func jsonFromAnyEncodableObject(_ obj: [String: AnyEncodable]?) -> JSONValue {
