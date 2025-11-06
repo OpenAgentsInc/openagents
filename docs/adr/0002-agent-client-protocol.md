@@ -1,4 +1,4 @@
-# ADR 0007 — Agent Client Protocol (ACP) as Canonical Runtime Contract
+# ADR 0002 — Agent Client Protocol (ACP) as Canonical Runtime Contract
 
  - Date: 2025-11-01
  - Status: Accepted
@@ -7,7 +7,7 @@
 
 OpenAgents integrates multiple provider CLIs (e.g., Codex, Claude Code) and a mobile app that consumes live updates and local history over a LAN WebSocket bridge. Provider event shapes differ significantly (Codex JSONL rollouts, Claude transcripts), and ad‑hoc JSON drifting between components makes testing and evolution brittle.
 
-We already translate provider events into ACP types in Rust (inspired by Zed’s adapters) and use typed Tinyvex rows on the app side (ADR‑0002/0003). This ADR formalizes ACP as our canonical contract across process boundaries and persistent storage.
+We translate provider events into ACP types (in Rust for the bridge, and in Swift for Apple‑native surfaces) and use typed rows on the app side. This ADR formalizes ACP as our canonical contract across process boundaries and persistent storage.
 
 ## Decision
 
@@ -24,17 +24,17 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 
 - In Apple‑native apps (iOS/macOS)
   - All ACP usage MUST go through the Swift parity module `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/*` (one‑to‑one mapping with the Rust SDK).
-  - The Apple WebSocket bridge uses JSON‑RPC 2.0 and ACP method names; no legacy or ad‑hoc envelopes are permitted.
+  - The Apple WebSocket bridge uses JSON‑RPC 2.0 and ACP method names; legacy Hello‑style envelopes are deprecated and retained only as a fallback.
   - Session lifecycle and streamed updates (`session/new`, `session/prompt`, `session/update`, `session/cancel`) are implemented natively in Swift using this module.
   - Client‑side services (fs.*, terminal.*, `session/request_permission`) are implemented in Swift behind permissions.
 
 - In the database (Tinyvex)
-  - Tables remain the minimal, typed projection required by the app (snake_case fields; ADR‑0002).
+  - Tables remain the minimal, typed projection required by the app (snake_case fields).
   - An append‑only `acp_events` log is maintained for traceability of ACP updates (already present in schema).
   - The Tinyvex Rust crate is DB‑only; the bridge hosts the writer that ingests ACP updates and mirrors into Tinyvex.
 
 - Naming & casing
-  - All public payloads the app observes are snake_case and align with ACP concepts (ADR‑0002). No mixed case fallback in the app.
+  - All public payloads the app observes are snake_case and align with ACP concepts. No mixed‑case fallback in the app.
 
 ## Rationale
 
@@ -75,6 +75,6 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 
 ## References
 
-- ADR‑0002 — Rust → TypeScript types as source of truth (snake_case).
-- ADR‑0003 — Tinyvex as the local sync engine.
+- ADR‑0003 — Swift Cross‑Platform App (macOS + iOS) Experiment
+- ADR‑0006 — iOS ↔ Desktop WebSocket Bridge and Pairing
 - ACP Introduction: https://agentclientprotocol.com/overview/introduction

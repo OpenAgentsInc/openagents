@@ -1,4 +1,4 @@
-# ADR 0012 — Adopt Liquid Glass for Apple Platforms
+# ADR 0004 — Adopt Liquid Glass for Apple Platforms
 
 - Date: 2025-11-04
 - Status: Accepted — Standardization
@@ -7,7 +7,7 @@
 
 Liquid Glass is Apple’s new first‑party UI material that brings a cohesive, adaptive visual system across iOS, iPadOS, and macOS. It provides dynamic translucency, refraction, tint, and morphing behaviors and is exposed via platform APIs (SwiftUI and UIKit) starting iOS 26 / iPadOS 26 / macOS 15 (Sequoia).
 
-This ADR builds on ADR‑0011 (Swift Cross‑Platform App Experiment) by standardizing how we adopt Liquid Glass in our Apple‑native surfaces while keeping our existing Expo mobile app and Rust bridge contracts unchanged. It also aligns with our design documentation under `docs/liquid-glass/` (visual design, structure, layout, continuity, and APIs).
+This ADR builds on ADR‑0003 (Swift Cross‑Platform App Experiment) by standardizing how we adopt Liquid Glass in our Apple‑native surfaces while keeping our existing Expo mobile app and Rust bridge contracts unchanged. It also aligns with our design documentation under `docs/liquid-glass/` (visual design, structure, layout, continuity, and APIs).
 
 ## Decision
 
@@ -30,7 +30,7 @@ Adopt Liquid Glass as the standard material for structural UI on Apple platforms
   - Respect Reduce Transparency/Increase Contrast and the iOS 26.1 “Tinted” vs “Clear” system toggle.
   - Ensure text/icons meet contrast over glass; add subtle overlays or solid backgrounds where necessary.
 - Cross‑surface policy
-  - Swift app (ADR‑0011): adopt Liquid Glass immediately for Apple‑native views.
+  - Swift app (ADR‑0003): adopt Liquid Glass immediately for Apple‑native views.
   - Expo app: align visual language and spacing; approximate with platform‑compatible materials (e.g., `.ultraThinMaterial` lookalikes / blur) where appropriate. Do not block on first‑party APIs in RN; keep implementations optional and non‑invasive.
   - Rust bridge: no change.
 
@@ -97,9 +97,8 @@ Phase E — Developer guidance
 
 ## References
 
-- ADR‑0011 — Swift Cross‑Platform App (macOS + iOS) Experiment (`docs/adr/0011-swift-cross-platform-app-experiment.md`)
+- ADR‑0003 — Swift Cross‑Platform App (macOS + iOS) Experiment (`docs/adr/0003-swift-cross-platform.md`)
 - Liquid Glass docs (internal): `docs/liquid-glass/` (visual design, structure, layout, continuity, APIs)
 - Apple Developer — Applying Liquid Glass to custom views (SwiftUI)
 - Apple Developer — GlassEffectContainer
 - Apple Developer — Adopting Liquid Glass (Technology Overview)
-

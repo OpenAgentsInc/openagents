@@ -1,11 +1,11 @@
-# ADR 0013 — Use Apple Foundation Models for On‑Device Intelligence
+# ADR 0005 — Use Apple Foundation Models for On‑Device Intelligence
 
 - Date: 2025-11-04
 - Status: Accepted — Standardization (Phase 1)
 
 ## Context
 
-Building on ADR‑0011 (Swift cross‑platform app experiment) and ADR‑0012 (Liquid Glass adoption), we want to leverage Apple’s on‑device Foundation Models framework to enhance the native Swift app with fast, private intelligence tasks. These models power Apple Intelligence on supported devices (iOS/iPadOS 26, macOS 15+) and enable low‑latency language understanding and generation without network calls.
+Building on ADR‑0003 (Swift cross‑platform app experiment) and ADR‑0004 (Liquid Glass adoption), we want to leverage Apple’s on‑device Foundation Models framework to enhance the native Swift app with fast, private intelligence tasks. These models power Apple Intelligence on supported devices (iOS/iPadOS 26, macOS 15+) and enable low‑latency language understanding and generation without network calls.
 
 Initial target tasks:
 - Conversation titles: generate concise 3–5 word summaries for threads shown in the sidebar.
@@ -88,8 +88,7 @@ Adopt Foundation Models in the Swift app for on‑device, best‑effort intellig
 
 ## References
 
-- ADR‑0011 — Swift Cross‑Platform App (macOS + iOS) Experiment
-- ADR‑0012 — Adopt Liquid Glass for Apple Platforms
+- ADR‑0003 — Swift Cross‑Platform App (macOS + iOS) Experiment
+- ADR‑0004 — Adopt Liquid Glass for Apple Platforms
 - Apple Docs: Foundation Models, SystemLanguageModel, LanguageModelSession, GenerationOptions, Instructions
 - Acceptable use requirements for the Foundation Models framework
-

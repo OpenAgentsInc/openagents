@@ -1,4 +1,4 @@
-# ADR 0011 — Swift Cross‑Platform App (macOS + iOS) Experiment
+# ADR 0003 — Swift Cross‑Platform App (macOS + iOS) Experiment
 
  - Date: 2025-11-03
  - Status: In Progress — Desktop‑first implementation
@@ -12,7 +12,7 @@ Key drivers:
 - Faster local iteration and packaging: experiment with running provider CLIs (Codex, Claude Code) and handling ACP updates natively in Swift.
 - Evaluate whether this Swift app replaces or supplements the Tauri desktop app; decision deferred until results of this experiment.
 
-This work must preserve our canonical contracts: ACP on the wire (ADR‑0007) and Tinyvex typed rows/snapshots for history and live UI (ADR‑0003, ADR‑0002). It must not introduce ad‑hoc JSON to the app boundary.
+This work must preserve our canonical contracts: ACP on the wire (ADR‑0002) and Tinyvex typed rows/snapshots for history and live UI. It must not introduce ad‑hoc JSON to the app boundary.
 
 ## Decision
 
@@ -23,8 +23,9 @@ Proceed with an experiment to build a SwiftUI app for macOS and iOS that impleme
   - Translate provider output into ACP updates in‑process (minimal subset at first), then mirror into a local store for the UI.
 
 - Engine B — Bridge Client (compatibility path):
-  - Connect to the existing Rust WebSocket bridge (`/ws`) and consume typed Tinyvex snapshots/updates; send control messages for runs.
-  - Read‑only history works out‑of‑the‑box; live sessions mirror current mobile/Tauri behavior.
+  - Connect to the Apple‑native macOS bridge over WebSocket using JSON‑RPC ACP methods (`initialize`, `session/new`, `session/prompt`, `session/update`, `session/cancel`).
+  - Optionally connect to the existing Rust bridge where available; parity maintained via ACP on the wire.
+  - Read‑only history works out‑of‑the‑box; live sessions mirror current behavior.
 
 Scope and guardrails for the experiment:
 - Desktop first: ship a macOS app with the shared core in a Swift package; then enable the iOS target after desktop is usable.
@@ -98,11 +99,12 @@ Update — current state (2025‑11‑04)
 - ACP renderers wired: assistant/user messages, tool calls/results; plan state pending.
 - Stable, clickable composer via `safeAreaInset(edge: .bottom)` (TextField + Send) — currently appends locally; WS wiring next.
 
-Update — bridge pairing (2025‑11‑04)
-- Added a lightweight Apple‑native WS bridge and pairing flow (see ADR‑0014):
-  - macOS auto‑starts `DesktopWebSocketServer` on `ws://0.0.0.0:9099` and advertises `_openagents._tcp`.
-  - iOS auto‑discovers via Bonjour and connects using a token handshake (dev default `OA_DEV_TOKEN`).
-  - Handshake: `Hello { token }` → `HelloAck { token }`; envelopes reserved for future sync.
+Update — bridge pairing and transport (2025‑11‑04)
+- Added an Apple‑native WS bridge and Bonjour pairing flow (see ADR‑0006):
+  - macOS auto‑starts `DesktopWebSocketServer` and advertises `_openagents._tcp`.
+  - iOS auto‑discovers via Bonjour and connects.
+  - Primary handshake and transport use JSON‑RPC 2.0 with ACP method names (`initialize` then `session/*`).
+  - A legacy `Hello/HelloAck` token handshake remains as a fallback only.
   - This path enables Engine B (Bridge Client) for the Swift app without adding HTTP endpoints.
 
 6) Security and configuration
@@ -135,8 +137,5 @@ Interim acceptance (in progress)
 
 ## References
 
-- ADR‑0002 — Rust → TS Types (snake_case contracts)
-- ADR‑0003 — Tinyvex as the Local Sync Engine
-- ADR‑0007 — Agent Client Protocol as Canonical Runtime Contract
-- ADR‑0009 — Desktop‑Managed Bridge (Tauri)
-- ADR‑0010 — Desktop E2E with WebdriverIO (Tauri)
+- ADR‑0002 — Agent Client Protocol as Canonical Runtime Contract
+- ADR‑0006 — iOS ↔ Desktop WebSocket Bridge and Pairing
