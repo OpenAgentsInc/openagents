@@ -128,6 +128,7 @@ private struct MenuSheet: View {
 
 private struct UpdateRow: View {
     let note: ACP.Client.SessionNotificationWire
+    @EnvironmentObject private var bridge: BridgeManager
     var body: some View {
         switch note.update {
         case .toolCall(let call):
@@ -142,7 +143,9 @@ private struct UpdateRow: View {
         case .toolCallUpdate(let upd):
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: upd.status == .completed ? "checkmark.circle" : (upd.status == .started ? "circle.dashed" : "xmark.octagon"))
-                Text("index.rebuild")
+                // Show the original tool name if known; fall back to the call_id
+                let name = bridge.toolCallNames[upd.call_id] ?? "call \(upd.call_id.prefix(8))…"
+                Text(name)
                 Spacer()
                 Text(upd.status.rawValue)
                     .font(.footnote)

@@ -299,34 +299,42 @@ public struct SessionAnalyzeTool: Sendable {
         var totalEvents = 0
         var sessionCount = 0
 
-        // If no session IDs provided, discover recent sessions from provider(s)
-        var effectiveSessionIds = sessionIds
-        if effectiveSessionIds.isEmpty {
+        // Build targets (sessionId + provider if known)
+        var targets: [(id: String, provider: String?)] = []
+        if sessionIds.isEmpty {
             let listTool = SessionListTool()
-
             if let specificProvider = provider {
-                // Single provider
                 let listResult = try await listTool.list(provider: specificProvider, topK: 10)
-                effectiveSessionIds = listResult.sessions.map { $0.id }
+                targets = listResult.sessions.map { ($0.id, specificProvider) }
             } else {
-                // All providers - get 5 from each
-                var allSessions: [(id: String, provider: String)] = []
-
                 for prov in ["claude-code", "codex"] {
                     let listResult = try await listTool.list(provider: prov, topK: 5)
-                    allSessions.append(contentsOf: listResult.sessions.map { (id: $0.id, provider: prov) })
+                    targets.append(contentsOf: listResult.sessions.map { ($0.id, prov) })
                 }
-
-                effectiveSessionIds = allSessions.map { $0.id }
             }
+        } else {
+            // Caller provided explicit session IDs. Respect provided provider if present; otherwise, we'll auto-detect per session.
+            targets = sessionIds.map { ($0, provider) }
         }
 
-        // Read each session
+        // Read each session (limit to 10 for now)
         let readTool = SessionReadTool()
-        for sessionId in effectiveSessionIds.prefix(10) { // Limit to 10 sessions for analysis
+        for target in targets.prefix(10) {
             do {
-                let prov = provider ?? "claude-code" // Default provider
-                let result = try await readTool.read(sessionId: sessionId, provider: prov, maxEvents: 200)
+                // Determine provider for this session; if unknown, try both providers.
+                let result: SessionReadResult
+                if let prov = target.provider {
+                    result = try await readTool.read(sessionId: target.id, provider: prov, maxEvents: 200)
+                } else {
+                    // Try claude-code first, then codex
+                    if let r1 = try? await readTool.read(sessionId: target.id, provider: "claude-code", maxEvents: 200) {
+                        result = r1
+                    } else if let r2 = try? await readTool.read(sessionId: target.id, provider: "codex", maxEvents: 200) {
+                        result = r2
+                    } else {
+                        continue // Skip if not found under either provider
+                    }
+                }
                 sessionCount += 1
                 totalEvents += result.events.count
 
