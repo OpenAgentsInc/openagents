@@ -123,14 +123,20 @@ struct AcpThreadView: View {
         .onReceive(bridge.objectWillChange) { _ in
             // Prevent concurrent recomputes - skip if already processing
             guard !isLoading else {
-                print("[AcpThreadView] Skipping update - already processing")
                 return
             }
 
             let newUpdates = bridge.updates
-            print("[AcpThreadView] objectWillChange fired: \(newUpdates.count) updates, timeline.count=\(timeline.count)")
 
-            if timeline.isEmpty, !newUpdates.isEmpty {
+            // Skip if we've already processed all these updates
+            if !newUpdates.isEmpty, !processedUpdateIds.isEmpty {
+                let allProcessed = newUpdates.allSatisfy { processedUpdateIds.contains(updateId($0)) }
+                if allProcessed {
+                    return // Already processed all updates, skip
+                }
+            }
+
+            if timeline.isEmpty, !newUpdates.isEmpty, processedUpdateIds.isEmpty {
                 print("[AcpThreadView] Full recompute path - timeline empty, loading \(newUpdates.count) updates")
                 let snapshot = newUpdates
                 isLoading = true
