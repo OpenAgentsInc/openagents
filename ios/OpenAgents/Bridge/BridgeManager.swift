@@ -277,6 +277,40 @@ extension BridgeManager {
         struct CancelReq: Codable { let session_id: ACPSessionId }
         client.sendJSONRPCNotification(method: ACPRPC.sessionCancel, params: CancelReq(session_id: sid))
     }
+
+    /// Start workspace exploration using on-device Foundation Models (Phase 2)
+    func orchestrateExploreStart(root: String, goals: [String]? = nil, completion: ((OrchestrateExploreStartResponse?) -> Void)? = nil) {
+        guard let client = self.client else {
+            completion?(nil)
+            return
+        }
+
+        // Create request with policy (on-device only for Phase 2)
+        let policy = ExplorationPolicy(allow_external_llms: false, allow_network: false)
+        let request = OrchestrateExploreStartRequest(
+            root: root,
+            remote_url: nil,
+            branch: nil,
+            policy: policy,
+            goals: goals
+        )
+
+        // Send JSON-RPC request
+        client.sendJSONRPC(
+            method: ACPRPC.orchestrateExploreStart,
+            params: request,
+            id: "orchestrate-explore-\(UUID().uuidString)"
+        ) { (response: OrchestrateExploreStartResponse?) in
+            DispatchQueue.main.async {
+                if let response = response {
+                    // Update current session ID for streaming updates
+                    self.currentSessionId = ACPSessionId(response.session_id)
+                    print("[Bridge] Orchestration started: session=\(response.session_id) plan=\(response.plan_id)")
+                }
+                completion?(response)
+            }
+        }
+    }
 }
 
 // MARK: - Endpoint persistence / selection
