@@ -144,19 +144,10 @@ public actor ExploreOrchestrator {
     private func generateInitialPlan(using model: SystemLanguageModel) async throws -> ExplorePlan {
         // Minimal instructions to stay under 4096 token context limit
         let instructions = Instructions("""
-        Create EXACTLY 3 operations to explore a workspace.
+        Plan a short workspace exploration (3–5 steps) using these ops: sessionList, sessionSearch, sessionRead, listDir, readSpan, grep, sessionAnalyze. Prefer sessionSearch + sessionRead for conversation-history goals; use listDir/readSpan/grep for code/file goals. Output only the steps, one per line, mentioning the op name and key parameter(s).
 
         Available operations:
-        - sessionList: List 20 recent sessions from claude-code or codex providers
-        - readSpan: Read lines from a file (README.md, package.json, etc.)
-        - grep: Search for patterns in files
-        - listDir: List directory contents
-
-        Rules:
-        - If goals mention "conversation", "session", or "history": use sessionList for both claude-code AND codex
-        - If goals mention code or files: use readSpan/grep/listDir
-        - sessionList ALWAYS uses count=20
-        - readSpan ALWAYS uses line range 1-100
+        
         """)
 
         let tools: [any Tool] = {
@@ -172,36 +163,16 @@ public actor ExploreOrchestrator {
         try? session.prewarm(promptPrefix: nil)
 
         let workspaceName = (workspaceRoot as NSString).lastPathComponent
-        let goalsStr = goals.isEmpty ? "Explore repository" : goals.joined(separator: "\n- ")
-
-        // Check if goals are session-focused
-        let isSessionFocused = goals.contains { goal in
-            goal.localizedCaseInsensitiveContains("conversation") ||
-            goal.localizedCaseInsensitiveContains("session") ||
-            goal.localizedCaseInsensitiveContains("history")
-        }
+        let goalsStr = goals.isEmpty ? "(no goals provided)" : goals.joined(separator: "\n- ")
 
         // Minimal prompt - MUST stay well under 4096 tokens total (instructions + prompt)
-        let prompt: String
-        if isSessionFocused {
-            prompt = """
-            Workspace: \(workspaceName)
+        let prompt = """
+        Workspace: \(workspaceName)
+        Goals:
+        - \(goalsStr)
 
-            Generate 3 operations:
-            1. type="sessionList", param="claude-code"
-            2. type="sessionList", param="codex"
-            3. type="listDir", param="\(workspaceRoot)"
-            """
-        } else {
-            prompt = """
-            Workspace: \(workspaceName)
-
-            Generate 3 operations:
-            1. type="listDir", param="\(workspaceRoot)"
-            2. type="readSpan", param="README.md"
-            3. type="grep", param="TODO"
-            """
-        }
+        Draft a 3–5 step plan using the available ops (sessionList, sessionSearch, sessionRead, listDir, readSpan, grep, sessionAnalyze). Output only the steps, one per line.
+        """
 
         // Validate context size before sending
         let estimatedTokens = estimateTokenCount(instructions: instructions, prompt: prompt)
@@ -216,14 +187,10 @@ public actor ExploreOrchestrator {
         do {
             let options = GenerationOptions(temperature: 0.5)
             let t0 = Date()
-            let response = try await session.respond(to: prompt, generating: ExplorationPlanResponse.self, options: options)
-            print("[FM] response received in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s, content_ops=\(response.content.operations.count)")
-            let planResponse = response.content
-
-            // Convert PlannedOperation to AgentOp
-            let ops = planResponse.operations.compactMap { plannedOp in
-                convertPlannedOperation(plannedOp)
-            }
+            let response = try await session.respond(to: prompt, options: options)
+            print("[FM] response received in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s")
+            let raw = response.content
+            let ops = try parseOperationsFromResponse(raw)
 
             print("[Orchestrator] Generated plan with \(ops.count) operations")
 
