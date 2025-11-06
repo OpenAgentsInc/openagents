@@ -571,17 +571,22 @@ public actor ExploreOrchestrator {
         let update = ACP.Client.SessionUpdate.toolCall(toolCall)
         await streamHandler(update)
 
-        // Also emit a started update for clearer progress in UI
+        // Also emit a started update for clearer progress in UI, but only for long-running ops
         if status == .started {
-            let started = ACPToolCallUpdateWire(
-                call_id: op.opId.uuidString,
-                status: .started,
-                output: nil,
-                error: nil,
-                _meta: ["progress": AnyEncodable(0.0)]
-            )
-            let startedUpdate = ACP.Client.SessionUpdate.toolCallUpdate(started)
-            await streamHandler(startedUpdate)
+            switch op.kind {
+            case .sessionAnalyze:
+                let started = ACPToolCallUpdateWire(
+                    call_id: op.opId.uuidString,
+                    status: .started,
+                    output: nil,
+                    error: nil,
+                    _meta: ["progress": AnyEncodable(0.0)]
+                )
+                let startedUpdate = ACP.Client.SessionUpdate.toolCallUpdate(started)
+                await streamHandler(startedUpdate)
+            default:
+                break
+            }
         }
     }
 
