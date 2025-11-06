@@ -186,64 +186,51 @@ public struct SessionReadTool: Sendable {
             throw ToolExecutionError.fileNotFound("Session file not found: \(url.path)")
         }
 
-        // Read file content
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-            throw ToolExecutionError.executionFailed("Failed to read session file")
-        }
-
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-
-        // Apply line range if specified
-        let start = (startLine ?? 1) - 1
-        let end = min(endLine ?? lines.count, lines.count)
-        guard start >= 0 && start < lines.count else {
-            throw ToolExecutionError.invalidParameters("Invalid line range")
-        }
-
-        let selectedLines = Array(lines[start..<end])
-
-        // Parse events
+        // Incremental read to avoid loading entire file (large JSONL)
+        let startIdx = max((startLine ?? 1), 1)
+        let endIdx = endLine
+        var currentLine = 0
+        var selectedCount = 0
         var events: [SessionEvent] = []
         var fileReferences: Set<String> = []
+        var truncated = false
 
-        for (idx, line) in selectedLines.enumerated() {
-            guard events.count < maxEvts else { break }
+        guard let fh = try? FileHandle(forReadingFrom: url) else {
+            throw ToolExecutionError.executionFailed("Failed to open session file")
+        }
+        defer { try? fh.close() }
+
+        let chunkSize = 64 * 1024
+        var buffer = Data()
+        func processLine(_ line: String) {
+            currentLine += 1
+            guard currentLine >= startIdx else { return }
+            if let endIdx = endIdx, currentLine > endIdx { return }
+            selectedCount += 1
+            guard events.count < maxEvts else { truncated = true; return }
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                continue
-            }
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
 
-            // Extract event type and content
             let type = json["type"] as? String ?? "unknown"
             var content = ""
             var timestamp: Int64? = nil
+            if let ts = json["timestamp"] as? Double { timestamp = Int64(ts) }
+            else if let ts = json["ts"] as? Int64 { timestamp = ts }
 
-            // Extract timestamp
-            if let ts = json["timestamp"] as? Double {
-                timestamp = Int64(ts)
-            } else if let ts = json["ts"] as? Int64 {
-                timestamp = ts
-            }
-
-            // Extract content based on type
             switch type {
             case "user":
-                if let message = json["message"] as? [String: Any],
-                   let text = message["content"] as? String {
-                    content = String(text.prefix(200)) // Preview only
+                if let message = json["message"] as? [String: Any], let text = message["content"] as? String {
+                    content = String(text.prefix(200))
                 }
             case "assistant", "agent":
-                if let message = json["message"] as? [String: Any],
-                   let text = message["content"] as? String {
+                if let message = json["message"] as? [String: Any], let text = message["content"] as? String {
                     content = String(text.prefix(200))
                 }
             case "tool_use", "tool_call":
                 if let name = json["name"] as? String {
                     content = "Tool: \(name)"
-
-                    // Extract file references from Read/Edit tools
-                    if name.contains("Read") || name.contains("read") ||
-                       name.contains("Edit") || name.contains("edit") ||
+                    if name.localizedCaseInsensitiveContains("read") ||
+                       name.localizedCaseInsensitiveContains("edit") ||
                        name.contains("content.get_span") {
                         if let args = json["arguments"] as? [String: Any],
                            let path = args["file_path"] as? String ?? args["path"] as? String {
@@ -252,9 +239,7 @@ public struct SessionReadTool: Sendable {
                     }
                 }
             case "thinking":
-                if let text = json["content"] as? String {
-                    content = String(text.prefix(100))
-                }
+                if let text = json["content"] as? String { content = String(text.prefix(100)) }
             default:
                 content = type
             }
@@ -262,18 +247,37 @@ public struct SessionReadTool: Sendable {
             if !content.isEmpty {
                 events.append(SessionEvent(
                     type: type,
-                    lineNumber: start + idx + 1,
+                    lineNumber: currentLine,
                     content: content,
                     timestamp: timestamp
                 ))
             }
         }
 
+        while let dataChunk = try? fh.read(upToCount: chunkSize), let chunk = dataChunk, !chunk.isEmpty {
+            buffer.append(chunk)
+            while let range = buffer.firstRange(of: Data([0x0A])) { // '\n'
+                let lineData = buffer.subdata(in: buffer.startIndex..<range.lowerBound)
+                buffer.removeSubrange(buffer.startIndex..<range.upperBound)
+                if let line = String(data: lineData, encoding: .utf8) {
+                    processLine(line)
+                }
+                if let endIdx = endIdx, currentLine >= endIdx { break }
+                if events.count >= maxEvts { break }
+            }
+            if let endIdx = endIdx, currentLine >= endIdx { break }
+            if events.count >= maxEvts { break }
+        }
+        // Process any remaining data as last line (if not empty)
+        if !buffer.isEmpty, events.count < maxEvts, let line = String(data: buffer, encoding: .utf8) {
+            processLine(line)
+        }
+
         return SessionReadResult(
             sessionId: sessionId,
             events: events,
-            truncated: events.count >= maxEvts,
-            totalEvents: selectedLines.count,
+            truncated: truncated || events.count >= maxEvts,
+            totalEvents: selectedCount,
             fileReferences: Array(fileReferences).sorted()
         )
     }

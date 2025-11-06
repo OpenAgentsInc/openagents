@@ -145,7 +145,25 @@ private struct UpdateRow: View {
                 Image(systemName: upd.status == .completed ? "checkmark.circle" : (upd.status == .started ? "circle.dashed" : "xmark.octagon"))
                 // Show the original tool name if known; fall back to the call_id
                 let name = bridge.toolCallNames[upd.call_id] ?? "call \(upd.call_id.prefix(8))…"
-                Text(name)
+                // Extract progress percent from _meta if available
+                let pct: String? = {
+                    if let meta = upd._meta, let p = meta["progress"]?.toJSONValue() {
+                        switch p {
+                        case .number(let d):
+                            return "\(Int((d * 100).rounded()))%"
+                        case .string(let s):
+                            return s
+                        default:
+                            return nil
+                        }
+                    }
+                    return nil
+                }()
+                if let pct = pct, upd.status == .started {
+                    Text("\(name) (\(pct))")
+                } else {
+                    Text(name)
+                }
                 Spacer()
                 Text(upd.status.rawValue)
                     .font(.footnote)
