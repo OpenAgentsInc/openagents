@@ -17,6 +17,7 @@ struct ChatHomeView: View {
                     // TODO: Hook into real codebase exploration flow
                 }
                 .buttonStyle(.glassProminent)
+                .tint(.black) // ensure high-contrast text on light glass background
                 .accessibilityLabel("Explore Codebase")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
