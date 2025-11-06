@@ -32,4 +32,9 @@ public enum ACPRPC {
     public static let terminalRelease = "terminal/release"
     public static let terminalKill = "terminal/kill"
     public static let terminalWaitForExit = "terminal/wait_for_exit"
+
+    // Orchestration (Phase 2: on-device FM orchestrator)
+    public static let orchestrateExploreStart = "orchestrate.explore.start"
+    public static let orchestrateExploreStatus = "orchestrate.explore.status"
+    public static let orchestrateExploreAbort = "orchestrate.explore.abort"
 }

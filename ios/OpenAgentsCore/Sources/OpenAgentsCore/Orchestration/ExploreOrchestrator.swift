@@ -117,60 +117,39 @@ public actor ExploreOrchestrator {
 
     #if canImport(FoundationModels)
     private func generateInitialPlan(using model: SystemLanguageModel) async throws -> ExplorePlan {
+        // Minimal instructions to stay under 4096 token context limit
         let instructions = Instructions("""
-        You are a workspace exploration assistant. You analyze code repositories and conversation history to extract insights.
-
-        Available operations:
-        - readSpan: Read specific lines from a file (e.g., README.md, package.json, main entry files)
-        - grep: Search for patterns across files (e.g., function definitions, imports, TODOs)
-        - listDir: List directory contents
-        - sessionList: List recent conversation sessions from Claude Code or Codex
-        - sessionSearch: Search across conversation history for specific patterns or topics
-        - sessionRead: Read detailed content from a specific conversation session
-        - sessionAnalyze: Aggregate insights from multiple sessions (file frequency, tool usage, patterns)
-
-        Guidelines:
-        - Start with top-level README or documentation files for code exploration
-        - Use session tools to understand development history and patterns
-        - Chain operations: search sessions → read relevant ones → analyze files mentioned
-        - Keep operations focused and bounded
-        - Maximum 5 operations in initial plan
-
-        Output a plan with 3-5 concrete operations based on the goals provided.
+        Workspace exploration assistant. Operations: readSpan, grep, listDir, sessionList, sessionSearch, sessionRead, sessionAnalyze.
+        Generate 3-5 operations per plan.
         """)
 
         let session = LanguageModelSession(model: model, tools: [], instructions: instructions)
         try? session.prewarm(promptPrefix: nil)
 
         let workspaceName = (workspaceRoot as NSString).lastPathComponent
-        let goalsStr = goals.isEmpty ? "Understand the repository structure" : goals.joined(separator: ", ")
+        let goalsStr = goals.isEmpty ? "Explore repository" : goals.joined(separator: ", ")
 
+        // Minimal prompt - MUST stay well under 4096 tokens total (instructions + prompt)
         let prompt = """
         Workspace: \(workspaceName)
-        Path: \(workspaceRoot)
         Goals: \(goalsStr)
 
-        IMPORTANT: Generate EXACTLY 3-5 operations. Do NOT generate just 1 operation.
+        Create 3-5 operations. Examples:
+        - sessionList: top 20 claude-code sessions
+        - sessionAnalyze: sessions for file frequency
+        - readSpan: README.md lines 1-50
+        - grep: "pattern" in src/
 
-        Example plan for goals about conversation history:
-        1. sessionList: top 20 claude-code sessions
-        2. sessionSearch: "authentication" in all sessions
-        3. sessionAnalyze: sessions for file frequency
-        4. readSpan: most-modified-file.swift lines 1-100
-        5. grep: "func.*auth" in src/
-
-        Example plan for goals about code structure:
-        1. readSpan: README.md lines 1-50
-        2. listDir: src/
-        3. grep: "class.*" in src/
-        4. readSpan: main-entry-file.swift lines 1-100
-
-        Your turn - create a plan with 3-5 operations (NOT just 1!) based on the goals above.
-        Each operation on a new line with format:
-        - operationType: parameters
-
-        Plan:
+        Plan (one per line):
         """
+
+        // Validate context size before sending
+        let estimatedTokens = estimateTokenCount(instructions: instructions, prompt: prompt)
+        guard estimatedTokens < 3500 else {
+            throw OrchestrationError.executionFailed("Prompt too large: \(estimatedTokens) tokens (limit: 4096). Truncate goals or workspace path.")
+        }
+
+        print("[Orchestrator] Estimated tokens: \(estimatedTokens)")
 
         do {
             let options = GenerationOptions(temperature: 0.5)
@@ -617,5 +596,17 @@ public actor ExploreOrchestrator {
             return m
         }
         return nil
+    }
+
+    // MARK: - Token Estimation
+
+    /// Estimate token count for Foundation Models context validation
+    /// Foundation Models have a 4096 token context window limit
+    private func estimateTokenCount(instructions: Instructions, prompt: String) -> Int {
+        // Conservative estimate: ~4 characters per token (OpenAI rule of thumb)
+        // This is approximate but provides a safe upper bound
+        let instructionsText = String(describing: instructions)
+        let totalChars = instructionsText.count + prompt.count
+        return totalChars / 4
     }
 }
