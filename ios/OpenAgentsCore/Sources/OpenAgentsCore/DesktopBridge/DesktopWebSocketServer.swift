@@ -74,6 +74,10 @@ public class DesktopWebSocketServer {
     private var clients = Set<Client>()
     public weak var delegate: DesktopWebSocketServerDelegate?
 
+    // Feature flags
+    /// Enable auto-tailing of latest Claude Code session on client connect (default: false)
+    public var enableAutoTailing = false
+
     // Live tailer state
     private var tailTimer: DispatchSourceTimer?
     private var tailURL: URL?
@@ -474,8 +478,10 @@ public class DesktopWebSocketServer {
                     guard let self = self else { return }
                     self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
                 }
-                // Start live tailer after first handshake
-                self.startLiveTailerIfNeeded()
+                // Start live tailer after first handshake (if enabled via feature flag)
+                if self.enableAutoTailing {
+                    self.startLiveTailerIfNeeded()
+                }
             }
         } else {
             // Handle envelopes after handshake
@@ -791,6 +797,59 @@ public class DesktopWebSocketServer {
                             print("[Bridge][server] send rpc result method=\(ACPRPC.terminalRun) id=\(idVal.value) bytes=\(jtext.utf8.count)")
                             client.send(text: jtext)
                         }
+                    case ACPRPC.orchestrateExploreStart:
+                        // Phase 2: On-device Foundation Models orchestrator
+                        print("[Bridge][server] recv orchestrate.explore.start")
+                        let idVal: JSONRPC.ID = {
+                            if let idNum = dict["id"] as? Int { return JSONRPC.ID(String(idNum)) }
+                            if let idStr = dict["id"] as? String { return JSONRPC.ID(idStr) }
+                            return JSONRPC.ID("1")
+                        }()
+
+                        // Parse request
+                        guard let p = dict["params"],
+                              let d = try? JSONSerialization.data(withJSONObject: p),
+                              let req = try? JSONDecoder().decode(OrchestrateExploreStartRequest.self, from: d) else {
+                            DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32602, message: "Invalid params")
+                            break
+                        }
+
+                        // Generate session and plan IDs
+                        let sessionId = ACPSessionId(UUID().uuidString)
+                        let planId = UUID().uuidString
+
+                        // Send immediate response
+                        let response = OrchestrateExploreStartResponse(
+                            session_id: sessionId.value,
+                            plan_id: planId,
+                            status: "started"
+                        )
+                        if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: response)),
+                           let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc result method=orchestrate.explore.start id=\(idVal.value)")
+                            client.send(text: jtext)
+                        }
+
+                        // Start orchestration async (non-blocking)
+                        if #available(macOS 26.0, *) {
+                            Task.detached {
+                                await self.runOrchestration(
+                                    request: req,
+                                    sessionId: sessionId,
+                                    planId: planId,
+                                    client: client
+                                )
+                            }
+                        } else {
+                            // Foundation Models not available on this OS version
+                            print("[Bridge][server] orchestrate.explore.start requires macOS 26.0+")
+                            DesktopWebSocketServer.sendJSONRPCError(
+                                client: client,
+                                id: idVal,
+                                code: -32603,
+                                message: "orchestrate.explore.start requires macOS 26.0+ for Foundation Models"
+                            )
+                        }
                     default:
                         break
                     }
@@ -798,6 +857,97 @@ public class DesktopWebSocketServer {
                 return
             }
             print("[Bridge][server] ignoring non JSON-RPC payload")
+        }
+    }
+
+    // MARK: - Orchestration (Phase 2)
+
+    @available(macOS 26.0, *)
+    private func runOrchestration(
+        request: OrchestrateExploreStartRequest,
+        sessionId: ACPSessionId,
+        planId: String,
+        client: Client
+    ) async {
+        print("[Orchestrator] Starting exploration of \(request.root)")
+
+        // Policy defaults to on-device only
+        let policy = request.policy ?? ExplorationPolicy(allow_external_llms: false, allow_network: false)
+
+        // Create stream handler that sends updates via WebSocket
+        let streamHandler: ACPUpdateStreamHandler = { [weak self] update in
+            await self?.sendSessionUpdate(sessionId: sessionId, update: update, client: client)
+        }
+
+        // Create and run orchestrator
+        let orchestrator = ExploreOrchestrator(
+            workspaceRoot: request.root,
+            goals: request.goals ?? ["Understand workspace structure"],
+            policy: policy,
+            streamHandler: streamHandler
+        )
+
+        do {
+            let summary = try await orchestrator.startExploration()
+            print("[Orchestrator] Completed exploration: \(summary.repo_name)")
+
+            // Send summary as final agent message
+            let summaryText = """
+            Exploration complete!
+
+            **Repository**: \(summary.repo_name)
+            **Languages**: \(summary.languages.map { "\($0.key): \($0.value) lines" }.joined(separator: ", "))
+            **Entry points**: \(summary.entrypoints.joined(separator: ", "))
+            **Top files**: \(summary.top_files.joined(separator: ", "))
+
+            **Next steps**:
+            \(summary.followups.map { "• \($0)" }.joined(separator: "\n"))
+            """
+
+            let summaryChunk = ACP.Client.ContentChunk(
+                content: .text(.init(text: summaryText))
+            )
+            await sendSessionUpdate(
+                sessionId: sessionId,
+                update: .agentMessageChunk(summaryChunk),
+                client: client
+            )
+        } catch {
+            print("[Orchestrator] Error: \(error)")
+
+            // Send error message
+            let errorChunk = ACP.Client.ContentChunk(
+                content: .text(.init(text: "❌ Orchestration failed: \(error.localizedDescription)"))
+            )
+            await sendSessionUpdate(
+                sessionId: sessionId,
+                update: .agentMessageChunk(errorChunk),
+                client: client
+            )
+        }
+    }
+
+    /// Send session update via WebSocket
+    private func sendSessionUpdate(
+        sessionId: ACPSessionId,
+        update: ACP.Client.SessionUpdate,
+        client: Client
+    ) async {
+        let notification = ACP.Client.SessionNotificationWire(
+            session_id: sessionId,
+            update: update,
+            _meta: nil
+        )
+
+        guard let data = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: notification)),
+              let jtext = String(data: data, encoding: .utf8) else {
+            print("[Orchestrator] Failed to encode session update")
+            return
+        }
+
+        // Send on main queue to avoid background thread warnings
+        await MainActor.run {
+            client.send(text: jtext)
         }
     }
 }
