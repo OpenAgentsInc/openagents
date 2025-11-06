@@ -173,6 +173,9 @@ public struct SessionReadTool: Sendable {
         maxEvents: Int? = nil
     ) async throws -> SessionReadResult {
         let maxEvts = min(maxEvents ?? 100, 200)
+        let startTime = Date()
+        let maxSeconds: TimeInterval = 3.0
+        let maxBytes: Int = 4 * 1024 * 1024 // 4MB safety cap
 
         // Find session file
         let listTool = SessionListTool()
@@ -194,6 +197,7 @@ public struct SessionReadTool: Sendable {
         var events: [SessionEvent] = []
         var fileReferences: Set<String> = []
         var truncated = false
+        var bytesProcessed = 0
 
         guard let fh = try? FileHandle(forReadingFrom: url) else {
             throw ToolExecutionError.executionFailed("Failed to open session file")
@@ -208,8 +212,10 @@ public struct SessionReadTool: Sendable {
             if let endIdx = endIdx, currentLine > endIdx { return }
             selectedCount += 1
             guard events.count < maxEvts else { truncated = true; return }
-            guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            guard let data = line.data(using: .utf8) else { return }
+            // Skip extremely long single-line events
+            if data.count > 256 * 1024 { return }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
 
             let type = json["type"] as? String ?? "unknown"
             var content = ""
@@ -256,28 +262,30 @@ public struct SessionReadTool: Sendable {
 
         var stop = false
         while true {
-            let chunk: Data
-            do {
-                chunk = try fh.read(upToCount: chunkSize)
-            } catch {
-                throw ToolExecutionError.executionFailed("Failed to read session file chunk")
-            }
-            if chunk.isEmpty { break }
+            guard let chunk = try? fh.read(upToCount: chunkSize), !chunk.isEmpty else { break }
+            bytesProcessed += chunk.count
             buffer.append(chunk)
             while let nlIndex = buffer.firstIndex(of: 0x0A) { // '\n'
                 let lineData = buffer[..<nlIndex]
                 let removeEnd = buffer.index(after: nlIndex)
                 buffer.removeSubrange(..<removeEnd)
-                if !lineData.isEmpty, let line = String(data: lineData, encoding: .utf8) {
+                if !lineData.isEmpty {
+                    let line = String(decoding: lineData, as: UTF8.self)
                     processLine(line)
                 }
                 if let endIdx = endIdx, currentLine >= endIdx { stop = true; break }
                 if events.count >= maxEvts { truncated = true; stop = true; break }
+                // Yield occasionally
+                await Task.yield()
             }
             if stop { break }
+            // Safety caps to avoid stalls on huge files
+            if Date().timeIntervalSince(startTime) > maxSeconds { truncated = true; break }
+            if bytesProcessed > maxBytes { truncated = true; break }
         }
         // Process any remaining data as last line (if not empty)
-        if !buffer.isEmpty, events.count < maxEvts, let line = String(data: buffer, encoding: .utf8) {
+        if !buffer.isEmpty, events.count < maxEvts {
+            let line = String(decoding: buffer, as: UTF8.self)
             processLine(line)
         }
 
