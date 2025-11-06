@@ -254,19 +254,27 @@ public struct SessionReadTool: Sendable {
             }
         }
 
-        while let dataChunk = try? fh.read(upToCount: chunkSize), let chunk = dataChunk, !chunk.isEmpty {
+        var stop = false
+        while true {
+            let chunk: Data
+            do {
+                chunk = try fh.read(upToCount: chunkSize)
+            } catch {
+                throw ToolExecutionError.executionFailed("Failed to read session file chunk")
+            }
+            if chunk.isEmpty { break }
             buffer.append(chunk)
-            while let range = buffer.firstRange(of: Data([0x0A])) { // '\n'
-                let lineData = buffer.subdata(in: buffer.startIndex..<range.lowerBound)
-                buffer.removeSubrange(buffer.startIndex..<range.upperBound)
-                if let line = String(data: lineData, encoding: .utf8) {
+            while let nlIndex = buffer.firstIndex(of: 0x0A) { // '\n'
+                let lineData = buffer[..<nlIndex]
+                let removeEnd = buffer.index(after: nlIndex)
+                buffer.removeSubrange(..<removeEnd)
+                if !lineData.isEmpty, let line = String(data: lineData, encoding: .utf8) {
                     processLine(line)
                 }
-                if let endIdx = endIdx, currentLine >= endIdx { break }
-                if events.count >= maxEvts { break }
+                if let endIdx = endIdx, currentLine >= endIdx { stop = true; break }
+                if events.count >= maxEvts { truncated = true; stop = true; break }
             }
-            if let endIdx = endIdx, currentLine >= endIdx { break }
-            if events.count >= maxEvts { break }
+            if stop { break }
         }
         // Process any remaining data as last line (if not empty)
         if !buffer.isEmpty, events.count < maxEvts, let line = String(data: buffer, encoding: .utf8) {
