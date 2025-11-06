@@ -210,13 +210,21 @@ public struct WorkspaceScanner: Sendable {
     // MARK: - Path Utilities
 
     private func resolvePath(_ path: String) throws -> String {
-        let cleanPath = path.replacingOccurrences(of: "..", with: "")
+        var p = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Normalize common aliases
+        if p == "." || p == "/" || p.lowercased() == "workspace" || p == "/workspace" {
+            p = "."
+        } else if p.hasPrefix("/workspace/") {
+            p.removeFirst("/workspace/".count)
+        }
+
+        let cleanPath = p.replacingOccurrences(of: "..", with: "")
 
         let fullPath: String
-        if path == "." || path.isEmpty {
+        if cleanPath == "." || cleanPath.isEmpty {
             fullPath = workspaceRoot
-        } else if path.hasPrefix("/") {
-            fullPath = path
+        } else if cleanPath.hasPrefix("/") {
+            fullPath = cleanPath
         } else {
             fullPath = (workspaceRoot as NSString).appendingPathComponent(cleanPath)
         }

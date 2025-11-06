@@ -3,6 +3,8 @@ import OpenAgentsCore
 
 struct PlanStateView: View {
     let state: ACPPlanState
+    // Optional per-step statuses to render checkmarks/icons
+    var stepStatuses: [String: ACPPlanEntryStatus]? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -22,6 +24,13 @@ struct PlanStateView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(steps.indices, id: \.self) { idx in
                         HStack(alignment: .top, spacing: 6) {
+                            if let st = stepStatuses?[steps[idx]] {
+                                statusIcon(for: st)
+                            } else {
+                                Image(systemName: "circle")
+                                    .imageScale(.small)
+                                    .foregroundStyle(OATheme.Colors.textTertiary)
+                            }
                             Text("\(idx+1).")
                                 .font(OAFonts.ui(.footnote, 12))
                                 .foregroundStyle(OATheme.Colors.textTertiary)
@@ -50,6 +59,26 @@ struct PlanStateView: View {
         case .running: return "Plan Running"
         case .completed: return "Plan Complete"
         case .failed: return "Plan Failed"
+        }
+    }
+}
+
+private extension PlanStateView {
+    @ViewBuilder
+    func statusIcon(for st: ACPPlanEntryStatus) -> some View {
+        switch st {
+        case .completed:
+            Image(systemName: "checkmark.circle.fill")
+                .imageScale(.small)
+                .foregroundStyle(OATheme.Colors.success)
+        case .in_progress:
+            Image(systemName: "clock.circle")
+                .imageScale(.small)
+                .foregroundStyle(.yellow)
+        case .pending:
+            Image(systemName: "circle")
+                .imageScale(.small)
+                .foregroundStyle(OATheme.Colors.textTertiary)
         }
     }
 }

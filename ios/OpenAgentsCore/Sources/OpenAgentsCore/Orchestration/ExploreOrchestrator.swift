@@ -65,6 +65,10 @@ public actor ExploreOrchestrator {
 
     /// Current plan
     private var currentPlan: ExplorePlan?
+    /// Current ACP plan (for status updates)
+    private var currentACPPlan: ACPPlan?
+    /// Map op_id -> entry index for fast status updates
+    private var planIndexByOpId: [String: Int] = [:]
 
     /// Executed operations (for deduplication)
     private var executedOps: Set<AgentOp> = []
@@ -538,8 +542,31 @@ public actor ExploreOrchestrator {
 
     private func streamPlan(_ plan: ExplorePlan) async {
         let acpPlan = plan.toACPPlan()
+        // Build index map for entry updates
+        planIndexByOpId.removeAll()
+        for (i, e) in acpPlan.entries.enumerated() {
+            if let meta = e._meta, let any = meta["op_id"], case let .string(opId) = any.toJSONValue() {
+                planIndexByOpId[opId] = i
+            }
+        }
+        currentACPPlan = acpPlan
         let update = ACP.Client.SessionUpdate.plan(acpPlan)
         await streamHandler(update)
+    }
+
+    private func updatePlanEntry(opId: String, to status: ACPPlanEntryStatus, error: String? = nil) async {
+        guard var plan = currentACPPlan, let idx = planIndexByOpId[opId], idx < plan.entries.count else { return }
+        var entry = plan.entries[idx]
+        entry.status = status
+        if var meta = entry._meta {
+            if let err = error { meta["error"] = AnyEncodable(err) }
+            entry._meta = meta
+        } else if let err = error {
+            entry._meta = ["error": AnyEncodable(err)]
+        }
+        plan.entries[idx] = entry
+        currentACPPlan = plan
+        await streamHandler(.plan(plan))
     }
 
     private func streamToolCall(_ op: AgentOp, status: ACPToolCallUpdateWire.Status) async {
@@ -552,10 +579,10 @@ public actor ExploreOrchestrator {
         let update = ACP.Client.SessionUpdate.toolCall(toolCall)
         await streamHandler(update)
 
-        // Also emit a started update for clearer progress in UI, but only for long-running ops
+        // Also emit a started update for clearer progress in UI
         if status == .started {
             switch op.kind {
-            case .sessionAnalyze:
+            case .sessionAnalyze, .grep, .sessionSearch:
                 let started = ACPToolCallUpdateWire(
                     call_id: op.opId.uuidString,
                     status: .started,
@@ -569,6 +596,8 @@ public actor ExploreOrchestrator {
                 break
             }
         }
+        // Update plan entry to in_progress when a tool starts
+        await updatePlanEntry(opId: op.opId.uuidString, to: .in_progress)
     }
 
     private func streamToolCallUpdate(
@@ -586,6 +615,12 @@ public actor ExploreOrchestrator {
         )
         let sessionUpdate = ACP.Client.SessionUpdate.toolCallUpdate(update)
         await streamHandler(sessionUpdate)
+        // Mark completed (or completed with error) in plan
+        if status == .completed {
+            await updatePlanEntry(opId: op.opId.uuidString, to: .completed)
+        } else if status == .error {
+            await updatePlanEntry(opId: op.opId.uuidString, to: .completed, error: error)
+        }
     }
 
     // MARK: - FM-Powered Insight Generation
@@ -601,6 +636,25 @@ public actor ExploreOrchestrator {
             }
         }
         guard let analyze = analyze else { return nil }
+
+        // Deterministic summary when we already have explicit userIntent/goalPatterns
+        if let intent = analyze.userIntent?.trimmingCharacters(in: .whitespacesAndNewlines), !intent.isEmpty {
+            // Clean bullet-y intent into readable markdown
+            let lines = intent
+                .replacingOccurrences(of: "\r", with: "\n")
+                .components(separatedBy: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            var out: [String] = []
+            // If intent starts with a label like "Read:", keep it and bullet the rest
+            if let first = lines.first, first.hasSuffix(":") {
+                out.append(first)
+                lines.dropFirst().forEach { l in out.append("- " + l.replacingOccurrences(of: "^-\\s*[-*]\\s*", with: "", options: .regularExpression)) }
+                return out.joined(separator: "\n")
+            }
+            // Otherwise join as a compact sentence
+            return lines.joined(separator: " ")
+        }
 
         // Build compact JSON context
         struct Context: Codable {
@@ -637,11 +691,10 @@ public actor ExploreOrchestrator {
 
         // Prepare prompt
         let instructions = Instructions("""
-        You are an engineering analyst. Produce concrete, non-generic insights.
-        - Use the provided metrics to infer real patterns of work.
-        - Identify the most touched files, common user intents, and tool usage trends.
-        - Output 5-8 crisp bullets. No placeholders. Be specific.
-        - If a metric is empty, skip it—do not fabricate.
+        Infer the current user intent based on recent conversations.
+        - Focus only on intent from the latest claude-code/codex sessions.
+        - Ignore file frequency and tool trends unless directly relevant to the intent.
+        - Output 1–2 sentences clearly stating the user intent (no bullets).
         """)
 
         let model = SystemLanguageModel.default
@@ -657,10 +710,10 @@ public actor ExploreOrchestrator {
         let session = LanguageModelSession(model: model, tools: tools, instructions: instructions)
 
         let prompt = """
-        Metrics JSON:
+        Recent conversation metrics (for context):
         \(ctxStr)
 
-        Write the analysis bullets now.
+        Based on the latest sessions, state the user intent in 1–2 sentences.
         """
 
         // Log sizes and time
@@ -773,7 +826,8 @@ public actor ExploreOrchestrator {
         if let pattern = extractQuotedString(from: line) {
             var pathPrefix = extractPathAfterIn(from: line)
             if let p = pathPrefix { pathPrefix = normalizeWorkspacePath(p) }
-            if pathPrefix == "workspace" { pathPrefix = nil }
+            // If normalized points to workspace root, treat as nil (root)
+            if pathPrefix == "workspace" || pathPrefix == "." || pathPrefix == "/" || pathPrefix == "/workspace" { pathPrefix = nil }
             return AgentOp(kind: .grep(GrepParams(pattern: pattern, pathPrefix: pathPrefix)))
         }
         return nil
@@ -822,11 +876,35 @@ public actor ExploreOrchestrator {
     }
 
     private func normalizeWorkspacePath(_ p: String) -> String {
-        var path = p
+        var path = p.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = (workspaceRoot as NSString).lastPathComponent
-        if path == "workspace" || path == "/" { return "." }
-        if path.hasPrefix(name + "/") { path.removeFirst(name.count + 1) }
+        let rootStd = (workspaceRoot as NSString).standardizingPath
+
+        // Common aliases → workspace root
+        if path == "." || path == "/" || path.lowercased() == "workspace" || path == "/workspace" {
+            return "."
+        }
+
+        // Strip "/workspace/" prefix if present
+        if path.hasPrefix("/workspace/") {
+            path.removeFirst("/workspace/".count)
+        }
+
+        // Absolute path inside workspace → make relative
+        if path.hasPrefix("/") {
+            let std = (path as NSString).standardizingPath
+            if std.hasPrefix(rootStd) {
+                var rel = String(std.dropFirst(rootStd.count))
+                if rel.hasPrefix("/") { rel.removeFirst() }
+                path = rel
+            }
+        }
+
+        // Remove leading workspace name to avoid duplication (e.g., "openagents/..." → "...")
         if path == name { return "." }
+        if path.hasPrefix(name + "/") { path.removeFirst(name.count + 1) }
+
+        // Clean leading/trailing tokens
         if path.hasPrefix("./") { path.removeFirst(2) }
         if path.hasSuffix("/") { path.removeLast() }
         return path.isEmpty ? "." : path

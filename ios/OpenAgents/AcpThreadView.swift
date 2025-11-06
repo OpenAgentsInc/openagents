@@ -73,6 +73,9 @@ struct AcpThreadView: View {
     }
 
     @State private var timeline: [TimelineItem] = []
+    // Single sticky plan header updated in place
+    @State private var latestPlan: ACPPlanState? = nil
+    @State private var latestPlanStepStatuses: [String: ACPPlanEntryStatus]? = nil
     @State private var threadTitle: String? = nil
     // Track recent texts to avoid duplicates across non-consecutive items
     @State private var seenAssistantMessageTexts: Set<String> = []
@@ -108,8 +111,16 @@ struct AcpThreadView: View {
                 DispatchQueue.global(qos: .userInitiated).async {
                     let (items, title) = AcpThreadView_computeTimelineFromUpdates(updates: snapshot, cap: maxMessages)
                     DispatchQueue.main.async {
-                        self.timeline = items
+                        // Extract latest plan and filter plan rows from timeline
+                        self.timeline = items.filter { if case .plan = $0 { return false } else { return true } }
                         self.threadTitle = title
+                        if let last = snapshot.last(where: { if case .plan = $0.update { return true } else { return false } }), case let .plan(p) = last.update {
+                            self.latestPlan = derivePlanState(from: p, ts: nowMs())
+                            self.latestPlanStepStatuses = buildStepStatusMap(from: p)
+                        } else {
+                            self.latestPlan = nil
+                            self.latestPlanStepStatuses = nil
+                        }
                         if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
                         self.isLoading = false
                     }
@@ -148,8 +159,15 @@ struct AcpThreadView: View {
                     let (items, title) = AcpThreadView_computeTimelineFromUpdates(updates: snapshot, cap: maxMessages)
                     DispatchQueue.main.async {
                         print("[AcpThreadView] Recompute complete: \(items.count) items")
-                        self.timeline = items
+                        self.timeline = items.filter { if case .plan = $0 { return false } else { return true } }
                         self.threadTitle = title
+                        if let last = snapshot.last(where: { if case .plan = $0.update { return true } else { return false } }), case let .plan(p) = last.update {
+                            self.latestPlan = derivePlanState(from: p, ts: nowMs())
+                            self.latestPlanStepStatuses = buildStepStatusMap(from: p)
+                        } else {
+                            self.latestPlan = nil
+                            self.latestPlanStepStatuses = nil
+                        }
                         if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
                         self.isLoading = false
                     }
@@ -212,6 +230,9 @@ struct AcpThreadView: View {
                     Text(title)
                         .font(OAFonts.ui(.headline, 17))
                         .foregroundStyle(OATheme.Colors.textPrimary)
+                }
+                if let plan = latestPlan {
+                    PlanStateView(state: plan, stepStatuses: latestPlanStepStatuses)
                 }
                 if !initialMetaLines.isEmpty {
                     Button(action: { infoSheet = initialMetaLines }) {
@@ -946,8 +967,9 @@ struct AcpThreadView: View {
         case .plan(let p):
             let now = nowMs()
             flushPendingReasoning(endMs: now)
-            let ps = ACPPlanState(status: .running, summary: nil, steps: p.entries.map { $0.content }, ts: now)
-            timeline.append(.plan(ps))
+            // Update sticky plan header only (do not append to timeline)
+            self.latestPlan = derivePlanState(from: p, ts: now)
+            self.latestPlanStepStatuses = buildStepStatusMap(from: p)
         case .toolCall(let call):
             let now = nowMs()
             // Dedup repeated tool call begins
@@ -977,7 +999,8 @@ struct AcpThreadView: View {
                 // Convert TodoWrite result to plan
                 if upd.status == .completed, let output = upd.output {
                     if let plan = convertTodoWriteToPlan(output, ts: now) {
-                        timeline.append(.plan(plan))
+                        // Route TodoWrite plan to sticky header as well
+                        self.latestPlan = plan
                     }
                 }
                 // Don't add tool result for TodoWrite
@@ -1018,6 +1041,59 @@ struct AcpThreadView: View {
     }
 }
 // Close AcpThreadView struct
+
+// Derive a displayable ACPPlanState from an ACPPlan
+private func derivePlanState(from plan: ACPPlan, ts: Int64) -> ACPPlanState {
+    // Deduplicate steps by content while preserving first-seen order
+    var seen = Set<String>()
+    var orderedSteps: [String] = []
+    var statusByStep: [String: ACPPlanEntryStatus] = [:]
+
+    func better(_ a: ACPPlanEntryStatus?, _ b: ACPPlanEntryStatus) -> ACPPlanEntryStatus {
+        // completed > in_progress > pending
+        switch (a ?? .pending, b) {
+        case (_, .completed): return .completed
+        case (.completed, _): return .completed
+        case (_, .in_progress): return .in_progress
+        case (.in_progress, _): return .in_progress
+        default: return .pending
+        }
+    }
+
+    for e in plan.entries {
+        let key = e.content
+        if !seen.contains(key) {
+            seen.insert(key)
+            orderedSteps.append(key)
+            statusByStep[key] = e.status
+        } else {
+            statusByStep[key] = better(statusByStep[key], e.status)
+        }
+    }
+
+    let allCompleted = orderedSteps.allSatisfy { statusByStep[$0] == .completed }
+    let anyInProgress = orderedSteps.contains { statusByStep[$0] == .in_progress }
+    let status: ACPPlanStatus = allCompleted ? .completed : (anyInProgress ? .running : .running)
+    return ACPPlanState(status: status, summary: nil, steps: orderedSteps, ts: ts)
+}
+
+private func buildStepStatusMap(from plan: ACPPlan) -> [String: ACPPlanEntryStatus] {
+    var map: [String: ACPPlanEntryStatus] = [:]
+    func better(_ a: ACPPlanEntryStatus?, _ b: ACPPlanEntryStatus) -> ACPPlanEntryStatus {
+        switch (a ?? .pending, b) {
+        case (_, .completed): return .completed
+        case (.completed, _): return .completed
+        case (_, .in_progress): return .in_progress
+        case (.in_progress, _): return .in_progress
+        default: return .pending
+        }
+    }
+    for e in plan.entries {
+        let key = e.content
+        map[key] = better(map[key], e.status)
+    }
+    return map
+}
 
 // MARK: - Efficient JSONL tail reader
 private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [String] {

@@ -40,10 +40,12 @@ public struct GrepTool: Sendable {
             throw ToolExecutionError.invalidParameters("Invalid regex pattern: \(error.localizedDescription)")
         }
 
-        // Search files
+        // Search files (bounded by time and results)
         var matches: [GrepMatch] = []
         var totalMatches = 0
         var truncated = false
+        let startTime = Date()
+        let maxSeconds: TimeInterval = 1.5
 
         try await searchDirectory(
             searchRoot,
@@ -51,7 +53,9 @@ public struct GrepTool: Sendable {
             matches: &matches,
             totalMatches: &totalMatches,
             maxResults: maxResults,
-            truncated: &truncated
+            truncated: &truncated,
+            startTime: startTime,
+            maxSeconds: maxSeconds
         )
 
         return GrepResult(
@@ -70,12 +74,20 @@ public struct GrepTool: Sendable {
         matches: inout [GrepMatch],
         totalMatches: inout Int,
         maxResults: Int,
-        truncated: inout Bool
+        truncated: inout Bool,
+        startTime: Date,
+        maxSeconds: TimeInterval
     ) async throws {
+        // Time cap
+        if Date().timeIntervalSince(startTime) > maxSeconds { truncated = true; return }
         // Get directory contents
         let contents = try fileManager.contentsOfDirectory(atPath: dirPath)
 
         for item in contents {
+            // Cooperative yield to keep UI responsive
+            await Task.yield()
+            // Stop if time budget exceeded
+            if Date().timeIntervalSince(startTime) > maxSeconds { truncated = true; return }
             // Stop if we've hit max results
             if matches.count >= maxResults {
                 truncated = true
@@ -101,7 +113,9 @@ public struct GrepTool: Sendable {
                     matches: &matches,
                     totalMatches: &totalMatches,
                     maxResults: maxResults,
-                    truncated: &truncated
+                    truncated: &truncated,
+                    startTime: startTime,
+                    maxSeconds: maxSeconds
                 )
             } else {
                 // Search file
@@ -125,6 +139,8 @@ public struct GrepTool: Sendable {
         totalMatches: inout Int,
         maxResults: Int
     ) async throws {
+        // Early exit if we already have enough matches
+        if matches.count >= maxResults { return }
         // Skip binary files
         if isBinaryFile(filePath) {
             return
@@ -142,6 +158,7 @@ public struct GrepTool: Sendable {
         // Search lines
         let lines = content.components(separatedBy: "\n")
         for (index, line) in lines.enumerated() {
+            if matches.count >= maxResults { break }
             let range = NSRange(line.startIndex..<line.endIndex, in: line)
             if regex.firstMatch(in: line, options: [], range: range) != nil {
                 totalMatches += 1

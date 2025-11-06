@@ -41,8 +41,17 @@ struct ChatHomeView: View {
                 }
                 .padding(.horizontal)
 
-                // Streamed ACP updates as a simple list
-                List(bridge.updates.indices, id: \.self) { idx in
+                // Sticky plan header: show latest plan once, with per-step status icons
+                if let (plan, stepStatuses) = latestPlanFromUpdates(bridge.updates) {
+                    PlanStateView(state: plan, stepStatuses: stepStatuses)
+                        .padding(.horizontal)
+                }
+
+                // Streamed ACP updates as a simple list (excluding plan updates; shown in header)
+                let visibleIndices = bridge.updates.indices.filter { idx in
+                    if case .plan = bridge.updates[idx].update { return false } else { return true }
+                }
+                List(visibleIndices, id: \.self) { idx in
                     let note = bridge.updates[idx]
                     UpdateRow(note: note)
                 }
@@ -201,15 +210,9 @@ private struct UpdateRow: View {
                     .italic()
                     .foregroundStyle(.secondary)
             }
-        case .plan(let plan):
-            // Convert ACPPlan to ACPPlanState for rendering
-            let planState = ACPPlanState(
-                status: .running,
-                summary: nil,
-                steps: plan.entries.map { $0.content },
-                ts: nil
-            )
-            PlanStateView(state: planState)
+        case .plan:
+            // Hide inline plan rows; plan is rendered once at the top
+            EmptyView()
         case .availableCommandsUpdate(let ac):
             Text("Available: \(ac.available_commands.count) commands")
                 .foregroundStyle(.secondary)
@@ -248,6 +251,46 @@ private struct UpdateRow: View {
         }
         return Text(text)
     }
+}
+
+// Compute latest plan state from streamed updates
+private func latestPlanFromUpdates(_ updates: [ACP.Client.SessionNotificationWire]) -> (ACPPlanState, [String: ACPPlanEntryStatus])? {
+    // Find the last plan update and convert to ACPPlanState with de-duplicated steps and per-step status
+    guard let last = updates.last(where: { if case .plan = $0.update { return true } else { return false } }) else { return nil }
+    guard case let .plan(p) = last.update else { return nil }
+
+    // Deduplicate by content while preserving order, and compute best status per step
+    var seen = Set<String>()
+    var orderedSteps: [String] = []
+    var statusByStep: [String: ACPPlanEntryStatus] = [:]
+
+    func better(_ a: ACPPlanEntryStatus?, _ b: ACPPlanEntryStatus) -> ACPPlanEntryStatus {
+        // completed > in_progress > pending
+        switch (a ?? .pending, b) {
+        case (_, .completed): return .completed
+        case (.completed, _): return .completed
+        case (_, .in_progress): return .in_progress
+        case (.in_progress, _): return .in_progress
+        default: return .pending
+        }
+    }
+
+    for e in p.entries {
+        let key = e.content
+        if !seen.contains(key) {
+            seen.insert(key)
+            orderedSteps.append(key)
+            statusByStep[key] = e.status
+        } else {
+            statusByStep[key] = better(statusByStep[key], e.status)
+        }
+    }
+
+    let allCompleted = orderedSteps.allSatisfy { statusByStep[$0] == .completed }
+    let anyInProgress = orderedSteps.contains { statusByStep[$0] == .in_progress }
+    let status: ACPPlanStatus = allCompleted ? .completed : (anyInProgress ? .running : .running)
+    let plan = ACPPlanState(status: status, summary: nil, steps: orderedSteps, ts: Int64(Date().timeIntervalSince1970 * 1000))
+    return (plan, statusByStep)
 }
 
 #Preview {
