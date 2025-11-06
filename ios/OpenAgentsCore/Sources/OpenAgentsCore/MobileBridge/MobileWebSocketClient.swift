@@ -32,7 +32,12 @@ public final class MobileWebSocketClient {
     public var maxRetryAttempts: Int = 5
     public var initialRetryDelay: TimeInterval = 1.0
     public var maxRetryDelay: TimeInterval = 30.0
+    /// Deprecated: legacy single-value timeout (unused when initial/retry are set)
     public var handshakeTimeout: TimeInterval = 10.0
+    /// Shorter timeout for the first connection attempt to avoid long black-screen impressions.
+    public var initialHandshakeTimeout: TimeInterval = 3.0
+    /// Timeout for retry attempts after the first.
+    public var retryHandshakeTimeout: TimeInterval = 10.0
     public var autoReconnect: Bool = true
 
     // Retry state
@@ -41,6 +46,7 @@ public final class MobileWebSocketClient {
     private var lastConnectToken: String?
     private var handshakeTimer: Timer?
     private var isManualDisconnect: Bool = false
+    private var connectStartedAt: Date?
 
     public init(session: URLSession = .shared) {
         self.session = session
@@ -58,7 +64,7 @@ public final class MobileWebSocketClient {
 
         // Reset retry count on new explicit connect
         retryCount = 0
-
+        print("[Bridge][client] connect requested url=\(url.absoluteString) retryCount=\(retryCount)")
         performConnect(url: url, token: token)
     }
 
@@ -68,10 +74,12 @@ public final class MobileWebSocketClient {
         let request = URLRequest(url: url)
         let webSocketTask = session.webSocketTask(with: request)
         self.webSocketTask = webSocketTask
-
+        connectStartedAt = Date()
+        let hs = Self.handshakeTimeoutForAttempt(retryCount: retryCount, initial: initialHandshakeTimeout, retry: retryHandshakeTimeout)
+        print("[Bridge][client] performConnect attempt=\(retryCount + 1) url=\(url.absoluteString) hsTimeout=\(String(format: "%.2f", hs))s autoReconnect=\(autoReconnect) initialDelay=\(initialRetryDelay)s maxDelay=\(maxRetryDelay)s")
         webSocketTask.resume()
 
-        // Start handshake timeout
+        // Start handshake timeout (short on first attempt, longer on retries)
         startHandshakeTimeout()
 
         // Send ACP initialize via JSON-RPC
@@ -159,13 +167,21 @@ public final class MobileWebSocketClient {
 
     private func startHandshakeTimeout() {
         handshakeTimer?.invalidate()
-        handshakeTimer = Timer.scheduledTimer(withTimeInterval: handshakeTimeout, repeats: false) { [weak self] _ in
+        let interval = Self.handshakeTimeoutForAttempt(
+            retryCount: retryCount,
+            initial: initialHandshakeTimeout,
+            retry: retryHandshakeTimeout
+        )
+        print("[Bridge][client] handshake timer scheduled in \(String(format: "%.2f", interval))s (attempt=\(retryCount + 1))")
+        handshakeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             self?.handleHandshakeTimeout()
         }
     }
 
     private func handleHandshakeTimeout() {
         guard !isConnected else { return }
+        let since = connectStartedAt.map { String(format: "%.1f", Date().timeIntervalSince($0) * 1000) } ?? "-"
+        print("[Bridge][client] handshake timeout fired sinceConnectMs=\(since) attempt=\(retryCount + 1)")
         let error = NSError(domain: "MobileWebSocketClient", code: 7, userInfo: [NSLocalizedDescriptionKey: "Handshake timeout"])
         disconnect(error: error, notifyDelegate: true)
     }
@@ -189,6 +205,9 @@ public final class MobileWebSocketClient {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self = self else { return }
             guard !self.isManualDisconnect else { return }
+            if let url = self.lastConnectURL {
+                print("[Bridge][client] reconnecting attempt=\(self.retryCount + 1) url=\(url.absoluteString)")
+            }
             self.performConnect(url: url, token: token)
         }
     }
@@ -197,6 +216,12 @@ public final class MobileWebSocketClient {
         // Exponential backoff: initialDelay * 2^(retryCount - 1), capped at maxDelay
         let exponential = initialRetryDelay * pow(2.0, Double(retryCount - 1))
         return min(exponential, maxRetryDelay)
+    }
+
+    /// Compute the handshake timeout to use for the current attempt.
+    /// - Note: attempt 0 (retryCount == 0) uses the shorter `initial` window.
+    internal static func handshakeTimeoutForAttempt(retryCount: Int, initial: TimeInterval, retry: TimeInterval) -> TimeInterval {
+        return (retryCount == 0) ? initial : retry
     }
 
     private func sendInitialize(expectedToken: String) {
@@ -214,6 +239,7 @@ public final class MobileWebSocketClient {
         print("[Bridge][client] send rpc method=initialize id=1 bytes=\(text.utf8.count)")
         webSocketTask?.send(.string(text)) { [weak self] error in
             if let error = error { self?.disconnect(error: error, notifyDelegate: true); return }
+            print("[Bridge][client] initialize sent; waiting for response…")
             self?.waitForInitializeResponse()
         }
     }
@@ -254,6 +280,8 @@ public final class MobileWebSocketClient {
                 retryCount = 0
 
                 self.isConnected = true
+                let since = connectStartedAt.map { String(format: "%.1f", Date().timeIntervalSince($0) * 1000) } ?? "-"
+                print("[Bridge][client] initialize ok; connected sinceConnectMs=\(since)")
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.delegate?.mobileWebSocketClientDidConnect(self)
@@ -264,10 +292,13 @@ public final class MobileWebSocketClient {
             }
         }
         // If not JSON-RPC initialize response, disconnect (strict ACP handshake)
+        let preview = Self.truncatePreview(text)
+        print("[Bridge][client] initialize unexpected response preview=\(preview)")
         self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 6, userInfo: [NSLocalizedDescriptionKey: "Initialize failed: unexpected response"]), notifyDelegate: true)
     }
 
     private func receive() {
+        print("[Bridge][client] entering receive loop")
         webSocketTask?.receive { [weak self] result in
             guard let self = self else { return }
             switch result {
