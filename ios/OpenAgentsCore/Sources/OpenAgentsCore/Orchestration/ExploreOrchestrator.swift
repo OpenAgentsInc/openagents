@@ -321,36 +321,7 @@ public actor ExploreOrchestrator {
             throw OrchestrationError.executionFailed("Failed to parse any operations from FM response. Response was: \(String(content.prefix(1000)))")
         }
 
-        // EXPANSION: If FM generated a single session operation, expand it into multi-step agentic exploration
-        let expandedOps = expandOperations(ops)
-
-        return Array(expandedOps.prefix(5)) // Limit to 5 operations
-    }
-
-    /// Expand single operations into multi-step agentic exploration
-    /// Foundation Models on-device tends to generate single "combined" operations.
-    /// We expand these into separate steps for proper agentic behavior.
-    private func expandOperations(_ ops: [AgentOp]) -> [AgentOp] {
-        // Check if there are any session operations
-        let hasSessionOps = ops.contains { op in
-            switch op.kind {
-            case .sessionList, .sessionSearch, .sessionRead:
-                return true
-            default:
-                return false
-            }
-        }
-
-        // If there are session operations, add a sessionAnalyze step at the end
-        // This allows the orchestrator to analyze all collected sessions
-        if hasSessionOps {
-            var expanded = ops
-            expanded.append(AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: nil))))
-            return expanded
-        }
-
-        // Otherwise return operations unchanged
-        return ops
+        return Array(ops.prefix(5)) // Limit to 5 operations
     }
 
     // MARK: - Operation Execution
@@ -404,35 +375,75 @@ public actor ExploreOrchestrator {
         var topFiles: [String] = []
         var followups: [String] = []
         var fileFrequency: [String: Int] = [:]
+        var allSessions: [(provider: String, sessions: [SessionMetadata])] = []
 
-        // Aggregate results from executed operations
+        // First pass: collect all sessions
         for (op, result) in operationResults {
             switch op.kind {
             case .sessionList(let params):
                 if let listResult = result as? SessionListResult {
-                    followups.append("Found \(listResult.sessions.count) recent sessions (provider: \(params.provider ?? "all"))")
-
-                    // Extract and format recent session titles
-                    let sessionTitles = listResult.sessions.prefix(5).compactMap { $0.title }
-                    if !sessionTitles.isEmpty {
-                        followups.append("**Recent work:**")
-                        for title in sessionTitles {
-                            // Clean up title: remove newlines, trim, truncate if too long
-                            let cleanTitle = title
-                                .replacingOccurrences(of: "\n", with: " ")
-                                .replacingOccurrences(of: "\r", with: " ")
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                                .components(separatedBy: .whitespacesAndNewlines)
-                                .filter { !$0.isEmpty }
-                                .joined(separator: " ")
-
-                            let truncated = cleanTitle.count > 80
-                                ? cleanTitle.prefix(80) + "..."
-                                : cleanTitle
-                            followups.append("- \(truncated)")
-                        }
-                    }
+                    let provider = params.provider ?? "all"
+                    allSessions.append((provider: provider, sessions: listResult.sessions))
                 }
+            default:
+                break
+            }
+        }
+
+        // Second pass: aggregate session insights
+        if !allSessions.isEmpty {
+            let totalCount = allSessions.reduce(0) { $0 + $1.sessions.count }
+            followups.append("Found \(totalCount) total sessions across \(allSessions.count) providers")
+
+            // Collect unique, interesting titles (skip "Warmup" and duplicates)
+            var seenTitles = Set<String>()
+            var interestingTitles: [String] = []
+
+            for (provider, sessions) in allSessions {
+                for session in sessions {
+                    guard let title = session.title else { continue }
+
+                    // Skip generic titles
+                    if title == "Warmup" || title.isEmpty { continue }
+
+                    // Clean up title
+                    let cleanTitle = title
+                        .replacingOccurrences(of: "\n", with: " ")
+                        .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                        .components(separatedBy: CharacterSet.whitespacesAndNewlines)
+                        .filter { !$0.isEmpty }
+                        .joined(separator: " ")
+
+                    // Deduplicate
+                    if seenTitles.contains(cleanTitle) { continue }
+                    seenTitles.insert(cleanTitle)
+
+                    // Truncate
+                    let truncated = cleanTitle.count > 70
+                        ? String(cleanTitle.prefix(70)) + "..."
+                        : cleanTitle
+
+                    interestingTitles.append(truncated)
+
+                    if interestingTitles.count >= 8 { break }
+                }
+                if interestingTitles.count >= 8 { break }
+            }
+
+            if !interestingTitles.isEmpty {
+                followups.append("**Recent work:**")
+                for title in interestingTitles {
+                    followups.append("• \(title)")
+                }
+            }
+        }
+
+        // Third pass: process other operation types
+        for (op, result) in operationResults {
+            switch op.kind {
+            case .sessionList:
+                // Already processed above
+                break
 
             case .sessionSearch(let params):
                 if let searchResult = result as? SessionSearchResult {
