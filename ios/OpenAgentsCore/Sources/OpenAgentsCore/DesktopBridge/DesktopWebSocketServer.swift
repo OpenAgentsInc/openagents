@@ -236,7 +236,11 @@ public class DesktopWebSocketServer {
         // Create process
         let process = Process()
         process.executableURL = URL(fileURLWithPath: claudePath)
-        process.arguments = [prompt]  // Pass prompt as argument
+
+        // Use --continue to resume the most recent session, or start new one
+        // This ensures claude writes to the JSONL file we're tailing
+        process.arguments = ["--continue", prompt]
+        print("[Bridge][server] arguments: --continue \"\(prompt)\"")
 
         // Set up environment with node in PATH
         var environment = ProcessInfo.processInfo.environment
