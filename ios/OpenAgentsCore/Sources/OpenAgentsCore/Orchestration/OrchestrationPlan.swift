@@ -226,7 +226,12 @@ extension AgentOp {
         case .sessionRead(let params):
             return "Read session \(params.sessionId) (\(params.provider))"
         case .sessionAnalyze(let params):
-            return "Analyze \(params.sessionIds.count) sessions"
+            if params.sessionIds.isEmpty {
+                let prov = params.provider ?? "all providers"
+                return "Analyze recent sessions (\(prov))"
+            } else {
+                return "Analyze \(params.sessionIds.count) sessions"
+            }
         }
     }
 

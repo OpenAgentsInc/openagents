@@ -299,9 +299,31 @@ public struct SessionAnalyzeTool: Sendable {
         var totalEvents = 0
         var sessionCount = 0
 
+        // If no session IDs provided, discover recent sessions from provider(s)
+        var effectiveSessionIds = sessionIds
+        if effectiveSessionIds.isEmpty {
+            let listTool = SessionListTool()
+
+            if let specificProvider = provider {
+                // Single provider
+                let listResult = try await listTool.list(provider: specificProvider, topK: 10)
+                effectiveSessionIds = listResult.sessions.map { $0.id }
+            } else {
+                // All providers - get 5 from each
+                var allSessions: [(id: String, provider: String)] = []
+
+                for prov in ["claude-code", "codex"] {
+                    let listResult = try await listTool.list(provider: prov, topK: 5)
+                    allSessions.append(contentsOf: listResult.sessions.map { (id: $0.id, provider: prov) })
+                }
+
+                effectiveSessionIds = allSessions.map { $0.id }
+            }
+        }
+
         // Read each session
         let readTool = SessionReadTool()
-        for sessionId in sessionIds.prefix(50) { // Limit to 50 sessions max
+        for sessionId in effectiveSessionIds.prefix(10) { // Limit to 10 sessions for analysis
             do {
                 let prov = provider ?? "claude-code" // Default provider
                 let result = try await readTool.read(sessionId: sessionId, provider: prov, maxEvents: 200)
