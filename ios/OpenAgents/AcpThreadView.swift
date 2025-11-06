@@ -243,14 +243,14 @@ struct AcpThreadView: View {
                     .background(OATheme.Colors.background)
                 }
                 .background(OATheme.Colors.background)
-                .onAppear { scrollToBottom(proxy) }
-                .onChange(of: timeline.count) { _, _ in scrollToBottom(proxy) }
+                .onAppear { scrollToBottomImmediate(proxy) }
+                .onChange(of: timeline.count) { _, _ in scrollToBottomAnimated(proxy) }
                 // External scroll commands (from floating scroll buttons)
                 .onReceive(NotificationCenter.default.publisher(for: .acpScrollToTop)) { _ in
                     scrollToTop(proxy)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .acpScrollToBottom)) { _ in
-                    scrollToBottom(proxy)
+                    scrollToBottomAnimated(proxy)
                 }
                 .sheet(isPresented: Binding(get: { reasoningSheet != nil }, set: { v in if !v { reasoningSheet = nil } })) {
                     reasoningDetailSheet
@@ -846,7 +846,7 @@ struct AcpThreadView: View {
             }
         }
     }
-    func scrollToBottom(_ proxy: ScrollViewProxy) {
+    func scrollToBottomImmediate(_ proxy: ScrollViewProxy) {
         // Scroll without animation so the thread appears already at the bottom
         DispatchQueue.main.async {
             var tx = Transaction()
@@ -858,6 +858,15 @@ struct AcpThreadView: View {
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) { proxy.scrollTo("bottom", anchor: .bottom) }
+        }
+    }
+
+    func scrollToBottomAnimated(_ proxy: ScrollViewProxy) {
+        // Scroll with smooth animation for new messages
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
         }
     }
 
