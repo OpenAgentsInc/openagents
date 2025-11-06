@@ -75,6 +75,6 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 
 ## References
 
-- ADR‑0003 — Swift Cross‑Platform App (macOS + iOS) Experiment
-- ADR‑0006 — iOS ↔ Desktop WebSocket Bridge and Pairing
+- ADR‑0003 — Swift Cross‑Platform App (macOS + iOS)
+- ADR‑0004 — iOS ↔ Desktop WebSocket Bridge and Pairing
 - ACP Introduction: https://agentclientprotocol.com/overview/introduction

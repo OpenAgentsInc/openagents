@@ -7,7 +7,7 @@
 
 Liquid Glass is Apple’s new first‑party UI material that brings a cohesive, adaptive visual system across iOS, iPadOS, and macOS. It provides dynamic translucency, refraction, tint, and morphing behaviors and is exposed via platform APIs (SwiftUI and UIKit) starting iOS 26 / iPadOS 26 / macOS 15 (Sequoia).
 
-This ADR builds on ADR‑0003 (Swift Cross‑Platform App Experiment) by standardizing how we adopt Liquid Glass in our Apple‑native surfaces while keeping our existing Expo mobile app and Rust bridge contracts unchanged. It also aligns with our design documentation under `docs/liquid-glass/` (visual design, structure, layout, continuity, and APIs).
+This ADR builds on ADR‑0003 (Swift Cross‑Platform App) by standardizing how we adopt Liquid Glass in our Apple‑native Swift surfaces. It aligns with our design documentation under `docs/liquid-glass/` (visual design, structure, layout, continuity, and APIs).
 
 ## Decision
 
@@ -93,11 +93,10 @@ Phase E — Developer guidance
 
 - Should we expose a user‑facing toggle inside the app mirroring the iOS 26.1 Clear/Tinted setting, or defer fully to the system?
 - For complex nested hierarchies, do we scope one `GlassEffectContainer` per window/scene or per major region for best perf?
-- Do we want a minimal RN native module to expose Apple glass on iOS 26+ for parity, or keep Expo purely approximated?
 
 ## References
 
-- ADR‑0003 — Swift Cross‑Platform App (macOS + iOS) Experiment (`docs/adr/0003-swift-cross-platform.md`)
+- ADR‑0003 — Swift Cross‑Platform App (macOS + iOS) (`docs/adr/0003-swift-cross-platform.md`)
 - Liquid Glass docs (internal): `docs/liquid-glass/` (visual design, structure, layout, continuity, APIs)
 - Apple Developer — Applying Liquid Glass to custom views (SwiftUI)
 - Apple Developer — GlassEffectContainer
