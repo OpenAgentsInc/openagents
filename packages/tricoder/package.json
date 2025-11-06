@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prepublishOnly": "npx -y -p typescript tsc -p tsconfig.json && chmod +x dist/index.js",
+    "prepublishOnly": "npm run build && chmod +x dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "node --import tsx --test src/**/*.test.ts"
   },
