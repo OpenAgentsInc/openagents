@@ -237,7 +237,9 @@ extension BridgeManager {
     /// Send a JSON-RPC request via the mobile client, decoding the expected result type.
     func sendRPC<P: Codable, R: Codable>(method: String, params: P, id: String = UUID().uuidString, completion: @escaping (R?) -> Void) {
         guard let client = self.client else { completion(nil); return }
-        client.sendJSONRPC(method: method, params: params, id: id, completion: completion)
+        client.sendJSONRPC(method: method, params: params, id: id) { (result: R?) in
+            DispatchQueue.main.async { completion(result) }
+        }
     }
     func sendPrompt(text: String) {
         guard let client = self.client else { return }
