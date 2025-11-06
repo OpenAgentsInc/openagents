@@ -118,17 +118,19 @@ extension BridgeManager: MobileWebSocketClientDelegate {
             BridgeManager.saveLastSuccessfulEndpoint(host: h, port: p)
             log("client", "persisted endpoint host=\(h) port=\(p)")
         }
-        // Load the latest thread as typed ACP updates
-        struct LatestTypedResult: Codable { let id: String; let updates: [ACP.Client.SessionUpdate] }
-        client.sendJSONRPC(method: "thread/load_latest_typed", params: Empty(), id: "thread-load-latest-typed-1") { (resp: LatestTypedResult?) in
-            guard let resp = resp else { return }
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                let sid = ACPSessionId(resp.id)
-                let wires = resp.updates.map { ACP.Client.SessionNotificationWire(session_id: sid, update: $0) }
-                self.updates = wires
-                if let h = self.currentHost, let p = self.currentPort { self.status = .connected(host: h, port: p) }
-                self.log("client", "Loaded latest thread (typed) id=\(resp.id) updates=\(resp.updates.count)")
+        // Optionally autoload the latest provider thread (disabled by default).
+        if Features.autoloadLatestOnConnect && Features.claudeEnabled {
+            struct LatestTypedResult: Codable { let id: String; let updates: [ACP.Client.SessionUpdate] }
+            client.sendJSONRPC(method: "thread/load_latest_typed", params: Empty(), id: "thread-load-latest-typed-1") { (resp: LatestTypedResult?) in
+                guard let resp = resp else { return }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    let sid = ACPSessionId(resp.id)
+                    let wires = resp.updates.map { ACP.Client.SessionNotificationWire(session_id: sid, update: $0) }
+                    self.updates = wires
+                    if let h = self.currentHost, let p = self.currentPort { self.status = .connected(host: h, port: p) }
+                    self.log("client", "Loaded latest thread (typed) id=\(resp.id) updates=\(resp.updates.count)")
+                }
             }
         }
     }
