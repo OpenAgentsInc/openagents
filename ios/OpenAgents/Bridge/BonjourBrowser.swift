@@ -13,10 +13,12 @@ final class BonjourBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDeleg
         self.onLog = onLog
         browser.delegate = self
         browser.includesPeerToPeer = true
+        onLog?("start browser includesPeerToPeer=true")
         browser.searchForServices(ofType: "_openagents._tcp.", inDomain: "local.")
     }
 
     func stop() {
+        onLog?("stop browser")
         browser.stop()
         services.removeAll()
         onResolved = nil
@@ -33,6 +35,7 @@ final class BonjourBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDeleg
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
         services.removeAll { $0 == service }
+        onLog?("removed service name=\(service.name)")
     }
 
     // MARK: NetServiceDelegate

@@ -339,4 +339,41 @@ final class BridgeManagerTests: XCTestCase {
         // Should have at most 200 logs (ring buffer limit)
         XCTAssertLessThanOrEqual(sut.logs.count, 200)
     }
+
+    // MARK: - Endpoint persistence / selection
+
+    func testPickInitialEndpointPrefersPersisted() async throws {
+        #if os(iOS)
+        // Clear any prior values
+        UserDefaults.standard.removeObject(forKey: "oa.bridge.last_host")
+        UserDefaults.standard.removeObject(forKey: "oa.bridge.last_port")
+
+        BridgeManager.saveLastSuccessfulEndpoint(host: "10.1.2.3", port: 9999)
+        let (h, p) = BridgeManager.pickInitialEndpoint()
+        XCTAssertEqual(h, "10.1.2.3")
+        XCTAssertEqual(p, 9999)
+        #endif
+    }
+
+    func testStartUsesPersistedEndpoint() async throws {
+        #if os(iOS)
+        // Clear and set persisted values
+        UserDefaults.standard.removeObject(forKey: "oa.bridge.last_host")
+        UserDefaults.standard.removeObject(forKey: "oa.bridge.last_port")
+        BridgeManager.saveLastSuccessfulEndpoint(host: "10.9.8.7", port: 12345)
+
+        let exp = expectation(description: "status becomes connecting to persisted")
+        sut.$status
+            .dropFirst()
+            .sink { status in
+                if case .connecting(let h, let p) = status {
+                    if h == "10.9.8.7" && p == 12345 { exp.fulfill() }
+                }
+            }
+            .store(in: &cancellables)
+
+        sut.start()
+        wait(for: [exp], timeout: 2.0)
+        #endif
+    }
 }

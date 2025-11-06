@@ -63,8 +63,8 @@ final class BridgeManager: ObservableObject {
     @Published var currentMode: ACPSessionModeId = .default_mode
 
     func start() {
-        // Prefer last successful endpoint if available; otherwise use platform default.
         let (h, p) = BridgeManager.pickInitialEndpoint()
+        log("start", "initial endpoint host=\(h) port=\(p) multicast=\(Features.multicastEnabled)")
         connect(host: h, port: p)
 
         // Optionally also start Bonjour discovery in parallel if enabled.
@@ -119,6 +119,7 @@ extension BridgeManager: MobileWebSocketClientDelegate {
         // Persist last successful endpoint for fast reconnects on next launch
         if let h = currentHost, let p = currentPort {
             BridgeManager.saveLastSuccessfulEndpoint(host: h, port: p)
+            log("client", "persisted endpoint host=\(h) port=\(p)")
         }
         // Load the latest thread as typed ACP updates
         struct LatestTypedResult: Codable { let id: String; let updates: [ACP.Client.SessionUpdate] }
@@ -258,6 +259,7 @@ extension BridgeManager {
     static func saveLastSuccessfulEndpoint(host: String, port: Int) {
         UserDefaults.standard.set(host, forKey: lastHostKey)
         UserDefaults.standard.set(port, forKey: lastPortKey)
+        print("[Bridge][mgr] saved last endpoint host=\(host) port=\(port)")
     }
     static func readLastSuccessfulEndpoint() -> (String, Int)? {
         if let h = UserDefaults.standard.string(forKey: lastHostKey) {
@@ -269,10 +271,12 @@ extension BridgeManager {
     /// Decide the initial endpoint for iOS startup.
     /// Order: persisted last-successful → simulator loopback → configured default.
     static func pickInitialEndpoint() -> (String, Int) {
-        if let last = readLastSuccessfulEndpoint() { return last }
+        if let last = readLastSuccessfulEndpoint() { print("[Bridge][mgr] pickInitialEndpoint using persisted host=\(last.0) port=\(last.1)"); return last }
         #if targetEnvironment(simulator)
+        print("[Bridge][mgr] pickInitialEndpoint simulator loopback")
         return ("127.0.0.1", Int(BridgeConfig.defaultPort))
         #else
+        print("[Bridge][mgr] pickInitialEndpoint default host=\(BridgeConfig.defaultHost) port=\(BridgeConfig.defaultPort)")
         return (BridgeConfig.defaultHost, Int(BridgeConfig.defaultPort))
         #endif
     }

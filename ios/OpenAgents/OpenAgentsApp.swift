@@ -10,6 +10,9 @@ import SwiftData
 
 @main
 struct OpenAgentsApp: App {
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    #endif
     @StateObject private var bridge = BridgeManager()
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -24,13 +27,20 @@ struct OpenAgentsApp: App {
         }
     }()
 
+    init() {
+        print("[Bridge][app] OpenAgentsApp init at \(ISO8601DateFormatter().string(from: Date()))")
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .onAppear { _ = BerkeleyFont.registerAll(); _ = InterFont.registerAll() }
                 .environment(\.font, OAFonts.ui(.body, 16))
                 .tint(OATheme.Colors.accent)
-                .task { bridge.start() }
+                .task {
+                    print("[Bridge][app] OpenAgentsApp appear; starting bridge")
+                    bridge.start()
+                }
                 .environmentObject(bridge)
         }
         .modelContainer(sharedModelContainer)
