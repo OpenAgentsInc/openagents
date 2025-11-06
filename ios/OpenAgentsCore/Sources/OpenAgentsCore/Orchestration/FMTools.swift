@@ -149,14 +149,21 @@ struct FMTool_ListDir: Tool {
     struct Arguments { @Guide(description: "Directory path (relative or absolute)") var path: String }
 
     func call(arguments a: Arguments) async throws -> String {
-        // Resolve path relative to workspaceRoot if not absolute
-        let base = workspaceRoot
-        let fullPath = a.path.hasPrefix("/") ? a.path : (base as NSString).appendingPathComponent(a.path)
+        // Normalize path to workspace-relative to handle aliases like "/workspace" or "/<name>"
+        let rel = PathUtils.normalizeToWorkspaceRelative(workspaceRoot: workspaceRoot, inputPath: a.path)
+        let fullPath = (rel == ".") ? workspaceRoot : (workspaceRoot as NSString).appendingPathComponent(rel)
+        let stdPath = (fullPath as NSString).standardizingPath
+
+        // Ensure within workspace and is a directory
+        let stdRoot = (workspaceRoot as NSString).standardizingPath
+        guard stdPath.hasPrefix(stdRoot) else {
+            throw ToolExecutionError.pathOutsideWorkspace(a.path)
+        }
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: fullPath, isDirectory: &isDir), isDir.boolValue else {
+        guard FileManager.default.fileExists(atPath: stdPath, isDirectory: &isDir), isDir.boolValue else {
             throw ToolExecutionError.invalidParameters("Not a directory: \(a.path)")
         }
-        let items = try FileManager.default.contentsOfDirectory(atPath: fullPath)
+        let items = try FileManager.default.contentsOfDirectory(atPath: stdPath)
         return items.sorted().joined(separator: "\n")
     }
 }

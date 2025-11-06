@@ -181,15 +181,9 @@ public struct GrepTool: Sendable {
     // MARK: - Path Utilities
 
     private func resolveSearchPath(_ pathPrefix: String) throws -> String {
-        let cleanPath = pathPrefix.replacingOccurrences(of: "..", with: "")
-
-        let fullPath: String
-        if pathPrefix.hasPrefix("/") {
-            fullPath = pathPrefix
-        } else {
-            fullPath = (workspaceRoot as NSString).appendingPathComponent(cleanPath)
-        }
-
+        // Normalize model/user-provided path to a workspace-relative path using PathUtils
+        let rel = PathUtils.normalizeToWorkspaceRelative(workspaceRoot: workspaceRoot, inputPath: pathPrefix)
+        let fullPath: String = (rel == ".") ? workspaceRoot : (workspaceRoot as NSString).appendingPathComponent(rel)
         let resolvedPath = (fullPath as NSString).standardizingPath
 
         // Ensure within workspace

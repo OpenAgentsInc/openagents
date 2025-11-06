@@ -47,6 +47,21 @@ struct ChatHomeView: View {
                         .padding(.horizontal)
                 }
 
+                // Inline status for FM analysis while summary is being prepared
+                if let fmStatus = fmAnalysisStatus(bridge.updates), fmStatus.inProgress {
+                    HStack(spacing: 8) {
+                        ProgressView().progressViewStyle(.circular)
+                        Text("Analyzing intent…")
+                            .foregroundStyle(OATheme.Colors.textSecondary)
+                        if let pct = fmStatus.progressPercent {
+                            Text(pct)
+                                .foregroundStyle(OATheme.Colors.textTertiary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                }
+
                 // Streamed ACP updates as a simple list (excluding plan updates; shown in header)
                 let visibleIndices = bridge.updates.indices.filter { idx in
                     if case .plan = bridge.updates[idx].update { return false } else { return true }
@@ -291,6 +306,39 @@ private func latestPlanFromUpdates(_ updates: [ACP.Client.SessionNotificationWir
     let status: ACPPlanStatus = allCompleted ? .completed : (anyInProgress ? .running : .running)
     let plan = ACPPlanState(status: status, summary: nil, steps: orderedSteps, ts: Int64(Date().timeIntervalSince1970 * 1000))
     return (plan, statusByStep)
+}
+
+// Derive fm.analysis progress from streamed updates (started → completed)
+private func fmAnalysisStatus(_ updates: [ACP.Client.SessionNotificationWire]) -> (inProgress: Bool, progressPercent: String?)? {
+    // Find last tool_call for fm.analysis
+    var lastCallId: String?
+    for note in updates.reversed() {
+        if case let .toolCall(call) = note.update, call.name == "fm.analysis" {
+            lastCallId = call.call_id
+            break
+        }
+    }
+    guard let callId = lastCallId else { return nil }
+    // Find last update for that callId
+    for note in updates.reversed() {
+        if case let .toolCallUpdate(upd) = note.update, upd.call_id == callId {
+            switch upd.status {
+            case .completed, .error:
+                return (false, nil)
+            case .started:
+                // Try extract progress meta
+                if let meta = upd._meta, let j = meta["progress"]?.toJSONValue() {
+                    switch j {
+                    case .number(let d): return (true, "\(Int((d * 100).rounded()))%")
+                    case .string(let s): return (true, s)
+                    default: break
+                    }
+                }
+                return (true, nil)
+            }
+        }
+    }
+    return nil
 }
 
 #Preview {

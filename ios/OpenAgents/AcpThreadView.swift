@@ -395,7 +395,9 @@ struct AcpThreadView: View {
     // Customized Markdown renderer for messages
     @ViewBuilder
     private func renderMessageMarkdown(_ text: String, isUser: Bool, truncated: Bool = true) -> some View {
-        let color: Color = isUser ? Color(hex: "#7A7A7A") : OATheme.Colors.textPrimary
+        // Use dynamic system-aware text colors for readability in Light/Dark.
+        // Avoid hard-coded grays that reduce contrast in Light mode.
+        let color: Color = isUser ? OATheme.Colors.textPrimary : OATheme.Colors.textPrimary
         // For user messages in the main feed, enforce a global 5-line cap
         if isUser && truncated {
             let preview = firstLines(text, maxLines: 5)

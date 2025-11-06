@@ -178,10 +178,16 @@ extension ExplorePlan {
     /// Convert to ACP Plan format for streaming
     public func toACPPlan() -> ACPPlan {
         let entries = nextOps.map { op in
-            ACPPlanEntry(
+            var meta: [String: AnyEncodable] = [
+                "op_id": AnyEncodable(op.opId.uuidString),
+                "op_hash": AnyEncodable(op.opHash),
+                "tool": AnyEncodable(op.toolName)
+            ]
+            return ACPPlanEntry(
                 content: op.description,
                 priority: priorityFromInt(op.priority),
-                status: .pending
+                status: .pending,
+                _meta: meta
             )
         }
         return ACPPlan(entries: entries, _meta: [
