@@ -38,6 +38,7 @@ struct FloatingToolbar: View {
                     .frame(width: 36, height: 36)
             })
             .buttonStyle(.plain)
+            .accessibilityIdentifier("compose-button")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)

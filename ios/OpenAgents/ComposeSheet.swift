@@ -20,6 +20,7 @@ struct ComposeSheet: View {
                     .focused($isTextFieldFocused)
                     .scrollContentBackground(.hidden)
                     .background(OATheme.Colors.background)
+                    .accessibilityIdentifier("message-composer")
 
                 Spacer()
             }
@@ -44,6 +45,7 @@ struct ComposeSheet: View {
                             ? OATheme.Colors.textSecondary.opacity(0.5)
                             : OATheme.Colors.accent
                     )
+                    .accessibilityIdentifier("send-button")
                 }
             }
         }
