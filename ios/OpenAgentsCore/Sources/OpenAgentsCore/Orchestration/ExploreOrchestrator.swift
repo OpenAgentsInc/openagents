@@ -897,6 +897,16 @@ public actor ExploreOrchestrator {
                 var rel = String(std.dropFirst(rootStd.count))
                 if rel.hasPrefix("/") { rel.removeFirst() }
                 path = rel
+            } else {
+                // Handle "/<workspaceName>[/...]" shorthand
+                let nameWithSlash = "/" + name
+                if std == nameWithSlash {
+                    path = "."
+                } else if std.hasPrefix(nameWithSlash + "/") {
+                    var rel = String(std.dropFirst(nameWithSlash.count + 1))
+                    if rel.hasPrefix("/") { rel.removeFirst() }
+                    path = rel
+                }
             }
         }
 
