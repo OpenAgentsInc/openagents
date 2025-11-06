@@ -154,6 +154,82 @@ instructions: |
   - Targets: aim for 80%+ statement coverage on new code.
   - Run with a `test` script (to be added in `expo/package.json`).
 
+### Testing Best Practices (CRITICAL - Read This)
+
+**The Problem**: Testing components in isolation without verifying the full integration pipeline leads to bugs that compile but don't work.
+
+**Real Example**: Created `PlanStateView` and `ACPPlanState` with perfect tests ✅, but `ToolResultView` was still rendering raw JSON because the components were never wired together ❌.
+
+**MANDATORY Testing Requirements**:
+
+1. **Test the Full Flow, Not Just Isolation**
+   - ❌ BAD: Test `ComponentA` works, test `ComponentB` works, assume A→B works
+   - ✅ GOOD: Test that data flows from A through B to the user-visible output
+   - Example: Don't just test `PlanStateView` renders - test that plan_state data in a tool result actually renders PlanStateView
+
+2. **Verify Your Fix Actually Works End-to-End**
+   - ❌ BAD: "Build succeeded" = done
+   - ✅ GOOD: Trace the data path from source to UI and verify each connection
+   - Steps:
+     1. Identify WHERE the data enters (e.g., tool result JSON)
+     2. Identify ALL components that touch it (e.g., ToolResultView → PlanStateView)
+     3. Test EVERY connection point, not just the leaf component
+     4. Verify the final user-visible behavior
+
+3. **Don't Assume Components Are Wired Together**
+   - ❌ BAD: "PlanStateView exists and works, so plan states will render correctly"
+   - ✅ GOOD: "Verified that ToolResultView.parse() detects plan_state and calls PlanStateView"
+   - Check: grep for actual usage of your component, don't assume it's being called
+
+4. **Test What the User Sees, Not What Compiles**
+   - ❌ BAD: Unit test ComponentX renders correctly (in isolation)
+   - ✅ GOOD: Integration test that ComponentX appears in the UI when triggered by real data
+   - Rule: If a user reported "I see JSON not UI", your tests should have caught that
+
+5. **Add Integration Tests for Every Fix**
+   - Unit tests verify individual pieces work
+   - Integration tests verify pieces work TOGETHER
+   - For UI bugs: test the rendering pipeline from data → component → display
+   - Example: `ToolResultViewStructuredRenderingTests` - tests that tool results with `{"todos":[...]}` actually render TodoListView
+
+6. **Checklist Before Claiming "Fixed"**
+   - [ ] Unit tests pass (component works in isolation)
+   - [ ] Integration tests pass (component is called correctly)
+   - [ ] Traced data flow from source to UI
+   - [ ] Verified ALL connection points between components
+   - [ ] Tested with realistic data (not just minimal examples)
+   - [ ] If fixing a visual bug: manually verified or added screenshot/UI test
+
+**Example of Proper Testing**:
+
+```swift
+// ❌ INSUFFICIENT - only tests component in isolation
+func testPlanStateView_RendersCorrectly() {
+    let state = ACPPlanState(status: .running)
+    let view = PlanStateView(state: state)
+    XCTAssertNotNil(view) // This passed, but bug still existed!
+}
+
+// ✅ CORRECT - tests full integration
+func testToolResultView_RendersPlanStateAsComponent() {
+    // Create tool result with plan_state data (realistic source)
+    let result = ACPToolResult(
+        result: JSONValue.object(["type": "plan_state", ...])
+    )
+
+    // Verify parsing detects it
+    let view = ToolResultView(result: result)
+    let parsed = view.parsePlanState(from: result.result!)
+    XCTAssertNotNil(parsed, "Should parse plan_state from result")
+
+    // Verify it renders component not JSON
+    let todos = TodoListView.parse(from: result.result!)
+    XCTAssertNil(todos, "Should NOT parse as todos")
+}
+```
+
+**When You Break This Rule**: User reports "your fix didn't work" and you have to debug why your perfectly-tested component isn't being called.
+
 ## Commit & Pull Request Guidelines
 - Commits: imperative, concise subject (≤50 chars), e.g., "Add splash screen asset"; include a brief body when needed.
 - PRs: clear description, link issues, note scope, and include screenshots/GIFs for UI changes.
