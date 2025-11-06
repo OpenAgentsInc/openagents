@@ -224,7 +224,16 @@ public struct WorkspaceScanner: Sendable {
         if cleanPath == "." || cleanPath.isEmpty {
             fullPath = workspaceRoot
         } else if cleanPath.hasPrefix("/") {
-            fullPath = cleanPath
+            // Support shorthand: "/<workspaceName>[/subpath]"
+            let name = (workspaceRoot as NSString).lastPathComponent
+            if cleanPath == "/" + name {
+                fullPath = workspaceRoot
+            } else if cleanPath.hasPrefix("/" + name + "/") {
+                let rel = String(cleanPath.dropFirst(name.count + 2))
+                fullPath = (workspaceRoot as NSString).appendingPathComponent(rel)
+            } else {
+                fullPath = cleanPath
+            }
         } else {
             fullPath = (workspaceRoot as NSString).appendingPathComponent(cleanPath)
         }
