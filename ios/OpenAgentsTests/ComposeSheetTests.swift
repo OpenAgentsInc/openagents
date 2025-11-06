@@ -3,7 +3,9 @@ import SwiftUI
 @testable import OpenAgents
 @testable import OpenAgentsCore
 
+#if os(iOS)
 /// Tests for ComposeSheet - the modal sheet for sending new messages
+@MainActor
 final class ComposeSheetTests: XCTestCase {
 
     // MARK: - Initialization Tests
@@ -168,3 +170,4 @@ final class ComposeSheetTests: XCTestCase {
         // TextEditor allows for multiline text input with scrolling
     }
 }
+#endif
