@@ -291,26 +291,45 @@ public class DesktopWebSocketServer {
 
         for path in paths {
             if FileManager.default.fileExists(atPath: path) {
+                print("[Bridge][server] found claude at: \(path)")
                 return path
             }
         }
 
-        // Try using 'which claude'
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = ["claude"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        try? process.run()
-        process.waitUntilExit()
+        // Try using shell to find claude (sources .zshrc/.bashrc for PATH)
+        let shells = ["/bin/zsh", "/bin/bash"]
+        for shell in shells {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: shell)
+            process.arguments = ["-l", "-c", "which claude"]
+            let pipe = Pipe()
+            let errPipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = errPipe
 
-        if process.terminationStatus == 0 {
-            let data = try? pipe.fileHandleForReading.readToEnd()
-            if let data = data, let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
-                return path
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                if process.terminationStatus == 0 {
+                    let data = try? pipe.fileHandleForReading.readToEnd()
+                    if let data = data, let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+                        print("[Bridge][server] found claude via \(shell): \(path)")
+                        return path
+                    }
+                }
+
+                // Log error output for debugging
+                if let errData = try? errPipe.fileHandleForReading.readToEnd(),
+                   let errText = String(data: errData, encoding: .utf8), !errText.isEmpty {
+                    print("[Bridge][server] \(shell) error: \(errText)")
+                }
+            } catch {
+                print("[Bridge][server] failed to run \(shell): \(error)")
             }
         }
 
+        print("[Bridge][server] claude not found in any location")
         return nil
     }
 
