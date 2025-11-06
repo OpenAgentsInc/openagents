@@ -10,14 +10,8 @@ struct ChatHomeView: View {
         NavigationStack {
             // Main content placeholder
             VStack(spacing: 16) {
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 44, weight: .regular))
-                    .foregroundStyle(.secondary)
-                Text("Welcome to OpenAgents")
+                Text("Welcome to OpenAgents.")
                     .font(.title2)
-                Text("Use the toolbar to start a new chat or open the menu.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -25,7 +19,7 @@ struct ChatHomeView: View {
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ChatHeaderToolbar(
-                    title: "Conversations",
+                    title: "Home",
                     onToggleMenu: { isMenuPresented.toggle() },
                     onNewChat: { /* hook up compose/present flow here */ }
                 )

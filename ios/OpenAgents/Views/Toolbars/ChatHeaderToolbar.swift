@@ -34,18 +34,18 @@ struct ChatHeaderToolbar: ToolbarContent {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
 
-        // RIGHT: New Chat action
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                onNewChat()
-            } label: {
-                Label("New Chat", systemImage: "plus.bubble")
-                    .labelStyle(.titleAndIcon) // switches to icon-only in compact widths
-            }
-            .accessibilityLabel("Start new chat")
-            .keyboardShortcut("n") // hardware keyboard support
-            .buttonStyle(.glassProminent)
-        }
+        // RIGHT: New Chat action (commented out for now)
+        // ToolbarItem(placement: .topBarTrailing) {
+        //     Button {
+        //         onNewChat()
+        //     } label: {
+        //         Label("New Chat", systemImage: "plus.bubble")
+        //             .labelStyle(.titleAndIcon)
+        //     }
+        //     .accessibilityLabel("Start new chat")
+        //     .keyboardShortcut("n")
+        //     .buttonStyle(.glassProminent)
+        // }
     }
 }
 #endif
