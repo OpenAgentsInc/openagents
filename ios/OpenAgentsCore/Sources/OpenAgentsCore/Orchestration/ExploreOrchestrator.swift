@@ -11,29 +11,29 @@ import FoundationModels
 @available(iOS 26.0, macOS 26.0, *)
 @Generable
 struct ExplorationPlanResponse {
-    @Guide(description: "List of 3-5 operations to explore the workspace. Each operation should be a different type of exploration.")
+    @Guide(description: "EXACTLY 3 operations. For session-focused goals, use sessionList operations. For code-focused goals, use readSpan/grep operations.")
     let operations: [OperationSpec]
 }
 
 @available(iOS 26.0, macOS 26.0, *)
 @Generable
 struct OperationSpec {
-    @Guide(description: "Operation type: sessionList, sessionSearch, sessionRead, sessionAnalyze, readSpan, grep, or listDir")
+    @Guide(description: "Operation type. MUST be one of: sessionList, readSpan, grep, listDir. Do NOT use sessionAnalyze, sessionSearch, or sessionRead.")
     let type: String
 
-    @Guide(description: "Description of what this operation does")
+    @Guide(description: "Brief description of this operation")
     let description: String
 
-    @Guide(description: "Provider for session operations: claude-code, codex, or all")
+    @Guide(description: "For sessionList ONLY: provider name. MUST be either claude-code or codex. For other operations: leave nil.")
     let provider: String?
 
-    @Guide(description: "Number of results for session operations (e.g., 20)")
+    @Guide(description: "For sessionList ONLY: number of sessions to retrieve. MUST be exactly 20. For other operations: leave nil.")
     let count: Int?
 
-    @Guide(description: "Search pattern for grep or sessionSearch operations")
+    @Guide(description: "For grep ONLY: search pattern. For other operations: leave nil.")
     let pattern: String?
 
-    @Guide(description: "File path for readSpan or listDir operations")
+    @Guide(description: "For readSpan/listDir ONLY: file path. Use README.md, package.json, or Project.swift for typical files. For other operations: leave nil.")
     let path: String?
 }
 
@@ -152,18 +152,19 @@ public actor ExploreOrchestrator {
     private func generateInitialPlan(using model: SystemLanguageModel) async throws -> ExplorePlan {
         // Minimal instructions to stay under 4096 token context limit
         let instructions = Instructions("""
-        You are a workspace exploration assistant. Your job is to create a plan of 3-5 operations to explore a codebase or conversation history.
+        Create EXACTLY 3 operations to explore a workspace.
 
         Available operations:
-        - sessionList: List recent sessions from claude-code or codex
-        - sessionSearch: Search for patterns across session history
-        - sessionRead: Read a specific session file
-        - sessionAnalyze: Analyze sessions for file frequency and patterns
-        - readSpan: Read lines from a file
+        - sessionList: List 20 recent sessions from claude-code or codex providers
+        - readSpan: Read lines from a file (README.md, package.json, etc.)
         - grep: Search for patterns in files
         - listDir: List directory contents
 
-        For session-focused goals, prioritize session operations. For code-focused goals, prioritize file operations.
+        Rules:
+        - If goals mention "conversation", "session", or "history": use sessionList for both claude-code AND codex
+        - If goals mention code or files: use readSpan/grep/listDir
+        - sessionList ALWAYS uses count=20
+        - readSpan ALWAYS uses line range 1-100
         """)
 
         let session = LanguageModelSession(model: model, tools: [], instructions: instructions)
@@ -172,15 +173,37 @@ public actor ExploreOrchestrator {
         let workspaceName = (workspaceRoot as NSString).lastPathComponent
         let goalsStr = goals.isEmpty ? "Explore repository" : goals.joined(separator: "\n- ")
 
+        // Check if goals are session-focused
+        let isSessionFocused = goals.contains { goal in
+            goal.localizedCaseInsensitiveContains("conversation") ||
+            goal.localizedCaseInsensitiveContains("session") ||
+            goal.localizedCaseInsensitiveContains("history")
+        }
+
         // Minimal prompt - MUST stay well under 4096 tokens total (instructions + prompt)
-        let prompt = """
-        Workspace: \(workspaceName)
+        let prompt: String
+        if isSessionFocused {
+            prompt = """
+            Workspace: \(workspaceName)
 
-        Goals:
-        - \(goalsStr)
+            Goals:
+            - \(goalsStr)
 
-        Create an exploration plan with 3-5 operations that will help achieve these goals.
-        """
+            Generate EXACTLY 3 operations:
+            1. sessionList with provider=claude-code and count=20
+            2. sessionList with provider=codex and count=20
+            3. listDir with path=.
+            """
+        } else {
+            prompt = """
+            Workspace: \(workspaceName)
+
+            Goals:
+            - \(goalsStr)
+
+            Generate EXACTLY 3 operations to explore this codebase.
+            """
+        }
 
         // Validate context size before sending
         let estimatedTokens = estimateTokenCount(instructions: instructions, prompt: prompt)
@@ -331,41 +354,26 @@ public actor ExploreOrchestrator {
     /// Foundation Models on-device tends to generate single "combined" operations.
     /// We expand these into separate steps for proper agentic behavior.
     private func expandOperations(_ ops: [AgentOp]) -> [AgentOp] {
-        var expanded: [AgentOp] = []
-
-        for op in ops {
+        // Check if there are any session operations
+        let hasSessionOps = ops.contains { op in
             switch op.kind {
-            case .sessionList(let params):
-                // If provider is nil (means all providers), expand into separate queries per provider
-                if params.provider == nil {
-                    // Check if goals mention "conversation" or "session" - if so, do deep analysis
-                    let isSessionFocused = goals.contains { goal in
-                        goal.localizedCaseInsensitiveContains("conversation") ||
-                        goal.localizedCaseInsensitiveContains("session") ||
-                        goal.localizedCaseInsensitiveContains("history")
-                    }
-
-                    if isSessionFocused {
-                        // Multi-step exploration: list sessions, then analyze them
-                        let topK = params.topK ?? 20
-                        expanded.append(AgentOp(kind: .sessionList(SessionListParams(provider: "claude-code", topK: topK))))
-                        expanded.append(AgentOp(kind: .sessionList(SessionListParams(provider: "codex", topK: topK))))
-                        expanded.append(AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: nil))))
-                    } else {
-                        // Just add the original operation
-                        expanded.append(op)
-                    }
-                } else {
-                    // Provider specified - add as-is
-                    expanded.append(op)
-                }
+            case .sessionList, .sessionSearch, .sessionRead:
+                return true
             default:
-                // All other operations pass through unchanged
-                expanded.append(op)
+                return false
             }
         }
 
-        return expanded
+        // If there are session operations, add a sessionAnalyze step at the end
+        // This allows the orchestrator to analyze all collected sessions
+        if hasSessionOps {
+            var expanded = ops
+            expanded.append(AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: nil))))
+            return expanded
+        }
+
+        // Otherwise return operations unchanged
+        return ops
     }
 
     // MARK: - Operation Execution
