@@ -1054,7 +1054,8 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
 
     func flushReasoningBuffer(nextTs: Int64, prevTs: Int64?) {
         guard !reasoningBuffer.isEmpty else { return }
-        let start = prevTs ?? reasoningBuffer.first?.ts ?? nextTs
+        // Start time should be the first reasoning message's timestamp, NOT the previous non-reasoning message
+        let start = reasoningBuffer.first?.ts ?? prevTs ?? nextTs
         let rs = AcpThreadView.ReasoningSummary(startTs: start, endTs: nextTs, messages: reasoningBuffer)
         items.append(.reasoningSummary(rs))
 #if DEBUG
@@ -1072,19 +1073,36 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
             if !hasAnyVisibleItem { initialMeta.append(line) }
             continue
         }
-        let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: sourceId))
-        if let m = t.events.compactMap({ $0.message }).first {
-            let text = m.parts.compactMap { part -> String? in
-                if case let .text(t) = part { return t.text } else { return nil }
-            }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 
-            if AcpThreadView_isReasoningLine(line) {
+        // Check for reasoning FIRST, before translation
+        if AcpThreadView_isReasoningLine(line) {
+            // Translate to get the message content
+            let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: sourceId))
+            if let m = t.events.compactMap({ $0.message }).first {
                 var msg = m
                 if msg.ts == 0 { msg.ts = resolveTsMs(fromLine: line) ?? monoMs }
                 monoMs = max(monoMs, msg.ts)
                 reasoningBuffer.append(msg)
                 continue
             }
+            // If translator doesn't produce a message, create one from the raw line
+            if let data = line.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let payload = obj["payload"] as? [String: Any],
+               let text = payload["text"] as? String {
+                let ts = resolveTsMs(fromLine: line) ?? monoMs
+                monoMs = max(monoMs, ts)
+                let msg = ACPMessage(id: UUID().uuidString, thread_id: nil, role: .assistant, parts: [.text(ACPText(text: text))], ts: ts)
+                reasoningBuffer.append(msg)
+                continue
+            }
+        }
+
+        let t = CodexAcpTranslator.translateLines([line], options: .init(sourceId: sourceId))
+        if let m = t.events.compactMap({ $0.message }).first {
+            let text = m.parts.compactMap { part -> String? in
+                if case let .text(t) = part { return t.text } else { return nil }
+            }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 
             // Non-reasoning message (only show user/assistant roles)
             if m.role == .user || m.role == .assistant {
@@ -1115,12 +1133,11 @@ func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) 
         // For any other events that aren't messages, include their raw JSON
         items.append(.raw(line))
         hasAnyVisibleItem = true
-
-        // At end of input, if last lines were reasoning, flush using lastMessageTs (or own ts)
-        if idx == lines.count - 1 && !reasoningBuffer.isEmpty {
-            let endTs = max(lastMessageTs, reasoningBuffer.last?.ts ?? (resolveTsMs(fromLine: line) ?? monoMs))
-            flushReasoningBuffer(nextTs: endTs, prevTs: lastNonReasoningTs)
-        }
+    }
+    // Flush any remaining reasoning at the end
+    if !reasoningBuffer.isEmpty {
+        let endTs = lastMessageTs > 0 ? lastMessageTs : (reasoningBuffer.last?.ts ?? monoMs)
+        flushReasoningBuffer(nextTs: endTs, prevTs: lastNonReasoningTs)
     }
     if items.count > cap { items = Array(items.suffix(cap)) }
     let thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: sourceId))

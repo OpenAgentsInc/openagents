@@ -4,7 +4,7 @@ import XCTest
 
 final class TimelineTests: XCTestCase {
     func testReasoningDurationBetweenUserAndAssistant() throws {
-        // user at 1000ms, reasoning at 2000ms, assistant at 6000ms → expect 5s
+        // user at 1000ms, reasoning at 2000ms, assistant at 6000ms → expect 4s (from reasoning start to assistant)
         let user = #"{"item":{"role":"user","type":"message","text":"Q"},"ts":1000}"#
         let think = #"{"type":"event_msg","payload":{"type":"agent_reasoning","text":"**Title**\nthinking..."},"ts":2000}"#
         let assistant = #"{"item":{"role":"assistant","type":"message","text":"A"},"ts":6000}"#
@@ -16,7 +16,7 @@ final class TimelineTests: XCTestCase {
             switch item {
             case .reasoningSummary(let rs):
                 let secs = Int((rs.endTs - rs.startTs) / 1000)
-                XCTAssertEqual(secs, 5, "Expected 5s, got \(secs)s")
+                XCTAssertEqual(secs, 4, "Expected 4s (from reasoning start 2000 to assistant 6000), got \(secs)s")
                 found = true
             default:
                 continue
@@ -27,6 +27,7 @@ final class TimelineTests: XCTestCase {
 
     func testISOTimeFallbackForZeroTs() throws {
         // user with ISO timestamp, reasoning with ISO, assistant with ISO
+        // Duration should be from reasoning start (07:09:10) to assistant (07:09:20) = 10 seconds
         let user = #"{"timestamp":"2025-11-05T07:09:00Z","item":{"role":"user","type":"message","text":"Q"}}"#
         let think = #"{"timestamp":"2025-11-05T07:09:10Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Title**\nthinking..."}}"#
         let assistant = #"{"timestamp":"2025-11-05T07:09:20Z","item":{"role":"assistant","type":"message","text":"A"}}"#
@@ -38,7 +39,7 @@ final class TimelineTests: XCTestCase {
                 break
             }
         }
-        XCTAssertEqual(secsFound, 20, "Expected 20s using ISO timestamps fallback")
+        XCTAssertEqual(secsFound, 10, "Expected 10s (from reasoning start to assistant) using ISO timestamps fallback")
     }
 
     // MARK: - Message Type Classification Tests (Regression Prevention)
