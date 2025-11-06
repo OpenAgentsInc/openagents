@@ -53,9 +53,9 @@ struct ContentView: View {
         //     FloatingToolbar()
         // }
         // #endif
-        .overlay(alignment: .bottomTrailing) {
-            FloatingScrollButtons()
-        }
+        // .overlay(alignment: .bottomTrailing) {
+        //     FloatingScrollButtons()
+        // }
         // .overlay(alignment: .bottomTrailing) {
         //     FloatingMicButton()
         // }
