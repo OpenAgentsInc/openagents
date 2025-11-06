@@ -1087,19 +1087,16 @@ func AcpThreadView_computeTimelineFromUpdates(updates: [ACP.Client.SessionNotifi
                 items.append(.message(m))
             }
         case .agentMessageChunk(let chunk):
+            // CRITICAL: agentMessageChunk is ALWAYS a user-facing message, NEVER a thought
+            // Do NOT apply heuristics - trust the ACP protocol type
             if case let .text(t) = chunk.content {
-                let text = t.text
-                if isLikelyThoughtText(text) {
-                    if reasoningStart == nil { reasoningStart = monoMs }
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: note.session_id.value, role: .assistant, parts: [.text(.init(text: text))], ts: monoMs)
-                    reasoning.append(m)
-                } else {
-                    flushReasoning(nextTs: monoMs)
-                    let m = ACPMessage(id: UUID().uuidString, thread_id: note.session_id.value, role: .assistant, parts: [.text(.init(text: text))], ts: monoMs)
-                    items.append(.message(m))
-                }
+                flushReasoning(nextTs: monoMs)
+                let m = ACPMessage(id: UUID().uuidString, thread_id: note.session_id.value, role: .assistant, parts: [.text(.init(text: t.text))], ts: monoMs)
+                items.append(.message(m))
             }
         case .agentThoughtChunk(let chunk):
+            // CRITICAL: agentThoughtChunk is ALWAYS internal reasoning/thinking
+            // This should be shown in a thought bubble, not as a regular message
             if case let .text(t) = chunk.content {
                 if reasoningStart == nil { reasoningStart = monoMs }
                 let m = ACPMessage(id: UUID().uuidString, thread_id: note.session_id.value, role: .assistant, parts: [.text(.init(text: t.text))], ts: monoMs)
@@ -1137,6 +1134,9 @@ func AcpThreadView_computeTimelineFromUpdates(updates: [ACP.Client.SessionNotifi
     return (capped, nil)
 }
 
+// DEPRECATED: This heuristic should NOT be used for ACP protocol messages.
+// ACP explicitly distinguishes agentMessageChunk vs agentThoughtChunk.
+// This function is kept only for legacy non-ACP data compatibility.
 // Heuristic: detect thought-like assistant text (bulleted lists, internal monologue hints)
 private func isLikelyThoughtText(_ text: String) -> Bool {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

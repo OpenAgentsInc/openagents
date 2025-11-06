@@ -176,8 +176,13 @@ final class BridgeManagerTests: XCTestCase {
     }
 
     func testCurrentModeUpdateExtracted() {
-        let update = TestHelpers.makeCurrentModeUpdate(mode: ACPSessionModeId("custom-mode"))
-        let notification = TestHelpers.makeSessionUpdateNotification(update: update)
+        let update = ACP.Client.SessionUpdate.currentModeUpdate(
+            .init(current_mode_id: ACPSessionModeId(rawValue: "custom-mode") ?? .default_mode)
+        )
+        let notification = ACP.Client.SessionNotificationWire(
+            session_id: ACPSessionId("test-session"),
+            update: update
+        )
 
         // Simulate receiving notification
         sut.updates.append(notification)
@@ -188,7 +193,7 @@ final class BridgeManagerTests: XCTestCase {
             break
         }
 
-        XCTAssertEqual(sut.currentMode.value, "custom-mode")
+        XCTAssertEqual(sut.currentMode.rawValue, "custom-mode")
     }
 
     // MARK: - iOS Prompt Sending Tests
