@@ -312,7 +312,7 @@ struct AcpThreadView: View {
         case .reasoning:
             EmptyView()
         case .toolCall(let call):
-            ToolCallView(call: call)
+            ToolCallView(call: call, result: findResult(for: call))
         case .toolResult(let res):
             ToolResultView(result: res)
         case .plan(let ps):
@@ -320,6 +320,16 @@ struct AcpThreadView: View {
         case .raw(let line):
             rawInlinePreview(line)
         }
+    }
+
+    /// Find the matching result for a tool call
+    private func findResult(for call: ACPToolCall) -> ACPToolResult? {
+        for item in timeline {
+            if case .toolResult(let result) = item, result.call_id == call.id {
+                return result
+            }
+        }
+        return nil
     }
 
     @ViewBuilder

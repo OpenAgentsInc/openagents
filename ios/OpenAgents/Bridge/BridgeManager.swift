@@ -54,6 +54,8 @@ final class BridgeManager: ObservableObject {
     #if os(iOS)
     private var client: MobileWebSocketClient?
     private var browser: BonjourBrowser?
+    private static let lastHostKey = "oa.bridge.last_host"
+    private static let lastPortKey = "oa.bridge.last_port"
     @Published var threads: [ThreadSummary] = []
     @Published var updates: [ACP.Client.SessionNotificationWire] = []
     @Published var currentSessionId: ACPSessionId? = nil
@@ -61,12 +63,9 @@ final class BridgeManager: ObservableObject {
     @Published var currentMode: ACPSessionModeId = .default_mode
 
     func start() {
-        // Immediately attempt manual connect to the default host on iOS.
-        #if targetEnvironment(simulator)
-        connect(host: "127.0.0.1", port: Int(BridgeConfig.defaultPort))
-        #else
-        connect(host: BridgeConfig.defaultHost, port: Int(BridgeConfig.defaultPort))
-        #endif
+        // Prefer last successful endpoint if available; otherwise use platform default.
+        let (h, p) = BridgeManager.pickInitialEndpoint()
+        connect(host: h, port: p)
 
         // Optionally also start Bonjour discovery in parallel if enabled.
         if Features.multicastEnabled {
@@ -117,6 +116,10 @@ extension BridgeManager: MobileWebSocketClientDelegate {
     func mobileWebSocketClientDidConnect(_ client: MobileWebSocketClient) {
         log("client", "Connected; requesting latest thread")
         if let h = currentHost, let p = currentPort { status = .connected(host: h, port: p) }
+        // Persist last successful endpoint for fast reconnects on next launch
+        if let h = currentHost, let p = currentPort {
+            BridgeManager.saveLastSuccessfulEndpoint(host: h, port: p)
+        }
         // Load the latest thread as typed ACP updates
         struct LatestTypedResult: Codable { let id: String; let updates: [ACP.Client.SessionUpdate] }
         client.sendJSONRPC(method: "thread/load_latest_typed", params: Empty(), id: "thread-load-latest-typed-1") { (resp: LatestTypedResult?) in
@@ -247,6 +250,31 @@ extension BridgeManager {
         guard let client = self.client, let sid = currentSessionId else { return }
         struct CancelReq: Codable { let session_id: ACPSessionId }
         client.sendJSONRPCNotification(method: ACPRPC.sessionCancel, params: CancelReq(session_id: sid))
+    }
+}
+
+// MARK: - Endpoint persistence / selection
+extension BridgeManager {
+    static func saveLastSuccessfulEndpoint(host: String, port: Int) {
+        UserDefaults.standard.set(host, forKey: lastHostKey)
+        UserDefaults.standard.set(port, forKey: lastPortKey)
+    }
+    static func readLastSuccessfulEndpoint() -> (String, Int)? {
+        if let h = UserDefaults.standard.string(forKey: lastHostKey) {
+            let p = UserDefaults.standard.integer(forKey: lastPortKey)
+            if p > 0 { return (h, p) }
+        }
+        return nil
+    }
+    /// Decide the initial endpoint for iOS startup.
+    /// Order: persisted last-successful → simulator loopback → configured default.
+    static func pickInitialEndpoint() -> (String, Int) {
+        if let last = readLastSuccessfulEndpoint() { return last }
+        #if targetEnvironment(simulator)
+        return ("127.0.0.1", Int(BridgeConfig.defaultPort))
+        #else
+        return (BridgeConfig.defaultHost, Int(BridgeConfig.defaultPort))
+        #endif
     }
 }
 #endif
