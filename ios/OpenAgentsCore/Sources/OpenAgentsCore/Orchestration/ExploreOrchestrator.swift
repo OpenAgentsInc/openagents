@@ -134,13 +134,12 @@ public actor ExploreOrchestrator {
         Workspace: \(workspaceName)
         Goals: \(goalsStr)
 
-        Create 3-5 operations. Examples:
-        - sessionList: top 20 claude-code sessions
-        - sessionAnalyze: sessions for file frequency
-        - readSpan: README.md lines 1-50
-        - grep: "pattern" in src/
+        Generate 3+ operations:
+        1. sessionList: top 20 claude-code sessions
+        2. sessionList: top 20 codex sessions
+        3. sessionAnalyze: sessions for file frequency
 
-        Plan (one per line):
+        Your turn (3+ lines):
         """
 
         // Validate context size before sending
