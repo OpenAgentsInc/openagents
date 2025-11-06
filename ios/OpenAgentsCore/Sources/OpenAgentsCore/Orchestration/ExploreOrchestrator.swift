@@ -11,30 +11,18 @@ import FoundationModels
 @available(iOS 26.0, macOS 26.0, *)
 @Generable
 struct ExplorationPlanResponse {
-    @Guide(description: "EXACTLY 3 operations. For session-focused goals, use sessionList operations. For code-focused goals, use readSpan/grep operations.")
-    let operations: [OperationSpec]
+    @Guide(description: "EXACTLY 3 operations to explore the workspace.")
+    let operations: [PlannedOperation]
 }
 
 @available(iOS 26.0, macOS 26.0, *)
 @Generable
-struct OperationSpec {
-    @Guide(description: "Operation type. MUST be one of: sessionList, readSpan, grep, listDir. Do NOT use sessionAnalyze, sessionSearch, or sessionRead.")
+struct PlannedOperation {
+    @Guide(description: "Operation type: sessionList, readSpan, grep, or listDir")
     let type: String
 
-    @Guide(description: "Brief description of this operation")
-    let description: String
-
-    @Guide(description: "For sessionList ONLY: provider name. MUST be either claude-code or codex. For other operations: leave nil.")
-    let provider: String?
-
-    @Guide(description: "For sessionList ONLY: number of sessions to retrieve. MUST be exactly 20. For other operations: leave nil.")
-    let count: Int?
-
-    @Guide(description: "For grep ONLY: search pattern. For other operations: leave nil.")
-    let pattern: String?
-
-    @Guide(description: "For readSpan/listDir ONLY: file path. Use README.md, package.json, or Project.swift for typical files. For other operations: leave nil.")
-    let path: String?
+    @Guide(description: "Main parameter. For sessionList: provider name (claude-code or codex). For readSpan/listDir: file path. For grep: search pattern.")
+    let param: String
 }
 
 #endif
@@ -218,9 +206,9 @@ public actor ExploreOrchestrator {
             let response = try await session.respond(to: prompt, generating: ExplorationPlanResponse.self, options: options)
             let planResponse = response.content
 
-            // Convert OperationSpec to AgentOp
-            let ops = planResponse.operations.compactMap { spec in
-                convertSpecToOperation(spec)
+            // Convert PlannedOperation to AgentOp
+            let ops = planResponse.operations.compactMap { plannedOp in
+                convertPlannedOperation(plannedOp)
             }
 
             print("[Orchestrator] Generated plan with \(ops.count) operations")
@@ -242,39 +230,33 @@ public actor ExploreOrchestrator {
         }
     }
 
-    /// Convert OperationSpec (from guided generation) to AgentOp
+    /// Convert PlannedOperation (from guided generation) to AgentOp
+    /// Hard-codes all numeric parameters to avoid confusing the model
     @available(iOS 26.0, macOS 26.0, *)
-    private func convertSpecToOperation(_ spec: OperationSpec) -> AgentOp? {
-        let type = spec.type.lowercased()
+    private func convertPlannedOperation(_ op: PlannedOperation) -> AgentOp? {
+        let type = op.type.lowercased()
+        let param = op.param
 
         switch type {
         case "sessionlist", "session.list":
-            let provider = spec.provider?.lowercased()
-            let finalProvider = (provider == "all") ? nil : provider
-            return AgentOp(kind: .sessionList(SessionListParams(provider: finalProvider, topK: spec.count ?? 20)))
-
-        case "sessionsearch", "session.search":
-            guard let pattern = spec.pattern else { return nil }
-            return AgentOp(kind: .sessionSearch(SessionSearchParams(pattern: pattern, provider: spec.provider)))
-
-        case "sessionread", "session.read":
-            // Would need session ID - skip for now
-            return nil
-
-        case "sessionanalyze", "session.analyze":
-            return AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: spec.provider)))
+            // param = provider name (claude-code or codex)
+            // Hard-code topK=20 (never ask model for numbers)
+            let provider = param.lowercased()
+            return AgentOp(kind: .sessionList(SessionListParams(provider: provider, topK: 20)))
 
         case "readspan", "read":
-            guard let path = spec.path else { return nil }
-            return AgentOp(kind: .readSpan(ReadSpanParams(path: path, startLine: 1, endLine: 100)))
+            // param = file path
+            // Hard-code startLine=1, endLine=100
+            return AgentOp(kind: .readSpan(ReadSpanParams(path: param, startLine: 1, endLine: 100)))
 
         case "grep", "search":
-            guard let pattern = spec.pattern else { return nil }
-            return AgentOp(kind: .grep(GrepParams(pattern: pattern, pathPrefix: spec.path)))
+            // param = search pattern
+            return AgentOp(kind: .grep(GrepParams(pattern: param, pathPrefix: nil)))
 
         case "listdir", "list":
-            let path = spec.path ?? "."
-            return AgentOp(kind: .listDir(ListDirParams(path: path, depth: 0)))
+            // param = directory path
+            // Hard-code depth=0
+            return AgentOp(kind: .listDir(ListDirParams(path: param, depth: 0)))
 
         default:
             print("[Orchestrator] Unknown operation type: \(type)")
