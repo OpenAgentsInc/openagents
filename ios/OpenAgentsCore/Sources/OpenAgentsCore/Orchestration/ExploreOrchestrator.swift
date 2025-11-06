@@ -626,7 +626,7 @@ public actor ExploreOrchestrator {
     // MARK: - FM-Powered Insight Generation
     /// Use Foundation Models to turn computed metrics into actual analysis text
     @available(iOS 26.0, macOS 26.0, *)
-    private func generateFMAnalysis() async -> String? {
+    private func generateFMAnalysis() async -> FMAnalysisResult? {
         #if canImport(FoundationModels)
         // Extract latest session.analyze result
         var analyze: SessionAnalyzeResult?
@@ -650,10 +650,10 @@ public actor ExploreOrchestrator {
             if let first = lines.first, first.hasSuffix(":") {
                 out.append(first)
                 lines.dropFirst().forEach { l in out.append("- " + l.replacingOccurrences(of: "^-\\s*[-*]\\s*", with: "", options: .regularExpression)) }
-                return out.joined(separator: "\n")
+                return FMAnalysisResult(text: out.joined(separator: "\n"), source: .sessionAnalyze)
             }
             // Otherwise join as a compact sentence
-            return lines.joined(separator: " ")
+            return FMAnalysisResult(text: lines.joined(separator: " "), source: .sessionAnalyze)
         }
 
         // Build compact JSON context
@@ -726,7 +726,7 @@ public actor ExploreOrchestrator {
             print("[FM] analysis response in \(String(format: "%.2f", dt))s, text=\(resp.content.count) chars")
             let analysis = resp.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !analysis.isEmpty else { return nil }
-            return analysis
+            return FMAnalysisResult(text: analysis, source: .fm)
         } catch {
             print("[FM] analysis error: \(error)")
             return nil
@@ -736,9 +736,17 @@ public actor ExploreOrchestrator {
         #endif
     }
 
+    /// Result type for FM analysis (text + source)
+    public struct FMAnalysisResult: Sendable {
+        public enum Source: String, Sendable { case sessionAnalyze = "session.analyze", fm = "fm" }
+        public let text: String
+        public let source: Source
+        public init(text: String, source: Source) { self.text = text; self.source = source }
+    }
+
     /// Public accessor to compute FM analysis for the last run
     @available(iOS 26.0, macOS 26.0, *)
-    public func fmAnalysisText() async -> String? {
+    public func fmAnalysis() async -> FMAnalysisResult? {
         return await generateFMAnalysis()
     }
 

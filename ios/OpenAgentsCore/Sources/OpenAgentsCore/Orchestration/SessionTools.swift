@@ -350,11 +350,13 @@ public struct SessionAnalyzeTool: Sendable {
         if sessionIds.isEmpty {
             let listTool = SessionListTool()
             if let specificProvider = provider {
-                let listResult = try await listTool.list(provider: specificProvider, topK: 10)
+                // Only the most recent session for the specified provider
+                let listResult = try await listTool.list(provider: specificProvider, topK: 1)
                 targets = listResult.sessions.map { ($0.id, specificProvider) }
             } else {
+                // Most recent one per provider for intent inference
                 for prov in ["claude-code", "codex"] {
-                    let listResult = try await listTool.list(provider: prov, topK: 5)
+                    let listResult = try await listTool.list(provider: prov, topK: 1)
                     targets.append(contentsOf: listResult.sessions.map { ($0.id, prov) })
                 }
             }
@@ -364,7 +366,7 @@ public struct SessionAnalyzeTool: Sendable {
         }
         print("[SessionAnalyze] targets=\(targets.count) (limit=10)")
 
-        // Read each session (limit to 10 for now)
+        // Read each target (most recent per provider by default)
         let readTool = SessionReadTool()
         let total = min(targets.count, 10)
         for (idx, target) in targets.prefix(10).enumerated() {
@@ -425,12 +427,18 @@ public struct SessionAnalyzeTool: Sendable {
         }
 
         let avgLength = sessionCount > 0 ? Double(totalEvents) / Double(sessionCount) : 0.0
+        // Infer a single user intent: pick the first user message from the most recent sessions
+        let inferredIntent: String? = {
+            if let first = goalPatterns.first { return first }
+            return nil
+        }()
 
         let result = SessionAnalyzeResult(
             fileFrequency: computeFiles ? fileFreq : nil,
             toolFrequency: computeTools ? toolFreq : nil,
             goalPatterns: computeGoals ? goalPatterns : nil,
-            avgConversationLength: avgLength
+            avgConversationLength: avgLength,
+            userIntent: inferredIntent
         )
         print("[SessionAnalyze] done sessions=\(sessionCount) avgLen=\(Int(avgLength)) files=\(fileFreq.count) tools=\(toolFreq.count) goals=\(goalPatterns.count)")
         return result

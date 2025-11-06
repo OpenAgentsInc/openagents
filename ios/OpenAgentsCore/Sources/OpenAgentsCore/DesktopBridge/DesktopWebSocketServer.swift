@@ -935,13 +935,14 @@ public class DesktopWebSocketServer {
                 )
                 await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(started), client: client)
 
-                if let fmText = await orchestrator.fmAnalysisText(), !fmText.isEmpty {
-                    sections.append("\n**Inferred Intent:**")
-                    sections.append(fmText)
+                if let analysis = await orchestrator.fmAnalysis(), !analysis.text.isEmpty {
+                    let heading = (analysis.source == .sessionAnalyze) ? "\n**Intent From Session History:**" : "\n**Inferred Intent (FM):**"
+                    sections.append(heading)
+                    sections.append(analysis.text)
                     let completed = ACPToolCallUpdateWire(
                         call_id: callId,
                         status: .completed,
-                        output: AnyEncodable(["summary_bytes": fmText.utf8.count]),
+                        output: AnyEncodable(["summary_bytes": analysis.text.utf8.count, "source": analysis.source.rawValue]),
                         error: nil,
                         _meta: nil
                     )

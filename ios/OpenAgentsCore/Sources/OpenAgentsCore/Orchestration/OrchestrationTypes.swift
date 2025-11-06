@@ -454,10 +454,14 @@ public struct SessionAnalyzeResult: Codable, Sendable {
     /// Average conversation length (events per session)
     public var avgConversationLength: Double?
 
-    public init(fileFrequency: [String: Int]? = nil, toolFrequency: [String: Int]? = nil, goalPatterns: [String]? = nil, avgConversationLength: Double? = nil) {
+    // Inferred single user intent from the most recent conversations
+    public var userIntent: String?
+
+    public init(fileFrequency: [String: Int]? = nil, toolFrequency: [String: Int]? = nil, goalPatterns: [String]? = nil, avgConversationLength: Double? = nil, userIntent: String? = nil) {
         self.fileFrequency = fileFrequency
         self.toolFrequency = toolFrequency
         self.goalPatterns = goalPatterns
         self.avgConversationLength = avgConversationLength
+        self.userIntent = userIntent
     }
 }
