@@ -915,11 +915,46 @@ public class DesktopWebSocketServer {
                 summary.followups.forEach { sections.append("• \($0)") }
             }
 
-            // FM-only: inferred intent
+            // FM-only: inferred intent with visible status (tool call) while it prepares
             if #available(macOS 26.0, *) {
+                let callId = UUID().uuidString
+                // Announce analysis start
+                let toolCall = ACPToolCallWire(
+                    call_id: callId,
+                    name: "fm.analysis",
+                    arguments: nil,
+                    _meta: ["stage": AnyEncodable("summary")] 
+                )
+                await sendSessionUpdate(sessionId: sessionId, update: .toolCall(toolCall), client: client)
+                let started = ACPToolCallUpdateWire(
+                    call_id: callId,
+                    status: .started,
+                    output: nil,
+                    error: nil,
+                    _meta: ["progress": AnyEncodable(0.0)]
+                )
+                await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(started), client: client)
+
                 if let fmText = await orchestrator.fmAnalysisText(), !fmText.isEmpty {
                     sections.append("\n**Inferred Intent:**")
                     sections.append(fmText)
+                    let completed = ACPToolCallUpdateWire(
+                        call_id: callId,
+                        status: .completed,
+                        output: AnyEncodable(["summary_bytes": fmText.utf8.count]),
+                        error: nil,
+                        _meta: nil
+                    )
+                    await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(completed), client: client)
+                } else {
+                    let completed = ACPToolCallUpdateWire(
+                        call_id: callId,
+                        status: .completed,
+                        output: AnyEncodable(["summary_bytes": 0]),
+                        error: nil,
+                        _meta: nil
+                    )
+                    await sendSessionUpdate(sessionId: sessionId, update: .toolCallUpdate(completed), client: client)
                 }
             }
 
