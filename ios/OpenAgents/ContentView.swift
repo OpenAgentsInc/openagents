@@ -48,11 +48,12 @@ struct ContentView: View {
         .background(OATheme.Colors.background.ignoresSafeArea())
         .task { if Features.foundationModelsEnabled { FMProbe.logAvailability() } }
         // Floating toolbar: iPhone only; overlays bottom-right above content
-        // #if os(iOS)
-        // .overlay(alignment: .bottomTrailing) {
-        //     FloatingToolbar()
-        // }
-        // #endif
+        #if os(iOS)
+        .overlay(alignment: .bottomTrailing) {
+            FloatingToolbar()
+                .environmentObject(bridge)
+        }
+        #endif
         // .overlay(alignment: .bottomTrailing) {
         //     FloatingScrollButtons()
         // }
