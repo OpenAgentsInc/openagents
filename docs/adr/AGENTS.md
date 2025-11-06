@@ -1,5 +1,5 @@
 @@ -0,0 +1,98 @@
-# AGENT.md
+# AGENTS.md
 
 ## AI Agent Guidelines for ADR Creation
 

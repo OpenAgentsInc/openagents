@@ -11,7 +11,7 @@ reviewers: [] # When ready for review, add GitHub handles as strings
 ---
 
 <!--
-⚠️  IMPORTANT: If you're an AI agent, read AGENT.md before using this template.
+⚠️  IMPORTANT: If you're an AI agent, read AGENTS.md before using this template.
 
 This template is designed for direct, honest architectural decisions.
 - Focus on real problems, not abstract benefits
