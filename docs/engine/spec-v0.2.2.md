@@ -171,21 +171,21 @@ public struct LLMCall: Codable, Sendable {
 public enum AgentEvt: Codable, Sendable {
   case started(Started)
   case progress(Progress)
-  case result(ResultAny)
+  case result(TypedResult)
   case planSnapshot(ExplorePlan.PartiallyGenerated) // see §7
   case completed(ExploreSummary)
   case error(AgentError)
 }
 
-public struct Started: Codable, Sendable { let op: String; let details: String? }
-public struct Progress: Codable, Sendable { let op: String; let percent: Double }
-public struct ResultAny: Codable, Sendable { let op: String; let data: Data; let mime: String }
-public struct AgentError: Codable, Sendable { let op: String; let message: String; let retryable: Bool }
+public struct Started: Codable, Sendable { let opId: UUID; let op: String; let details: String? }
+public struct Progress: Codable, Sendable { let opId: UUID; let op: String; let percent: Double }
+public struct TypedResult: Codable, Sendable { let opId: UUID; let type: String; let schemaVersion: Int; let payload: Data; let checksum: UInt32 }
+public struct AgentError: Codable, Sendable { let opId: UUID?; let op: String?; let code: String; let message: String; let retryable: Bool }
 ```
 
 **Notes**
 
-* `ResultAny` carries typed payloads (e.g., `SearchResult[]`) serialized with type tags.
+* `TypedResult` carries typed payloads (e.g., `SearchResult[]`) serialized with type tags.
 * All file content results are **bounded**; use `contentGetSpan` for larger ranges.
 
 ---
@@ -302,7 +302,7 @@ All engine operations surface as ACP **tool calls** within an ACP session; contr
 
 * **Unit**: chunker, FTS queries, embedding normalize, RRF/MMR math.
 * **Golden**: small corpora with expected top‑K and fixed spans.
-* **Integration**: WebSocket server; exercise `search.*`, `content.getSpan`, `orchestrate.*` with streamed partials.
+* **Integration**: WebSocket server; exercise `search.*`, `content.get_span`, `orchestrate.*` with streamed partials.
 * **E2E Explore**: workspace default **/Users/christopherdavid/code/openagents**; assert summary fields and that only allowlisted paths were touched.
 * **Property tests**: idempotent reindex; incremental updates preserve top‑K stability within tolerance.
 
@@ -321,7 +321,7 @@ All engine operations surface as ACP **tool calls** within an ACP session; contr
 SearchKitCore/Service/Client; SQLite schema; WebSocket skeleton; Bonjour; security‑scoped bookmarks.
 
 **M1 — Search Primitives**
-Chunker + FTS5; semantic embeddings; brute‑force ANN; RRF; `search.*` + `content.getSpan` + streaming partials.
+Chunker + FTS5; semantic embeddings; brute‑force ANN; RRF; `search.*` + `content.get_span` + streaming partials.
 
 **M2 — Orchestrator + Explore**
 `orchestrate.explore.start/status/abort`; on‑device session; snapshot **plan streaming**; exec queue; summary artifact.
@@ -358,7 +358,7 @@ SwiftSyntax symbols; light reranker for top‑50 via Core ML; near‑dup suppres
   "id": "...",
   "method": "initialize",
   "params": {
-    "protocol_version": "0.2.1",
+    "protocol_version": "0.2.2",
     "client_capabilities": {
       "fs": { "read_text_file": true, "write_text_file": false },
       "terminal": false,
@@ -379,7 +379,7 @@ SwiftSyntax symbols; light reranker for top‑50 via Core ML; near‑dup suppres
   "jsonrpc": "2.0",
   "id": "...",
   "result": {
-    "protocol_version": "0.2.1",
+    "protocol_version": "0.2.2",
     "agent_capabilities": {
       "load_session": true,
       "prompt_capabilities": { "image": false, "audio": false, "embedded_context": true },
@@ -448,8 +448,7 @@ All subsequent examples and tests in this spec assume ACP `initialize`/`session/
 
 * **Inline text limits**: `MAX_INLINE_BYTES=8192`, `MAX_INLINE_LINES=120`; truncated with `…` and `truncated=true` flag.
 * **Default context**: `contextLines=2` unless overridden.
-* **Encoding**: normalize to UTF‑8, EOL to `
-  `. For unknown encodings, attempt lossy decode and mark `encoding="unknown-lossy"`.
+* **Encoding**: normalize to UTF‑8, EOL to `\n`. For unknown encodings, attempt lossy decode and mark `encoding="unknown-lossy"`.
 * **Binary skip**: files detected as binary or >5 MB are skipped from inlining (span reads still allowed with warning if small range).
 
 ---
