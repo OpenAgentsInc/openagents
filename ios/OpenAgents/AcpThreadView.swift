@@ -121,8 +121,15 @@ struct AcpThreadView: View {
         .onAppear(perform: load)
         #if os(iOS)
         .onReceive(bridge.objectWillChange) { _ in
+            // Prevent concurrent recomputes - skip if already processing
+            guard !isLoading else {
+                print("[AcpThreadView] Skipping update - already processing")
+                return
+            }
+
             let newUpdates = bridge.updates
             print("[AcpThreadView] objectWillChange fired: \(newUpdates.count) updates, timeline.count=\(timeline.count)")
+
             if timeline.isEmpty, !newUpdates.isEmpty {
                 print("[AcpThreadView] Full recompute path - timeline empty, loading \(newUpdates.count) updates")
                 let snapshot = newUpdates
@@ -141,14 +148,13 @@ struct AcpThreadView: View {
                         self.isLoading = false
                     }
                 }
-            } else {
+            } else if !newUpdates.isEmpty {
                 print("[AcpThreadView] Incremental update path - processing \(newUpdates.count) updates")
                 // Process new updates, skipping ones we've already seen
                 var newCount = 0
                 for note in newUpdates {
                     let id = updateId(note)
                     if !processedUpdateIds.contains(id) {
-                        print("[AcpThreadView] New update: \(String(describing: note.update).prefix(50))")
                         appendUpdate(note)
                         processedUpdateIds.insert(id)
                         newCount += 1
@@ -161,7 +167,9 @@ struct AcpThreadView: View {
                         }
                     }
                 }
-                print("[AcpThreadView] Processed \(newCount) new, timeline now \(timeline.count) items")
+                if newCount > 0 {
+                    print("[AcpThreadView] Processed \(newCount) new, timeline now \(timeline.count) items")
+                }
             }
         }
         #endif
