@@ -47,7 +47,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
 
     func testConnectCreatesWebSocketTask() {
         let url = URL(string: "ws://localhost:8787")!
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         XCTAssertTrue(mockSession.webSocketTaskCalled)
         XCTAssertEqual(mockSession.lastRequest?.url, url)
@@ -55,11 +55,11 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
 
     func testConnectDisconnectsExistingConnection() {
         let url1 = URL(string: "ws://localhost:8787")!
-        sut.connect(url: url1, token: "token1")
+        sut.connect(url: url1)
 
         mockSession.webSocketTaskCalled = false
         let url2 = URL(string: "ws://localhost:8888")!
-        sut.connect(url: url2, token: "token2")
+        sut.connect(url: url2)
 
         XCTAssertTrue(mockSession.webSocketTaskCalled)
         XCTAssertEqual(mockSession.lastRequest?.url, url2)
@@ -70,7 +70,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         XCTAssertTrue(mockTask.sendCalled)
         XCTAssertFalse(mockTask.sentMessages.isEmpty)
@@ -91,7 +91,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
         sut.disconnect()
 
         XCTAssertTrue(mockTask.cancelCalled)
@@ -99,7 +99,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
 
     func testDisconnectCallsDelegate() {
         let url = URL(string: "ws://localhost:8787")!
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         let expectation = self.expectation(description: "disconnect called")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -119,7 +119,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         let testError = NSError(domain: "test", code: 1, userInfo: nil)
 
@@ -146,7 +146,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
         sut.sendPing()
 
         XCTAssertTrue(mockTask.sendPingCalled)
@@ -158,7 +158,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         mockTask.pingError = NSError(domain: "test", code: 1, userInfo: nil)
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         let expectation = self.expectation(description: "disconnect after ping error")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -180,7 +180,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         struct TestParams: Codable { let value: String }
         struct TestResult: Codable { let success: Bool }
@@ -224,7 +224,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         mockTask.sendError = NSError(domain: "test", code: 1, userInfo: nil)
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         struct TestParams: Codable { let value: String }
         struct TestResult: Codable { let success: Bool }
@@ -252,7 +252,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         struct TestParams: Codable { let value: String }
 
@@ -356,20 +356,6 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         XCTAssertEqual(mockDelegate.receivedRequests[0].id, "req-123")
     }
 
-    // MARK: - Legacy Bridge Message Tests
-
-    func testSendLegacyMessage() {
-        let url = URL(string: "ws://localhost:8787")!
-        let mockTask = MockURLSessionWebSocketTask()
-        mockSession.mockTask = mockTask
-
-        sut.connect(url: url, token: "test-token")
-
-        struct TestMessage: Codable { let value: String }
-        sut.send(type: "test.type", message: TestMessage(value: "test"))
-
-        XCTAssertTrue(mockTask.sentMessages.count >= 2)
-    }
 
     // MARK: - Error Handling Tests
 
@@ -378,7 +364,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         let error = NSError(domain: "test", code: 1, userInfo: nil)
 
@@ -401,7 +387,7 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         let mockTask = MockURLSessionWebSocketTask()
         mockSession.mockTask = mockTask
 
-        sut.connect(url: url, token: "test-token")
+        sut.connect(url: url)
 
         // Send invalid initialize response
         let invalidResponse = """

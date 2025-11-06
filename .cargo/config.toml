@@ -1,3 +1,0 @@
-[alias]
-# Run the WebSocket bridge (Convex is always enabled + bootstrapped)
-bridge = "run -p oa-bridge -- --bind 0.0.0.0:8787"

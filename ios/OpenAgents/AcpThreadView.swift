@@ -8,7 +8,6 @@ import AppKit
 
 struct AcpThreadView: View {
     let url: URL?
-    var initialLines: [String]? = nil
     let maxMessages: Int = 400
     var onTitleChange: ((String) -> Void)? = nil
 
@@ -18,7 +17,6 @@ struct AcpThreadView: View {
     
     enum TimelineItem: Identifiable {
         case message(ACPMessage)
-        case reasoning(ACPMessage) // legacy, not used in render
         case reasoningSummary(ReasoningSummary)
         case toolCall(ACPToolCall)
         case toolResult(ACPToolResult)
@@ -32,11 +30,6 @@ struct AcpThreadView: View {
                     if case let .text(t) = part { return t.text } else { return nil }
                 }.joined()
                 return "msg_\(m.id)_\(m.ts)_\(text.hashValue)"
-            case .reasoning(let m):
-                let text = m.parts.compactMap { part -> String? in
-                    if case let .text(t) = part { return t.text } else { return nil }
-                }.joined()
-                return "reason_\(m.id)_\(m.ts)_\(text.hashValue)"
             case .toolCall(let c): return "call_\(c.id)_\(c.ts ?? 0)"
             case .toolResult(let r): return "res_\(r.call_id)\(r.ts ?? 0)"
             case .reasoningSummary(let rs): return "rs_\(rs.startTs)_\(rs.endTs)\(rs.messages.count)"
@@ -47,7 +40,6 @@ struct AcpThreadView: View {
         var ts: Int64 {
             switch self {
             case .message(let m): return m.ts
-            case .reasoning(let m): return m.ts
             case .reasoningSummary(let rs): return rs.endTs
             case .toolCall(let c): return c.ts ?? 0
             case .toolResult(let r): return r.ts ?? 0
@@ -309,8 +301,6 @@ struct AcpThreadView: View {
                 )
                 .clipShape(Capsule(style: .continuous))
             }
-        case .reasoning:
-            EmptyView()
         case .toolCall(let call):
             ToolCallView(call: call, result: findResult(for: call))
         case .toolResult:
@@ -812,20 +802,7 @@ struct AcpThreadView: View {
 
     func load() {
         guard !isLoading else { return }
-        if let lines = initialLines, !lines.isEmpty, timeline.isEmpty {
-            isLoading = true; error = nil; timeline = []
-            DispatchQueue.global(qos: .userInitiated).async {
-                let (items, title, meta) = AcpThreadView_computeTimeline(lines: lines, sourceId: "remote", cap: maxMessages)
-                DispatchQueue.main.async {
-                    self.timeline = items
-                    self.threadTitle = title
-                    self.initialMetaLines = meta
-                    if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
-                    self.isLoading = false
-                }
-            }
-            return
-        }
+        // InitialLines path removed; load only from file URL when provided.
         guard let u = url else { return }
         isLoading = true
         error = nil
@@ -960,12 +937,12 @@ struct AcpThreadView: View {
             flushPendingReasoning(endMs: now)
 
             // Check if this is TodoWrite - convert to plan update
-            if let toolCall = timeline.first(where: {
+            if timeline.first(where: {
                 if case .toolCall(let c) = $0, c.id == upd.call_id {
                     return c.tool_name.lowercased() == "todowrite"
                 }
                 return false
-            }) {
+            }) != nil {
                 // Convert TodoWrite result to plan
                 if upd.status == .completed, let output = upd.output {
                     if let plan = convertTodoWriteToPlan(output, ts: now) {
@@ -1042,8 +1019,7 @@ private func tailJSONLLines(url: URL, maxBytes: Int, maxLines: Int) throws -> [S
 // Runs on any queue.
 func AcpThreadView_computeTimeline(lines: [String], sourceId: String, cap: Int) -> ([AcpThreadView.TimelineItem], String?, [String]) {
     var items: [AcpThreadView.TimelineItem] = []
-    var seenAssistant: Set<String> = []
-    var seenUser: Set<String> = []
+    // Deprecated: unused placeholders removed
     var reasoningBuffer: [ACPMessage] = []
     var lastMessageTs: Int64 = 0
     var lastNonReasoningTs: Int64? = nil
@@ -1225,31 +1201,7 @@ func AcpThreadView_computeTimelineFromUpdates(updates: [ACP.Client.SessionNotifi
     return (capped, nil)
 }
 
-// DEPRECATED: This heuristic should NOT be used for ACP protocol messages.
-// ACP explicitly distinguishes agentMessageChunk vs agentThoughtChunk.
-// This function is kept only for legacy non-ACP data compatibility.
-// Heuristic: detect thought-like assistant text (bulleted lists, internal monologue hints)
-private func isLikelyThoughtText(_ text: String) -> Bool {
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { return false }
-    // Count lines that look like bullets or numbered lists
-    let lines = trimmed.split(separator: "\n").map(String.init)
-    var bulletish = 0
-    for l in lines.prefix(8) { // inspect first few lines
-        let s = l.trimmingCharacters(in: .whitespaces)
-        if s.hasPrefix("•") || s.hasPrefix("-") || s.hasPrefix("*") { bulletish += 1; continue }
-        // numeric like "1." or "2)"
-        var j = s.startIndex
-        var hadDigit = false
-        while j < s.endIndex, let _ = s[j].wholeNumberValue { hadDigit = true; j = s.index(after: j) }
-        if hadDigit && j < s.endIndex && (s[j] == "." || s[j] == ")") { bulletish += 1; continue }
-    }
-    if bulletish >= 2 { return true }
-    // Keywords often present in internal thoughts
-    let lower = trimmed.lowercased()
-    if lower.contains("internal monologue") || lower.contains("reasoning:") || lower.contains("thought:") { return true }
-    return false
-}
+//
 
 // Pretty-encode any Encodable value (top-level helper for pure functions)
 private func AcpThreadView_encodeJSONPretty<T: Encodable>(_ value: T) -> String {
@@ -1269,7 +1221,7 @@ private func mergeAdjacentThoughts(_ items: [AcpThreadView.TimelineItem], window
     for it in items {
         switch it {
         case .reasoningSummary(let rs):
-            if var b = buffer {
+            if let b = buffer {
                 // If this group starts soon after the buffered group ends, merge
                 if (rs.startTs - b.endTs) <= windowMs {
                     let merged = AcpThreadView.ReasoningSummary(startTs: min(b.startTs, rs.startTs), endTs: max(b.endTs, rs.endTs), messages: b.messages + rs.messages)

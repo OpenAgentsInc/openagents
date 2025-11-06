@@ -114,7 +114,7 @@ enum LocalCodexScanner {
     }
 
     static func tailLastMessageTs(_ url: URL, limit: Int = 200) -> Int64? {
-        guard let s = try? String(contentsOf: url) else { return nil }
+        guard let s = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         for line in s.split(separator: "\n", omittingEmptySubsequences: true).suffix(limit).reversed() {
             if let ts = extractTimestamp(fromJSONLine: String(line)) { return ts }
         }

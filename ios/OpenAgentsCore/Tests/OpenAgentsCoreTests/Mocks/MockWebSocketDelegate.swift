@@ -6,7 +6,6 @@ final class MockMobileWebSocketClientDelegate: MobileWebSocketClientDelegate {
     var didConnect = false
     var didDisconnect = false
     var disconnectError: Error?
-    var receivedMessages: [BridgeMessage] = []
     var receivedNotifications: [(method: String, payload: Data)] = []
     var receivedRequests: [(method: String, id: String, params: Data)] = []
 
@@ -17,10 +16,6 @@ final class MockMobileWebSocketClientDelegate: MobileWebSocketClientDelegate {
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?) {
         didDisconnect = true
         disconnectError = error
-    }
-
-    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage) {
-        receivedMessages.append(message)
     }
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data) {
@@ -36,7 +31,6 @@ final class MockMobileWebSocketClientDelegate: MobileWebSocketClientDelegate {
         didConnect = false
         didDisconnect = false
         disconnectError = nil
-        receivedMessages = []
         receivedNotifications = []
         receivedRequests = []
     }

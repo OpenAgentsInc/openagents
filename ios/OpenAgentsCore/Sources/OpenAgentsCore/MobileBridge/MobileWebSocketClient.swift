@@ -8,8 +8,6 @@ public protocol MobileWebSocketClientDelegate: AnyObject {
     /// Called when the client disconnects or fails to connect
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?)
 
-    /// Called when the client receives a message
-    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage)
 
     /// Called when a JSON-RPC notification is received (ACP path)
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data)
@@ -32,7 +30,6 @@ public final class MobileWebSocketClient {
     public var maxRetryAttempts: Int = 5
     public var initialRetryDelay: TimeInterval = 1.0
     public var maxRetryDelay: TimeInterval = 30.0
-    /// Deprecated: legacy single-value timeout (unused when initial/retry are set)
     public var handshakeTimeout: TimeInterval = 10.0
     /// Shorter timeout for the first connection attempt to avoid long black-screen impressions.
     public var initialHandshakeTimeout: TimeInterval = 3.0
@@ -43,7 +40,6 @@ public final class MobileWebSocketClient {
     // Retry state
     private var retryCount: Int = 0
     private var lastConnectURL: URL?
-    private var lastConnectToken: String?
     private var handshakeTimer: Timer?
     private var isManualDisconnect: Bool = false
     private var connectStartedAt: Date?
@@ -52,23 +48,20 @@ public final class MobileWebSocketClient {
         self.session = session
     }
 
-    /// Connect to the WebSocket URL and authenticate with token
-    /// - Parameters:
-    ///   - url: The WebSocket URL to connect to
-    ///   - token: The authentication token to send in Hello message
-    public func connect(url: URL, token: String) {
+    /// Connect to the WebSocket URL and perform ACP JSON‑RPC initialize
+    /// - Parameter url: The WebSocket URL to connect to
+    public func connect(url: URL) {
         // Save connection parameters for retry
         lastConnectURL = url
-        lastConnectToken = token
         isManualDisconnect = false
 
         // Reset retry count on new explicit connect
         retryCount = 0
         print("[Bridge][client] connect requested url=\(url.absoluteString) retryCount=\(retryCount)")
-        performConnect(url: url, token: token)
+        performConnect(url: url)
     }
 
-    private func performConnect(url: URL, token: String) {
+    private func performConnect(url: URL) {
         disconnect(error: nil, notifyDelegate: false)
 
         let request = URLRequest(url: url)
@@ -83,7 +76,7 @@ public final class MobileWebSocketClient {
         startHandshakeTimeout()
 
         // Send ACP initialize via JSON-RPC
-        sendInitialize(expectedToken: token)
+        sendInitialize()
     }
 
     /// Send ping to keep connection alive
@@ -95,22 +88,6 @@ public final class MobileWebSocketClient {
         }
     }
 
-    /// Send an envelope with a typed message
-    public func send<T: Codable>(type: String, message: T) {
-        do {
-            let env = try BridgeMessage.envelope(for: message, type: type)
-            if let json = try? env.jsonString(prettyPrinted: false) {
-                print("[Bridge][client] send text=\(json)")
-                webSocketTask?.send(.string(json)) { _ in }
-            } else {
-                let data = try JSONEncoder().encode(env)
-                print("[Bridge][client] send bytes \(type)")
-                webSocketTask?.send(.data(data)) { _ in }
-            }
-        } catch {
-            // ignore
-        }
-    }
 
     /// Send a JSON-RPC request and capture the response via an id-bound completion closure
     public func sendJSONRPC<P: Codable, R: Codable>(method: String, params: P, id: String = UUID().uuidString, completion: @escaping (R?) -> Void) {
@@ -187,7 +164,7 @@ public final class MobileWebSocketClient {
     }
 
     private func scheduleReconnect() {
-        guard let url = lastConnectURL, let token = lastConnectToken else { return }
+        guard let url = lastConnectURL else { return }
         guard retryCount < maxRetryAttempts else {
             let error = NSError(domain: "MobileWebSocketClient", code: 8, userInfo: [NSLocalizedDescriptionKey: "Max retry attempts reached"])
             DispatchQueue.main.async { [weak self] in
@@ -208,7 +185,7 @@ public final class MobileWebSocketClient {
             if let url = self.lastConnectURL {
                 print("[Bridge][client] reconnecting attempt=\(self.retryCount + 1) url=\(url.absoluteString)")
             }
-            self.performConnect(url: url, token: token)
+            self.performConnect(url: url)
         }
     }
 
@@ -224,7 +201,7 @@ public final class MobileWebSocketClient {
         return (retryCount == 0) ? initial : retry
     }
 
-    private func sendInitialize(expectedToken: String) {
+    private func sendInitialize() {
         // Build request
         let initReq = ACP.Agent.InitializeRequest(
             protocol_version: "0.7.0",
@@ -291,7 +268,6 @@ public final class MobileWebSocketClient {
                 return
             }
         }
-        // If not JSON-RPC initialize response, disconnect (strict ACP handshake)
         let preview = Self.truncatePreview(text)
         print("[Bridge][client] initialize unexpected response preview=\(preview)")
         self.disconnect(error: NSError(domain: "MobileWebSocketClient", code: 6, userInfo: [NSLocalizedDescriptionKey: "Initialize failed: unexpected response"]), notifyDelegate: true)
@@ -308,47 +284,21 @@ public final class MobileWebSocketClient {
                 switch message {
                 case .data(let data):
                     if let text = String(data: data, encoding: .utf8) {
-                        // JSON-RPC path (ACP)
                         if text.contains("\"jsonrpc\":\"2.0\"") {
                             self.handleJSONRPCText(text)
-                            break
-                        }
-                        if let env = try? BridgeMessage.from(jsonString: text) {
-                            DispatchQueue.main.async { [weak self] in
-                                guard let self = self else { return }
-                                self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
-                            }
-                            break
-                        }
-                    }
-                    if let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self = self else { return }
-                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                        } else {
+                            print("[Bridge][client] ignoring non-JSON-RPC data frame")
                         }
                     } else {
-                        print("[Bridge][client] failed to decode data message")
+                        print("[Bridge][client] non-UTF8 data frame ignored")
                     }
                 case .string(let text):
                     if text.contains("\"jsonrpc\":\"2.0\"") {
                         self.handleJSONRPCText(text)
-                        break
-                    }
-                    if let env = try? BridgeMessage.from(jsonString: text) {
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self = self else { return }
-                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
-                        }
-                    } else if let data = text.data(using: .utf8),
-                              let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self = self else { return }
-                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
-                        }
                     } else {
                         let bytes = text.utf8.count
                         let preview = Self.truncatePreview(text)
-                        print("[Bridge][client] failed to decode string message bytes=\(bytes) preview=\(preview)")
+                        print("[Bridge][client] ignoring non-JSON-RPC text bytes=\(bytes) preview=\(preview)")
                     }
                 @unknown default:
                     break

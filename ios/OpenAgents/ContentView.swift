@@ -21,7 +21,7 @@ struct ContentView: View {
             #endif
             #if os(iOS)
             // Mobile: hide the sidebar for now; show only the latest thread
-            AcpThreadView(url: nil, initialLines: awaitLatestLines(), onTitleChange: { t in
+            AcpThreadView(url: nil, onTitleChange: { t in
                 self.toolbarTitle = t
             })
             .navigationTitle("")
@@ -115,10 +115,6 @@ struct ContentView: View {
 
     #if os(iOS)
     @EnvironmentObject private var bridge: BridgeManager
-    private func awaitLatestLines() -> [String] {
-        // BridgeManager publishes latestLines; read current snapshot for initial render
-        return bridge.latestLines
-    }
     #endif
 
     private func selectedRowTitle() -> String {
