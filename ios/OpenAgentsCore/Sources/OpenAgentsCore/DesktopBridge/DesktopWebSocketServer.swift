@@ -281,24 +281,46 @@ public class DesktopWebSocketServer {
     }
 
     private func findClaudeCLI() -> String? {
+        print("[Bridge][server] === STARTING CLAUDE CLI SEARCH ===")
+
+        // Try fnm-managed paths first (where npm install -g puts things)
+        let fnmPaths = [
+            "\(NSHomeDirectory())/.local/state/fnm_multishells",
+            "\(NSHomeDirectory())/.fnm/node-versions"
+        ]
+
+        for basePath in fnmPaths {
+            print("[Bridge][server] searching fnm path: \(basePath)")
+            if let found = searchForClaudeRecursive(in: basePath, maxDepth: 4) {
+                print("[Bridge][server] ✓ found claude at: \(found)")
+                return found
+            }
+        }
+
         // Try common locations for claude CLI
         let paths = [
             "/usr/local/bin/claude",
             "/opt/homebrew/bin/claude",
             "\(NSHomeDirectory())/bin/claude",
-            "\(NSHomeDirectory())/.local/bin/claude"
+            "\(NSHomeDirectory())/.local/bin/claude",
+            "\(NSHomeDirectory())/.npm-global/bin/claude",
+            "/usr/bin/claude"
         ]
 
         for path in paths {
+            print("[Bridge][server] checking: \(path)")
             if FileManager.default.fileExists(atPath: path) {
-                print("[Bridge][server] found claude at: \(path)")
+                print("[Bridge][server] ✓ found claude at: \(path)")
                 return path
             }
         }
 
+        print("[Bridge][server] trying login shells...")
+
         // Try using shell to find claude (sources .zshrc/.bashrc for PATH)
         let shells = ["/bin/zsh", "/bin/bash"]
         for shell in shells {
+            print("[Bridge][server] trying shell: \(shell)")
             let process = Process()
             process.executableURL = URL(fileURLWithPath: shell)
             process.arguments = ["-l", "-c", "which claude"]
@@ -311,25 +333,52 @@ public class DesktopWebSocketServer {
                 try process.run()
                 process.waitUntilExit()
 
+                print("[Bridge][server] \(shell) exit status: \(process.terminationStatus)")
+
                 if process.terminationStatus == 0 {
                     let data = try? pipe.fileHandleForReading.readToEnd()
                     if let data = data, let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
-                        print("[Bridge][server] found claude via \(shell): \(path)")
+                        print("[Bridge][server] ✓ found claude via \(shell): \(path)")
                         return path
+                    } else {
+                        print("[Bridge][server] \(shell) returned empty output")
                     }
+                } else {
+                    print("[Bridge][server] \(shell) failed with status \(process.terminationStatus)")
                 }
 
                 // Log error output for debugging
                 if let errData = try? errPipe.fileHandleForReading.readToEnd(),
                    let errText = String(data: errData, encoding: .utf8), !errText.isEmpty {
-                    print("[Bridge][server] \(shell) error: \(errText)")
+                    print("[Bridge][server] \(shell) stderr: \(errText)")
                 }
             } catch {
-                print("[Bridge][server] failed to run \(shell): \(error)")
+                print("[Bridge][server] ✗ failed to run \(shell): \(error)")
             }
         }
 
-        print("[Bridge][server] claude not found in any location")
+        print("[Bridge][server] ✗ claude not found in any location")
+        return nil
+    }
+
+    private func searchForClaudeRecursive(in basePath: String, maxDepth: Int, currentDepth: Int = 0) -> String? {
+        guard currentDepth < maxDepth else { return nil }
+        guard FileManager.default.fileExists(atPath: basePath) else { return nil }
+
+        let claudePath = "\(basePath)/bin/claude"
+        if FileManager.default.fileExists(atPath: claudePath) {
+            return claudePath
+        }
+
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: basePath) else { return nil }
+
+        for item in contents {
+            let fullPath = "\(basePath)/\(item)"
+            if let found = searchForClaudeRecursive(in: fullPath, maxDepth: maxDepth, currentDepth: currentDepth + 1) {
+                return found
+            }
+        }
+
         return nil
     }
 
