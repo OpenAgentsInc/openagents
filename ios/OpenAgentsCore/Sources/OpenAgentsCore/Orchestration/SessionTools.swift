@@ -286,7 +286,8 @@ public struct SessionAnalyzeTool: Sendable {
     public func analyze(
         sessionIds: [String],
         provider: String? = nil,
-        metrics: [String]? = nil
+        metrics: [String]? = nil,
+        progress: ((Int, Int) -> Void)? = nil
     ) async throws -> SessionAnalyzeResult {
         print("[SessionAnalyze] start provider=\(provider ?? "<any>") explicit_ids=\(sessionIds.count) metrics=\(metrics ?? ["files","tools","goals"]))")
         let computeAll = metrics == nil
@@ -321,6 +322,7 @@ public struct SessionAnalyzeTool: Sendable {
 
         // Read each session (limit to 10 for now)
         let readTool = SessionReadTool()
+        let total = min(targets.count, 10)
         for (idx, target) in targets.prefix(10).enumerated() {
             do {
                 // Determine provider for this session; if unknown, try both providers.
@@ -347,6 +349,8 @@ public struct SessionAnalyzeTool: Sendable {
                 if (idx + 1) % 1 == 0 { // log every session
                     print("[SessionAnalyze] progress \(idx+1)/\(min(targets.count, 10)) sessions, totalEvents=\(totalEvents)")
                 }
+                // Emit progress callback
+                progress?(idx + 1, total)
 
                 // Count file references
                 if computeFiles {

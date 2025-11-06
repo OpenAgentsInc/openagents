@@ -7,9 +7,12 @@ import Foundation
 public struct ToolExecutor: Sendable {
     /// Workspace root path (all operations scoped within)
     private let workspaceRoot: String
+    /// Optional progress sink for long-running tools
+    private let progressSink: (@Sendable (_ op: AgentOp, _ fraction: Double, _ note: String?) async -> Void)?
 
-    public init(workspaceRoot: String) {
+    public init(workspaceRoot: String, progress: (@Sendable (_ op: AgentOp, _ fraction: Double, _ note: String?) async -> Void)? = nil) {
         self.workspaceRoot = workspaceRoot
+        self.progressSink = progress
     }
 
     /// Execute an operation and return typed result
@@ -42,7 +45,7 @@ public struct ToolExecutor: Sendable {
             return try await executeSessionRead(params)
 
         case .sessionAnalyze(let params):
-            return try await executeSessionAnalyze(params)
+            return try await executeSessionAnalyze(params, op: op)
         }
     }
 
@@ -110,12 +113,18 @@ public struct ToolExecutor: Sendable {
         )
     }
 
-    private func executeSessionAnalyze(_ params: SessionAnalyzeParams) async throws -> SessionAnalyzeResult {
+    private func executeSessionAnalyze(_ params: SessionAnalyzeParams, op: AgentOp) async throws -> SessionAnalyzeResult {
         let tool = SessionAnalyzeTool()
         return try await tool.analyze(
             sessionIds: params.sessionIds,
             provider: params.provider,
-            metrics: params.metrics
+            metrics: params.metrics,
+            progress: { processed, total in
+                let fraction = total > 0 ? Double(processed) / Double(total) : 0.0
+                if let sink = progressSink {
+                    Task { await sink(op, fraction, "processed \(processed)/\(total)") }
+                }
+            }
         )
     }
 }

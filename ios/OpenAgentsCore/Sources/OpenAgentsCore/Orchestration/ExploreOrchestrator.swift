@@ -88,7 +88,9 @@ public actor ExploreOrchestrator {
         self.goals = goals
         self.policy = policy
         self.streamHandler = streamHandler
-        self.toolExecutor = ToolExecutor(workspaceRoot: workspaceRoot)
+        self.toolExecutor = ToolExecutor(workspaceRoot: workspaceRoot, progress: { [weak self] op, fraction, note in
+            await self?.streamProgress(op, fraction: fraction, note: note)
+        })
     }
 
     /// Start exploration process
@@ -596,6 +598,24 @@ public actor ExploreOrchestrator {
         )
         let sessionUpdate = ACP.Client.SessionUpdate.toolCallUpdate(update)
         await streamHandler(sessionUpdate)
+    }
+
+    /// Stream progress updates for long-running tools (e.g., session.analyze)
+    private func streamProgress(_ op: AgentOp, fraction: Double, note: String?) async {
+        let meta: [String: AnyEncodable] = {
+            var m: [String: AnyEncodable] = ["progress": AnyEncodable(fraction)]
+            if let s = note { m["note"] = AnyEncodable(s) }
+            return m
+        }()
+        let update = ACPToolCallUpdateWire(
+            call_id: op.opId.uuidString,
+            status: .started,
+            output: nil,
+            error: nil,
+            _meta: meta
+        )
+        await streamHandler(.toolCallUpdate(update))
+        print("[Orchestrator] Progress: \(op.toolName) \(Int(fraction * 100))% \(note ?? "")")
     }
 
     private func streamUnavailabilityMessage(reason: String) async {
