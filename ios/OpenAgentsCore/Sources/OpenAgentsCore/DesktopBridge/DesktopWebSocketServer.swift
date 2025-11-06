@@ -72,7 +72,6 @@ public class DesktopWebSocketServer {
     private let queue = DispatchQueue(label: "DesktopWebSocketServerQueue")
     private var listener: NWListener?
     private var clients = Set<Client>()
-    private let token: String
     public weak var delegate: DesktopWebSocketServerDelegate?
 
     // Live tailer state
@@ -83,10 +82,7 @@ public class DesktopWebSocketServer {
     private var tailOffset: UInt64 = 0
     private var tailBuffer = Data()
 
-    /// Initialize server with a token to validate Hello messages
-    public init(token: String) {
-        self.token = token
-    }
+    public init() {}
 
     /// Start listening on given port
     public func start(port: UInt16, advertiseService: Bool = true, serviceName: String? = nil, serviceType: String = BridgeConfig.serviceType) throws {
@@ -217,7 +213,7 @@ public class DesktopWebSocketServer {
     private func handleTextMessage(_ text: String, from client: Client) {
         if !client.isHandshakeComplete {
             print("[Bridge][server] recv handshake text=\(text)")
-            // Try ACP JSON-RPC initialize first
+            // Strict ACP JSON-RPC initialize handshake only
             if let data = text.data(using: .utf8), let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any], (dict["jsonrpc"] as? String) == "2.0", let method = dict["method"] as? String, method == "initialize" {
                 let inIdStr: String = {
                     if let idNum = dict["id"] as? Int { return String(idNum) }
@@ -241,38 +237,6 @@ public class DesktopWebSocketServer {
                 }
                 // Start live tailer after first handshake
                 self.startLiveTailerIfNeeded()
-            } else if let data = text.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-                // Legacy token Hello fallback
-                let type = (json["type"] as? String) ?? ""
-                let receivedToken = (json["token"] as? String) ?? ""
-                guard type == "Hello" || (!receivedToken.isEmpty) else {
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self = self else { return }
-                        self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
-                    }
-                    client.close(); clients.remove(client); return
-                }
-                if receivedToken == token {
-                    print("[Bridge][server] Hello received; token ok")
-                    client.isHandshakeComplete = true
-                    let ackObj: [String: Any] = ["type": "HelloAck", "token": token]
-                    if let ackData = try? JSONSerialization.data(withJSONObject: ackObj, options: []), let ackText = String(data: ackData, encoding: .utf8) {
-                        client.send(text: ackText)
-                    }
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self = self else { return }
-                        self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: true)
-                    }
-                    // Start live tailer after first handshake
-                    self.startLiveTailerIfNeeded()
-                } else {
-                    print("[Bridge][server] Hello token mismatch")
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self = self else { return }
-                        self.delegate?.webSocketServer(self, didCompleteHandshakeFor: client, success: false)
-                    }
-                    client.close(); clients.remove(client)
-                }
             }
         } else {
             // Handle envelopes after handshake

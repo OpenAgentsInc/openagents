@@ -56,21 +56,7 @@ public enum WebSocketMessage {
         }
     }
 
-    public struct Hello: Codable {
-        public let token: String
-
-        public init(token: String) {
-            self.token = token
-        }
-    }
-
-    public struct HelloAck: Codable {
-        public let token: String
-
-        public init(token: String) {
-            self.token = token
-        }
-    }
+    // Legacy Hello/HelloAck removed.
 
     public struct Ping: Codable {
         public init() {}

@@ -34,7 +34,7 @@ final class BridgeManager: ObservableObject {
 
     func start() {
         // Start Desktop WebSocket server automatically on macOS
-        let srv = DesktopWebSocketServer(token: BridgeConfig.defaultToken)
+        let srv = DesktopWebSocketServer()
         do {
             srv.delegate = self
             try srv.start(port: BridgeConfig.defaultPort, advertiseService: true, serviceName: Host.current().localizedName, serviceType: BridgeConfig.serviceType)
@@ -93,7 +93,7 @@ final class BridgeManager: ObservableObject {
         status = .connecting(host: host, port: port)
         log("client", "Connecting to \(urlStr)")
         currentHost = host; currentPort = port
-        client?.connect(url: url, token: BridgeConfig.defaultToken)
+        client?.connect(url: url)
     }
 
     // Manual connection entry point (used by UI)
@@ -142,9 +142,7 @@ extension BridgeManager: MobileWebSocketClientDelegate {
         else { log("client", "Disconnected"); status = .idle }
     }
 
-    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage) {
-        // Legacy path removed; JSON-RPC used exclusively now.
-    }
+    // Legacy envelopes removed; JSON‑RPC used exclusively.
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data) {
         if method == ACPRPC.sessionUpdate {

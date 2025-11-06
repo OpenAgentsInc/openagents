@@ -8,8 +8,7 @@ public protocol MobileWebSocketClientDelegate: AnyObject {
     /// Called when the client disconnects or fails to connect
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?)
 
-    /// Called when the client receives a message
-    func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveMessage message: BridgeMessage)
+    /// Legacy envelopes are removed. JSON‑RPC notifications/requests are delivered via the callbacks below.
 
     /// Called when a JSON-RPC notification is received (ACP path)
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didReceiveJSONRPCNotification method: String, payload: Data)
@@ -43,7 +42,6 @@ public final class MobileWebSocketClient {
     // Retry state
     private var retryCount: Int = 0
     private var lastConnectURL: URL?
-    private var lastConnectToken: String?
     private var handshakeTimer: Timer?
     private var isManualDisconnect: Bool = false
     private var connectStartedAt: Date?
@@ -52,23 +50,20 @@ public final class MobileWebSocketClient {
         self.session = session
     }
 
-    /// Connect to the WebSocket URL and authenticate with token
-    /// - Parameters:
-    ///   - url: The WebSocket URL to connect to
-    ///   - token: The authentication token to send in Hello message
-    public func connect(url: URL, token: String) {
+    /// Connect to the WebSocket URL and perform ACP JSON‑RPC initialize
+    /// - Parameter url: The WebSocket URL to connect to
+    public func connect(url: URL) {
         // Save connection parameters for retry
         lastConnectURL = url
-        lastConnectToken = token
         isManualDisconnect = false
 
         // Reset retry count on new explicit connect
         retryCount = 0
         print("[Bridge][client] connect requested url=\(url.absoluteString) retryCount=\(retryCount)")
-        performConnect(url: url, token: token)
+        performConnect(url: url)
     }
 
-    private func performConnect(url: URL, token: String) {
+    private func performConnect(url: URL) {
         disconnect(error: nil, notifyDelegate: false)
 
         let request = URLRequest(url: url)
@@ -83,7 +78,7 @@ public final class MobileWebSocketClient {
         startHandshakeTimeout()
 
         // Send ACP initialize via JSON-RPC
-        sendInitialize(expectedToken: token)
+        sendInitialize()
     }
 
     /// Send ping to keep connection alive
@@ -224,7 +219,7 @@ public final class MobileWebSocketClient {
         return (retryCount == 0) ? initial : retry
     }
 
-    private func sendInitialize(expectedToken: String) {
+    private func sendInitialize() {
         // Build request
         let initReq = ACP.Agent.InitializeRequest(
             protocol_version: "0.7.0",
@@ -308,47 +303,21 @@ public final class MobileWebSocketClient {
                 switch message {
                 case .data(let data):
                     if let text = String(data: data, encoding: .utf8) {
-                        // JSON-RPC path (ACP)
                         if text.contains("\"jsonrpc\":\"2.0\"") {
                             self.handleJSONRPCText(text)
-                            break
-                        }
-                        if let env = try? BridgeMessage.from(jsonString: text) {
-                            DispatchQueue.main.async { [weak self] in
-                                guard let self = self else { return }
-                                self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
-                            }
-                            break
-                        }
-                    }
-                    if let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self = self else { return }
-                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
+                        } else {
+                            print("[Bridge][client] ignoring non-JSON-RPC data frame")
                         }
                     } else {
-                        print("[Bridge][client] failed to decode data message")
+                        print("[Bridge][client] non-UTF8 data frame ignored")
                     }
                 case .string(let text):
                     if text.contains("\"jsonrpc\":\"2.0\"") {
                         self.handleJSONRPCText(text)
-                        break
-                    }
-                    if let env = try? BridgeMessage.from(jsonString: text) {
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self = self else { return }
-                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
-                        }
-                    } else if let data = text.data(using: .utf8),
-                              let env = try? JSONDecoder().decode(BridgeMessage.self, from: data) {
-                        DispatchQueue.main.async { [weak self] in
-                            guard let self = self else { return }
-                            self.delegate?.mobileWebSocketClient(self, didReceiveMessage: env)
-                        }
                     } else {
                         let bytes = text.utf8.count
                         let preview = Self.truncatePreview(text)
-                        print("[Bridge][client] failed to decode string message bytes=\(bytes) preview=\(preview)")
+                        print("[Bridge][client] ignoring non-JSON-RPC text bytes=\(bytes) preview=\(preview)")
                     }
                 @unknown default:
                     break
