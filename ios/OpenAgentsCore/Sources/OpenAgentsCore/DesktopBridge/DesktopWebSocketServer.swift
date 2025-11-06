@@ -464,7 +464,7 @@ public class DesktopWebSocketServer {
                 if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
                 else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                 else { idVal = JSONRPC.ID("1") }
-                let resp = ACP.Agent.InitializeResponse(protocol_version: "0.7.0", agent_capabilities: .init(), auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: nil)
+                let resp = ACP.Agent.InitializeResponse(protocol_version: "0.2.2", agent_capabilities: .init(), auth_methods: [], agent_info: ACP.Agent.Implementation(name: "openagents-mac", title: "OpenAgents macOS", version: "0.1.0"), _meta: nil)
                 if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: resp)), let jtext = String(data: out, encoding: .utf8) {
                     print("[Bridge][server] send rpc result method=initialize id=\(inIdStr) text=\(jtext)")
                     client.send(text: jtext)
@@ -650,6 +650,49 @@ public class DesktopWebSocketServer {
                             else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
                             else { idVal = JSONRPC.ID("1") }
                             DesktopWebSocketServer.sendJSONRPCError(client: client, id: idVal, code: -32002, message: "No threads found")
+                        }
+                    case "index.status":
+                        // Minimal Phase-1: respond and emit a tiny synthetic stream for visibility
+                        // Params may contain session_id to stream under
+                        let params = dict["params"] as? [String: Any]
+                        let sidStr = (params?["session_id"] as? String) ?? UUID().uuidString
+                        let sid = ACPSessionId(sidStr)
+                        struct StatusResult: Codable { let workspace_path: String; let exists: Bool; let files_indexed: Int?; let chunks: Int? }
+                        // Default workspace path (env override TEST_WORKSPACE_ROOT)
+                        let ws = ProcessInfo.processInfo.environment["TEST_WORKSPACE_ROOT"] ?? "\(NSHomeDirectory())/code/openagents"
+                        let exists = FileManager.default.fileExists(atPath: ws)
+                        let idVal: JSONRPC.ID
+                        if let idNum = dict["id"] as? Int { idVal = JSONRPC.ID(String(idNum)) }
+                        else if let idStr = dict["id"] as? String { idVal = JSONRPC.ID(idStr) }
+                        else { idVal = JSONRPC.ID("1") }
+                        let result = StatusResult(workspace_path: ws, exists: exists, files_indexed: nil, chunks: nil)
+                        if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: result)), let jtext = String(data: out, encoding: .utf8) {
+                            print("[Bridge][server] send rpc result method=index.status id=\(idVal.value) text=\(jtext)")
+                            client.send(text: jtext)
+                        }
+                        // Emit synthetic tool stream: index.rebuild started→completed
+                        let call = ACPToolCallWire(call_id: UUID().uuidString, name: "index.rebuild", arguments: [
+                            "workspace": AnyEncodable(ws)
+                        ])
+                        let toolNote = ACP.Client.SessionNotificationWire(session_id: sid, update: .toolCall(call))
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: toolNote)), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
+                        }
+                        // started
+                        let started = ACPToolCallUpdateWire(call_id: call.call_id, status: .started, output: nil, error: nil, _meta: ["progress": AnyEncodable(0.0)])
+                        let startedNote = ACP.Client.SessionNotificationWire(session_id: sid, update: .toolCallUpdate(started))
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: startedNote)), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
+                        }
+                        // completed with tiny payload
+                        let payload: [String: AnyEncodable] = [
+                            "workspace": AnyEncodable(ws),
+                            "indexed": AnyEncodable(false)
+                        ]
+                        let completed = ACPToolCallUpdateWire(call_id: call.call_id, status: .completed, output: AnyEncodable(payload), error: nil, _meta: nil)
+                        let completedNote = ACP.Client.SessionNotificationWire(session_id: sid, update: .toolCallUpdate(completed))
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: completedNote)), let jtext = String(data: out, encoding: .utf8) {
+                            client.send(text: jtext)
                         }
                     case ACPRPC.sessionSetMode:
                         // Update current mode and broadcast a current_mode_update
