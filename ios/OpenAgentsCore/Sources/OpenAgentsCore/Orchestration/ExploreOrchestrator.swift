@@ -21,7 +21,7 @@ struct PlannedOperation {
     @Guide(description: "Operation type: sessionList, readSpan, grep, or listDir")
     let type: String
 
-    @Guide(description: "Main parameter. For sessionList: provider name (claude-code or codex). For readSpan/listDir: file path. For grep: search pattern.")
+    @Guide(description: "Single parameter value. Examples: claude-code, /path/to/file, pattern")
     let param: String
 }
 
@@ -174,22 +174,19 @@ public actor ExploreOrchestrator {
             prompt = """
             Workspace: \(workspaceName)
 
-            Goals:
-            - \(goalsStr)
-
-            Generate EXACTLY 3 operations:
-            1. sessionList with provider=claude-code and count=20
-            2. sessionList with provider=codex and count=20
-            3. listDir with path=.
+            Generate 3 operations:
+            1. type="sessionList", param="claude-code"
+            2. type="sessionList", param="codex"
+            3. type="listDir", param="\(workspaceRoot)"
             """
         } else {
             prompt = """
             Workspace: \(workspaceName)
 
-            Goals:
-            - \(goalsStr)
-
-            Generate EXACTLY 3 operations to explore this codebase.
+            Generate 3 operations:
+            1. type="listDir", param="\(workspaceRoot)"
+            2. type="readSpan", param="README.md"
+            3. type="grep", param="TODO"
             """
         }
 
@@ -217,12 +214,10 @@ public actor ExploreOrchestrator {
                 throw OrchestrationError.executionFailed("FM generated empty plan")
             }
 
-            // Apply expansion logic
-            let expandedOps = expandOperations(ops)
-
+            // Return operations without expansion - FM generates complete plan
             return ExplorePlan(
                 goals: goals,
-                nextOps: expandedOps
+                nextOps: ops
             )
         } catch {
             print("[Orchestrator] Error generating plan: \(error)")
