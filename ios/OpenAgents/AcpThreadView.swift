@@ -119,11 +119,11 @@ struct AcpThreadView: View {
         .onChange(of: url?.path) { _, _ in load() }
         .onAppear(perform: load)
         #if os(iOS)
-        .onChange(of: bridge.updates.count) { oldCount, newCount in
-            print("[AcpThreadView] onChange fired: count \(oldCount) -> \(newCount), timeline.count=\(timeline.count), timeline.isEmpty=\(timeline.isEmpty)")
-            if timeline.isEmpty, !bridge.updates.isEmpty {
-                print("[AcpThreadView] Full recompute path - timeline empty, loading \(bridge.updates.count) updates")
-                let snapshot = bridge.updates
+        .onChange(of: bridge.updates) { oldUpdates, newUpdates in
+            print("[AcpThreadView] onChange fired: \(oldUpdates.count) -> \(newUpdates.count) updates, timeline.count=\(timeline.count)")
+            if timeline.isEmpty, !newUpdates.isEmpty {
+                print("[AcpThreadView] Full recompute path - timeline empty, loading \(newUpdates.count) updates")
+                let snapshot = newUpdates
                 isLoading = true
                 processedUpdateIds.removeAll()
                 for note in snapshot {
@@ -140,26 +140,26 @@ struct AcpThreadView: View {
                     }
                 }
             } else {
-                print("[AcpThreadView] Incremental update path - processing \(bridge.updates.count) updates against \(processedUpdateIds.count) seen IDs")
+                print("[AcpThreadView] Incremental update path - processing \(newUpdates.count) updates")
                 // Process new updates, skipping ones we've already seen
-                var newUpdates = 0
-                for note in bridge.updates {
+                var newCount = 0
+                for note in newUpdates {
                     let id = updateId(note)
                     if !processedUpdateIds.contains(id) {
-                        print("[AcpThreadView] New update detected: \(String(describing: note.update).prefix(50))")
+                        print("[AcpThreadView] New update: \(String(describing: note.update).prefix(50))")
                         appendUpdate(note)
                         processedUpdateIds.insert(id)
-                        newUpdates += 1
+                        newCount += 1
                         // Keep set bounded to avoid unbounded growth
                         if processedUpdateIds.count > 500 {
                             processedUpdateIds.removeAll()
-                            for n in bridge.updates {
+                            for n in newUpdates {
                                 processedUpdateIds.insert(updateId(n))
                             }
                         }
                     }
                 }
-                print("[AcpThreadView] Processed \(newUpdates) new updates, timeline now has \(timeline.count) items")
+                print("[AcpThreadView] Processed \(newCount) new, timeline now \(timeline.count) items")
             }
         }
         #endif
