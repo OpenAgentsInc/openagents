@@ -59,7 +59,7 @@ All ACP translation and processing happens in Swift. No Rust, no TypeScript, no 
 
 ### iOS
 
-1. Download from TestFlight (link coming soon)
+1. Download from [TestFlight](https://testflight.apple.com/join/dvQdns5B)
 2. Pair with your Mac running the companion app
 3. Start managing your coding agents
 
@@ -127,4 +127,4 @@ MIT
 
 - [GitHub Issues](https://github.com/OpenAgentsInc/openagents/issues)
 - [ADRs](docs/adr/)
-- [TestFlight](https://testflight.apple.com) (coming soon)
+- [TestFlight](https://testflight.apple.com/join/dvQdns5B)
