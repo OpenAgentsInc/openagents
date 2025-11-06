@@ -214,15 +214,40 @@ public actor ExploreOrchestrator {
                 throw OrchestrationError.executionFailed("FM generated empty plan")
             }
 
-            // Return operations without expansion - FM generates complete plan
+            // Post-process: add sessionAnalyze if we have session operations
+            // This reads actual conversation content for deeper analysis
+            let finalOps = addAnalysisIfNeeded(ops)
+
             return ExplorePlan(
                 goals: goals,
-                nextOps: ops
+                nextOps: finalOps
             )
         } catch {
             print("[Orchestrator] Error generating plan: \(error)")
             throw OrchestrationError.executionFailed("Failed to generate exploration plan: \(error.localizedDescription)")
         }
+    }
+
+    /// Add sessionAnalyze if plan contains session operations
+    /// This ensures we actually read conversation content, not just list titles
+    private func addAnalysisIfNeeded(_ ops: [AgentOp]) -> [AgentOp] {
+        let hasSessionOps = ops.contains { op in
+            switch op.kind {
+            case .sessionList, .sessionSearch:
+                return true
+            default:
+                return false
+            }
+        }
+
+        guard hasSessionOps else {
+            return ops // No session operations, return as-is
+        }
+
+        // Add sessionAnalyze to read and analyze conversation content
+        var expanded = ops
+        expanded.append(AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], provider: nil))))
+        return expanded
     }
 
     /// Convert PlannedOperation (from guided generation) to AgentOp
