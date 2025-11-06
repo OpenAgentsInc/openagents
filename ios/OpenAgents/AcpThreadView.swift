@@ -1240,15 +1240,13 @@ private func jsonFromAnyEncodableObject(_ obj: [String: AnyEncodable]?) -> JSONV
     guard let obj = obj else { return .object([:]) }
     var out: [String: JSONValue] = [:]
     for (k, v) in obj {
-        out[k] = jsonFromAnyEncodable(v)
+        out[k] = v.toJSONValue()  // Use direct conversion instead of encode/decode round-trip
     }
     return .object(out)
 }
 private func jsonFromAnyEncodable(_ a: AnyEncodable) -> JSONValue {
-    // Encode then decode to Foundation and map to JSONValue
-    guard let data = try? JSONEncoder().encode(a) else { return .null }
-    let any = try? JSONSerialization.jsonObject(with: data)
-    return jsonValueFromFoundation(any)
+    // Use direct conversion to preserve full data structure
+    return a.toJSONValue()
 }
 private func jsonValueFromFoundation(_ any: Any?) -> JSONValue {
     if any == nil { return .null }
