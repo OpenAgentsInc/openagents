@@ -22,10 +22,6 @@ final class BridgeManager: ObservableObject {
     @Published var status: Status = .idle
     @Published var lastLog: String = ""
     @Published var logs: [String] = [] // recent logs (ring buffer)
-    #if os(iOS)
-    // Latest thread JSONL lines (mobile-only initial hydrate)
-    @Published var latestLines: [String] = [] // deprecated; retained for local file preview paths
-    #endif
     private var currentHost: String?
     private var currentPort: Int?
 #if os(macOS)

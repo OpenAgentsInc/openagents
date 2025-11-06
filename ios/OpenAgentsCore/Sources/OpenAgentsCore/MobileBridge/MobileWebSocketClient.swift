@@ -30,7 +30,6 @@ public final class MobileWebSocketClient {
     public var maxRetryAttempts: Int = 5
     public var initialRetryDelay: TimeInterval = 1.0
     public var maxRetryDelay: TimeInterval = 30.0
-    /// Deprecated: legacy single-value timeout (unused when initial/retry are set)
     public var handshakeTimeout: TimeInterval = 10.0
     /// Shorter timeout for the first connection attempt to avoid long black-screen impressions.
     public var initialHandshakeTimeout: TimeInterval = 3.0

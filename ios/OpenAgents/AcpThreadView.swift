@@ -8,7 +8,6 @@ import AppKit
 
 struct AcpThreadView: View {
     let url: URL?
-    var initialLines: [String]? = nil
     let maxMessages: Int = 400
     var onTitleChange: ((String) -> Void)? = nil
 
@@ -18,7 +17,6 @@ struct AcpThreadView: View {
     
     enum TimelineItem: Identifiable {
         case message(ACPMessage)
-        case reasoning(ACPMessage) // legacy, not used in render
         case reasoningSummary(ReasoningSummary)
         case toolCall(ACPToolCall)
         case toolResult(ACPToolResult)
@@ -32,11 +30,6 @@ struct AcpThreadView: View {
                     if case let .text(t) = part { return t.text } else { return nil }
                 }.joined()
                 return "msg_\(m.id)_\(m.ts)_\(text.hashValue)"
-            case .reasoning(let m):
-                let text = m.parts.compactMap { part -> String? in
-                    if case let .text(t) = part { return t.text } else { return nil }
-                }.joined()
-                return "reason_\(m.id)_\(m.ts)_\(text.hashValue)"
             case .toolCall(let c): return "call_\(c.id)_\(c.ts ?? 0)"
             case .toolResult(let r): return "res_\(r.call_id)\(r.ts ?? 0)"
             case .reasoningSummary(let rs): return "rs_\(rs.startTs)_\(rs.endTs)\(rs.messages.count)"
@@ -47,7 +40,6 @@ struct AcpThreadView: View {
         var ts: Int64 {
             switch self {
             case .message(let m): return m.ts
-            case .reasoning(let m): return m.ts
             case .reasoningSummary(let rs): return rs.endTs
             case .toolCall(let c): return c.ts ?? 0
             case .toolResult(let r): return r.ts ?? 0
@@ -309,8 +301,6 @@ struct AcpThreadView: View {
                 )
                 .clipShape(Capsule(style: .continuous))
             }
-        case .reasoning:
-            EmptyView()
         case .toolCall(let call):
             ToolCallView(call: call, result: findResult(for: call))
         case .toolResult:
@@ -1225,31 +1215,7 @@ func AcpThreadView_computeTimelineFromUpdates(updates: [ACP.Client.SessionNotifi
     return (capped, nil)
 }
 
-// DEPRECATED: This heuristic should NOT be used for ACP protocol messages.
-// ACP explicitly distinguishes agentMessageChunk vs agentThoughtChunk.
-// This function is kept only for legacy non-ACP data compatibility.
-// Heuristic: detect thought-like assistant text (bulleted lists, internal monologue hints)
-private func isLikelyThoughtText(_ text: String) -> Bool {
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { return false }
-    // Count lines that look like bullets or numbered lists
-    let lines = trimmed.split(separator: "\n").map(String.init)
-    var bulletish = 0
-    for l in lines.prefix(8) { // inspect first few lines
-        let s = l.trimmingCharacters(in: .whitespaces)
-        if s.hasPrefix("•") || s.hasPrefix("-") || s.hasPrefix("*") { bulletish += 1; continue }
-        // numeric like "1." or "2)"
-        var j = s.startIndex
-        var hadDigit = false
-        while j < s.endIndex, let _ = s[j].wholeNumberValue { hadDigit = true; j = s.index(after: j) }
-        if hadDigit && j < s.endIndex && (s[j] == "." || s[j] == ")") { bulletish += 1; continue }
-    }
-    if bulletish >= 2 { return true }
-    // Keywords often present in internal thoughts
-    let lower = trimmed.lowercased()
-    if lower.contains("internal monologue") || lower.contains("reasoning:") || lower.contains("thought:") { return true }
-    return false
-}
+//
 
 // Pretty-encode any Encodable value (top-level helper for pure functions)
 private func AcpThreadView_encodeJSONPretty<T: Encodable>(_ value: T) -> String {
