@@ -911,8 +911,19 @@ public class DesktopWebSocketServer {
             }
 
             if !summary.followups.isEmpty {
-                sections.append("\n**Insights:**")
+                sections.append("\n**Insights (deterministic):**")
                 summary.followups.forEach { sections.append("• \($0)") }
+            }
+
+            // Ask Foundation Models to produce actual analysis bullets
+            if #available(macOS 26.0, *) {
+                if let fmText = await orchestrator.fmAnalysisText(), !fmText.isEmpty {
+                    sections.append("\n**Analysis (FM):**")
+                    sections.append(fmText)
+                } else {
+                    sections.append("\n**Analysis (FM):**")
+                    sections.append("• (FM unavailable or returned no content)")
+                }
             }
 
             let summaryText = sections.joined(separator: "\n")

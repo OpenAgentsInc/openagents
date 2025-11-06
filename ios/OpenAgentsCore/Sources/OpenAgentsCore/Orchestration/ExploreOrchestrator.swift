@@ -467,7 +467,8 @@ public actor ExploreOrchestrator {
             if !interestingTitles.isEmpty {
                 followups.append("**Recent work:**")
                 for title in interestingTitles {
-                    followups.append("• \(title)")
+                    // Do not prefix bullets here; the server formats bullets.
+                    followups.append(title)
                 }
             }
         }
@@ -609,6 +610,98 @@ public actor ExploreOrchestrator {
         )
         let sessionUpdate = ACP.Client.SessionUpdate.toolCallUpdate(update)
         await streamHandler(sessionUpdate)
+    }
+
+    // MARK: - FM-Powered Insight Generation
+    /// Use Foundation Models to turn computed metrics into actual analysis text
+    @available(iOS 26.0, macOS 26.0, *)
+    private func generateFMAnalysis() async -> String? {
+        #if canImport(FoundationModels)
+        // Extract latest session.analyze result
+        var analyze: SessionAnalyzeResult?
+        for (op, result) in operationResults {
+            if case .sessionAnalyze = op.kind, let r = result as? SessionAnalyzeResult {
+                analyze = r
+            }
+        }
+        guard let analyze = analyze else { return nil }
+
+        // Build compact JSON context
+        struct Context: Codable {
+            let avgConversationLength: Double?
+            let topFiles: [String]
+            let fileFrequency: [String:Int]?
+            let toolFrequency: [String:Int]?
+            let goalPatterns: [String]?
+        }
+        // Use the file frequency keys we aggregated into summary as hints too
+        let topFilesHint: [String] = {
+            var set = Set<String>()
+            for (op, result) in operationResults {
+                if case .grep = op.kind, let r = result as? GrepResult {
+                    r.matches.prefix(20).forEach { set.insert($0.path) }
+                }
+                if case .readSpan = op.kind, let r = result as? ContentSpanResult { set.insert(r.path) }
+            }
+            return Array(set).prefix(10).map { $0 }
+        }()
+
+        let ctx = Context(
+            avgConversationLength: analyze.avgConversationLength,
+            topFiles: topFilesHint,
+            fileFrequency: analyze.fileFrequency,
+            toolFrequency: analyze.toolFrequency,
+            goalPatterns: analyze.goalPatterns?.prefix(12).map { $0 }
+        )
+
+        guard let ctxData = try? JSONEncoder().encode(ctx),
+              let ctxStr = String(data: ctxData, encoding: .utf8) else {
+            return nil
+        }
+
+        // Prepare prompt
+        let instructions = Instructions("""
+        You are an engineering analyst. Produce concrete, non-generic insights.
+        - Use the provided metrics to infer real patterns of work.
+        - Identify the most touched files, common user intents, and tool usage trends.
+        - Output 5-8 crisp bullets. No placeholders. Be specific.
+        - If a metric is empty, skip it—do not fabricate.
+        """)
+
+        let model = SystemLanguageModel.default
+        let session = LanguageModelSession(model: model, tools: [], instructions: instructions)
+
+        let prompt = """
+        Metrics JSON:
+        \(ctxStr)
+
+        Write the analysis bullets now.
+        """
+
+        // Log sizes and time
+        print("[FM] analysis request: instructions=\(String(describing: instructions).count) chars, prompt=\(prompt.count) chars, ctxBytes=\(ctxData.count)")
+        do {
+            let t0 = Date()
+            let resp = try await session.respond(to: prompt)
+            let dt = Date().timeIntervalSince(t0)
+            // LanguageModelSession.Response<String> exposes `content` (not `text`)
+            print("[FM] analysis response in \(String(format: "%.2f", dt))s, text=\(resp.content.count) chars")
+            let analysis = resp.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !analysis.isEmpty else { return nil }
+            return analysis
+        } catch {
+            print("[FM] analysis error: \(error)")
+            return nil
+        }
+        #else
+        return nil
+        #endif
+    }
+
+    /// Public accessor to compute FM analysis for the last run
+    @available(iOS 26.0, macOS 26.0, *)
+    public func fmAnalysisText() async -> String? {
+        return await generateFMAnalysis()
     }
 
     /// Stream progress updates for long-running tools (e.g., session.analyze)
