@@ -75,8 +75,12 @@ public actor ExploreOrchestrator {
     /// Stream handler for ACP updates
     private let streamHandler: ACPUpdateStreamHandler
 
-    /// Tool executor
-    private let toolExecutor: ToolExecutor
+    /// Tool executor (lazy so we can safely capture `self` for progress callbacks)
+    private lazy var toolExecutor: ToolExecutor = {
+        ToolExecutor(workspaceRoot: workspaceRoot, progress: { [weak self] op, fraction, note in
+            await self?.streamProgress(op, fraction: fraction, note: note)
+        })
+    }()
 
     public init(
         workspaceRoot: String,
@@ -88,9 +92,7 @@ public actor ExploreOrchestrator {
         self.goals = goals
         self.policy = policy
         self.streamHandler = streamHandler
-        self.toolExecutor = ToolExecutor(workspaceRoot: workspaceRoot, progress: { [weak self] op, fraction, note in
-            await self?.streamProgress(op, fraction: fraction, note: note)
-        })
+        // toolExecutor is lazy and will be created on first use
     }
 
     /// Start exploration process
