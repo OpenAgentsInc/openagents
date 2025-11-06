@@ -58,6 +58,8 @@ final class BridgeManager: ObservableObject {
     @Published var currentSessionId: ACPSessionId? = nil
     @Published var availableCommands: [ACP.Client.AvailableCommand] = []
     @Published var currentMode: ACPSessionModeId = .default_mode
+    // Map tool call_id -> tool name for rendering updates
+    @Published var toolCallNames: [String: String] = [:]
 
     func start() {
         let (h, p) = BridgeManager.pickInitialEndpoint()
@@ -158,6 +160,9 @@ extension BridgeManager: MobileWebSocketClientDelegate {
                         self.availableCommands = ac.available_commands
                     case .currentModeUpdate(let cur):
                         self.currentMode = cur.current_mode_id
+                    case .toolCall(let call):
+                        // Remember tool name for subsequent tool_call_update rows
+                        self.toolCallNames[call.call_id] = call.name
                     default:
                         break
                     }
