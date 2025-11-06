@@ -157,7 +157,7 @@ private struct UpdateRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text(extractText(from: chunk))
+                markdownText(extractText(from: chunk))
                     .font(.body)
             }
         case .userMessageChunk(let chunk):
@@ -181,8 +181,14 @@ private struct UpdateRow: View {
                     .foregroundStyle(.secondary)
             }
         case .plan(let plan):
-            Text("Plan: \(plan.entries.count) items")
-                .foregroundStyle(.secondary)
+            // Convert ACPPlan to ACPPlanState for rendering
+            let planState = ACPPlanState(
+                status: .running,
+                summary: nil,
+                steps: plan.entries.map { $0.content },
+                ts: nil
+            )
+            PlanStateView(state: planState)
         case .availableCommandsUpdate(let ac):
             Text("Available: \(ac.available_commands.count) commands")
                 .foregroundStyle(.secondary)
@@ -212,6 +218,14 @@ private struct UpdateRow: View {
                 return "Embedded blob: \(blobResource.uri)"
             }
         }
+    }
+
+    /// Render markdown text
+    private func markdownText(_ text: String) -> Text {
+        if let md = try? AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return Text(md)
+        }
+        return Text(text)
     }
 }
 
