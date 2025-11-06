@@ -790,11 +790,12 @@ extension DesktopWebSocketServer {
                     if m.role == .user {
                         updates.append(.userMessageChunk(chunk))
                     } else if m.role == .assistant {
-                        // Check if this is reasoning (thinking block)
-                        // Claude Code thinking blocks are mapped to assistant messages
-                        // For now, treat all assistant messages as regular messages
-                        // TODO: Add metadata to distinguish thinking from regular response
-                        updates.append(.agentMessageChunk(chunk))
+                        // Check isThinking metadata to distinguish thinking from regular response
+                        if m.isThinking == true {
+                            updates.append(.agentThoughtChunk(chunk))
+                        } else {
+                            updates.append(.agentMessageChunk(chunk))
+                        }
                     }
                 }
                 if let call = event.tool_call {
