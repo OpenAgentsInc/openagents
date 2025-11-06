@@ -1,36 +1,45 @@
-# ADR 0003 — Swift Cross‑Platform App (macOS + iOS) Experiment
+# ADR 0003 — Swift Cross‑Platform App (macOS + iOS)
 
  - Date: 2025-11-03
- - Status: In Progress — Desktop‑first implementation
+ - Status: Accepted — Desktop + Mobile direction
 
 ## Context
 
-We have introduced a new `ios/` folder to explore a native Swift app that targets both macOS (desktop) and iOS (mobile) with shared SwiftUI code. The goal is to validate whether we can deliver our full core coding flow directly in Swift — starting with the desktop app — and then pair the same codebase to the mobile app.
+We have adopted a native Swift app that targets both macOS (desktop) and iOS (mobile) with shared SwiftUI code. This is our chosen direction for Apple platforms.
+
+Current operating mode:
+- The desktop app runs the ACP JSON‑RPC server (and client services) that powers the mobile app.
+- The mobile app requires a paired desktop app; it does not operate standalone today.
+
+Planned evolution:
+- We want the desktop app to be fully usable on its own (even without pairing the mobile app). Mobile pairing remains optional and complementary.
 
 Key drivers:
-- A unified native experience for Apple platforms with SwiftUI (windowing, shortcuts, first‑class local integrations), while keeping the Expo app for cross‑platform mobile and the Rust bridge for today’s flows.
-- Faster local iteration and packaging: experiment with running provider CLIs (Codex, Claude Code) and handling ACP updates natively in Swift.
-- Evaluate whether this Swift app replaces or supplements the Tauri desktop app; decision deferred until results of this experiment.
+- A unified native experience for Apple platforms with SwiftUI (windowing, shortcuts, first‑class local integrations), while keeping the Expo app and existing Rust bridge until migration completes.
+- Faster local iteration and packaging; native handling of ACP updates in Swift.
+- Clear pairing story: desktop provides services/modes the phone cannot (fs/terminal, process control), while offering a path for desktop‑only usage.
 
 This work must preserve our canonical contracts: ACP on the wire (ADR‑0002) and Tinyvex typed rows/snapshots for history and live UI. It must not introduce ad‑hoc JSON to the app boundary.
 
 ## Decision
 
-Proceed with an experiment to build a SwiftUI app for macOS and iOS that implements the core coding flow with two pluggable engines behind a single interface:
+Adopt a SwiftUI app for macOS and iOS with the desktop app acting as the ACP JSON‑RPC server for the mobile app. This architecture is accepted.
 
-- Engine A — Swift Runner (default for the experiment):
-  - Spawn provider CLIs directly (e.g., `codex exec --json ...`) and stream JSON lines over pipes.
-  - Translate provider output into ACP updates in‑process (minimal subset at first), then mirror into a local store for the UI.
+- Primary mode (today):
+  - Desktop runs an Apple‑native ACP JSON‑RPC server and client services (fs, terminal, permissions). iOS connects over Bonjour/WS and consumes `session/update` streams.
+  - Mobile requires a paired desktop; no phone‑only mode yet.
 
-- Engine B — Bridge Client (compatibility path):
-  - Connect to the Apple‑native macOS bridge over WebSocket using JSON‑RPC ACP methods (`initialize`, `session/new`, `session/prompt`, `session/update`, `session/cancel`).
-  - Optionally connect to the existing Rust bridge where available; parity maintained via ACP on the wire.
-  - Read‑only history works out‑of‑the‑box; live sessions mirror current behavior.
+- Roadmap:
+  - Desktop must be fully usable by itself even without pairing a phone (initiate sessions, render timelines, manage files/terminal locally).
+  - Mobile pairing remains optional and complementary.
 
-Scope and guardrails for the experiment:
-- Desktop first: ship a macOS app with the shared core in a Swift package; then enable the iOS target after desktop is usable.
-- Maintain ACP/Tinyvex semantics at the UI boundary. No new HTTP control plane; use WS control envelopes when talking to the bridge, or local process/stdio when running directly.
-- Do not change existing Expo or Rust contracts; this ADR adds a Swift client, not a new server.
+- Optional engines:
+  - Swift Runner (desktop): spawn provider CLIs locally and translate to ACP updates in‑process, preserving ACP contracts.
+  - Optional connection to the Rust bridge where available; parity maintained via ACP on the wire.
+
+Scope and guardrails:
+- Maintain ACP semantics at the app boundary (ADR‑0002). No HTTP control plane; use JSON‑RPC over WebSocket or local process/stdio.
+- Do not change existing Expo or Rust contracts; they continue to work during migration.
 
 ## Rationale
 
@@ -59,11 +68,11 @@ Scope and guardrails for the experiment:
 
 ## Consequences
 
-- Duplicate desktop surface during the experiment (Tauri and Swift). We will carry both until we conclude whether to replace or supplement Tauri.
-- Type/code duplication risk for ACP/Tinyvex in Swift. We will start with a minimal, strictly typed Swift model and evaluate codegen if the experiment continues.
-- Release/CI adds Apple app packaging steps. No change to bridge releases (see `docs/bridge-release.md`).
-- When using the Swift Runner, translating provider output to ACP must be maintained as providers evolve (currently done in Rust for the bridge).
-- Reading Tinyvex directly from SQLite introduces cross‑process concerns; we will begin read‑only and follow SQLite WAL best practices.
+- Two Apple surfaces (desktop + mobile) are maintained; desktop currently supports mobile and will also stand alone.
+- Type/code duplication risk for ACP in Swift; evaluate schema‑driven codegen to reduce drift.
+- Release/CI includes Apple packaging; no change to Rust bridge release flow.
+- Provider translation must remain current; maintain Swift runner mappings or reuse a server that already emits ACP.
+- SQLite read/write considerations apply when persisting locally; prefer WAL and read‑only where applicable.
 
 ## Implementation Plan
 
@@ -74,20 +83,16 @@ Scope and guardrails for the experiment:
 
 2) Types and contracts
 - Define minimal Swift `Codable` types for ACP envelopes we render (messages, tool calls, plan/state) and Tinyvex rows we need for history.
-- Keep fields snake_case to match ADR‑0002/0007. Prefer value types with precise optionals; no `Any`.
-- If the experiment proceeds, evaluate codegen from JSON Schema (ACP) and/or a Rust → Swift generator for Tinyvex transport types to remove duplication.
+- Keep fields snake_case to match ADR‑0002. Prefer value types with precise optionals; no `Any`.
+- Evaluate codegen from JSON Schema (ACP) and/or a Rust → Swift generator to reduce duplication.
 
 3) History (read‑only initially)
 - Primary: read Tinyvex SQLite at `~/.openagents/tinyvex/data.sqlite3` using a lightweight SQLite library (GRDB/SQLite.swift). Map rows to Swift types that mirror our Tinyvex transport.
 - Fallback: if the DB is unavailable, connect to a reachable bridge over WS and fetch a snapshot of threads/messages/tool calls.
 
 4) Live sessions
-- Engine A (Swift Runner):
-  - Process manager spawns `codex exec --json` with our standard flags (approvals/sandbox/model) and writes the prompt to stdin; close to signal EOF; respawn per message as needed.
-  - Parse JSONL output; where output is not already ACP, apply a minimal adapter to produce ACP `SessionUpdate`s sufficient to render messages/tool calls.
-  - Mirror updates into the in‑app store (and optionally into Tinyvex via direct SQLite writes in a later phase).
-- Engine B (Bridge Client):
-  - Connect to `ws://<host>:<port>/ws?token=…`; subscribe to Tinyvex updates and use WS controls for `run.submit` etc., exactly as mobile does today.
+- ACP JSON‑RPC bridge (primary): desktop handles `initialize`, `session/new`, `session/prompt`, `session/update`, `session/cancel`; iOS consumes typed updates.
+- Swift Runner (optional): spawn provider CLIs, translate to ACP updates, mirror into local store; maintain ACP semantics.
 
 5) UI slices (desktop first)
 - History list (threads) → detail (thread timeline) using Tinyvex rows; a settings view for connection and engine selection; a composer to submit prompts.
@@ -117,23 +122,21 @@ Update — bridge pairing and transport (2025‑11‑04)
 
 ## Acceptance
 
-- Desktop Swift app loads historical threads and messages from Tinyvex (read‑only) and renders them with ACP‑aligned types.
-- The app can run a new session on desktop and stream updates end‑to‑end:
-  - Engine A: run a prompt via `codex exec --json`, parse, render in the thread timeline.
-  - Engine B: connect to an existing bridge, send `run.submit`, and render Tinyvex updates.
+- Desktop app runs an ACP JSON‑RPC server; iOS connects and receives streamed `session/update` notifications.
+- Desktop can initiate and render sessions locally; goal is full standalone usability without mobile pairing.
 - No changes required in the Expo app or Rust bridge; both continue to function unchanged.
 - All Swift models are strongly typed (`Codable`), snake_case, and contain no dynamic `Any` usage.
 
-Interim acceptance (in progress)
+Interim acceptance
 - Reads Codex sessions for history; renders ACP messages + tool calls/results; Markdown enabled; composer present.
 - Bridge write path and live session streaming are WIP.
 
 ## Open Questions
 
-- Provider translation: Does the Codex CLI emit ACP directly in our target flows? If not, how much of the Rust ACP translator must be ported to Swift for the experiment? We may temporarily implement a minimal subset or explore linking the Rust translator via FFI if needed.
-- Tinyvex writes from Swift: For the experiment we will read Tinyvex; do we want the Swift Runner to also write rows for immediate cross‑app visibility? If yes, we need write‑path parity and idempotency guarantees (see ADR‑0003 invariants).
-- Long‑term desktop surface: If the Swift app proves successful, do we deprecate Tauri (ADR‑0009) or run both? Criteria: performance, reliability, maintenance burden, and user feedback.
-- Distribution: App Store vs. notarized direct download for macOS; implications for bundled CLIs (Codex/Claude) and sandboxing.
+- Provider translation: Which pieces of translation should remain server‑side vs. in‑process Swift runner?
+- Tinyvex writes from Swift: When/if to enable write‑path parity with idempotency guarantees.
+- Legacy surfaces: De‑scoping and migration criteria from older desktop stacks.
+- Distribution: App Store vs. notarized direct download for macOS; implications for bundled CLIs and sandboxing.
 
 ## References
 
