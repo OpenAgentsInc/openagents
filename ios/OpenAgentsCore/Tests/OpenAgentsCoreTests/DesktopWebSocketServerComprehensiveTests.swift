@@ -302,6 +302,58 @@ final class DesktopWebSocketServerComprehensiveTests: XCTestCase {
         client.disconnect()
     }
 
+    func testIndexStatusEmitsSyntheticToolStream() throws {
+        sut = DesktopWebSocketServer()
+        sut.delegate = mockDelegate
+        let port: UInt16 = 9988
+
+        try sut.start(port: port, advertiseService: false)
+
+        let client = MobileWebSocketClient()
+        let clientDelegate = MockMobileWebSocketClientDelegate()
+        client.delegate = clientDelegate
+
+        let url = URL(string: "ws://127.0.0.1:\(port)")!
+        client.connect(url: url)
+
+        // Wait for connection
+        let connectExpectation = expectation(description: "connected")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if clientDelegate.didConnect { connectExpectation.fulfill() }
+        }
+        wait(for: [connectExpectation], timeout: 3.0)
+
+        // Create a session first
+        var sessionId: ACPSessionId?
+        let sessionExpectation = expectation(description: "session new response")
+        client.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-idx-status") { (resp: ACP.Agent.SessionNewResponse?) in
+            sessionId = resp?.session_id
+            sessionExpectation.fulfill()
+        }
+        wait(for: [sessionExpectation], timeout: 3.0)
+        XCTAssertNotNil(sessionId)
+
+        // Call index.status
+        struct StatusParams: Codable { let session_id: ACPSessionId }
+        let statusExpectation = expectation(description: "index.status response and updates")
+        var receivedResponse = false
+        client.sendJSONRPC(method: "index.status", params: StatusParams(session_id: sessionId!), id: "index-status-1") { (resp: AnyCodable?) in
+            receivedResponse = true
+            // Allow time for server to push synthetic updates
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                statusExpectation.fulfill()
+            }
+        }
+        wait(for: [statusExpectation], timeout: 5.0)
+        XCTAssertTrue(receivedResponse)
+
+        // Verify at least two session/update notifications arrived (tool_call + tool_call_update)
+        let updates = clientDelegate.receivedNotifications.filter { $0.method == ACPRPC.sessionUpdate }
+        XCTAssertGreaterThanOrEqual(updates.count, 2)
+
+        client.disconnect()
+    }
+
     // MARK: - Client Hash and Equality Tests
 
     func testClientEquality() {

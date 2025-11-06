@@ -232,6 +232,11 @@ extension BridgeManager {
     struct EmptyResult: Codable {}
     struct Empty: Codable {}
     struct LatestThreadResult: Codable { let id: String; let lines: [String] }
+    /// Send a JSON-RPC request via the mobile client, decoding the expected result type.
+    func sendRPC<P: Codable, R: Codable>(method: String, params: P, id: String = UUID().uuidString, completion: @escaping (R?) -> Void) {
+        guard let client = self.client else { completion(nil); return }
+        client.sendJSONRPC(method: method, params: params, id: id, completion: completion)
+    }
     func sendPrompt(text: String) {
         guard let client = self.client else { return }
         let parts: [ACP.Client.ContentBlock] = [.text(.init(text: text))]
