@@ -140,15 +140,25 @@ struct ToolCallDetailSheet: View {
             #endif
             .toolbar {
                 #if os(iOS)
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Copy raw JSON") {
+                        copyRawJSON()
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
                 }
                 #else
-                ToolbarItem(placement: .automatic) {
+                ToolbarItem(placement: .navigation) {
                     Button("Done") {
                         dismiss()
+                    }
+                }
+                ToolbarItem(placement: .automatic) {
+                    Button("Copy raw JSON") {
+                        copyRawJSON()
                     }
                 }
                 #endif
@@ -165,6 +175,25 @@ struct ToolCallDetailSheet: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         #endif
+    }
+
+    private func copyRawJSON() {
+        // Combine tool call and result into single JSON structure
+        struct ToolCallWithResult: Codable {
+            let call: ACPToolCall
+            let result: ACPToolResult?
+        }
+
+        let combined = ToolCallWithResult(call: call, result: result)
+        let json = encodeJSONPretty(combined)
+        copyToClipboard(json)
+    }
+
+    private func encodeJSONPretty<T: Encodable>(_ value: T) -> String {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let d = try? enc.encode(value), let s = String(data: d, encoding: .utf8) { return s }
+        return "{}"
     }
 }
 
