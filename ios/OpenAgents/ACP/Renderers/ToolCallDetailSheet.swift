@@ -1,11 +1,36 @@
 import SwiftUI
 import OpenAgentsCore
+#if os(macOS)
+import AppKit
+#endif
 
 /// Detail sheet for tool calls, showing full params and result JSON
 struct ToolCallDetailSheet: View {
     let call: ACPToolCall
     let result: ACPToolResult?
     @Environment(\.dismiss) private var dismiss
+
+    // Pre-compute JSON strings to avoid pasteboard timeout
+    private let argumentsJSON: String
+    private let resultJSON: String?
+    private let errorText: String?
+
+    init(call: ACPToolCall, result: ACPToolResult?) {
+        self.call = call
+        self.result = result
+
+        // Pre-compute arguments JSON (sync, but only once)
+        self.argumentsJSON = (try? prettyJSON(call.arguments)) ?? "{}"
+
+        // Pre-compute result JSON if available
+        if let resultValue = result?.result {
+            self.resultJSON = try? prettyJSON(resultValue)
+        } else {
+            self.resultJSON = nil
+        }
+
+        self.errorText = result?.error
+    }
 
     var body: some View {
         NavigationView {
@@ -26,20 +51,18 @@ struct ToolCallDetailSheet: View {
                         }
 
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Arguments")
-                                .font(OAFonts.ui(.subheadline, 14))
-                                .foregroundStyle(OATheme.Colors.textSecondary)
-
-                            if let pretty = try? prettyJSON(call.arguments) {
-                                Text(pretty)
-                                    .font(OAFonts.mono(.footnote, 12))
-                                    .foregroundStyle(OATheme.Colors.textPrimary)
-                                    .textSelection(.enabled)
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(OATheme.Colors.card.opacity(0.5))
-                                    .cornerRadius(8)
+                            HStack {
+                                Text("Arguments")
+                                    .font(OAFonts.ui(.subheadline, 14))
+                                    .foregroundStyle(OATheme.Colors.textSecondary)
+                                Spacer()
+                                Button(action: { copyToClipboard(argumentsJSON) }) {
+                                    Label("Copy", systemImage: "doc.on.doc")
+                                        .font(OAFonts.ui(.caption, 12))
+                                }
                             }
+
+                            JSONTextView(text: argumentsJSON)
                         }
                     }
 
@@ -64,11 +87,18 @@ struct ToolCallDetailSheet: View {
                                 }
                             }
 
-                            if let error = result.error, !error.isEmpty {
+                            if let error = errorText, !error.isEmpty {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("Error")
-                                        .font(OAFonts.ui(.subheadline, 14))
-                                        .foregroundStyle(OATheme.Colors.textSecondary)
+                                    HStack {
+                                        Text("Error")
+                                            .font(OAFonts.ui(.subheadline, 14))
+                                            .foregroundStyle(OATheme.Colors.textSecondary)
+                                        Spacer()
+                                        Button(action: { copyToClipboard(error) }) {
+                                            Label("Copy", systemImage: "doc.on.doc")
+                                                .font(OAFonts.ui(.caption, 12))
+                                        }
+                                    }
 
                                     Text(error)
                                         .font(OAFonts.mono(.footnote, 12))
@@ -81,22 +111,20 @@ struct ToolCallDetailSheet: View {
                                 }
                             }
 
-                            if let resultValue = result.result {
+                            if let resultJSON = resultJSON {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("Result Data")
-                                        .font(OAFonts.ui(.subheadline, 14))
-                                        .foregroundStyle(OATheme.Colors.textSecondary)
-
-                                    if let pretty = try? prettyJSON(resultValue) {
-                                        Text(pretty)
-                                            .font(OAFonts.mono(.footnote, 12))
-                                            .foregroundStyle(OATheme.Colors.textPrimary)
-                                            .textSelection(.enabled)
-                                            .padding(12)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(OATheme.Colors.card.opacity(0.5))
-                                            .cornerRadius(8)
+                                    HStack {
+                                        Text("Result Data")
+                                            .font(OAFonts.ui(.subheadline, 14))
+                                            .foregroundStyle(OATheme.Colors.textSecondary)
+                                        Spacer()
+                                        Button(action: { copyToClipboard(resultJSON) }) {
+                                            Label("Copy", systemImage: "doc.on.doc")
+                                                .font(OAFonts.ui(.caption, 12))
+                                        }
                                     }
+
+                                    JSONTextView(text: resultJSON)
                                 }
                             }
                         }
@@ -127,7 +155,38 @@ struct ToolCallDetailSheet: View {
             }
         }
     }
+
+    // MARK: - Helper Methods
+
+    private func copyToClipboard(_ text: String) {
+        #if os(iOS)
+        UIPasteboard.general.string = text
+        #elseif os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
+    }
 }
+
+// MARK: - JSON Text View
+
+/// Efficient text view for large JSON content with text selection enabled
+private struct JSONTextView: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(OAFonts.mono(.footnote, 12))
+            .foregroundStyle(OATheme.Colors.textPrimary)
+            .textSelection(.enabled)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OATheme.Colors.card.opacity(0.5))
+            .cornerRadius(8)
+    }
+}
+
+// MARK: - Detail Row
 
 private struct DetailRow: View {
     let label: String
