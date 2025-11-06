@@ -119,8 +119,10 @@ struct AcpThreadView: View {
         .onChange(of: url?.path) { _, _ in load() }
         .onAppear(perform: load)
         #if os(iOS)
-        .onChange(of: bridge.updates.count) { _, _ in
+        .onChange(of: bridge.updates.count) { oldCount, newCount in
+            print("[AcpThreadView] onChange fired: count \(oldCount) -> \(newCount), timeline.count=\(timeline.count), timeline.isEmpty=\(timeline.isEmpty)")
             if timeline.isEmpty, !bridge.updates.isEmpty {
+                print("[AcpThreadView] Full recompute path - timeline empty, loading \(bridge.updates.count) updates")
                 let snapshot = bridge.updates
                 isLoading = true
                 processedUpdateIds.removeAll()
@@ -130,6 +132,7 @@ struct AcpThreadView: View {
                 DispatchQueue.global(qos: .userInitiated).async {
                     let (items, title) = AcpThreadView_computeTimelineFromUpdates(updates: snapshot, cap: maxMessages)
                     DispatchQueue.main.async {
+                        print("[AcpThreadView] Recompute complete: \(items.count) items")
                         self.timeline = items
                         self.threadTitle = title
                         if let t = title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onTitleChange?(t) }
@@ -137,12 +140,16 @@ struct AcpThreadView: View {
                     }
                 }
             } else {
+                print("[AcpThreadView] Incremental update path - processing \(bridge.updates.count) updates against \(processedUpdateIds.count) seen IDs")
                 // Process new updates, skipping ones we've already seen
+                var newUpdates = 0
                 for note in bridge.updates {
                     let id = updateId(note)
                     if !processedUpdateIds.contains(id) {
+                        print("[AcpThreadView] New update detected: \(String(describing: note.update).prefix(50))")
                         appendUpdate(note)
                         processedUpdateIds.insert(id)
+                        newUpdates += 1
                         // Keep set bounded to avoid unbounded growth
                         if processedUpdateIds.count > 500 {
                             processedUpdateIds.removeAll()
@@ -152,6 +159,7 @@ struct AcpThreadView: View {
                         }
                     }
                 }
+                print("[AcpThreadView] Processed \(newUpdates) new updates, timeline now has \(timeline.count) items")
             }
         }
         #endif
