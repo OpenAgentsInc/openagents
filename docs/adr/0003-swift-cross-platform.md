@@ -104,7 +104,7 @@ Update — bridge pairing and transport (2025‑11‑04)
   - macOS auto‑starts `DesktopWebSocketServer` and advertises `_openagents._tcp`.
   - iOS auto‑discovers via Bonjour and connects.
   - Primary handshake and transport use JSON‑RPC 2.0 with ACP method names (`initialize` then `session/*`).
-  - A legacy `Hello/HelloAck` token handshake remains as a fallback only.
+  - Handshake is strictly JSON‑RPC `initialize`; no legacy token handshakes are supported.
   - This path enables Engine B (Bridge Client) for the Swift app without adding HTTP endpoints.
 
 6) Security and configuration

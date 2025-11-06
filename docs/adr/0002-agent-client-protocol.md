@@ -24,7 +24,7 @@ Adopt Agent Client Protocol (ACP) as the single, canonical runtime contract for 
 
 - In Apple‑native apps (iOS/macOS)
   - All ACP usage MUST go through the Swift parity module `ios/OpenAgentsCore/Sources/OpenAgentsCore/AgentClientProtocol/*` (one‑to‑one mapping with the Rust SDK).
-  - The Apple WebSocket bridge uses JSON‑RPC 2.0 and ACP method names; legacy Hello‑style envelopes are deprecated and retained only as a fallback.
+  - The Apple WebSocket bridge uses JSON‑RPC 2.0 and ACP method names exclusively.
   - Session lifecycle and streamed updates (`session/new`, `session/prompt`, `session/update`, `session/cancel`) are implemented natively in Swift using this module.
   - Client‑side services (fs.*, terminal.*, `session/request_permission`) are implemented in Swift behind permissions.
 

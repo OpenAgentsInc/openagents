@@ -9,9 +9,8 @@ We need a zero‑config, LAN‑first way for the iOS app to control/observe a de
 
 Goals:
 - No REST; a single persistent WebSocket connection.
-- JSON‑RPC 2.0 with ACP method names as the primary transport.
+- JSON‑RPC 2.0 with ACP method names as the transport.
 - Bonjour/mDNS discovery so users don’t type LAN IPs.
-- Optional token handshake retained as a legacy fallback; future QR pairing.
 
 ## Decision
 
@@ -20,7 +19,6 @@ Adopt an Apple‑native WebSocket bridge with Bonjour discovery and ACP over JSO
 - Desktop (macOS)
   - Auto‑start `DesktopWebSocketServer` at app launch and advertise `_openagents._tcp`.
   - Speak JSON‑RPC 2.0; on first contact handle `initialize` and then accept `session/*` requests and send `session/update` notifications.
-  - Accept `Hello`/`HelloAck` only as a fallback for legacy clients.
 
 - Mobile (iOS)
   - Auto‑browse `_openagents._tcp` via `NetServiceBrowser` and connect to the first record.
@@ -30,11 +28,9 @@ Adopt an Apple‑native WebSocket bridge with Bonjour discovery and ACP over JSO
 - Protocol (Phase 1)
   - JSON‑RPC 2.0 methods: `initialize`, `session/new`, `session/prompt`, `session/cancel` (notify), `session/update` (notify), `session/set_mode`.
   - Client‑handled services on macOS: `fs/read_text_file`, `fs/write_text_file`, `terminal/run`.
-  - Legacy: `Hello/HelloAck`, `Ping`, `Pong` retained for compatibility only.
 
 - Tokens
-  - Dev default token supported for the legacy Hello path (see `BridgeConfig`).
-  - Production token/QR pairing may be added; JSON‑RPC initialize remains the primary handshake.
+  - Production token/QR pairing may be added; JSON‑RPC initialize remains the only handshake.
 
 ## Rationale
 
@@ -47,7 +43,7 @@ Adopt an Apple‑native WebSocket bridge with Bonjour discovery and ACP over JSO
 - SwiftPM module `OpenAgentsCore` contains:
   - `DesktopWebSocketServer` (Network.framework)
   - `MobileWebSocketClient` (URLSessionWebSocketTask)
-  - `BridgeMessages`/`BridgeMessage` (envelope + Hello/Ping types)
+  - `BridgeMessages`/`BridgeMessage` (legacy envelope types, not used by JSON‑RPC path)
   - `BridgeConfig` (service type, default port/token)
 - App wiring:
   - `BridgeManager` starts the server on macOS and Bonjour‑discovers/connects on iOS; launched from `OpenAgentsApp`.
