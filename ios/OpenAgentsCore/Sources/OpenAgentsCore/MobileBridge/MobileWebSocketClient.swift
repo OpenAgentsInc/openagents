@@ -88,7 +88,6 @@ public final class MobileWebSocketClient {
         }
     }
 
-    // Legacy envelope send removed; use sendJSONRPC or sendJSONRPCNotification instead.
 
     /// Send a JSON-RPC request and capture the response via an id-bound completion closure
     public func sendJSONRPC<P: Codable, R: Codable>(method: String, params: P, id: String = UUID().uuidString, completion: @escaping (R?) -> Void) {

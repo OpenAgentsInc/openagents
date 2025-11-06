@@ -356,7 +356,6 @@ final class MobileWebSocketClientComprehensiveTests: XCTestCase {
         XCTAssertEqual(mockDelegate.receivedRequests[0].id, "req-123")
     }
 
-    // Legacy envelope tests removed; JSON-RPC transport is authoritative.
 
     // MARK: - Error Handling Tests
 
