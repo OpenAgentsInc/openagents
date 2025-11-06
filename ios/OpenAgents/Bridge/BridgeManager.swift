@@ -60,6 +60,8 @@ final class BridgeManager: ObservableObject {
     @Published var currentMode: ACPSessionModeId = .default_mode
     // Map tool call_id -> tool name for rendering updates
     @Published var toolCallNames: [String: String] = [:]
+    // Track latest index in `updates` for each tool_call_update call_id to coalesce progress
+    private var lastUpdateRowIndexByCallId: [String: Int] = [:]
 
     func start() {
         let (h, p) = BridgeManager.pickInitialEndpoint()
@@ -147,12 +149,37 @@ extension BridgeManager: MobileWebSocketClientDelegate {
         if method == ACPRPC.sessionUpdate {
             if let note = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: payload) {
                 log("client", "session.update for \(note.session_id.value)")
-                // Append to ring buffer for UI to observe
+                // Append/coalesce into ring buffer for UI to observe
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
-                    // Ring buffer: keep last 200 updates
-                    if self.updates.count >= 200 { self.updates.removeFirst() }
-                    self.updates.append(note)
+                    func adjustIndicesAfterPopFront() {
+                        // Shift all stored indices down by 1; drop any that become negative
+                        var newMap: [String:Int] = [:]
+                        for (k, v) in self.lastUpdateRowIndexByCallId {
+                            if v > 0 { newMap[k] = v - 1 }
+                        }
+                        self.lastUpdateRowIndexByCallId = newMap
+                    }
+
+                    switch note.update {
+                    case .toolCall(let call):
+                        // Remember tool name for subsequent tool_call_update rows
+                        self.toolCallNames[call.call_id] = call.name
+                        if self.updates.count >= 200 { self.updates.removeFirst(); adjustIndicesAfterPopFront() }
+                        self.updates.append(note)
+                    case .toolCallUpdate(let upd):
+                        if let idx = self.lastUpdateRowIndexByCallId[upd.call_id], idx < self.updates.count {
+                            // Replace existing row for this call_id with the latest update (coalesce progress)
+                            self.updates[idx] = note
+                        } else {
+                            if self.updates.count >= 200 { self.updates.removeFirst(); adjustIndicesAfterPopFront() }
+                            self.updates.append(note)
+                            self.lastUpdateRowIndexByCallId[upd.call_id] = self.updates.count - 1
+                        }
+                    default:
+                        if self.updates.count >= 200 { self.updates.removeFirst(); adjustIndicesAfterPopFront() }
+                        self.updates.append(note)
+                    }
                     // Force objectWillChange to notify observers even when count stays at 200
                     self.objectWillChange.send()
                     switch note.update {
@@ -160,9 +187,6 @@ extension BridgeManager: MobileWebSocketClientDelegate {
                         self.availableCommands = ac.available_commands
                     case .currentModeUpdate(let cur):
                         self.currentMode = cur.current_mode_id
-                    case .toolCall(let call):
-                        // Remember tool name for subsequent tool_call_update rows
-                        self.toolCallNames[call.call_id] = call.name
                     default:
                         break
                     }
