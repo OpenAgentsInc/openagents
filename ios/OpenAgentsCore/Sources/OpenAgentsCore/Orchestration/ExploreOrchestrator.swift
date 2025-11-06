@@ -771,7 +771,9 @@ public actor ExploreOrchestrator {
     private func parseGrep(from line: String) -> AgentOp? {
         // Example: "grep: 'import' in src/" or "Search 'import' in src/"
         if let pattern = extractQuotedString(from: line) {
-            let pathPrefix = extractPathAfterIn(from: line)
+            var pathPrefix = extractPathAfterIn(from: line)
+            if let p = pathPrefix { pathPrefix = normalizeWorkspacePath(p) }
+            if pathPrefix == "workspace" { pathPrefix = nil }
             return AgentOp(kind: .grep(GrepParams(pattern: pattern, pathPrefix: pathPrefix)))
         }
         return nil
@@ -780,7 +782,8 @@ public actor ExploreOrchestrator {
     private func parseListDir(from line: String) -> AgentOp? {
         // Example: "listDir: src/" or "List src/"
         if let path = extractPath(from: line) {
-            return AgentOp(kind: .listDir(ListDirParams(path: path, depth: 0)))
+            let normalized = normalizeWorkspacePath(path)
+            return AgentOp(kind: .listDir(ListDirParams(path: normalized, depth: 0)))
         }
         return nil
     }
@@ -816,6 +819,17 @@ public actor ExploreOrchestrator {
             return m
         }
         return nil
+    }
+
+    private func normalizeWorkspacePath(_ p: String) -> String {
+        var path = p
+        let name = (workspaceRoot as NSString).lastPathComponent
+        if path == "workspace" || path == "/" { return "." }
+        if path.hasPrefix(name + "/") { path.removeFirst(name.count + 1) }
+        if path == name { return "." }
+        if path.hasPrefix("./") { path.removeFirst(2) }
+        if path.hasSuffix("/") { path.removeLast() }
+        return path.isEmpty ? "." : path
     }
 
     // MARK: - Session Operation Parsers (Phase 2.5)

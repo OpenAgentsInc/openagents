@@ -103,7 +103,8 @@ public struct SessionSearchTool: Sendable {
         contextLines: Int? = nil
     ) async throws -> SessionSearchResult {
         let maxRes = min(maxResults ?? 100, 200)
-        let context = contextLines ?? 2
+        // Cap context lines to avoid huge payloads
+        let context = min(contextLines ?? 2, 4)
         var matches: [SessionSearchMatch] = []
         var totalMatches = 0
 
@@ -151,13 +152,20 @@ public struct SessionSearchTool: Sendable {
                     let contextBefore = lineIdx > beforeStart ? Array(lines[beforeStart..<lineIdx]) : nil
                     let contextAfter = afterEnd > lineIdx + 1 ? Array(lines[(lineIdx+1)..<afterEnd]) : nil
 
+                    func trim(_ s: String) -> String {
+                        if s.count > 240 { return String(s.prefix(240)) + "…" }
+                        return s
+                    }
+                    let trimmedLine = trim(line)
+                    let trimmedBefore = contextBefore?.map { trim($0) }
+                    let trimmedAfter = contextAfter?.map { trim($0) }
                     matches.append(SessionSearchMatch(
                         sessionId: session.id,
                         provider: session.provider,
                         lineNumber: lineIdx + 1,
-                        line: line,
-                        contextBefore: contextBefore,
-                        contextAfter: contextAfter
+                        line: trimmedLine,
+                        contextBefore: trimmedBefore,
+                        contextAfter: trimmedAfter
                     ))
                 }
             }
