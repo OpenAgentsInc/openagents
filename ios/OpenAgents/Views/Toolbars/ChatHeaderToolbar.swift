@@ -15,7 +15,8 @@ struct ChatHeaderToolbar: ToolbarContent {
                 Image(systemName: "line.3.horizontal")
                     .accessibilityLabel("Open navigation menu")
             }
-            .buttonStyle(.glass)
+            // Rely on the system’s toolbar chrome for Liquid Glass.
+            // Avoid explicit .glass here to prevent the inner oval effect.
         }
 
         // CENTER: Title, left-of-center inside the principal slot
