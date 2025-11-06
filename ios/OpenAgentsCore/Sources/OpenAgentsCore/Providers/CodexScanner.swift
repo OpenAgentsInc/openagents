@@ -94,6 +94,21 @@ public enum CodexScanner {
         )
     }
 
+    /// Fast summary that avoids reading file content for title discovery
+    public static func makeSummaryFast(for url: URL, base: URL) -> ThreadSummary {
+        let id = scanForThreadID(url) ?? relativeId(for: url, base: base)
+        let updated = fileMTime(url)
+        return ThreadSummary(
+            id: id,
+            title: nil,
+            source: "codex",
+            created_at: nil,
+            updated_at: updated,
+            last_message_ts: updated,
+            message_count: nil
+        )
+    }
+
     /// Quickly derive a short title from a JSONL session by taking the first
     /// non-preface user message (~5 words). Keeps this lightweight for responsiveness.
     /// Tries a small head read first, then (if needed) a small tail read fallback.

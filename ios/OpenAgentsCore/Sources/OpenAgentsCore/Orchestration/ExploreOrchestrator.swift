@@ -201,10 +201,14 @@ public actor ExploreOrchestrator {
         }
 
         print("[Orchestrator] Estimated tokens: \(estimatedTokens)")
+        let instrChars = String(describing: instructions).count
+        print("[FM] preparing request: instructions=\(instrChars) chars, prompt=\(prompt.count) chars")
 
         do {
             let options = GenerationOptions(temperature: 0.5)
+            let t0 = Date()
             let response = try await session.respond(to: prompt, generating: ExplorationPlanResponse.self, options: options)
+            print("[FM] response received in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s, content_ops=\(response.content.operations.count)")
             let planResponse = response.content
 
             // Convert PlannedOperation to AgentOp

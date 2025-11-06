@@ -14,14 +14,20 @@ public struct SessionListTool: Sendable {
     ) async throws -> SessionListResult {
         let k = min(topK ?? 20, 200) // Bound to 200 max
         var allSessions: [SessionMetadata] = []
+        let deadline = Date().addingTimeInterval(1.0) // hard budget for titles
 
         // Collect from Claude Code if requested
         if provider == nil || provider == "claude-code" {
             let claudeBase = ClaudeCodeScanner.defaultBaseDir()
             if FileManager.default.fileExists(atPath: claudeBase.path) {
-                let files = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: k * 2)
+                let files = ClaudeCodeScanner.listRecentTopN(at: claudeBase, topK: k)
                 for url in files {
-                    let summary = ClaudeCodeScanner.makeSummary(for: url, base: claudeBase)
+                    let summary: ThreadSummary
+                    if Date() > deadline {
+                        summary = ClaudeCodeScanner.makeSummaryFast(for: url, base: claudeBase)
+                    } else {
+                        summary = ClaudeCodeScanner.makeSummary(for: url, base: claudeBase)
+                    }
 
                     // Filter by timestamp if requested
                     if let since = since, summary.updated_at < since {
@@ -43,9 +49,14 @@ public struct SessionListTool: Sendable {
         if provider == nil || provider == "codex" {
             let codexBase = CodexScanner.defaultBaseDir()
             if FileManager.default.fileExists(atPath: codexBase.path) {
-                let files = CodexScanner.listRecentTopN(at: codexBase, topK: k * 2)
+                let files = CodexScanner.listRecentTopN(at: codexBase, topK: k)
                 for url in files {
-                    let summary = CodexScanner.makeSummary(for: url, base: codexBase)
+                    let summary: ThreadSummary
+                    if Date() > deadline {
+                        summary = CodexScanner.makeSummaryFast(for: url, base: codexBase)
+                    } else {
+                        summary = CodexScanner.makeSummary(for: url, base: codexBase)
+                    }
 
                     // Filter by timestamp
                     if let since = since, summary.updated_at < since {
@@ -174,13 +185,17 @@ public struct SessionReadTool: Sendable {
     ) async throws -> SessionReadResult {
         let maxEvts = min(maxEvents ?? 100, 200)
         let startTime = Date()
-        let maxSeconds: TimeInterval = 3.0
-        let maxBytes: Int = 4 * 1024 * 1024 // 4MB safety cap
+        let maxSeconds: TimeInterval = 1.5
+        let maxBytes: Int = 1 * 1024 * 1024 // 1MB safety cap
 
         // Find session file
         let listTool = SessionListTool()
-        let sessions = try await listTool.list(provider: provider, topK: 200)
-        guard let session = sessions.sessions.first(where: { $0.id == sessionId }) else {
+        // Prefer small topK for responsiveness; fallback to larger if not found
+        var sessions = try await listTool.list(provider: provider, topK: 60).sessions
+        if !sessions.contains(where: { $0.id == sessionId }) {
+            sessions = try await listTool.list(provider: provider, topK: 200).sessions
+        }
+        guard let session = sessions.first(where: { $0.id == sessionId }) else {
             throw ToolExecutionError.fileNotFound("Session not found: \(sessionId)")
         }
 
@@ -280,14 +295,15 @@ public struct SessionReadTool: Sendable {
             }
             if stop { break }
             // Safety caps to avoid stalls on huge files
-            if Date().timeIntervalSince(startTime) > maxSeconds { truncated = true; break }
-            if bytesProcessed > maxBytes { truncated = true; break }
+            if Date().timeIntervalSince(startTime) > maxSeconds { print("[SessionRead] time cap hit for id=\(sessionId)"); truncated = true; break }
+            if bytesProcessed > maxBytes { print("[SessionRead] byte cap hit for id=\(sessionId) bytes=\(bytesProcessed)"); truncated = true; break }
         }
         // Process any remaining data as last line (if not empty)
         if !buffer.isEmpty, events.count < maxEvts {
             let line = String(decoding: buffer, as: UTF8.self)
             processLine(line)
         }
+        print("[SessionRead] done id=\(sessionId) events=\(events.count) processedBytes=\(bytesProcessed) in \(String(format: "%.2f", Date().timeIntervalSince(startTime)))s")
 
         return SessionReadResult(
             sessionId: sessionId,

@@ -72,6 +72,21 @@ public enum ClaudeCodeScanner {
         )
     }
 
+    /// Fast summary that avoids reading file content for title discovery
+    public static func makeSummaryFast(for url: URL, base: URL) -> ThreadSummary {
+        let id = scanForSessionID(url) ?? relativeId(for: url, base: base)
+        let updated = fileMTime(url)
+        return ThreadSummary(
+            id: id,
+            title: nil,
+            source: "claude-code",
+            created_at: nil,
+            updated_at: updated,
+            last_message_ts: updated,
+            message_count: nil
+        )
+    }
+
     /// Scan first few lines for sessionId
     public static func scanForSessionID(_ url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
