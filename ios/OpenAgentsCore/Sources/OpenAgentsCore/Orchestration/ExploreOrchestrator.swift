@@ -49,6 +49,9 @@ public actor ExploreOrchestrator {
     /// Executed operations (for deduplication)
     private var executedOps: Set<AgentOp> = []
 
+    /// Results from executed operations
+    private var operationResults: [AgentOp: any Encodable] = [:]
+
     /// Stream handler for ACP updates
     private let streamHandler: ACPUpdateStreamHandler
 
@@ -147,22 +150,30 @@ public actor ExploreOrchestrator {
         Path: \(workspaceRoot)
         Goals: \(goalsStr)
 
-        Create a plan with 3-5 operations to explore this workspace. For each operation, specify:
-        1. Type (readSpan, grep, listDir, sessionList, sessionSearch, sessionRead, or sessionAnalyze)
-        2. Parameters (file path, search pattern, session filters, etc.)
+        IMPORTANT: Generate EXACTLY 3-5 operations. Do NOT generate just 1 operation.
 
-        Format examples:
-        - readSpan: README.md lines 1-50
-        - grep: "import.*from" in src/
-        - listDir: src/
-        - sessionList: top 10 claude-code sessions
-        - sessionSearch: "authentication" in all sessions
-        - sessionRead: session abc123
-        - sessionAnalyze: sessions [id1, id2] for file frequency
+        Example plan for goals about conversation history:
+        1. sessionList: top 20 claude-code sessions
+        2. sessionSearch: "authentication" in all sessions
+        3. sessionAnalyze: sessions for file frequency
+        4. readSpan: most-modified-file.swift lines 1-100
+        5. grep: "func.*auth" in src/
+
+        Example plan for goals about code structure:
+        1. readSpan: README.md lines 1-50
+        2. listDir: src/
+        3. grep: "class.*" in src/
+        4. readSpan: main-entry-file.swift lines 1-100
+
+        Your turn - create a plan with 3-5 operations (NOT just 1!) based on the goals above.
+        Each operation on a new line with format:
+        - operationType: parameters
+
+        Plan:
         """
 
         do {
-            let options = GenerationOptions(temperature: 0.2)
+            let options = GenerationOptions(temperature: 0.5)
             let resp = try await session.respond(to: prompt, options: options)
 
             // Parse response to extract operations
@@ -247,6 +258,21 @@ public actor ExploreOrchestrator {
 
     /// Create fallback plan when FM is unavailable or fails
     private func createFallbackPlan() -> ExplorePlan {
+        let goalsStr = goals.joined(separator: " ").lowercased()
+
+        // If goals mention conversations or history, use session tools
+        if goalsStr.contains("conversation") || goalsStr.contains("session") || goalsStr.contains("history") {
+            return ExplorePlan(
+                goals: goals.isEmpty ? ["Understand workspace structure"] : goals,
+                nextOps: [
+                    AgentOp(kind: .sessionList(SessionListParams(provider: "claude-code", topK: 20))),
+                    AgentOp(kind: .sessionList(SessionListParams(provider: "codex", topK: 20))),
+                    AgentOp(kind: .sessionAnalyze(SessionAnalyzeParams(sessionIds: [], metrics: ["files", "tools"])))
+                ]
+            )
+        }
+
+        // Default: basic file exploration
         return ExplorePlan(
             goals: goals.isEmpty ? ["Understand workspace structure"] : goals,
             nextOps: [
@@ -284,6 +310,9 @@ public actor ExploreOrchestrator {
             // Execute via ToolExecutor
             let result = try await toolExecutor.execute(op)
 
+            // Store result for summary generation
+            operationResults[op] = result
+
             // Stream tool call update (completed)
             await streamToolCallUpdate(op, status: .completed, output: result)
         } catch {
@@ -299,16 +328,105 @@ public actor ExploreOrchestrator {
     // MARK: - Summary Generation
 
     private func generateSummary() async throws -> ExploreSummary {
-        // Simplified summary for Phase 2
-        // In Phase 3, this would aggregate results from executed operations
         let workspaceName = (workspaceRoot as NSString).lastPathComponent
+
+        var topFiles: [String] = []
+        var followups: [String] = []
+        var fileFrequency: [String: Int] = [:]
+
+        // Aggregate results from executed operations
+        for (op, result) in operationResults {
+            switch op.kind {
+            case .sessionList(let params):
+                if let listResult = result as? SessionListResult {
+                    followups.append("Found \(listResult.sessions.count) recent sessions (provider: \(params.provider ?? "all"))")
+
+                    // Extract session titles as insights
+                    let sessionTitles = listResult.sessions.prefix(5).compactMap { $0.title }
+                    if !sessionTitles.isEmpty {
+                        followups.append("Recent topics: \(sessionTitles.joined(separator: "; "))")
+                    }
+                }
+
+            case .sessionSearch(let params):
+                if let searchResult = result as? SessionSearchResult {
+                    followups.append("Search '\(params.pattern)' found \(searchResult.matches.count) matches")
+                }
+
+            case .sessionRead(let params):
+                if let readResult = result as? SessionReadResult {
+                    // Add file references from session to top files
+                    topFiles.append(contentsOf: readResult.fileReferences.prefix(10))
+
+                    // Track file frequency
+                    for file in readResult.fileReferences {
+                        fileFrequency[file, default: 0] += 1
+                    }
+
+                    followups.append("Session \(params.sessionId): \(readResult.events.count) events, \(readResult.fileReferences.count) files referenced")
+                }
+
+            case .sessionAnalyze:
+                if let analyzeResult = result as? SessionAnalyzeResult {
+                    // Use file frequency from analysis
+                    if let freq = analyzeResult.fileFrequency {
+                        for (file, count) in freq {
+                            fileFrequency[file, default: 0] += count
+                        }
+                    }
+
+                    // Add goal patterns as insights
+                    if let goals = analyzeResult.goalPatterns {
+                        followups.append("Common goals: \(goals.prefix(3).joined(separator: ", "))")
+                    }
+
+                    if let avgLength = analyzeResult.avgConversationLength {
+                        followups.append("Average conversation: \(Int(avgLength)) events")
+                    }
+                }
+
+            case .readSpan:
+                if let spanResult = result as? ContentSpanResult {
+                    topFiles.append(spanResult.path)
+                }
+
+            case .grep:
+                if let grepResult = result as? GrepResult {
+                    let uniqueFiles = Set(grepResult.matches.map { $0.path })
+                    topFiles.append(contentsOf: uniqueFiles)
+                    followups.append("Pattern '\(grepResult.pattern)' found in \(uniqueFiles.count) files")
+                }
+
+            default:
+                break
+            }
+        }
+
+        // Get most frequently referenced files
+        let sortedByFrequency = fileFrequency.sorted { $0.value > $1.value }
+        let mostFrequentFiles = sortedByFrequency.prefix(10).map { $0.key }
+
+        // Combine with discovered files, prioritize frequent ones
+        let finalTopFiles = mostFrequentFiles + topFiles.filter { !mostFrequentFiles.contains($0) }
+        let uniqueTopFiles = Array(Set(finalTopFiles)).prefix(10)
+
+        // If we found file frequency data, add it to followups
+        if !sortedByFrequency.isEmpty {
+            let top3 = sortedByFrequency.prefix(3).map { "\($0.key) (\($0.value)x)" }
+            followups.insert("Most modified files: \(top3.joined(separator: ", "))", at: 0)
+        }
+
+        // Add default followups if we don't have any
+        if followups.isEmpty {
+            followups = ["No session data found - explore code structure", "Run session.search to find relevant conversations"]
+        }
 
         return ExploreSummary(
             repo_name: workspaceName,
-            languages: ["Swift": 1000], // Placeholder
-            entrypoints: ["README.md"],
-            top_files: ["README.md"],
-            followups: ["Index repository for semantic search", "Analyze dependencies"]
+            languages: [:], // Phase 3 will add language detection
+            entrypoints: [],
+            top_files: Array(uniqueTopFiles),
+            followups: Array(followups.prefix(5))
         )
     }
 
