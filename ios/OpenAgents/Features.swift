@@ -27,4 +27,10 @@ enum Features {
         return UserDefaults.standard.bool(forKey: "enable_multicast")
     }
 
+    /// On‑device Foundation Models usage (probe/summarizer). Default off.
+    /// Enable with env `OPENAGENTS_ENABLE_FM=1` or UserDefaults `enable_foundation_models=true`.
+    static var foundationModelsEnabled: Bool {
+        if ProcessInfo.processInfo.environment["OPENAGENTS_ENABLE_FM"] == "1" { return true }
+        return UserDefaults.standard.bool(forKey: "enable_foundation_models")
+    }
 }

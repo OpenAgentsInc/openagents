@@ -227,7 +227,7 @@ struct HistorySidebar: View {
                 var thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
                 var msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user || $0.role == .assistant }
                 msgs.sort { $0.ts < $1.ts }
-                var title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: true)
+                var title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: Features.foundationModelsEnabled)
                 if title.isEmpty {
                     // Fallback to tail if head chunk didn’t include first user text
                     strategy = "tail_fallback"
@@ -235,7 +235,7 @@ struct HistorySidebar: View {
                     thread = CodexAcpTranslator.translateLines(lines, options: .init(sourceId: url.path))
                     msgs = thread.events.compactMap { $0.message }.filter { $0.role == .user || $0.role == .assistant }
                     msgs.sort { $0.ts < $1.ts }
-                    title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: true)
+                    title = await ConversationSummarizer.summarizeTitle(messages: msgs, preferOnDeviceModel: Features.foundationModelsEnabled)
                 }
                 if !title.isEmpty { print("[Titles] \(row.source)::\(row.id) strategy=\(strategy) title=\(title)") }
                 guard !title.isEmpty else { return }

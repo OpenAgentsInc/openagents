@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Combine
 import OpenAgentsCore
 import OpenAgentsCore
@@ -210,6 +211,10 @@ extension BridgeManager {
         let ts = ISO8601DateFormatter().string(from: Date())
         let line = "[\(ts)] [\(tag)] \(message)"
         print("[Bridge] \(line)")
+        if #available(iOS 16.0, macOS 13.0, *) {
+            let logger = Logger(subsystem: "com.openagents.app", category: "bridge")
+            logger.log("\(line, privacy: .public)")
+        }
         if Thread.isMainThread {
             lastLog = line
             logs.append(line)
