@@ -10,8 +10,14 @@ struct ChatHomeView: View {
         NavigationStack {
             // Main content placeholder
             VStack(spacing: 16) {
-                Text("Welcome to OpenAgents.")
+                Text("Welcome to OpenAgents")
                     .font(.title2)
+
+                Button("Explore Codebase") {
+                    // TODO: Hook into real codebase exploration flow
+                }
+                .buttonStyle(.glassProminent)
+                .accessibilityLabel("Explore Codebase")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
