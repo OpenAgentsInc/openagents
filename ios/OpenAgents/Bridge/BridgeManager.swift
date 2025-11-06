@@ -146,8 +146,11 @@ extension BridgeManager: MobileWebSocketClientDelegate {
                 // Append to ring buffer for UI to observe
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
+                    // Ring buffer: keep last 200 updates
+                    if self.updates.count >= 200 { self.updates.removeFirst() }
                     self.updates.append(note)
-                    if self.updates.count > 200 { self.updates.removeFirst(self.updates.count - 200) }
+                    // Force objectWillChange to notify observers even when count stays at 200
+                    self.objectWillChange.send()
                     switch note.update {
                     case .availableCommandsUpdate(let ac):
                         self.availableCommands = ac.available_commands
