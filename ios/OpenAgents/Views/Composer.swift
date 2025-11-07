@@ -8,8 +8,6 @@ struct Composer: UIViewRepresentable {
     var onSubmit: () -> Void
 
     func makeUIView(context: Context) -> UIView {
-        let container = UIView()
-
         let textView = UITextView()
         textView.text = ""
         textView.font = UIFont.systemFont(ofSize: 16)
@@ -20,7 +18,7 @@ struct Composer: UIViewRepresentable {
         textView.enablesReturnKeyAutomatically = true
         textView.delegate = context.coordinator
         textView.isScrollEnabled = false
-        textView.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        textView.textContainerInset = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         textView.textContainer.lineFragmentPadding = 0
 
         // DISABLE HAPTIC FEEDBACK - this is what fixes the lag
@@ -28,23 +26,13 @@ struct Composer: UIViewRepresentable {
         textView.spellCheckingType = .no
 
         // Styling
-        textView.layer.cornerRadius = 24
+        textView.layer.cornerRadius = 20
         textView.layer.masksToBounds = true
 
+        // Set explicit height
         textView.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(textView)
-
-        let heightConstraint = textView.heightAnchor.constraint(equalToConstant: 44)
-        heightConstraint.priority = .defaultLow
-
         NSLayoutConstraint.activate([
-            textView.topAnchor.constraint(equalTo: container.topAnchor),
-            textView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            textView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            textView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            heightConstraint,
-            textView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
-            textView.heightAnchor.constraint(lessThanOrEqualToConstant: 120)
+            textView.heightAnchor.constraint(equalToConstant: 40)
         ])
 
         // Set placeholder
@@ -53,11 +41,11 @@ struct Composer: UIViewRepresentable {
             textView.textColor = .systemGray
         }
 
-        return container
+        return textView
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        guard let textView = uiView.subviews.first as? UITextView else { return }
+        guard let textView = uiView as? UITextView else { return }
 
         if text != textView.text {
             if text.isEmpty {
@@ -95,10 +83,6 @@ struct Composer: UIViewRepresentable {
             } else {
                 parent.text = textView.text
             }
-
-            // Enable scrolling if content exceeds max height
-            let size = textView.sizeThatFits(CGSize(width: textView.frame.width, height: .greatestFiniteMagnitude))
-            textView.isScrollEnabled = size.height > 120
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
