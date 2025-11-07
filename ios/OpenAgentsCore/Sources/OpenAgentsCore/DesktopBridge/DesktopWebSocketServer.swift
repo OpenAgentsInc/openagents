@@ -92,6 +92,9 @@ public class DesktopWebSocketServer {
 
     // Session mode selection (per session)
     private var modeBySession: [String: ACPSessionModeId] = [:]
+    // Exec stream state per session (for codex --json mapping)
+    private struct ExecStreamState { var callIdByItemId: [String:String] = [:] }
+    private var execStateBySession: [String: ExecStreamState] = [:]
 
     // Active agent sessions
     private var activeProcesses: [String: Process] = [:]  // session_id -> Process
@@ -262,8 +265,8 @@ public class DesktopWebSocketServer {
         // Build CLI arguments per provider
         switch chosenMode {
         case .codex:
-            process.arguments = [prompt]
-            print("[Bridge][server] arguments (codex): \"\(prompt)\"")
+            process.arguments = ["exec", "--json", prompt]
+            print("[Bridge][server] arguments (codex): exec --json \"\(prompt)\"")
         case .claude_code, .default_mode:
             // Claude CLI supports --continue to resume latest session
             process.arguments = ["--continue", prompt]
@@ -286,7 +289,7 @@ public class DesktopWebSocketServer {
         print("[Bridge][server] PATH for process: \(environment["PATH"] ?? "none")")
         process.environment = environment
 
-        // Set up output/error pipes (for logging)
+        // Set up output/error pipes (for logging/streaming)
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
@@ -300,11 +303,31 @@ public class DesktopWebSocketServer {
             try process.run()
             print("[Bridge][server] agent process started pid=\(process.processIdentifier)")
 
-            // Monitor stdout/stderr for debugging
-            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+            // Monitor stdout: for Codex exec --json, map JSONL events -> ACP updates
+            stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+                guard let self = self else { return }
                 let data = handle.availableData
-                if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
-                    print("[Bridge][agent stdout] \(text)")
+                guard !data.isEmpty else { return }
+                if self.modeBySession[sidStr] == .codex {
+                    var reminder = self.stdoutRemainderBySession[sidStr] ?? Data()
+                    reminder.append(data)
+                    if var text = String(data: reminder, encoding: .utf8) ?? String(decoding: reminder, as: UTF8.self) as String? {
+                        var keep = Data()
+                        if !text.hasSuffix("\n"), let lastNewline = text.lastIndex(of: "\n") {
+                            let rem = String(text[text.index(after: lastNewline)..<text.endIndex])
+                            keep = Data(rem.utf8)
+                            text = String(text[..<text.index(after: lastNewline)])
+                        }
+                        self.stdoutRemainderBySession[sidStr] = keep
+                        let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+                        for line in lines { self.handleCodexExecEvent(line: line, sessionId: sessionId, client: client) }
+                    }
+                } else {
+                    // Non-codex: log trimmed stdout only (no ACP streaming here)
+                    if let t = String(data: data, encoding: .utf8) {
+                        let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty { print("[Bridge][agent stdout] \(trimmed)") }
+                    }
                 }
             }
 
@@ -1555,6 +1578,71 @@ extension DesktopWebSocketServer {
             if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let jtext = String(data: out, encoding: .utf8) {
                 for c in clients where c.isHandshakeComplete { c.send(text: jtext) }
             }
+        }
+    }
+    
+    // MARK: - Codex exec --json event mapper
+    private func handleCodexExecEvent(line: String, sessionId: ACPSessionId, client: Client) {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = obj["type"] as? String else { return }
+        switch type {
+        case "item.started":
+            if let item = obj["item"] as? [String: Any], let id = item["id"] as? String, let itemType = item["type"] as? String {
+                if itemType == "command_execution" {
+                    // Build tool_call using command string
+                    let cmd = (item["command"] as? String) ?? ""
+                    let callId = id
+                    var state = execStateBySession[sessionId.value] ?? ExecStreamState()
+                    state.callIdByItemId[id] = callId
+                    execStateBySession[sessionId.value] = state
+                    let args: [String: AnyEncodable] = [
+                        "name": AnyEncodable("shell"),
+                        "arguments": AnyEncodable("{\"command\":[\"bash\",\"-lc\",\"\(cmd.replacingOccurrences(of: "\"", with: "\\\""))\"]}")
+                    ]
+                    let wire = ACPToolCallWire(call_id: callId, name: "shell", arguments: args, _meta: nil)
+                    let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .toolCall(wire))
+                    if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
+                        client.send(text: txt)
+                    }
+                }
+            }
+        case "item.completed":
+            if let item = obj["item"] as? [String: Any], let id = item["id"] as? String, let itemType = item["type"] as? String {
+                if itemType == "command_execution" {
+                    let callId = execStateBySession[sessionId.value]?.callIdByItemId[id] ?? id
+                    let exitCode = (item["exit_code"] as? NSNumber)?.intValue ?? 0
+                    let ok = exitCode == 0
+                    let outStr = (item["aggregated_output"] as? String) ?? ""
+                    let payload: [String: AnyEncodable] = [
+                        "output": AnyEncodable(outStr),
+                        "metadata": AnyEncodable(["exit_code": AnyEncodable(exitCode)])
+                    ]
+                    let upd = ACPToolCallUpdateWire(call_id: callId, status: ok ? .completed : .error, output: AnyEncodable(payload), error: ok ? nil : "exit_code=\(exitCode)", _meta: nil)
+                    let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .toolCallUpdate(upd))
+                    if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
+                        client.send(text: txt)
+                    }
+                } else if itemType == "agent_message" {
+                    if let text = item["text"] as? String, !text.isEmpty {
+                        let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
+                        let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .agentMessageChunk(chunk))
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
+                            client.send(text: txt)
+                        }
+                    }
+                } else if itemType == "reasoning" {
+                    if let text = item["text"] as? String, !text.isEmpty {
+                        let chunk = ACP.Client.ContentChunk(content: .text(.init(text: text)))
+                        let note = ACP.Client.SessionNotificationWire(session_id: sessionId, update: .agentThoughtChunk(chunk))
+                        if let out = try? JSONEncoder().encode(JSONRPC.Notification(method: ACPRPC.sessionUpdate, params: note)), let txt = String(data: out, encoding: .utf8) {
+                            client.send(text: txt)
+                        }
+                    }
+                }
+            }
+        default:
+            break
         }
     }
     private static func jsonValueToAnyDict(_ v: JSONValue) -> [String: AnyEncodable]? {
