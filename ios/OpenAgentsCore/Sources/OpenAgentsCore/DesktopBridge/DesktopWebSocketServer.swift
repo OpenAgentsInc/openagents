@@ -99,6 +99,8 @@ public class DesktopWebSocketServer {
     private var execStateBySession: [String: ExecStreamState] = [:]
     // Codex thread id per ACP session for resume support
     private var codexThreadIdBySession: [String: String] = [:]
+    // Claude conversation start flag per ACP session; when false, first prompt should NOT use --continue
+    private var claudeStartedBySession: [String: Bool] = [:]
 
     // Active agent sessions
     private var activeProcesses: [String: Process] = [:]  // session_id -> Process
@@ -278,9 +280,16 @@ public class DesktopWebSocketServer {
             process.arguments = args
             print("[Bridge][server] arguments (codex): \(args.joined(separator: " "))")
         case .claude_code, .default_mode:
-            // Claude CLI supports --continue to resume latest session
-            process.arguments = ["--continue", prompt]
-            print("[Bridge][server] arguments (claude): --continue \"\(prompt)\"")
+            // For a brand new ACP session, do NOT resume a previous Claude chat.
+            // First prompt: start a fresh conversation (no --continue). Subsequent prompts: use --continue.
+            let hasStarted = claudeStartedBySession[sidStr] ?? false
+            if hasStarted {
+                process.arguments = ["--continue", prompt]
+                print("[Bridge][server] arguments (claude): --continue \"\(prompt)\"")
+            } else {
+                process.arguments = [prompt]
+                print("[Bridge][server] arguments (claude): \"\(prompt)\" (new conversation)")
+            }
         }
 
         // Set up environment with node in PATH
@@ -318,6 +327,10 @@ public class DesktopWebSocketServer {
         do {
             try process.run()
             print("[Bridge][server] agent process started pid=\(process.processIdentifier)")
+            // Mark Claude session as started so later prompts can use --continue
+            if self.modeBySession[sidStr] == .claude_code || self.modeBySession[sidStr] == .default_mode {
+                self.claudeStartedBySession[sidStr] = true
+            }
 
             // Monitor stdout: for Codex exec --json, map JSONL events -> ACP updates
             stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
