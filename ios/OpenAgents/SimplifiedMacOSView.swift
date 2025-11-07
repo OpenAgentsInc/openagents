@@ -42,6 +42,15 @@ struct SimplifiedMacOSView: View {
                             .font(OAFonts.ui(.headline, 16))
                             .foregroundStyle(OATheme.Colors.textSecondary)
                         Spacer()
+                        Button(action: { showInstructions = true }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "info.circle")
+                                Text("View Setup Instructions")
+                            }
+                            .font(OAFonts.ui(.body, 14))
+                            .foregroundStyle(OATheme.Colors.accent)
+                        }
+                        .buttonStyle(.plain)
                     }
                     .frame(maxWidth: 500)
 
@@ -95,17 +104,6 @@ struct SimplifiedMacOSView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(OATheme.Colors.border.opacity(0.3))
                     )
-
-                    // Setup instructions button
-                    Button(action: { showInstructions = true }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "info.circle")
-                            Text("View Setup Instructions")
-                        }
-                        .font(OAFonts.ui(.body, 14))
-                        .foregroundStyle(OATheme.Colors.accent)
-                    }
-                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: 500)
 
@@ -146,10 +144,12 @@ struct SimplifiedMacOSView: View {
 
                                 Spacer()
 
-                                Button("Change") {
+                                Button(action: {
                                     selectWorkingDirectory()
+                                }) {
+                                    Text("Change")
+                                        .font(OAFonts.ui(.body, 14))
                                 }
-                                .font(OAFonts.ui(.body, 14))
                                 .buttonStyle(.bordered)
                             }
                             .frame(maxWidth: 500)
@@ -169,10 +169,12 @@ struct SimplifiedMacOSView: View {
                                     .font(OAFonts.ui(.body, 14))
                                     .foregroundStyle(OATheme.Colors.textSecondary)
 
-                                Button("Select Directory") {
+                                Button(action: {
                                     selectWorkingDirectory()
+                                }) {
+                                    Text("Select Directory")
+                                        .font(OAFonts.ui(.body, 16))
                                 }
-                                .font(OAFonts.ui(.body, 16))
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.large)
                             }
@@ -240,15 +242,10 @@ struct SimplifiedMacOSView: View {
                 }
 
                 Spacer()
-
-                // Footer hint
-                Text("Select a working directory to get started")
-                    .font(OAFonts.ui(.caption, 12))
-                    .foregroundStyle(OATheme.Colors.textTertiary)
-                    .padding(.bottom, 20)
             }
             .padding(40)
         }
+        .frame(minWidth: 500)
         .sheet(isPresented: $showInstructions) {
             BridgeSetupInstructionsSheet()
                 .environmentObject(bridge)
@@ -341,7 +338,7 @@ struct AgentToggleRow: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(enabled ? OATheme.Colors.card : OATheme.Colors.border.opacity(0.3))
+                .fill(enabled ? OATheme.Colors.border.opacity(0.5) : OATheme.Colors.card)
         )
         .contentShape(Rectangle())
         .onTapGesture {

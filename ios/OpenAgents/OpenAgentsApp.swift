@@ -61,6 +61,8 @@ struct OpenAgentsApp: App {
         .modelContainer(sharedModelContainer)
         #if os(macOS)
         .windowStyle(.titleBar)
+        .defaultSize(width: 600, height: 800)
+        .windowResizability(.contentMinSize)
         #endif
     }
 }
