@@ -57,11 +57,11 @@ public actor TinyvexDbLayer {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw DbError.execFailed("prepare insert") }
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, sessionId, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 1, (sessionId as NSString).utf8String, -1, nil)
         sqlite3_bind_int64(stmt, 2, seq)
         sqlite3_bind_int64(stmt, 3, ts)
-        sqlite3_bind_text(stmt, 4, updateJSON, -1, SQLITE_TRANSIENT)
-        if let metaJSON { sqlite3_bind_text(stmt, 5, metaJSON, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(stmt, 5) }
+        sqlite3_bind_text(stmt, 4, (updateJSON as NSString).utf8String, -1, nil)
+        if let metaJSON { sqlite3_bind_text(stmt, 5, (metaJSON as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 5) }
         if sqlite3_step(stmt) != SQLITE_DONE { throw DbError.execFailed("insert failed") }
     }
 
@@ -79,7 +79,7 @@ public actor TinyvexDbLayer {
         // Bind
         for (i, v) in binds.enumerated() {
             let idx = Int32(i + 1)
-            if let s = v as? String { sqlite3_bind_text(stmt, idx, s, -1, SQLITE_TRANSIENT) }
+            if let s = v as? String { sqlite3_bind_text(stmt, idx, (s as NSString).utf8String, -1, nil) }
             else if let n = v as? Int64 { sqlite3_bind_int64(stmt, idx, n) }
         }
         var out: [EventRow] = []
@@ -96,4 +96,3 @@ public actor TinyvexDbLayer {
         return out
     }
 }
-
