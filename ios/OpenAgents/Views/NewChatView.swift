@@ -128,35 +128,34 @@ struct NewChatView: View {
                 }
 
             // Composer at bottom - fixed to bottom edge
-            VStack(spacing: 0) {
-                HStack(alignment: .center, spacing: 12) {
-                    Composer(
-                        text: $messageText,
-                        agentName: selectedAgent,
-                        onSubmit: {
-                            sendMessage()
-                        }
-                    )
-
-                    Button(action: {
+            HStack(alignment: .center, spacing: 12) {
+                Composer(
+                    text: $messageText,
+                    agentName: selectedAgent,
+                    onSubmit: {
                         sendMessage()
-                    }) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(
-                                messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? OATheme.Colors.textTertiary
-                                    : OATheme.Colors.accent
-                            )
                     }
-                    .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                )
+
+                Button(action: {
+                    sendMessage()
+                }) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(
+                            messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? OATheme.Colors.textTertiary
+                                : OATheme.Colors.accent
+                        )
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 12)
-                .background(OATheme.Colors.background)
+                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
+            .background(OATheme.Colors.background)
         }
+        .ignoresSafeArea(edges: .bottom)
         .background(OATheme.Colors.background)
         .navigationBarHidden(true)
         .preferredColorScheme(.dark)
