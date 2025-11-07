@@ -12,6 +12,7 @@ struct NewChatView: View {
     var onNavigateToSetup: () -> Void
 
     @State private var messageText: String = ""
+    @State private var composerFocused: Bool = false
     @State private var showAgentPicker = false
     @State private var showMoreMenu = false
     @StateObject private var timelineVM = ACPTimelineViewModel()
@@ -69,6 +70,7 @@ struct NewChatView: View {
                             return nil
                         }()
                         bridge.startNewSession(desiredMode: mode)
+                        composerFocused = true
                     }) {
                         Image(systemName: "square.and.pencil")
                             .foregroundStyle(.white)
@@ -165,6 +167,7 @@ struct NewChatView: View {
         HStack(alignment: .center, spacing: 12) {
             Composer(
                 text: $messageText,
+                isFocused: $composerFocused,
                 agentName: selectedAgent,
                 onSubmit: { sendMessage() }
             )
@@ -226,6 +229,7 @@ struct NewChatView: View {
     }
 
     private func dismissKeyboard() {
+        composerFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
