@@ -64,7 +64,14 @@ final class ACPTimelineViewModel: ObservableObject {
             switch note.update {
             case .userMessageChunk(let chunk):
                 if case let .text(t) = chunk.content {
-                    out.append(.message(role: .user, text: t.text, ts: monoMs))
+                    let trimmed = t.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Filter a spurious first message "Warmup" sometimes emitted by providers/boot paths
+                    // Only drop if it's the very first item to avoid hiding legitimate content
+                    let lower = trimmed.lowercased()
+                    if out.isEmpty && (lower == "warmup" || lower == "warm up") {
+                        break
+                    }
+                    out.append(.message(role: .user, text: trimmed, ts: monoMs))
                 }
             case .agentMessageChunk(let chunk):
                 if case let .text(t) = chunk.content {
@@ -82,4 +89,3 @@ final class ACPTimelineViewModel: ObservableObject {
 }
 
 #endif
-
