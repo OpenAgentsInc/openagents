@@ -146,6 +146,36 @@ final class BridgeManager: ObservableObject {
         browser?.stop(); browser = nil
         client?.disconnect(); client = nil
     }
+
+    /// Start a fresh session and clear the local timeline/cache.
+    /// If `desiredMode` is provided, set the session mode right after creation.
+    func startNewSession(desiredMode: ACPSessionModeId? = nil) {
+        // Clear local state immediately so UI wipes without delay
+        updates.removeAll()
+        toolCallNames.removeAll()
+        rawJSONByCallId.removeAll()
+        outputJSONByCallId.removeAll()
+        lastUpdateRowIndexByCallId.removeAll()
+        availableCommands.removeAll()
+        objectWillChange.send()
+
+        // Reset active session id (will be set after server responds)
+        currentSessionId = nil
+
+        guard let client = self.client else { return }
+        client.sendJSONRPC(method: ACPRPC.sessionNew, params: ACP.Agent.SessionNewRequest(), id: "session-new-\(UUID().uuidString)") { (resp: ACP.Agent.SessionNewResponse?) in
+            guard let resp = resp else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.currentSessionId = resp.session_id
+                // Apply desired mode if specified
+                if let mode = desiredMode {
+                    struct SetModeReq: Codable { let session_id: ACPSessionId; let mode_id: ACPSessionModeId }
+                    client.sendJSONRPC(method: ACPRPC.sessionSetMode, params: SetModeReq(session_id: resp.session_id, mode_id: mode), id: "session-set-mode-\(UUID().uuidString)") { (_: ACP.Agent.SetSessionModeResponse?) in }
+                }
+            }
+        }
+    }
     #endif
 }
 
