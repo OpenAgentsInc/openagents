@@ -45,9 +45,19 @@ public struct ExplorationPolicy: Codable, Sendable {
     /// Allow network access
     public var allow_network: Bool
 
-    public init(allow_external_llms: Bool = false, allow_network: Bool = false) {
+    /// Use native FM tool calling loop (vs text plan parsing)
+    /// Default: false (uses legacy text-based plan generation)
+    /// Set to true to enable native Foundation Models tool calling
+    public var use_native_tool_calling: Bool
+
+    public init(
+        allow_external_llms: Bool = false,
+        allow_network: Bool = false,
+        use_native_tool_calling: Bool = false
+    ) {
         self.allow_external_llms = allow_external_llms
         self.allow_network = allow_network
+        self.use_native_tool_calling = use_native_tool_calling
     }
 }
 
