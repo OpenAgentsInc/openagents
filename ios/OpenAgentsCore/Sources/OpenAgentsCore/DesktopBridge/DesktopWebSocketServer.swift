@@ -891,8 +891,8 @@ public class DesktopWebSocketServer {
             let summary = try await orchestrator.startExploration()
             print("[Orchestrator] Completed exploration: \(summary.repo_name)")
 
-            // Send summary as final agent message
-            var sections: [String] = ["# Exploration Complete\n"]
+            // Send summary as final agent message (no leading title/header)
+            var sections: [String] = []
 
             sections.append("**Repository:** \(summary.repo_name)")
 
