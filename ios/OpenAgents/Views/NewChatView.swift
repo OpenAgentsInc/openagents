@@ -196,7 +196,23 @@ struct NewChatView: View {
         .confirmationDialog("Select Agent", isPresented: $showAgentPicker, titleVisibility: .visible) {
             ForEach(detectedAgents, id: \.self) { agent in
                 Button(agent) {
+                    // Determine new mode from selection
+                    let lower = agent.lowercased()
+                    let newMode: ACPSessionModeId? = lower.contains("codex") ? .codex : (lower.contains("claude") ? .claude_code : nil)
+
+                    // Update local UI selection
                     selectedAgent = agent
+
+                    // If switching provider while in an active chat that already has messages,
+                    // start a brand new chat bound to the newly selected provider.
+                    if bridge.currentSessionId != nil, !timelineVM.items.isEmpty {
+                        bridge.startNewSession(desiredMode: newMode)
+                        messageText = ""
+                        composerFocused = true
+                    } else if let mode = newMode, bridge.currentSessionId != nil, timelineVM.items.isEmpty {
+                        // Reuse empty chat: set mode immediately so the first send uses the chosen provider
+                        bridge.setSessionMode(mode)
+                    }
                 }
             }
         }
