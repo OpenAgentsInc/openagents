@@ -79,6 +79,10 @@ public class DesktopWebSocketServer {
     private var updateHub: SessionUpdateHub?
     // History API for Tinyvex queries
     private var historyApi: HistoryApi?
+    // JSON-RPC router for method dispatch
+    private let router = JsonRpcRouter()
+    // Current client context for handlers (set during routing)
+    private var currentClient: Client?
 
     // Feature flags
     /// Enable auto-tailing of latest Claude Code session on client connect (default: false)
@@ -112,7 +116,264 @@ public class DesktopWebSocketServer {
     private var activeProcesses: [String: Process] = [:]  // session_id -> Process
     private var sessionFiles: [String: URL] = [:]  // session_id -> JSONL file URL
 
-    public init() {}
+    public init() {
+        registerHandlers()
+    }
+
+    /// Register all JSON-RPC method handlers with the router
+    private func registerHandlers() {
+        // Simple handlers first
+        registerSessionNewHandler()
+        registerHistoryHandlers()
+        registerThreadHandlers()
+        registerSessionHandlers()
+        registerFileSystemHandlers()
+        registerTerminalHandler()
+        registerOrchestrationHandler()
+    }
+
+    // MARK: - Handler Registration Methods
+
+    private func registerSessionNewHandler() {
+        router.register(method: ACPRPC.sessionNew) { [weak self] id, _, _ in
+            guard let self = self, let client = self.currentClient else { return }
+            let sid = ACPSessionId(UUID().uuidString)
+            let result = ACP.Agent.SessionNewResponse(session_id: sid)
+
+            JsonRpcRouter.sendResponse(id: id, result: result) { text in
+                client.send(text: text)
+            }
+        }
+    }
+
+    private func registerHistoryHandlers() {
+        // tinyvex/history.recentSessions
+        router.register(method: "tinyvex/history.recentSessions") { [weak self] id, _, _ in
+            guard let self = self, let client = self.currentClient else { return }
+            guard let api = self.historyApi else {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "History API not initialized") { text in
+                    client.send(text: text)
+                }
+                return
+            }
+
+            do {
+                let items = try await api.recentSessions()
+                JsonRpcRouter.sendResponse(id: id, result: items) { text in
+                    client.send(text: text)
+                }
+            } catch let error as HistoryApi.HistoryError {
+                JsonRpcRouter.sendError(id: id, code: error.jsonRpcCode, message: error.localizedDescription) { text in
+                    client.send(text: text)
+                }
+            } catch {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to query recent sessions: \(error)") { text in
+                    client.send(text: text)
+                }
+            }
+        }
+
+        // tinyvex/history.sessionTimeline
+        router.register(method: "tinyvex/history.sessionTimeline") { [weak self] id, params, _ in
+            guard let self = self, let client = self.currentClient else { return }
+            guard let api = self.historyApi else {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "History API not initialized") { text in
+                    client.send(text: text)
+                }
+                return
+            }
+
+            guard let sessionId = params?["session_id"] as? String else {
+                JsonRpcRouter.sendError(id: id, code: -32602, message: "Missing required parameter: session_id") { text in
+                    client.send(text: text)
+                }
+                return
+            }
+
+            let limit = params?["limit"] as? Int
+
+            do {
+                let updates = try await api.sessionTimeline(sessionId: sessionId, limit: limit)
+                JsonRpcRouter.sendResponse(id: id, result: updates) { text in
+                    client.send(text: text)
+                }
+            } catch let error as HistoryApi.HistoryError {
+                JsonRpcRouter.sendError(id: id, code: error.jsonRpcCode, message: error.localizedDescription) { text in
+                    client.send(text: text)
+                }
+            } catch {
+                JsonRpcRouter.sendError(id: id, code: -32603, message: "Failed to load session timeline: \(error)") { text in
+                    client.send(text: text)
+                }
+            }
+        }
+    }
+
+    private func registerThreadHandlers() {
+        // threads/list
+        router.register(method: "threads/list") { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            // Delegate to existing implementation (will refactor later)
+            await self.handleThreadsList(id: id, params: params, rawDict: rawDict, client: client)
+        }
+
+        // thread/load_latest
+        router.register(method: "thread/load_latest") { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleThreadLoadLatest(id: id, params: params, rawDict: rawDict, client: client)
+        }
+
+        // thread/load_latest_typed
+        router.register(method: "thread/load_latest_typed") { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleThreadLoadLatestTyped(id: id, params: params, rawDict: rawDict, client: client)
+        }
+
+        // index.status
+        router.register(method: "index.status") { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleIndexStatus(id: id, params: params, rawDict: rawDict, client: client)
+        }
+    }
+
+    private func registerSessionHandlers() {
+        // session/prompt
+        router.register(method: ACPRPC.sessionPrompt) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSessionPrompt(id: id, params: params, rawDict: rawDict, client: client)
+        }
+
+        // session/set_mode
+        router.register(method: ACPRPC.sessionSetMode) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSessionSetMode(id: id, params: params, rawDict: rawDict, client: client)
+        }
+
+        // session/cancel
+        router.register(method: ACPRPC.sessionCancel) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleSessionCancel(id: id, params: params, rawDict: rawDict, client: client)
+        }
+    }
+
+    private func registerFileSystemHandlers() {
+        // fs/readTextFile
+        router.register(method: ACPRPC.fsReadTextFile) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleFsReadTextFile(id: id, params: params, rawDict: rawDict, client: client)
+        }
+
+        // fs/writeTextFile
+        router.register(method: ACPRPC.fsWriteTextFile) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleFsWriteTextFile(id: id, params: params, rawDict: rawDict, client: client)
+        }
+    }
+
+    private func registerTerminalHandler() {
+        router.register(method: ACPRPC.terminalRun) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleTerminalRun(id: id, params: params, rawDict: rawDict, client: client)
+        }
+    }
+
+    private func registerOrchestrationHandler() {
+        router.register(method: ACPRPC.orchestrateExploreStart) { [weak self] id, params, rawDict in
+            guard let self = self, let client = self.currentClient else { return }
+            await self.handleOrchestrationStart(id: id, params: params, rawDict: rawDict, client: client)
+        }
+    }
+
+    // MARK: - Handler Implementation Methods (delegate to existing logic)
+
+    private func handleThreadsList(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Extract logic from switch case "threads/list" (lines ~814-834)
+        struct Params: Codable { let topK: Int? }
+        let topK: Int = {
+            if let p = rawDict["params"], let d = try? JSONSerialization.data(withJSONObject: p), let pr = try? JSONDecoder().decode(Params.self, from: d) { return pr.topK ?? 10 }
+            return 10
+        }()
+        let limit = min(10, max(1, topK))
+        let base = CodexScanner.defaultBaseDir()
+        let urls = CodexScanner.listRecentTopN(at: base, topK: limit)
+        var items = urls.map { CodexScanner.makeSummary(for: $0, base: base) }
+        items.sort { ($0.last_message_ts ?? $0.updated_at) > ($1.last_message_ts ?? $1.updated_at) }
+        struct Result: Codable { let items: [ThreadSummary] }
+        let result = Result(items: items)
+        JsonRpcRouter.sendResponse(id: id, result: result) { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleThreadLoadLatest(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleThreadLoadLatestTyped(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleIndexStatus(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleSessionPrompt(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic (most important one!)
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleSessionSetMode(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleSessionCancel(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleFsReadTextFile(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleFsWriteTextFile(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleTerminalRun(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
+
+    private func handleOrchestrationStart(id: JSONRPC.ID, params: [String: Any]?, rawDict: [String: Any], client: Client) async {
+        // Stub - will implement from existing switch logic
+        JsonRpcRouter.sendError(id: id, code: -32601, message: "Method temporarily disabled during refactoring") { text in
+            client.send(text: text)
+        }
+    }
 
     public func setTinyvexDb(path: String) {
         if let db = try? TinyvexDbLayer(path: path) {
@@ -695,6 +956,21 @@ public class DesktopWebSocketServer {
                     } else {
                         print("[Bridge][server] recv rpc notify method=\(method)")
                     }
+
+                    // Route through JsonRpcRouter first
+                    self.currentClient = client
+                    Task { [weak self] in
+                        guard let self = self else { return }
+                        let handled = await self.router.route(text: text)
+                        await MainActor.run {
+                            self.currentClient = nil
+                        }
+                        if !handled {
+                            print("[Bridge][server] method '\(method)' not handled by router, falling back to switch")
+                        }
+                    }
+
+                    // Keep switch statement as fallback for unimplemented handlers
                     switch method {
                     case "threads/list":
                         struct Params: Codable { let topK: Int? }
