@@ -261,6 +261,8 @@ private struct UpdateRow: View {
                 if (upd.status == .started && !hasOutput) {
                     ProgressView().progressViewStyle(.circular)
                         .tint(colorScheme == .dark ? .white : OATheme.Colors.textSecondary)
+                        .frame(width: 14, height: 14)
+                        .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
                 } else if (upd.status == .error) {
                     Image(systemName: "xmark.octagon")
                         .foregroundStyle(OATheme.Colors.danger)
