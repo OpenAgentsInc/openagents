@@ -456,8 +456,13 @@ extension BridgeManager {
         print("[Bridge][mgr] pickInitialEndpoint simulator loopback")
         return ("127.0.0.1", Int(BridgeConfig.defaultPort))
         #else
+        // On device: prefer the configured default host first; fall back to persisted endpoint.
+        if !BridgeConfig.defaultHost.isEmpty {
+            print("[Bridge][mgr] pickInitialEndpoint device default host=\(BridgeConfig.defaultHost) port=\(BridgeConfig.defaultPort)")
+            return (BridgeConfig.defaultHost, Int(BridgeConfig.defaultPort))
+        }
         if let last = readLastSuccessfulEndpoint() { print("[Bridge][mgr] pickInitialEndpoint using persisted host=\(last.0) port=\(last.1)"); return last }
-        print("[Bridge][mgr] pickInitialEndpoint default host=\(BridgeConfig.defaultHost) port=\(BridgeConfig.defaultPort)")
+        print("[Bridge][mgr] pickInitialEndpoint fallback default host=\(BridgeConfig.defaultHost) port=\(BridgeConfig.defaultPort)")
         return (BridgeConfig.defaultHost, Int(BridgeConfig.defaultPort))
         #endif
     }
