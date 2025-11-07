@@ -1143,9 +1143,6 @@ public class DesktopWebSocketServer {
 
                                 if let out = try? JSONEncoder().encode(JSONRPC.Response(id: idVal, result: updates)), let jtext = String(data: out, encoding: .utf8) {
                                     client.send(text: jtext)
-                                    // Mark this session as started so subsequent prompts use --resume instead of --session-id
-                                    self.claudeStartedBySession[sessionId] = true
-                                    print("[Bridge][tinyvex.history] Marked session \(sessionId) as started for --resume")
                                 }
                             } catch {
                                 print("[Bridge][tinyvex.history] sessionTimeline error: \(error)")
