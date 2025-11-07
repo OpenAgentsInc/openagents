@@ -1,5 +1,7 @@
 import SwiftUI
 
+#if os(macOS)
+
 struct BridgeSetupInstructionsSheet: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var bridge: BridgeManager
@@ -186,3 +188,5 @@ struct InstructionStep: View {
     BridgeSetupInstructionsSheet()
         .environmentObject(BridgeManager())
 }
+
+#endif

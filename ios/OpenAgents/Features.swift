@@ -50,4 +50,14 @@ enum Features {
         }
         return true // Default to simplified UI
     }
+
+    /// Show simplified iOS UI (bridge status + working directory + agents). Default: true.
+    /// Disable with env `OPENAGENTS_SIMPLIFIED_IOS=0` or UserDefaults `simplified_ios_ui=false`.
+    static var simplifiedIOSUI: Bool {
+        if ProcessInfo.processInfo.environment["OPENAGENTS_SIMPLIFIED_IOS"] == "0" { return false }
+        if UserDefaults.standard.object(forKey: "simplified_ios_ui") != nil {
+            return UserDefaults.standard.bool(forKey: "simplified_ios_ui")
+        }
+        return true // Default to simplified UI
+    }
 }

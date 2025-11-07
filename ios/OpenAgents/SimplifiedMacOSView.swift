@@ -17,7 +17,7 @@ struct SimplifiedMacOSView: View {
     var body: some View {
         ZStack {
             // Background
-            OATheme.Colors.background.ignoresSafeArea()
+            OATheme.Colors.background
 
             // Main content - centered
             VStack(spacing: 40) {
@@ -245,7 +245,7 @@ struct SimplifiedMacOSView: View {
             }
             .padding(40)
         }
-        .frame(minWidth: 500)
+        .frame(minWidth: 650)
         .sheet(isPresented: $showInstructions) {
             BridgeSetupInstructionsSheet()
                 .environmentObject(bridge)
