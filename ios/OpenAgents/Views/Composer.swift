@@ -17,6 +17,8 @@ struct Composer: UIViewRepresentable {
         textView.textColor = .white
         textView.tintColor = .white
         textView.returnKeyType = .send
+        textView.keyboardType = .asciiCapable
+        textView.keyboardAppearance = .dark
         textView.enablesReturnKeyAutomatically = true
         textView.delegate = context.coordinator
         textView.isScrollEnabled = false
