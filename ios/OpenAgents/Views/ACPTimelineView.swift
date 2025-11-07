@@ -18,6 +18,9 @@ struct ACPTimelineView: View {
                         case .toolCall(let call):
                             ToolCallView(call: call, result: findResult(for: call))
                                 .id(item.id)
+                                .onAppear {
+                                    print("[ACPTimelineView] Rendering tool call: \(call.tool_name) id=\(call.id)")
+                                }
                         case .toolResult:
                             // Don't render tool results as separate items
                             // Results are shown via status indicator on the tool call itself
@@ -32,6 +35,19 @@ struct ACPTimelineView: View {
             }
         }
         .background(OATheme.Colors.background)
+        .onAppear {
+            print("[ACPTimelineView] view appeared with \(items.count) items")
+            for (index, item) in items.enumerated() {
+                switch item {
+                case .message(let role, _, _):
+                    print("[ACPTimelineView] item[\(index)]: message (\(role))")
+                case .toolCall(let call):
+                    print("[ACPTimelineView] item[\(index)]: toolCall (\(call.tool_name))")
+                case .toolResult(let result):
+                    print("[ACPTimelineView] item[\(index)]: toolResult (\(result.call_id))")
+                }
+            }
+        }
     }
 
     /// Find the matching result for a tool call
