@@ -188,6 +188,13 @@ extension BridgeManager: MobileWebSocketClientDelegate {
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?) {
         if let e = error { log("client", "Disconnected: \(e.localizedDescription)"); status = .error("disconnect: \(e.localizedDescription)") }
         else { log("client", "Disconnected"); status = .idle }
+        #if targetEnvironment(simulator)
+        // Fallback to loopback if we were using a stale LAN IP on Simulator
+        if currentHost != "127.0.0.1" {
+            log("client", "Simulator fallback to 127.0.0.1:\(BridgeConfig.defaultPort)")
+            connect(host: "127.0.0.1", port: Int(BridgeConfig.defaultPort))
+        }
+        #endif
     }
 
 
@@ -444,11 +451,12 @@ extension BridgeManager {
     /// Decide the initial endpoint for iOS startup.
     /// Order: persisted last-successful → simulator loopback → configured default.
     static func pickInitialEndpoint() -> (String, Int) {
-        if let last = readLastSuccessfulEndpoint() { print("[Bridge][mgr] pickInitialEndpoint using persisted host=\(last.0) port=\(last.1)"); return last }
         #if targetEnvironment(simulator)
+        // Always prefer loopback when running on Simulator to avoid stale LAN IPs
         print("[Bridge][mgr] pickInitialEndpoint simulator loopback")
         return ("127.0.0.1", Int(BridgeConfig.defaultPort))
         #else
+        if let last = readLastSuccessfulEndpoint() { print("[Bridge][mgr] pickInitialEndpoint using persisted host=\(last.0) port=\(last.1)"); return last }
         print("[Bridge][mgr] pickInitialEndpoint default host=\(BridgeConfig.defaultHost) port=\(BridgeConfig.defaultPort)")
         return (BridgeConfig.defaultHost, Int(BridgeConfig.defaultPort))
         #endif
