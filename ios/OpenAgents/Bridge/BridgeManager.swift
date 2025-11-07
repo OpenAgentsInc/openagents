@@ -7,6 +7,14 @@ import OpenAgentsCore
 import Network
 #endif
 
+// MARK: - Recent Session (Tinyvex History)
+struct RecentSession: Codable, Identifiable, Equatable {
+    let session_id: String
+    let last_ts: Int64
+    let message_count: Int64
+    var id: String { session_id }
+}
+
 @MainActor
 final class BridgeManager: ObservableObject {
     enum Status: Equatable {
@@ -102,6 +110,8 @@ final class BridgeManager: ObservableObject {
     // Inspector data: latest raw JSON (full notification) and extracted `output` JSON per call_id
     @Published var rawJSONByCallId: [String: String] = [:]
     @Published var outputJSONByCallId: [String: String] = [:]
+    // Recent sessions from Tinyvex history
+    @Published var recentSessions: [RecentSession] = []
 
     func start() {
         let (h, p) = BridgeManager.pickInitialEndpoint()
@@ -441,6 +451,66 @@ extension BridgeManager {
                     print("[Bridge] Orchestration started: session=\(response.session_id) plan=\(response.plan_id)")
                 }
                 completion?(response)
+            }
+        }
+    }
+
+    /// Load recent sessions from Tinyvex history
+    func fetchRecentSessions() {
+        guard let client = self.client else {
+            log("history", "Cannot load recent sessions: client not connected")
+            return
+        }
+
+        struct EmptyParams: Codable {}
+
+        client.sendJSONRPC(
+            method: "tinyvex/history.recentSessions",
+            params: EmptyParams(),
+            id: "recent-sessions-\(UUID().uuidString)"
+        ) { (sessions: [RecentSession]?) in
+            DispatchQueue.main.async {
+                if let sessions = sessions {
+                    self.recentSessions = sessions
+                    self.log("history", "Loaded \(sessions.count) recent sessions from Tinyvex")
+                } else {
+                    self.recentSessions = []
+                    self.log("history", "Failed to load recent sessions")
+                }
+            }
+        }
+    }
+
+    /// Load timeline for a specific session from Tinyvex history
+    func loadSessionTimeline(sessionId: String) {
+        guard let client = self.client else {
+            log("history", "Cannot load timeline: client not connected")
+            return
+        }
+
+        struct TimelineParams: Codable {
+            let session_id: String
+        }
+
+        // Clear current updates and set the session ID
+        updates.removeAll()
+        toolCallNames.removeAll()
+        rawJSONByCallId.removeAll()
+        outputJSONByCallId.removeAll()
+        currentSessionId = ACPSessionId(sessionId)
+
+        client.sendJSONRPC(
+            method: "tinyvex/history.sessionTimeline",
+            params: TimelineParams(session_id: sessionId),
+            id: "session-timeline-\(UUID().uuidString)"
+        ) { (timeline: [ACP.Client.SessionNotificationWire]?) in
+            DispatchQueue.main.async {
+                if let timeline = timeline {
+                    self.updates = timeline
+                    self.log("history", "Loaded timeline for session \(sessionId): \(timeline.count) updates")
+                } else {
+                    self.log("history", "Failed to load timeline for session \(sessionId)")
+                }
             }
         }
     }
