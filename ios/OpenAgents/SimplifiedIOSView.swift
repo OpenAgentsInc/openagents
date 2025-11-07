@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SimplifiedIOSView: View {
     @EnvironmentObject var bridge: BridgeManager
+    @State private var isMenuPresented = false
 
     var body: some View {
         NavigationStack {
@@ -165,6 +166,16 @@ struct SimplifiedIOSView: View {
             .background(OATheme.Colors.background)
             .navigationTitle("")
             .toolbarTitleDisplayMode(.inline)
+            .toolbar {
+                ChatHeaderToolbar(
+                    title: "Home",
+                    onToggleMenu: { isMenuPresented.toggle() },
+                    onNewChat: { /* no-op for now */ }
+                )
+            }
+            .sheet(isPresented: $isMenuPresented) {
+                SimplifiedMenuSheet()
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -211,6 +222,32 @@ struct AgentInfoRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(OATheme.Colors.border.opacity(0.5))
         )
+    }
+}
+
+// MARK: - Menu Sheet
+
+private struct SimplifiedMenuSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Navigation") {
+                    Label("Home", systemImage: "house")
+                    Label("Settings", systemImage: "gear")
+                    Label("About", systemImage: "info.circle")
+                }
+            }
+            .navigationTitle("Menu")
+            .toolbarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done", action: { dismiss() })
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
