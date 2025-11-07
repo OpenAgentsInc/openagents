@@ -49,50 +49,50 @@ public actor TinyvexServer {
     }
 
     // MARK: - Routing
-    fileprivate func handleRequest(id: JSONRPCId, method: String, payload: Data, send: @escaping (Data) -> Void) async {
+    fileprivate func handleRequest(id: JSONRPC.ID, method: String, payload: Data, send: @escaping (Data) -> Void) async {
         switch method {
         case TinyvexMethods.connect:
             let now = Int64(Date().timeIntervalSince1970 * 1000)
             let result = TinyvexConnectResult(serverVersion: "0.1.0", nowTs: now, features: config.features, sessionId: nil)
-            send(encode(JSONRPCResponse(id: id, result: result)))
+            send(encode(JSONRPC.Response(id: id, result: result)))
 
         case TinyvexMethods.historySessionUpdates:
             do {
-                let req = try JSONDecoder().decode(JSONRPCRequest<TinyvexHistoryParams>.self, from: payload)
-                let p = req.params!
+                let req = try JSONDecoder().decode(JSONRPC.Request<TinyvexHistoryParams>.self, from: payload)
+                let p = req.params
                 let rows = try await db.history(sessionId: p.session_id, sinceSeq: p.since_seq, sinceTs: p.since_ts, limit: p.limit)
                 // Return array of ACP.Client.SessionNotificationWire
                 let wires = try rows.map { row -> ACP.Client.SessionNotificationWire in
                     let update = try JSONDecoder().decode(ACP.Client.SessionUpdate.self, from: Data(row.update_json.utf8))
                     return .init(session_id: ACPSessionId(p.session_id), update: update)
                 }
-                send(encode(JSONRPCResponse(id: id, result: wires)))
+                send(encode(JSONRPC.Response(id: id, result: wires)))
             } catch {
-                send(error: id, code: -32602, message: "Invalid params: \(error)")
+                sendError(id: id, code: -32602, message: "Invalid params: \(error)", send: send)
             }
 
         case TinyvexMethods.initialize:
             do {
-                let req = try JSONDecoder().decode(JSONRPCRequest<ACP.Agent.InitializeRequest>.self, from: payload)
+                let req = try JSONDecoder().decode(JSONRPC.Request<ACP.Agent.InitializeRequest>.self, from: payload)
                 let caps = ACP.Agent.AgentCapabilities(load_session: false, prompt_capabilities: .init(), mcp_capabilities: .init())
-                let resp = ACP.Agent.InitializeResponse(protocol_version: req.params?.protocol_version ?? "0.7.0", agent_capabilities: caps, auth_methods: [], agent_info: .init(name: "Tinyvex", title: "Tinyvex", version: "0.1.0"))
-                send(encode(JSONRPCResponse(id: id, result: resp)))
-            } catch { send(error: id, code: -32602, message: "Invalid params: \(error)") }
+                let resp = ACP.Agent.InitializeResponse(protocol_version: req.params.protocol_version, agent_capabilities: caps, auth_methods: [], agent_info: .init(name: "Tinyvex", title: "Tinyvex", version: "0.1.0"))
+                send(encode(JSONRPC.Response(id: id, result: resp)))
+            } catch { sendError(id: id, code: -32602, message: "Invalid params: \(error)", send: send) }
 
         case TinyvexMethods.sessionNew:
             do {
-                _ = try JSONDecoder().decode(JSONRPCRequest<ACP.Agent.SessionNewRequest>.self, from: payload)
+                _ = try JSONDecoder().decode(JSONRPC.Request<ACP.Agent.SessionNewRequest>.self, from: payload)
                 let sid = ACPSessionId(UUID().uuidString)
-                send(encode(JSONRPCResponse(id: id, result: ACP.Agent.SessionNewResponse(session_id: sid))))
-            } catch { send(error: id, code: -32602, message: "Invalid params: \(error)") }
+                send(encode(JSONRPC.Response(id: id, result: ACP.Agent.SessionNewResponse(session_id: sid))))
+            } catch { sendError(id: id, code: -32602, message: "Invalid params: \(error)", send: send) }
 
         case TinyvexMethods.sessionPrompt:
             do {
-                let req = try JSONDecoder().decode(JSONRPCRequest<ACP.Agent.SessionPromptRequest>.self, from: payload)
+                let req = try JSONDecoder().decode(JSONRPC.Request<ACP.Agent.SessionPromptRequest>.self, from: payload)
                 // Simulated agent: echo back the prompt text as an agent_message_chunk
-                let sessionId = req.params!.session_id.value
+                let sessionId = req.params.session_id.value
                 let now = Int64(Date().timeIntervalSince1970 * 1000)
-                let content = ACP.Client.ContentBlock.text(.init(text: "OK: \(req.params!.content.count) blocks"))
+                let content = ACP.Client.ContentBlock.text(.init(text: "OK: \(req.params.content.count) blocks"))
                 let wire = ACP.Client.SessionNotificationWire(session_id: ACPSessionId(sessionId), update: .agentMessageChunk(.init(content: content)))
                 let updateJSON = String(data: try JSONEncoder().encode(wire.update), encoding: .utf8) ?? "{}"
                 try await db.appendEvent(sessionId: sessionId, seq: nextSeq, ts: now, updateJSON: updateJSON)
@@ -100,16 +100,21 @@ public actor TinyvexServer {
                 // Fan-out
                 await broadcastACPUpdate(wire)
                 struct OK: Codable { let ok: Bool }
-                send(encode(JSONRPCResponse(id: id, result: OK(ok: true))))
-            } catch { send(error: id, code: -32602, message: "Invalid params: \(error)") }
+                send(encode(JSONRPC.Response(id: id, result: OK(ok: true))))
+            } catch { sendError(id: id, code: -32602, message: "Invalid params: \(error)", send: send) }
 
         default:
-            send(error: id, code: -32601, message: "Method not found: \(method)")
+            sendError(id: id, code: -32601, message: "Method not found: \(method)", send: send)
         }
     }
 
-    private func encode<R: Encodable>(_ r: JSONRPCResponse<R>) -> Data {
+    private func encode<R: Encodable>(_ r: JSONRPC.Response<R>) -> Data {
         (try? JSONEncoder().encode(r)) ?? Data("{\"jsonrpc\":\"2.0\"}".utf8)
+    }
+
+    private func sendError(id: JSONRPC.ID, code: Int, message: String, send: (Data) -> Void) {
+        let err = JSONRPC.ErrorResponse(id: id, error: .init(code: code, message: message, data: nil))
+        if let data = try? JSONEncoder().encode(err) { send(data) }
     }
 }
 
@@ -154,7 +159,10 @@ final class TinyvexConnection {
             let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             guard let method = obj?["method"] as? String else { return }
             if let idAny = obj?["id"] {
-                let id: JSONRPCId = (idAny as? Int).map(JSONRPCId.int) ?? JSONRPCId.string(String(describing: idAny))
+                let id: JSONRPC.ID
+                if let i = idAny as? Int { id = JSONRPC.ID(String(i)) }
+                else if let s = idAny as? String { id = JSONRPC.ID(s) }
+                else { id = JSONRPC.ID(String(describing: idAny)) }
                 Task { [weak self] in
                     guard let self, let server = self.serverRef else { return }
                     await server.handleRequest(id: id, method: method, payload: data, send: { [weak self] out in self?.send(out) })
@@ -180,4 +188,3 @@ extension TinyvexServer {
     }
 }
 #endif
-
