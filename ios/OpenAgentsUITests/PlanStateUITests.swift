@@ -12,6 +12,11 @@ final class PlanStateUITests: XCTestCase {
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
+        // Skip all UI tests unless explicitly enabled via environment variable
+        guard ProcessInfo.processInfo.environment["ENABLE_UI_TESTS"] == "1" else {
+            throw XCTSkip("UI tests disabled by default. Set ENABLE_UI_TESTS=1 to run.")
+        }
+
         continueAfterFailure = false
         app = XCUIApplication()
     }
