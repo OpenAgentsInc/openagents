@@ -59,10 +59,15 @@ enum PerformanceWarmup {
             tv.alpha = 0.001
             window.addSubview(tv)
             tv.setNeedsLayout(); tv.layoutIfNeeded()
-            // Touch active input modes to warm internal caches
+            // Touch active input modes and text checker to warm internal caches
             _ = UITextInputMode.activeInputModes
-            // Touch text checker to avoid first-use cost
-            _ = UITextChecker.availableLanguages
+            let langs = UITextChecker.availableLanguages
+            if let lang = langs.first {
+                let checker = UITextChecker()
+                let text = "Warm up autocorrect"
+                let ns = text as NSString
+                _ = checker.rangeOfMisspelledWord(in: text, range: NSRange(location: 0, length: ns.length), startingAt: 0, wrap: false, language: lang)
+            }
             // Remove immediately without showing keyboard
             tv.removeFromSuperview()
         }
