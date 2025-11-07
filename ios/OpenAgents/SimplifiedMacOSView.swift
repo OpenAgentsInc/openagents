@@ -2,6 +2,7 @@ import SwiftUI
 
 #if os(macOS)
 import AppKit
+import OpenAgentsCore
 
 struct SimplifiedMacOSView: View {
     @EnvironmentObject var bridge: BridgeManager
@@ -104,6 +105,35 @@ struct SimplifiedMacOSView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(OATheme.Colors.border.opacity(0.3))
                     )
+
+                    // Session indicator
+                    HStack(spacing: 8) {
+                        Image(systemName: "number")
+                            .font(.system(size: 12))
+                            .foregroundStyle(OATheme.Colors.textTertiary)
+                        if let sid = bridge.currentSessionId?.value, !sid.isEmpty {
+                            Text("Session: \(sid.prefix(8))…")
+                                .font(OAFonts.ui(.caption, 12))
+                                .foregroundStyle(OATheme.Colors.textSecondary)
+                            Button(action: {
+                                let pb = NSPasteboard.general
+                                pb.clearContents()
+                                pb.setString(sid, forType: .string)
+                            }) {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(OATheme.Colors.textTertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy session ID")
+                        } else {
+                            Text("Session: No session")
+                                .font(OAFonts.ui(.caption, 12))
+                                .foregroundStyle(OATheme.Colors.textTertiary)
+                        }
+                        Spacer()
+                    }
+                    .frame(maxWidth: 500)
                 }
                 .frame(maxWidth: 500)
 

@@ -7,13 +7,12 @@ struct Composer: UIViewRepresentable {
     var agentName: String
     var onSubmit: () -> Void
 
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-
+    func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
         textView.text = ""
-        textView.font = UIFont.systemFont(ofSize: 16)
+        // Use our mono font (Berkeley Mono)
+        let monoName = BerkeleyFont.defaultName()
+        textView.font = UIFont(name: monoName, size: 16) ?? UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
         textView.backgroundColor = UIColor(white: 1.0, alpha: 0.1)
         textView.textColor = .white
         textView.tintColor = .white
@@ -24,29 +23,33 @@ struct Composer: UIViewRepresentable {
         textView.textContainerInset = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         textView.textContainer.lineFragmentPadding = 0
 
-        // DISABLE HAPTIC FEEDBACK - this is what fixes the lag
+        // Disable all smart features, correction, and spell checking to prevent
+        // haptic/prediction overhead and focus lag.
         textView.autocorrectionType = .no
         textView.spellCheckingType = .no
+        textView.autocapitalizationType = .none
+        textView.smartDashesType = .no
+        textView.smartQuotesType = .no
+        textView.smartInsertDeleteType = .no
+        textView.dataDetectorTypes = []
+        textView.keyboardDismissMode = .interactive
+        // Hide the QuickType bar (input assistant) to reduce layout churn
+        let ia = textView.inputAssistantItem
+        ia.leadingBarButtonGroups = []
+        ia.trailingBarButtonGroups = []
+        // Avoid text drag interaction overhead
+        if let drag = textView.textDragInteraction { drag.isEnabled = false }
+        textView.allowsEditingTextAttributes = false
 
         // Styling
         textView.layer.cornerRadius = 20
         textView.layer.masksToBounds = true
 
-        // Prevent expansion
+        // Expand to fill available horizontal space inside HStack
+        textView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         textView.setContentHuggingPriority(.defaultHigh, for: .vertical)
         textView.setContentCompressionResistancePriority(.required, for: .vertical)
-
-        textView.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(textView)
-
-        NSLayoutConstraint.activate([
-            textView.topAnchor.constraint(equalTo: container.topAnchor),
-            textView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            textView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            textView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            textView.heightAnchor.constraint(equalToConstant: 40),
-            container.heightAnchor.constraint(equalToConstant: 40)
-        ])
 
         // Set placeholder
         if text.isEmpty {
@@ -54,12 +57,10 @@ struct Composer: UIViewRepresentable {
             textView.textColor = .systemGray
         }
 
-        return container
+        return textView
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        guard let textView = uiView.subviews.first as? UITextView else { return }
-
+    func updateUIView(_ textView: UITextView, context: Context) {
         // Handle clearing when text binding is empty
         if text.isEmpty {
             if textView.textColor != .systemGray || textView.text != "Message \(agentName)" {
@@ -73,6 +74,12 @@ struct Composer: UIViewRepresentable {
                 textView.text = text
             }
         }
+    }
+
+    // Ensure the SwiftUI layout engine gets a deterministic size
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize {
+        let width = proposal.width ?? 0
+        return CGSize(width: width, height: 40)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -132,6 +139,7 @@ struct Composer: UIViewRepresentable {
             agentName: "Codex",
             onSubmit: {}
         )
+        .frame(maxWidth: .infinity)
     }
     .background(OATheme.Colors.background)
     .preferredColorScheme(.dark)

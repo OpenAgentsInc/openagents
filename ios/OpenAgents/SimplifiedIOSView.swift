@@ -1,6 +1,8 @@
 import SwiftUI
+import OpenAgentsCore
 
 #if os(iOS)
+import UIKit
 
 // MARK: - Navigation Container
 
@@ -204,6 +206,31 @@ struct SimplifiedIOSView: View {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(OATheme.Colors.border.opacity(0.3))
                         )
+
+                        // Session indicator row
+                        HStack(spacing: 8) {
+                            Image(systemName: "number")
+                                .font(.system(size: 12))
+                                .foregroundStyle(OATheme.Colors.textTertiary)
+                            if let sid = bridge.currentSessionId?.value, !sid.isEmpty {
+                                Text("Session: \(sid.prefix(8))…")
+                                    .font(OAFonts.ui(.caption, 12))
+                                    .foregroundStyle(OATheme.Colors.textSecondary)
+                                Button(action: { UIPasteboard.general.string = sid }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(OATheme.Colors.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Copy session ID")
+                            } else {
+                                Text("Session: No session")
+                                    .font(OAFonts.ui(.caption, 12))
+                                    .foregroundStyle(OATheme.Colors.textTertiary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 4)
                     }
                     .padding(.horizontal)
 

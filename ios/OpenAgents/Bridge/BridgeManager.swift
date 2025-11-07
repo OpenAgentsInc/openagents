@@ -24,6 +24,9 @@ final class BridgeManager: ObservableObject {
     @Published var logs: [String] = [] // recent logs (ring buffer)
     private var currentHost: String?
     private var currentPort: Int?
+    // Active session identifier (cross‑platform; used by UI chips)
+    @Published var currentSessionId: ACPSessionId? = nil
+
 #if os(macOS)
     private var server: DesktopWebSocketServer?
     @Published var connectedClientCount: Int = 0
@@ -83,7 +86,6 @@ final class BridgeManager: ObservableObject {
     private static let lastPortKey = "oa.bridge.last_port"
     @Published var threads: [ThreadSummary] = []
     @Published var updates: [ACP.Client.SessionNotificationWire] = []
-    @Published var currentSessionId: ACPSessionId? = nil
     @Published var availableCommands: [ACP.Client.AvailableCommand] = []
     @Published var currentMode: ACPSessionModeId = .default_mode
     // Working directory from macOS server (received during initialize handshake)
@@ -157,21 +159,7 @@ extension BridgeManager: MobileWebSocketClientDelegate {
             BridgeManager.saveLastSuccessfulEndpoint(host: h, port: p)
             log("client", "persisted endpoint host=\(h) port=\(p)")
         }
-        // Optionally autoload the latest provider thread (disabled by default).
-        if Features.autoloadLatestOnConnect && Features.claudeEnabled {
-            struct LatestTypedResult: Codable { let id: String; let updates: [ACP.Client.SessionUpdate] }
-            client.sendJSONRPC(method: "thread/load_latest_typed", params: Empty(), id: "thread-load-latest-typed-1") { (resp: LatestTypedResult?) in
-                guard let resp = resp else { return }
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    let sid = ACPSessionId(resp.id)
-                    let wires = resp.updates.map { ACP.Client.SessionNotificationWire(session_id: sid, update: $0) }
-                    self.updates = wires
-                    if let h = self.currentHost, let p = self.currentPort { self.status = .connected(host: h, port: p) }
-                    self.log("client", "Loaded latest thread (typed) id=\(resp.id) updates=\(resp.updates.count)")
-                }
-            }
-        }
+        // Hydration of previous threads is disabled per current product direction.
     }
 
     func mobileWebSocketClient(_ client: MobileWebSocketClient, didDisconnect error: Error?) {
@@ -184,6 +172,10 @@ extension BridgeManager: MobileWebSocketClientDelegate {
         if method == ACPRPC.sessionUpdate {
             if let note = try? JSONDecoder().decode(ACP.Client.SessionNotificationWire.self, from: payload) {
                 log("client", "session.update for \(note.session_id.value)")
+                // Keep currentSessionId in sync with incoming updates
+                if currentSessionId == nil || currentSessionId != note.session_id {
+                    currentSessionId = note.session_id
+                }
                 // Append/coalesce into ring buffer for UI to observe (BridgeManager is @MainActor)
                 func adjustIndicesAfterPopFront() {
                     // Shift all stored indices down by 1; drop any that become negative
