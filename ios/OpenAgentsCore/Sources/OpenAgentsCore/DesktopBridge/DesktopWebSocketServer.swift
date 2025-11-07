@@ -402,7 +402,26 @@ public class DesktopWebSocketServer {
     }
 
     private func findCodexCLI() -> String? {
-        // Try common locations for a "codex" CLI
+        // Allow explicit override via env var
+        let env = ProcessInfo.processInfo.environment
+        if let override = env["OPENAGENTS_CODEX_CLI"], !override.isEmpty, FileManager.default.fileExists(atPath: override) {
+            print("[Bridge][server] ✓ using OPENAGENTS_CODEX_CLI=\(override)")
+            return override
+        }
+
+        // Try fnm-managed paths first (mirroring Claude search)
+        let fnmPaths = [
+            "\(NSHomeDirectory())/.local/state/fnm_multishells",
+            "\(NSHomeDirectory())/.fnm/node-versions"
+        ]
+        for basePath in fnmPaths {
+            if let found = searchForBinaryRecursive(in: basePath, basename: "codex", maxDepth: 4) {
+                print("[Bridge][server] ✓ found codex at: \(found)")
+                return found
+            }
+        }
+
+        // Common locations
         let paths = [
             "/usr/local/bin/codex",
             "/opt/homebrew/bin/codex",
@@ -412,21 +431,39 @@ public class DesktopWebSocketServer {
             "/usr/bin/codex"
         ]
         for p in paths { if FileManager.default.fileExists(atPath: p) { return p } }
-        // Fallback to login shells
+
+        // Fallback to login shells (try several likely binaries)
         for shell in ["/bin/zsh", "/bin/bash"] {
-            do {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: shell)
-                process.arguments = ["-l", "-c", "which codex"]
-                let out = Pipe(); let err = Pipe()
-                process.standardOutput = out; process.standardError = err
-                try process.run(); process.waitUntilExit()
-                if process.terminationStatus == 0 {
-                    let data = out.fileHandleForReading.readDataToEndOfFile()
-                    if let s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { return s }
-                }
-            } catch {
-                continue
+            for candidate in ["codex", "oa", "openai"] {
+                do {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: shell)
+                    process.arguments = ["-l", "-c", "which \(candidate)"]
+                    let out = Pipe(); process.standardOutput = out; process.standardError = Pipe()
+                    try process.run(); process.waitUntilExit()
+                    if process.terminationStatus == 0 {
+                        let data = out.fileHandleForReading.readDataToEndOfFile()
+                        if let s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                            print("[Bridge][server] ✓ found candidate for Codex CLI (\(candidate)): \(s)")
+                            return s
+                        }
+                    }
+                } catch { continue }
+            }
+        }
+        return nil
+    }
+
+    private func searchForBinaryRecursive(in basePath: String, basename: String, maxDepth: Int, currentDepth: Int = 0) -> String? {
+        guard currentDepth < maxDepth else { return nil }
+        guard FileManager.default.fileExists(atPath: basePath) else { return nil }
+        let candidate = "\(basePath)/bin/\(basename)"
+        if FileManager.default.fileExists(atPath: candidate) { return candidate }
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: basePath) else { return nil }
+        for item in contents {
+            let fullPath = "\(basePath)/\(item)"
+            if let found = searchForBinaryRecursive(in: fullPath, basename: basename, maxDepth: maxDepth, currentDepth: currentDepth + 1) {
+                return found
             }
         }
         return nil
