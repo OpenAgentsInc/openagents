@@ -9,17 +9,33 @@ struct NewChatView: View {
     var detectedAgents: [String]
     var onNavigateToSetup: () -> Void
 
+    @State private var messageText: String = ""
+
     var body: some View {
-        VStack {
-            Spacer()
+        VStack(spacing: 0) {
+            // Main content area
+            ScrollView {
+                VStack {
+                    Spacer()
 
-            Text("New Chat")
-                .font(OAFonts.ui(.title, 24))
-                .foregroundStyle(OATheme.Colors.textSecondary)
+                    Text("New Chat")
+                        .font(OAFonts.ui(.title, 24))
+                        .foregroundStyle(OATheme.Colors.textSecondary)
 
-            Spacer()
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, minHeight: 400)
+            }
+
+            // Composer at bottom
+            Composer(
+                text: $messageText,
+                agentName: selectedAgent,
+                onSubmit: {
+                    sendMessage()
+                }
+            )
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(OATheme.Colors.background)
         .navigationTitle("")
         .navigationBarBackButtonHidden(true)
@@ -68,7 +84,19 @@ struct NewChatView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .preferredColorScheme(.dark)
+    }
+
+    private func sendMessage() {
+        let message = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+
+        // TODO: Send message to selected agent
+        print("[NewChat] Sending to \(selectedAgent): \(message)")
+
+        // Clear input
+        messageText = ""
     }
 }
 
