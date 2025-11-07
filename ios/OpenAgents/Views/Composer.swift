@@ -102,13 +102,15 @@ struct Composer: UIViewRepresentable {
     class Coordinator: NSObject, UITextViewDelegate {
         var parent: Composer
         weak var placeholder: UILabel?
+        private var didPrime = false
+        private var isPriming = false
 
         init(_ parent: Composer) {
             self.parent = parent
         }
 
         func textViewDidChange(_ textView: UITextView) {
-            parent.text = textView.text
+            if !isPriming { parent.text = textView.text }
             placeholder?.isHidden = !textView.text.isEmpty
         }
 
@@ -120,7 +122,20 @@ struct Composer: UIViewRepresentable {
             return true
         }
 
-        func textViewDidBeginEditing(_ textView: UITextView) { placeholder?.isHidden = true }
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            placeholder?.isHidden = true
+            // Prime the candidate/autocorrection pipeline once per app run while the
+            // keyboard is open, without leaving any visible character behind.
+            if !didPrime, textView.text.isEmpty {
+                didPrime = true
+                isPriming = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    textView.insertText("a")
+                    textView.deleteBackward()
+                    self.isPriming = false
+                }
+            }
+        }
         func textViewDidEndEditing(_ textView: UITextView) { placeholder?.isHidden = !(parent.text.isEmpty) }
     }
 }
