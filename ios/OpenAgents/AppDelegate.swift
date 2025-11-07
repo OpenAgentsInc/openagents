@@ -15,6 +15,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         let ts = ISO8601DateFormatter().string(from: Date())
         print("[Bridge][app] didFinishLaunching at \(ts)")
         if #available(iOS 16.0, *) { Logger(subsystem: "com.openagents.app", category: "app").log("didFinishLaunching at \(ts, privacy: .public)") }
+        // Prewarm fonts and haptics early to avoid first-focus lag when composer opens
+        _ = BerkeleyFont.registerAll()
+        PerformanceWarmup.preloadMonoFont()
+        PerformanceWarmup.prewarmHaptics()
         return true
     }
 
