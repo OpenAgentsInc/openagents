@@ -1,12 +1,19 @@
 # iOS Keyboard First-Keystroke Lag Analysis
 
+IMPORTANT — PRODUCTION BEHAVIOR (RESOLVED)
+
+- When the app runs detached from the debugger or in a Release build, keyboard typing is perfectly smooth. The lag only appears in Debug runs attached to Xcode. We accept this as a development‑only artifact and do not consider it a shipping issue.
+- Verify by: building for Release or running on device/simulator, then quit the app and stop the Xcode debug session before relaunch. Typing is instant with no first‑character delay.
+
+The analysis below is preserved for completeness, but the issue is not actionable for production.
+
 **Date**: 2025-11-07
 **Auditor**: Claude Code
 **Issue**: 1-2 second lag when typing first character after keyboard opens on new chat screen
 
 ## Executive Summary
 
-After opening the keyboard for the first time on the NewChatView/Composer, users experience a 1-2 second lag when typing the first character. Despite multiple optimization attempts (font preloading, haptics warmup, text subsystem priming), the lag persists. This audit analyzes the current implementation and identifies potential root causes.
+In Debug sessions attached to Xcode, a 1–2s lag can occur on the very first typed character after opening the keyboard on the NewChatView/Composer. In production (Release builds and/or when detached from the debugger), typing is smooth and immediate. Optimizations (font/haptic/text warmups) are retained, but no further action is required for shipping builds.
 
 ## Affected Code Paths
 
